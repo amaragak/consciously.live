@@ -120,6 +120,7 @@ async function streamHandler(
   let body: {
     messages?: ChatTurn[];
     claudeModel?: string;
+    systemSupplement?: string;
   };
   try {
     body = JSON.parse(event.body || "{}");
@@ -162,12 +163,17 @@ async function streamHandler(
   }
 
   const model = coerceClaudeModel(body.claudeModel);
+  const systemSupplement =
+    typeof body.systemSupplement === "string"
+      ? body.systemSupplement.trim().slice(0, 48_000)
+      : "";
   const system = buildAssistantChatSystemPrompt();
   const requestBody = buildCachedMessagesRequestBody({
     model,
     system,
+    ...(systemSupplement ? { systemSupplement } : {}),
     messages,
-    maxTokens: 512,
+    maxTokens: systemSupplement ? 1024 : 512,
     stream: true,
   });
 

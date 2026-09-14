@@ -11,14 +11,23 @@ export function getAssistantChatUrl(): string {
  * Streams assistant-chat SSE (`{d}` / `{done}` / `{error}`), same shape as coach chat.
  */
 export async function streamAssistantChat(
-  params: { messages: AssistantChatTurn[] },
+  params: {
+    messages: AssistantChatTurn[];
+    /** Appended after the cached base system prompt (not cached). */
+    systemSupplement?: string;
+  },
   onDelta: (chunk: string) => void,
 ): Promise<string> {
   const url = getAssistantChatUrl();
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: params.messages }),
+    body: JSON.stringify({
+      messages: params.messages,
+      ...(params.systemSupplement?.trim()
+        ? { systemSupplement: params.systemSupplement.trim() }
+        : {}),
+    }),
   });
 
   const ct = res.headers.get("content-type") ?? "";

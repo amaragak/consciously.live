@@ -1,3 +1,4 @@
+import type { AssistantChatStoreV1 } from "./assistant-chat-storage";
 import type { JournalStoreV2 } from "./journal-storage";
 import {
   ensureMedimadeSession,
@@ -1068,6 +1069,62 @@ export async function putJournalStoreRemote(store: JournalStoreV2): Promise<void
     throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
   }
   const res = await medimadeFetch(`${base}/journal/store`, {
+    method: "PUT",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ store }),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+}
+
+/** Loads Consciously Chat store from `GET /assistant-chat/store`. */
+export async function fetchAssistantChatStoreRemote(): Promise<AssistantChatStoreV1 | null> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  }
+  const res = await medimadeFetch(`${base}/assistant-chat/store`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+  const store = data.store;
+  if (store == null) return null;
+  if (typeof store !== "object") return null;
+  return store as AssistantChatStoreV1;
+}
+
+/** Saves Consciously Chat store to `PUT /assistant-chat/store`. */
+export async function putAssistantChatStoreRemote(
+  store: AssistantChatStoreV1,
+): Promise<void> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  }
+  const res = await medimadeFetch(`${base}/assistant-chat/store`, {
     method: "PUT",
     headers: medimadeJsonHeaders(),
     body: JSON.stringify({ store }),

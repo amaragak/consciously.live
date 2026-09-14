@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopBar } from "@/components/app-top-bar";
 import { AppPrimaryTabsProvider } from "@/components/app-primary-tabs";
+import { AssistantChatFab } from "@/components/assistant-chat-fab";
 import { MainShell } from "@/components/main-shell";
 import { SiteHeader } from "@/components/site-header";
 import {
@@ -200,6 +201,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
             )}
           </MainShell>
         </div>
+        <AssistantChatFab />
       </div>
     </AppPrimaryTabsProvider>
   );

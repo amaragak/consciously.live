@@ -110,6 +110,13 @@ export async function POST(req: Request) {
     typeof (body as { claudeModel?: string })?.claudeModel === "string"
       ? (body as { claudeModel: string }).claudeModel.trim()
       : "";
+  const systemSupplement =
+    typeof (body as { systemSupplement?: string })?.systemSupplement ===
+    "string"
+      ? (body as { systemSupplement: string }).systemSupplement
+          .trim()
+          .slice(0, 48_000)
+      : "";
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json(
@@ -151,6 +158,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           messages: turns,
           ...(claudeModel ? { claudeModel } : {}),
+          ...(systemSupplement ? { systemSupplement } : {}),
         }),
         cache: "no-store",
       });
@@ -187,8 +195,9 @@ export async function POST(req: Request) {
   const requestBody = buildCachedMessagesRequestBody({
     model: claudeModel || DEFAULT_MODEL,
     system: buildAssistantChatSystemPrompt(),
+    ...(systemSupplement ? { systemSupplement } : {}),
     messages: turns,
-    maxTokens: 512,
+    maxTokens: systemSupplement ? 1024 : 512,
     stream: true,
   });
 

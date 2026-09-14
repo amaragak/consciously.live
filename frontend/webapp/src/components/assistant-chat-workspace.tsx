@@ -1,76 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { ChatMarkdown } from "@/components/chat-markdown";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantChatCapabilitiesFab } from "@/components/assistant-chat-capabilities-fab";
-import { DictationMicButton, appendSpokenText } from "@/components/dictation-mic-button";
-import { streamAssistantChat } from "@/lib/assistant-chat-api";
-import { executeAssistantActions } from "@/lib/assistant-chat-actions";
+import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
 import {
-  assistantChatBubbles,
-  parseAssistantDisplayText,
-  type AssistantAction,
-} from "@/lib/assistant-chat-protocol";
-import { ASSISTANT_SESSION_OPEN } from "@/lib/assistant-chat-system-prompt";
-import { clearAssistantChatSession } from "@/lib/assistant-chat-storage";
+  clearAssistantChatRemoteSessionCache,
+  markAssistantChatStorePulledThisSession,
+  pullAssistantChatStoreFromCloud,
+  scheduleAssistantChatCloudPush,
+  wasAssistantChatStorePulledThisSession,
+} from "@/lib/assistant-chat-cloud";
+import {
+  ASSISTANT_CHAT_STORE_CHANGED,
+  clearLegacyAssistantChatKeys,
+  deleteAssistantChatThread,
+  formatAssistantChatThreadDate,
+  groupAssistantChatThreadsForSidebar,
+  loadAssistantChatStore,
+  loadSidebarCollapsed,
+  renameAssistantChatThread,
+  saveAssistantChatStore,
+  saveSidebarCollapsed,
+  threadPreview,
+  type AssistantChatThread,
+} from "@/lib/assistant-chat-storage";
+import {
+  getMedimadeSessionJwt,
+  isMedimadeSessionActive,
+} from "@/lib/auth-session";
+import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
 
-type AssistantChatMessage = {
-  role: "user" | "assistant";
-  text: string;
-  actions?: AssistantAction[];
-  actionResults?: Array<{
-    label: string;
-    detail?: string;
-    href?: string;
-    linkLabel?: string;
-    ok: boolean;
-  }>;
-};
-
-function ChatTypingIndicator() {
-  return (
-    <div
-      className="mb-3 flex w-full justify-start px-3.5 py-2.5"
-      aria-live="polite"
-      aria-label="Assistant is typing"
-    >
-      <div className="flex h-4 items-end gap-1.5">
-        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
-        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
-        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
-      </div>
-    </div>
-  );
+function threadIdFromPath(pathname: string): string | null {
+  const m = /^\/chat\/my\/([^/]+)\/?$/.exec(pathname);
+  if (!m?.[1] || m[1] === "my") return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }
 
-function IconPaperAirplane({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M22 2L11 13" />
-      <path d="M22 2l-7 20-4-9-9-4 20-7z" />
-    </svg>
-  );
-}
-
-function IconResetArrow({ className }: { className?: string }) {
+function IconChevron({
+  className,
+  dir,
+}: {
+  className?: string;
+  dir: "left" | "right";
+}) {
   return (
     <svg
       className={className}
@@ -84,208 +62,202 @@ function IconResetArrow({ className }: { className?: string }) {
       strokeLinejoin="round"
       aria-hidden
     >
-      <polyline points="23 4 23 10 17 10" />
-      <polyline points="1 20 1 14 7 14" />
-      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
-      <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+      {dir === "left" ? (
+        <polyline points="15 18 9 12 15 6" />
+      ) : (
+        <polyline points="9 18 15 12 9 6" />
+      )}
     </svg>
   );
 }
 
 export function AssistantChatWorkspace() {
-  const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
-  const [thread, setThread] = useState<
-    Array<{ role: "user" | "assistant"; content: string }>
-  >([]);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [opening, setOpening] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const pathname = usePathname() || "/chat/my";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const routeThreadId = threadIdFromPath(pathname);
+  const mobileComposeChrome = Boolean(routeThreadId);
 
-  const inputDraftRef = useRef("");
-  const chatInputRef = useRef<HTMLInputElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const isAtBottomRef = useRef(true);
-  const busyRef = useRef(false);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const openNonceRef = useRef(0);
+  const [storeThreads, setStoreThreads] = useState<AssistantChatThread[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    clearAssistantChatSession();
+  const chat = useAssistantChatThread({
+    threadId: routeThreadId,
+    autoOpen: true,
+  });
+
+  const refreshSidebar = useCallback(() => {
+    setStoreThreads(loadAssistantChatStore().threads);
   }, []);
 
   useEffect(() => {
-    inputDraftRef.current = input;
-  }, [input]);
+    clearLegacyAssistantChatKeys();
+    setCollapsed(loadSidebarCollapsed());
+    refreshSidebar();
+  }, [refreshSidebar]);
 
-  const scrollToBottomIfPinned = useCallback(() => {
-    if (!isAtBottomRef.current) return;
+  useEffect(() => {
+    const onChange = () => refreshSidebar();
+    window.addEventListener(ASSISTANT_CHAT_STORE_CHANGED, onChange);
+    return () => window.removeEventListener(ASSISTANT_CHAT_STORE_CHANGED, onChange);
+  }, [refreshSidebar]);
+
+  // Cloud pull once per session when signed in.
+  useEffect(() => {
+    const sync = () => {
+      const signedIn =
+        isMedimadeSessionActive() && Boolean(getMedimadeSessionJwt());
+      if (!signedIn) {
+        clearAssistantChatRemoteSessionCache();
+        setCloudReady(true);
+        return;
+      }
+      if (wasAssistantChatStorePulledThisSession()) {
+        setCloudReady(true);
+        refreshSidebar();
+        return;
+      }
+      void pullAssistantChatStoreFromCloud()
+        .then((remote) => {
+          if (remote) refreshSidebar();
+          else markAssistantChatStorePulledThisSession();
+        })
+        .catch(() => {
+          markAssistantChatStorePulledThisSession();
+        })
+        .finally(() => setCloudReady(true));
+    };
+    sync();
+    window.addEventListener("medimade-session-changed", sync);
+    return () => window.removeEventListener("medimade-session-changed", sync);
+  }, [refreshSidebar]);
+
+  const newHandledRef = useRef(false);
+
+  // ?new=1 → create thread + navigate
+  useEffect(() => {
+    if (!cloudReady || !chat.hydrated) return;
+    if (searchParams?.get("new") !== "1") {
+      newHandledRef.current = false;
+      return;
+    }
+    if (newHandledRef.current) return;
+    newHandledRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      const id = await chat.createNewThread();
+      if (cancelled || !id) {
+        newHandledRef.current = false;
+        return;
+      }
+      router.replace(`/chat/my/${encodeURIComponent(id)}`);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudReady, chat.hydrated, searchParams]);
+
+  // Keep URL in sync when hook created a thread on /chat/my
+  useEffect(() => {
+    if (!chat.hydrated || !chat.activeId) return;
+    if (routeThreadId === chat.activeId) return;
+    if (routeThreadId) return; // invalid id handled below
+    if (pathname === "/chat/my" || pathname === "/chat/my/") {
+      router.replace(`/chat/my/${encodeURIComponent(chat.activeId)}`);
+    }
+  }, [chat.hydrated, chat.activeId, routeThreadId, pathname, router]);
+
+  // Invalid thread id in URL → go to list / latest
+  useEffect(() => {
+    if (!chat.hydrated || !routeThreadId) return;
+    if (chat.activeId === routeThreadId) return;
+    const store = loadAssistantChatStore();
+    if (!store.threads.some((t) => t.id === routeThreadId)) {
+      const fallback = store.activeThreadId ?? store.threads[0]?.id;
+      router.replace(
+        fallback
+          ? `/chat/my/${encodeURIComponent(fallback)}`
+          : "/chat/my",
+      );
+    }
+  }, [chat.hydrated, chat.activeId, routeThreadId, router]);
+
+  const groups = useMemo(
+    () => groupAssistantChatThreadsForSidebar(storeThreads),
+    [storeThreads],
+  );
+
+  const onNewChat = useCallback(async () => {
+    const id = await chat.createNewThread();
+    if (id) router.push(`/chat/my/${encodeURIComponent(id)}`);
+  }, [chat, router]);
+
+  const onSelect = useCallback(
+    (id: string) => {
+      chat.selectThread(id);
+      router.push(`/chat/my/${encodeURIComponent(id)}`);
+    },
+    [chat, router],
+  );
+
+  const onDelete = useCallback(
+    (id: string) => {
+      const next = deleteAssistantChatThread(loadAssistantChatStore(), id);
+      saveAssistantChatStore(next);
+      scheduleAssistantChatCloudPush(next);
+      refreshSidebar();
+      if (chat.activeId === id) {
+        const fallback = next.activeThreadId;
+        if (fallback) {
+          chat.selectThread(fallback);
+          router.push(`/chat/my/${encodeURIComponent(fallback)}`);
+        } else {
+          void onNewChat();
+        }
+      }
+    },
+    [chat, onNewChat, refreshSidebar, router],
+  );
+
+  const beginRename = useCallback((t: AssistantChatThread) => {
+    setRenamingId(t.id);
+    setRenameDraft(t.title === "New chat" ? "" : t.title);
     requestAnimationFrame(() => {
-      if (!isAtBottomRef.current) return;
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
     });
   }, []);
 
-  useLayoutEffect(() => {
-    scrollToBottomIfPinned();
-  }, [messages, busy, opening, scrollToBottomIfPinned]);
+  const commitRename = useCallback(() => {
+    if (!renamingId) return;
+    const next = renameAssistantChatThread(
+      loadAssistantChatStore(),
+      renamingId,
+      renameDraft,
+    );
+    saveAssistantChatStore(next);
+    scheduleAssistantChatCloudPush(next);
+    refreshSidebar();
+    setRenamingId(null);
+    setRenameDraft("");
+  }, [renamingId, renameDraft, refreshSidebar]);
 
-  const runSessionOpen = useCallback(async () => {
-    const nonce = ++openNonceRef.current;
-    setOpening(true);
-    setError(null);
-    setMessages([]);
-    setThread([]);
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c;
+      saveSidebarCollapsed(next);
+      return next;
+    });
+  }, []);
 
-    const history = [
-      { role: "user" as const, content: ASSISTANT_SESSION_OPEN },
-    ];
-
-    let assistantStarted = false;
-    let acc = "";
-
-    try {
-      const raw = await streamAssistantChat({ messages: history }, (chunk) => {
-        if (nonce !== openNonceRef.current) return;
-        acc += chunk;
-        const { text } = parseAssistantDisplayText(acc);
-        if (!assistantStarted) {
-          assistantStarted = true;
-          setMessages([{ role: "assistant", text }]);
-        } else {
-          setMessages([{ role: "assistant", text }]);
-        }
-        scrollToBottomIfPinned();
-      });
-
-      if (nonce !== openNonceRef.current) return;
-
-      const parsed = parseAssistantDisplayText(raw);
-      setThread([
-        { role: "user", content: ASSISTANT_SESSION_OPEN },
-        { role: "assistant", content: raw },
-      ]);
-      setMessages([{ role: "assistant", text: parsed.text }]);
-    } catch (e) {
-      if (nonce !== openNonceRef.current) return;
-      const msg = e instanceof Error ? e.message : "Could not open chat";
-      setError(msg);
-      setMessages([]);
-      setThread([]);
-    } finally {
-      if (nonce === openNonceRef.current) {
-        setOpening(false);
-        requestAnimationFrame(() => chatInputRef.current?.focus());
-      }
-    }
-  }, [scrollToBottomIfPinned]);
-
-  useEffect(() => {
-    void runSessionOpen();
-    return () => {
-      openNonceRef.current += 1;
-    };
-  }, [runSessionOpen]);
-
-  const resetChat = useCallback(() => {
-    if (busyRef.current) return;
-    clearAssistantChatSession();
-    setInput("");
-    setError(null);
-    void runSessionOpen();
-  }, [runSessionOpen]);
-
-  const send = useCallback(async () => {
-    const trimmed = (inputDraftRef.current || input).trim();
-    if (!trimmed || busyRef.current || opening) return;
-
-    busyRef.current = true;
-    setBusy(true);
-    setError(null);
-    setInput("");
-    inputDraftRef.current = "";
-
-    const history = [...thread, { role: "user" as const, content: trimmed }];
-
-    setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
-    setThread(history);
-
-    let assistantStarted = false;
-    let acc = "";
-
-    try {
-      const raw = await streamAssistantChat({ messages: history }, (chunk) => {
-        acc += chunk;
-        const { text } = parseAssistantDisplayText(acc);
-        if (!assistantStarted) {
-          assistantStarted = true;
-          setMessages((prev) => [...prev, { role: "assistant", text }]);
-        } else {
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last?.role === "assistant") {
-              next[next.length - 1] = { ...last, text };
-            }
-            return next;
-          });
-        }
-        scrollToBottomIfPinned();
-      });
-
-      const parsed = parseAssistantDisplayText(raw);
-      const results = executeAssistantActions(parsed.actions);
-      const actionResults = results.map((r) => ({
-        label: r.label,
-        detail: r.detail,
-        href: r.href,
-        linkLabel: r.linkLabel,
-        ok: r.ok,
-      }));
-
-      setThread([...history, { role: "assistant", content: raw }]);
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last?.role === "assistant") {
-          next[next.length - 1] = {
-            ...last,
-            text: parsed.text,
-            actions: parsed.actions,
-            actionResults,
-          };
-        } else {
-          next.push({
-            role: "assistant",
-            text: parsed.text,
-            actions: parsed.actions,
-            actionResults,
-          });
-        }
-        return next;
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not reach assistant";
-      setError(msg);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: `Sorry — ${msg}` },
-      ]);
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-      requestAnimationFrame(() => chatInputRef.current?.focus());
-    }
-  }, [input, thread, opening, scrollToBottomIfPinned]);
-
-  const showTyping =
-    (opening && messages.length === 0) ||
-    (busy && messages[messages.length - 1]?.role === "user");
-  const showEmptyChrome = !opening && messages.length === 0 && !error;
-  const canReset = messages.some((m) => m.role === "user") || messages.length > 0;
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
-      <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
+      <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 z-0 opacity-15"
@@ -300,183 +272,196 @@ export function AssistantChatWorkspace() {
 
         <AssistantChatCapabilitiesFab />
 
-        <div className="relative z-[1] flex shrink-0 items-center justify-end px-4 py-2.5 sm:px-5">
-          <button
-            type="button"
-            onClick={resetChat}
-            disabled={busy || opening || !canReset}
-            aria-label="Reset chat"
-            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <IconResetArrow className="h-3.5 w-3.5" />
-            Reset
-          </button>
-        </div>
-
-        <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
-          <div
-            ref={scrollRef}
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 sm:px-5"
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              const dist =
-                el.scrollHeight - el.scrollTop - el.clientHeight;
-              isAtBottomRef.current = dist < 50;
-            }}
-          >
-            {showEmptyChrome ? (
-              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-                <p className="font-display text-center text-[18px] font-normal text-muted">
-                  What&apos;s on your mind today?
-                </p>
-              </div>
-            ) : (
-              <div className="mt-auto flex w-full min-w-0 flex-col py-3">
-                {messages.map((msg, i) => {
-                  const isUser = msg.role === "user";
-                  const next = messages[i + 1];
-                  const groupedWithNext = !!next && next.role === msg.role;
-                  const parts = isUser
-                    ? [msg.text]
-                    : assistantChatBubbles(msg.text).length
-                      ? assistantChatBubbles(msg.text)
-                      : [msg.text];
-
-                  return (
-                    <div
-                      key={`${msg.role}-${i}`}
-                      className={`flex w-full min-w-0 flex-col ${
-                        isUser ? "items-end" : "items-start"
-                      } ${groupedWithNext ? "mb-1" : "mb-3"}`}
-                    >
-                      {parts.map((part, pi) => {
-                        const lastPart = pi === parts.length - 1;
-                        const showTail = lastPart && !groupedWithNext;
-                        const radius = isUser
-                          ? showTail
-                            ? "rounded-[1.25rem] rounded-br-sm"
-                            : "rounded-[1.25rem]"
-                          : showTail
-                            ? "rounded-[1.25rem] rounded-bl-sm"
-                            : "rounded-[1.25rem]";
-                        const bubbleBase = `chat-bubble relative inline-block w-fit max-w-[calc(100%-16px)] px-3.5 py-2.5 ${radius}`;
-                        const bubble = isUser
-                          ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
-                              showTail ? "chat-bubble-tail-right" : ""
-                            }`
-                          : `${bubbleBase} bg-card text-lg leading-[1.5] text-foreground ${
-                              showTail ? "chat-bubble-tail-left" : ""
-                            }`;
-                        return (
-                          <div
-                            key={pi}
-                            className={`flex w-full min-w-0 ${
-                              isUser ? "justify-end" : "justify-start"
-                            } ${lastPart ? "" : "mb-1"}`}
-                          >
-                            <div className={bubble}>
-                              <ChatMarkdown
-                                text={part}
-                                className="relative z-[2] text-lg font-normal leading-[1.5]"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {!isUser && msg.actionResults?.length ? (
-                        <div className="mt-2 flex w-full max-w-[calc(100%-16px)] flex-col gap-2">
-                          {msg.actionResults.map((result, ri) => (
-                            <div
-                              key={ri}
-                              className={`flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border px-3.5 py-2.5 text-sm ${
-                                result.ok
-                                  ? "border-border bg-background text-foreground"
-                                  : "border-danger/30 bg-danger/5 text-danger"
-                              }`}
-                              role="status"
-                            >
-                              <span className="min-w-0 flex-1">
-                                <span className="font-medium">
-                                  {result.ok ? "✓ " : ""}
-                                  {result.label}
-                                </span>
-                                {result.detail ? (
-                                  <span className="mt-0.5 block truncate text-muted">
-                                    {result.detail}
-                                  </span>
-                                ) : null}
-                              </span>
-                              {result.ok && result.href ? (
-                                <Link
-                                  href={result.href}
-                                  className="shrink-0 font-semibold text-accent-link underline-offset-2 hover:underline"
-                                >
-                                  {result.linkLabel ?? "Open"}
-                                </Link>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-                {showTyping ? <ChatTypingIndicator /> : null}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
-        </div>
-
-        <form
-          className="relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 bg-background px-4 pb-3 pt-2 pointer-events-auto sm:px-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <input
-              ref={chatInputRef}
-              value={input}
-              onChange={(e) => {
-                setError(null);
-                setInput(e.target.value);
-              }}
-              disabled={busy || opening}
-              placeholder="Share what’s on your mind…"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-lg outline-none ring-accent/30 focus:ring-2"
-            />
-            <DictationMicButton
-              disabled={busy || opening}
-              onTranscript={(spoken) => {
-                setInput(appendSpokenText(inputDraftRef.current || input, spoken));
-                chatInputRef.current?.focus();
-              }}
-            />
-            <button
-              type="submit"
-              aria-disabled={busy || opening}
-              aria-label={busy || opening ? "Sending…" : "Send message"}
-              className={`relative z-[200] flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity ${
-                busy || opening ? "cursor-not-allowed opacity-60" : ""
+        <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-row">
+          {/* Collapsed rail (desktop) */}
+          {collapsed ? (
+            <aside
+              className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 border-r-[0.5px] border-border bg-surface-2 px-1.5 py-3 md:flex ${
+                mobileComposeChrome ? "" : ""
               }`}
             >
-              {busy || opening ? (
-                <span className="text-sm font-medium" aria-hidden>
-                  …
-                </span>
-              ) : (
-                <IconPaperAirplane className="pointer-events-none -translate-y-px translate-x-px" />
-              )}
-            </button>
-          </div>
-          {error ? (
-            <p className="text-xs text-danger" role="status">
-              {error}
-            </p>
-          ) : null}
-        </form>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-label="Expand chat list"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground"
+              >
+                <IconChevron dir="right" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void onNewChat()}
+                disabled={chat.busy || chat.opening}
+                aria-label="New chat"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent disabled:opacity-50"
+              >
+                +
+              </button>
+            </aside>
+          ) : (
+            <aside
+              className={`relative z-[1] flex min-h-0 flex-col gap-3 border-b-[0.5px] border-border bg-surface-2 px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+                mobileComposeChrome
+                  ? "max-sm:hidden"
+                  : "max-sm:min-h-0 max-sm:flex-1"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void onNewChat()}
+                  disabled={chat.busy || chat.opening}
+                  className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  + New chat
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  aria-label="Collapse chat list"
+                  className="hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
+                >
+                  <IconChevron dir="left" />
+                </button>
+              </div>
+
+              <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                {groups.length === 0 ? (
+                  <p className="px-1 text-xs text-muted">No chats yet</p>
+                ) : (
+                  groups.map((group) => (
+                    <div key={group.label}>
+                      <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        {group.label}
+                      </p>
+                      <ul className="space-y-1">
+                        {group.threads.map((t) => {
+                          const isActive = t.id === chat.activeId;
+                          const isRenaming = renamingId === t.id;
+                          return (
+                            <li key={t.id} className="group relative">
+                              {isRenaming ? (
+                                <form
+                                  className="rounded-[6px] border-[0.5px] border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] px-2 py-1.5"
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    commitRename();
+                                  }}
+                                >
+                                  <input
+                                    ref={renameInputRef}
+                                    value={renameDraft}
+                                    onChange={(e) =>
+                                      setRenameDraft(e.target.value)
+                                    }
+                                    onBlur={() => commitRename()}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        setRenamingId(null);
+                                      }
+                                    }}
+                                    aria-label="Chat name"
+                                    placeholder="Chat name"
+                                    className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] font-medium outline-none ring-accent/30 focus:ring-2"
+                                  />
+                                </form>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelect(t.id)}
+                                    onDoubleClick={(e) => {
+                                      e.preventDefault();
+                                      beginRename(t);
+                                    }}
+                                    className={`w-full cursor-pointer rounded-[6px] border-[0.5px] px-2.5 py-2 pr-14 text-left transition-colors ${
+                                      isActive
+                                        ? "border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] text-foreground"
+                                        : "border-transparent bg-transparent text-foreground hover:bg-[color:var(--card-warm-bg)]/50"
+                                    }`}
+                                  >
+                                    <span className="block truncate text-[13px] font-medium">
+                                      {t.title}
+                                    </span>
+                                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted">
+                                      {threadPreview(t)}
+                                    </span>
+                                    <span className="mt-1 block text-[11px] text-muted">
+                                      {formatAssistantChatThreadDate(
+                                        t.updatedAt,
+                                      )}
+                                    </span>
+                                  </button>
+                                  <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                                    <button
+                                      type="button"
+                                      aria-label={`Rename ${t.title}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        beginRename(t);
+                                      }}
+                                      className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted hover:bg-background hover:text-foreground"
+                                    >
+                                      Rename
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label={`Delete ${t.title}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDelete(t.id);
+                                      }}
+                                      className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-danger hover:bg-danger/10"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))
+                )}
+              </nav>
+            </aside>
+          )}
+
+          <section
+            className={`relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+              mobileComposeChrome ? "" : "max-sm:hidden"
+            }`}
+          >
+            {routeThreadId ? (
+              <div className="relative z-[1] flex shrink-0 items-center px-3 py-2 sm:hidden">
+                <Link
+                  href="/chat/my"
+                  className="text-xs font-semibold text-accent-link underline-offset-2 hover:underline"
+                >
+                  ← Chats
+                </Link>
+              </div>
+            ) : null}
+            <AssistantChatConversation
+              messages={chat.messages}
+              input={chat.input}
+              setInput={chat.setInput}
+              inputDraftRef={chat.inputDraftRef}
+              chatInputRef={chat.chatInputRef}
+              scrollRef={chat.scrollRef}
+              messagesEndRef={chat.messagesEndRef}
+              isAtBottomRef={chat.isAtBottomRef}
+              busy={chat.busy}
+              opening={chat.opening}
+              error={chat.error}
+              setError={chat.setError}
+              onSend={() => void chat.send()}
+            />
+          </section>
+        </div>
       </div>
       <div
         className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"

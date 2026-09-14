@@ -141,6 +141,14 @@ export class MedimadeStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    /** Consciously Chat threads + META per signed-in user (`sub`). */
+    const assistantChatTable = new dynamodb.Table(this, "AssistantChatTable", {
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     /** Ideate life areas + vision board metadata + reflection questions per signed-in user. */
     const ideateTable = new dynamodb.Table(this, "IdeateTable", {
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
@@ -1368,6 +1376,37 @@ export class MedimadeStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "JournalStoreIntegration",
         journalStore,
+      ),
+    });
+
+    const assistantChatStore = new lambda_nodejs.NodejsFunction(
+      this,
+      "AssistantChatStoreFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/assistant-chat-store.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
+        environment: {
+          ASSISTANT_CHAT_TABLE_NAME: assistantChatTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        },
+      },
+    );
+    assistantChatTable.grantReadWriteData(assistantChatStore);
+    authJwtSecret.grantRead(assistantChatStore);
+
+    httpApi.addRoutes({
+      path: "/assistant-chat/store",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PUT,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AssistantChatStoreIntegration",
+        assistantChatStore,
       ),
     });
 

@@ -239,8 +239,30 @@ export function buildAppBreadcrumbs(
   const hash = opts?.hash ?? "";
   const search = opts?.search ?? "";
 
-  if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) {
+  if (pathname === "/chat/my" || pathname === "/chat/my/") {
     return [{ label: "Chat", href: null }];
+  }
+  if (pathname.startsWith("/chat/my/")) {
+    const id = pathname.slice("/chat/my/".length).split("/")[0] ?? "";
+    let title = "Chat";
+    if (typeof window !== "undefined" && id) {
+      try {
+        const raw = window.localStorage.getItem("mm_assistant_chat_store_v1");
+        if (raw) {
+          const store = JSON.parse(raw) as {
+            threads?: Array<{ id: string; title?: string }>;
+          };
+          const t = store.threads?.find((x) => x.id === decodeURIComponent(id));
+          if (t?.title?.trim()) title = t.title.trim();
+        }
+      } catch {
+        /* */
+      }
+    }
+    return [
+      { label: "Chat", href: "/chat/my" },
+      { label: title, href: null },
+    ];
   }
 
   if (pathname.startsWith("/meditate/create") || pathname.startsWith("/create")) {

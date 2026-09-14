@@ -15,6 +15,7 @@ import {
   type SubtaskSortKey,
 } from "@/lib/plan-ideate-store";
 import type { PlanDream } from "@/lib/plan-dreams";
+import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 
 const SORT_OPTIONS: { value: SubtaskSortKey; label: string }[] = [
   { value: "created_asc", label: "Created · oldest first" },
@@ -128,6 +129,18 @@ export function PlanSubtasksPanel({
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              openAssistantChatFab({
+                kind: "life_area_ideate",
+                lifeAreaId: project.id,
+              })
+            }
+            className="cursor-pointer rounded-full border border-accent/30 bg-accent-soft/20 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/35"
+          >
+            Ideate next steps in chat
+          </button>
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}

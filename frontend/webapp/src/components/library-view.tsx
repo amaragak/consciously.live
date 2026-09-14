@@ -790,9 +790,11 @@ export default function LibraryView({
     if (!playingS3Key) setPlayingTimeSeconds(0);
   }, [playingS3Key]);
 
-  useEffect(() => {
-    setShowFishCostTooltip(isLocalDevHost());
-  }, []);
+  // Dev cost flyout on library cards — paused while cost work is settled.
+  // useEffect(() => {
+  //   setShowFishCostTooltip(isLocalDevHost());
+  // }, []);
+  void setShowFishCostTooltip;
 
   useEffect(() => {
     let cancelled = false;
@@ -1766,7 +1768,8 @@ export default function LibraryView({
     }
 
     const cardKey = m.s3Key;
-    const fishCostText = showFishCostTooltip ? fishCostTooltipText(m) : null;
+    // const fishCostText = showFishCostTooltip ? fishCostTooltipText(m) : null;
+    void showFishCostTooltip;
     const shareId = m.id?.trim() || "";
 
     return (
@@ -1834,9 +1837,10 @@ export default function LibraryView({
           if (el) itemElsRef.current.set(m.s3Key, el);
           else itemElsRef.current.delete(m.s3Key);
         }}
-        devOverlay={
-          fishCostText ? <FishCostDevTooltip text={fishCostText} /> : null
-        }
+        // Dev cost flyout — re-enable with showFishCostTooltip + fishCostTooltipText.
+        // devOverlay={
+        //   fishCostText ? <FishCostDevTooltip text={fishCostText} /> : null
+        // }
       />
     );
   }

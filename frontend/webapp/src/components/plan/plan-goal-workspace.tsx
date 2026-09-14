@@ -30,6 +30,7 @@ import {
 } from "@/lib/plan-ideate-store";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
+import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 
 type ProjectTab =
   | "vision"
@@ -225,19 +226,33 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
               );
             })}
           </nav>
-          <button
-            type="button"
-            disabled={!canGenerate}
-            onClick={() => generateMeditation()}
-            title={
-              canGenerate
-                ? undefined
-                : "Add a few lines to your vision first"
-            }
-            className="pro-header-cta mb-1.5 shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Generate meditation
-          </button>
+          <div className="mb-1.5 flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                openAssistantChatFab({
+                  kind: "life_area_ideate",
+                  lifeAreaId: dream.id,
+                })
+              }
+              className="cursor-pointer rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-accent-soft/30"
+            >
+              Ideate next steps
+            </button>
+            <button
+              type="button"
+              disabled={!canGenerate}
+              onClick={() => generateMeditation()}
+              title={
+                canGenerate
+                  ? undefined
+                  : "Add a few lines to your vision first"
+              }
+              className="pro-header-cta shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Generate meditation
+            </button>
+          </div>
         </div>
         {tab !== "vision" ? (
           <div className="mt-3">
