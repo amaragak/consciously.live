@@ -25,7 +25,7 @@ export function PlanFocusPreflightModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-overlay/45 p-4 backdrop-blur-[2px] sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-transparent p-4 sm:items-center"
       role="presentation"
       onClick={onSkip}
     >

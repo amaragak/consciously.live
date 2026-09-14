@@ -15,6 +15,7 @@ import { readCreateSession } from "@/lib/create-session-storage";
 import { appendPendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { FIXED_SPEECH_PREVIEW_SPEED } from "@/lib/speaker-sample-speed";
 import type { PlanResistanceThemeHandoff } from "@/lib/plan-create-handoff";
+import { upsertFocusPreflightLink } from "@/lib/focus-preflight-link";
 
 /** Matches Create soundscape tab — composition rides the music slot alone. */
 const SOUNDSCAPE_GAIN = 100;
@@ -40,6 +41,8 @@ export type FocusPreflightMeditationInput = {
   dreamText?: string;
   obstacleText?: string;
   lifeAreaId?: string;
+  /** Ideate UI task id — links the job to Focus for this session. */
+  focusSubtaskId?: string;
   focusTaskContext?: string;
   activeResistanceThemes?: PlanResistanceThemeHandoff[];
 };
@@ -129,6 +132,7 @@ export async function startFocusPreflightMeditationGeneration(
   const transcript = `User: ${packaged}`;
   const goal = input.goalTitle.trim() || "Focus";
   const provisionalTitle = `Pre-focus · ${goal}`.slice(0, 80);
+  const focusSubtaskId = input.focusSubtaskId?.trim() || "";
 
   const { jobId } = await createMeditationAudioJob({
     meditationStyle: "Visualization",
@@ -148,6 +152,16 @@ export async function startFocusPreflightMeditationGeneration(
     backgroundMusicGain: SOUNDSCAPE_GAIN,
   });
 
+  if (focusSubtaskId) {
+    upsertFocusPreflightLink({
+      subtaskId: focusSubtaskId,
+      jobId,
+      title: provisionalTitle,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   appendPendingLibraryGeneration({
     jobId,
     createdAt: new Date().toISOString(),
@@ -158,6 +172,7 @@ export async function startFocusPreflightMeditationGeneration(
     speakerName: speaker?.name ?? null,
     speakerModelId,
     lifeAreaId: input.lifeAreaId?.trim() || null,
+    focusSubtaskId: focusSubtaskId || null,
   });
 
   return { jobId };

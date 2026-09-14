@@ -1,6 +1,7 @@
 /**
- * Populate the shared guest account with normal account data
- * (Ideate, Journal, vision media, meditation library).
+ * Populate the LEGACY shared guest account (guest@consciously.live only).
+ * Continue-as-guest now uses a different account — this script must NEVER
+ * write alexmaragakis@hotmail.co.uk.
  *
  *   AWS_PROFILE=mm npx tsx scripts/populate-guest-account.ts
  *   AWS_PROFILE=mm npx tsx scripts/populate-guest-account.ts --dry-run
@@ -18,10 +19,10 @@ import { PutObjectCommand, S3Client, HeadObjectCommand } from "@aws-sdk/client-s
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { randomUUID } from "crypto";
-import {
-  GUEST_ACCOUNT_DISPLAY_NAME,
-  GUEST_ACCOUNT_EMAIL,
-} from "../lambdas/auth-guest";
+
+/** Hard-locked — never import Continue-as-guest email from auth-guest. */
+const OPS_GUEST_SEED_EMAIL = "guest@consciously.live";
+const OPS_GUEST_SEED_DISPLAY_NAME = "Guest";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -29,6 +30,18 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 const s3 = new S3Client({});
 
 const dryRun = process.argv.includes("--dry-run");
+
+function assertOpsGuestOnly(email: string): void {
+  const e = email.trim().toLowerCase();
+  if (e !== OPS_GUEST_SEED_EMAIL) {
+    throw new Error(
+      `Refusing to seed ${email}. Ops guest scripts may only target ${OPS_GUEST_SEED_EMAIL}.`,
+    );
+  }
+  if (e.includes("hotmail") || e.includes("alexmaragakis")) {
+    throw new Error(`Refusing to seed personal account: ${email}`);
+  }
+}
 
 const USERS = "MedimadeBackend-MedimadeUsersTable56DCE6C2-1AXT1LLLN1H4S";
 const IDEATE = "MedimadeBackend-IdeateTable6FC78D26-M84L0GZB3VFS";
@@ -886,7 +899,7 @@ async function ensureGuestUser(): Promise<string> {
   const got = await ddb.send(
     new GetCommand({
       TableName: USERS,
-      Key: { email: GUEST_ACCOUNT_EMAIL },
+      Key: { email: OPS_GUEST_SEED_EMAIL },
     }),
   );
   if (typeof got.Item?.userId === "string" && got.Item.userId.trim()) {
@@ -903,9 +916,9 @@ async function ensureGuestUser(): Promise<string> {
     new PutCommand({
       TableName: USERS,
       Item: {
-        email: GUEST_ACCOUNT_EMAIL,
+        email: OPS_GUEST_SEED_EMAIL,
         userId,
-        displayName: GUEST_ACCOUNT_DISPLAY_NAME,
+        displayName: OPS_GUEST_SEED_DISPLAY_NAME,
         createdAt: now,
         updatedAt: now,
         isGuestAccount: true,
@@ -1031,6 +1044,7 @@ async function putLibrary(userId: string) {
 }
 
 async function main() {
+  assertOpsGuestOnly(OPS_GUEST_SEED_EMAIL);
   const userId = await ensureGuestUser();
   await putIdeate(userId);
   const journalTable = await resolveJournalTable();
@@ -1038,7 +1052,7 @@ async function main() {
   await putJournal(userId, journalTable);
   await putLibrary(userId);
   console.log("done", {
-    email: GUEST_ACCOUNT_EMAIL,
+    email: OPS_GUEST_SEED_EMAIL,
     userId,
     dryRun,
   });

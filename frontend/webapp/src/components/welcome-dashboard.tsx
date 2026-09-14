@@ -8,6 +8,7 @@ import {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
   getMedimadeSessionJwt,
+  isMedimadeGuestAccount,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import {
@@ -39,11 +40,14 @@ import { DailyHabitTracker } from "@/components/daily-habit-tracker";
 import { timeOfDayGreeting } from "@/lib/time-of-day-greeting";
 
 function greetingName(): string {
-  const email = getMedimadeSessionEmail()?.trim().toLowerCase() ?? "";
-  if (email.startsWith("guest@")) return "Guest";
   const raw = getMedimadeSessionDisplayName()?.trim();
-  if (!raw || /^guest$/i.test(raw)) return "Guest";
-  return raw.split(/\s+/)[0] || "Guest";
+  if (raw && !/^guest$/i.test(raw)) return raw.split(/\s+/)[0] || raw;
+  if (isMedimadeGuestAccount()) {
+    const email = getMedimadeSessionEmail()?.trim() ?? "";
+    const local = email.split("@")[0]?.trim();
+    if (local) return local;
+  }
+  return "there";
 }
 
 function journalEntriesThisMonth(entries: JournalEntry[]): number {

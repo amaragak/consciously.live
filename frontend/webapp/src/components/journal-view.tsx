@@ -29,7 +29,6 @@ import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
   getMedimadeSessionJwt,
-  isMedimadeGuestAccount,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import {
@@ -39,10 +38,8 @@ import {
   runJournalInsightsRemote,
 } from "@/lib/medimade-api";
 import {
-  buildGuestAccountJournalStore,
   emptyGratitudeLines,
   entriesForCloudPut,
-  ensureGuestJournalInitialImport,
   findGratitudeEntryForLocalDate,
   formatJournalEntryDate,
   gratitudeLinesToHtml,
@@ -506,15 +503,14 @@ export function JournalView() {
 
   useEffect(() => {
     if (!authReady) return;
-    // Guests: one-off data import only if never run and unsigned.
-    // Session (incl. Continue as guest): localStorage is a cache — strip
-    // starter-import rows and wait for GET /journal/store (cloud is source of truth).
+    // Never seed journal from the UI. Signed-in: strip leftover demo rows and
+    // wait for cloud GET. Unsigned: show local cache as-is (often empty).
     const rawSignedIn = signedIn
       ? withoutDemoJournalEntries(loadJournalStoreRaw())
       : null;
     const store = signedIn
       ? pruneEmptyJournalEntries(rawSignedIn!)
-      : ensureGuestJournalInitialImport();
+      : loadJournalStoreRaw();
     const nextActive = activeIdForJournalTab(
       store.entries,
       store.activeEntryId,
@@ -595,34 +591,11 @@ export function JournalView() {
           });
 
         if (!remote?.entries?.length) {
-          // Shared guest account: empty cloud is a broken state — restore the
-          // account starter journal and push it back (never clear to []).
-          if (isMedimadeGuestAccount()) {
-            const restored = buildGuestAccountJournalStore();
-            skipCloudPushRef.current = false;
-            entriesRef.current = restored.entries;
-            setEntries(restored.entries);
-            setFolders(restored.folders ?? []);
-            foldersRef.current = restored.folders ?? [];
-            setActiveEntryId(restored.activeEntryId);
-            const nextEntry = restored.entries.find(
-              (e) => e.id === restored.activeEntryId,
-            );
-            latestHtmlRef.current = nextEntry?.contentHtml ?? "<p></p>";
-            latestTitleRef.current = nextEntry?.title ?? "";
-            latestGratitudeRef.current =
-              nextEntry?.gratitude ?? emptyGratitudeLines();
-            setGratitudeDraft(latestGratitudeRef.current);
-            persist(
-              restored.entries,
-              restored.activeEntryId,
-              restored.folders ?? [],
-            );
-            return;
-          }
-
-          // New real account with empty cloud: don't leave starter-import rows on screen.
+          // Empty cloud: keep personal local rows and let push upload them.
+          // Never invent starter journals from the UI.
           if (localIsDemoOnly || localEntries.some(isDemoJournalEntry)) {
+            // Demo-only leftovers on a real account → clear them from the cache.
+            // Guest Continue-as-guest is a normal account; do not special-seed it.
             skipCloudPushRef.current = true;
             entriesRef.current = [];
             setEntries([]);

@@ -12,6 +12,8 @@ export type PendingLibraryGeneration = {
   error?: string | null;
   /** Ideate life-area this generation was started from. */
   lifeAreaId?: string | null;
+  /** Ideate task (subtask) for Focus preflight tone-setting meditations. */
+  focusSubtaskId?: string | null;
 };
 
 export const PENDING_LIBRARY_GENERATIONS_LS_KEY =

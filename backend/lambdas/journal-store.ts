@@ -586,6 +586,17 @@ export async function handler(
   try {
     const err = validateStoreForWrite(body.store);
     if (err) return json(400, { error: err });
+    // Never let an empty PUT delete all ENTRY# rows for an account that already
+    // has journal content (client bug / race). Explicit empty wipe is not supported.
+    if (body.store.entries.length === 0) {
+      const existing = await queryAllKeys(table, ownerId);
+      const hasEntries = existing.some((k) => k.sk.startsWith("ENTRY#"));
+      if (hasEntries) {
+        return json(409, {
+          error: "Refusing to overwrite journal store with empty payload",
+        });
+      }
+    }
     await persistStoreToDdb(table, ownerId, body.store);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Write failed";

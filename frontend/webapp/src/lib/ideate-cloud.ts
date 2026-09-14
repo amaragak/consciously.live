@@ -5,15 +5,12 @@
  * - On sign-in / session start: GET /ideate/store once → apply to memory.
  * - On user edit: debounce PUT of current memory.
  * - Never migrate localStorage into cloud. Never auto-push on pull.
- * - Guests: device demos only (no cloud).
+ * - Guests use the shared Continue-as-guest JWT account (cloud sync).
  */
 
 import { getMedimadeSessionJwt, isMedimadeSessionActive } from "@/lib/auth-session";
 import type { IdeateStoreV2 } from "@/lib/plan-ideate-store";
-import {
-  resetIdeateLocalToGuestDemos,
-  withoutDemoIdeateStore,
-} from "@/lib/ideate-demo-seed";
+import { withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
 import {
   clearIdeateManifestoDeviceData,
   clearIdeateManifestoMemoryOnly,
@@ -111,7 +108,7 @@ export function clearIdeateSignedInWorkingCopy(): void {
   clearIdeateManifestoMemoryOnly();
 }
 
-/** Explicit logout / guest handoff — clears device copies. */
+/** Explicit logout — clears device copies. Never reseeds demos. */
 export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
   clearIdeateCloudSessionCache();
   clearIdeateStoreDeviceData();
@@ -129,6 +126,7 @@ export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
       window.localStorage.removeItem("mm_ideate_demo_seed_v4");
       window.localStorage.removeItem("mm_ideate_demo_seed_v5");
       window.localStorage.removeItem("mm_ideate_demo_seed_v6");
+      window.localStorage.removeItem("mm_ideate_demo_seed_v7");
       window.localStorage.removeItem("mm_ideate_account_backup_v1");
       window.localStorage.removeItem("mm_plan_dreams_v1");
       window.localStorage.removeItem("mm_ideate_vision_board_v1");
@@ -139,9 +137,6 @@ export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
       window.localStorage.removeItem("mm_ideate_manifesto_v1");
     } catch {
       /* */
-    }
-    if (!isMedimadeSessionActive()) {
-      resetIdeateLocalToGuestDemos();
     }
   }
   notifyIdeateCloud();
@@ -428,7 +423,12 @@ export async function pullIdeateStoreFromCloud(opts?: {
         };
       }
 
-      // Authenticated + null store = empty account.
+      // Authenticated + null store = empty cloud. Never wipe non-empty local
+      // memory — that path previously destroyed working Ideate on a blip/empty GET.
+      if (signedInIdeateMemoryHasContent()) {
+        return { applied: false, empty: false };
+      }
+
       applyIdeateCloudBundle({
         version: 1,
         updatedAt: new Date().toISOString(),

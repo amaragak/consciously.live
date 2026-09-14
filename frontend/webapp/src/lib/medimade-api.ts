@@ -1065,6 +1065,12 @@ export async function postDashboardPlayEvent(params: {
  * Saves full journal store to `PUT /journal/store` (DynamoDB per entry; use `uploadJournalVoice` for large audio).
  */
 export async function putJournalStoreRemote(store: JournalStoreV2): Promise<void> {
+  const entries = Array.isArray(store?.entries) ? store.entries : [];
+  // Server deletes any ENTRY# not in the payload — never allow an empty PUT
+  // to wipe a non-empty account (client bug / race).
+  if (entries.length === 0) {
+    throw new Error("Refusing to upload empty journal store");
+  }
   const base = getMedimadeApiBase();
   if (!base) {
     throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");

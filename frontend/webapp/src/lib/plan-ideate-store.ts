@@ -1,12 +1,12 @@
 import type { DreamState, PlanDream } from "@/lib/plan-dreams";
 import { normalizeLifeAreaInsights } from "@/lib/plan-dreams";
-import { ensureGuestDemoIdeateSeeded, withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
+import { withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 
 /**
  * Ideate hierarchy — projects (PlanDream), subtasks, todos, resistance entries.
  * Signed-in: in-memory working copy + cloud GET/PUT (never localStorage).
- * Guests: device demos via ensureGuestDemoIdeateSeeded.
+ * Unsigned: localStorage only — never auto-seed demos from the UI.
  */
 
 export type { DreamState, PlanDream };
@@ -314,8 +314,8 @@ export function loadIdeateStoreRaw(): IdeateStoreV2 {
 }
 
 /**
- * Guests: seed demos when empty.
- * Signed-in: never seed — cloud is source of truth; memory is the working copy.
+ * Guests / unsigned: return local store as-is — never seed demos from the UI.
+ * Signed-in: strip any leftover demo rows (cloud is source of truth).
  */
 export function loadIdeateStore(): IdeateStoreV2 {
   const raw = loadIdeateStoreRaw();
@@ -329,19 +329,7 @@ export function loadIdeateStore(): IdeateStoreV2 {
     }
     return cleaned;
   }
-  const next = ensureGuestDemoIdeateSeeded(raw);
-  // Persist only when ensure replaced the store — never shrink guest steps
-  // just because render called load again.
-  const shouldPersist =
-    typeof window !== "undefined" &&
-    (next.dreams.length !== raw.dreams.length ||
-      next.dreams.some((d, i) => d.id !== raw.dreams[i]?.id) ||
-      next.subtasks.length > raw.subtasks.length ||
-      next.todos.length > raw.todos.length);
-  if (shouldPersist) {
-    saveIdeateStoreLocal(next);
-  }
-  return next;
+  return raw;
 }
 
 /**

@@ -12,6 +12,10 @@ import {
   savePendingGenerations,
   type PendingLibraryGeneration,
 } from "@/lib/pending-library-generations";
+import {
+  patchFocusPreflightLinkByJobId,
+  upsertFocusPreflightLink,
+} from "@/lib/focus-preflight-link";
 
 const STALE_PENDING_MS = 1000 * 60 * 60 * 12; // 12h
 const POLL_MS = 5000;
@@ -51,6 +55,10 @@ async function tickPendingJobs(): Promise<void> {
           if (!audioKey) {
             next.push({ ...nextP, status: "running" });
             changed = true;
+            patchFocusPreflightLinkByJobId(p.jobId, {
+              status: "running",
+              title: nextP.title,
+            });
             continue;
           }
           // Confirm catalog presence when possible; still notify either way.
@@ -62,12 +70,37 @@ async function tickPendingJobs(): Promise<void> {
             if (!found) {
               next.push({ ...nextP, status: "running" });
               changed = true;
+              patchFocusPreflightLinkByJobId(p.jobId, {
+                status: "running",
+                title: nextP.title,
+              });
               continue;
             }
           } catch {
             /* notify anyway if status says completed + audioKey present */
           }
           changed = true;
+          const audioUrl =
+            typeof st.audioUrl === "string" && st.audioUrl.trim()
+              ? st.audioUrl.trim()
+              : null;
+          patchFocusPreflightLinkByJobId(p.jobId, {
+            status: "ready",
+            title: nextP.title,
+            audioKey,
+            audioUrl,
+          });
+          if (p.focusSubtaskId?.trim()) {
+            upsertFocusPreflightLink({
+              subtaskId: p.focusSubtaskId.trim(),
+              jobId: p.jobId,
+              title: nextP.title,
+              status: "ready",
+              audioKey,
+              audioUrl,
+              createdAt: p.createdAt,
+            });
+          }
           notifyMeditationGenerationComplete({
             jobId: p.jobId,
             title: nextP.title || "Your meditation",
@@ -83,6 +116,21 @@ async function tickPendingJobs(): Promise<void> {
             title: nextP.title,
             error: st.error ?? "Generation failed",
           });
+          patchFocusPreflightLinkByJobId(p.jobId, {
+            status: "failed",
+            title: nextP.title,
+            error: st.error ?? "Generation failed",
+          });
+          if (p.focusSubtaskId?.trim()) {
+            upsertFocusPreflightLink({
+              subtaskId: p.focusSubtaskId.trim(),
+              jobId: p.jobId,
+              title: nextP.title,
+              status: "failed",
+              error: st.error ?? "Generation failed",
+              createdAt: p.createdAt,
+            });
+          }
           next.push({
             ...nextP,
             status: "failed",
@@ -97,18 +145,28 @@ async function tickPendingJobs(): Promise<void> {
           Date.now() - createdMs > STALE_PENDING_MS;
         if (stale) {
           changed = true;
+          const err =
+            "This has been generating for a long time. Please try again from Create.";
+          patchFocusPreflightLinkByJobId(p.jobId, {
+            status: "failed",
+            error: err,
+          });
           next.push({
             ...nextP,
             status: "failed",
-            error:
-              "This has been generating for a long time. Please try again from Create.",
+            error: err,
           });
           continue;
         }
 
+        const runStatus = st.status === "running" ? "running" : "pending";
+        patchFocusPreflightLinkByJobId(p.jobId, {
+          status: runStatus,
+          title: nextP.title,
+        });
         next.push({
           ...nextP,
-          status: st.status === "running" ? "running" : "pending",
+          status: runStatus,
         });
       } catch {
         next.push(p);

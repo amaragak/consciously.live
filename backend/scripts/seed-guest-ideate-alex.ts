@@ -1,10 +1,6 @@
 /**
- * Replace guest Ideate fields with Alex-flavoured demo data:
- * - values: copy from alexmaragakis@hotmail.co.uk
- * - quotes: three Alan Watts quotes
- * - ideate: Music / Fitness / Meditation / Social media + subtasks/todos
- *
- * Leaves visionBoard (and other non-ideate fields) untouched.
+ * Replace LEGACY guest@consciously.live Ideate fields with Alex-flavoured demo data.
+ * Never writes Continue-as-guest / personal accounts.
  *
  *   AWS_PROFILE=mm npx tsx scripts/seed-guest-ideate-alex.ts
  *   AWS_PROFILE=mm npx tsx scripts/seed-guest-ideate-alex.ts --dry-run
@@ -17,14 +13,25 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { GUEST_ACCOUNT_EMAIL } from "../lambdas/auth-guest";
+
+/** Hard-locked target — never use auth-guest Continue-as-guest email. */
+const OPS_GUEST_SEED_EMAIL = "guest@consciously.live";
+const SOURCE_EMAIL = "alexmaragakis@hotmail.co.uk";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
 
 const dryRun = process.argv.includes("--dry-run");
-const SOURCE_EMAIL = "alexmaragakis@hotmail.co.uk";
+
+function assertOpsGuestOnly(email: string): void {
+  const e = email.trim().toLowerCase();
+  if (e !== OPS_GUEST_SEED_EMAIL) {
+    throw new Error(
+      `Refusing to seed ${email}. Ops guest scripts may only target ${OPS_GUEST_SEED_EMAIL}.`,
+    );
+  }
+}
 
 const USERS =
   process.env.USERS_TABLE_NAME?.trim() ||
@@ -459,13 +466,14 @@ function alanWattsQuotes() {
 }
 
 async function main() {
+  assertOpsGuestOnly(OPS_GUEST_SEED_EMAIL);
   console.log(
     dryRun ? "[dry-run]" : "[live]",
-    `seed guest ideate from ${SOURCE_EMAIL}`,
+    `seed guest ideate from ${SOURCE_EMAIL} → ${OPS_GUEST_SEED_EMAIL}`,
   );
 
   const sourceId = await userIdForEmail(SOURCE_EMAIL);
-  const guestId = await userIdForEmail(GUEST_ACCOUNT_EMAIL);
+  const guestId = await userIdForEmail(OPS_GUEST_SEED_EMAIL);
   const sourceStore = await getStore(sourceId);
   const guestStore = await getStore(guestId);
   if (!guestStore) throw new Error("Guest has no Ideate STORE");

@@ -39,6 +39,13 @@ import {
   readFocusSessionHandoff,
 } from "@/lib/focus-session-handoff";
 import {
+  FOCUS_PREFLIGHT_CHANGED_EVENT,
+  readActiveFocusPreflightLink,
+  writeFocusActiveIdeateSubtask,
+  type FocusPreflightLink,
+} from "@/lib/focus-preflight-link";
+import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
+import {
   focusTasksFromIdeateSubtask,
   newFocusTaskId,
   syncFocusDoneFromIdeate,
@@ -52,6 +59,7 @@ import {
 import {
   getMedimadeMediaBaseUrl,
   listBackgroundAudio,
+  listLibraryMeditations,
   type BackgroundAudioItem,
 } from "@/lib/medimade-api";
 import {
@@ -81,7 +89,6 @@ const MODE_DEFAULT_MINUTES: Record<TimerMode, number> = {
 };
 
 const FOCUS_DURATION_OPTIONS = [15, 25, 50] as const;
-const SESSION_DOT_COUNT = 8;
 
 function formatMmSs(totalSeconds: number): string {
   const { mm, ss } = splitMmSs(totalSeconds);
@@ -156,6 +163,7 @@ function ChevronLeft({ className = "" }: { className?: string }) {
 
 export function FocusTimerView() {
   const {
+    playItem,
     playTrack,
     patchNowPlaying,
     dismiss,
@@ -186,6 +194,8 @@ export function FocusTimerView() {
   const [selectedArea, setSelectedArea] = useState<PlanDream | null>(null);
   const [selectedTask, setSelectedTask] = useState<IdeateSubtask | null>(null);
   const [ideatePicks, setIdeatePicks] = useState<IdeatePick[]>([]);
+  const [preflight, setPreflight] = useState<FocusPreflightLink | null>(null);
+  const [preflightPlayBusy, setPreflightPlayBusy] = useState(false);
   const [focusPattern, setFocusPattern] = useState<FocusPatternId>("default");
   const [patternPickerOpen, setPatternPickerOpen] = useState(false);
   const [focusMix, setFocusMix] = useState<MixEditorValues>({
@@ -256,6 +266,8 @@ export function FocusTimerView() {
     const handoff = readFocusSessionHandoff();
     if (!handoff) return;
     clearFocusSessionHandoff();
+    writeFocusActiveIdeateSubtask(handoff.subtaskId);
+    setPreflight(readActiveFocusPreflightLink());
     const store = loadIdeateStore();
     const seeded = focusTasksFromIdeateSubtask(store, handoff.subtaskId);
     if (seeded.length === 0) return;
@@ -264,6 +276,69 @@ export function FocusTimerView() {
     setIdeateStore(store);
     setTasksShelfOpen(true);
   }, [fromIdeateToken]);
+
+  useEffect(() => {
+    const sync = () => setPreflight(readActiveFocusPreflightLink());
+    sync();
+    ensurePendingMeditationJobPoller();
+    window.addEventListener(FOCUS_PREFLIGHT_CHANGED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(FOCUS_PREFLIGHT_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      preflight &&
+      (preflight.status === "starting" ||
+        preflight.status === "pending" ||
+        preflight.status === "running")
+    ) {
+      ensurePendingMeditationJobPoller();
+    }
+  }, [preflight]);
+
+  const playPreflightMeditation = useCallback(async () => {
+    if (!preflight || preflight.status !== "ready" || preflightPlayBusy) return;
+    const key = (preflight.audioKey ?? "").trim();
+    const url = (preflight.audioUrl ?? "").trim();
+    setPreflightPlayBusy(true);
+    try {
+      if (key) {
+        try {
+          const list = await listLibraryMeditations();
+          const hit = list.find((it) => (it.s3Key ?? "").trim() === key);
+          if (hit) {
+            playItem(hit);
+            return;
+          }
+        } catch {
+          /* fall through to direct URL */
+        }
+      }
+      if (url && key) {
+        playTrack({
+          url,
+          title: preflight.title,
+          s3Key: key,
+          liveMix: false,
+          natureKey: "",
+          musicKey: "",
+          drumsKey: "",
+          noiseKey: "",
+          natureGain: 25,
+          musicGain: 50,
+          drumsGain: 40,
+          noiseGain: 10,
+        });
+        return;
+      }
+    } finally {
+      setPreflightPlayBusy(false);
+    }
+  }, [preflight, preflightPlayBusy, playItem, playTrack]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1018,6 +1093,91 @@ export function FocusTimerView() {
           </button>
         ) : null}
 
+        {preflight ? (
+          <div className="absolute left-1/2 top-16 z-[18] w-[min(100%-2rem,22rem)] -translate-x-1/2 sm:top-[4.5rem]">
+            <div
+              className={`relative overflow-hidden rounded-2xl border px-4 py-3 text-left shadow-md backdrop-blur-sm ${
+                preflight.status === "failed"
+                  ? "border-danger/35 bg-danger/5"
+                  : preflight.status === "ready"
+                    ? "border-accent/40 bg-card/95"
+                    : "border-accent/35 bg-accent-soft/25"
+              }`}
+            >
+              {preflight.status !== "failed" &&
+              preflight.status !== "ready" ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute left-0 top-0 h-1 w-full bg-accent/10"
+                >
+                  <div
+                    className="h-full w-1/3 bg-accent/60"
+                    style={{
+                      animation:
+                        "mmIndeterminateBar 1.4s ease-in-out infinite",
+                    }}
+                  />
+                </div>
+              ) : null}
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Set the tone
+              </p>
+              <p className="mt-1 font-display text-[15px] font-medium leading-snug text-foreground">
+                {preflight.title}
+              </p>
+              {preflight.status === "failed" ? (
+                <p className="mt-1.5 text-xs text-danger">
+                  {preflight.error?.trim() || "Generation failed."}
+                </p>
+              ) : preflight.status === "ready" ? (
+                <p className="mt-1.5 text-xs text-muted">
+                  2‑min visualisation · ready to play
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs text-muted">
+                  Generating your 2‑min visualisation…
+                </p>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                {preflight.status === "ready" ? (
+                  <button
+                    type="button"
+                    disabled={preflightPlayBusy}
+                    onClick={() => void playPreflightMeditation()}
+                    className="cursor-pointer rounded-full accent-fill-gradient px-3.5 py-1.5 text-xs font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {preflightPlayBusy
+                      ? "Opening…"
+                      : playingS3Key &&
+                          preflight.audioKey &&
+                          playingS3Key === preflight.audioKey
+                        ? "Playing"
+                        : "Play"}
+                  </button>
+                ) : preflight.status === "failed" ? null : (
+                  <span
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-selected/10 text-selected"
+                    aria-label="Generating"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      className="animate-spin"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      aria-hidden
+                    >
+                      <path d="M12 3a9 9 0 1 1-6.36 2.64" />
+                    </svg>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {mixPanelOpen ? (
           <MixEditorPanel
             key="focus-mix"
@@ -1173,6 +1333,18 @@ export function FocusTimerView() {
               </button>
             </div>
           </div>
+
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pb-1">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Minutes
+            </p>
+            <SegmentedPillTabs
+              aria-label="Focus duration minutes"
+              options={durationOptions}
+              value={String(focusMinutes)}
+              onChange={(id) => selectFocusMinutes(Number(id))}
+            />
+          </div>
         </div>
       </div>
 
@@ -1307,67 +1479,6 @@ export function FocusTimerView() {
               ))}
             </ul>
           ) : null}
-        </div>
-
-        <div className="mt-3 shrink-0 border-t border-border pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Today
-              </p>
-              <div
-                className="flex items-center gap-1.5"
-                aria-label="Sessions today"
-              >
-                {Array.from({ length: SESSION_DOT_COUNT }, (_, i) => {
-                  const completed = i < sessionsToday;
-                  const current =
-                    i === sessionsToday && running && mode === "focus";
-                  return (
-                    <span
-                      key={i}
-                      className={`size-[7px] rounded-full ${
-                        completed
-                          ? "bg-gold"
-                          : current
-                            ? "bg-gold/70 ring-2 ring-accent/35"
-                            : "bg-border/60"
-                      }`}
-                      aria-hidden
-                    />
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <Link
-                href="/meditate/sounds"
-                className="rounded-full border border-transparent px-2 py-1 text-sm text-muted transition-colors hover:border-border hover:bg-accent-soft/40 hover:text-foreground"
-              >
-                Sounds
-              </Link>
-              <button
-                type="button"
-                disabled
-                title="Coming soon"
-                className="cursor-not-allowed rounded-full border border-transparent px-2 py-1 text-sm text-muted/50"
-              >
-                History
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-2.5 flex items-center gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Min
-            </p>
-            <SegmentedPillTabs
-              aria-label="Focus duration minutes"
-              options={durationOptions}
-              value={String(focusMinutes)}
-              onChange={(id) => selectFocusMinutes(Number(id))}
-            />
-          </div>
         </div>
       </aside>
       ) : null}

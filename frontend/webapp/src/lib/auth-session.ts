@@ -201,11 +201,11 @@ export function getMedimadeSessionEmail(): string | null {
 }
 
 /** Shared Continue-as-guest account (JWT session + cloud stores). */
-export const MEDIMADE_GUEST_ACCOUNT_EMAIL = "guest@consciously.live";
+export const MEDIMADE_GUEST_ACCOUNT_EMAIL = "alexmaragakis@hotmail.co.uk";
 
 export function isMedimadeGuestAccount(): boolean {
   const email = getMedimadeSessionEmail()?.trim().toLowerCase();
-  return email === MEDIMADE_GUEST_ACCOUNT_EMAIL;
+  return email === MEDIMADE_GUEST_ACCOUNT_EMAIL.toLowerCase();
 }
 
 export function getMedimadeSessionDisplayName(): string | null {

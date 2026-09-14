@@ -1,7 +1,6 @@
 /**
  * One-shot: copy visionBoard from a real account onto guest@consciously.live.
- * Dynamo STORE only — media stays on the source user's S3 keys (public CF URLs).
- * Guest's previous visionBoard JSON is replaced; other Ideate fields are kept.
+ * NEVER writes Continue-as-guest / personal accounts.
  *
  *   AWS_PROFILE=mm npx tsx scripts/copy-vision-board-to-guest.ts
  *   AWS_PROFILE=mm npx tsx scripts/copy-vision-board-to-guest.ts --dry-run
@@ -14,7 +13,9 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { GUEST_ACCOUNT_EMAIL } from "../lambdas/auth-guest";
+
+/** Hard-locked target — never use auth-guest Continue-as-guest email. */
+const OPS_GUEST_SEED_EMAIL = "guest@consciously.live";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -34,6 +35,20 @@ const IDEATE =
   "MedimadeBackend-IdeateTable6FC78D26-M84L0GZB3VFS";
 
 const SK_STORE = "STORE";
+
+function assertOpsGuestOnly(email: string): void {
+  const e = email.trim().toLowerCase();
+  if (e !== OPS_GUEST_SEED_EMAIL) {
+    throw new Error(
+      `Refusing to seed ${email}. Ops guest scripts may only target ${OPS_GUEST_SEED_EMAIL}.`,
+    );
+  }
+  if (e === SOURCE_EMAIL.trim().toLowerCase()) {
+    throw new Error(
+      `Refusing to copy visionBoard onto itself (${email}). Use --from another account.`,
+    );
+  }
+}
 
 async function userIdForEmail(email: string): Promise<string> {
   const out = await ddb.send(
@@ -56,34 +71,18 @@ async function getStore(userId: string): Promise<Record<string, unknown> | null>
       Key: { pk: userId, sk: SK_STORE },
     }),
   );
-  const store = out.Item?.store;
-  if (!store || typeof store !== "object") return null;
-  return store as Record<string, unknown>;
-}
-
-function visionSummary(vb: unknown): string {
-  if (!vb || typeof vb !== "object") return "(none)";
-  const o = vb as {
-    items?: unknown[];
-    selfReference?: unknown;
-    extraReferences?: unknown[];
-  };
-  const items = Array.isArray(o.items) ? o.items.length : 0;
-  const self = o.selfReference ? "yes" : "no";
-  const extra = Array.isArray(o.extraReferences) ? o.extraReferences.length : 0;
-  return `${items} items, self=${self}, extra=${extra}`;
+  return (out.Item as Record<string, unknown> | undefined) ?? null;
 }
 
 async function main() {
+  assertOpsGuestOnly(OPS_GUEST_SEED_EMAIL);
   console.log(
-    dryRun ? "[dry-run]" : "[live]",
-    `copy visionBoard ${SOURCE_EMAIL} → ${GUEST_ACCOUNT_EMAIL}`,
+    `copy visionBoard ${SOURCE_EMAIL} → ${OPS_GUEST_SEED_EMAIL}`,
+    dryRun ? "(dry-run)" : "",
   );
 
   const sourceId = await userIdForEmail(SOURCE_EMAIL);
-  const guestId = await userIdForEmail(GUEST_ACCOUNT_EMAIL);
-  console.log("source userId:", sourceId);
-  console.log("guest userId:", guestId);
+  const guestId = await userIdForEmail(OPS_GUEST_SEED_EMAIL);
 
   const sourceStore = await getStore(sourceId);
   if (!sourceStore) {
@@ -93,42 +92,20 @@ async function main() {
   if (visionBoard == null) {
     throw new Error(`No visionBoard on ${SOURCE_EMAIL}`);
   }
-  console.log("source visionBoard:", visionSummary(visionBoard));
 
   const guestStore = await getStore(guestId);
-  console.log(
-    "guest visionBoard (before):",
-    visionSummary(guestStore?.visionBoard),
-  );
+  if (!guestStore) {
+    throw new Error(`No Ideate STORE for ${OPS_GUEST_SEED_EMAIL}`);
+  }
 
-  const now = new Date().toISOString();
-  const nextStore: Record<string, unknown> = guestStore
-    ? {
-        ...guestStore,
-        version: 1,
-        updatedAt: now,
-        visionBoard,
-      }
-    : {
-        version: 1,
-        updatedAt: now,
-        ideate: {
-          v: 2,
-          dreams: [],
-          subtasks: [],
-          todos: [],
-          resistanceEntries: [],
-        },
-        visionBoard,
-        reflectionQuestions: { v: 1, questions: [] },
-        values: { v: 1, values: [] },
-        regrets: { v: 1, regrets: [] },
-        quotes: { v: 1, quotes: [] },
-        manifesto: { v: 1, text: "", updatedAt: now },
-      };
+  const next = {
+    ...guestStore,
+    visionBoard,
+    updatedAt: new Date().toISOString(),
+  };
 
   if (dryRun) {
-    console.log("Would write guest STORE with visionBoard:", visionSummary(visionBoard));
+    console.log("Would write visionBoard onto guest STORE.");
     return;
   }
 
@@ -136,17 +113,13 @@ async function main() {
     new PutCommand({
       TableName: IDEATE,
       Item: {
+        ...next,
         pk: guestId,
         sk: SK_STORE,
-        store: nextStore,
-        updatedAt: now,
       },
     }),
   );
-  console.log("Wrote guest STORE. visionBoard:", visionSummary(visionBoard));
-  console.log(
-    "Note: image URLs still point at source S3 keys (no media copy). Guest edits only update guest Dynamo.",
-  );
+  console.log("Wrote guest visionBoard.");
 }
 
 main().catch((e) => {

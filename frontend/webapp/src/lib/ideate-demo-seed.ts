@@ -1,5 +1,6 @@
 /**
- * Guest-only Ideate samples — local device only, never treated as account data.
+ * Legacy Ideate demo payloads (kept for strip/detect helpers only).
+ * UI never seeds these. Ops one-offs: backend scripts for guest@consciously.live.
  */
 
 import { isMedimadeSessionActive } from "@/lib/auth-session";
@@ -938,10 +939,8 @@ function persistGuestIdeateStore(store: IdeateStoreV2): void {
 }
 
 /**
- * Guests: seed demos when empty; refresh demo copy on version bump without
- * wiping user-added steps. Never destroy a non-empty guest store just because
- * it isn't a pure demo set (that made new steps vanish on Add).
- * Signed-in: never seed; strip demos from the returned store (caller persists).
+ * @deprecated UI seeding eradicated. Returns `existing` unchanged.
+ * Cloud one-offs: backend scripts targeting guest@consciously.live only.
  */
 export function ensureGuestDemoIdeateSeeded(
   existing: IdeateStoreV2,
@@ -950,86 +949,12 @@ export function ensureGuestDemoIdeateSeeded(
     stripDemoCompanionStores();
     return withoutDemoIdeateStore(existing);
   }
-
-  if (typeof window === "undefined") {
-    return buildDemoIdeateStore();
-  }
-
-  const stale = isCompanionSeedStale();
-  const demoOnly = isDemoOnlyIdeateStore(existing);
-  const hasAllDemos = DEMO_IDEATE_DREAM_IDS.every((id) =>
-    existing.dreams.some((d) => d.id === id),
-  );
-
-  // Already seeded and current — keep everything (custom steps, personal areas).
-  if (!stale && existing.dreams.length > 0) {
-    seedCompanionStoresIfEmpty(companionNeedsSeed());
-    markDemoSeedFlag();
-    return existing;
-  }
-
-  // Empty guest device → stock demos.
-  if (existing.dreams.length === 0) {
-    const demo = buildDemoIdeateStore();
-    persistGuestIdeateStore(demo);
-    seedCompanionStoresIfEmpty(true);
-    markDemoSeedFlag();
-    return demo;
-  }
-
-  // Stale demo-only set → refresh copy, keep user-added steps.
-  if (stale && demoOnly && hasAllDemos) {
-    const merged = mergeUserStepsOntoDemos(existing, buildDemoIdeateStore());
-    persistGuestIdeateStore(merged);
-    seedCompanionStoresIfEmpty(true);
-    markDemoSeedFlag();
-    return merged;
-  }
-
-  // Stale / incomplete, but guest already has real content — don't wipe it.
-  seedCompanionStoresIfEmpty(companionNeedsSeed());
-  markDemoSeedFlag();
   return existing;
 }
 
-/** Reset device Ideate to guest demos (call on sign-out). Sync so UI sees demos immediately. */
+/** @deprecated UI seeding eradicated — no-op. */
 export function resetIdeateLocalToGuestDemos(): void {
-  if (typeof window === "undefined") return;
-  // Never overwrite a signed-in working session with guest samples.
-  if (isMedimadeSessionActive()) return;
-
-  let existing: IdeateStoreV2 = {
-    v: 2,
-    dreams: [],
-    subtasks: [],
-    todos: [],
-    resistanceEntries: [],
-  };
-  try {
-    const raw = window.localStorage.getItem("mm_plan_dreams_v1");
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<IdeateStoreV2>;
-      if (parsed && parsed.v === 2) {
-        existing = {
-          v: 2,
-          dreams: Array.isArray(parsed.dreams) ? parsed.dreams : [],
-          subtasks: Array.isArray(parsed.subtasks) ? parsed.subtasks : [],
-          todos: Array.isArray(parsed.todos) ? parsed.todos : [],
-          resistanceEntries: Array.isArray(parsed.resistanceEntries)
-            ? parsed.resistanceEntries
-            : [],
-        };
-      }
-    }
-  } catch {
-    /* */
-  }
-
-  // Soft ensure — seeds when empty; does not wipe user-added steps on remount.
-  const next = ensureGuestDemoIdeateSeeded(existing);
-  persistGuestIdeateStore(next);
-  seedCompanionStoresIfEmpty(isCompanionSeedStale() || companionNeedsSeed());
-  markDemoSeedFlag();
+  /* intentionally empty */
 }
 
 function stripDemoCompanionStores(): void {
@@ -1076,64 +1001,20 @@ function stripDemoCompanionStores(): void {
   }
 }
 
+/** @deprecated UI seeding eradicated — always false. */
 function companionNeedsSeed(): boolean {
-  try {
-    return (
-      isCompanionSeedStale() ||
-      needsDemoVisionRefresh(loadIdeateVisionBoardStore()) ||
-      needsDemoQuestionsRefresh(
-        loadIdeateReflectionQuestionsStore().questions,
-      ) ||
-      needsDemoValuesRefresh(loadIdeateValuesStore()) ||
-      needsDemoRegretsRefresh(loadIdeateRegretsStore()) ||
-      needsDemoQuotesRefresh(loadIdeateQuotesStore())
-    );
-  } catch {
-    return true;
-  }
+  return false;
 }
 
-function seedCompanionStoresIfEmpty(force = false): void {
-  if (typeof window === "undefined") return;
-  if (isMedimadeSessionActive()) return;
-  try {
-    const board = loadIdeateVisionBoardStore();
-    if (force || needsDemoVisionRefresh(board)) {
-      // Local-only — avoid scheduling cloud PUT from guest seed path.
-      saveIdeateVisionBoardStoreLocal(buildDemoVisionBoard());
-    }
-    const qs = loadIdeateReflectionQuestionsStore();
-    if (force || needsDemoQuestionsRefresh(qs.questions)) {
-      saveIdeateReflectionQuestionsStoreLocal({
-        v: 1,
-        questions: buildDemoReflectionQuestions(),
-      });
-    }
-    const values = loadIdeateValuesStore();
-    if (force || needsDemoValuesRefresh(values)) {
-      saveIdeateValuesStoreLocal(buildDemoValuesStore());
-    }
-    const regrets = loadIdeateRegretsStore();
-    if (force || needsDemoRegretsRefresh(regrets)) {
-      saveIdeateRegretsStoreLocal({ v: 1, regrets: buildDemoRegrets() });
-    }
-    const quotes = loadIdeateQuotesStore();
-    if (force || needsDemoQuotesRefresh(quotes)) {
-      saveIdeateQuotesStoreLocal({ v: 1, quotes: buildDemoQuotes() });
-    }
-  } catch {
-    /* */
-  }
+/** @deprecated UI seeding eradicated — never writes demo companions. */
+function seedCompanionStoresIfEmpty(_force = false): void {
+  /* intentionally empty */
 }
 
 /**
- * Ensure guest companion stores (values / questions / vision) match the demo seed.
- * Never run while a session is active — cloud owns signed-in data.
+ * @deprecated UI seeding eradicated — no-op.
  */
-export function ensureGuestCompanionDemos(force = false): void {
-  if (typeof window === "undefined") return;
-  if (isMedimadeSessionActive()) return;
-  seedCompanionStoresIfEmpty(force || companionNeedsSeed());
-  markDemoSeedFlag();
+export function ensureGuestCompanionDemos(_force = false): void {
+  /* intentionally empty */
 }
 

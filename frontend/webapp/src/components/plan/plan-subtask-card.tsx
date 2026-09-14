@@ -14,6 +14,10 @@ import {
   focusMyHrefFromIdeate,
   writeFocusSessionHandoff,
 } from "@/lib/focus-session-handoff";
+import {
+  upsertFocusPreflightLink,
+  writeFocusActiveIdeateSubtask,
+} from "@/lib/focus-preflight-link";
 import { startFocusPreflightMeditationGeneration } from "@/lib/focus-preflight-meditation";
 import { notifyMeditationGenerationFailed } from "@/lib/meditation-generation-notifications";
 import { activeResistanceThemesForProject } from "@/lib/plan-resistance-threads";
@@ -179,11 +183,13 @@ export function PlanSubtaskCard({
 
   function goToFocusSession() {
     writeFocusSessionHandoff({ v: 1, subtaskId: subtask.id });
+    writeFocusActiveIdeateSubtask(subtask.id);
     router.push(focusMyHrefFromIdeate());
   }
 
   function startFocusWithManifestation() {
     writeFocusSessionHandoff({ v: 1, subtaskId: subtask.id });
+    writeFocusActiveIdeateSubtask(subtask.id);
 
     const store = loadIdeateStore();
     const dream = store.dreams.find((d) => d.id === subtask.projectId);
@@ -210,12 +216,25 @@ export function PlanSubtaskCard({
       ? activeResistanceThemesForProject(store, dream.id)
       : [];
 
+    const goalTitle = (dream?.title ?? projectTitle).trim() || "My project";
+    const provisionalTitle = `Pre-focus · ${goalTitle}`.slice(0, 80);
+
+    // Show a loading card on Focus immediately (job id arrives async).
+    upsertFocusPreflightLink({
+      subtaskId: subtask.id,
+      jobId: null,
+      title: provisionalTitle,
+      status: "starting",
+      createdAt: new Date().toISOString(),
+    });
+
     void startFocusPreflightMeditationGeneration({
-      goalTitle: (dream?.title ?? projectTitle).trim() || "My project",
+      goalTitle,
       visionText: vision,
       dreamText: dream?.dreamText.trim() || undefined,
       obstacleText: dream?.obstacleText.trim() || undefined,
       lifeAreaId: dream?.id ?? subtask.projectId,
+      focusSubtaskId: subtask.id,
       focusTaskContext,
       activeResistanceThemes: themes.map((t) => ({
         category: t.category,
@@ -226,6 +245,14 @@ export function PlanSubtaskCard({
     }).catch((e) => {
       const msg =
         e instanceof Error ? e.message : "Could not start the meditation.";
+      upsertFocusPreflightLink({
+        subtaskId: subtask.id,
+        jobId: null,
+        title: provisionalTitle,
+        status: "failed",
+        error: msg,
+        createdAt: new Date().toISOString(),
+      });
       notifyMeditationGenerationFailed({
         jobId: `preflight-${Date.now()}`,
         title: "Pre-focus meditation",

@@ -294,7 +294,10 @@ function daysAgoIso(days: number, hour = 9): string {
   return d.toISOString();
 }
 
-/** Payload for the one-off guest journal data import (never synced to cloud). */
+/**
+ * Legacy starter journal payload — NOT used by the UI anymore.
+ * Kept only so old demo ids can still be detected/stripped.
+ */
 export function buildGuestJournalInitialImport(): JournalStoreV2 {
   const morning = newEntry({
     id: "demo-journal-morning",
@@ -344,8 +347,8 @@ export function buildGuestJournalInitialImport(): JournalStoreV2 {
 }
 
 /**
- * Shared Continue-as-guest cloud journal (matches populate-guest-account.ts).
- * Normal account rows — syncable, not stripped as starter-import.
+ * Legacy cloud-journal mirror for ops scripts targeting guest@consciously.live.
+ * Never called from the UI.
  */
 export function buildGuestAccountJournalStore(): JournalStoreV2 {
   const morning = newEntry({
@@ -464,11 +467,9 @@ function wipeGuestJournalDeviceKeys(): void {
 }
 
 /**
- * Guest journal load:
- * - Session JWT (including Continue as guest): return personal local cache only —
- *   never run the one-off import; cloud GET/PUT is the durability path.
- * - Unsigned + import never run + empty store: one-off data import once.
- * - Unsigned after that: normal local journal — never rewrite.
+ * Load journal for the UI. Never auto-seeds starter entries.
+ * Signed-in: strip leftover demo ids from the local cache.
+ * Unsigned: return whatever is on device (possibly empty).
  */
 export function ensureGuestJournalInitialImport(
   existing?: JournalStoreV2 | null,
@@ -480,41 +481,28 @@ export function ensureGuestJournalInitialImport(
   if (typeof window !== "undefined" && isMedimadeSessionActive()) {
     return withoutDemoJournalEntries(current);
   }
-
-  if (typeof window === "undefined") {
-    return buildGuestJournalInitialImport();
-  }
-
-  // Import already done (or any content exists) → normal journal. Do not touch storage.
-  if (hasGuestJournalImportCompleted() || current.entries.length > 0) {
-    if (!hasGuestJournalImportCompleted()) markGuestJournalImportDone();
-    return current;
-  }
-
-  // Empty device, import never ran — one-off only.
-  const imported = buildGuestJournalInitialImport();
-  wipeGuestJournalDeviceKeys();
-  saveJournalStore(imported);
-  markGuestJournalImportDone();
-  return imported;
+  return current;
 }
 
 /**
- * After sign-out from a real account: clear account cache and run a fresh
- * one-off guest data import once. Guest journal is normal thereafter.
+ * After sign-out: clear the account journal cache on this device.
+ * Does NOT reseed starter journals (those one-offs were ops-only).
  */
 export function resetJournalLocalToGuestInitialImport(): void {
   if (typeof window === "undefined") return;
   if (isMedimadeSessionActive()) return;
   wipeGuestJournalDeviceKeys();
-  const imported = buildGuestJournalInitialImport();
-  saveJournalStore(imported);
-  markGuestJournalImportDone();
+  try {
+    window.localStorage.removeItem(GUEST_JOURNAL_IMPORT_DONE_KEY);
+  } catch {
+    /* */
+  }
+  saveJournalStore(emptyJournalStore());
 }
 
 /**
  * Read localStorage only — no import. Use for signed-in cloud cache
- * and guest reads that must not rewrite the store.
+ * and reads that must not rewrite the store.
  */
 export function loadJournalStoreRaw(): JournalStoreV2 {
   if (typeof window === "undefined") {
@@ -554,8 +542,7 @@ export function loadJournalStoreRaw(): JournalStoreV2 {
 }
 
 /**
- * Guest: one-off data import if never run, otherwise the local journal as-is.
- * Signed-in: personal local cache without starter-import rows (cloud GET is separate).
+ * Load journal. Never auto-seeds starters — cloud/ops scripts only.
  */
 export function loadJournalStore(): JournalStoreV2 {
   if (typeof window === "undefined") {

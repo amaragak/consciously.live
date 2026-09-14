@@ -75,8 +75,6 @@ import {
   VISION_BOARD_GRID_SLOT_COUNT,
 } from "@/components/plan/vision-board-mosaic";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
-import { resetIdeateLocalToGuestDemos } from "@/lib/ideate-demo-seed";
-import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { lifeAreaCardBgVars } from "@/lib/ideate-life-area-colors";
 import {
   ensureIdeateManifesto,
@@ -210,10 +208,6 @@ export function PlanHomeClient() {
   const manifestoReqRef = useRef(0);
 
   const refresh = useCallback(() => {
-    // Guests only — always force seeded samples (never leftover account rows).
-    if (!isMedimadeSessionActive()) {
-      resetIdeateLocalToGuestDemos();
-    }
     setDreams(loadPlanDreamsStore().dreams);
     setVisionItems(loadIdeateVisionBoardStore().items);
     setQuestions(loadIdeateReflectionQuestionsStore().questions);

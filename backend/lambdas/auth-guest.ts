@@ -25,8 +25,8 @@ import {
 } from "../lib/medimade-auth-tokens";
 
 /** Shared guest account — Continue-as-guest logs into this user. */
-export const GUEST_ACCOUNT_EMAIL = "guest@consciously.live";
-export const GUEST_ACCOUNT_DISPLAY_NAME = "Guest";
+export const GUEST_ACCOUNT_EMAIL = "alexmaragakis@hotmail.co.uk";
+export const GUEST_ACCOUNT_DISPLAY_NAME = "Alex";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -52,7 +52,7 @@ async function getOrCreateGuestUser(usersTable: string): Promise<{
   email: string;
   displayName: string;
 }> {
-  const email = GUEST_ACCOUNT_EMAIL;
+  const email = GUEST_ACCOUNT_EMAIL.trim().toLowerCase();
   const displayName = GUEST_ACCOUNT_DISPLAY_NAME;
   const got = await ddb.send(
     new GetCommand({
@@ -62,22 +62,12 @@ async function getOrCreateGuestUser(usersTable: string): Promise<{
   );
   const existingId = got.Item?.userId;
   if (typeof existingId === "string" && existingId.trim()) {
-    // Keep displayName fresh on the row.
-    if (got.Item?.displayName !== displayName) {
-      await ddb.send(
-        new PutCommand({
-          TableName: usersTable,
-          Item: {
-            ...got.Item,
-            email,
-            userId: existingId.trim(),
-            displayName,
-            updatedAt: new Date().toISOString(),
-          },
-        }),
-      );
-    }
-    return { userId: existingId.trim(), email, displayName };
+    // Never overwrite an existing account's display name on guest login.
+    const existingName =
+      typeof got.Item?.displayName === "string" && got.Item.displayName.trim()
+        ? got.Item.displayName.trim()
+        : displayName;
+    return { userId: existingId.trim(), email, displayName: existingName };
   }
 
   const userId = randomUUID();
@@ -112,7 +102,11 @@ async function getOrCreateGuestUser(usersTable: string): Promise<{
     if (typeof u !== "string" || !u.trim()) {
       throw new Error("Guest user race without userId");
     }
-    return { userId: u.trim(), email, displayName };
+    const againName =
+      typeof again.Item?.displayName === "string" && again.Item.displayName.trim()
+        ? again.Item.displayName.trim()
+        : displayName;
+    return { userId: u.trim(), email, displayName: againName };
   }
 }
 

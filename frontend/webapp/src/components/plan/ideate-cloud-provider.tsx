@@ -17,7 +17,6 @@ import {
   pullIdeateStoreFromCloud,
   signedInIdeateMemoryHasContent,
   subscribeIdeateCloud,
-  wipeIdeateDeviceData,
 } from "@/lib/ideate-cloud";
 
 type IdeateCloudContextValue = {
@@ -46,7 +45,7 @@ function hasIdeateCloudSession(): boolean {
 
 /**
  * Signed-in: await GET /ideate/store, then ready.
- * Logged out: demos, ready immediately.
+ * Logged out: leave device stores alone (no demo seed), ready immediately.
  * Never cancels an in-flight pull by bumping epoch mid-request.
  */
 export function IdeateCloudProvider({ children }: { children: ReactNode }) {
@@ -65,9 +64,9 @@ export function IdeateCloudProvider({ children }: { children: ReactNode }) {
       setSignedIn((prev) => {
         if (prev === next) return prev;
         clearIdeateCloudSessionCache();
-        if (!next) {
-          wipeIdeateDeviceData();
-        }
+        // Do NOT wipe Ideate here. Explicit Log out already calls
+        // wipeIdeateDeviceData via clearMedimadeSession. Transient JWT gaps
+        // (refresh / race) must never destroy device data.
         setAuthEpoch((e) => e + 1);
         setReady(false);
         return next;
@@ -116,12 +115,8 @@ export function IdeateCloudProvider({ children }: { children: ReactNode }) {
             result,
           );
         }
-      } else {
-        const { resetIdeateLocalToGuestDemos } = await import(
-          "@/lib/ideate-demo-seed"
-        );
-        resetIdeateLocalToGuestDemos();
       }
+      // Signed out: leave device stores alone — never seed or wipe-fill demos.
 
       if (!alive) return;
       setReady(true);
