@@ -229,6 +229,53 @@ export function upsertAssistantChatThread(
   };
 }
 
+/**
+ * Cloud pull adoption: local threads are never replaced.
+ * Remote may only contribute thread ids that are not already on this device.
+ * No updatedAt / message-count races — pull does not overwrite local content.
+ */
+export function adoptMissingRemoteAssistantChatThreads(
+  local: AssistantChatStoreV1,
+  remote: AssistantChatStoreV1,
+): AssistantChatStoreV1 {
+  const localIds = new Set(local.threads.map((t) => t.id));
+  const missing = remote.threads.filter((t) => !localIds.has(t.id));
+  if (missing.length === 0) {
+    return {
+      version: 1,
+      activeThreadId:
+        local.activeThreadId &&
+        local.threads.some((t) => t.id === local.activeThreadId)
+          ? local.activeThreadId
+          : (local.threads[0]?.id ?? null),
+      threads: local.threads,
+    };
+  }
+
+  const threads = [...local.threads, ...missing]
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
+    .slice(0, MAX_ASSISTANT_CHAT_THREADS);
+
+  const activeThreadId =
+    (local.activeThreadId && threads.some((t) => t.id === local.activeThreadId)
+      ? local.activeThreadId
+      : null) ??
+    (threads[0]?.id ?? null);
+
+  return { version: 1, activeThreadId, threads };
+}
+
+/** @deprecated Use adoptMissingRemoteAssistantChatThreads — pull must not race-merge. */
+export function mergeAssistantChatStores(
+  local: AssistantChatStoreV1,
+  remote: AssistantChatStoreV1,
+): AssistantChatStoreV1 {
+  return adoptMissingRemoteAssistantChatThreads(local, remote);
+}
+
 export function deleteAssistantChatThread(
   store: AssistantChatStoreV1,
   threadId: string,

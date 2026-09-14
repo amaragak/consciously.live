@@ -122,6 +122,22 @@ function gratitudeDaysFromJournal(
     const sk = item.sk;
     if (typeof sk !== "string" || !sk.startsWith("ENTRY#")) continue;
     if (item.kind !== "gratitude") continue;
+    // Starter/sample rows must not invent multi-day streaks.
+    if (item.localOnly === true) continue;
+    const id = typeof item.id === "string" ? item.id : sk.slice("ENTRY#".length);
+    if (
+      id.startsWith("demo-journal-") ||
+      id.startsWith("guest-journal-")
+    ) {
+      continue;
+    }
+    if (
+      item.sourceMetadata &&
+      typeof item.sourceMetadata === "object" &&
+      (item.sourceMetadata as { demo?: unknown }).demo === true
+    ) {
+      continue;
+    }
     const createdAt = typeof item.createdAt === "string" ? item.createdAt : "";
     const key = dateKeyFromIso(createdAt, tzOffsetMinutes);
     if (key) days.add(key);
@@ -146,6 +162,20 @@ function lifeAreaDaysFromIdeate(
     if (key) days.add(key);
   };
 
+  const dreams = Array.isArray(o.dreams) ? o.dreams : [];
+  const demoDreamIds = new Set(
+    dreams
+      .filter(
+        (dream) =>
+          dream &&
+          typeof dream === "object" &&
+          ((dream as { demo?: unknown }).demo === true ||
+            (typeof (dream as { id?: unknown }).id === "string" &&
+              String((dream as { id: string }).id).startsWith("demo-ideate-"))),
+      )
+      .map((dream) => (dream as { id: string }).id),
+  );
+
   for (const todo of Array.isArray(o.todos) ? o.todos : []) {
     if (!todo || typeof todo !== "object") continue;
     const t = todo as Record<string, unknown>;
@@ -153,11 +183,20 @@ function lifeAreaDaysFromIdeate(
   }
   for (const sub of Array.isArray(o.subtasks) ? o.subtasks : []) {
     if (!sub || typeof sub !== "object") continue;
-    mark((sub as Record<string, unknown>).completedAt);
+    const s = sub as Record<string, unknown>;
+    if (
+      typeof s.projectId === "string" &&
+      demoDreamIds.has(s.projectId)
+    ) {
+      continue;
+    }
+    mark(s.completedAt);
   }
-  for (const dream of Array.isArray(o.dreams) ? o.dreams : []) {
+  for (const dream of dreams) {
     if (!dream || typeof dream !== "object") continue;
     const d = dream as Record<string, unknown>;
+    if (d.demo === true) continue;
+    if (typeof d.id === "string" && d.id.startsWith("demo-ideate-")) continue;
     for (const listName of ["dreamEntries", "obstacleEntries", "visionEntries"] as const) {
       const list = d[listName];
       if (!Array.isArray(list)) continue;

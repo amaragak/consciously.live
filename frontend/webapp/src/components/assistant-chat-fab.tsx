@@ -14,22 +14,26 @@ import {
   ASSISTANT_CHAT_OPEN_EVENT,
   type AssistantChatOpenDetail,
 } from "@/lib/assistant-chat-launch";
-import { clearLegacyAssistantChatKeys } from "@/lib/assistant-chat-storage";
+import { clearLegacyAssistantChatKeys, loadAssistantChatStore } from "@/lib/assistant-chat-storage";
+import {
+  isCreateMainChatVisible,
+  subscribeCreateMainChatVisible,
+} from "@/lib/assistant-chat-fab-visibility";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
 
-function hideFabOnPath(pathname: string): boolean {
+/** Hide only when main content already hosts a chat UI. */
+function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
   if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) return true;
-  if (
+  const onCreate =
     pathname === "/meditate/create" ||
-    pathname.startsWith("/meditate/create/")
-  ) {
-    return true;
-  }
-  if (pathname === "/create" || pathname.startsWith("/create/")) return true;
+    pathname.startsWith("/meditate/create/") ||
+    pathname === "/create" ||
+    pathname.startsWith("/create/");
+  if (onCreate && createChatVisible) return true;
   return false;
 }
 
@@ -95,16 +99,24 @@ function IconExpand({ className }: { className?: string }) {
 }
 
 /**
- * Logged-in floating mini-chat. Hidden on full Chat and Create Meditation chat.
+ * Logged-in floating mini-chat.
+ * Hidden only when full Chat (`/chat/my`) or Create’s chat pane is already on screen.
  */
 export function AssistantChatFab() {
   const pathname = usePathname() || "/";
-  const hidden = hideFabOnPath(pathname);
+  const [createChatVisible, setCreateChatVisible] = useState(
+    isCreateMainChatVisible,
+  );
+  const hidden = hideFabOnPath(pathname, createChatVisible);
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const pendingLaunchRef = useRef<AssistantChatOpenDetail | null>(null);
   const launchSeqRef = useRef(0);
   const [launchSeq, setLaunchSeq] = useState(0);
+
+  useEffect(() => subscribeCreateMainChatVisible(() => {
+    setCreateChatVisible(isCreateMainChatVisible());
+  }), []);
 
   useEffect(() => {
     clearLegacyAssistantChatKeys();
@@ -127,6 +139,13 @@ export function AssistantChatFab() {
     window.addEventListener("medimade-session-changed", sync);
     return () => window.removeEventListener("medimade-session-changed", sync);
   }, []);
+
+  // Re-check session when navigating between app pages (late JWT hydrate).
+  useEffect(() => {
+    const signedIn =
+      isMedimadeSessionActive() && Boolean(getMedimadeSessionJwt());
+    setEnabled(signedIn);
+  }, [pathname]);
 
   useEffect(() => {
     if (hidden) setOpen(false);
@@ -158,7 +177,12 @@ export function AssistantChatFab() {
       return;
     }
     if (!chat.activeId) {
-      void chat.createNewThread();
+      const existing = loadAssistantChatStore().threads[0];
+      if (existing) {
+        chat.selectThread(existing.id);
+      } else {
+        void chat.createNewThread();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- launch-driven
   }, [open, hidden, enabled, chat.hydrated, launchSeq]);

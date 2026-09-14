@@ -916,7 +916,8 @@ export async function putIdeateStoreRemote(
 
 /**
  * Loads journal from `GET /journal/store`.
- * Requires a session JWT — guests use the local demo / device journal only.
+ * Requires a session JWT (including Continue as guest — same cloud path as any account).
+ * Unsigned browsers have no remote store.
  */
 export async function fetchJournalStoreRemote(): Promise<JournalStoreV2 | null> {
   const base = getMedimadeApiBase();

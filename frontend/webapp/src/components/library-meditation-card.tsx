@@ -527,7 +527,14 @@ export function LibraryMeditationCard({
     "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40";
 
   const cardMenu = hasMenuItems ? (
-    <div ref={menuRef} className="relative shrink-0">
+    <div
+      ref={menuRef}
+      className={`relative shrink-0 transition-opacity ${
+        menuOpen || alwaysShowRowChrome
+          ? "opacity-100 pointer-events-auto"
+          : "opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto"
+      }`}
+    >
       <button
         ref={menuButtonRef}
         type="button"
@@ -666,11 +673,8 @@ export function LibraryMeditationCard({
   );
 
   const metaRow = (
-    <div className="mt-2 flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-      <span className="min-w-0 flex-1">
-        {formatWhen(m.createdAt)}
-        {m.speakerName ? ` · ${m.speakerName}` : ""}
-      </span>
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+      {dateLine}
       {stars}
     </div>
   );
@@ -780,7 +784,7 @@ export function LibraryMeditationCard({
         <div className="absolute right-2 top-2 z-20 sm:hidden">{cardMenu}</div>
       ) : null}
       {mobileCardBody}
-      {/* Desktop: play at card center; menu/stars flush to matching card-edge insets. */}
+      {/* Desktop: play at card center; menu flush to card-edge inset. */}
       <div className="pointer-events-none absolute inset-0 z-10 hidden sm:block">
         {cardMenu ? (
           <div className="pointer-events-auto absolute right-1.5 top-1.5 z-20">
@@ -790,11 +794,6 @@ export function LibraryMeditationCard({
         <div className="pointer-events-auto absolute right-3 top-1/2 -translate-y-1/2">
           {playControl}
         </div>
-        {stars ? (
-          <div className="pointer-events-auto absolute right-3 bottom-3">
-            {stars}
-          </div>
-        ) : null}
       </div>
       <div className="relative hidden min-w-0 pr-[8.5rem] sm:block">
         <div className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
@@ -809,7 +808,7 @@ export function LibraryMeditationCard({
           <MeditationTypePill label={styleLine} />
         </div>
         <div className="mt-1 text-sm text-muted">{m.description ?? "—"}</div>
-        <div className="mt-2">{dateLine}</div>
+        {metaRow}
       </div>
       {scriptBlock ? (
         <div className="mt-4 hidden border-t border-border pt-4 sm:block">

@@ -1,3 +1,4 @@
+import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { isJournalMoodId } from "@/lib/journal-moods";
 
 export type JournalEntryKind = "freeform" | "gratitude";
@@ -49,21 +50,24 @@ export type JournalStoreV2 = {
 
 const LEGACY_PLAIN_KEY = "mm_journal_entries_v1";
 const STORE_KEY = "mm_journal_store_v2";
-/** Bump when guest seed set changes (e.g. drop empty blank stub). */
-const DEMO_SEED_FLAG_KEY = "mm_journal_demo_seed_v3";
-const LEGACY_DEMO_SEED_FLAG_KEYS = [
+/**
+ * Marks that the one-off guest journal data import already ran.
+ * Storage key string is historical — do not rename (would re-run the import).
+ */
+const GUEST_JOURNAL_IMPORT_DONE_KEY = "mm_journal_demo_seed_v3";
+const LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS = [
   "mm_journal_demo_seed_v1",
   "mm_journal_demo_seed_v2",
 ] as const;
 
-/** Current guest sample ids (no empty stub). */
-const DEMO_ENTRY_IDS = [
+/** Ids from the one-off guest starter import (never synced to cloud). */
+const GUEST_STARTER_ENTRY_IDS = [
   "demo-journal-morning",
   "demo-journal-resistance",
   "demo-journal-gratitude",
 ] as const;
-/** Older seeds we still treat as demos so they get wiped on reseed. */
-const LEGACY_DEMO_ENTRY_IDS = ["demo-journal-blank"] as const;
+/** Older starter-import ids — still excluded from cloud, never re-imported. */
+const LEGACY_GUEST_STARTER_ENTRY_IDS = ["demo-journal-blank"] as const;
 
 /** Stable id for `GET/PUT /journal/store` and `POST /journal/voice` (treat as a device secret). */
 export const JOURNAL_OWNER_ID_KEY = "mm_journal_owner_id";
@@ -290,8 +294,8 @@ function daysAgoIso(days: number, hour = 9): string {
   return d.toISOString();
 }
 
-/** Sample pages for guests — never synced to the cloud. */
-export function buildDemoJournalStore(): JournalStoreV2 {
+/** Payload for the one-off guest journal data import (never synced to cloud). */
+export function buildGuestJournalInitialImport(): JournalStoreV2 {
   const morning = newEntry({
     id: "demo-journal-morning",
     createdAt: daysAgoIso(1, 8),
@@ -339,19 +343,59 @@ export function buildDemoJournalStore(): JournalStoreV2 {
   };
 }
 
+/**
+ * Shared Continue-as-guest cloud journal (matches populate-guest-account.ts).
+ * Normal account rows — syncable, not stripped as starter-import.
+ */
+export function buildGuestAccountJournalStore(): JournalStoreV2 {
+  const morning = newEntry({
+    id: "guest-journal-1",
+    createdAt: daysAgoIso(1, 8),
+    updatedAt: daysAgoIso(1, 8),
+    title: "A quieter morning",
+    mood: "calm",
+    contentHtml:
+      "<p>Woke without reaching for my phone. Made tea and sat by the window for ten minutes.</p><p>Noticed how loud my usual rush feels once I stop it — and how little of it was actually urgent.</p>",
+  });
+  const resistance = newEntry({
+    id: "guest-journal-2",
+    createdAt: daysAgoIso(3, 21),
+    updatedAt: daysAgoIso(3, 21),
+    title: "What I keep putting off",
+    mood: "mixed",
+    contentHtml:
+      "<p>The project I care about keeps sliding to “tomorrow.” When I look closer, it isn’t laziness — it’s fear of doing it imperfectly.</p><p>Tomorrow I’ll open the doc for fifteen minutes only. No finishing required.</p>",
+  });
+  const gratitude = newEntry({
+    id: "guest-journal-3",
+    createdAt: daysAgoIso(5, 7),
+    updatedAt: daysAgoIso(5, 7),
+    kind: "gratitude",
+    title: "Three things",
+    mood: "good",
+    gratitude: [
+      "A walk without headphones",
+      "A message from someone who remembered",
+      "Hot water and a clean mug",
+    ],
+    contentHtml:
+      "<p>A walk without headphones</p><p>A message from someone who remembered</p><p>Hot water and a clean mug</p>",
+  });
+  return {
+    version: 2,
+    activeEntryId: morning.id,
+    entries: [morning, resistance, gratitude],
+  };
+}
+
+/** True for rows that came from the one-off guest starter import (exclude from cloud). */
 export function isDemoJournalEntry(e: JournalEntry): boolean {
   if (e.sourceMetadata?.demo === true) return true;
   const id = e.id;
   return (
-    (DEMO_ENTRY_IDS as readonly string[]).includes(id) ||
-    (LEGACY_DEMO_ENTRY_IDS as readonly string[]).includes(id)
+    (GUEST_STARTER_ENTRY_IDS as readonly string[]).includes(id) ||
+    (LEGACY_GUEST_STARTER_ENTRY_IDS as readonly string[]).includes(id)
   );
-}
-
-function isExactCurrentDemoStore(store: JournalStoreV2): boolean {
-  if (!isDemoOnlyStore(store)) return false;
-  if (store.entries.length !== DEMO_ENTRY_IDS.length) return false;
-  return DEMO_ENTRY_IDS.every((id) => store.entries.some((e) => e.id === id));
 }
 
 export function isDemoOnlyStore(store: JournalStoreV2): boolean {
@@ -361,7 +405,7 @@ export function isDemoOnlyStore(store: JournalStoreV2): boolean {
   );
 }
 
-/** Drop seeded guest samples — never treat them as personal or cloud data. */
+/** Drop one-off guest starter-import rows — never treat them as cloud personal data. */
 export function withoutDemoJournalEntries(store: JournalStoreV2): JournalStoreV2 {
   const entries = store.entries.filter((e) => !isDemoJournalEntry(e));
   const activeEntryId =
@@ -380,15 +424,29 @@ export function emptyJournalStore(): JournalStoreV2 {
   return { version: 2, activeEntryId: null, entries: [] };
 }
 
-function markDemoSeedFlag(): void {
+function markGuestJournalImportDone(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(DEMO_SEED_FLAG_KEY, "1");
-    for (const k of LEGACY_DEMO_SEED_FLAG_KEYS) {
+    window.localStorage.setItem(GUEST_JOURNAL_IMPORT_DONE_KEY, "1");
+    for (const k of LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS) {
       window.localStorage.removeItem(k);
     }
   } catch {
     /* */
+  }
+}
+
+function hasGuestJournalImportCompleted(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.localStorage.getItem(GUEST_JOURNAL_IMPORT_DONE_KEY) === "1") {
+      return true;
+    }
+    return LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS.some(
+      (k) => window.localStorage.getItem(k) != null,
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -397,7 +455,7 @@ function wipeGuestJournalDeviceKeys(): void {
   try {
     window.localStorage.removeItem(LEGACY_PLAIN_KEY);
     window.localStorage.removeItem(JOURNAL_OWNER_ID_KEY);
-    for (const k of LEGACY_DEMO_SEED_FLAG_KEYS) {
+    for (const k of LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS) {
       window.localStorage.removeItem(k);
     }
   } catch {
@@ -406,42 +464,56 @@ function wipeGuestJournalDeviceKeys(): void {
 }
 
 /**
- * Guests: always show seeded samples — never leftover personal / signed-in cache.
- * Safe to call repeatedly. Overwrites non-demo device rows (cloud owns real data).
+ * Guest journal load:
+ * - Session JWT (including Continue as guest): return personal local cache only —
+ *   never run the one-off import; cloud GET/PUT is the durability path.
+ * - Unsigned + import never run + empty store: one-off data import once.
+ * - Unsigned after that: normal local journal — never rewrite.
  */
-export function ensureGuestDemoJournalSeeded(
+export function ensureGuestJournalInitialImport(
   existing?: JournalStoreV2 | null,
 ): JournalStoreV2 {
   const current =
     existing ??
-    (typeof window !== "undefined" ? loadJournalStoreRaw() : buildDemoJournalStore());
+    (typeof window !== "undefined" ? loadJournalStoreRaw() : emptyJournalStore());
 
-  if (isExactCurrentDemoStore(current)) {
-    markDemoSeedFlag();
+  if (typeof window !== "undefined" && isMedimadeSessionActive()) {
+    return withoutDemoJournalEntries(current);
+  }
+
+  if (typeof window === "undefined") {
+    return buildGuestJournalInitialImport();
+  }
+
+  // Import already done (or any content exists) → normal journal. Do not touch storage.
+  if (hasGuestJournalImportCompleted() || current.entries.length > 0) {
+    if (!hasGuestJournalImportCompleted()) markGuestJournalImportDone();
     return current;
   }
 
-  // Personal / empty signed-in leftovers while logged out are stale device cache.
-  const demo = buildDemoJournalStore();
-  if (typeof window !== "undefined") {
-    wipeGuestJournalDeviceKeys();
-    saveJournalStore(demo);
-    markDemoSeedFlag();
-  }
-  return demo;
-}
-
-/** Reset device journal to guest demos (call on sign-out). */
-export function resetJournalLocalToGuestDemos(): void {
-  if (typeof window === "undefined") return;
+  // Empty device, import never ran — one-off only.
+  const imported = buildGuestJournalInitialImport();
   wipeGuestJournalDeviceKeys();
-  const demo = buildDemoJournalStore();
-  saveJournalStore(demo);
-  markDemoSeedFlag();
+  saveJournalStore(imported);
+  markGuestJournalImportDone();
+  return imported;
 }
 
 /**
- * Read localStorage only — no demo seeding. Use for signed-in cloud cache
+ * After sign-out from a real account: clear account cache and run a fresh
+ * one-off guest data import once. Guest journal is normal thereafter.
+ */
+export function resetJournalLocalToGuestInitialImport(): void {
+  if (typeof window === "undefined") return;
+  if (isMedimadeSessionActive()) return;
+  wipeGuestJournalDeviceKeys();
+  const imported = buildGuestJournalInitialImport();
+  saveJournalStore(imported);
+  markGuestJournalImportDone();
+}
+
+/**
+ * Read localStorage only — no import. Use for signed-in cloud cache
  * and guest reads that must not rewrite the store.
  */
 export function loadJournalStoreRaw(): JournalStoreV2 {
@@ -482,14 +554,14 @@ export function loadJournalStoreRaw(): JournalStoreV2 {
 }
 
 /**
- * Guest device journal: always demo-only samples (wipes leftover account cache).
- * Signed-in flows must use `loadJournalStoreRaw` + cloud GET instead.
+ * Guest: one-off data import if never run, otherwise the local journal as-is.
+ * Signed-in: personal local cache without starter-import rows (cloud GET is separate).
  */
 export function loadJournalStore(): JournalStoreV2 {
   if (typeof window === "undefined") {
-    return buildDemoJournalStore();
+    return emptyJournalStore();
   }
-  return ensureGuestDemoJournalSeeded();
+  return ensureGuestJournalInitialImport();
 }
 
 function escapeLegacyPlain(s: string): string {
@@ -641,12 +713,75 @@ export function journalWritingStreakDays(
   return n;
 }
 
-export function saveJournalStore(store: JournalStoreV2) {
+/** Fired after `saveJournalStore` so open journal UI can refresh without a network round-trip. */
+export const JOURNAL_STORE_CHANGED = "mm-journal-store-changed";
+
+export function saveJournalStore(
+  store: JournalStoreV2,
+  opts?: { source?: string },
+) {
   try {
     window.localStorage.setItem(STORE_KEY, JSON.stringify(store));
   } catch {
     /* */
   }
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent(JOURNAL_STORE_CHANGED, {
+        detail: { source: opts?.source ?? "unknown" },
+      }),
+    );
+  } catch {
+    /* */
+  }
+}
+
+/**
+ * Read-only snapshot for UI sync (same tab / other tabs).
+ * Never runs the one-off import, never writes, never touches cloud.
+ */
+export function readJournalStoreSnapshot(opts: {
+  signedIn: boolean;
+}): JournalStoreV2 {
+  const raw = loadJournalStoreRaw();
+  if (opts.signedIn) {
+    return pruneEmptyJournalEntries(withoutDemoJournalEntries(raw));
+  }
+  return raw;
+}
+
+/**
+ * Same-tab: `JOURNAL_STORE_CHANGED` after local saves.
+ * Cross-tab: `storage` when another tab writes `mm_journal_store_v2`.
+ * Does not fetch, import, or mutate storage — callers only re-read + paint.
+ */
+export function subscribeJournalStore(
+  listener: (info: { source: string }) => void,
+  opts?: { ignoreSources?: readonly string[] },
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const ignore = new Set(opts?.ignoreSources ?? []);
+
+  const onCustom = (ev: Event) => {
+    const source =
+      (ev as CustomEvent<{ source?: string }>).detail?.source ?? "unknown";
+    if (ignore.has(source)) return;
+    listener({ source });
+  };
+
+  const onStorage = (ev: StorageEvent) => {
+    if (ev.storageArea && ev.storageArea !== window.localStorage) return;
+    if (ev.key !== STORE_KEY && ev.key !== null) return;
+    listener({ source: ev.key === null ? "storage-clear" : "storage" });
+  };
+
+  window.addEventListener(JOURNAL_STORE_CHANGED, onCustom);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(JOURNAL_STORE_CHANGED, onCustom);
+    window.removeEventListener("storage", onStorage);
+  };
 }
 
 export function newJournalEntry(overrides?: Partial<JournalEntry>): JournalEntry {

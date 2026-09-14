@@ -200,6 +200,14 @@ export function getMedimadeSessionEmail(): string | null {
   return readStorage(EMAIL_KEY);
 }
 
+/** Shared Continue-as-guest account (JWT session + cloud stores). */
+export const MEDIMADE_GUEST_ACCOUNT_EMAIL = "guest@consciously.live";
+
+export function isMedimadeGuestAccount(): boolean {
+  const email = getMedimadeSessionEmail()?.trim().toLowerCase();
+  return email === MEDIMADE_GUEST_ACCOUNT_EMAIL;
+}
+
 export function getMedimadeSessionDisplayName(): string | null {
   return readStorage(DISPLAY_NAME_KEY);
 }
@@ -281,9 +289,9 @@ export function clearMedimadeSession(): void {
     })
     .finally(() => {
       try {
-        // Restore guest journal samples after account cache was stripped.
+        // Clear unsigned-device cache after account session ends.
         void import("@/lib/journal-storage").then((j) => {
-          j.resetJournalLocalToGuestDemos();
+          j.resetJournalLocalToGuestInitialImport();
         });
         window.dispatchEvent(new Event("medimade-session-changed"));
       } catch {

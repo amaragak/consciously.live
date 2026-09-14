@@ -527,7 +527,8 @@ export async function handler(
 
   if (method === "GET") {
     const user = await optionalUserJson(event);
-    // Guests use local demo / device journal only — never scan every owner's store.
+    // Guests without a JWT use local demo / device journal only — never scan every owner's store.
+    // Continue as guest has a JWT and uses the same cloud path as any account.
     if (!user) {
       return json(200, { store: null });
     }

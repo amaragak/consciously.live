@@ -28,17 +28,21 @@ import { JournalLockGate } from "@/components/journal-lock-gate";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
+  getMedimadeSessionJwt,
+  isMedimadeGuestAccount,
+  isMedimadeSessionActive,
+} from "@/lib/auth-session";
+import {
   fetchJournalStoreRemote,
   getMedimadeApiBase,
-  getMedimadeSessionJwt,
-  isMedimadeSessionActive,
   putJournalStoreRemote,
   runJournalInsightsRemote,
 } from "@/lib/medimade-api";
 import {
+  buildGuestAccountJournalStore,
   emptyGratitudeLines,
   entriesForCloudPut,
-  ensureGuestDemoJournalSeeded,
+  ensureGuestJournalInitialImport,
   findGratitudeEntryForLocalDate,
   formatJournalEntryDate,
   gratitudeLinesToHtml,
@@ -61,7 +65,9 @@ import {
   newJournalEntry,
   newJournalFolder,
   pruneEmptyJournalEntries,
+  readJournalStoreSnapshot,
   saveJournalStore,
+  subscribeJournalStore,
   stripHtmlToText,
   withoutDemoJournalEntries,
   type JournalEntry,
@@ -263,6 +269,8 @@ export function JournalView() {
   const [authReady, setAuthReady] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  /** Bumps when chat (or another tab) updates the open entry so the editor remounts. */
+  const [editorExternalSyncKey, setEditorExternalSyncKey] = useState(0);
   const [folders, setFolders] = useState<JournalFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState(FOLDER_ALL);
   const [namingFolder, setNamingFolder] = useState(false);
@@ -425,26 +433,30 @@ export function JournalView() {
       nextFolders?: JournalFolder[],
     ) => {
       const foldersNext = nextFolders ?? foldersRef.current;
-      saveJournalStore({
-        version: 2,
-        activeEntryId: nextActive,
-        entries: nextEntries,
-        ...(foldersNext.length ? { folders: foldersNext } : {}),
-      });
+      saveJournalStore(
+        {
+          version: 2,
+          activeEntryId: nextActive,
+          entries: nextEntries,
+          ...(foldersNext.length ? { folders: foldersNext } : {}),
+        },
+        { source: "journal-view" },
+      );
     },
     [],
   );
 
   useEffect(() => {
     if (!authReady) return;
-    // Guests: demo samples on device. Signed-in: localStorage is only a cache —
-    // strip demos and wait for GET /journal/store (cloud is source of truth).
+    // Guests: one-off data import only if never run and unsigned.
+    // Session (incl. Continue as guest): localStorage is a cache — strip
+    // starter-import rows and wait for GET /journal/store (cloud is source of truth).
     const rawSignedIn = signedIn
       ? withoutDemoJournalEntries(loadJournalStoreRaw())
       : null;
     const store = signedIn
       ? pruneEmptyJournalEntries(rawSignedIn!)
-      : ensureGuestDemoJournalSeeded();
+      : ensureGuestJournalInitialImport();
     const nextActive = activeIdForJournalTab(
       store.entries,
       store.activeEntryId,
@@ -471,7 +483,35 @@ export function JournalView() {
     }
   }, [authReady, signedIn, persist]);
 
-  /** Pull cloud journal when signed in (guests stay on local demo / device pages). */
+  // Same-tab (Chat) + cross-tab: re-read local cache only — no import, no cloud fetch.
+  useEffect(() => {
+    if (!hydrated) return;
+    const applyExternal = () => {
+      const store = readJournalStoreSnapshot({ signedIn });
+      skipCloudPushRef.current = true;
+      entriesRef.current = store.entries;
+      setEntries(store.entries);
+      setFolders(store.folders ?? []);
+      foldersRef.current = store.folders ?? [];
+
+      const openId = activeIdRef.current;
+      const open = openId
+        ? store.entries.find((e) => e.id === openId)
+        : undefined;
+      if (open) {
+        latestHtmlRef.current = open.contentHtml;
+        latestTitleRef.current = open.title;
+        latestGratitudeRef.current = open.gratitude ?? emptyGratitudeLines();
+        setGratitudeDraft(latestGratitudeRef.current);
+        setEditorExternalSyncKey((n) => n + 1);
+      }
+    };
+    return subscribeJournalStore(applyExternal, {
+      ignoreSources: ["journal-view"],
+    });
+  }, [hydrated, signedIn]);
+
+  /** Pull cloud journal when a session JWT is active (including Continue as guest). */
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
@@ -497,7 +537,33 @@ export function JournalView() {
           });
 
         if (!remote?.entries?.length) {
-          // Empty cloud account: show nothing until the user clicks New entry.
+          // Shared guest account: empty cloud is a broken state — restore the
+          // account starter journal and push it back (never clear to []).
+          if (isMedimadeGuestAccount()) {
+            const restored = buildGuestAccountJournalStore();
+            skipCloudPushRef.current = false;
+            entriesRef.current = restored.entries;
+            setEntries(restored.entries);
+            setFolders(restored.folders ?? []);
+            foldersRef.current = restored.folders ?? [];
+            setActiveEntryId(restored.activeEntryId);
+            const nextEntry = restored.entries.find(
+              (e) => e.id === restored.activeEntryId,
+            );
+            latestHtmlRef.current = nextEntry?.contentHtml ?? "<p></p>";
+            latestTitleRef.current = nextEntry?.title ?? "";
+            latestGratitudeRef.current =
+              nextEntry?.gratitude ?? emptyGratitudeLines();
+            setGratitudeDraft(latestGratitudeRef.current);
+            persist(
+              restored.entries,
+              restored.activeEntryId,
+              restored.folders ?? [],
+            );
+            return;
+          }
+
+          // New real account with empty cloud: don't leave starter-import rows on screen.
           if (localIsDemoOnly || localEntries.some(isDemoJournalEntry)) {
             skipCloudPushRef.current = true;
             entriesRef.current = [];
@@ -599,11 +665,16 @@ export function JournalView() {
     if (!base) return;
     if (!getMedimadeSessionJwt()) return;
     const cloudEntries = entriesForCloudPut(entries);
-    // Never push an empty body while demos are still on screen (would wipe cloud).
+    // Never push an empty body while starter-import rows are still on screen (would wipe cloud).
     if (
       cloudEntries.length === 0 &&
       entries.some(isDemoJournalEntry)
     ) {
+      return;
+    }
+    // Never push an empty store unless the user actually has zero local entries
+    // (avoids accidental cloud wipe after a bad local rewrite).
+    if (cloudEntries.length === 0 && entries.length > 0) {
       return;
     }
     if (cloudPushTimerRef.current) clearTimeout(cloudPushTimerRef.current);
@@ -740,12 +811,15 @@ export function JournalView() {
             }
           : e,
       );
-      saveJournalStore({
-        version: 2,
-        activeEntryId: id,
-        entries: next,
-        ...(foldersRef.current.length ? { folders: foldersRef.current } : {}),
-      });
+      saveJournalStore(
+        {
+          version: 2,
+          activeEntryId: id,
+          entries: next,
+          ...(foldersRef.current.length ? { folders: foldersRef.current } : {}),
+        },
+        { source: "journal-view" },
+      );
     };
   }, []);
 
@@ -2104,6 +2178,7 @@ export function JournalView() {
             !isGratitudeEntry(activeEntry) ? (
             <>
               <JournalRichEditor
+                key={`${activeEntryId}-${editorExternalSyncKey}`}
                 entryId={activeEntryId}
                 initialHtml={initialHtmlForEditor}
                 initialTitle={initialTitleForEditor}

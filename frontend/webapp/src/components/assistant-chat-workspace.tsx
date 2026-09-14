@@ -103,7 +103,15 @@ export function AssistantChatWorkspace() {
   useEffect(() => {
     const onChange = () => refreshSidebar();
     window.addEventListener(ASSISTANT_CHAT_STORE_CHANGED, onChange);
-    return () => window.removeEventListener(ASSISTANT_CHAT_STORE_CHANGED, onChange);
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key !== "mm_assistant_chat_store_v1" && ev.key !== null) return;
+      refreshSidebar();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(ASSISTANT_CHAT_STORE_CHANGED, onChange);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [refreshSidebar]);
 
   // Cloud pull once per session when signed in.

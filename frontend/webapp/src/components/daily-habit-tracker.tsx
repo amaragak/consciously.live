@@ -58,9 +58,31 @@ function emptyStatus(): DailyStatus {
 }
 
 function localStatusNow(): DailyStatus {
-  const entries = withoutDemoJournalEntries(loadJournalStoreRaw()).entries;
+  const entries = withoutDemoJournalEntries(loadJournalStoreRaw()).entries.filter(
+    (e) => !e.id.startsWith("guest-journal-"),
+  );
   const ideate = loadIdeateStore();
   return computeLocalDailyStatus(entries, ideate, localDateKey());
+}
+
+function mergeRemoteDailyStatus(
+  remote: DailyStatus,
+  local: DailyStatus,
+): DailyStatus {
+  // Flags: either side can mark a daily done today.
+  // Streaks: consecutive *days* — never Math.max(local, remote). That invented
+  // fake length when seed/cloud history disagreed with this device.
+  // Prefer remote (account) when signed in; local is offline fallback only.
+  return {
+    gratitude: remote.gratitude || local.gratitude,
+    meditation: remote.meditation || local.meditation,
+    lifeArea: remote.lifeArea || local.lifeArea,
+    streak: remote.fullStreak,
+    fullStreak: remote.fullStreak,
+    partialStreak: remote.partialStreak,
+    fullStreakRecord: remote.fullStreakRecord,
+    partialStreakRecord: remote.partialStreakRecord,
+  };
 }
 
 function StreakDots({
@@ -183,24 +205,7 @@ export function DailyHabitTracker() {
         .then((remote) => {
           if (cancelled) return;
           const local = localStatusNow();
-          // OR flags; take the higher streak figures so undeployed API
-          // (missing partial fields → 0) cannot wipe a correct local count.
-          setStatus({
-            gratitude: remote.gratitude || local.gratitude,
-            meditation: remote.meditation || local.meditation,
-            lifeArea: remote.lifeArea || local.lifeArea,
-            streak: Math.max(remote.fullStreak, local.fullStreak),
-            fullStreak: Math.max(remote.fullStreak, local.fullStreak),
-            partialStreak: Math.max(remote.partialStreak, local.partialStreak),
-            fullStreakRecord: Math.max(
-              remote.fullStreakRecord,
-              local.fullStreakRecord,
-            ),
-            partialStreakRecord: Math.max(
-              remote.partialStreakRecord,
-              local.partialStreakRecord,
-            ),
-          });
+          setStatus(mergeRemoteDailyStatus(remote, local));
         })
         .catch(() => {
           /* keep local */
@@ -240,20 +245,7 @@ export function DailyHabitTracker() {
           fetchDashboardDailyStatus({ dateKey }).then((remote) => {
             const local = localStatusNow();
             setStatus({
-              gratitude: remote.gratitude || local.gratitude,
-              meditation: remote.meditation || local.meditation,
-              lifeArea: remote.lifeArea || local.lifeArea,
-              streak: Math.max(remote.fullStreak, local.fullStreak),
-              fullStreak: Math.max(remote.fullStreak, local.fullStreak),
-              partialStreak: Math.max(remote.partialStreak, local.partialStreak),
-              fullStreakRecord: Math.max(
-                remote.fullStreakRecord,
-                local.fullStreakRecord,
-              ),
-              partialStreakRecord: Math.max(
-                remote.partialStreakRecord,
-                local.partialStreakRecord,
-              ),
+              ...mergeRemoteDailyStatus(remote, local),
               [pillar]: next || remote[pillar] || local[pillar],
             });
           }),

@@ -36,6 +36,7 @@ import {
   writeLinkedLifeAreaId,
   type CreateSessionV1,
 } from "@/lib/create-session-storage";
+import { setCreateMainChatVisible } from "@/lib/assistant-chat-fab-visibility";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
 import { MeditationTypeCardGrid } from "@/components/community-category-grid";
 import {
@@ -1187,6 +1188,12 @@ export function CreateWorkspace({
   const workspaceSectionStep: 0 | 1 | 2 =
     creationPath === "pending" ? 0 : createStripStep;
 
+  // Hide the app Chat FAB while Create’s chat pane is the main content.
+  useEffect(() => {
+    setCreateMainChatVisible(workspaceSectionStep === 1);
+    return () => setCreateMainChatVisible(false);
+  }, [workspaceSectionStep]);
+
   useEffect(() => {
     if (creationPath === "pending") {
       setMobileCreateStep("chat");
@@ -1763,8 +1770,8 @@ export function CreateWorkspace({
     if (typeof window === "undefined") return;
     let cancelled = false;
     const signedIn = Boolean(getMedimadeSessionJwt());
-    // Guests may see demos; signed-in users only use a non-seeding local cache
-    // until cloud responds.
+    // Session users (incl. Continue as guest): local cache until cloud responds.
+    // Unsigned only: local journal as-is (one-off import if never run).
     const local = signedIn
       ? withoutDemoJournalEntries(loadJournalStoreRaw())
       : loadJournalStore();

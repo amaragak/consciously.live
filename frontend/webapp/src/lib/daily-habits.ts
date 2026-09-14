@@ -11,6 +11,7 @@ import {
 import type { JournalEntry } from "@/lib/journal-storage";
 import type { IdeateStoreV2 } from "@/lib/plan-ideate-store";
 import type { PlanDream } from "@/lib/plan-dreams";
+import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 
 export { localDateKey };
 
@@ -165,17 +166,22 @@ export function lifeAreaDoneForDate(
   store: IdeateStoreV2,
   dateKey: string,
 ): boolean {
+  const demoDreamIds = new Set(
+    (store.dreams ?? []).filter(isDemoIdeateDream).map((d) => d.id),
+  );
   for (const todo of store.todos ?? []) {
     if (todo.isChecked && todo.checkedAt && localDateKeyFromIso(todo.checkedAt) === dateKey) {
       return true;
     }
   }
   for (const sub of store.subtasks ?? []) {
+    if (demoDreamIds.has(sub.projectId)) continue;
     if (sub.completedAt && localDateKeyFromIso(sub.completedAt) === dateKey) {
       return true;
     }
   }
   for (const dream of store.dreams ?? []) {
+    if (isDemoIdeateDream(dream)) continue;
     if (dreamThoughtsToday(dream, dateKey)) return true;
   }
   return false;

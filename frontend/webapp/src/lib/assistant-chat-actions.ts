@@ -1,14 +1,19 @@
 import { createMeditationHref } from "@/lib/create-meditation-path";
 import { getMedimadeSessionJwt } from "@/lib/auth-session";
 import {
+  deriveEntryTitle,
+  entriesForCloudPut,
   findGratitudeEntryForLocalDate,
   gratitudeLinesToHtml,
   gratitudeTitleForDate,
+  isGratitudeEntry,
   loadJournalStore,
   localDateKey,
   newGratitudeJournalEntry,
+  newJournalEntry,
   normalizeGratitudeLines,
   saveJournalStore,
+  stripHtmlToText,
   type JournalEntry,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
@@ -37,9 +42,41 @@ export type AssistantActionResult = {
   linkLabel?: string;
 };
 
+const LAST_CHAT_JOURNAL_ENTRY_KEY = "mm_assistant_last_journal_entry_id_v1";
+
+function rememberChatJournalEntryId(id: string): void {
+  if (typeof window === "undefined" || !id.trim()) return;
+  try {
+    window.sessionStorage.setItem(LAST_CHAT_JOURNAL_ENTRY_KEY, id.trim());
+  } catch {
+    /* */
+  }
+}
+
+function lastChatJournalEntryId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(LAST_CHAT_JOURNAL_ENTRY_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function syncJournalCloud(store: JournalStoreV2): void {
   if (!getMedimadeSessionJwt()) return;
-  void putJournalStoreRemote(store).catch(() => {
+  const cloudEntries = entriesForCloudPut(store.entries);
+  // Never overwrite cloud with an empty PUT from chat helpers.
+  if (cloudEntries.length === 0) return;
+  const cloudStore: JournalStoreV2 = {
+    ...store,
+    entries: cloudEntries,
+    activeEntryId:
+      store.activeEntryId &&
+      cloudEntries.some((e) => e.id === store.activeEntryId)
+        ? store.activeEntryId
+        : (cloudEntries[0]?.id ?? null),
+  };
+  void putJournalStoreRemote(cloudStore).catch(() => {
     /* cloud can catch up later */
   });
 }
@@ -100,7 +137,7 @@ function persistTodayGratitude(
       ? [entry, ...store.entries]
       : store.entries.map((e, i) => (i === idx ? entry : e));
   store = { ...store, entries, activeEntryId: entry.id };
-  saveJournalStore(store);
+  saveJournalStore(store, { source: "assistant-chat" });
   syncJournalCloud(store);
 
   return {
@@ -247,6 +284,158 @@ function applyGratitudeUpdate(
   });
 }
 
+function plainTextToJournalHtml(text: string): string {
+  const paras = text
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((block) =>
+      block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(" "),
+    )
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!paras.length) return "<p></p>";
+  return paras
+    .map(
+      (p) =>
+        `<p>${p
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</p>`,
+    )
+    .join("");
+}
+
+function applyJournalEntry(
+  action: Extract<AssistantAction, { name: "add_journal_entry" }>,
+): AssistantActionResult {
+  const body = action.body.trim();
+  if (!body) return { ok: false, label: "No journal text to save" };
+
+  const contentHtml = plainTextToJournalHtml(body);
+  const title =
+    (action.title ?? "").trim() || deriveEntryTitle(contentHtml) || "Journal entry";
+
+  const entry = newJournalEntry({
+    title: title.slice(0, 120),
+    contentHtml,
+  });
+
+  let store = loadJournalStore();
+  store = {
+    ...store,
+    entries: [entry, ...store.entries],
+    activeEntryId: entry.id,
+  };
+  saveJournalStore(store, { source: "assistant-chat" });
+  rememberChatJournalEntryId(entry.id);
+  syncJournalCloud(store);
+
+  return {
+    ok: true,
+    label: "Saved journal entry",
+    detail: previewSnippet(title),
+    href: `/journal/my/${encodeURIComponent(entry.id)}`,
+    linkLabel: "Open journal",
+  };
+}
+
+function freeformJournalEntries(entries: JournalEntry[]): JournalEntry[] {
+  return entries.filter((e) => !isGratitudeEntry(e));
+}
+
+function findJournalEntryForUpdate(
+  entries: JournalEntry[],
+  action: Extract<AssistantAction, { name: "update_journal_entry" }>,
+): JournalEntry | null {
+  const freeform = freeformJournalEntries(entries);
+  if (!freeform.length) return null;
+
+  if (action.id) {
+    const byId = freeform.find((e) => e.id === action.id);
+    if (byId) return byId;
+  }
+
+  const remembered = lastChatJournalEntryId();
+  if (remembered) {
+    const byRemembered = freeform.find((e) => e.id === remembered);
+    if (byRemembered) return byRemembered;
+  }
+
+  const match = (action.match ?? "").trim().toLowerCase();
+  if (match) {
+    const scored = freeform
+      .map((e) => {
+        const hay = `${e.title}\n${stripHtmlToText(e.contentHtml)}`
+          .trim()
+          .toLowerCase();
+        if (!hay.includes(match)) return null;
+        return { e, score: hay.length };
+      })
+      .filter((x): x is { e: JournalEntry; score: number } => Boolean(x))
+      .sort((a, b) => a.score - b.score);
+    if (scored[0]) return scored[0].e;
+  }
+
+  // Fall back to the most recently updated freeform entry from this chat flow.
+  return [...freeform].sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  )[0] ?? null;
+}
+
+function applyJournalUpdate(
+  action: Extract<AssistantAction, { name: "update_journal_entry" }>,
+): AssistantActionResult {
+  const body = action.body.trim();
+  if (!body) return { ok: false, label: "No journal text to update" };
+
+  let store = loadJournalStore();
+  const existing = findJournalEntryForUpdate(store.entries, action);
+  if (!existing) {
+    // No prior freeform entry — create rather than inventing an update.
+    return applyJournalEntry({
+      name: "add_journal_entry",
+      body,
+      ...(action.title ? { title: action.title } : {}),
+    });
+  }
+
+  const contentHtml = plainTextToJournalHtml(body);
+  const title =
+    (action.title ?? "").trim() ||
+    deriveEntryTitle(contentHtml) ||
+    existing.title ||
+    "Journal entry";
+
+  const entry: JournalEntry = {
+    ...existing,
+    title: title.slice(0, 120),
+    contentHtml,
+    updatedAt: new Date().toISOString(),
+  };
+
+  store = {
+    ...store,
+    entries: store.entries.map((e) => (e.id === entry.id ? entry : e)),
+    activeEntryId: entry.id,
+  };
+  saveJournalStore(store, { source: "assistant-chat" });
+  rememberChatJournalEntryId(entry.id);
+  syncJournalCloud(store);
+
+  return {
+    ok: true,
+    label: "Updated journal entry",
+    detail: previewSnippet(title),
+    href: `/journal/my/${encodeURIComponent(entry.id)}`,
+    linkLabel: "Open journal",
+  };
+}
+
 function applyTodo(
   action: Extract<AssistantAction, { name: "add_todo" }>,
 ): AssistantActionResult {
@@ -316,6 +505,8 @@ export function executeAssistantAction(
   try {
     if (action.name === "add_gratitude") return applyGratitudeAdd(action);
     if (action.name === "update_gratitude") return applyGratitudeUpdate(action);
+    if (action.name === "add_journal_entry") return applyJournalEntry(action);
+    if (action.name === "update_journal_entry") return applyJournalUpdate(action);
     if (action.name === "add_todo") return applyTodo(action);
     if (action.name === "create_meditation") {
       return applyCreateMeditation(action);

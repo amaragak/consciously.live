@@ -204,11 +204,17 @@ export function useAssistantChatThread(opts: {
     let id = threadId ?? store.activeThreadId;
     let thread = id ? store.threads.find((t) => t.id === id) : undefined;
 
+    // FAB (autoOpen false): resume most recent thread instead of starting empty.
+    if (!thread && !autoOpen && store.threads[0]) {
+      thread = store.threads[0];
+      id = thread.id;
+    }
+
     if (!thread && autoOpen) {
       thread = newAssistantChatThread();
       store = upsertAssistantChatThread(store, thread);
       saveAssistantChatStore(store);
-      scheduleAssistantChatCloudPush(store);
+      scheduleAssistantChatCloudPush();
       id = thread.id;
     }
 
@@ -320,20 +326,38 @@ export function useAssistantChatThread(opts: {
     let id = activeIdRef.current;
     let createdAt = threadMetaRef.current?.createdAt;
     let mode = threadMetaRef.current?.mode;
+    let priorMessages: AssistantChatUiMessage[] = messages;
+    let priorApi: AssistantChatApiTurn[] = apiThread;
+
     if (!id) {
       const thread = newAssistantChatThread();
       const store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
       saveAssistantChatStore(store);
+      scheduleAssistantChatCloudPush();
       id = thread.id;
       createdAt = thread.createdAt;
       mode = thread.mode;
+      priorMessages = [];
+      priorApi = [];
       setActiveId(id);
       threadMetaRef.current = { createdAt, mode };
       setApiThread([]);
       setMessages([]);
+    } else {
+      // Prefer persisted thread as source of truth (avoids stale React state).
+      const existing = loadAssistantChatStore().threads.find((t) => t.id === id);
+      if (existing) {
+        priorMessages = existing.messages;
+        priorApi = existing.apiThread;
+        createdAt = existing.createdAt;
+        mode = existing.mode ?? mode;
+        threadMetaRef.current = {
+          createdAt: existing.createdAt,
+          mode: existing.mode,
+        };
+      }
     }
 
-    // Keep mode from store if meta lost it.
     if (!mode) {
       const existing = loadAssistantChatStore().threads.find((t) => t.id === id);
       mode = existing?.mode;
@@ -353,17 +377,41 @@ export function useAssistantChatThread(opts: {
     inputDraftRef.current = "";
 
     const history: AssistantChatApiTurn[] = [
-      ...apiThread,
+      ...priorApi,
       { role: "user", content: trimmed },
     ];
 
     const userMsg: AssistantChatUiMessage = { role: "user", text: trimmed };
-    setMessages((prev) => [...prev, userMsg]);
+    const messagesAfterUser = [...priorMessages, userMsg];
+    setMessages(messagesAfterUser);
     setApiThread(history);
+
+    // Persist immediately so a refresh / navigation cannot lose the turn.
+    const titleManual =
+      loadAssistantChatStore().threads.find((t) => t.id === id)?.titleManual ===
+      true;
+    const midTitle = titleManual
+      ? loadAssistantChatStore().threads.find((t) => t.id === id)!.title
+      : deriveAssistantChatTitle(messagesAfterUser) ||
+        (mode?.type === "life_area_ideate"
+          ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
+          : "New chat");
+    if (!titleManual) setTitle(midTitle);
+    persistThread({
+      id,
+      createdAt: createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      title: midTitle,
+      ...(titleManual ? { titleManual: true } : {}),
+      messages: messagesAfterUser,
+      apiThread: history,
+      ...(mode ? { mode } : {}),
+    });
 
     let assistantStarted = false;
     let acc = "";
     const systemSupplement = resolveSystemSupplement(mode);
+    const sendThreadId = id;
 
     try {
       const raw = await streamAssistantChat(
@@ -372,7 +420,7 @@ export function useAssistantChatThread(opts: {
           ...(systemSupplement ? { systemSupplement } : {}),
         },
         (chunk) => {
-          if (activeIdRef.current !== id) return;
+          if (activeIdRef.current !== sendThreadId) return;
           acc += chunk;
           const { text } = parseAssistantDisplayText(acc);
           if (!assistantStarted) {
@@ -392,76 +440,78 @@ export function useAssistantChatThread(opts: {
         },
       );
 
-      if (activeIdRef.current !== id) return;
-
       const parsed = parseAssistantDisplayText(raw);
-      const results = executeAssistantActions(parsed.actions);
-      const actionResults = results.map((r) => ({
-        label: r.label,
-        detail: r.detail,
-        href: r.href,
-        linkLabel: r.linkLabel,
-        ok: r.ok,
-      }));
+      let actionResults: AssistantChatUiMessage["actionResults"];
+      try {
+        const results = executeAssistantActions(parsed.actions);
+        actionResults = results.map((r) => ({
+          label: r.label,
+          detail: r.detail,
+          href: r.href,
+          linkLabel: r.linkLabel,
+          ok: r.ok,
+        }));
+      } catch {
+        actionResults = undefined;
+      }
 
       const nextApi: AssistantChatApiTurn[] = [
         ...history,
         { role: "assistant", content: raw },
       ];
-      let nextMessages: AssistantChatUiMessage[] = [];
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last?.role === "assistant") {
-          next[next.length - 1] = {
-            ...last,
-            text: parsed.text,
-            actionResults,
-          };
-        } else {
-          next.push({
-            role: "assistant",
-            text: parsed.text,
-            actionResults,
-          });
-        }
-        nextMessages = next;
-        return next;
-      });
-      setApiThread(nextApi);
+      const nextMessages: AssistantChatUiMessage[] = [
+        ...messagesAfterUser,
+        {
+          role: "assistant",
+          text: parsed.text,
+          ...(actionResults?.length ? { actionResults } : {}),
+        },
+      ];
 
-      const existing = loadAssistantChatStore().threads.find((t) => t.id === id);
-      const titleManual = existing?.titleManual === true;
-      const nextTitle = titleManual
+      if (activeIdRef.current === sendThreadId) {
+        setMessages(nextMessages);
+        setApiThread(nextApi);
+      }
+
+      const existing = loadAssistantChatStore().threads.find(
+        (t) => t.id === sendThreadId,
+      );
+      const manual = existing?.titleManual === true;
+      const nextTitle = manual
         ? existing!.title
         : deriveAssistantChatTitle(nextMessages) ||
           (mode?.type === "life_area_ideate"
             ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
             : "New chat");
-      setTitle(nextTitle);
+      if (activeIdRef.current === sendThreadId) setTitle(nextTitle);
+
+      // Always persist for this send's thread — even if UI moved to another chat.
       persistThread({
-        id,
+        id: sendThreadId,
         createdAt: createdAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         title: nextTitle,
-        ...(titleManual ? { titleManual: true } : {}),
+        ...(manual ? { titleManual: true } : {}),
         messages: nextMessages,
         apiThread: nextApi,
         ...(mode ? { mode } : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not reach assistant";
-      setError(msg);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: `Sorry — ${msg}` },
-      ]);
+      if (activeIdRef.current === sendThreadId) {
+        setError(msg);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: `Sorry — ${msg}` },
+        ]);
+      }
+      // Keep the user turn that was already persisted.
     } finally {
       busyRef.current = false;
       setBusy(false);
       requestAnimationFrame(() => chatInputRef.current?.focus());
     }
-  }, [input, apiThread, opening, scrollToBottomIfPinned]);
+  }, [input, messages, apiThread, opening, scrollToBottomIfPinned]);
 
   return {
     hydrated,

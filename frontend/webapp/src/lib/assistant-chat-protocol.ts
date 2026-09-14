@@ -11,6 +11,8 @@
 export type AssistantActionName =
   | "add_gratitude"
   | "update_gratitude"
+  | "add_journal_entry"
+  | "update_journal_entry"
   | "add_todo"
   | "create_meditation";
 
@@ -26,6 +28,24 @@ export type AssistantAction =
       match: string;
       /** Full replacement text for that line. */
       text: string;
+    }
+  | {
+      name: "add_journal_entry";
+      /** Short entry title (optional — derived from body when omitted). */
+      title?: string;
+      /** Plain-text body; newlines become paragraphs. */
+      body: string;
+    }
+  | {
+      name: "update_journal_entry";
+      /** Entry id when known. */
+      id?: string;
+      /** Substring of prior title/body to find the entry (e.g. earlier saved line). */
+      match?: string;
+      /** Optional new title. */
+      title?: string;
+      /** Full replacement body (plain text). */
+      body: string;
     }
   | {
       name: "add_todo";
@@ -95,6 +115,50 @@ function coerceAction(
     if (!match || !text) return null;
     return { name: "update_gratitude", match, text };
   }
+  if (
+    name === "add_journal_entry" ||
+    name === "create_journal_entry" ||
+    name === "add_journal"
+  ) {
+    const body = (
+      params.body ??
+      params.text ??
+      params.content ??
+      params.entry ??
+      ""
+    ).trim();
+    if (!body) return null;
+    const title = (params.title ?? "").trim();
+    return {
+      name: "add_journal_entry",
+      body,
+      ...(title ? { title } : {}),
+    };
+  }
+  if (
+    name === "update_journal_entry" ||
+    name === "put_journal_entry" ||
+    name === "update_journal"
+  ) {
+    const body = (
+      params.body ??
+      params.text ??
+      params.content ??
+      params.entry ??
+      ""
+    ).trim();
+    if (!body) return null;
+    const id = (params.id ?? "").trim();
+    const match = (params.match ?? params.prev ?? params.from ?? "").trim();
+    const title = (params.title ?? "").trim();
+    return {
+      name: "update_journal_entry",
+      body,
+      ...(id ? { id } : {}),
+      ...(match ? { match } : {}),
+      ...(title ? { title } : {}),
+    };
+  }
   if (name === "add_todo") {
     const title = (params.title ?? params.task ?? "").trim();
     if (!title) return null;
@@ -161,6 +225,18 @@ export function encodeAssistantAction(action: AssistantAction): string {
   }
   if (action.name === "update_gratitude") {
     return `[[ACTION:update_gratitude|match=${enc(action.match)}|text=${enc(action.text)}]]`;
+  }
+  if (action.name === "add_journal_entry") {
+    const parts = [`body=${enc(action.body)}`];
+    if (action.title) parts.unshift(`title=${enc(action.title)}`);
+    return `[[ACTION:add_journal_entry|${parts.join("|")}]]`;
+  }
+  if (action.name === "update_journal_entry") {
+    const parts = [`body=${enc(action.body)}`];
+    if (action.id) parts.unshift(`id=${enc(action.id)}`);
+    if (action.match) parts.push(`match=${enc(action.match)}`);
+    if (action.title) parts.push(`title=${enc(action.title)}`);
+    return `[[ACTION:update_journal_entry|${parts.join("|")}]]`;
   }
   if (action.name === "add_todo") {
     const parts = [`title=${enc(action.title)}`];
