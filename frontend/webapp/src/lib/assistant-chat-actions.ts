@@ -8,6 +8,7 @@ import {
   localDateKey,
   newGratitudeJournalEntry,
   normalizeGratitudeLines,
+  saveJournalStore,
   type JournalEntry,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
