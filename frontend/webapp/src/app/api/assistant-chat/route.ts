@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildCachedMessagesRequestBody } from "@/lib/anthropic-prompt-cache";
 import { buildAssistantChatSystemPrompt } from "@/lib/assistant-chat-system-prompt";
-import { buildAssistantStubReply } from "@/lib/assistant-chat-stub-reply";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,27 +19,6 @@ function sseResponse(stream: ReadableStream<Uint8Array>): Response {
       Connection: "keep-alive",
     },
   });
-}
-
-function stubSse(reply: string): Response {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const write = (obj: Record<string, unknown>) => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(obj)}\n\n`),
-        );
-      };
-      const step = 12;
-      for (let i = 0; i < reply.length; i += step) {
-        write({ d: reply.slice(i, i + step) });
-        await new Promise((r) => setTimeout(r, 8));
-      }
-      write({ done: true });
-      controller.close();
-    },
-  });
-  return sseResponse(stream);
 }
 
 async function pipeAnthropicToClientSse(
@@ -115,8 +93,8 @@ async function pipeAnthropicToClientSse(
 
 /**
  * App-control assistant chat — separate from `/api/medimade-chat`.
- * Prefer Lambda URL (prompt-cached Claude). Else local ANTHROPIC_API_KEY with
- * the same cache shape. Else deterministic stub.
+ * Requires `NEXT_PUBLIC_ASSISTANT_CHAT_URL` (Lambda) or `ANTHROPIC_API_KEY` /
+ * `CLAUDE_API_KEY`. No canned stub replies.
  */
 export async function POST(req: Request) {
   let body: unknown;
@@ -196,54 +174,58 @@ export async function POST(req: Request) {
     process.env.CLAUDE_API_KEY?.trim() ||
     "";
 
-  if (apiKey) {
-    const requestBody = buildCachedMessagesRequestBody({
-      model: claudeModel || DEFAULT_MODEL,
-      system: buildAssistantChatSystemPrompt(),
-      messages: turns,
-      maxTokens: 512,
-      stream: true,
-    });
-
-    let upstream: Response;
-    try {
-      upstream = await fetch(ANTHROPIC_URL, {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        cache: "no-store",
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Anthropic unreachable";
-      return NextResponse.json({ error: msg }, { status: 502 });
-    }
-
-    if (!upstream.ok) {
-      const detail = await upstream.text();
-      return NextResponse.json(
-        {
-          error: "Anthropic request failed",
-          detail: detail.slice(0, 2000),
-        },
-        { status: upstream.status },
-      );
-    }
-
-    if (!upstream.body) {
-      return NextResponse.json(
-        { error: "Empty body from Anthropic" },
-        { status: 502 },
-      );
-    }
-
-    return sseResponse(await pipeAnthropicToClientSse(upstream.body));
+  if (!apiKey) {
+    return NextResponse.json(
+      {
+        error:
+          "Chat is not configured. Set NEXT_PUBLIC_ASSISTANT_CHAT_URL or ANTHROPIC_API_KEY.",
+      },
+      { status: 503 },
+    );
   }
 
-  // No Lambda URL / API key — local stub for UI work.
-  const lastUser = turns[turns.length - 1]!;
-  return stubSse(buildAssistantStubReply(lastUser.content));
+  const requestBody = buildCachedMessagesRequestBody({
+    model: claudeModel || DEFAULT_MODEL,
+    system: buildAssistantChatSystemPrompt(),
+    messages: turns,
+    maxTokens: 512,
+    stream: true,
+  });
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+      cache: "no-store",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Anthropic unreachable";
+    return NextResponse.json({ error: msg }, { status: 502 });
+  }
+
+  if (!upstream.ok) {
+    const detail = await upstream.text();
+    return NextResponse.json(
+      {
+        error: "Anthropic request failed",
+        detail: detail.slice(0, 2000),
+      },
+      { status: upstream.status },
+    );
+  }
+
+  if (!upstream.body) {
+    return NextResponse.json(
+      { error: "Empty body from Anthropic" },
+      { status: 502 },
+    );
+  }
+
+  return sseResponse(await pipeAnthropicToClientSse(upstream.body));
 }

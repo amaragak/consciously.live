@@ -16,16 +16,19 @@ import { executeAssistantActions } from "@/lib/assistant-chat-actions";
 import {
   assistantChatBubbles,
   parseAssistantDisplayText,
+  type AssistantAction,
 } from "@/lib/assistant-chat-protocol";
-import {
-  clearAssistantChatSession,
-  loadAssistantChatSession,
-  saveAssistantChatSession,
-  type AssistantChatMessage,
-} from "@/lib/assistant-chat-storage";
+import { clearAssistantChatSession } from "@/lib/assistant-chat-storage";
 
-const OPENING =
-  "I'm here with you. What's on your mind — or what would you like help with?";
+/** Empty-state chrome only — not a chat bubble. */
+const EMPTY_HINT = "What's on your mind today?";
+
+type AssistantChatMessage = {
+  role: "user" | "assistant";
+  text: string;
+  actions?: AssistantAction[];
+  actionResults?: Array<{ label: string; href?: string; ok: boolean }>;
+};
 
 function ChatTypingIndicator() {
   return (
@@ -86,10 +89,7 @@ function IconResetArrow({ className }: { className?: string }) {
 }
 
 export function AssistantChatWorkspace() {
-  const [hydrated, setHydrated] = useState(false);
-  const [messages, setMessages] = useState<AssistantChatMessage[]>([
-    { role: "assistant", text: OPENING },
-  ]);
+  const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
   const [thread, setThread] = useState<
     Array<{ role: "user" | "assistant"; content: string }>
   >([]);
@@ -105,23 +105,9 @@ export function AssistantChatWorkspace() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const session = loadAssistantChatSession();
-    if (session.messages.length > 0) {
-      setMessages(session.messages);
-      setThread(session.thread);
-    }
-    setHydrated(true);
+    // Drop any leftover keys from earlier builds; transcript stays in memory only.
+    clearAssistantChatSession();
   }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    saveAssistantChatSession({
-      v: 1,
-      messages,
-      thread,
-      updatedAt: new Date().toISOString(),
-    });
-  }, [hydrated, messages, thread]);
 
   useEffect(() => {
     inputDraftRef.current = input;
@@ -142,7 +128,7 @@ export function AssistantChatWorkspace() {
   const resetChat = useCallback(() => {
     if (busyRef.current) return;
     clearAssistantChatSession();
-    setMessages([{ role: "assistant", text: OPENING }]);
+    setMessages([]);
     setThread([]);
     setInput("");
     setError(null);
@@ -159,13 +145,7 @@ export function AssistantChatWorkspace() {
     setInput("");
     inputDraftRef.current = "";
 
-    const history =
-      thread.length === 0
-        ? [
-            { role: "assistant" as const, content: OPENING },
-            { role: "user" as const, content: trimmed },
-          ]
-        : [...thread, { role: "user" as const, content: trimmed }];
+    const history = [...thread, { role: "user" as const, content: trimmed }];
 
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     setThread(history);
@@ -179,10 +159,7 @@ export function AssistantChatWorkspace() {
         const { text } = parseAssistantDisplayText(acc);
         if (!assistantStarted) {
           assistantStarted = true;
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", text },
-          ]);
+          setMessages((prev) => [...prev, { role: "assistant", text }]);
         } else {
           setMessages((prev) => {
             const next = [...prev];
@@ -246,146 +223,141 @@ export function AssistantChatWorkspace() {
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
       <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
         <div
-          className="pointer-events-none absolute inset-0 opacity-15"
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-0 opacity-15"
           style={{
             backgroundImage:
               'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
-            backgroundSize: "286px 320px",
             backgroundRepeat: "repeat",
+            backgroundSize: "286px 320px",
+            backgroundPosition: "center top",
           }}
-          aria-hidden
         />
 
         <AssistantChatCapabilitiesFab />
 
-        <div className="relative z-[1] flex shrink-0 items-center justify-end gap-2 px-4 pb-1 pt-3 sm:px-5">
+        <div className="relative z-[1] flex shrink-0 items-center justify-end px-4 py-2.5 sm:px-5">
           <button
             type="button"
             onClick={resetChat}
             disabled={busy || !hasUserTurns}
             aria-label="Reset chat"
-            title="Reset chat"
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm text-muted transition-colors hover:bg-accent-soft/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <IconResetArrow />
-            <span>Reset</span>
+            <IconResetArrow className="h-3.5 w-3.5" />
+            Reset
           </button>
         </div>
 
-        <div
-          ref={scrollRef}
-          className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-1 sm:px-5"
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            const dist =
-              el.scrollHeight - el.scrollTop - el.clientHeight;
-            isAtBottomRef.current = dist < 80;
-          }}
-        >
-          {!hasUserTurns ? (
-            <div className="flex min-h-[min(52vh,28rem)] flex-col items-center justify-center px-2 text-center">
-              <p className="font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-                Chat
-              </p>
-              <p className="mt-3 max-w-md text-base leading-relaxed text-muted">
-                {OPENING}
-              </p>
-            </div>
-          ) : (
-            <div className="mx-auto flex w-full max-w-3xl flex-col pt-2">
-              {messages.map((msg, i) => {
-                if (!hasUserTurns && i === 0 && msg.role === "assistant") {
-                  return null;
-                }
-                const isUser = msg.role === "user";
-                const next = messages[i + 1];
-                const groupedWithNext =
-                  !!next && next.role === msg.role;
-                const parts = isUser
-                  ? [msg.text]
-                  : assistantChatBubbles(msg.text).length
-                    ? assistantChatBubbles(msg.text)
-                    : [msg.text];
+        <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+          <div
+            ref={scrollRef}
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 sm:px-5"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              const dist =
+                el.scrollHeight - el.scrollTop - el.clientHeight;
+              isAtBottomRef.current = dist < 50;
+            }}
+          >
+            {!hasUserTurns ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+                <p className="font-display text-center text-[18px] font-normal text-muted">
+                  {EMPTY_HINT}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-auto flex w-full min-w-0 flex-col py-3">
+                {messages.map((msg, i) => {
+                  const isUser = msg.role === "user";
+                  const next = messages[i + 1];
+                  const groupedWithNext = !!next && next.role === msg.role;
+                  const parts = isUser
+                    ? [msg.text]
+                    : assistantChatBubbles(msg.text).length
+                      ? assistantChatBubbles(msg.text)
+                      : [msg.text];
 
-                return (
-                  <div
-                    key={`${msg.role}-${i}`}
-                    className={`flex w-full min-w-0 flex-col ${
-                      isUser ? "items-end" : "items-start"
-                    } ${groupedWithNext ? "mb-1" : "mb-3"}`}
-                  >
-                    {parts.map((part, pi) => {
-                      const lastPart = pi === parts.length - 1;
-                      const showTail = lastPart && !groupedWithNext;
-                      const radius = isUser
-                        ? showTail
-                          ? "rounded-[1.25rem] rounded-br-sm"
-                          : "rounded-[1.25rem]"
-                        : showTail
-                          ? "rounded-[1.25rem] rounded-bl-sm"
-                          : "rounded-[1.25rem]";
-                      const bubbleBase = `chat-bubble relative inline-block w-fit max-w-[calc(100%-16px)] px-3.5 py-2.5 ${radius}`;
-                      const bubble = isUser
-                        ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
-                            showTail ? "chat-bubble-tail-right" : ""
-                          }`
-                        : `${bubbleBase} bg-card text-lg leading-[1.5] text-foreground ${
-                            showTail ? "chat-bubble-tail-left" : ""
-                          }`;
-                      return (
-                        <div
-                          key={pi}
-                          className={`flex w-full min-w-0 ${
-                            isUser ? "justify-end" : "justify-start"
-                          } ${lastPart ? "" : "mb-1"}`}
-                        >
-                          <div className={bubble}>
-                            <ChatMarkdown
-                              text={part}
-                              className="relative z-[2] text-lg font-normal leading-[1.5]"
-                            />
+                  return (
+                    <div
+                      key={`${msg.role}-${i}`}
+                      className={`flex w-full min-w-0 flex-col ${
+                        isUser ? "items-end" : "items-start"
+                      } ${groupedWithNext ? "mb-1" : "mb-3"}`}
+                    >
+                      {parts.map((part, pi) => {
+                        const lastPart = pi === parts.length - 1;
+                        const showTail = lastPart && !groupedWithNext;
+                        const radius = isUser
+                          ? showTail
+                            ? "rounded-[1.25rem] rounded-br-sm"
+                            : "rounded-[1.25rem]"
+                          : showTail
+                            ? "rounded-[1.25rem] rounded-bl-sm"
+                            : "rounded-[1.25rem]";
+                        const bubbleBase = `chat-bubble relative inline-block w-fit max-w-[calc(100%-16px)] px-3.5 py-2.5 ${radius}`;
+                        const bubble = isUser
+                          ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
+                              showTail ? "chat-bubble-tail-right" : ""
+                            }`
+                          : `${bubbleBase} bg-card text-lg leading-[1.5] text-foreground ${
+                              showTail ? "chat-bubble-tail-left" : ""
+                            }`;
+                        return (
+                          <div
+                            key={pi}
+                            className={`flex w-full min-w-0 ${
+                              isUser ? "justify-end" : "justify-start"
+                            } ${lastPart ? "" : "mb-1"}`}
+                          >
+                            <div className={bubble}>
+                              <ChatMarkdown
+                                text={part}
+                                className="relative z-[2] text-lg font-normal leading-[1.5]"
+                              />
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                    {!isUser && msg.actionResults?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {msg.actionResults.map((result, ri) => {
-                          if (result.href && result.ok) {
+                        );
+                      })}
+                      {!isUser && msg.actionResults?.length ? (
+                        <div className="mt-2 flex w-full flex-wrap justify-start gap-2">
+                          {msg.actionResults.map((result, ri) => {
+                            if (result.href && result.ok) {
+                              return (
+                                <Link
+                                  key={ri}
+                                  href={result.href}
+                                  className="inline-flex cursor-pointer items-center rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium text-accent-link transition-colors hover:bg-accent-soft/40"
+                                >
+                                  {result.label}
+                                </Link>
+                              );
+                            }
                             return (
-                              <Link
+                              <span
                                 key={ri}
-                                href={result.href}
-                                className="inline-flex cursor-pointer items-center rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium text-accent-link transition-colors hover:bg-accent-soft/40"
+                                className={`inline-flex items-center rounded-full border border-border/80 bg-background/80 px-3 py-1.5 text-sm ${
+                                  result.ok ? "text-muted" : "text-danger"
+                                }`}
                               >
                                 {result.label}
-                              </Link>
+                              </span>
                             );
-                          }
-                          return (
-                            <span
-                              key={ri}
-                              className={`inline-flex items-center rounded-full border border-border/80 bg-background/80 px-3 py-1.5 text-sm ${
-                                result.ok ? "text-muted" : "text-danger"
-                              }`}
-                            >
-                              {result.label}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {showTyping ? <ChatTypingIndicator /> : null}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {showTyping ? <ChatTypingIndicator /> : null}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
         </div>
 
         <form
-          className="relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 bg-background px-4 pb-3 pt-2 sm:px-5"
+          className="relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 bg-background px-4 pb-3 pt-2 pointer-events-auto sm:px-5"
           onSubmit={(e) => {
             e.preventDefault();
             void send();
