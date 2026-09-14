@@ -1358,6 +1358,14 @@ export default function LibraryView({
             }
             if (catalogued) {
               setPendingAutoplay({ jobId: p.jobId, audioKey });
+              void import("@/lib/meditation-generation-notifications").then(
+                (m) =>
+                  m.notifyMeditationGenerationComplete({
+                    jobId: p.jobId,
+                    title: nextP.title || catalogued.title || "Your meditation",
+                    href: `/meditate/library/creations?focus=${encodeURIComponent(audioKey)}&play=1`,
+                  }),
+              );
               continue;
             }
             next.push({ ...nextP, status: "running" });

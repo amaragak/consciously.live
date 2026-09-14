@@ -64,7 +64,8 @@ export async function loadHomepageFishSpeakers(): Promise<FishSpeaker[]> {
   );
 }
 
-async function pickRandomSoundBed(): Promise<MixerPresetMix> {
+/** Random factory bed (or nature+music fallback) for one-shot audio jobs. */
+export async function pickRandomSoundBed(): Promise<MixerPresetMix> {
   try {
     const beds = await listBackgroundAudio();
     const factories = (beds.factoryMixes ?? []).filter((p) => Boolean(p?.id));

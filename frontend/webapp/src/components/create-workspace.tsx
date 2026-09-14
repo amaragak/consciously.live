@@ -135,6 +135,12 @@ import {
   clearPlanCreateHandoff,
   readPlanCreateHandoff,
 } from "@/lib/plan-create-handoff";
+import {
+  consumeReturnToFocusAfterCreate,
+  focusMyHrefFromIdeate,
+  writeReturnToFocusAfterCreate,
+} from "@/lib/focus-session-handoff";
+import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import {
@@ -250,17 +256,26 @@ function maybeScrollChatToBottom(
 }
 
 function ChatTypingIndicator() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSlow(true), 7000);
+    return () => window.clearTimeout(id);
+  }, []);
+
   return (
     <div
-      className="mb-3 flex w-full justify-start px-3.5 py-2.5"
+      className="mb-3 flex w-full items-center justify-start gap-2.5 px-3.5 py-2.5"
       aria-live="polite"
-      aria-label="Guide is typing"
+      aria-label={slow ? "Taking longer than usual" : "Guide is typing"}
     >
       <div className="flex h-4 items-end gap-1.5">
         <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
         <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
         <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
       </div>
+      {slow ? (
+        <span className="text-sm text-muted">Taking longer than usual…</span>
+      ) : null}
     </div>
   );
 }
@@ -1963,6 +1978,19 @@ export function CreateWorkspace({
       return;
     }
 
+    const targetMinutes =
+      handoff.v === 2 &&
+      (handoff.meditationTargetMinutes === 2 ||
+        handoff.meditationTargetMinutes === 5 ||
+        handoff.meditationTargetMinutes === 10 ||
+        handoff.meditationTargetMinutes === 20)
+        ? handoff.meditationTargetMinutes
+        : meditationTargetMinutes;
+    setMeditationTargetMinutes(targetMinutes);
+    if (handoff.v === 2 && handoff.returnToFocus) {
+      writeReturnToFocusAfterCreate();
+    }
+
     const linkedLifeAreaId =
       handoff.v === 2 &&
       typeof handoff.lifeAreaId === "string" &&
@@ -2003,7 +2031,10 @@ export function CreateWorkspace({
       },
       {
         role: "user",
-        text: PLAN_CREATE_FIRST_MESSAGE,
+        text:
+          handoff.v === 2 && handoff.returnToFocus
+            ? "Please help me create a short pre-focus manifestation / visualisation meditation."
+            : PLAN_CREATE_FIRST_MESSAGE,
         variant: "chat",
       },
     ]);
@@ -2016,7 +2047,7 @@ export function CreateWorkspace({
             meditationStyle: styleHint,
             messages: history,
             journalMode: false,
-            meditationTargetMinutes,
+            meditationTargetMinutes: targetMinutes,
           },
         );
         setClaudeThread([...history, { role: "assistant", content: text }]);
@@ -3519,12 +3550,17 @@ export function CreateWorkspace({
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
       };
       appendPendingLibraryGeneration(pending);
+      ensurePendingMeditationJobPoller();
 
       isRedirectingToLibraryRef.current = true;
       clearCreateSession();
-      router.push(
-        `/meditate/library/creations?focus=${encodeURIComponent(`pending:${jobId}`)}`,
-      );
+      if (consumeReturnToFocusAfterCreate()) {
+        router.push(focusMyHrefFromIdeate());
+      } else {
+        router.push(
+          `/meditate/library/creations?focus=${encodeURIComponent(`pending:${jobId}`)}`,
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Audio generation failed";
       setAudioError(msg);
@@ -4739,7 +4775,7 @@ export function CreateWorkspace({
                         : showTail
                           ? "rounded-[1.25rem] rounded-bl-sm"
                           : "rounded-[1.25rem]";
-                      const bubbleBase = `chat-bubble relative inline-block w-fit max-w-[calc(100%-16px)] px-3.5 py-2.5 ${radius}`;
+                      const bubbleBase = `chat-bubble relative px-3.5 py-2.5 ${radius}`;
                       const bubble = isUser
                         ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
                             showTail ? "chat-bubble-tail-right" : ""
@@ -4756,32 +4792,34 @@ export function CreateWorkspace({
                             isUser ? "justify-end" : "justify-start"
                           } ${lastPart ? "" : "mb-1"}`}
                         >
-                          <div className={bubble}>
-                            {isScript ? (
-                              <>
-                                <div className="mb-2 inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-link">
-                                  Meditation script · ~5 min
+                          <div className="chat-bubble-shell">
+                            <div className={bubble}>
+                              {isScript ? (
+                                <>
+                                  <div className="mb-2 inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-link">
+                                    Meditation script · ~5 min
+                                  </div>
+                                  <ChatMarkdown
+                                    text={msg.text}
+                                    className="font-serif text-lg leading-relaxed text-foreground/95"
+                                  />
+                                </>
+                              ) : isUser &&
+                                msg.journalSegments &&
+                                msg.journalSegments.length > 0 ? (
+                                <div className="text-lg leading-[1.5]">
+                                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                                  <JournalHandoffEntryCards
+                                    segments={msg.journalSegments}
+                                  />
                                 </div>
+                              ) : (
                                 <ChatMarkdown
-                                  text={msg.text}
-                                  className="font-serif text-lg leading-relaxed text-foreground/95"
+                                  text={part}
+                                  className="relative z-[2] text-lg font-normal leading-[1.5]"
                                 />
-                              </>
-                            ) : isUser &&
-                              msg.journalSegments &&
-                              msg.journalSegments.length > 0 ? (
-                              <div className="text-lg leading-[1.5]">
-                                <p className="whitespace-pre-wrap">{msg.text}</p>
-                                <JournalHandoffEntryCards
-                                  segments={msg.journalSegments}
-                                />
-                              </div>
-                            ) : (
-                              <ChatMarkdown
-                                text={part}
-                                className="relative z-[2] text-lg font-normal leading-[1.5]"
-                              />
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
                       );

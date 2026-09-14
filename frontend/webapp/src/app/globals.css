@@ -6,6 +6,8 @@
 :root {
   /* Keep in sync with site header height (h-14) */
   --site-header-h: 3.5rem;
+  /* Desktop app nav rail — updated by AppChrome when collapsed. */
+  --app-sidebar-w: 200px;
   /* App content column — matches Tailwind `max-w-6xl` (72rem). */
   --content-max-width: 72rem;
   /*
@@ -135,8 +137,18 @@ body {
   font-family: var(--font-hand), "Segoe Print", "Bradley Hand", cursive;
 }
 
-/* iMessage-style chat tails (clip-path — no page-color mask that shows as a white square). */
+/* iMessage-style chat tails (clip-path — no page-color mask that shows as a white square).
+ * Width: outer `.chat-bubble-shell` caps at 80%; inner `.chat-bubble` uses table
+ * shrink-to-fit so multi-line text doesn't stretch to the full cap. */
+.chat-bubble-shell {
+  max-width: 80%;
+}
+
 .chat-bubble {
+  display: table;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
   /* drop-shadow follows the tail shape; box-shadow would square-clip oddly */
   filter: drop-shadow(
       0 1px 2px color-mix(in srgb, var(--foreground) 12%, transparent)

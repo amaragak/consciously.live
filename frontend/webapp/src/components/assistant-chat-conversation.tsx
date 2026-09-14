@@ -1,24 +1,37 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState, type RefObject } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { DictationMicButton, appendSpokenText } from "@/components/dictation-mic-button";
 import { assistantChatBubbles } from "@/lib/assistant-chat-protocol";
 import type { AssistantChatUiMessage } from "@/lib/assistant-chat-storage";
-import type { RefObject } from "react";
+
+const SLOW_REPLY_MS = 7000;
 
 function ChatTypingIndicator() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSlow(true), SLOW_REPLY_MS);
+    return () => window.clearTimeout(id);
+  }, []);
+
   return (
     <div
-      className="mb-3 flex w-full justify-start px-3.5 py-2.5"
+      className="mb-3 flex w-full items-center justify-start gap-2.5 px-3.5 py-2.5"
       aria-live="polite"
-      aria-label="Assistant is typing"
+      aria-label={
+        slow ? "Taking longer than usual" : "Assistant is typing"
+      }
     >
       <div className="flex h-4 items-end gap-1.5">
         <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
         <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
         <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
       </div>
+      {slow ? (
+        <span className="text-sm text-muted">Taking longer than usual…</span>
+      ) : null}
     </div>
   );
 }
@@ -132,7 +145,7 @@ export function AssistantChatConversation({
                       : showTail
                         ? "rounded-[1.25rem] rounded-bl-sm"
                         : "rounded-[1.25rem]";
-                    const bubbleBase = `chat-bubble relative inline-block w-fit max-w-[calc(100%-16px)] px-3.5 py-2.5 ${radius}`;
+                    const bubbleBase = `chat-bubble relative px-3.5 py-2.5 ${radius}`;
                     const bubble = isUser
                       ? `${bubbleBase} bg-accent-soft ${textSize} leading-[1.5] text-foreground ${
                           showTail ? "chat-bubble-tail-right" : ""
@@ -147,17 +160,19 @@ export function AssistantChatConversation({
                           isUser ? "justify-end" : "justify-start"
                         } ${lastPart ? "" : "mb-1"}`}
                       >
-                        <div className={bubble}>
-                          <ChatMarkdown
-                            text={part}
-                            className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
-                          />
+                        <div className="chat-bubble-shell">
+                          <div className={bubble}>
+                            <ChatMarkdown
+                              text={part}
+                              className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
+                            />
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                   {!isUser && msg.actionResults?.length ? (
-                    <div className="mt-2 flex w-full max-w-[calc(100%-16px)] flex-col gap-2">
+                    <div className="mt-2 flex w-full max-w-[80%] flex-col gap-2">
                       {msg.actionResults.map((result, ri) => (
                         <div
                           key={ri}

@@ -373,8 +373,11 @@ export function saveIdeateStoreLocal(store: IdeateStoreV2) {
 /** Persist and schedule cloud PUT when signed in. */
 export function saveIdeateStore(store: IdeateStoreV2) {
   saveIdeateStoreLocal(store);
-  if (typeof window !== "undefined" && isSignedIn()) {
-    void import("@/lib/ideate-cloud").then((m) => m.scheduleIdeateCloudPush());
+  if (typeof window !== "undefined") {
+    void import("@/lib/ideate-cloud").then((m) => {
+      m.notifyIdeateStoreChanged();
+      if (isSignedIn()) m.scheduleIdeateCloudPush();
+    });
   }
 }
 

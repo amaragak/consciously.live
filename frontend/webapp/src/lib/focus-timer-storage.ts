@@ -13,7 +13,7 @@ export type FocusTaskItem = {
   /** Life area title badge when imported from Ideate. */
   lifeAreaId?: string | null;
   lifeAreaTitle?: string | null;
-  /** Ideate entity linked for “Mark as done in Ideate”. */
+  /** Ideate entity linked for shared check state with Focus. */
   ideateKind?: FocusIdeateKind | null;
   ideateId?: string | null;
 };

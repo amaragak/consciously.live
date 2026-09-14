@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconPencil } from "@tabler/icons-react";
 import {
@@ -33,6 +34,16 @@ import {
   writeSessionsCompletedToday,
   type FocusTaskItem,
 } from "@/lib/focus-timer-storage";
+import {
+  clearFocusSessionHandoff,
+  readFocusSessionHandoff,
+} from "@/lib/focus-session-handoff";
+import {
+  focusTasksFromIdeateSubtask,
+  newFocusTaskId,
+  syncFocusDoneFromIdeate,
+  writeIdeateDoneFromFocus,
+} from "@/lib/focus-ideate-link";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import {
   pullIdeateStoreFromCloud,
@@ -45,12 +56,8 @@ import {
 } from "@/lib/medimade-api";
 import {
   loadIdeateStore,
-  recomputeSubtaskStatus,
-  saveIdeateStore,
   subtasksForProject,
   todosForSubtask,
-  upsertSubtask,
-  upsertTodo,
   type IdeateStoreV2,
   type IdeateSubtask,
   type IdeateTodo,
@@ -96,10 +103,6 @@ function formatDurationLabel(totalSeconds: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${String(r).padStart(2, "0")}`;
-}
-
-function newTaskId(): string {
-  return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function firstNameFromLabel(label: string): string {
@@ -161,6 +164,8 @@ export function FocusTimerView() {
     toggleCurrent,
     bedVolumeApiRef,
   } = useLibraryPlayer();
+  const searchParams = useSearchParams();
+  const fromIdeateToken = searchParams.get("fromIdeate");
   const [name, setName] = useState("there");
   const [greeting, setGreeting] = useState("Good morning");
   const [taskInput, setTaskInput] = useState("");
@@ -237,11 +242,28 @@ export function FocusTimerView() {
       "there";
     setName(firstNameFromLabel(label));
     setGreeting(timeOfDayGreeting());
-    setTasks(readFocusTasksList());
+    const store = loadIdeateStore();
+    const list = syncFocusDoneFromIdeate(readFocusTasksList(), store);
+    setTasks(list);
+    writeFocusTasksList(list);
     setSessionsToday(readSessionsCompletedToday());
     setFocusPattern(loadFocusPattern());
     setFocusMix(loadFocusMix());
   }, []);
+
+  // Ideate “Start focus session” handoff (query token so repeat visits re-apply).
+  useEffect(() => {
+    const handoff = readFocusSessionHandoff();
+    if (!handoff) return;
+    clearFocusSessionHandoff();
+    const store = loadIdeateStore();
+    const seeded = focusTasksFromIdeateSubtask(store, handoff.subtaskId);
+    if (seeded.length === 0) return;
+    setTasks(seeded);
+    writeFocusTasksList(seeded);
+    setIdeateStore(store);
+    setTasksShelfOpen(true);
+  }, [fromIdeateToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -413,6 +435,20 @@ export function FocusTimerView() {
     return subscribeIdeateCloud(sync);
   }, [tasksOpen, ideateFlyoutOpen]);
 
+  // Keep Focus checkboxes aligned with Ideate when life-area todos change.
+  useEffect(() => {
+    const syncDone = () => {
+      const store = loadIdeateStore();
+      setTasks((prev) => {
+        const next = syncFocusDoneFromIdeate(prev, store);
+        if (next !== prev) writeFocusTasksList(next);
+        return next;
+      });
+    };
+    syncDone();
+    return subscribeIdeateCloud(syncDone);
+  }, []);
+
   useEffect(() => {
     if (!ideateFlyoutOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -524,8 +560,19 @@ export function FocusTimerView() {
   }
 
   function toggleTaskDone(id: string) {
+    const item = tasks.find((t) => t.id === id);
+    if (!item) return;
+    const nextDone = !item.done;
+    if (item.ideateKind && item.ideateId) {
+      const store = writeIdeateDoneFromFocus(
+        item.ideateKind,
+        item.ideateId,
+        nextDone,
+      );
+      if (store) setIdeateStore(store);
+    }
     persistTasks(
-      tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+      tasks.map((t) => (t.id === id ? { ...t, done: nextDone } : t)),
     );
   }
 
@@ -536,7 +583,7 @@ export function FocusTimerView() {
   function addTaskFromMainInput() {
     const text = taskInput.trim();
     if (!text) return;
-    persistTasks([...tasks, { id: newTaskId(), text, done: false }]);
+    persistTasks([...tasks, { id: newFocusTaskId(), text, done: false }]);
     setTaskInput("");
   }
 
@@ -545,7 +592,7 @@ export function FocusTimerView() {
     if (!text) return;
     persistTasks([
       ...tasks,
-      { id: newTaskId(), text, done: false },
+      { id: newFocusTaskId(), text, done: false },
     ]);
     setDraftTask("");
   }
@@ -610,9 +657,9 @@ export function FocusTimerView() {
         ? ideateStore.dreams.find((d) => d.id === sub.projectId)
         : undefined;
       additions.push({
-        id: newTaskId(),
+        id: newFocusTaskId(),
         text: todo.title,
-        done: false,
+        done: todo.isChecked,
         lifeAreaId: area?.id ?? null,
         lifeAreaTitle: area?.title?.trim() || null,
         ideateKind: "todo",
@@ -629,33 +676,6 @@ export function FocusTimerView() {
     } else {
       setDrawerTab("session");
     }
-  }
-
-  function markDoneInIdeate(item: FocusTaskItem) {
-    if (!item.ideateKind || !item.ideateId) return;
-    let store = loadIdeateStore();
-    const now = new Date().toISOString();
-    if (item.ideateKind === "todo") {
-      const todo = store.todos.find((t) => t.id === item.ideateId);
-      if (!todo) return;
-      store = upsertTodo(store, {
-        ...todo,
-        isChecked: true,
-        checkedAt: now,
-      });
-      store = recomputeSubtaskStatus(store, todo.subtaskId);
-    } else {
-      const sub = store.subtasks.find((s) => s.id === item.ideateId);
-      if (!sub) return;
-      store = upsertSubtask(store, {
-        ...sub,
-        status: "done",
-        completedAt: now,
-        completedManually: true,
-      });
-    }
-    saveIdeateStore(store);
-    setIdeateStore(store);
   }
 
   function drillIntoArea(area: PlanDream) {
@@ -1263,15 +1283,6 @@ export function FocusTimerView() {
                         </span>
                       ) : null}
                     </div>
-                    {t.done && t.ideateKind && t.ideateId ? (
-                      <button
-                        type="button"
-                        onClick={() => markDoneInIdeate(t)}
-                        className="mt-0.5 cursor-pointer text-xs font-medium text-accent-link underline-offset-2 hover:underline"
-                      >
-                        Mark as done in Ideate →
-                      </button>
-                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -1366,14 +1377,14 @@ export function FocusTimerView() {
           <button
             type="button"
             aria-label="Close tasks"
-            className="fixed inset-0 z-[140] bg-black/25 md:left-[200px]"
+            className="fixed inset-0 z-[140] bg-black/25 md:left-[var(--app-sidebar-w,200px)]"
             onClick={() => setTasksOpen(false)}
           />
           <div
             role="dialog"
             aria-modal
             aria-label="Tasks"
-            className="fixed inset-x-0 bottom-0 z-[150] flex max-h-[75vh] flex-col rounded-t-2xl border-t border-border bg-background/95 shadow-xl backdrop-blur-md md:left-[200px]"
+            className="fixed inset-x-0 bottom-0 z-[150] flex max-h-[75vh] flex-col rounded-t-2xl border-t border-border bg-background/95 shadow-xl backdrop-blur-md md:left-[var(--app-sidebar-w,200px)]"
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col overflow-hidden px-4 pb-6 pt-4 sm:px-6">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -1466,15 +1477,6 @@ export function FocusTimerView() {
                                   </span>
                                 ) : null}
                               </div>
-                              {t.done && t.ideateKind && t.ideateId ? (
-                                <button
-                                  type="button"
-                                  onClick={() => markDoneInIdeate(t)}
-                                  className="mt-1 cursor-pointer text-xs font-medium text-accent-link underline-offset-2 hover:underline"
-                                >
-                                  Mark as done in Ideate →
-                                </button>
-                              ) : null}
                             </div>
                             <button
                               type="button"

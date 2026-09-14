@@ -290,8 +290,8 @@ export function JournalRichEditor({
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
-      {/* Writing column — capped width; can shrink on medium so editor keeps priority. */}
-      <div className="flex min-h-0 w-full min-w-0 max-w-[680px] flex-col overflow-hidden border-r-[0.5px] border-border bg-background">
+      {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter. */}
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <div className="flex shrink-0 flex-col border-b border-border">
           <div className="flex items-start gap-2 px-7 pb-3 pt-3">
             <div className="min-w-0 flex-1">
@@ -670,11 +670,6 @@ export function JournalRichEditor({
         </div>
       ) : null}
       </div>
-      {/* Beyond the writing column: app background + mandala fade. */}
-      <div
-        className="journal-editor-pattern-gutter min-h-0 min-w-0 flex-1"
-        aria-hidden
-      />
     </div>
   );
 }

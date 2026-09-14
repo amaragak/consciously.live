@@ -1,5 +1,5 @@
 /** Brand sun mark. Swap this file to replace the logo everywhere it is used. */
-export const LOGO_MARK_FILL = "#F0A855";
+export const LOGO_MARK_FILL = "#F1AC73";
 
 export function LogoMark({
   size = 34,

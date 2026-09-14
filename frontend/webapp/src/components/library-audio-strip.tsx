@@ -641,7 +641,9 @@ export function LibraryAudioStrip({
     <div
       ref={rootRef}
       className={`pointer-events-none fixed bottom-0 z-50 ${
-        besideSidebar ? "left-0 md:left-[200px]" : "left-0"
+        besideSidebar
+          ? "left-0 md:left-[var(--app-sidebar-w,200px)]"
+          : "left-0"
       }`}
       style={{
         right: focusTasksInsetPx > 0 ? focusTasksInsetPx : 0,

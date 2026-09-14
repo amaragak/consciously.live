@@ -81,6 +81,51 @@ import {
 import { journalEntriesLinkedToLifeArea } from "@/lib/plan-life-area-links";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
 
+const JOURNAL_SIDEBAR_COLLAPSED_KEY = "mm_journal_sidebar_collapsed";
+
+function loadJournalSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(JOURNAL_SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveJournalSidebarCollapsed(collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      JOURNAL_SIDEBAR_COLLAPSED_KEY,
+      collapsed ? "1" : "0",
+    );
+  } catch {
+    /* */
+  }
+}
+
+function JournalSidebarChevron({ dir }: { dir: "left" | "right" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {dir === "left" ? (
+        <polyline points="15 18 9 12 15 6" />
+      ) : (
+        <polyline points="9 18 15 12 9 6" />
+      )}
+    </svg>
+  );
+}
+
 type JournalMainTab = "journal" | "gratitude";
 type JournalSection = JournalMainTab | "insights";
 
@@ -278,6 +323,7 @@ export function JournalView() {
   const [sidebarMenu, setSidebarMenu] = useState<
     null | "folder" | "date" | "filters"
   >(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [mobileEntryMenuOpen, setMobileEntryMenuOpen] = useState(false);
   const pathname = usePathname() || "/journal/my";
@@ -403,6 +449,18 @@ export function JournalView() {
       document.removeEventListener("keydown", onKey);
     };
   }, [sidebarMenu]);
+
+  useEffect(() => {
+    setSidebarCollapsed(loadJournalSidebarCollapsed());
+  }, []);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      saveJournalSidebarCollapsed(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!mobileEntryMenuOpen) return;
@@ -1355,22 +1413,26 @@ export function JournalView() {
   const showGratitudeEditor =
     journalTab === "gratitude" && !insightsOpen && hydrated && Boolean(activeEntry);
 
+  const journalComposeChrome = journalTab === "journal" && !insightsOpen;
+
   return (
     <JournalLockGate>
+    {/* Match Chat: sidebar + writing stay inside max-w-6xl; pattern gutter takes the right strip. */}
+    <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
     <div
-      className={`mx-auto flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden ${
-        journalTab === "journal" && !insightsOpen
-          ? "max-w-none px-0 pb-0 pt-0"
-          : "max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
+      className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden ${
+        journalComposeChrome
+          ? "relative z-[1] max-w-6xl border-r-[0.5px] border-border px-0 pb-0 pt-0"
+          : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
       }`}
     >
       <div
         className={`shrink-0 ${
-          journalTab === "journal" && !insightsOpen ? "px-4 sm:px-6" : ""
+          journalComposeChrome ? "px-4 sm:px-6" : ""
         } ${mobileComposeChrome ? "max-sm:hidden" : ""} ${
           importBatchId
             ? "mb-3"
-            : journalTab === "journal" && !insightsOpen
+            : journalComposeChrome
               ? "mb-0"
               : "mb-3 md:mb-0"
         }`}
@@ -1581,6 +1643,30 @@ export function JournalView() {
             : "flex-col gap-6 lg:flex-row lg:gap-4"
         }`}
       >
+        {journalTab === "journal" && sidebarCollapsed ? (
+          <aside
+            className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 border-r-[0.5px] border-border bg-surface-2 px-1.5 py-3 md:flex ${
+              mobileComposeChrome ? "" : ""
+            }`}
+          >
+            <button
+              type="button"
+              onClick={toggleSidebarCollapsed}
+              aria-label="Expand journal list"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground"
+            >
+              <JournalSidebarChevron dir="right" />
+            </button>
+            <button
+              type="button"
+              onClick={createEntry}
+              aria-label="New entry"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent"
+            >
+              +
+            </button>
+          </aside>
+        ) : (
         <aside
           className={`flex shrink-0 flex-col overflow-hidden ${
             journalTab === "journal"
@@ -1596,13 +1682,23 @@ export function JournalView() {
         >
           {journalTab === "journal" ? (
             <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={createEntry}
-                className="w-full cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
-              >
-                + New entry
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleSidebarCollapsed}
+                  aria-label="Collapse journal list"
+                  className="hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
+                >
+                  <JournalSidebarChevron dir="left" />
+                </button>
+                <button
+                  type="button"
+                  onClick={createEntry}
+                  className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+                >
+                  + New entry
+                </button>
+              </div>
               <SearchInput
                 className="w-full"
                 inputClassName="py-2"
@@ -2125,6 +2221,7 @@ export function JournalView() {
             )}
           </nav>
         </aside>
+        )}
 
         <section
           className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
@@ -2235,6 +2332,13 @@ export function JournalView() {
         </section>
       </div>
       ) : null}
+    </div>
+    {journalComposeChrome ? (
+      <div
+        className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"
+        aria-hidden
+      />
+    ) : null}
     </div>
     <JournalSettingsDialog
       open={settingsOpen}

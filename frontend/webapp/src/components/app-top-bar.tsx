@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useLayoutEffect, useState } from "react";
 import { LogoMark } from "@/components/logo-mark";
 import { AppPrimaryTabsSlot, AppTopBarTrailingSlot } from "@/components/app-primary-tabs";
+import { AppNotificationsBell } from "@/components/app-notifications-bell";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
   buildAppBreadcrumbs,
@@ -104,9 +105,12 @@ function BreadcrumbCrumb({
 export function AppTopBar({
   mobileSidebarOpen = false,
   onToggleSidebar,
+  sidebarCollapsed = false,
 }: {
   mobileSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
+  /** Matches desktop sidebar rail width via --app-sidebar-w. */
+  sidebarCollapsed?: boolean;
 }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -143,18 +147,26 @@ export function AppTopBar({
   return (
     <header className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-border bg-background">
       {/* Desktop: brand aligned with sidebar. Mobile: brand + breadcrumbs left. */}
-      <div className="relative z-10 hidden h-full w-[200px] shrink-0 items-center px-2 md:flex">
+      <div
+        className="relative z-10 hidden h-full shrink-0 items-center px-2 transition-[width] duration-200 ease-out md:flex"
+        style={{ width: "var(--app-sidebar-w, 200px)" }}
+      >
         <Link
           href="/"
-          className="inline-flex min-w-0 items-center gap-2 px-2.5"
+          className={`inline-flex min-w-0 items-center ${
+            sidebarCollapsed ? "justify-center px-0" : "gap-2 px-2.5"
+          }`}
+          title="consciously"
         >
           <LogoMark
             size={28}
             className="relative z-[1] shrink-0 text-accent-button"
           />
-          <span className="brand-wordmark truncate font-display text-xl font-medium tracking-tight lowercase">
-            consciously
-          </span>
+          {sidebarCollapsed ? null : (
+            <span className="brand-wordmark truncate font-display text-xl font-medium tracking-tight lowercase">
+              consciously
+            </span>
+          )}
         </Link>
       </div>
 
@@ -234,6 +246,7 @@ export function AppTopBar({
             View marketing page
           </AlphaChromeButton>
         </div>
+        <AppNotificationsBell />
         {onToggleSidebar ? (
           <button
             type="button"

@@ -152,6 +152,11 @@ export function subscribeIdeateCloud(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Notify same-tab listeners after a local Ideate edit (chat actions, Focus sync, etc.). */
+export function notifyIdeateStoreChanged(): void {
+  notifyIdeateCloud();
+}
+
 function notifyIdeateCloud(): void {
   for (const l of listeners) l();
 }

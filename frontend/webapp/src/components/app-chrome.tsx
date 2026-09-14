@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, Suspense, useEffect, useState } from "react";
+import { type ReactNode, Suspense, useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopBar } from "@/components/app-top-bar";
@@ -19,6 +19,11 @@ import {
   rememberAuthNext,
   signedInDestinationForMarketingRoot,
 } from "@/lib/app-routes";
+import {
+  appSidebarWidthPx,
+  loadAppSidebarCollapsed,
+  saveAppSidebarCollapsed,
+} from "@/lib/app-nav";
 import {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
@@ -70,6 +75,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Guest");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const sync = () => {
@@ -90,10 +96,36 @@ export function AppChrome({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    setSidebarCollapsed(loadAppSidebarCollapsed());
+  }, []);
+
+  useEffect(() => {
     setMobileOpen(false);
   }, [signedIn, marketingPreview, pathname]);
 
   const showAppChrome = signedIn && !marketingPreview;
+
+  useEffect(() => {
+    if (!showAppChrome) {
+      document.documentElement.style.removeProperty("--app-sidebar-w");
+      return;
+    }
+    document.documentElement.style.setProperty(
+      "--app-sidebar-w",
+      `${appSidebarWidthPx(sidebarCollapsed)}px`,
+    );
+    return () => {
+      document.documentElement.style.removeProperty("--app-sidebar-w");
+    };
+  }, [showAppChrome, sidebarCollapsed]);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      saveAppSidebarCollapsed(next);
+      return next;
+    });
+  }, []);
 
   // Hitting a protected app URL while in marketing preview → open the app.
   useEffect(() => {
@@ -182,14 +214,21 @@ export function AppChrome({ children }: { children: ReactNode }) {
         <AppTopBar
           mobileSidebarOpen={mobileOpen}
           onToggleSidebar={() => setMobileOpen((v) => !v)}
+          sidebarCollapsed={sidebarCollapsed}
         />
         <div className="flex min-h-0 flex-1">
-          <div className="hidden w-[200px] shrink-0 md:block" aria-hidden />
+          <div
+            className="hidden shrink-0 transition-[width] duration-200 ease-out md:block"
+            style={{ width: "var(--app-sidebar-w, 200px)" }}
+            aria-hidden
+          />
           <AppSidebar
             accountLabel={accountLabel}
             mobileOpen={mobileOpen}
             onCloseMobile={() => setMobileOpen(false)}
             onNavigate={() => setMobileOpen(false)}
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={toggleSidebarCollapsed}
           />
           <MainShell layout="app">
             {bounceToApp ? (

@@ -80,6 +80,36 @@ export const APP_NAV_ADMIN: AppNavSection[] = [
 ];
 
 export const SIDEBAR_EXPAND_STORAGE_KEY = "mm_sidebar_expand_v1";
+export const APP_SIDEBAR_COLLAPSED_KEY = "mm_app_sidebar_collapsed_v1";
+/** Desktop expanded rail width (px). */
+export const APP_SIDEBAR_W_EXPANDED = 200;
+/** Desktop collapsed icon rail width (px). */
+export const APP_SIDEBAR_W_COLLAPSED = 56;
+
+export function loadAppSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(APP_SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveAppSidebarCollapsed(collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      APP_SIDEBAR_COLLAPSED_KEY,
+      collapsed ? "1" : "0",
+    );
+  } catch {
+    /* */
+  }
+}
+
+export function appSidebarWidthPx(collapsed: boolean): number {
+  return collapsed ? APP_SIDEBAR_W_COLLAPSED : APP_SIDEBAR_W_EXPANDED;
+}
 
 export function pathMatchesHref(pathname: string, href: string): boolean {
   const pathOnly = href.split("#")[0]?.split("?")[0] ?? href;

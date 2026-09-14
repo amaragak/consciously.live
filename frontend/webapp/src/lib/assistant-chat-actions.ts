@@ -85,20 +85,51 @@ function resolveLifeArea(
   store: IdeateStoreV2,
   action: Extract<AssistantAction, { name: "add_todo" }>,
 ) {
-  const dreams = store.dreams.filter((d) => !isDemoIdeateDream(d));
+  // Explicit id wins even for guest demos the user is actively planning.
   if (action.lifeAreaId) {
-    const byId = dreams.find((d) => d.id === action.lifeAreaId);
+    const byId = store.dreams.find((d) => d.id === action.lifeAreaId);
     if (byId) return byId;
   }
+  const dreams = store.dreams.filter((d) => !isDemoIdeateDream(d));
   const needle = (action.lifeAreaTitle ?? "").trim().toLowerCase();
   if (!needle) return null;
-  const exact = dreams.find((d) => d.title.trim().toLowerCase() === needle);
+  const pool = dreams.length ? dreams : store.dreams;
+  const exact = pool.find((d) => d.title.trim().toLowerCase() === needle);
   if (exact) return exact;
-  const partial = dreams.find((d) => {
+  const partial = pool.find((d) => {
     const t = d.title.trim().toLowerCase();
     return t.includes(needle) || needle.includes(t);
   });
   return partial ?? null;
+}
+
+function resolveParentTask(
+  store: IdeateStoreV2,
+  lifeAreaId: string,
+  action: Extract<AssistantAction, { name: "add_todo" }>,
+) {
+  const parentId = (action.parentTaskId ?? "").trim();
+  if (parentId) {
+    const byId = store.subtasks.find(
+      (s) => s.id === parentId && s.projectId === lifeAreaId,
+    );
+    if (byId) return byId;
+  }
+  const needle = (action.parentTaskTitle ?? "").trim().toLowerCase();
+  if (!needle) return null;
+  const inArea = store.subtasks.filter((s) => s.projectId === lifeAreaId);
+  const exact = inArea.find((s) => s.title.trim().toLowerCase() === needle);
+  if (exact) return exact;
+  return (
+    inArea.find((s) => {
+      const t = s.title.trim().toLowerCase();
+      return t.includes(needle) || needle.includes(t);
+    }) ?? null
+  );
+}
+
+function lifeAreaTasksHref(lifeAreaId: string, taskId: string): string {
+  return `/ideate/goal/${encodeURIComponent(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
 }
 
 function persistTodayGratitude(
@@ -459,26 +490,45 @@ function applyTodo(
     };
   }
 
-  let subtasks = store.subtasks.filter((s) => s.projectId === area.id);
-  let subtask = subtasks[0];
-  if (!subtask) {
-    subtask = createSubtask(area.id, "General");
-    store = upsertSubtask(store, subtask);
-    subtasks = [subtask];
+  const wantsChecklistItem = Boolean(
+    (action.parentTaskId ?? "").trim() ||
+      (action.parentTaskTitle ?? "").trim(),
+  );
+
+  if (wantsChecklistItem) {
+    const parent = resolveParentTask(store, area.id, action);
+    if (!parent) {
+      return {
+        ok: false,
+        label:
+          "Couldn't find that parent task. Add the task first, then checklist items under it.",
+      };
+    }
+    const siblings = store.todos.filter((t) => t.subtaskId === parent.id);
+    const order =
+      siblings.reduce((m, t) => Math.max(m, t.order), -1) + 1;
+    const todo = createTodo(parent.id, title, order);
+    store = upsertTodo(store, todo);
+    saveIdeateStore(store);
+    return {
+      ok: true,
+      label: `Added checklist item under ${parent.title.trim() || "task"}`,
+      detail: previewSnippet(title),
+      href: lifeAreaTasksHref(area.id, parent.id),
+      linkLabel: "Open task",
+    };
   }
 
-  const siblings = store.todos.filter((t) => t.subtaskId === subtask!.id);
-  const order =
-    siblings.reduce((m, t) => Math.max(m, t.order), -1) + 1;
-  const todo = createTodo(subtask.id, title, order);
-  store = upsertTodo(store, todo);
+  // Ideate UI “task” = IdeateSubtask (not a nested checklist todo).
+  const subtask = createSubtask(area.id, title);
+  store = upsertSubtask(store, subtask);
   saveIdeateStore(store);
 
   return {
     ok: true,
     label: `Added task to ${area.title.trim() || "life area"}`,
     detail: previewSnippet(title),
-    href: `/ideate/goal/${encodeURIComponent(area.id)}`,
+    href: lifeAreaTasksHref(area.id, subtask.id),
     linkLabel: "Open life area",
   };
 }

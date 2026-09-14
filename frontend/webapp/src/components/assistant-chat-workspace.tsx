@@ -317,19 +317,19 @@ export function AssistantChatWorkspace() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void onNewChat()}
-                  disabled={chat.busy || chat.opening}
-                  className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  + New chat
-                </button>
-                <button
-                  type="button"
                   onClick={toggleCollapsed}
                   aria-label="Collapse chat list"
                   className="hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
                 >
                   <IconChevron dir="left" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onNewChat()}
+                  disabled={chat.busy || chat.opening}
+                  className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  + New chat
                 </button>
               </div>
 

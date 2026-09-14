@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { FocusTimerView } from "@/components/focus-timer-view";
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 };
 
 export default function FocusAppPage() {
-  return <FocusTimerView />;
+  return (
+    <Suspense fallback={null}>
+      <FocusTimerView />
+    </Suspense>
+  );
 }

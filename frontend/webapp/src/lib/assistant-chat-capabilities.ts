@@ -72,8 +72,14 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "add_todo",
     verb: "put",
     domain: "ideate",
-    summary: "Add a task under a life area",
-    params: ["title", "lifeAreaId?", "lifeAreaTitle?"],
+    summary: "Add a life-area task (or checklist item under a task)",
+    params: [
+      "title",
+      "lifeAreaId?",
+      "lifeAreaTitle?",
+      "parentTaskId?",
+      "parentTaskTitle?",
+    ],
     status: "live",
   },
   {

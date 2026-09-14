@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { Focus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
 import { PlanResistanceNudge } from "@/components/plan/plan-resistance-nudge";
@@ -9,12 +11,21 @@ import {
 } from "@/components/plan/plan-todo-draft-list";
 import { breakDownIntoTodoDraft, titlesLikelySameTask } from "@/lib/plan-breakdown-claude";
 import {
+  focusMyHrefFromIdeate,
+  writeFocusSessionHandoff,
+} from "@/lib/focus-session-handoff";
+import { startFocusPreflightMeditationGeneration } from "@/lib/focus-preflight-meditation";
+import { notifyMeditationGenerationFailed } from "@/lib/meditation-generation-notifications";
+import { activeResistanceThemesForProject } from "@/lib/plan-resistance-threads";
+import { PlanFocusPreflightModal } from "@/components/plan/plan-focus-preflight-modal";
+import {
   createTodo,
   deleteSubtask,
   loadIdeateStore,
   recomputeSubtaskStatus,
   saveIdeateStore,
   todosForSubtask,
+  upsertDream,
   upsertSubtask,
   upsertTodo,
   type IdeateSubtask,
@@ -28,6 +39,8 @@ type Props = {
   projectVision?: string;
   onRefresh: () => void;
   defaultExpanded?: boolean;
+  /** When opened from a chat deep-link, keep expand state pinned to defaultExpanded. */
+  collapseOthersFromFocus?: boolean;
 };
 
 function formatStepDate(iso: string): string {
@@ -153,8 +166,87 @@ export function PlanSubtaskCard({
   projectVision,
   onRefresh,
   defaultExpanded = true,
+  collapseOthersFromFocus = false,
 }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(defaultExpanded);
+  const [focusPreflightOpen, setFocusPreflightOpen] = useState(false);
+
+  useEffect(() => {
+    if (!collapseOthersFromFocus) return;
+    setOpen(defaultExpanded);
+  }, [collapseOthersFromFocus, defaultExpanded]);
+
+  function goToFocusSession() {
+    writeFocusSessionHandoff({ v: 1, subtaskId: subtask.id });
+    router.push(focusMyHrefFromIdeate());
+  }
+
+  function startFocusWithManifestation() {
+    writeFocusSessionHandoff({ v: 1, subtaskId: subtask.id });
+
+    const store = loadIdeateStore();
+    const dream = store.dreams.find((d) => d.id === subtask.projectId);
+    const checklist = todos
+      .map((t) => `- ${t.isChecked ? "[x]" : "[ ]"} ${t.title.trim()}`)
+      .filter((l) => l.length > 6)
+      .join("\n");
+    const focusTaskContext = [
+      `Task: ${subtask.title.trim() || "Untitled"}`,
+      subtask.dreamText.trim()
+        ? `What this involves: ${subtask.dreamText.trim()}`
+        : "",
+      checklist ? `Checklist:\n${checklist}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const vision =
+      (dream?.visionText ?? projectVision ?? "").trim() ||
+      (dream?.dreamText ?? "").trim() ||
+      `Succeeding at: ${subtask.title.trim() || "this focus session"}`;
+
+    const themes = dream
+      ? activeResistanceThemesForProject(store, dream.id)
+      : [];
+
+    void startFocusPreflightMeditationGeneration({
+      goalTitle: (dream?.title ?? projectTitle).trim() || "My project",
+      visionText: vision,
+      dreamText: dream?.dreamText.trim() || undefined,
+      obstacleText: dream?.obstacleText.trim() || undefined,
+      lifeAreaId: dream?.id ?? subtask.projectId,
+      focusTaskContext,
+      activeResistanceThemes: themes.map((t) => ({
+        category: t.category,
+        sampleText: t.sampleText,
+        level: t.level,
+        occurrences: t.occurrences,
+      })),
+    }).catch((e) => {
+      const msg =
+        e instanceof Error ? e.message : "Could not start the meditation.";
+      notifyMeditationGenerationFailed({
+        jobId: `preflight-${Date.now()}`,
+        title: "Pre-focus meditation",
+        error: msg,
+      });
+    });
+
+    if (dream) {
+      let s = store;
+      s = upsertDream(s, {
+        ...dream,
+        meditationsGenerated: dream.meditationsGenerated + 1,
+        updatedAt: new Date().toISOString(),
+      });
+      saveIdeateStore(s);
+      onRefresh();
+    }
+
+    setFocusPreflightOpen(false);
+    router.push(focusMyHrefFromIdeate());
+  }
   const [draftRows, setDraftRows] = useState<TodoDraftRow[] | null>(null);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
   const [specifyingId, setSpecifyingId] = useState<string | null>(null);
@@ -359,6 +451,7 @@ export function PlanSubtaskCard({
   }, [subtask.dreamText, collapsed, isDone]);
 
   return (
+    <>
     <article
       className={`group cursor-pointer pt-6 ${isDone ? "opacity-80" : ""}`}
     >
@@ -414,6 +507,17 @@ export function PlanSubtaskCard({
         <div className="flex shrink-0 items-center gap-3 pt-0.5">
           <button
             type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFocusPreflightOpen(true);
+            }}
+            className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-muted hover:text-foreground"
+          >
+            <Focus aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
+            Start focus session on these tasks
+          </button>
+          <button
+            type="button"
             aria-label="Remove subtask"
             onClick={(e) => {
               e.stopPropagation();
@@ -449,7 +553,7 @@ export function PlanSubtaskCard({
       {collapsed ? (
         <div
           aria-hidden
-          className="-mb-px border-b border-border transition-[border-color] duration-200 ease-[ease] group-hover:border-[#F0A855]"
+          className="-mb-px border-b border-border transition-[border-color] duration-200 ease-[ease] group-hover:border-[#F1AC73]"
         />
       ) : null}
 
@@ -567,5 +671,15 @@ export function PlanSubtaskCard({
         </div>
       </div>
     </article>
+    <PlanFocusPreflightModal
+      open={focusPreflightOpen}
+      taskTitle={subtask.title}
+      onSkip={() => {
+        setFocusPreflightOpen(false);
+        goToFocusSession();
+      }}
+      onGenerate={() => startFocusWithManifestation()}
+    />
+    </>
   );
 }

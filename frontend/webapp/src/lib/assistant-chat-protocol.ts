@@ -54,6 +54,12 @@ export type AssistantAction =
       lifeAreaId?: string;
       /** Fallback match against life-area title. */
       lifeAreaTitle?: string;
+      /**
+       * When set, add a checklist item (IdeateTodo) under this UI task
+       * (IdeateSubtask). Without parent → create a new UI task.
+       */
+      parentTaskId?: string;
+      parentTaskTitle?: string;
     }
   | {
       name: "create_meditation";
@@ -169,11 +175,25 @@ function coerceAction(
       params.area ??
       ""
     ).trim();
+    const parentTaskId = (
+      params.parentTaskId ??
+      params.parent_task_id ??
+      params.taskId ??
+      ""
+    ).trim();
+    const parentTaskTitle = (
+      params.parentTaskTitle ??
+      params.parent_task ??
+      params.parentTask ??
+      ""
+    ).trim();
     return {
       name: "add_todo",
       title,
       ...(lifeAreaId ? { lifeAreaId } : {}),
       ...(lifeAreaTitle ? { lifeAreaTitle } : {}),
+      ...(parentTaskId ? { parentTaskId } : {}),
+      ...(parentTaskTitle ? { parentTaskTitle } : {}),
     };
   }
   if (name === "create_meditation") {
@@ -243,6 +263,12 @@ export function encodeAssistantAction(action: AssistantAction): string {
     if (action.lifeAreaId) parts.push(`lifeAreaId=${enc(action.lifeAreaId)}`);
     if (action.lifeAreaTitle) {
       parts.push(`lifeAreaTitle=${enc(action.lifeAreaTitle)}`);
+    }
+    if (action.parentTaskId) {
+      parts.push(`parentTaskId=${enc(action.parentTaskId)}`);
+    }
+    if (action.parentTaskTitle) {
+      parts.push(`parentTaskTitle=${enc(action.parentTaskTitle)}`);
     }
     return `[[ACTION:add_todo|${parts.join("|")}]]`;
   }

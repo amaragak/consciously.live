@@ -62,4 +62,9 @@ export function appendPendingLibraryGeneration(
     (x, idx, arr) => arr.findIndex((y) => y.jobId === x.jobId) === idx,
   );
   savePendingGenerations(next);
+  if (typeof window !== "undefined") {
+    void import("@/lib/poll-pending-meditation-jobs").then((m) =>
+      m.ensurePendingMeditationJobPoller(),
+    );
+  }
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { MessageSquare } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlanSubtaskCard } from "@/components/plan/plan-subtask-card";
 import {
   allSubtasksDone,
@@ -46,6 +48,8 @@ export function PlanSubtasksPanel({
   storeTick = 0,
   embedded = false,
 }: Props) {
+  const searchParams = useSearchParams();
+  const focusTaskId = (searchParams.get("task") ?? "").trim() || null;
   const [newTitle, setNewTitle] = useState("");
   const [sort, setSort] = useState<SubtaskSortKey>("created_asc");
 
@@ -61,6 +65,18 @@ export function PlanSubtasksPanel({
   const subtasks = useMemo(() => {
     return sortSubtasks(subtasksForProject(store, project.id), sort);
   }, [project.id, sort, store]);
+
+  // From chat “Open” links: bring the target task into view once.
+  useEffect(() => {
+    if (!focusTaskId) return;
+    if (!subtasks.some((s) => s.id === focusTaskId)) return;
+    const id = window.setTimeout(() => {
+      document
+        .getElementById(`life-area-task-${focusTaskId}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [focusTaskId, subtasks]);
 
   const todosBySubtask = useMemo(() => {
     const map = new Map<string, ReturnType<typeof todosForSubtask>>();
@@ -137,9 +153,14 @@ export function PlanSubtasksPanel({
                 lifeAreaId: project.id,
               })
             }
-            className="cursor-pointer rounded-full border border-accent/30 bg-accent-soft/20 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/35"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-accent/30 bg-accent-soft/20 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/35"
           >
-            Ideate next steps in chat
+            <MessageSquare
+              aria-hidden
+              className="size-4 shrink-0"
+              strokeWidth={1.75}
+            />
+            Plan next steps
           </button>
           <input
             value={newTitle}
@@ -190,6 +211,7 @@ export function PlanSubtasksPanel({
           {subtasks.map((subtask, index) => (
             <li
               key={subtask.id}
+              id={`life-area-task-${subtask.id}`}
               className={`mm-task-band w-full border-b-[0.5px] border-marketing-ink/15 ${
                 TASK_BAND_CLASSES[index % 2]!
               }`}
@@ -201,7 +223,12 @@ export function PlanSubtasksPanel({
                   projectTitle={project.title}
                   projectVision={project.visionText}
                   onRefresh={refresh}
-                  defaultExpanded={subtask.status !== "done"}
+                  defaultExpanded={
+                    focusTaskId
+                      ? subtask.id === focusTaskId
+                      : subtask.status !== "done"
+                  }
+                  collapseOthersFromFocus={Boolean(focusTaskId)}
                 />
               </div>
             </li>

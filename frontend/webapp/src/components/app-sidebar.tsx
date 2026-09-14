@@ -245,6 +245,9 @@ type Props = {
   mobileOpen?: boolean;
   onNavigate?: () => void;
   onCloseMobile?: () => void;
+  /** Desktop icon-rail collapse (ignored on mobile drawer). */
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 };
 
 export function AppSidebar({
@@ -252,6 +255,8 @@ export function AppSidebar({
   mobileOpen = false,
   onNavigate,
   onCloseMobile,
+  collapsed = false,
+  onToggleCollapsed,
 }: Props) {
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -261,6 +266,9 @@ export function AppSidebar({
   const [lifeAreas, setLifeAreas] = useState<
     { id: string; title: string }[]
   >([]);
+
+  // Mobile drawer always shows the full tree.
+  const railCollapsed = collapsed && !mobileOpen;
 
   useEffect(() => {
     setHash(window.location.hash || "");
@@ -341,13 +349,14 @@ export function AppSidebar({
   const asideClass = useMemo(
     () =>
       [
-        "flex w-[200px] shrink-0 flex-col border-r-[0.5px] border-border bg-surface-2",
-        "fixed bottom-0 left-0 top-14 z-[120] transition-transform duration-200 ease-out",
+        "flex shrink-0 flex-col border-r-[0.5px] border-border bg-surface-2",
+        railCollapsed ? "w-14" : "w-[200px]",
+        "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out",
         // Mobile: off-canvas until hamburger opens. Desktop: always visible.
         mobileOpen ? "translate-x-0 shadow-xl" : "-translate-x-full",
         "md:translate-x-0",
       ].join(" "),
-    [mobileOpen],
+    [mobileOpen, railCollapsed],
   );
 
   return (
@@ -361,6 +370,66 @@ export function AppSidebar({
         />
       ) : null}
       <aside className={asideClass} aria-label="App">
+        {railCollapsed ? (
+          <>
+            <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+              {[...APP_NAV_MAIN, ...APP_NAV_ADMIN].map((section) => {
+                const sectionActive = activeNavSectionId(pathname) === section.id;
+                const icon = SECTION_ICONS[section.id];
+                return (
+                  <Link
+                    key={section.id}
+                    href={section.href}
+                    onClick={onNavigate}
+                    title={section.label}
+                    aria-label={section.label}
+                    aria-current={sectionActive ? "page" : undefined}
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+                      sectionActive
+                        ? "bg-nav-active text-accent-link"
+                        : "text-muted hover:bg-nav-active hover:text-foreground"
+                    }`}
+                  >
+                    {icon ?? null}
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="mt-auto flex shrink-0 flex-col items-center gap-2 border-t border-border px-1.5 py-3">
+              <button
+                type="button"
+                onClick={onToggleCollapsed}
+                aria-label="Expand sidebar"
+                className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+              <ColorSchemeToggle />
+              <Link
+                href="/settings"
+                onClick={onNavigate}
+                title={accountLabel}
+                aria-label={`Account: ${accountLabel}`}
+                className="flex size-8 items-center justify-center rounded-full bg-accent-soft/80 text-xs font-semibold text-accent-link"
+              >
+                {(accountLabel.trim()[0] || "G").toUpperCase()}
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
         <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
           {APP_NAV_MAIN.map((section) => (
             <NavSectionBlock
@@ -403,7 +472,27 @@ export function AppSidebar({
         </nav>
 
         <div className="mt-auto shrink-0 border-t border-border px-2 py-3">
-          <div className="mb-1 flex items-center justify-end px-1">
+          <div className="mb-1 flex items-center justify-end gap-1 px-1 md:justify-between">
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              aria-label="Collapse sidebar"
+              className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground md:inline-flex"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
             <ColorSchemeToggle />
           </div>
           <Link
@@ -448,6 +537,8 @@ export function AppSidebar({
             </AlphaChromeButton>
           </div>
         </div>
+          </>
+        )}
       </aside>
     </>
   );

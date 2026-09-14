@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -31,6 +32,7 @@ import {
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
+import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 
 type ProjectTab =
   | "vision"
@@ -92,6 +94,10 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
     if (isMedimadeSessionActive() && !cloudReady) return;
     load();
   }, [load, cloudReady, revision]);
+
+  useEffect(() => {
+    return subscribeIdeateCloud(() => load());
+  }, [load]);
 
   useEffect(() => {
     const onStorage = () => load();
@@ -235,9 +241,14 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
                   lifeAreaId: dream.id,
                 })
               }
-              className="cursor-pointer rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-accent-soft/30"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-accent-soft/30"
             >
-              Ideate next steps
+              <MessageSquare
+                aria-hidden
+                className="size-4 shrink-0"
+                strokeWidth={1.75}
+              />
+              Plan next steps
             </button>
             <button
               type="button"
