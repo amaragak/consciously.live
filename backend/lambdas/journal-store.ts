@@ -66,7 +66,7 @@ type JournalEntry = {
   title: string;
   contentHtml: string;
   kind?: "freeform" | "gratitude";
-  gratitude?: [string, string, string];
+  gratitude?: string[];
   mood?: string;
   tags?: string[];
   importSource?: string;
@@ -150,13 +150,13 @@ async function scanAllItems(table: string): Promise<Record<string, unknown>[]> {
   return items;
 }
 
-function gratitudeFromUnknown(raw: unknown): [string, string, string] | undefined {
+function gratitudeFromUnknown(raw: unknown): string[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  return [
-    typeof raw[0] === "string" ? raw[0] : "",
-    typeof raw[1] === "string" ? raw[1] : "",
-    typeof raw[2] === "string" ? raw[2] : "",
-  ];
+  const lines = raw.map((x) => (typeof x === "string" ? x : ""));
+  while (lines.length > 3 && !lines[lines.length - 1]!.trim()) lines.pop();
+  while (lines.length < 3) lines.push("");
+  // Cap runaway arrays from clients.
+  return lines.slice(0, 24);
 }
 
 function tagsFromUnknown(raw: unknown): string[] | undefined {
@@ -408,13 +408,7 @@ async function persistStoreToDdb(
     };
     if (e.kind === "gratitude") {
       item.kind = "gratitude";
-      item.gratitude = Array.isArray(e.gratitude)
-        ? [
-            typeof e.gratitude[0] === "string" ? e.gratitude[0] : "",
-            typeof e.gratitude[1] === "string" ? e.gratitude[1] : "",
-            typeof e.gratitude[2] === "string" ? e.gratitude[2] : "",
-          ]
-        : ["", "", ""];
+      item.gratitude = gratitudeFromUnknown(e.gratitude) ?? ["", "", ""];
     }
     if (typeof e.mood === "string" && e.mood.trim()) {
       item.mood = e.mood.trim().slice(0, 32);

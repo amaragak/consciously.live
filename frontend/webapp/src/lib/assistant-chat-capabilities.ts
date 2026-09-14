@@ -44,7 +44,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "run",
     domain: "coach",
     summary:
-      "Wise, compassionate life / spiritual coaching — personal questions, reflection, meaning",
+      "LLM opening offers in-app help vs talk-it-through; then reflect or run actions",
     status: "live",
   },
 
@@ -54,8 +54,17 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "add_gratitude",
     verb: "put",
     domain: "journal",
-    summary: "Add or fill today’s gratitude lines",
-    params: ["line1", "line2", "line3"],
+    summary: "Add to today’s gratitudes (empty slots first; append beyond 3)",
+    params: ["text", "line1?", "line2?", "line3?"],
+    status: "live",
+  },
+  {
+    id: "update_gratitude",
+    action: "update_gratitude",
+    verb: "put",
+    domain: "journal",
+    summary: "Enrich an existing gratitude line (match prior text)",
+    params: ["match", "text"],
     status: "live",
   },
   {

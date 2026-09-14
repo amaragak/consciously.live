@@ -18,16 +18,20 @@ import {
   parseAssistantDisplayText,
   type AssistantAction,
 } from "@/lib/assistant-chat-protocol";
+import { ASSISTANT_SESSION_OPEN } from "@/lib/assistant-chat-system-prompt";
 import { clearAssistantChatSession } from "@/lib/assistant-chat-storage";
-
-/** Empty-state chrome only — not a chat bubble. */
-const EMPTY_HINT = "What's on your mind today?";
 
 type AssistantChatMessage = {
   role: "user" | "assistant";
   text: string;
   actions?: AssistantAction[];
-  actionResults?: Array<{ label: string; href?: string; ok: boolean }>;
+  actionResults?: Array<{
+    label: string;
+    detail?: string;
+    href?: string;
+    linkLabel?: string;
+    ok: boolean;
+  }>;
 };
 
 function ChatTypingIndicator() {
@@ -95,6 +99,7 @@ export function AssistantChatWorkspace() {
   >([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const inputDraftRef = useRef("");
@@ -103,9 +108,9 @@ export function AssistantChatWorkspace() {
   const isAtBottomRef = useRef(true);
   const busyRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const openNonceRef = useRef(0);
 
   useEffect(() => {
-    // Drop any leftover keys from earlier builds; transcript stays in memory only.
     clearAssistantChatSession();
   }, []);
 
@@ -123,21 +128,76 @@ export function AssistantChatWorkspace() {
 
   useLayoutEffect(() => {
     scrollToBottomIfPinned();
-  }, [messages, busy, scrollToBottomIfPinned]);
+  }, [messages, busy, opening, scrollToBottomIfPinned]);
+
+  const runSessionOpen = useCallback(async () => {
+    const nonce = ++openNonceRef.current;
+    setOpening(true);
+    setError(null);
+    setMessages([]);
+    setThread([]);
+
+    const history = [
+      { role: "user" as const, content: ASSISTANT_SESSION_OPEN },
+    ];
+
+    let assistantStarted = false;
+    let acc = "";
+
+    try {
+      const raw = await streamAssistantChat({ messages: history }, (chunk) => {
+        if (nonce !== openNonceRef.current) return;
+        acc += chunk;
+        const { text } = parseAssistantDisplayText(acc);
+        if (!assistantStarted) {
+          assistantStarted = true;
+          setMessages([{ role: "assistant", text }]);
+        } else {
+          setMessages([{ role: "assistant", text }]);
+        }
+        scrollToBottomIfPinned();
+      });
+
+      if (nonce !== openNonceRef.current) return;
+
+      const parsed = parseAssistantDisplayText(raw);
+      setThread([
+        { role: "user", content: ASSISTANT_SESSION_OPEN },
+        { role: "assistant", content: raw },
+      ]);
+      setMessages([{ role: "assistant", text: parsed.text }]);
+    } catch (e) {
+      if (nonce !== openNonceRef.current) return;
+      const msg = e instanceof Error ? e.message : "Could not open chat";
+      setError(msg);
+      setMessages([]);
+      setThread([]);
+    } finally {
+      if (nonce === openNonceRef.current) {
+        setOpening(false);
+        requestAnimationFrame(() => chatInputRef.current?.focus());
+      }
+    }
+  }, [scrollToBottomIfPinned]);
+
+  useEffect(() => {
+    void runSessionOpen();
+    return () => {
+      openNonceRef.current += 1;
+    };
+  }, [runSessionOpen]);
 
   const resetChat = useCallback(() => {
     if (busyRef.current) return;
     clearAssistantChatSession();
-    setMessages([]);
-    setThread([]);
     setInput("");
     setError(null);
-    chatInputRef.current?.focus();
-  }, []);
+    void runSessionOpen();
+  }, [runSessionOpen]);
 
   const send = useCallback(async () => {
     const trimmed = (inputDraftRef.current || input).trim();
-    if (!trimmed || busyRef.current) return;
+    if (!trimmed || busyRef.current || opening) return;
 
     busyRef.current = true;
     setBusy(true);
@@ -177,7 +237,9 @@ export function AssistantChatWorkspace() {
       const results = executeAssistantActions(parsed.actions);
       const actionResults = results.map((r) => ({
         label: r.label,
+        detail: r.detail,
         href: r.href,
+        linkLabel: r.linkLabel,
         ok: r.ok,
       }));
 
@@ -214,11 +276,13 @@ export function AssistantChatWorkspace() {
       setBusy(false);
       requestAnimationFrame(() => chatInputRef.current?.focus());
     }
-  }, [input, thread, scrollToBottomIfPinned]);
+  }, [input, thread, opening, scrollToBottomIfPinned]);
 
-  const showTyping = busy && messages[messages.length - 1]?.role === "user";
-  const hasUserTurns = messages.some((m) => m.role === "user");
-
+  const showTyping =
+    (opening && messages.length === 0) ||
+    (busy && messages[messages.length - 1]?.role === "user");
+  const showEmptyChrome = !opening && messages.length === 0 && !error;
+  const canReset = messages.some((m) => m.role === "user") || messages.length > 0;
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
       <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
@@ -240,7 +304,7 @@ export function AssistantChatWorkspace() {
           <button
             type="button"
             onClick={resetChat}
-            disabled={busy || !hasUserTurns}
+            disabled={busy || opening || !canReset}
             aria-label="Reset chat"
             className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -260,10 +324,10 @@ export function AssistantChatWorkspace() {
               isAtBottomRef.current = dist < 50;
             }}
           >
-            {!hasUserTurns ? (
+            {showEmptyChrome ? (
               <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
                 <p className="font-display text-center text-[18px] font-normal text-muted">
-                  {EMPTY_HINT}
+                  What&apos;s on your mind today?
                 </p>
               </div>
             ) : (
@@ -320,30 +384,38 @@ export function AssistantChatWorkspace() {
                         );
                       })}
                       {!isUser && msg.actionResults?.length ? (
-                        <div className="mt-2 flex w-full flex-wrap justify-start gap-2">
-                          {msg.actionResults.map((result, ri) => {
-                            if (result.href && result.ok) {
-                              return (
-                                <Link
-                                  key={ri}
-                                  href={result.href}
-                                  className="inline-flex cursor-pointer items-center rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium text-accent-link transition-colors hover:bg-accent-soft/40"
-                                >
+                        <div className="mt-2 flex w-full max-w-[calc(100%-16px)] flex-col gap-2">
+                          {msg.actionResults.map((result, ri) => (
+                            <div
+                              key={ri}
+                              className={`flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border px-3.5 py-2.5 text-sm ${
+                                result.ok
+                                  ? "border-border bg-background text-foreground"
+                                  : "border-danger/30 bg-danger/5 text-danger"
+                              }`}
+                              role="status"
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="font-medium">
+                                  {result.ok ? "✓ " : ""}
                                   {result.label}
-                                </Link>
-                              );
-                            }
-                            return (
-                              <span
-                                key={ri}
-                                className={`inline-flex items-center rounded-full border border-border/80 bg-background/80 px-3 py-1.5 text-sm ${
-                                  result.ok ? "text-muted" : "text-danger"
-                                }`}
-                              >
-                                {result.label}
+                                </span>
+                                {result.detail ? (
+                                  <span className="mt-0.5 block truncate text-muted">
+                                    {result.detail}
+                                  </span>
+                                ) : null}
                               </span>
-                            );
-                          })}
+                              {result.ok && result.href ? (
+                                <Link
+                                  href={result.href}
+                                  className="shrink-0 font-semibold text-accent-link underline-offset-2 hover:underline"
+                                >
+                                  {result.linkLabel ?? "Open"}
+                                </Link>
+                              ) : null}
+                            </div>
+                          ))}
                         </div>
                       ) : null}
                     </div>
@@ -371,12 +443,12 @@ export function AssistantChatWorkspace() {
                 setError(null);
                 setInput(e.target.value);
               }}
-              aria-busy={busy}
+              disabled={busy || opening}
               placeholder="Share what’s on your mind…"
               className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-lg outline-none ring-accent/30 focus:ring-2"
             />
             <DictationMicButton
-              disabled={busy}
+              disabled={busy || opening}
               onTranscript={(spoken) => {
                 setInput(appendSpokenText(inputDraftRef.current || input, spoken));
                 chatInputRef.current?.focus();
@@ -384,13 +456,13 @@ export function AssistantChatWorkspace() {
             />
             <button
               type="submit"
-              aria-disabled={busy}
-              aria-label={busy ? "Sending…" : "Send message"}
+              aria-disabled={busy || opening}
+              aria-label={busy || opening ? "Sending…" : "Send message"}
               className={`relative z-[200] flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity ${
-                busy ? "cursor-not-allowed opacity-60" : ""
+                busy || opening ? "cursor-not-allowed opacity-60" : ""
               }`}
             >
-              {busy ? (
+              {busy || opening ? (
                 <span className="text-sm font-medium" aria-hidden>
                   …
                 </span>

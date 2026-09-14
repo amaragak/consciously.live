@@ -2,7 +2,8 @@ import { isJournalMoodId } from "@/lib/journal-moods";
 
 export type JournalEntryKind = "freeform" | "gratitude";
 
-export type JournalGratitudeLines = [string, string, string];
+/** Daily gratitude lines — UI starts with 3 optional slots; chat may append more. */
+export type JournalGratitudeLines = string[];
 
 export type JournalEntry = {
   id: string;
@@ -12,7 +13,7 @@ export type JournalEntry = {
   contentHtml: string;
   /** Omitted on existing freeform entries. */
   kind?: JournalEntryKind;
-  /** Three daily lines when `kind` is `gratitude`. */
+  /** Daily gratitude lines when `kind` is `gratitude` (min 3 slots when normalized). */
   gratitude?: JournalGratitudeLines;
   /** Write-time mood chip (`calm` | `good` | `mixed` | `low` | `heavy`). */
   mood?: string;
@@ -698,6 +699,9 @@ export function emptyGratitudeLines(): JournalGratitudeLines {
   return ["", "", ""];
 }
 
+/** Minimum empty slots shown in the gratitude editor. */
+export const GRATITUDE_MIN_SLOTS = 3;
+
 export function localDateKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -725,11 +729,14 @@ export function gratitudeLinesToHtml(lines: JournalGratitudeLines): string {
 
 export function normalizeGratitudeLines(raw: unknown): JournalGratitudeLines {
   const a = Array.isArray(raw) ? raw : [];
-  return [
-    typeof a[0] === "string" ? a[0] : "",
-    typeof a[1] === "string" ? a[1] : "",
-    typeof a[2] === "string" ? a[2] : "",
-  ];
+  const lines = a
+    .map((x) => (typeof x === "string" ? x : ""))
+    .slice(0, 24);
+  while (lines.length > GRATITUDE_MIN_SLOTS && !lines[lines.length - 1]!.trim()) {
+    lines.pop();
+  }
+  while (lines.length < GRATITUDE_MIN_SLOTS) lines.push("");
+  return lines;
 }
 
 export function gratitudeTitleForDate(d: Date): string {
@@ -828,9 +835,10 @@ export function journalEntryDraftChanged(
   if (entry.title !== draft.title) return true;
   if (entry.contentHtml !== draft.contentHtml) return true;
   if (isGratitudeEntry(entry)) {
-    const a = entry.gratitude ?? emptyGratitudeLines();
-    const b = draft.gratitude ?? emptyGratitudeLines();
-    return a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2];
+    const a = normalizeGratitudeLines(entry.gratitude);
+    const b = normalizeGratitudeLines(draft.gratitude);
+    if (a.length !== b.length) return true;
+    return a.some((line, i) => line !== b[i]);
   }
   return false;
 }

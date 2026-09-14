@@ -10,13 +10,22 @@
 
 export type AssistantActionName =
   | "add_gratitude"
+  | "update_gratitude"
   | "add_todo"
   | "create_meditation";
 
 export type AssistantAction =
   | {
       name: "add_gratitude";
-      lines: [string, string, string];
+      /** One or more new lines — fill empty slots first, then append (never overwrite). */
+      lines: string[];
+    }
+  | {
+      name: "update_gratitude";
+      /** Substring / prior text to find today’s line. */
+      match: string;
+      /** Full replacement text for that line. */
+      text: string;
     }
   | {
       name: "add_todo";
@@ -58,18 +67,33 @@ function parseParams(raw: string | undefined): Record<string, string> {
   return out;
 }
 
+function coerceAddGratitudeLines(params: Record<string, string>): string[] {
+  const single = (params.text ?? params.line ?? "").trim();
+  const fromNumbered = [
+    params.line1 ?? params.l1,
+    params.line2 ?? params.l2,
+    params.line3 ?? params.l3,
+  ]
+    .map((s) => (typeof s === "string" ? s.trim() : ""))
+    .filter(Boolean);
+  if (single) return [single, ...fromNumbered.filter((l) => l !== single)];
+  return fromNumbered;
+}
+
 function coerceAction(
   name: string,
   params: Record<string, string>,
 ): AssistantAction | null {
   if (name === "add_gratitude") {
-    const lines: [string, string, string] = [
-      (params.line1 ?? params.l1 ?? "").trim(),
-      (params.line2 ?? params.l2 ?? "").trim(),
-      (params.line3 ?? params.l3 ?? "").trim(),
-    ];
-    if (!lines.some(Boolean)) return null;
+    const lines = coerceAddGratitudeLines(params);
+    if (!lines.length) return null;
     return { name: "add_gratitude", lines };
+  }
+  if (name === "update_gratitude") {
+    const match = (params.match ?? params.prev ?? params.from ?? "").trim();
+    const text = (params.text ?? params.line ?? params.to ?? "").trim();
+    if (!match || !text) return null;
+    return { name: "update_gratitude", match, text };
   }
   if (name === "add_todo") {
     const title = (params.title ?? params.task ?? "").trim();
@@ -127,8 +151,16 @@ export function parseAssistantDisplayText(raw: string): {
 export function encodeAssistantAction(action: AssistantAction): string {
   const enc = (v: string) => encodeURIComponent(v);
   if (action.name === "add_gratitude") {
-    const [a, b, c] = action.lines;
-    return `[[ACTION:add_gratitude|line1=${enc(a)}|line2=${enc(b)}|line3=${enc(c)}]]`;
+    if (action.lines.length === 1) {
+      return `[[ACTION:add_gratitude|text=${enc(action.lines[0]!)}]]`;
+    }
+    const parts = action.lines.map(
+      (line, i) => `line${i + 1}=${enc(line)}`,
+    );
+    return `[[ACTION:add_gratitude|${parts.join("|")}]]`;
+  }
+  if (action.name === "update_gratitude") {
+    return `[[ACTION:update_gratitude|match=${enc(action.match)}|text=${enc(action.text)}]]`;
   }
   if (action.name === "add_todo") {
     const parts = [`title=${enc(action.title)}`];
@@ -153,38 +185,7 @@ export function assistantChatBubbles(text: string): string[] {
     .filter(Boolean);
 }
 
-/** System guidance — keep aligned with `backend/lib/assistant-chat-system-prompt.ts`. */
-export const ASSISTANT_CHAT_SYSTEM_PROMPT = `You are Consciously — a wise, compassionate companion inside the Consciously app. You walk with people through the messiness of being human: meaning, purpose, relationships, work, rest, grief, joy, anxiety, habits, and the quiet questions underneath them.
+export { buildAssistantChatSystemPrompt, ASSISTANT_SESSION_OPEN } from "@/lib/assistant-chat-system-prompt";
+import { buildAssistantChatSystemPrompt } from "@/lib/assistant-chat-system-prompt";
 
-Presence first:
-- Welcome personal questions, venting, reflection, and “I don’t know what I need.” Treat those as first-class — not a distraction from the product.
-- Respond with warmth, clarity, and grounded wisdom. Be spiritually open without dogma, preachiness, or woo for its own sake. No lectures, no toxic positivity, no diagnosing or claiming to be a therapist.
-- Never introduce yourself as a “life coach,” “AI coach,” or similar title — embody care through how you listen and respond.
-- Prefer listening and reflecting over rushing to fix. When advice helps, offer it gently, in plain language, as an invitation — not a command.
-- Ask at most one thoughtful question when it would deepen understanding; otherwise speak in complete, caring turns.
-- For personal / coaching turns: usually 2–5 short sentences (or two short paragraphs separated by a blank line for two bubbles). Stay concise; depth over length.
-
-You know what this app is for and can use it as part of coaching when it truly fits:
-- Journal & gratitudes — noticing, gratitude practice, weekly insights
-- Ideate — life areas, vision, tasks that move a life forward
-- Meditate — create guided meditations (by type, chat, journal, ideate, or prompt) and a personal library
-- Sounds — mixes and atmosphere
-- Focus — timed presence on one thing
-When a product action would help (log a gratitude, add a task, open Create Meditation, etc.), you may do it. When the person mainly needs to be heard, stay in conversation — do not force tools.
-
-Product actions — when intent to do something in the app is clear, append ACTION markers at the end of your reply (no blank line required before them). Never speak or explain the markers. Never invent life-area ids. Prefer doing over asking when the action is unambiguous.
-
-Live ACTION markers (client executes these today):
-- [[ACTION:add_gratitude|line1=…|line2=…|line3=…]] — up to three gratitude lines (empty values allowed for unused slots).
-- [[ACTION:add_todo|title=…|lifeAreaTitle=…]] — or lifeAreaId=… when the user named a known area.
-- [[ACTION:create_meditation|summary=…|style=…]] — open Create Meditation; summary/style optional.
-
-URL-encode ACTION parameter values when they contain | or brackets.
-
-Planned (do not emit yet — ask clarifying questions or describe what you would do): get/list/put for journal entries & insights, life areas & todos, library meditations (favourite/archive/public/play), sound mixes, Focus start/pause/stop, and navigate to in-app routes.
-
-If essential info is missing for an ACTION (e.g. which life area for a task), ask one short clarifying question and do not emit an ACTION yet.
-
-This chat is NOT the Create Meditation coach that writes scripts. Do not use [[READY]] or write full meditation scripts here. You may suggest opening Create Meditation (via ACTION) when a guided practice would serve them.
-
-Safety: If someone expresses intent to harm themselves or others, respond with compassion, encourage contacting local emergency services or a trusted person, and (in the US) mention the 988 Suicide & Crisis Lifeline. Do not provide methods of self-harm.`;
+export const ASSISTANT_CHAT_SYSTEM_PROMPT = buildAssistantChatSystemPrompt();

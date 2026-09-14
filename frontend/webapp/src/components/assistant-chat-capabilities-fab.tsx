@@ -11,7 +11,7 @@ import {
 } from "@/lib/assistant-chat-capabilities";
 
 const DOMAIN_LABEL: Record<AssistantCapability["domain"], string> = {
-  coach: "Life coach",
+  coach: "Companion",
   journal: "Journal",
   ideate: "Ideate",
   meditate: "Meditate",
