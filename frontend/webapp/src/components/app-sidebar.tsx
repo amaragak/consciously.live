@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Code2, Focus, Lightbulb, Moon, Shield, Sun } from "lucide-react";
+import {
+  BookOpen,
+  Code2,
+  Focus,
+  Lightbulb,
+  MessageSquare,
+  Moon,
+  Shield,
+  Sun,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   APP_NAV_ADMIN,
@@ -81,6 +90,9 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 }
 
 const SECTION_ICONS: Record<string, ReactNode> = {
+  chat: (
+    <MessageSquare aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+  ),
   meditate: (
     // Material Icons "self_improvement" — person in lotus posture (Apache-2.0).
     <svg

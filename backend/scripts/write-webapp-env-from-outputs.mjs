@@ -103,6 +103,7 @@ if (args[0] === "--stack") {
 const stack = o.MedimadeBackend ?? o[Object.keys(o)[0]];
 const apiUrl = stack?.ApiUrl;
 const chatUrl = stack?.MedimadeChatUrl;
+const assistantChatUrl = stack?.AssistantChatUrl;
 const scriptLabUrl = stack?.AdminScriptLabUrl;
 const mediaDomain = stack?.MediaCloudFrontDomain;
 
@@ -161,6 +162,9 @@ function mergeEnvFile(filePath, pairs) {
 const nextPairs = [
   ["NEXT_PUBLIC_MEDIMADE_API_URL", apiUrl],
   ["NEXT_PUBLIC_MEDIMADE_CHAT_URL", chatUrl],
+  ...(assistantChatUrl && typeof assistantChatUrl === "string"
+    ? [["NEXT_PUBLIC_ASSISTANT_CHAT_URL", assistantChatUrl]]
+    : []),
   ...(scriptLabUrl && typeof scriptLabUrl === "string"
     ? [["NEXT_PUBLIC_MEDIMADE_SCRIPT_LAB_URL", scriptLabUrl]]
     : []),
@@ -180,6 +184,8 @@ const expoPairs = [
 mergeEnvFile(webappEnv, nextPairs);
 console.log(
   `Wrote NEXT_PUBLIC_MEDIMADE_API_URL, NEXT_PUBLIC_MEDIMADE_CHAT_URL${
+    assistantChatUrl ? ", NEXT_PUBLIC_ASSISTANT_CHAT_URL" : ""
+  }${
     scriptLabUrl ? ", NEXT_PUBLIC_MEDIMADE_SCRIPT_LAB_URL" : ""
   }${mediaBaseUrl ? ", NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL" : ""} to ${webappEnv}`,
 );

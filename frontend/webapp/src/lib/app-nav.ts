@@ -67,6 +67,11 @@ export const APP_NAV_MAIN: AppNavSection[] = [
     label: "Focus",
     href: "/focus/my",
   },
+  {
+    id: "chat",
+    label: "Chat",
+    href: "/chat/my",
+  },
 ];
 
 export const APP_NAV_ADMIN: AppNavSection[] = [
@@ -124,6 +129,9 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
       pathname.startsWith("/ideate/my/vision-board/")
     );
   }
+  if (pathOnly === "/chat/my") {
+    return pathname === "/chat/my" || pathname.startsWith("/chat/my/");
+  }
   if (pathOnly === "/focus/my") {
     return pathname === "/focus/my" || pathname.startsWith("/focus/my/");
   }
@@ -134,6 +142,9 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
 }
 
 export function activeNavSectionId(pathname: string): string | null {
+  if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) {
+    return "chat";
+  }
   if (
     pathname.startsWith("/meditate") ||
     pathname.startsWith("/create") ||
@@ -227,6 +238,10 @@ export function buildAppBreadcrumbs(
 ): AppBreadcrumbCrumb[] {
   const hash = opts?.hash ?? "";
   const search = opts?.search ?? "";
+
+  if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) {
+    return [{ label: "Chat", href: null }];
+  }
 
   if (pathname.startsWith("/meditate/create") || pathname.startsWith("/create")) {
     const crumbs: AppBreadcrumbCrumb[] = [
@@ -367,6 +382,9 @@ export function buildAppBreadcrumbs(
   }
   if (pathname.startsWith("/pro")) {
     return [{ label: "Pro", href: null }];
+  }
+  if (pathname.startsWith("/pricing")) {
+    return [{ label: "Pricing", href: null }];
   }
   if (pathname.startsWith("/account")) {
     return [{ label: "Account", href: null }];

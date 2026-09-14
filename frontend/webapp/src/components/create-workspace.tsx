@@ -7,6 +7,8 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
 import { MeditationLengthSelect } from "@/components/meditation-length-select";
+import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
+import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
 import { MixerChannel, MixerPresetChannel, MixerVoiceChannel } from "@/components/mixer-channel";
 import { SoundscapePicker } from "@/components/soundscape-picker";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
@@ -998,6 +1000,13 @@ export function CreateWorkspace({
   const [meditationStyle, setMeditationStyle] = useState<string | null>(null);
   const [claudeThread, setClaudeThread] = useState<MedimadeChatTurn[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const chatLoadingRef = useRef(false);
+  /** Keep ref + state in lockstep — a stale true ref makes send() silently no-op. */
+  function setChatBusy(busy: boolean) {
+    chatLoadingRef.current = busy;
+    setChatLoading(busy);
+  }
+  const [sendBlockReason, setSendBlockReason] = useState<string | null>(null);
   const [coachAudioReady, setCoachAudioReady] = useState(false);
   const [scriptLoading, setScriptLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -1156,7 +1165,13 @@ export function CreateWorkspace({
   const isAtBottomRef = useRef(true);
   const [input, setInput] = useState("");
   const chatInputRef = useRef<HTMLInputElement | null>(null);
+  /** Mirrors composer text so send() still works if a re-render races the controlled value. */
+  const inputDraftRef = useRef("");
   const initialChatAutofocusDoneRef = useRef(false);
+  /** True while we programmatically focus the composer — must not count as user touch. */
+  const autofocusingComposerRef = useRef(false);
+  /** Once the user focuses/types in the composer, never restart intro typing. */
+  const userTouchedComposerRef = useRef(false);
   const [speakerModelId, setSpeakerModelId] = useState<string>("");
   const [journalMode, setJournalMode] = useState(
     () =>
@@ -1276,14 +1291,46 @@ export function CreateWorkspace({
     }
     setMeditationStyle(s.meditationStyle);
     setPendingStyleType(s.pendingStyleType);
-    setMessages(
-      s.coachAudioReady && !s.messages.some((m) => m.audioReadyCta)
-        ? pinAudioReadyCtaOnLastAssistant(s.messages)
-        : s.messages,
-    );
-    setClaudeThread(s.claudeThread);
-    setCoachAudioReady(s.coachAudioReady === true);
-    setInput(s.input);
+    // Free-flow chat transcript is ephemeral — never revive bubbles after a refresh.
+    if (s.creationPath === "freeflow") {
+      setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+      setClaudeThread([]);
+      setCoachAudioReady(false);
+      setInput("");
+      inputDraftRef.current = "";
+      setMeditationStyle(null);
+      setJournalMode(true);
+      setPhase("feeling");
+      setScriptTargetMinutes(null);
+      setIntroTypingDone(false);
+      setIntroTypingSession((n) => n + 1);
+      userTouchedComposerRef.current = false;
+      initialChatAutofocusDoneRef.current = false;
+    } else {
+      setMessages(
+        s.coachAudioReady && !s.messages.some((m) => m.audioReadyCta)
+          ? pinAudioReadyCtaOnLastAssistant(s.messages)
+          : s.messages,
+      );
+      setClaudeThread(s.claudeThread);
+      setCoachAudioReady(s.coachAudioReady === true);
+      setInput(s.input);
+      {
+        const lastMsg = s.messages[s.messages.length - 1];
+        const hasScript =
+          lastMsg?.role === "assistant" && lastMsg.variant === "script";
+        setScriptTargetMinutes(hasScript ? s.meditationTargetMinutes : null);
+      }
+      const lastAssistant = [...s.messages]
+        .reverse()
+        .find(
+          (m) => m.role === "assistant" && m.variant !== "script" && !m.muted,
+        );
+      const openingComplete =
+        typeof lastAssistant?.text === "string" &&
+        lastAssistant.text.trim().length > 0;
+      setIntroTypingDone(openingComplete);
+    }
     setSpeakerModelId(s.speakerModelId);
     setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "fish");
     setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
@@ -1302,15 +1349,11 @@ export function CreateWorkspace({
     setMobileCreateStep(s.mobileCreateStep);
     setLastUsedScript(s.lastUsedScript);
     setMeditationTargetMinutes(s.meditationTargetMinutes);
-    {
-      const lastMsg = s.messages[s.messages.length - 1];
-      const hasScript =
-        lastMsg?.role === "assistant" && lastMsg.variant === "script";
-      setScriptTargetMinutes(hasScript ? s.meditationTargetMinutes : null);
-    }
     setCreationPath(s.creationPath);
-    setJournalMode(s.journalMode);
-    setPhase(s.phase === "style" ? "stylePick" : s.phase);
+    if (s.creationPath !== "freeflow") {
+      setJournalMode(s.journalMode);
+      setPhase(s.phase === "style" ? "stylePick" : s.phase);
+    }
     setPendingModeChoice(s.pendingModeChoice);
     setJournalReflectSelectedIds(
       new Set(s.journalReflectSelectedIds.slice(0, 1)),
@@ -1320,7 +1363,6 @@ export function CreateWorkspace({
     setLifeAreaId(s.lifeAreaId ?? null);
     setOneShotPrompt(s.oneShotPrompt ?? "");
     if (s.draftSk) setDraftSk(s.draftSk);
-    setIntroTypingDone(true);
     initedCreatePathsRef.current = new Set(s.initedPaths);
     if (s.creationPath !== "pending") {
       initedCreatePathsRef.current.add(s.creationPath);
@@ -1502,9 +1544,11 @@ export function CreateWorkspace({
     if (initialChatAutofocusDoneRef.current) return;
     if (chatControlsDisabled) return;
     if (workspaceSectionStep !== 1) return;
+    // Let the opening typewriter finish before stealing focus.
+    if (!introTypingDone) return;
     initialChatAutofocusDoneRef.current = true;
     focusChatInput();
-  }, [chatControlsDisabled, workspaceSectionStep]);
+  }, [chatControlsDisabled, workspaceSectionStep, introTypingDone]);
 
   function buildDraftState(): MeditationDraftStateV1 {
     const phaseForDraft: MeditationDraftStateV1["phase"] =
@@ -1853,7 +1897,7 @@ export function CreateWorkspace({
         journalSegments: journalCards,
       },
     ]);
-    setChatLoading(true);
+    setChatBusy(true);
 
     void (async () => {
       try {
@@ -1880,7 +1924,7 @@ export function CreateWorkspace({
         } catch {
           /* ignore */
         }
-        setChatLoading(false);
+        setChatBusy(false);
         requestAnimationFrame(() => {
           chatInputRef.current?.focus();
         });
@@ -1956,7 +2000,7 @@ export function CreateWorkspace({
         variant: "chat",
       },
     ]);
-    setChatLoading(true);
+    setChatBusy(true);
 
     void (async () => {
       try {
@@ -1983,7 +2027,7 @@ export function CreateWorkspace({
         ]);
       } finally {
         clearPlanCreateHandoff();
-        setChatLoading(false);
+        setChatBusy(false);
         requestAnimationFrame(() => {
           chatInputRef.current?.focus();
         });
@@ -2116,7 +2160,7 @@ export function CreateWorkspace({
     const style = trimmed;
     const history: MedimadeChatTurn[] = [{ role: "user", content: trimmed }];
     setClaudeThread(history);
-    setChatLoading(true);
+    setChatBusy(true);
 
     void streamCoachChat(
       {
@@ -2141,7 +2185,7 @@ export function CreateWorkspace({
         ]);
       })
       .finally(() => {
-        setChatLoading(false);
+        setChatBusy(false);
       });
   }
 
@@ -2289,7 +2333,12 @@ export function CreateWorkspace({
     beginCoachLetterStream();
     try {
       const text = await streamMedimadeChat(params, onCoachStreamDelta);
-      await endCoachLetterStream();
+      await Promise.race([
+        endCoachLetterStream(),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 8000);
+        }),
+      ]);
       const parsed = parseCoachDisplayText(text);
       if (parsed.ready) setCoachAudioReady(true);
       // Keep [[READY]] in the Claude thread so later turns stay in post-ready mode.
@@ -2307,15 +2356,65 @@ export function CreateWorkspace({
     }
   }
 
+  function snapIntroOpeningText(fullText: string) {
+    setMessages((prev) => {
+      const next = [...prev];
+      // Only touch the first assistant chat bubble, and only if it still looks
+      // like an incomplete / known opening — never overwrite a Claude reply.
+      for (let i = 0; i < next.length; i += 1) {
+        const m = next[i];
+        if (m.kind === "divider" || m.muted) continue;
+        if (m.role === "assistant" && m.variant !== "script") {
+          const t = m.text;
+          const isIntroLike =
+            t.trim().length === 0 ||
+            t === fullText ||
+            fullText.startsWith(t) ||
+            t === OPENING_STYLE ||
+            t === OPENING_JOURNAL ||
+            t === JOURNAL_REFLECT_PICK_INTRO ||
+            t === GOAL_PICK_INTRO;
+          if (!isIntroLike) return prev;
+          if (t === fullText) return prev;
+          next[i] = { ...m, text: fullText };
+          return next;
+        }
+        break;
+      }
+      return prev;
+    });
+  }
+
   function startIntroTyping(messageIndex: number, fullText: string) {
     clearIntroTyping();
     setIntroTypingDone(false);
     let i = 0;
     const tickMs = 14;
     introTypingTimerRef.current = window.setInterval(() => {
+      // Autofocus / first keystroke can race the interval — stop immediately.
+      if (userTouchedComposerRef.current) {
+        clearIntroTyping();
+        snapIntroOpeningText(fullText);
+        setIntroTypingDone(true);
+        return;
+      }
       i += 1;
       setMessages((prev) => {
         if (!prev[messageIndex] || prev[messageIndex].role !== "assistant") return prev;
+        // Don't keep typing into a bubble that is no longer the intro.
+        const current = prev[messageIndex].text;
+        if (
+          current.trim().length > 0 &&
+          !fullText.startsWith(current) &&
+          current !== OPENING_STYLE &&
+          current !== OPENING_JOURNAL &&
+          current !== JOURNAL_REFLECT_PICK_INTRO &&
+          current !== GOAL_PICK_INTRO
+        ) {
+          clearIntroTyping();
+          setIntroTypingDone(true);
+          return prev;
+        }
         const next = [...prev];
         next[messageIndex] = { ...next[messageIndex], text: fullText.slice(0, i) };
         return next;
@@ -2330,16 +2429,21 @@ export function CreateWorkspace({
   // Simulate Claude-style streaming for the *opening* guide messages only.
   useEffect(() => {
     if (creationPath === "pending") return;
+    if (userTouchedComposerRef.current) return;
     // Only when we are at the start of a mode (style, journal feeling, or journal pick) and not already chatting.
     if (chatLoading || scriptLoading) return;
+    if (messages.some((m) => m.role === "user")) return;
     const introTypingPhase =
-      phase === "style" ||
-      (journalMode && phase === "feeling" && !meditationStyle) ||
+      (creationPath === "style" && phase === "style") ||
+      (creationPath === "freeflow" &&
+        journalMode &&
+        phase === "feeling" &&
+        !meditationStyle) ||
       (phase === "journalPick" && creationPath === "journalReflect") ||
       (phase === "goalPick" && creationPath === "goal");
     if (!introTypingPhase) return;
     const idx = (() => {
-      for (let i = messages.length - 1; i >= 0; i--) {
+      for (let i = 0; i < messages.length; i++) {
         const m = messages[i];
         if (m.kind === "divider") continue;
         if (m.role === "assistant" && m.variant !== "script" && !m.muted) return i;
@@ -2353,9 +2457,9 @@ export function CreateWorkspace({
         ? JOURNAL_REFLECT_PICK_INTRO
         : phase === "goalPick" && creationPath === "goal"
           ? GOAL_PICK_INTRO
-        : journalMode && phase === "feeling" && !meditationStyle
-          ? OPENING_JOURNAL
-          : OPENING_STYLE;
+          : creationPath === "style"
+            ? OPENING_STYLE
+            : OPENING_JOURNAL;
     const m = messages[idx];
     if (m.text === opening) {
       setIntroTypingDone(true);
@@ -2386,22 +2490,60 @@ export function CreateWorkspace({
     introTypingSession,
   ]);
 
+  function openingTextForCurrentIntro(): string {
+    if (phase === "journalPick" && creationPath === "journalReflect") {
+      return JOURNAL_REFLECT_PICK_INTRO;
+    }
+    if (phase === "goalPick" && creationPath === "goal") {
+      return GOAL_PICK_INTRO;
+    }
+    if (creationPath === "style") {
+      return OPENING_STYLE;
+    }
+    return OPENING_JOURNAL;
+  }
+
+  function stopIntroForComposer() {
+    if (autofocusingComposerRef.current) return;
+    // Already stopped once — never snap again (would overwrite Claude replies).
+    if (userTouchedComposerRef.current) {
+      clearIntroTyping();
+      return;
+    }
+    userTouchedComposerRef.current = true;
+    clearIntroTyping();
+    snapIntroOpeningText(openingTextForCurrentIntro());
+    setIntroTypingDone(true);
+  }
+
   function focusChatInput() {
     requestAnimationFrame(() => {
+      autofocusingComposerRef.current = true;
       chatInputRef.current?.focus();
+      // Release after focus handlers run so a real user focus still stops intro.
+      window.setTimeout(() => {
+        autofocusingComposerRef.current = false;
+      }, 0);
     });
+  }
+
+  function setComposerInput(next: string) {
+    inputDraftRef.current = next;
+    setInput(next);
   }
 
   function resetChatKeepMode() {
     // Keep creation path / journal mode as-is; reset chat and retrigger the intro typing animation.
     abortCoachLetterStream();
     setCoachAudioReady(false);
-    setChatLoading(false);
+    setChatBusy(false);
     setClaudeThread([]);
     setMeditationStyle(null);
     setInput("");
+    inputDraftRef.current = "";
     setIntroTypingDone(false);
     setIntroTypingSession((s) => s + 1);
+    userTouchedComposerRef.current = false;
     setScriptTargetMinutes(null);
     if (creationPath === "journalReflect") {
       setJournalReflectSelectedIds(new Set());
@@ -2465,7 +2607,7 @@ export function CreateWorkspace({
     setCreationPath("style");
     setJournalMode(false);
     setPhase("stylePick");
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
     setMeditationStyle(null);
@@ -2494,7 +2636,7 @@ export function CreateWorkspace({
     setMeditationStyle(label);
     setMessages([]);
     setClaudeThread([]);
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setIntroTypingDone(true);
     setPhase("styleQuestions");
@@ -2557,16 +2699,19 @@ export function CreateWorkspace({
     }
     setJournalMode(true);
     setPhase("feeling");
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
     setMeditationStyle(null);
     setInput("");
+    inputDraftRef.current = "";
     setIntroTypingDone(false);
+    setIntroTypingSession((s) => s + 1);
     setMessages([{ role: "assistant", text: "", variant: "chat" }]);
     setScriptTargetMinutes(null);
     setMobileCreateStep("chat");
     initialChatAutofocusDoneRef.current = false;
+    userTouchedComposerRef.current = false;
     isAtBottomRef.current = true;
   }
 
@@ -2578,7 +2723,7 @@ export function CreateWorkspace({
     setCreationPath("journalReflect");
     setJournalMode(true);
     setPhase("journalPick");
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
     setMeditationStyle(null);
@@ -2600,7 +2745,7 @@ export function CreateWorkspace({
     setLifeAreaId(null);
     writeLinkedLifeAreaId(null);
     setPhase("goalPick");
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
     setMeditationStyle(null);
@@ -2621,7 +2766,7 @@ export function CreateWorkspace({
     setJournalMode(true);
     setOneShotPrompt("");
     setPhase("promptPick");
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
     setMeditationStyle("General");
@@ -2656,7 +2801,7 @@ export function CreateWorkspace({
     setCreationPath("style");
     setJournalMode(false);
     setPhase("claude");
-    setChatLoading(false);
+    setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
     setMeditationStyle(seed.style);
@@ -2715,7 +2860,7 @@ export function CreateWorkspace({
         variant: "chat",
       },
     ]);
-    setChatLoading(true);
+    setChatBusy(true);
 
     try {
       const text = await streamCoachChat(
@@ -2729,7 +2874,7 @@ export function CreateWorkspace({
       const msg = e instanceof Error ? e.message : "Could not reach the guide.";
       setMessages((m) => [...m, { role: "assistant", text: `Sorry — ${msg}` }]);
     } finally {
-      setChatLoading(false);
+      setChatBusy(false);
       requestAnimationFrame(() => {
         chatInputRef.current?.focus();
       });
@@ -2779,7 +2924,7 @@ export function CreateWorkspace({
       },
     ]);
     setScriptTargetMinutes(null);
-    setChatLoading(false);
+    setChatBusy(false);
     setMobileCreateStep("audio");
     setCreateStripStep(2);
     pushCreate({ path: "journalReflect", mix: true });
@@ -2864,8 +3009,8 @@ export function CreateWorkspace({
       if (!initedCreatePathsRef.current.has("freeflow")) beginFreeFlowPath();
       else {
         setCreationPath("freeflow");
-        // Ideate → Create uses freeflow URL with Visualization (not journal mode).
-        if (!readLinkedLifeAreaId()) setJournalMode(true);
+        // Chat / free-flow is journal-style unless Ideate locked Visualization.
+        if (meditationStyle !== "Visualization") setJournalMode(true);
       }
       if (parsed.mix) {
         setCreateStripStep(2);
@@ -2934,15 +3079,16 @@ export function CreateWorkspace({
         pathname,
         creationPath,
         initedPaths: Array.from(initedCreatePathsRef.current),
-        phase,
-        journalMode,
-        meditationStyle,
+        phase: creationPath === "freeflow" ? "feeling" : phase,
+        journalMode: creationPath === "freeflow" ? true : journalMode,
+        meditationStyle: creationPath === "freeflow" ? null : meditationStyle,
         pendingStyleType,
         styleQuestionAnswers,
         styleQuestionsRevealed,
-        messages,
-        claudeThread,
-        input,
+        // Free-flow transcript must not survive a refresh.
+        messages: creationPath === "freeflow" ? [] : messages,
+        claudeThread: creationPath === "freeflow" ? [] : claudeThread,
+        input: creationPath === "freeflow" ? "" : input,
         speakerModelId,
         ttsProvider,
         orpheusVoiceId,
@@ -2959,7 +3105,7 @@ export function CreateWorkspace({
         backgroundNoiseGain,
         createStripStep,
         mobileCreateStep,
-        lastUsedScript,
+        lastUsedScript: creationPath === "freeflow" ? null : lastUsedScript,
         meditationTargetMinutes,
         pendingModeChoice,
         journalReflectSelectedIds: Array.from(journalReflectSelectedIds),
@@ -2968,7 +3114,7 @@ export function CreateWorkspace({
         lifeAreaId,
         oneShotPrompt,
         draftSk,
-        coachAudioReady,
+        coachAudioReady: creationPath === "freeflow" ? false : coachAudioReady,
       };
       writeCreateSession(snapshot);
     }, 400);
@@ -3017,21 +3163,49 @@ export function CreateWorkspace({
   ]);
 
   async function send() {
-    if (
-      phase === "journalPick" ||
-      phase === "goalPick" ||
-      phase === "styleQuestions" ||
-      phase === "promptPick"
-    )
+    // Prefer live DOM / draft ref — survives re-renders from the intro typewriter.
+    const trimmed = (
+      chatInputRef.current?.value ??
+      inputDraftRef.current ??
+      input
+    ).trim();
+    if (!trimmed) {
+      setSendBlockReason("Type a message first.");
       return;
-    const trimmed = input.trim();
-    if (!trimmed || chatLoading || scriptLoading) return;
+    }
+    // Recover from a desynced lock (ref true, UI idle) so send never soft-locks.
+    if (chatLoadingRef.current && !chatLoading) {
+      chatLoadingRef.current = false;
+    }
+    if (chatLoadingRef.current || chatLoading) {
+      setSendBlockReason("Still waiting on the last reply…");
+      return;
+    }
+    if (scriptLoading) {
+      setSendBlockReason("Script is generating — wait a moment.");
+      return;
+    }
+    if (chatControlsDisabled) {
+      setSendBlockReason("Controls locked while audio is generating.");
+      return;
+    }
 
-    // Journal mode: start the Claude chat from mood without requiring a style label.
-    if (journalMode && phase === "feeling" && !meditationStyle) {
-      // "How I Feel" mode is only an opener; still send a neutral style hint because the API requires it.
+    setSendBlockReason(null);
+    stopIntroForComposer();
+    setComposerInput(trimmed);
+    setChatBusy(true);
+
+    // Free-flow / journal-style chat can open without a technique label yet.
+    const openChatWithoutStyle =
+      !meditationStyle?.trim() &&
+      (journalMode ||
+        creationPath === "freeflow" ||
+        creationPath === "goal" ||
+        creationPath === "journalReflect" ||
+        creationPath === "oneShot");
+
+    if (openChatWithoutStyle) {
       const styleHint = "General";
-      // Set a local style so subsequent turns can continue (the send() flow requires a truthy meditationStyle).
       setMeditationStyle(styleHint);
       setPhase("claude");
       const history: MedimadeChatTurn[] = [
@@ -3039,8 +3213,7 @@ export function CreateWorkspace({
         { role: "user", content: trimmed },
       ];
       setMessages((m) => [...m, { role: "user", text: trimmed }]);
-      setInput("");
-      setChatLoading(true);
+      setComposerInput("");
       try {
         const text = await streamCoachChat(
           {
@@ -3055,7 +3228,7 @@ export function CreateWorkspace({
         const msg = e instanceof Error ? e.message : "Could not reach the guide.";
         setMessages((m) => [...m, { role: "assistant", text: `Sorry — ${msg}` }]);
       } finally {
-        setChatLoading(false);
+        setChatBusy(false);
       }
       return;
     }
@@ -3065,6 +3238,7 @@ export function CreateWorkspace({
         (s) => s.trim().toLowerCase() === trimmed.toLowerCase(),
       );
       if (match) {
+        setChatBusy(false);
         pickStyle(match);
         return;
       }
@@ -3074,8 +3248,7 @@ export function CreateWorkspace({
       const style = trimmed;
       const history: MedimadeChatTurn[] = [{ role: "user", content: trimmed }];
       setMessages((m) => [...m, { role: "user", text: trimmed }]);
-      setInput("");
-      setChatLoading(true);
+      setComposerInput("");
       try {
         const text = await streamCoachChat(
           {
@@ -3101,13 +3274,13 @@ export function CreateWorkspace({
           },
         ]);
       } finally {
-        setChatLoading(false);
+        setChatBusy(false);
       }
       return;
     }
 
-    const style = meditationStyle;
-    if (!style) return;
+    const style = meditationStyle?.trim() || "General";
+    if (!meditationStyle?.trim()) setMeditationStyle(style);
 
     if (phase === "feeling") {
       const firstQuestion = getStyleFollowupQuestion(style);
@@ -3119,8 +3292,7 @@ export function CreateWorkspace({
               { role: "user", content: trimmed },
             ];
       setMessages((m) => [...m, { role: "user", text: trimmed }]);
-      setInput("");
-      setChatLoading(true);
+      setComposerInput("");
       try {
         const text = await streamCoachChat(
           {
@@ -3146,7 +3318,7 @@ export function CreateWorkspace({
           },
         ]);
       } finally {
-        setChatLoading(false);
+        setChatBusy(false);
       }
       return;
     }
@@ -3156,8 +3328,7 @@ export function CreateWorkspace({
       { role: "user", content: trimmed },
     ];
     setMessages((m) => [...m, { role: "user", text: trimmed }]);
-    setInput("");
-    setChatLoading(true);
+    setComposerInput("");
     try {
       const text = await streamCoachChat(
         {
@@ -3182,7 +3353,7 @@ export function CreateWorkspace({
         },
       ]);
     } finally {
-      setChatLoading(false);
+      setChatBusy(false);
     }
   }
 
@@ -3852,18 +4023,32 @@ export function CreateWorkspace({
     />
   );
 
-  const showCreateChromeRow =
-    !showPathChooser &&
+  const showCreateChromeRow = false;
+
+  /** True empty thread only — keep seeded intro placeholders visible while they type in. */
+  const chatHasAnyMessageRow = messages.some(
+    (m) => !m.muted && m.kind !== "divider",
+  );
+  const showChatEmptyPrompt =
+    workspaceSectionStep === 1 &&
     !showStyleTypePick &&
     !showStyleQuestions &&
     !showJournalPick &&
     !showPromptPick &&
-    showChatReset;
+    !chatHasAnyMessageRow &&
+    !showChatTyping &&
+    phase !== "style" &&
+    phase !== "goalPick" &&
+    phase !== "journalPick";
 
   return (
     <div
       className={`flex h-full min-h-0 w-full flex-1 flex-col ${
-        showPathChooser || showAudioPlayAll ? "pt-2 sm:pt-3" : "pt-3 sm:pt-4"
+        showPathChooser || showAudioPlayAll
+          ? "pt-2 sm:pt-3"
+          : showChatReset
+            ? "pt-0"
+            : "pt-3 sm:pt-4"
       }`}
     >
       {/* Keep preview elements mounted on every step so src is assigned before the Audio panel. */}
@@ -3991,7 +4176,7 @@ export function CreateWorkspace({
                 onClick={resetChatKeepMode}
                 disabled={chatControlsDisabled}
                 aria-label="Reset chat"
-                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm transition-colors hover:border-accent/50 hover:bg-accent-soft/35 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <IconResetArrow className="h-3.5 w-3.5" />
                 Reset
@@ -4152,14 +4337,12 @@ export function CreateWorkspace({
           </div>
           <div className="min-h-8 flex-1" aria-hidden />
           </div>
-          <div className="shrink-0 border-t border-border/60 bg-background pt-4 pb-6">
-            <div className="mx-auto flex min-h-[2.75rem] w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+          <CreateFlowFooterBar>
               <div className="flex min-w-0 flex-1 justify-start" />
               <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
               <div className="flex min-w-0 flex-1 justify-end">
             {pendingModeChoice ? (
-            <button
-              type="button"
+            <CreateFlowNavPill
               onClick={() => {
                 const mode = pendingModeChoice;
                 if (!mode) return;
@@ -4185,7 +4368,6 @@ export function CreateWorkspace({
                 setCreateStripStep(1);
                 pushCreate({ path: mode });
               }}
-              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
               aria-label={
                 pendingModeChoice === "style"
                   ? "Next: choose a meditation type"
@@ -4210,11 +4392,10 @@ export function CreateWorkspace({
                         : "Chat"}
               </span>
               <IconChevronRight className="text-accent-link" />
-            </button>
+            </CreateFlowNavPill>
             ) : null}
               </div>
-            </div>
-          </div>
+          </CreateFlowFooterBar>
         </div>
         ) : null}
         {showStyleTypePick ? (
@@ -4237,36 +4418,30 @@ export function CreateWorkspace({
                 </div>
               ) : null}
             </div>
-            <div className="shrink-0 border-t border-border/60 bg-background pt-4 pb-6">
-              <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+            <CreateFlowFooterBar>
                 <div className="flex min-w-0 flex-1 justify-start">
-                <button
-                  type="button"
-                  onClick={() => {
+                <CreateFlowNavPill
+              onClick={() => {
                     pushCreate({ path: "pending" });
                   }}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Back to how you generate the script"
                 >
                   <IconChevronLeft className="shrink-0 text-accent-link" />
                   <span>Back</span>
-                </button>
+                </CreateFlowNavPill>
                 </div>
                 <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
                 <div className="flex min-w-0 flex-1 justify-end">
-                <button
-                  type="button"
-                  disabled={!pendingStyleType}
+                <CreateFlowNavPill
+              disabled={!pendingStyleType}
                   onClick={confirmStyleTypePick}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Continue to questions for this meditation type"
                 >
                   <span>Questions</span>
                   <IconChevronRight className="shrink-0 text-accent-link" />
-                </button>
+                </CreateFlowNavPill>
                 </div>
-              </div>
-            </div>
+            </CreateFlowFooterBar>
           </div>
         ) : null}
         {showStyleQuestions ? (
@@ -4336,38 +4511,32 @@ export function CreateWorkspace({
                 ) : null}
               </div>
             </div>
-            <div className="shrink-0 border-t border-border/60 bg-background pt-4 pb-6">
-              <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+            <CreateFlowFooterBar>
                 <div className="flex min-w-0 flex-1 justify-start">
-                <button
-                  type="button"
-                  onClick={() => {
+                <CreateFlowNavPill
+              onClick={() => {
                     pushCreate({ path: "style" });
                   }}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Back to meditation type"
                 >
                   <IconChevronLeft className="shrink-0 text-accent-link" />
                   <span>Type</span>
-                </button>
+                </CreateFlowNavPill>
                 </div>
                 <div className="flex shrink-0 justify-center">
                   {lengthBarControl}
                 </div>
                 <div className="flex min-w-0 flex-1 justify-end">
-                <button
-                  type="button"
-                  disabled={!styleQuestionsReady}
+                <CreateFlowNavPill
+              disabled={!styleQuestionsReady}
                   onClick={confirmStyleQuestions}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Continue to audio and voice settings"
                 >
                   <span>Audio & voice</span>
                   <IconChevronRight className="text-accent-link" />
-                </button>
+                </CreateFlowNavPill>
                 </div>
-              </div>
-            </div>
+            </CreateFlowFooterBar>
           </div>
         ) : null}
         {showJournalPick ? (
@@ -4383,39 +4552,33 @@ export function CreateWorkspace({
               onGuidanceChange={setJournalReflectGuidance}
             />
             </div>
-            <div className="shrink-0 border-t border-border/60 bg-background pt-4 pb-6">
-              <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+            <CreateFlowFooterBar>
                 <div className="flex min-w-0 flex-1 justify-start">
-                <button
-                  type="button"
-                  onClick={goBackToChatStyle}
+                <CreateFlowNavPill
+              onClick={goBackToChatStyle}
                   disabled={chatControlsDisabled}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Back to chat style selection"
                 >
                   <IconChevronLeft className="shrink-0 text-accent-link" />
                   <span>Chat style</span>
-                </button>
+                </CreateFlowNavPill>
                 </div>
                 <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
                 <div className="flex min-w-0 flex-1 justify-end">
-                <button
-                  type="button"
-                  disabled={
+                <CreateFlowNavPill
+              disabled={
                     chatLoading ||
                     chatControlsDisabled ||
                     journalReflectSelectedIds.size === 0
                   }
                   onClick={confirmJournalReflectSelection}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Next: audio and voice settings"
                 >
                   <span>Audio & voice</span>
                   <IconChevronRight className="text-accent-link" />
-                </button>
+                </CreateFlowNavPill>
                 </div>
-              </div>
-            </div>
+            </CreateFlowFooterBar>
           </div>
         ) : null}
         {showPromptPick ? (
@@ -4433,47 +4596,67 @@ export function CreateWorkspace({
                 className="min-h-[12rem] w-full flex-1 resize-y rounded-2xl border border-border bg-card px-4 py-3 text-base leading-relaxed text-foreground shadow-sm outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
               />
             </div>
-            <div className="shrink-0 border-t border-border/60 bg-background pt-4 pb-6">
-              <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+            <CreateFlowFooterBar>
                 <div className="flex min-w-0 flex-1 justify-start">
-                <button
-                  type="button"
-                  onClick={goBackToChatStyle}
+                <CreateFlowNavPill
+              onClick={goBackToChatStyle}
                   disabled={chatControlsDisabled}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Back to chat style selection"
                 >
                   <IconChevronLeft className="shrink-0 text-accent-link" />
                   <span>Chat style</span>
-                </button>
+                </CreateFlowNavPill>
                 </div>
                 <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
                 <div className="flex min-w-0 flex-1 justify-end">
-                <button
-                  type="button"
-                  disabled={
+                <CreateFlowNavPill
+              disabled={
                     chatControlsDisabled || oneShotPrompt.trim().length === 0
                   }
                   onClick={confirmOneShotPrompt}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                   aria-label="Next: audio and voice settings"
                 >
                   <span>Audio & voice</span>
                   <IconChevronRight className="text-accent-link" />
-                </button>
+                </CreateFlowNavPill>
                 </div>
-              </div>
-            </div>
+            </CreateFlowFooterBar>
           </div>
         ) : null}
         {workspaceSectionStep === 1 && !showStyleTypePick && !showStyleQuestions && !showJournalPick && !showPromptPick ? (
-        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-        <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col overflow-hidden px-4 sm:px-6">
-        <section className="flex w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden p-4">
+        <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
+        <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-0 opacity-15"
+            style={{
+              backgroundImage:
+                'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
+              backgroundRepeat: "repeat",
+              // Smaller tiles → denser repeat; aspect matches 1428×1600 crop.
+              backgroundSize: "286px 320px",
+              backgroundPosition: "center top",
+            }}
+          />
+        <section className="relative z-[1] flex w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
+          {showChatReset ? (
+            <div className="flex shrink-0 items-center justify-end px-4 py-2.5 sm:px-5">
+              <button
+                type="button"
+                onClick={resetChatKeepMode}
+                disabled={chatControlsDisabled}
+                aria-label="Reset chat"
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <IconResetArrow className="h-3.5 w-3.5" />
+                Reset
+              </button>
+            </div>
+          ) : null}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
             <div
               ref={chatScrollRef}
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-3"
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 sm:px-5"
               onScroll={() => {
                 const el = chatScrollRef.current;
                 if (!el) return;
@@ -4483,10 +4666,14 @@ export function CreateWorkspace({
                 isAtBottomRef.current = distanceFromBottom < 50;
               }}
             >
-              {/* mt-auto: short threads sit on the bottom (near the input); once
-                  content overflows, scrolling behaves like a normal chat. */}
-              <div className="mt-auto flex w-full min-w-0 flex-col">
-              {/* Track whether user is already at bottom so streaming doesn't yank scroll */}
+              {showChatEmptyPrompt ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+                  <p className="font-display text-center text-[18px] font-normal text-muted">
+                    What&apos;s on your mind today?
+                  </p>
+                </div>
+              ) : (
+              <div className="mt-auto flex w-full min-w-0 flex-col py-3">
               {messages.filter((m) => !m.muted).map((msg, i, visible) => {
                 const isScript =
                   msg.role === "assistant" && msg.variant === "script";
@@ -4547,12 +4734,12 @@ export function CreateWorkspace({
                           : "rounded-[1.25rem]";
                       const bubbleBase = `chat-bubble relative inline-block w-fit max-w-[calc(100%-16px)] px-3.5 py-2.5 ${radius}`;
                       const bubble = isUser
-                        ? `${bubbleBase} bg-border/70 text-lg text-foreground ${
+                        ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
                             showTail ? "chat-bubble-tail-right" : ""
                           } ${muted}`
                         : isScript
-                          ? `${bubbleBase} border border-gold/45 bg-gold/5 text-foreground ${muted}`
-                          : `${bubbleBase} bg-accent-soft text-lg text-foreground ${
+                          ? `${bubbleBase} border border-gold/45 bg-gold/5 text-lg leading-[1.5] text-foreground ${muted}`
+                          : `${bubbleBase} bg-card text-lg leading-[1.5] text-foreground ${
                               showTail ? "chat-bubble-tail-left" : ""
                             } ${muted}`;
                       return (
@@ -4570,13 +4757,13 @@ export function CreateWorkspace({
                                 </div>
                                 <ChatMarkdown
                                   text={msg.text}
-                                  className="font-serif text-base leading-relaxed text-foreground/95"
+                                  className="font-serif text-lg leading-relaxed text-foreground/95"
                                 />
                               </>
                             ) : isUser &&
                               msg.journalSegments &&
                               msg.journalSegments.length > 0 ? (
-                              <div className="text-lg leading-snug">
+                              <div className="text-lg leading-[1.5]">
                                 <p className="whitespace-pre-wrap">{msg.text}</p>
                                 <JournalHandoffEntryCards
                                   segments={msg.journalSegments}
@@ -4585,7 +4772,7 @@ export function CreateWorkspace({
                             ) : (
                               <ChatMarkdown
                                 text={part}
-                                className="relative z-[2] text-lg leading-snug"
+                                className="relative z-[2] text-lg font-normal leading-[1.5]"
                               />
                             )}
                           </div>
@@ -4594,14 +4781,13 @@ export function CreateWorkspace({
                     })}
                     {msg.audioReadyCta ? (
                       <div className="mt-2 flex w-full justify-start">
-                        <button
-                          type="button"
-                          onClick={goToAudioSettings}
-                          className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
+                        <CreateFlowNavPill
+              onClick={goToAudioSettings}
+                          
                         >
                           <span>Proceed to audio settings</span>
                           <IconChevronRight className="text-accent-link" />
-                        </button>
+                        </CreateFlowNavPill>
                       </div>
                     ) : null}
                   </div>
@@ -4699,7 +4885,7 @@ export function CreateWorkspace({
                           type="button"
                           disabled={chatLoading || !goalSelectedId}
                           onClick={() => void confirmGoalSelection()}
-                          className="cursor-pointer rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
+                          className="cursor-pointer rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
                         >
                           Continue with selected
                         </button>
@@ -4711,14 +4897,28 @@ export function CreateWorkspace({
               {showChatTyping ? <ChatTypingIndicator /> : null}
               <div ref={messagesEndRef} />
               </div>
+              )}
             </div>
+          </div>
+        </section>
             {phase === "journalPick" || phase === "goalPick" ? null : (
-            <div className="mt-3 flex shrink-0 items-center gap-2 border-t border-border pt-3">
+            <form
+              className="relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 bg-background px-4 pb-3 pt-2 pointer-events-auto sm:px-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              <div className="flex items-center gap-2">
               <input
                 ref={chatInputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void send()}
+                onChange={(e) => {
+                  stopIntroForComposer();
+                  setSendBlockReason(null);
+                  setComposerInput(e.target.value);
+                }}
+                onFocus={() => stopIntroForComposer()}
                 aria-busy={chatLoading || scriptLoading}
                 disabled={chatControlsDisabled}
                 placeholder={
@@ -4735,63 +4935,71 @@ export function CreateWorkspace({
               <DictationMicButton
                 disabled={chatControlsDisabled || chatLoading || scriptLoading}
                 onTranscript={(spoken) => {
-                  setInput((prev) => appendSpokenText(prev, spoken));
+                  stopIntroForComposer();
+                  setComposerInput(appendSpokenText(inputDraftRef.current || input, spoken));
                   chatInputRef.current?.focus();
                 }}
               />
               <button
-                type="button"
-                onClick={() => void send()}
-                disabled={chatControlsDisabled || chatLoading || scriptLoading}
+                type="submit"
+                aria-disabled={
+                  chatControlsDisabled || chatLoading || scriptLoading
+                }
                 aria-label={chatLoading ? "Sending…" : "Send message"}
-                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                className={`relative z-[200] flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity ${
+                  chatControlsDisabled || chatLoading || scriptLoading
+                    ? "cursor-not-allowed opacity-60"
+                    : ""
+                }`}
               >
                 {chatLoading ? (
                   <span className="text-sm font-medium" aria-hidden>
                     …
                   </span>
                 ) : (
-                  <IconPaperAirplane className="-translate-y-px translate-x-px" />
+                  <IconPaperAirplane className="pointer-events-none -translate-y-px translate-x-px" />
                 )}
               </button>
-            </div>
+              </div>
+              {sendBlockReason ? (
+                <p className="text-xs text-danger" role="status">
+                  {sendBlockReason}
+                </p>
+              ) : null}
+            </form>
             )}
-          </div>
-        </section>
-        </div>
-          <div className="shrink-0 border-t border-border/60 bg-background pt-4 pb-6">
-          <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+          <CreateFlowFooterBar className="relative z-[1]">
             <div className="flex min-w-0 flex-1 justify-start">
-            <button
-              type="button"
+            <CreateFlowNavPill
               onClick={goBackToChatStyle}
               disabled={chatControlsDisabled}
-              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
               aria-label="Back to chat style selection"
             >
               <IconChevronLeft className="shrink-0 text-accent-link" />
               <span>Chat style</span>
-            </button>
+            </CreateFlowNavPill>
             </div>
             <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
             <div className="flex min-w-0 flex-1 justify-end">
-            <button
-              type="button"
+            <CreateFlowNavPill
               disabled={
                 !coachAudioReady ||
                 phase === "journalPick" ||
                 phase === "goalPick"
               }
               onClick={goToAudioSettings}
-              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:pointer-events-none disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
               aria-label="Next: audio and voice settings"
             >
               <span>Audio & voice</span>
               <IconChevronRight className="text-accent-link" />
-            </button>
+            </CreateFlowNavPill>
             </div>
-          </div>
-          </div>
+          </CreateFlowFooterBar>
+        </div>
+        <div
+          className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"
+          aria-hidden
+        />
         </div>
         ) : null}
         {workspaceSectionStep === 2 ? (
@@ -5069,11 +5277,9 @@ export function CreateWorkspace({
               {audioError}
             </p>
           ) : null}
-          <div className="shrink-0 border-t-[0.5px] border-create-hairline bg-background pt-4 pb-6">
-            <div className="mx-auto flex min-h-[3rem] w-full max-w-6xl flex-nowrap items-center justify-between gap-3 px-4 sm:px-6">
+          <CreateFlowFooterBar>
             <div className="flex min-w-0 flex-1 justify-start">
-            <button
-              type="button"
+            <CreateFlowNavPill
               onClick={() => {
                 if (devSkipToAudio) {
                   goBackToChatStyle();
@@ -5087,7 +5293,6 @@ export function CreateWorkspace({
                   path: creationPath === "pending" ? "freeflow" : creationPath,
                 });
               }}
-              className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
               aria-label={
                 creationPath === "style"
                   ? "Back to questions"
@@ -5096,7 +5301,7 @@ export function CreateWorkspace({
             >
               <IconChevronLeft className="shrink-0 text-accent-link" />
               {creationPath === "style" ? "Questions" : "Script"}
-            </button>
+            </CreateFlowNavPill>
             </div>
             <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
             <div className="flex min-w-0 flex-1 justify-end">
@@ -5139,8 +5344,7 @@ export function CreateWorkspace({
               </button>
             </div>
             </div>
-            </div>
-          </div>
+          </CreateFlowFooterBar>
 
           {/*
           Optional video, Markers, Manifestation (no wiring yet). Restore beside Speaker in sm:grid-cols-2 if needed.

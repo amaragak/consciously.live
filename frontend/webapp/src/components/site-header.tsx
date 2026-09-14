@@ -33,6 +33,8 @@ const marketingNav: { href: string; label: string }[] = [
   { href: "/journal", label: "Journal" },
   { href: "/ideate", label: "Ideate" },
   { href: "/focus", label: "Focus" },
+  { href: "/chat", label: "Chat" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/admin", label: "Admin" },
   { href: "/settings", label: "API" },
 ];

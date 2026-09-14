@@ -545,7 +545,7 @@ export function LibraryMeditationCard({
       {menuOpen ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-[90] mt-1 min-w-[12.5rem] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-xl"
+          className="absolute right-0 top-full z-[90] mt-1 min-w-[12.5rem] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-xl isolate"
         >
           {canFavourite ? (
             <button
@@ -715,6 +715,8 @@ export function LibraryMeditationCard({
       <li
         ref={itemRef}
         className={`group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
+          menuOpen ? "z-50" : "z-0"
+        } ${
           isPlaying
             ? "border-accent"
             : "border-border hover:border-accent/80 transition-colors"
@@ -760,6 +762,8 @@ export function LibraryMeditationCard({
     <li
       ref={itemRef}
       className={`group relative min-w-0 overflow-visible rounded-[6px] border bg-card p-4 ${
+        menuOpen ? "z-50" : "z-0"
+      } ${
         isPlaying
           ? "border-accent"
           : "border-border hover:border-accent/80 transition-colors"

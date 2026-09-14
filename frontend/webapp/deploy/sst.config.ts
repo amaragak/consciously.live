@@ -8,6 +8,7 @@ function nextPublicEnvFromProcess(): Record<string, string> {
   const keys = [
     "NEXT_PUBLIC_MEDIMADE_API_URL",
     "NEXT_PUBLIC_MEDIMADE_CHAT_URL",
+    "NEXT_PUBLIC_ASSISTANT_CHAT_URL",
     "NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL",
     "NEXT_PUBLIC_MEDIMADE_SCRIPT_LAB_URL",
   ] as const;

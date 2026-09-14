@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
 import { MEDITATION_TARGET_MINUTES } from "@/lib/medimade-api";
 
 type Props = {
@@ -41,8 +42,8 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
         Length
       </span>
       <div ref={rootRef} className={`relative ${open ? "z-40" : ""}`}>
-        <button
-          type="button"
+        <CreateFlowNavPill
+          variant="control"
           disabled={disabled}
           aria-haspopup="listbox"
           aria-expanded={open}
@@ -52,7 +53,7 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
             if (disabled) return;
             setOpen((v) => !v);
           }}
-          className="flex min-w-[6.25rem] cursor-pointer items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-left text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-soft/30 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-w-[6.25rem] justify-between text-left disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span>{value} min</span>
           <svg
@@ -69,7 +70,7 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
           >
             <path d="M6 9l6 6 6-6" />
           </svg>
-        </button>
+        </CreateFlowNavPill>
         {open ? (
           <div
             role="listbox"

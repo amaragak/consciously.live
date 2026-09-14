@@ -454,6 +454,44 @@ export class MedimadeStack extends cdk.Stack {
     );
     chatUrlInvokeFn.addPropertyOverride("InvokedViaFunctionUrl", true);
 
+    /** App-control Chat (sidebar) — separate from meditation coach; uses Anthropic prompt caching. */
+    const assistantChat = new lambda_nodejs.NodejsFunction(
+      this,
+      "AssistantChatFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/assistant-chat.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(120),
+        memorySize: 512,
+        environment: {
+          CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+        },
+      },
+    );
+    claudeApiKeySecret.grantRead(assistantChat);
+
+    const assistantChatUrl = assistantChat.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
+      cors: {
+        allowedOrigins: ["*"],
+        allowedMethods: [lambda.HttpMethod.POST],
+        allowedHeaders: ["content-type"],
+      },
+    });
+
+    const assistantChatUrlInvokeFn = new lambda.CfnPermission(
+      this,
+      "AssistantChatPublicInvokeFunction",
+      {
+        action: "lambda:InvokeFunction",
+        functionName: assistantChat.functionName,
+        principal: "*",
+      },
+    );
+    assistantChatUrlInvokeFn.addPropertyOverride("InvokedViaFunctionUrl", true);
+
     const httpApi = new apigwv2.HttpApi(this, "HttpApi", {
       apiName: "medimade-api",
       corsPreflight: {
@@ -1740,6 +1778,11 @@ export class MedimadeStack extends cdk.Stack {
       description:
         "Lambda Function URL (response streaming) for POST chat — set NEXT_PUBLIC_MEDIMADE_CHAT_URL",
       value: claudeChatUrl.url,
+    });
+    new cdk.CfnOutput(this, "AssistantChatUrl", {
+      description:
+        "Lambda Function URL (streaming + prompt cache) for app-control Chat — set NEXT_PUBLIC_ASSISTANT_CHAT_URL",
+      value: assistantChatUrl.url,
     });
     new cdk.CfnOutput(this, "AdminScriptLabUrl", {
       description:

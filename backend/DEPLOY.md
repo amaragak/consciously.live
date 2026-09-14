@@ -111,9 +111,9 @@ Or via the helper (writes frontend `.env` from stack outputs; always deploys Lon
 
 From the repo, `backend/scripts/deploy-back` runs CDK deploy and refreshes web/mobile `.env` files. It **defaults `AWS_PROFILE` to `mm`** when you have not set `AWS_PROFILE` and you did not pass `--profile` on the command line. Override with `--profile other` or by exporting `AWS_PROFILE` first.
 
-After deploy, note **CloudFormation outputs**: `ApiUrl`, `FishTtsUrl`, `VoiceFxUrl`, `MedimadeChatUrl`, `FishAudioSecretName`, `ClaudeSecretName`.
+After deploy, note **CloudFormation outputs**: `ApiUrl`, `FishTtsUrl`, `VoiceFxUrl`, `MedimadeChatUrl`, `AssistantChatUrl`, `FishAudioSecretName`, `ClaudeSecretName`.
 
-Set **`NEXT_PUBLIC_MEDIMADE_CHAT_URL`** in the webapp to **`MedimadeChatUrl`** (Lambda Function URL with response streaming). `scripts/deploy-back` writes API base, chat URL, and (when present) media CDN base into **`frontend/webapp/.env`** (`NEXT_PUBLIC_*`) and **`frontend/mobile/.env`** (`EXPO_PUBLIC_*`).
+Set **`NEXT_PUBLIC_MEDIMADE_CHAT_URL`** in the webapp to **`MedimadeChatUrl`** (Lambda Function URL with response streaming). Set **`NEXT_PUBLIC_ASSISTANT_CHAT_URL`** to **`AssistantChatUrl`** (app-control Chat with Anthropic prompt caching). `scripts/deploy-back` writes API base, chat URL, and (when present) media CDN base into **`frontend/webapp/.env`** (`NEXT_PUBLIC_*`) and **`frontend/mobile/.env`** (`EXPO_PUBLIC_*`).
 
 Public function URLs now require **both** `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` (URL-only) on the function policy; the stack adds both. If you still see **403 Forbidden**, redeploy and confirm `.env` points at **`MedimadeChatUrl`**, not the old API Gateway `/chat` path.
 
@@ -205,7 +205,8 @@ it means `authEmailFrom` and/or `authWebappOrigin` were not provided at deploy t
 
 - Meditation audio jobs accept **`ttsProvider`**: `"fish"` (default) or `"orpheus"`. **`reference_id`** is the Fish model id or Orpheus voice id (`tara`, `leah`, …). The async worker calls Fish directly or RunPod (via secrets) for Orpheus.
 
-- **POST** `{MedimadeChatUrl}` (Claude Haiku, **streams** via Lambda response streaming)  
+- **POST** `{MedimadeChatUrl}` (Claude Haiku, **streams** via Lambda response streaming)
+- **POST** `{AssistantChatUrl}` (app-control Chat; Claude with **prompt caching**, streams)  
 
 **Coach chat** — body:
 `{ "mode": "chat", "meditationStyle": string, "messages": [{ "role": "user" | "assistant", "content": string }, ...] }`  

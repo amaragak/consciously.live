@@ -61,6 +61,7 @@ type PrefixRule = {
 };
 
 const PROTECTED_PREFIXES: PrefixRule[] = [
+  { prefix: "/chat/my", marketing: "/chat" },
   { prefix: "/meditate/create", marketing: "/meditate" },
   { prefix: "/meditate/library", marketing: "/meditate" },
   { prefix: "/meditate/sounds", marketing: "/meditate" },
@@ -131,6 +132,7 @@ const MARKETING_ROOT_APP_DESTINATIONS: Record<string, string> = {
   "/ideate": "/ideate/my",
   "/dream": "/ideate/my",
   "/focus": "/focus/my",
+  "/chat": "/chat/my",
 };
 
 /** Normalize pathname (no query/hash, no trailing slash except `/`). */

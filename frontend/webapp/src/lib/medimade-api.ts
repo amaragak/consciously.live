@@ -419,8 +419,12 @@ export async function logoutMedimadeSessionRemote(
   }
 }
 
-/** Full URL of the streaming chat Lambda (Function URL), not API Gateway /chat. */
+/** Full URL of the streaming chat endpoint (same-origin proxy in the browser). */
 export function getMedimadeChatUrl(): string | null {
+  // Browser: always hit our Next proxy so ad-blockers / CORS cannot kill send.
+  if (typeof window !== "undefined") {
+    return "/api/medimade-chat";
+  }
   const u = process.env.NEXT_PUBLIC_MEDIMADE_CHAT_URL;
   if (!u || typeof u !== "string") return null;
   const t = u.trim();

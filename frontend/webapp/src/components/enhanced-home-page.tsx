@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   IconBulb,
+  IconMessageCircle,
   IconNotebook,
   IconSparkles,
   IconTargetArrow,
@@ -31,6 +32,12 @@ const features = [
     body: "Sit with one task at a time. Short sessions that keep you in the work instead of escaping it.",
     Icon: IconTargetArrow,
   },
+  {
+    href: "/chat",
+    title: "Chat",
+    body: "A wise life coach that can also move the app — reflect, log gratitudes, add tasks, or start a meditation in one thread.",
+    Icon: IconMessageCircle,
+  },
 ] as const;
 
 /**
@@ -49,7 +56,7 @@ export function EnhancedHomePage() {
             with our suite of self reflection tools.
           </p>
 
-          <ul className="mt-10 grid w-full max-w-6xl grid-cols-1 gap-3 sm:mt-12 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+          <ul className="mt-10 grid w-full max-w-6xl grid-cols-1 gap-3 sm:mt-12 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
             {features.map(({ href, title, body, Icon }) => (
               <li key={title} className="min-h-0">
                 <Link
@@ -229,6 +236,43 @@ export function EnhancedHomePage() {
             >
               Explore Focus →
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Chat */}
+      <section className="w-full bg-marketing-band-d px-4 py-16 sm:px-6 sm:py-20">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-2 lg:gap-14">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-marketing-eyebrow">
+              Chat
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-marketing-ink sm:text-4xl">
+              A life coach that can also move the app.
+            </h2>
+            <p className="mt-4 text-base leading-relaxed text-marketing-muted sm:text-lg">
+              Talk through what&apos;s heavy — or ask Consciously to log a
+              gratitude, add a task, or start a meditation. One conversation for
+              reflection and action.
+            </p>
+            <Link
+              href="/chat"
+              className="mt-6 inline-flex items-center rounded-full accent-fill-gradient px-5 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+            >
+              Explore Chat →
+            </Link>
+          </div>
+          <div className="rounded-2xl border border-marketing-card-border bg-marketing-panel-bg p-5 sm:p-6">
+            <p className="text-xs font-medium uppercase tracking-wide text-marketing-body">
+              In the thread
+            </p>
+            <p className="mt-3 font-display text-lg font-medium leading-snug text-marketing-ink">
+              &ldquo;I feel stuck between work and rest.&rdquo;
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-marketing-muted">
+              Chat listens first — then can open Create Meditation, log a
+              gratitude, or put a next step on a life area when you&apos;re ready.
+            </p>
           </div>
         </div>
       </section>
