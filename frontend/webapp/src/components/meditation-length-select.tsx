@@ -37,8 +37,8 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
   }, [open]);
 
   return (
-    <div className="flex shrink-0 items-center gap-2.5">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+    <div className="flex shrink-0 flex-col items-center gap-1 sm:flex-row sm:gap-2.5">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted sm:text-[11px]">
         Length
       </span>
       <div ref={rootRef} className={`relative ${open ? "z-40" : ""}`}>
@@ -53,12 +53,12 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
             if (disabled) return;
             setOpen((v) => !v);
           }}
-          className="min-w-[6.25rem] justify-between text-left disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-w-[5.5rem] justify-between text-left disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[6.25rem]"
         >
           <span>{value} min</span>
           <svg
             viewBox="0 0 24 24"
-            className={`h-4 w-4 shrink-0 text-muted transition-transform ${
+            className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform sm:h-4 sm:w-4 ${
               open ? "rotate-180" : ""
             }`}
             fill="none"
@@ -82,7 +82,7 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
                 type="button"
                 role="option"
                 aria-selected={mins === value}
-                className={`block w-full px-3.5 py-2.5 text-left text-sm hover:bg-background ${
+                className={`block w-full px-3.5 py-2 text-left text-sm hover:bg-background sm:py-2.5 ${
                   mins === value
                     ? "font-semibold text-foreground"
                     : "text-muted"

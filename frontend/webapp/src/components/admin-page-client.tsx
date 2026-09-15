@@ -13,6 +13,7 @@ const SECTIONS = [
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/script-lab", label: "Script Lab" },
   { href: "/admin/stress-test", label: "Stress Test" },
+  { href: "/admin/dev-ui", label: "Dev UI" },
 ] as const;
 
 function AdminSectionTabs({ pathname }: { pathname: string }) {

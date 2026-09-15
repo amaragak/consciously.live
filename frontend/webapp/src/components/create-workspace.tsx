@@ -9,10 +9,18 @@ import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
 import { MeditationLengthSelect } from "@/components/meditation-length-select";
 import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
 import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
+import {
+  shouldRenderDevUi,
+  useDevUiSettings,
+} from "@/lib/dev-ui-settings";
 import { MixerChannel, MixerPresetChannel, MixerVoiceChannel } from "@/components/mixer-channel";
 import { SoundscapePicker } from "@/components/soundscape-picker";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
+import {
+  FISH_SPEAKERS,
+  fishSpeakersForPicker,
+} from "@/lib/fish-speakers";
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
   CLAUDE_SONNET_45_MODEL_ID,
@@ -170,13 +178,6 @@ function mediaFileUrl(base: string, key: string): string {
 }
 
 const SPEAKER_SAMPLE_GAP_MS = 3000;
-
-function isLocalDevHost(): boolean {
-  if (process.env.NODE_ENV !== "production") return true;
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1";
-}
 
 const DEV_RANDOM_SCRIPT_SEEDS: readonly { style: string; user: string }[] = [
   {
@@ -1000,6 +1001,11 @@ export function CreateWorkspace({
     router.prefetch("/meditate/library/creations");
   }, [router]);
 
+  const devUi = useDevUiSettings();
+  const showCreateAudioDevControls = shouldRenderDevUi(
+    devUi.createAudioDevControls,
+  );
+
   const [phase, setPhase] = useState<Phase>(() => {
     if (seedFromHandoff) return "claude";
     if (parsedCreateRoute.path === "style") {
@@ -1048,7 +1054,7 @@ export function CreateWorkspace({
     useState<MeditationTargetMinutes | null>(null);
   /** When on, speaker row plays CDN `*-fx.wav` (Pedalboard preset mixer); when off, dry Fish `*.mp3`. Dev-only toggle; production always on. */
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
-  const voiceFxOn = isLocalDevHost() ? speakerFxPreviewOn : true;
+  const voiceFxOn = showCreateAudioDevControls ? speakerFxPreviewOn : true;
   const [backgroundNature, setBackgroundNature] = useState<
     BackgroundAudioItem[]
   >([]);
@@ -1154,7 +1160,9 @@ export function CreateWorkspace({
     setGaplessBedVolume(el, bedElementVolume(gain));
   }
   // Speakers come from backend `GET /fish/speakers` (single source of truth).
-  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>([]);
+  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>(() =>
+    fishSpeakersForPicker([...FISH_SPEAKERS]),
+  );
   const [orpheusSpeakers, setOrpheusSpeakers] = useState<OrpheusSpeaker[]>(
     () => [...ORPHEUS_VOICES],
   );
@@ -1219,7 +1227,7 @@ export function CreateWorkspace({
 
   /** On the first screen: which path is selected before tapping “Script”. */
   const [pendingModeChoice, setPendingModeChoice] = useState<
-    null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot"
+    null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript"
   >(null);
   const [pendingStyleType, setPendingStyleType] = useState<string | null>(null);
   const [styleQuestionAnswers, setStyleQuestionAnswers] = useState<
@@ -1254,7 +1262,7 @@ export function CreateWorkspace({
   const [oneShotPrompt, setOneShotPrompt] = useState("");
 
   /** Dev: skip chat → audio; Generate asks the worker for a random script. */
-  const [devSkipToAudio, setDevSkipToAudio] = useState(false);
+  const [randomScript, setRandomScript] = useState(false);
   const devRandomTranscriptRef = useRef<string | null>(null);
 
   const [draftSk, setDraftSk] = useState<string | null>(null);
@@ -1377,6 +1385,7 @@ export function CreateWorkspace({
       setPhase(s.phase === "style" ? "stylePick" : s.phase);
     }
     setPendingModeChoice(s.pendingModeChoice);
+    setRandomScript(s.randomScript === true);
     setJournalReflectSelectedIds(
       new Set(s.journalReflectSelectedIds.slice(0, 1)),
     );
@@ -2077,17 +2086,22 @@ export function CreateWorkspace({
   useEffect(() => {
     void listFishSpeakers()
       .then((sp) => {
-        if (!sp || sp.length === 0) return;
-        setFishSpeakers(sp);
+        const next = fishSpeakersForPicker(sp ?? []);
+        if (next.length === 0) return;
+        setFishSpeakers(next);
         // If current selection isn't valid anymore, pick Emily, else first.
-        const emily = sp.find((s) => s.name.toLowerCase() === "emily");
+        const emily = next.find((s) => s.name.toLowerCase() === "emily");
         setSpeakerModelId((current) => {
-          if (sp.some((s) => s.modelId === current)) return current;
-          return emily?.modelId ?? sp[0].modelId;
+          if (next.some((s) => s.modelId === current)) return current;
+          return emily?.modelId ?? next[0]!.modelId;
         });
       })
       .catch(() => {
-        // Keep existing fallback constants if the endpoint isn't reachable.
+        setFishSpeakers((current) =>
+          current.length > 0
+            ? current
+            : fishSpeakersForPicker([...FISH_SPEAKERS]),
+        );
       });
   }, []);
 
@@ -2621,6 +2635,8 @@ export function CreateWorkspace({
    */
   function startBranch(next: CreationPath) {
     initedCreatePathsRef.current = new Set([next]);
+    setRandomScript(false);
+    devRandomTranscriptRef.current = null;
     if (next !== "style") {
       setPendingStyleType(null);
       setStyleQuestionAnswers(emptyStyleQuestionAnswers());
@@ -2657,6 +2673,8 @@ export function CreateWorkspace({
     setMessages([]);
     setScriptTargetMinutes(null);
     setMobileCreateStep("chat");
+    setRandomScript(false);
+    devRandomTranscriptRef.current = null;
     initialChatAutofocusDoneRef.current = false;
     isAtBottomRef.current = true;
   }
@@ -2831,10 +2849,10 @@ export function CreateWorkspace({
     pushCreate({ path: "oneShot", mix: true });
   }
 
-  function beginDevSkipToAudio() {
+  function beginRandomScript() {
     const seed = pickDevRandomScriptSeed();
     devRandomTranscriptRef.current = seed.transcript;
-    setDevSkipToAudio(true);
+    setRandomScript(true);
     initedCreatePathsRef.current.add("style");
     setCreationPath("style");
     setJournalMode(false);
@@ -2854,6 +2872,20 @@ export function CreateWorkspace({
     setCreateStripStep(2);
     initialChatAutofocusDoneRef.current = false;
     isAtBottomRef.current = true;
+    const href = createHrefForNav({ path: "style", mix: true });
+    patchCreateSession({
+      randomScript: true,
+      meditationStyle: seed.style,
+      pendingStyleType: null,
+      creationPath: "style",
+      pathname: pathOnly(href),
+      createStripStep: 2,
+      mobileCreateStep: "audio",
+      coachAudioReady: false,
+      messages: [],
+      claudeThread: [],
+    });
+    pendingUrlSyncRef.current = pathOnly(href);
     pushCreate({ path: "style", mix: true });
   }
 
@@ -2969,6 +3001,7 @@ export function CreateWorkspace({
   }
 
   function goBackToChatStyle() {
+    const wasRandom = randomScript;
     const modeFromPath: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" =
       creationPath === "style"
         ? "style"
@@ -2983,9 +3016,9 @@ export function CreateWorkspace({
             : null;
     setCreateStripStep(0);
     setCreationPath("pending");
-    setPendingModeChoice(modeFromPath);
+    setPendingModeChoice(wasRandom ? "randomScript" : modeFromPath);
     setMobileCreateStep("chat");
-    setDevSkipToAudio(false);
+    setRandomScript(false);
     devRandomTranscriptRef.current = null;
     initialChatAutofocusDoneRef.current = false;
     pushCreate({ path: "pending" });
@@ -3153,6 +3186,7 @@ export function CreateWorkspace({
         oneShotPrompt,
         draftSk,
         coachAudioReady: creationPath === "freeflow" ? false : coachAudioReady,
+        randomScript,
       };
       writeCreateSession(snapshot);
     }, 400);
@@ -3198,6 +3232,7 @@ export function CreateWorkspace({
     oneShotPrompt,
     draftSk,
     coachAudioReady,
+    randomScript,
   ]);
 
   async function send() {
@@ -3415,7 +3450,7 @@ export function CreateWorkspace({
     try {
       const last = messages[messages.length - 1];
       const existingScript =
-        devSkipToAudio
+        randomScript
           ? null
           : last?.role === "assistant" && last.variant === "script"
             ? last.text.trim()
@@ -3427,7 +3462,7 @@ export function CreateWorkspace({
           ? existingScript
           : "";
 
-      const transcript = devSkipToAudio
+      const transcript = randomScript
         ? (devRandomTranscriptRef.current?.trim() ||
           "User: I want a short random guided meditation.\n\nGuide: Let's begin.")
         : messages
@@ -3455,8 +3490,10 @@ export function CreateWorkspace({
         reference_id: speakerModelId,
         ttsProvider: "fish",
         fishTtsModel: "s2.1-pro-free",
-        claudeModel: claudeModelChoice,
-        fishPauseMode: isLocalDevHost() ? fishPauseMode : "segmented",
+        claudeModel: showCreateAudioDevControls
+          ? claudeModelChoice
+          : CLAUDE_HAIKU_45_MODEL_ID,
+        fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
         speed: speechSpeed,
         voiceFxPreset: voiceFxOn ? "mixer" : null,
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
@@ -4106,19 +4143,7 @@ export function CreateWorkspace({
         playsInline
         onEnded={() => setCompositionPlaying(false)}
       />
-      {showPathChooser && isLocalDevHost() ? (
-        <AppTopBarTrailingPortal>
-          <button
-            type="button"
-            onClick={beginDevSkipToAudio}
-            className="shrink-0 cursor-pointer rounded-full border border-dashed border-accent/50 bg-accent-soft/40 px-3 py-1.5 text-xs font-semibold text-accent-link transition-colors hover:bg-accent-soft/70"
-            aria-label="Dev: skip chat and go to audio setup with a random script on generate"
-          >
-            Skip to audio
-          </button>
-        </AppTopBarTrailingPortal>
-      ) : null}
-      {showAudioPlayAll && isLocalDevHost() ? (
+      {showAudioPlayAll && showCreateAudioDevControls ? (
         <AppTopBarTrailingPortal>
           <div className="flex shrink-0 items-center gap-2">
             <span className="rounded-full border border-dashed border-accent/50 bg-accent-soft/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-link">
@@ -4256,21 +4281,21 @@ export function CreateWorkspace({
           <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 overflow-y-auto px-4 pt-0 sm:px-6">
           <div
             ref={chooserCardsRef}
-            className="grid auto-rows-fr grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            className="grid auto-rows-fr grid-cols-1 items-stretch gap-2.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
           >
             <button
               type="button"
               onClick={() => setPendingModeChoice("style")}
               aria-pressed={pendingModeChoice === "style"}
-              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-6 text-left"
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
                 By type
               </span>
-              <span className="mt-2.5 font-display text-[19px] font-normal leading-snug text-foreground">
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 Pick a meditation style
               </span>
-              <p className="mt-2.5 min-h-[calc(1.55em*3)] text-[15px] font-normal leading-[1.55] text-muted">
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
                 Choose a type, then answer a few questions shaped around what you need today.
               </p>
             </button>
@@ -4278,15 +4303,15 @@ export function CreateWorkspace({
               type="button"
               onClick={() => setPendingModeChoice("freeflow")}
               aria-pressed={pendingModeChoice === "freeflow"}
-              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-6 text-left"
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
                 Chat
               </span>
-              <span className="mt-2.5 font-display text-[19px] font-normal leading-snug text-foreground">
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 Free flow chat
               </span>
-              <p className="mt-2.5 min-h-[calc(1.55em*3)] text-[15px] font-normal leading-[1.55] text-muted">
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
                 Start from mood and what’s on your mind—open, journal-style questions.
               </p>
             </button>
@@ -4298,28 +4323,30 @@ export function CreateWorkspace({
               }}
               aria-pressed={pendingModeChoice === "goal"}
               aria-disabled={!planGoalsReady || !hasPlanGoals}
-              className={`create-path-card flex h-full flex-col rounded-[6px] border border-border bg-card p-6 text-left ${
+              className={`create-path-card flex h-full flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6 ${
                 !planGoalsReady || !hasPlanGoals
                   ? "cursor-not-allowed"
                   : "cursor-pointer"
               }`}
             >
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
                 Ideate
               </span>
-              <span className="mt-2.5 font-display text-[19px] font-normal leading-snug text-foreground">
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 Move towards a goal
               </span>
-              <p className="mt-2.5 min-h-[calc(1.55em*3)] text-[15px] font-normal leading-[1.55] text-muted">
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
                 Pick a goal from Ideate for a visualization that helps you step toward it.
               </p>
               {!planGoalsReady ? (
-                <p className="mt-2.5 text-[13px] text-muted">Checking your goals…</p>
+                <p className="mt-1 text-[12px] text-muted sm:mt-2.5 sm:text-[13px]">
+                  Checking your goals…
+                </p>
               ) : !hasPlanGoals ? (
                 <Link
                   href="/ideate/my"
                   onClick={(e) => e.stopPropagation()}
-                  className="mt-2.5 text-[13px] font-medium text-accent-link underline-offset-2 hover:underline"
+                  className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >
                   Add a life area to unlock →
                 </Link>
@@ -4333,28 +4360,30 @@ export function CreateWorkspace({
               }}
               aria-pressed={pendingModeChoice === "journalReflect"}
               aria-disabled={!journalPickerListReady || !hasReflectableJournal}
-              className={`create-path-card flex h-full flex-col rounded-[6px] border border-border bg-card p-6 text-left ${
+              className={`create-path-card flex h-full flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6 ${
                 !journalPickerListReady || !hasReflectableJournal
                   ? "cursor-not-allowed"
                   : "cursor-pointer"
               }`}
             >
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
                 Journal
               </span>
-              <span className="mt-2.5 font-display text-[19px] font-normal leading-snug text-foreground">
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 Reflect on a journal entry
               </span>
-              <p className="mt-2.5 min-h-[calc(1.55em*3)] text-[15px] font-normal leading-[1.55] text-muted">
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
                 Use a saved entry as context for your meditation.
               </p>
               {!journalPickerListReady ? (
-                <p className="mt-2.5 text-[13px] text-muted">Checking your saved journal…</p>
+                <p className="mt-1 text-[12px] text-muted sm:mt-2.5 sm:text-[13px]">
+                  Checking your saved journal…
+                </p>
               ) : !hasReflectableJournal ? (
                 <Link
                   href="/journal/my"
                   onClick={(e) => e.stopPropagation()}
-                  className="mt-2.5 text-[13px] font-medium text-accent-link underline-offset-2 hover:underline"
+                  className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >
                   Start journaling to unlock →
                 </Link>
@@ -4364,19 +4393,34 @@ export function CreateWorkspace({
               type="button"
               onClick={() => setPendingModeChoice("oneShot")}
               aria-pressed={pendingModeChoice === "oneShot"}
-              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-6 text-left"
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
                 Direct
               </span>
-              <span className="mt-2.5 font-display text-[19px] font-normal leading-snug text-foreground">
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 One-shot prompt
               </span>
-              <p className="mt-2.5 min-h-[calc(1.55em*3)] text-[15px] font-normal leading-[1.55] text-muted">
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
                 Write what you want once—straight to the script generator, no coaching chat.
               </p>
             </button>
-            <div className="create-path-card-placeholder hidden h-full lg:block" aria-hidden />
+            <button
+              type="button"
+              onClick={() => setPendingModeChoice("randomScript")}
+              aria-pressed={pendingModeChoice === "randomScript"}
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                Random
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Random Script
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Skip the chat and jump straight to audio with a random style and seed script.
+              </p>
+            </button>
           </div>
           <div className="min-h-8 flex-1" aria-hidden />
           </div>
@@ -4389,6 +4433,10 @@ export function CreateWorkspace({
               onClick={() => {
                 const mode = pendingModeChoice;
                 if (!mode) return;
+                if (mode === "randomScript") {
+                  beginRandomScript();
+                  return;
+                }
                 // Coming back to the branch already in progress resumes it; the
                 // begin* reset only runs when the branch actually changes.
                 const resume = initedCreatePathsRef.current.has(mode);
@@ -4420,7 +4468,9 @@ export function CreateWorkspace({
                       ? "Next: choose a goal"
                       : pendingModeChoice === "oneShot"
                         ? "Next: write your prompt"
-                        : "Next: chat"
+                        : pendingModeChoice === "randomScript"
+                          ? "Next: audio with a random script"
+                          : "Next: chat"
               }
             >
               <span>
@@ -4432,7 +4482,9 @@ export function CreateWorkspace({
                       ? "Goal"
                       : pendingModeChoice === "oneShot"
                         ? "Prompt"
-                        : "Chat"}
+                        : pendingModeChoice === "randomScript"
+                          ? "Audio"
+                          : "Chat"}
               </span>
               <IconChevronRight className="text-accent-link" />
             </CreateFlowNavPill>
@@ -4575,7 +4627,10 @@ export function CreateWorkspace({
                   onClick={confirmStyleQuestions}
                   aria-label="Continue to audio and voice settings"
                 >
-                  <span>Audio & voice</span>
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
                   <IconChevronRight className="text-accent-link" />
                 </CreateFlowNavPill>
                 </div>
@@ -4617,7 +4672,10 @@ export function CreateWorkspace({
                   onClick={confirmJournalReflectSelection}
                   aria-label="Next: audio and voice settings"
                 >
-                  <span>Audio & voice</span>
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
                   <IconChevronRight className="text-accent-link" />
                 </CreateFlowNavPill>
                 </div>
@@ -4659,7 +4717,10 @@ export function CreateWorkspace({
                   onClick={confirmOneShotPrompt}
                   aria-label="Next: audio and voice settings"
                 >
-                  <span>Audio & voice</span>
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
                   <IconChevronRight className="text-accent-link" />
                 </CreateFlowNavPill>
                 </div>
@@ -5035,7 +5096,10 @@ export function CreateWorkspace({
               onClick={goToAudioSettings}
               aria-label="Next: audio and voice settings"
             >
-              <span>Audio & voice</span>
+              <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
               <IconChevronRight className="text-accent-link" />
             </CreateFlowNavPill>
             </div>
@@ -5326,7 +5390,7 @@ export function CreateWorkspace({
             <div className="flex min-w-0 flex-1 justify-start">
             <CreateFlowNavPill
               onClick={() => {
-                if (devSkipToAudio) {
+                if (randomScript) {
                   goBackToChatStyle();
                   return;
                 }
@@ -5384,7 +5448,10 @@ export function CreateWorkspace({
                     </svg>
                   </span>
                 ) : (
-                  "Generate meditation"
+                  <>
+                    <span className="sm:hidden">Generate</span>
+                    <span className="hidden sm:inline">Generate meditation</span>
+                  </>
                 )}
               </button>
             </div>

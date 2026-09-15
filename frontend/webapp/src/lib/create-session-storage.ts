@@ -68,7 +68,7 @@ export type CreateSessionV1 = {
   mobileCreateStep: "chat" | "audio";
   lastUsedScript: string | null;
   meditationTargetMinutes: MeditationTargetMinutes;
-  pendingModeChoice: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot";
+  pendingModeChoice: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript";
   journalReflectSelectedIds: string[];
   journalReflectGuidance: string;
   goalSelectedId: string | null;
@@ -77,6 +77,8 @@ export type CreateSessionV1 = {
   oneShotPrompt: string;
   draftSk: string | null;
   coachAudioReady: boolean;
+  /** True when the user chose Random Script (skip chat → audio with a seed). */
+  randomScript: boolean;
 };
 
 function isFiniteNumber(n: unknown): n is number {
@@ -191,7 +193,8 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
     pending !== "freeflow" &&
     pending !== "journalReflect" &&
     pending !== "goal" &&
-    pending !== "oneShot"
+    pending !== "oneShot" &&
+    pending !== "randomScript"
   ) {
     return null;
   }
@@ -254,6 +257,7 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
     oneShotPrompt: typeof o.oneShotPrompt === "string" ? o.oneShotPrompt : "",
     draftSk: typeof o.draftSk === "string" ? o.draftSk : null,
     coachAudioReady: o.coachAudioReady === true,
+    randomScript: o.randomScript === true,
   };
 }
 

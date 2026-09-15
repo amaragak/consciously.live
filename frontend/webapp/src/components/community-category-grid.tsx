@@ -196,7 +196,7 @@ export function MeditationTypeCardGrid({
       aria-label={includeAll ? "Community categories" : "Meditation types"}
       className={
         className ||
-        "grid w-full grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6"
+        "grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6"
       }
     >
       {cards.map((card, i) => {
@@ -222,26 +222,29 @@ export function MeditationTypeCardGrid({
             }
             className={
               isPicker
-                ? `flex aspect-square w-full min-w-0 min-h-0 cursor-pointer flex-col items-center justify-center gap-3 self-start overflow-hidden rounded-[6px] bg-[var(--type-card-bg)] px-2 py-2.5 text-center transition-[filter,border-color] dark:bg-[var(--type-card-bg-dark)] ${
+                ? `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-[6px] bg-[var(--type-card-bg)] px-2.5 py-2 text-left transition-[filter,border-color] dark:bg-[var(--type-card-bg-dark)] sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-3 sm:px-2 sm:py-2.5 sm:text-center ${
                     active
                       ? "border-[1.5px] border-solid border-accent"
                       : "border-[0.5px] border-solid border-transparent hover:border-card-warm-border hover:brightness-[0.96] dark:hover:brightness-[0.96]"
                   }`
-                : `flex aspect-square w-full min-w-0 min-h-0 cursor-pointer flex-col items-center justify-center gap-2.5 self-start overflow-hidden rounded-2xl border px-2 py-2.5 text-center text-[#1E2530] shadow-sm transition-[box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 ${
+                : `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-xl border px-2.5 py-2 text-left text-[#1E2530] shadow-sm transition-[box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-2xl sm:px-2 sm:py-2.5 sm:text-center ${
                     active
                       ? "border-accent ring-2 ring-accent ring-offset-2 ring-offset-background"
                       : "border-transparent"
                   }`
             }
           >
-            <CommunityCategoryIcon name={card.icon} />
+            <CommunityCategoryIcon
+              name={card.icon}
+              className="h-6 w-6 shrink-0 sm:h-14 sm:w-14"
+            />
             {isPicker ? (
-              <span className="w-full font-display text-[16px] font-normal leading-[1.3] text-foreground">
+              <span className="min-w-0 flex-1 truncate font-display text-[14px] font-normal leading-snug text-foreground sm:w-full sm:flex-none sm:overflow-visible sm:whitespace-normal sm:text-center sm:text-[16px] sm:leading-[1.3] sm:text-clip">
                 {card.label}
               </span>
             ) : (
-              <span className="flex h-[2.5rem] w-full shrink-0 items-center justify-center sm:h-[2.75rem]">
-                <span className="line-clamp-2 text-center text-sm font-semibold leading-tight sm:text-base">
+              <span className="flex min-w-0 flex-1 items-center sm:h-[2.5rem] sm:w-full sm:flex-none sm:shrink-0 sm:justify-center md:h-[2.75rem]">
+                <span className="truncate text-sm font-semibold leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-center sm:text-base">
                   {card.label}
                 </span>
               </span>
@@ -292,7 +295,7 @@ export function CommunityCategoryGrid({
       includeAll
       className={
         className ??
-        "mt-8 grid w-full grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
+        "mt-8 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
       }
     />
   );

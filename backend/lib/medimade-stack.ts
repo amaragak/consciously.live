@@ -1203,6 +1203,46 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
+    const devUiSettingsFn = new lambda_nodejs.NodejsFunction(
+      this,
+      "DevUiSettingsFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/dev-ui-settings.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+        },
+      },
+    );
+    voiceAdminTable.grantReadWriteData(devUiSettingsFn);
+    authJwtSecret.grantRead(devUiSettingsFn);
+
+    httpApi.addRoutes({
+      path: "/dev-ui-settings",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "DevUiSettingsPublicGetIntegration",
+        devUiSettingsFn,
+      ),
+    });
+    httpApi.addRoutes({
+      path: "/admin/dev-ui-settings",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "DevUiSettingsAdminIntegration",
+        devUiSettingsFn,
+      ),
+    });
+
     // --- Python: script embeddings (fastembed + BGE-small ONNX) — shared layer
     const fastembedLayerRoot = path.join(__dirname, "../layers/fastembed");
     const fastembedPackageInit = path.join(

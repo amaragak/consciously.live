@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Fragment, useLayoutEffect, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { LogoMark } from "@/components/logo-mark";
 import { AppPrimaryTabsSlot, AppTopBarTrailingSlot } from "@/components/app-primary-tabs";
 import { AppNotificationsBell } from "@/components/app-notifications-bell";
@@ -19,6 +26,15 @@ import {
   readCreateSession,
 } from "@/lib/create-session-storage";
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
+import {
+  deriveEntryTitle,
+  loadJournalStoreRaw,
+  subscribeJournalStore,
+} from "@/lib/journal-storage";
+import {
+  getJournalEntryLiveTitle,
+  subscribeJournalEntryLiveTitle,
+} from "@/lib/journal-entry-live-title";
 
 function lifeAreaTitleFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/ideate\/goal\/([^/?#]+)/);
@@ -51,10 +67,41 @@ function createMeditationStyleFromSession(pathname: string): string | null {
   return null;
 }
 
+function journalEntryTitleFromPath(pathname: string): string | null {
+  if (
+    pathname === "/journal/my" ||
+    pathname === "/journal/my/" ||
+    pathname.startsWith("/journal/my/gratitudes") ||
+    pathname.startsWith("/journal/my/insights")
+  ) {
+    return null;
+  }
+  const m = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+  if (!m?.[1]) return null;
+  let id: string;
+  try {
+    id = decodeURIComponent(m[1]);
+  } catch {
+    id = m[1];
+  }
+  try {
+    const live = getJournalEntryLiveTitle(id);
+    if (live != null) {
+      const t = live.trim();
+      return t || "Untitled entry";
+    }
+    const entry = loadJournalStoreRaw().entries.find((e) => e.id === id);
+    if (!entry) return "Entry";
+    return entry.title.trim() || deriveEntryTitle(entry.contentHtml);
+  } catch {
+    return "Entry";
+  }
+}
+
 function BreadcrumbChevron() {
   return (
     <span
-      className="mx-1.5 inline-flex shrink-0 items-center text-muted md:mx-2.5"
+      className="mx-0.5 inline-flex shrink-0 items-center text-muted md:mx-2.5"
       aria-hidden
     >
       <svg
@@ -102,6 +149,134 @@ function BreadcrumbCrumb({
   );
 }
 
+function MobileBreadcrumbEllipsis({
+  intermediates,
+}: {
+  intermediates: AppBreadcrumbCrumb[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 6,
+      left: rect.left + rect.width / 2,
+    });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (buttonRef.current?.contains(t) || menuRef.current?.contains(t)) {
+        return;
+      }
+      setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function onReposition() {
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 6,
+        left: rect.left + rect.width / 2,
+      });
+    }
+    // Defer so the opening click doesn't immediately close the menu.
+    const t = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onPointerDown, true);
+    }, 0);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open]);
+
+  const menu =
+    open && menuPos && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Intermediate steps"
+            style={{
+              position: "fixed",
+              top: menuPos.top,
+              left: menuPos.left,
+              transform: "translateX(-50%)",
+            }}
+            className="z-[200] min-w-[10rem] max-w-[min(100vw-2rem,16rem)] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg"
+          >
+            {intermediates.map((c, i) => (
+              <div
+                key={`mid-${c.label}-${i}`}
+                role="none"
+                className="px-3 py-2 text-sm"
+              >
+                {c.href ? (
+                  <Link
+                    role="menuitem"
+                    href={c.href}
+                    onClick={() => setOpen(false)}
+                    className="block truncate italic text-accent-link underline-offset-2 hover:underline"
+                  >
+                    {c.label}
+                  </Link>
+                ) : (
+                  <span
+                    role="menuitem"
+                    className="block truncate italic text-muted"
+                  >
+                    {c.label}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Show intermediate breadcrumb steps"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="inline-flex h-6 min-w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-background px-1.5 text-sm leading-none text-muted transition-colors hover:border-accent/40 hover:text-foreground"
+      >
+        …
+      </button>
+      {menu}
+    </>
+  );
+}
+
 export function AppTopBar({
   mobileSidebarOpen = false,
   onToggleSidebar,
@@ -122,27 +297,34 @@ export function AppTopBar({
         buildAppBreadcrumbs(pathname, {
           lifeAreaTitle: lifeAreaTitleFromPath(pathname),
           createMeditationStyle: createMeditationStyleFromSession(pathname),
+          createRandomScript: Boolean(readCreateSession()?.randomScript),
+          journalEntryTitle: journalEntryTitleFromPath(pathname),
           hash: typeof window !== "undefined" ? window.location.hash : "",
           search: typeof window !== "undefined" ? window.location.search : "",
         }),
       );
     };
     rebuild();
-    const unsub = subscribeIdeateCloud(rebuild);
+    const unsubIdeate = subscribeIdeateCloud(rebuild);
+    const unsubJournal = subscribeJournalStore(rebuild);
+    const unsubLiveTitle = subscribeJournalEntryLiveTitle(rebuild);
     window.addEventListener("storage", rebuild);
     window.addEventListener(CREATE_SESSION_CHANGED_EVENT, rebuild);
     return () => {
-      unsub();
+      unsubIdeate();
+      unsubJournal();
+      unsubLiveTitle();
       window.removeEventListener("storage", rebuild);
       window.removeEventListener(CREATE_SESSION_CHANGED_EVENT, rebuild);
     };
   }, [pathname]);
 
+  const mobileHasEllipsis = crumbs.length > 2;
+  const mobileIntermediates = mobileHasEllipsis ? crumbs.slice(1, -1) : [];
   const mobileCrumbs =
     crumbs.length <= 2
       ? crumbs
       : [crumbs[0]!, crumbs[crumbs.length - 1]!];
-  const mobileHasEllipsis = crumbs.length > 2;
 
   return (
     <header className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-border bg-background">
@@ -163,15 +345,15 @@ export function AppTopBar({
             className="relative z-[1] shrink-0 text-accent-button"
           />
           {sidebarCollapsed ? null : (
-            <span className="brand-wordmark truncate font-display text-xl font-medium tracking-tight lowercase">
+            <span className="brand-wordmark relative -top-px truncate font-display text-xl font-medium tracking-tight lowercase">
               consciously
             </span>
           )}
         </Link>
       </div>
 
-      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3 px-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-4 md:gap-2">
+      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3 overflow-visible px-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2 overflow-visible md:gap-2">
           <Link
             href="/"
             className="inline-flex shrink-0 items-center md:hidden"
@@ -180,16 +362,16 @@ export function AppTopBar({
               size={24}
               className="relative z-[1] mr-1.5 shrink-0 text-accent-button"
             />
-            <span className="brand-wordmark font-display text-lg font-medium tracking-tight lowercase">
+            <span className="brand-wordmark relative -top-px font-display text-lg font-medium tracking-tight lowercase">
               consciously
             </span>
           </Link>
 
-          {/* Mobile: first … last */}
+          {/* Mobile: first … last; ellipsis opens intermediate steps */}
           {mobileCrumbs.length > 0 ? (
             <nav
               aria-label="Breadcrumb"
-              className="flex min-w-0 items-center truncate font-display text-base font-medium tracking-tight md:hidden"
+              className="flex min-w-0 items-center overflow-visible font-display text-sm font-medium tracking-tight md:hidden"
             >
               {mobileCrumbs.map((c, i) => {
                 const last = i === mobileCrumbs.length - 1;
@@ -200,9 +382,9 @@ export function AppTopBar({
                         <BreadcrumbChevron />
                         {mobileHasEllipsis && i === 1 ? (
                           <>
-                            <span className="shrink-0 text-muted" aria-hidden>
-                              …
-                            </span>
+                            <MobileBreadcrumbEllipsis
+                              intermediates={mobileIntermediates}
+                            />
                             <BreadcrumbChevron />
                           </>
                         ) : null}
@@ -246,36 +428,40 @@ export function AppTopBar({
             View marketing page
           </AlphaChromeButton>
         </div>
-        <AppNotificationsBell />
-        {onToggleSidebar ? (
-          <button
-            type="button"
-            aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileSidebarOpen}
-            onClick={onToggleSidebar}
-            className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground md:hidden"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden
+        <div className="flex items-center gap-0.5 md:gap-2">
+          <span className="relative translate-x-[5px] md:translate-x-0">
+            <AppNotificationsBell />
+          </span>
+          {onToggleSidebar ? (
+            <button
+              type="button"
+              aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileSidebarOpen}
+              onClick={onToggleSidebar}
+              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground md:hidden"
             >
-              {mobileSidebarOpen ? (
-                <>
-                  <path d="M6 6l12 12" />
-                  <path d="M18 6L6 18" />
-                </>
-              ) : (
-                <path d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
-        ) : null}
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden
+              >
+                {mobileSidebarOpen ? (
+                  <>
+                    <path d="M6 6l12 12" />
+                    <path d="M18 6L6 18" />
+                  </>
+                ) : (
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* True viewport centre (full header width), not content-area centre. */}

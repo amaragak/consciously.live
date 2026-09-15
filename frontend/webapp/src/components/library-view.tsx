@@ -29,6 +29,10 @@ import {
 } from "@/lib/medimade-api";
 import { useMobileOrTouchChrome } from "@/hooks/use-mobile-or-touch-chrome";
 import {
+  shouldRenderDevUi,
+  useDevUiSettings,
+} from "@/lib/dev-ui-settings";
+import {
   estimateFishBillableUtf8Bytes,
   fishCostUsdFromBillableBytes,
   fishTtsModelLabel,
@@ -67,13 +71,6 @@ import {
   pendingGenerationToRow,
   type LibraryMeditationRow,
 } from "@/components/library-meditation-card";
-
-function isLocalDevHost(): boolean {
-  if (process.env.NODE_ENV !== "production") return true;
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1";
-}
 
 function formatGenerationElapsed(ms: number | null | undefined): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
@@ -773,6 +770,7 @@ export default function LibraryView({
     audioKey: string;
   } | null>(null);
   const [showFishCostTooltip, setShowFishCostTooltip] = useState(false);
+  const devUi = useDevUiSettings();
 
   const itemElsRef = useRef<Map<string, HTMLLIElement>>(new Map());
   const focusHandledRef = useRef(false);
@@ -790,11 +788,9 @@ export default function LibraryView({
     if (!playingS3Key) setPlayingTimeSeconds(0);
   }, [playingS3Key]);
 
-  // Dev cost flyout on library cards — paused while cost work is settled.
-  // useEffect(() => {
-  //   setShowFishCostTooltip(isLocalDevHost());
-  // }, []);
-  void setShowFishCostTooltip;
+  useEffect(() => {
+    setShowFishCostTooltip(shouldRenderDevUi(devUi.libraryDevFlyout));
+  }, [devUi.libraryDevFlyout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1776,8 +1772,7 @@ export default function LibraryView({
     }
 
     const cardKey = m.s3Key;
-    // const fishCostText = showFishCostTooltip ? fishCostTooltipText(m) : null;
-    void showFishCostTooltip;
+    const fishCostText = showFishCostTooltip ? fishCostTooltipText(m) : null;
     const shareId = m.id?.trim() || "";
 
     return (
@@ -1845,10 +1840,9 @@ export default function LibraryView({
           if (el) itemElsRef.current.set(m.s3Key, el);
           else itemElsRef.current.delete(m.s3Key);
         }}
-        // Dev cost flyout — re-enable with showFishCostTooltip + fishCostTooltipText.
-        // devOverlay={
-        //   fishCostText ? <FishCostDevTooltip text={fishCostText} /> : null
-        // }
+        devOverlay={
+          fishCostText ? <FishCostDevTooltip text={fishCostText} /> : null
+        }
       />
     );
   }
@@ -2175,7 +2169,7 @@ export default function LibraryView({
           />
           <div
             className="md:hidden"
-            style={{ height: 11, minHeight: 11, width: "100%" }}
+            style={{ height: 24, minHeight: 24, width: "100%" }}
             aria-hidden
           />
           {mobileSearchFilterRow}

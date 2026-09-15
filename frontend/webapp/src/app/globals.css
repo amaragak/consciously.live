@@ -508,6 +508,38 @@ body {
   mask-image: none;
 }
 
+/*
+ * Mobile journal page field: same paisley tile as .home-hero, without the
+ * clear-band / white fade — fills tab strip + empty space below the list panel.
+ */
+@media (max-width: 639px) {
+  .journal-mobile-paisley-bg {
+    position: relative;
+    background-color: var(--home-hero-bg);
+  }
+
+  .journal-mobile-paisley-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.15;
+    background-image: url("/patterns/paisley-tile-800-offwhite.webp");
+    background-repeat: repeat;
+    background-size: 800px 800px;
+  }
+
+  .dark .journal-mobile-paisley-bg::before {
+    background-image: url("/patterns/paisley-tile-800-tonal-navy.webp");
+  }
+
+  .journal-mobile-paisley-bg > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
 /* Ideate home: black hero fill so the paisley vignette reads on a dark field. */
 .home-hero.home-hero--ideate {
   --home-hero-bg: #000000;

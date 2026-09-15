@@ -12,10 +12,7 @@ import {
 import { JournalRichEditor } from "@/components/journal-rich-editor";
 import { JournalGratitudeEditor } from "@/components/journal-gratitude-editor";
 import { JournalEntryMeta } from "@/components/journal-entry-meta";
-import {
-  IconSettingsCog,
-  JournalSettingsDialog,
-} from "@/components/journal-settings-dialog";
+import { JournalSettingsDialog } from "@/components/journal-settings-dialog";
 import { JournalImportDialog } from "@/components/journal-import-dialog";
 import {
   mergeImportedEntries,
@@ -23,7 +20,7 @@ import {
   type JournalImportPreviewRow,
 } from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
-import { Calendar, ChevronLeft, Folder, Import } from "lucide-react";
+import { Calendar, ChevronLeft, Folder } from "lucide-react";
 import { JournalLockGate } from "@/components/journal-lock-gate";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
@@ -45,6 +42,7 @@ import {
   gratitudeLinesToHtml,
   groupJournalEntriesByWeek,
   groupJournalEntriesForSidebar,
+  deriveEntryTitle,
   isDemoJournalEntry,
   isDemoOnlyStore,
   isGratitudeEntry,
@@ -72,6 +70,10 @@ import {
   type JournalGratitudeLines,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
+import {
+  clearJournalEntryLiveTitle,
+  setJournalEntryLiveTitle,
+} from "@/lib/journal-entry-live-title";
 import {
   journalMoodDotColor,
 } from "@/lib/journal-moods";
@@ -184,20 +186,6 @@ function gratitudeEntryIdFromPath(pathname: string): string | null {
   }
 }
 
-function JournalSettingsIconButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-haspopup="dialog"
-      aria-label="Journal settings"
-      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted transition-colors hover:border-accent/40 hover:text-foreground"
-    >
-      <IconSettingsCog />
-    </button>
-  );
-}
-
 function IconEntryMore({ className }: { className?: string }) {
   return (
     <svg
@@ -212,6 +200,78 @@ function IconEntryMore({ className }: { className?: string }) {
       <circle cx="12" cy="12" r="1.75" />
       <circle cx="12" cy="19" r="1.75" />
     </svg>
+  );
+}
+
+function JournalChromeMoreMenu({
+  onImport,
+  onSettings,
+}: {
+  onImport: () => void;
+  onSettings: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label="Journal options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted transition-colors hover:border-accent/40 hover:text-foreground"
+      >
+        <IconEntryMore />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1 min-w-[9rem] rounded-xl border border-border bg-card py-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onImport();
+            }}
+            className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30"
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSettings();
+            }}
+            className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30"
+          >
+            Settings
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -918,9 +978,6 @@ export function JournalView() {
     return lifeAreaForJournalEntry(activeEntry, planDreams);
   }, [activeEntry, planDreams]);
 
-  const folderFilterLabel =
-    folders.find((f) => f.id === selectedFolderId)?.name ?? "All entries";
-
   const patchActive = useCallback(
     (partial: Partial<JournalEntry>) => {
       const id = activeIdRef.current;
@@ -1064,11 +1121,19 @@ export function JournalView() {
     router,
   ]);
 
-  const openJournalList = useCallback(() => {
-    flushSaveSync();
-    setMobileEntryMenuOpen(false);
-    router.push(JOURNAL_SECTION_HREF.journal);
-  }, [flushSaveSync, router]);
+  useEffect(() => {
+    if (section !== "journal" || !routeEntryId) {
+      clearJournalEntryLiveTitle();
+      return;
+    }
+    const entry = entriesRef.current.find((e) => e.id === routeEntryId);
+    const title =
+      entry?.title?.trim() ||
+      (entry ? deriveEntryTitle(entry.contentHtml) : "") ||
+      "";
+    setJournalEntryLiveTitle(routeEntryId, title);
+    return () => clearJournalEntryLiveTitle(routeEntryId);
+  }, [section, routeEntryId]);
 
   const openGratitudesList = useCallback(() => {
     flushSaveSync();
@@ -1394,6 +1459,8 @@ export function JournalView() {
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
     <div
       className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden ${
+        !mobileComposeChrome ? "journal-mobile-paisley-bg" : ""
+      } ${
         journalComposeChrome
           ? "relative z-[1] max-w-6xl border-r-[0.5px] border-border px-0 pb-0 pt-0"
           : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
@@ -1421,9 +1488,9 @@ export function JournalView() {
             options={JOURNAL_SECTION_TABS}
           />
         </AppPrimaryTabsDesktop>
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 md:hidden">
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 py-1.5 md:hidden">
           <SegmentedPillTabs
-            className="min-w-0 flex-1"
+            className="min-w-0 flex-1 shadow-md"
             equalWidth
             aria-label="Journal section"
             value={section}
@@ -1447,110 +1514,6 @@ export function JournalView() {
           </p>
         ) : null}
       </div>
-
-      {mobileJournalEditor ? (
-        <div className="mb-3 flex shrink-0 items-center justify-between gap-2 sm:hidden">
-          <button
-            type="button"
-            onClick={openJournalList}
-            className="inline-flex cursor-pointer items-center gap-0.5 text-sm font-semibold text-accent-link"
-            aria-label="Back to Journal list"
-          >
-            <ChevronLeft aria-hidden className="size-5" strokeWidth={2} />
-            Journal
-          </button>
-          <div ref={mobileEntryMenuRef} className="relative">
-            <button
-              type="button"
-              aria-label="Entry actions"
-              aria-haspopup="menu"
-              aria-expanded={mobileEntryMenuOpen}
-              onClick={() => setMobileEntryMenuOpen((v) => !v)}
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-accent-soft/50 hover:text-foreground"
-            >
-              <IconEntryMore />
-            </button>
-            {mobileEntryMenuOpen ? (
-              <div
-                role="menu"
-                className="absolute right-0 top-full z-30 mt-1 min-w-[11rem] rounded-xl border border-border bg-card py-1 shadow-lg"
-              >
-                {folders.length > 0 ? (
-                  <>
-                    <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      Move to folder
-                    </p>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => moveActiveToFolder("")}
-                      className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
-                        !activeEntry?.folderId
-                          ? "font-semibold text-foreground"
-                          : "text-muted"
-                      }`}
-                    >
-                      No folder
-                    </button>
-                    {folders.map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => moveActiveToFolder(f.id)}
-                        className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
-                          activeEntry?.folderId === f.id
-                            ? "font-semibold text-foreground"
-                            : "text-muted"
-                        }`}
-                      >
-                        {f.name}
-                      </button>
-                    ))}
-                    <div className="my-1 border-t border-border" />
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMobileEntryMenuOpen(false);
-                    openLifeAreaFromActive();
-                  }}
-                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30"
-                >
-                  {activeLifeArea
-                    ? `Life area: ${activeLifeArea.title}`
-                    : "Connect to life area"}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMobileEntryMenuOpen(false);
-                    generateMeditationFromActive();
-                  }}
-                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30"
-                >
-                  Generate meditation
-                </button>
-                <div className="my-1 border-t border-border" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMobileEntryMenuOpen(false);
-                    deleteActive();
-                  }}
-                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft/40"
-                >
-                  Delete entry
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       {mobileGratitudeCompose ? (
         <div className="mb-3 flex shrink-0 items-center justify-between gap-2 sm:hidden">
@@ -1618,7 +1581,7 @@ export function JournalView() {
       >
         {journalTab === "journal" && sidebarCollapsed ? (
           <aside
-            className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 border-r-[0.5px] border-border bg-surface-2 px-1.5 py-3 md:flex ${
+            className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 border-r-[0.5px] border-border bg-marketing-band-d px-1.5 py-3 md:flex ${
               mobileComposeChrome ? "" : ""
             }`}
           >
@@ -1641,10 +1604,12 @@ export function JournalView() {
           </aside>
         ) : (
         <aside
-          className={`flex shrink-0 flex-col overflow-hidden ${
+          className={`flex shrink-0 flex-col ${
             journalTab === "journal"
-              ? `relative z-[1] min-h-0 gap-3 border-b-[0.5px] border-border bg-surface-2 px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
-                  mobileComposeChrome ? "max-sm:hidden" : "max-sm:min-h-0 max-sm:flex-1"
+              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-border bg-marketing-band-d px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+                  mobileComposeChrome
+                    ? "max-sm:hidden"
+                    : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
                 }`
               : `gap-3 overflow-visible border-b border-border pb-4 lg:max-h-none lg:w-64 lg:border-b-0 lg:pb-0 ${
                   journalTab === "gratitude"
@@ -1655,7 +1620,7 @@ export function JournalView() {
         >
           {journalTab === "journal" ? (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 sm:flex">
                 <button
                   type="button"
                   onClick={toggleSidebarCollapsed}
@@ -1672,15 +1637,15 @@ export function JournalView() {
                   + New entry
                 </button>
               </div>
-              <SearchInput
-                className="w-full"
-                inputClassName="py-2"
-                value={searchQuery}
-                onChange={setSearchQuery}
-                placeholder="Search entries..."
-              />
-              <div className="flex items-center justify-end gap-1.5">
-                {/* Mobile: folder + date in one control */}
+              <div className="flex items-center gap-2">
+                <SearchInput
+                  className="min-w-0 flex-1"
+                  inputClassName="py-2"
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder="Search entries..."
+                />
+                {/* Mobile: folder + date between search and New */}
                 <div ref={filtersMenuRef} className="relative shrink-0 sm:hidden">
                   <button
                     type="button"
@@ -1798,7 +1763,23 @@ export function JournalView() {
                     </div>
                   ) : null}
                 </div>
-                {/* sm+: separate folder + date + settings */}
+                <span className="sm:hidden">
+                  <JournalChromeMoreMenu
+                    onImport={() => setImportOpen(true)}
+                    onSettings={() => setSettingsOpen(true)}
+                  />
+                </span>
+                <button
+                  type="button"
+                  onClick={createEntry}
+                  aria-label="New entry"
+                  className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 sm:hidden"
+                >
+                  + New
+                </button>
+              </div>
+              <div className="flex items-center justify-end gap-1.5">
+                {/* sm+: folder + options */}
                 <div className="hidden items-center gap-1.5 sm:flex">
                 <div ref={folderMenuRef} className="relative shrink-0">
                   <button
@@ -1892,56 +1873,10 @@ export function JournalView() {
                     </div>
                   ) : null}
                 </div>
-                <div ref={dateMenuRef} className="relative shrink-0">
-                  <button
-                    type="button"
-                    title="Jump to a specific day."
-                    aria-label="Jump to a specific day."
-                    aria-haspopup="dialog"
-                    aria-expanded={sidebarMenu === "date"}
-                    onClick={() =>
-                      setSidebarMenu((m) => (m === "date" ? null : "date"))
-                    }
-                    className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border transition-colors ${
-                      jumpDate
-                        ? "border-accent/40 bg-accent-soft/40 text-foreground"
-                        : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground"
-                    }`}
-                  >
-                    <Calendar aria-hidden className="size-4" strokeWidth={2} />
-                  </button>
-                  {sidebarMenu === "date" ? (
-                    <JumpToDayPopover
-                      jumpDate={jumpDate}
-                      onPick={applyJumpDate}
-                      onClear={clearJumpDate}
-                    />
-                  ) : null}
-                </div>
-                <JournalSettingsIconButton onClick={() => setSettingsOpen(true)} />
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-xs text-muted">
-                  {folderFilterLabel}
-                  {jumpDate
-                    ? ` · ${formatJournalEntryDate(`${jumpDate}T12:00:00`)}`
-                    : ""}
-                </p>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="sm:hidden">
-                    <JournalSettingsIconButton
-                      onClick={() => setSettingsOpen(true)}
-                    />
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setImportOpen(true)}
-                    className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-accent-link underline-offset-2 hover:underline"
-                  >
-                    <Import aria-hidden className="size-3.5" strokeWidth={2} />
-                    Import
-                  </button>
+                <JournalChromeMoreMenu
+                  onImport={() => setImportOpen(true)}
+                  onSettings={() => setSettingsOpen(true)}
+                />
                 </div>
               </div>
             </div>
@@ -2015,8 +1950,9 @@ export function JournalView() {
                   ) : null}
                 </div>
                 <span className="sm:hidden">
-                  <JournalSettingsIconButton
-                    onClick={() => setSettingsOpen(true)}
+                  <JournalChromeMoreMenu
+                    onImport={() => setImportOpen(true)}
+                    onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
               </div>
@@ -2048,12 +1984,19 @@ export function JournalView() {
                     />
                   ) : null}
                 </div>
-                <JournalSettingsIconButton onClick={() => setSettingsOpen(true)} />
+                <JournalChromeMoreMenu
+                  onImport={() => setImportOpen(true)}
+                  onSettings={() => setSettingsOpen(true)}
+                />
               </div>
             </>
           )}
           <nav
-            className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+            className={`min-h-0 space-y-5 pr-1 [scrollbar-gutter:stable] ${
+              journalTab === "journal"
+                ? "max-sm:grow-0 max-sm:overflow-visible flex-1 overflow-y-auto"
+                : "flex-1 overflow-y-auto"
+            }`}
             aria-label={
               journalTab === "gratitude" ? "Past gratitudes" : "Past entries"
             }
@@ -2105,51 +2048,41 @@ export function JournalView() {
                     {group.entries.map((e) => {
                       const isActive = e.id === activeEntryId;
                       if (journalTab === "journal") {
-                        const moodColor = journalMoodDotColor(e.mood);
                         const lifeArea = lifeAreaForJournalEntry(e, planDreams);
+                        const metaMuted = isActive
+                          ? "text-faint"
+                          : "text-muted";
                         return (
                           <li key={e.id}>
                             <button
                               type="button"
                               onClick={() => selectEntry(e.id)}
-                              className={`w-full cursor-pointer rounded-[6px] border-[0.5px] px-2.5 py-2 text-left transition-colors ${
+                              className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                                 isActive
-                                  ? "border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] text-foreground"
-                                  : "border-transparent bg-transparent text-foreground hover:bg-[color:var(--card-warm-bg)]/50"
+                                  ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                  : "border-border bg-background text-foreground hover:border-accent/40"
                               }`}
                             >
-                              <span className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="inline-block size-2 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: moodColor ?? "transparent",
-                                    boxShadow: moodColor
-                                      ? undefined
-                                      : "inset 0 0 0 1px rgba(180,140,80,0.35)",
-                                  }}
-                                  aria-hidden
-                                />
-                                <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
-                                  {sidebarEntryTitle(e.title)}
-                                </span>
+                              <span className="line-clamp-2 text-sm font-semibold">
+                                {sidebarEntryTitle(e.title)}
                               </span>
-                              <span className="mt-0.5 line-clamp-2 pl-4 text-[12px] text-muted">
-                                {entryPreview(e, { untruncated: true })}
+                              <span className="mt-0.5 line-clamp-2 text-xs text-muted">
+                                {entryPreview(e)}
                               </span>
-                              <div className="mt-1.5 flex items-center justify-between gap-2 pl-4">
-                                <time
-                                  dateTime={e.createdAt}
-                                  className="text-[11px] text-muted"
-                                >
-                                  {formatJournalEntryDate(e.createdAt)}
-                                </time>
-                                <span className="flex min-w-0 flex-wrap items-center justify-end gap-1">
-                                  {lifeArea ? (
-                                    <span className="rounded-full border-[0.5px] border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                                      {lifeArea.title}
-                                    </span>
-                                  ) : null}
+                              <div
+                                className={`mt-2 flex items-center justify-between gap-2 border-t pt-2 text-[10px] leading-snug ${isActive ? "border-border-subtle" : "border-border"} ${metaMuted}`}
+                              >
+                                <span>
+                                  Created{" "}
+                                  <time dateTime={e.createdAt}>
+                                    {formatJournalEntryDate(e.createdAt)}
+                                  </time>
                                 </span>
+                                {lifeArea ? (
+                                  <span className="min-w-0 truncate font-medium">
+                                    {lifeArea.title}
+                                  </span>
+                                ) : null}
                               </div>
                             </button>
                           </li>
@@ -2255,8 +2188,42 @@ export function JournalView() {
                 createdAt={activeEntry.createdAt}
                 transcribeApiBase={getMedimadeApiBase()}
                 hideCreatedDate
-                entryMenuClassName={
-                  mobileJournalEditor ? "max-sm:hidden" : undefined
+                entryMenuBefore={
+                  folders.length > 0 ? (
+                    <>
+                      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        Move to folder
+                      </p>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => moveActiveToFolder("")}
+                        className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
+                          !activeEntry?.folderId
+                            ? "font-semibold text-foreground"
+                            : "text-muted"
+                        }`}
+                      >
+                        No folder
+                      </button>
+                      {folders.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => moveActiveToFolder(f.id)}
+                          className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
+                            activeEntry?.folderId === f.id
+                              ? "font-semibold text-foreground"
+                              : "text-muted"
+                          }`}
+                        >
+                          {f.name}
+                        </button>
+                      ))}
+                      <div className="my-1 border-t border-border" />
+                    </>
+                  ) : null
                 }
                 onHtmlChange={(html) => {
                   latestHtmlRef.current = html;
@@ -2264,6 +2231,9 @@ export function JournalView() {
                 }}
                 onTitleChange={(title) => {
                   latestTitleRef.current = title;
+                  if (activeEntryId) {
+                    setJournalEntryLiveTitle(activeEntryId, title);
+                  }
                   scheduleSave();
                 }}
                 onDelete={deleteActive}

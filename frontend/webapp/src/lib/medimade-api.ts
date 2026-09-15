@@ -2633,6 +2633,64 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
   };
 }
 
+/** Admin-gated localhost-only UI switches (defaults off). */
+export type DevUiSettings = {
+  createAudioDevControls: boolean;
+  libraryDevFlyout: boolean;
+};
+
+export function defaultDevUiSettings(): DevUiSettings {
+  return {
+    createAudioDevControls: false,
+    libraryDevFlyout: false,
+  };
+}
+
+export async function fetchDevUiSettings(): Promise<DevUiSettings> {
+  const base = getMedimadeApiBase();
+  if (!base) return defaultDevUiSettings();
+  try {
+    const res = await medimadeFetch(`${base}/dev-ui-settings`, {
+      headers: { Accept: "application/json" },
+    });
+    const data = (await res.json()) as {
+      settings?: Partial<DevUiSettings>;
+      error?: string;
+    };
+    if (!res.ok) return defaultDevUiSettings();
+    return {
+      createAudioDevControls: data.settings?.createAudioDevControls === true,
+      libraryDevFlyout: data.settings?.libraryDevFlyout === true,
+    };
+  } catch {
+    return defaultDevUiSettings();
+  }
+}
+
+export async function patchDevUiSettings(
+  patch: Partial<DevUiSettings>,
+): Promise<DevUiSettings> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/dev-ui-settings`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(patch),
+  });
+  const data = (await res.json()) as {
+    settings?: Partial<DevUiSettings>;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    createAudioDevControls: data.settings?.createAudioDevControls === true,
+    libraryDevFlyout: data.settings?.libraryDevFlyout === true,
+  };
+}
+
 export async function patchAdminVoice(body: {
   pauses?: Partial<AdminPauseBands>;
   speaker?: {

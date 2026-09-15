@@ -44,6 +44,8 @@ type Props = {
   onGenerateMeditation?: () => void;
   /** Extra classes for the overflow menu (e.g. hide on mobile when chrome is external). */
   entryMenuClassName?: string;
+  /** Optional items rendered at the top of the entry overflow menu. */
+  entryMenuBefore?: ReactNode;
   /** Mood row above the title (journal entries redesign). */
   headerBefore?: ReactNode;
   /** Connections / meta row below the title. */
@@ -71,6 +73,7 @@ export function JournalRichEditor({
   connectLifeAreaLabel = "Connect to life area",
   onGenerateMeditation,
   entryMenuClassName,
+  entryMenuBefore,
   headerBefore,
   headerAfter,
   bottomBar,
@@ -324,7 +327,9 @@ export function JournalRichEditor({
             {showEntryMenu ? (
               <div
                 ref={menuRef}
-                className={`relative flex shrink-0 items-center gap-2 self-start pt-1 ${entryMenuClassName ?? ""}`}
+                className={`relative flex shrink-0 items-center gap-2 ${
+                  hideCreatedDate ? "self-center" : "self-start pt-1"
+                } ${entryMenuClassName ?? ""}`}
               >
                 <button
                   type="button"
@@ -341,6 +346,7 @@ export function JournalRichEditor({
                     role="menu"
                     className="absolute right-0 top-full z-20 mt-1 min-w-[12.5rem] rounded-xl border border-border bg-card py-1 shadow-lg"
                   >
+                    {entryMenuBefore}
                     {onConnectLifeArea ? (
                       <button
                         type="button"

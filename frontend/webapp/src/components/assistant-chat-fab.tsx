@@ -20,6 +20,10 @@ import {
   subscribeCreateMainChatVisible,
 } from "@/lib/assistant-chat-fab-visibility";
 import {
+  getChatFabFooterInset,
+  subscribeChatFabFooterInset,
+} from "@/lib/assistant-chat-fab-footer-inset";
+import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
@@ -35,6 +39,19 @@ function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
     pathname.startsWith("/create/");
   if (onCreate && createChatVisible) return true;
   return false;
+}
+
+/** Matches Tailwind `bottom-5` / `sm:bottom-6`. */
+function useFabBottomPaddingPx(): number {
+  const [pad, setPad] = useState(20);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const sync = () => setPad(mq.matches ? 24 : 20);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return pad;
 }
 
 function IconChat({ className }: { className?: string }) {
@@ -107,6 +124,9 @@ export function AssistantChatFab() {
   const [createChatVisible, setCreateChatVisible] = useState(
     isCreateMainChatVisible,
   );
+  const [footerInset, setFooterInset] = useState(getChatFabFooterInset);
+  const bottomPad = useFabBottomPaddingPx();
+  const fabBottom = footerInset + bottomPad;
   const hidden = hideFabOnPath(pathname, createChatVisible);
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -117,6 +137,14 @@ export function AssistantChatFab() {
   useEffect(() => subscribeCreateMainChatVisible(() => {
     setCreateChatVisible(isCreateMainChatVisible());
   }), []);
+
+  useEffect(
+    () =>
+      subscribeChatFabFooterInset(() => {
+        setFooterInset(getChatFabFooterInset());
+      }),
+    [],
+  );
 
   useEffect(() => {
     clearLegacyAssistantChatKeys();
@@ -205,10 +233,14 @@ export function AssistantChatFab() {
     : "/chat/my";
 
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+    <>
       {open ? (
         <div
-          className="pointer-events-auto relative flex h-[min(560px,70vh)] w-[min(100vw-1.5rem,380px)] flex-col overflow-hidden rounded-2xl border border-border bg-[color:var(--card-warm-bg)] shadow-lg"
+          className="pointer-events-auto fixed left-1 right-1 z-[60] flex h-[min(560px,70vh)] flex-col overflow-hidden rounded-2xl border border-border bg-[color:var(--card-warm-bg)] shadow-lg sm:left-auto sm:right-6 sm:w-[min(calc(100vw-3rem),380px)]"
+          style={{
+            // Sit above the FAB (3.5rem) with a 0.75rem gap, plus any nav footer.
+            bottom: fabBottom + 56 + 12,
+          }}
           role="dialog"
           aria-label="Chat"
         >
@@ -263,15 +295,20 @@ export function AssistantChatFab() {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        aria-label={open ? "Close chat" : "Open chat"}
-        aria-expanded={open}
-        onClick={toggleOpen}
-        className="pointer-events-auto flex h-14 w-14 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent shadow-md transition-opacity hover:opacity-95"
+      <div
+        className="pointer-events-none fixed right-5 z-[60] sm:right-6"
+        style={{ bottom: fabBottom }}
       >
-        {open ? <IconClose /> : <IconChat />}
-      </button>
-    </div>
+        <button
+          type="button"
+          aria-label={open ? "Close chat" : "Open chat"}
+          aria-expanded={open}
+          onClick={toggleOpen}
+          className="pointer-events-auto flex h-14 w-14 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent shadow-md transition-opacity hover:opacity-95"
+        >
+          {open ? <IconClose /> : <IconChat />}
+        </button>
+      </div>
+    </>
   );
 }

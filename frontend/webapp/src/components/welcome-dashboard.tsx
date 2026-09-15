@@ -360,11 +360,23 @@ function DashboardBand({
           <h2 className="mt-2 font-display text-[26px] font-normal leading-snug tracking-tight text-marketing-ink">
             {stat}
           </h2>
+          {/* Mobile: open left, create flush right. */}
+          {create || nav ? (
+            <div className="mt-5 flex flex-wrap items-center gap-2 md:hidden">
+              {nav}
+              {create ? (
+                <span className="ml-auto flex flex-wrap gap-2">{create}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {/* Desktop: nav pills, then create pinned to bottom. */}
           {nav ? (
-            <div className="mt-5 flex flex-wrap items-center gap-2">{nav}</div>
+            <div className="mt-5 hidden flex-wrap items-center gap-2 md:flex">
+              {nav}
+            </div>
           ) : null}
           {create ? (
-            <div className="mt-5 flex flex-wrap gap-2 md:mt-auto md:pt-5">
+            <div className="mt-5 hidden flex-wrap gap-2 md:mt-auto md:flex md:pt-5">
               {create}
             </div>
           ) : null}
@@ -378,13 +390,11 @@ function DashboardBand({
 function IdeateDashboardBand({
   stat,
   nav,
-  create,
   dreams,
   creationIndexById,
 }: {
   stat: string;
   nav: ReactNode;
-  create: ReactNode;
   dreams: PlanDream[];
   creationIndexById: Map<string, number>;
 }) {
@@ -398,16 +408,20 @@ function IdeateDashboardBand({
           <h2 className="mt-2 font-display text-[26px] font-normal leading-snug tracking-tight text-marketing-ink">
             {stat}
           </h2>
-          <div className="mt-5 flex flex-wrap items-center gap-2">{nav}</div>
-          <div className="mt-5 flex flex-wrap gap-2 md:mt-auto md:pt-5">
-            {create}
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            {nav}
           </div>
         </div>
         <div className="min-w-0">
-          <LifeAreaCards
-            dreams={dreams}
-            creationIndexById={creationIndexById}
-          />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-marketing-eyebrow">
+            Recent
+          </p>
+          <div className="mt-3">
+            <LifeAreaCards
+              dreams={dreams}
+              creationIndexById={creationIndexById}
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -607,11 +621,18 @@ export function WelcomeDashboard() {
           stat={meditateStat}
           nav={
             <>
-              <NavGhost href="/meditate/library/creations">
-                My Creations
-              </NavGhost>
-              <NavGhost href="/meditate/library/programs">Programs</NavGhost>
-              <NavGhost href="/meditate/library/community">Community</NavGhost>
+              <span className="md:hidden">
+                <NavGhost href="/meditate/library/creations">
+                  Open Library
+                </NavGhost>
+              </span>
+              <span className="hidden md:contents">
+                <NavGhost href="/meditate/library/creations">
+                  My Creations
+                </NavGhost>
+                <NavGhost href="/meditate/library/programs">Programs</NavGhost>
+                <NavGhost href="/meditate/library/community">Community</NavGhost>
+              </span>
             </>
           }
           create={<NavPrimary href="/meditate/create">+ Create new</NavPrimary>}
@@ -623,9 +644,14 @@ export function WelcomeDashboard() {
           stat={journalStat}
           nav={
             <>
-              <NavGhost href="/journal/my">Entries</NavGhost>
-              <NavGhost href="/journal/my/gratitudes">Gratitudes</NavGhost>
-              <NavGhost href="/journal/my/insights">Insights</NavGhost>
+              <span className="md:hidden">
+                <NavGhost href="/journal/my">Open Journal</NavGhost>
+              </span>
+              <span className="hidden md:contents">
+                <NavGhost href="/journal/my">Entries</NavGhost>
+                <NavGhost href="/journal/my/gratitudes">Gratitudes</NavGhost>
+                <NavGhost href="/journal/my/insights">Insights</NavGhost>
+              </span>
             </>
           }
           create={
@@ -637,12 +663,14 @@ export function WelcomeDashboard() {
           stat={ideateStat}
           nav={
             <>
-              <NavGhost href="/ideate/my">Overview</NavGhost>
-              <NavGhost href="/ideate/my/vision-board">Vision board</NavGhost>
+              <span className="md:hidden">
+                <NavGhost href="/ideate/my">Open Ideate</NavGhost>
+              </span>
+              <span className="hidden md:contents">
+                <NavGhost href="/ideate/my">Overview</NavGhost>
+                <NavGhost href="/ideate/my/vision-board">Vision board</NavGhost>
+              </span>
             </>
-          }
-          create={
-            <NavPrimary href="/ideate/my?new=1">+ Add a life area</NavPrimary>
           }
           dreams={dreams}
           creationIndexById={creationIndexById}
@@ -651,7 +679,9 @@ export function WelcomeDashboard() {
           bandClass="bg-marketing-band-a"
           eyebrow="Focus"
           stat="Sit with one task at a time."
-          nav={<NavPrimary href="/focus">Open Focus</NavPrimary>}
+          nav={
+            <NavGhost href="/focus">Open Focus</NavGhost>
+          }
           aside={<RecentColumn rows={[]} />}
         />
       </div>

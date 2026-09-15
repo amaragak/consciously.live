@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import { prettySubcategoryLabel, soundDisplayName } from "@/lib/sound-taxonomy";
 
@@ -113,6 +113,7 @@ export function SoundscapePicker({
 }: SoundscapePickerProps) {
   const durations = useDurations(items, previewUrl);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const selectedItemRef = useRef<HTMLLIElement | null>(null);
   const isCreate = variant === "create";
 
   const categories = useMemo(() => {
@@ -130,6 +131,27 @@ export function SoundscapePicker({
     if (!isCreate || categoryFilter === "all") return list;
     return list.filter((item) => item.subcategory === categoryFilter);
   }, [items, isCreate, categoryFilter]);
+
+  // Keep a pre-selected soundscape visible if the category filter would hide it.
+  useEffect(() => {
+    if (!isCreate || !value || categoryFilter === "all") return;
+    const selected = items.find((item) => item.key === value);
+    if (!selected) return;
+    if (selected.subcategory !== categoryFilter) {
+      setCategoryFilter("all");
+    }
+  }, [isCreate, value, categoryFilter, items]);
+
+  useLayoutEffect(() => {
+    if (!value) return;
+    const el = selectedItemRef.current;
+    if (!el) return;
+    el.scrollIntoView({
+      behavior: "auto",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [value, sorted.length, categoryFilter]);
 
   if (loading) {
     return <p className="px-1 py-6 text-sm text-muted">Loading soundscapes…</p>;
@@ -201,7 +223,10 @@ export function SoundscapePicker({
               const canPreview = Boolean(previewUrl(item.key));
               const canSelect = !requirePreviewUrl || canPreview;
               return (
-                <li key={item.key}>
+                <li
+                  key={item.key}
+                  ref={selected ? selectedItemRef : undefined}
+                >
                   <button
                     type="button"
                     disabled={disabled || !canSelect}
@@ -279,7 +304,7 @@ export function SoundscapePicker({
             ? prettySubcategoryLabel(item.subcategory)
             : "";
           return (
-            <li key={item.key}>
+            <li key={item.key} ref={selected ? selectedItemRef : undefined}>
               <div
                 className={`flex flex-col gap-2 rounded-2xl bg-card shadow-sm transition-colors ${
                   compact ? "p-2.5" : "p-4"

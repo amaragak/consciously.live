@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { applySpeechElementVolume } from "@/lib/bed-volume";
 
 const LAST_VOICE_STORAGE_KEY = "mm_last_fish_voice_v1";
@@ -87,8 +87,8 @@ export function VoiceCardRow({
   const gapTimeoutRef = useRef<number | null>(null);
   const repeatWantedRef = useRef(false);
   const previewingIdRef = useRef<string | null>(null);
+  const selectedBtnRef = useRef<HTMLButtonElement | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const hydratedRef = useRef(false);
 
   function clearGapSchedule() {
@@ -117,7 +117,6 @@ export function VoiceCardRow({
     const hasHistory = Boolean(
       last && voices.some((v) => v.modelId === last),
     );
-    setExpanded(!hasHistory);
     if (hasHistory && last && last !== value) {
       onChange(last);
     } else if (!value || !voices.some((v) => v.modelId === value)) {
@@ -126,6 +125,17 @@ export function VoiceCardRow({
     // Only on first voices load — parent may also set a default.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot hydrate
   }, [voices]);
+
+  useLayoutEffect(() => {
+    if (!value) return;
+    const el = selectedBtnRef.current;
+    if (!el) return;
+    el.scrollIntoView({
+      behavior: "auto",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [value, voices.length]);
 
   useEffect(
     () => () => {
@@ -207,140 +217,64 @@ export function VoiceCardRow({
   }
 
   const labelClass =
-    "w-12 shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-foreground";
+    "text-xs font-semibold uppercase tracking-[0.12em] text-foreground";
+
+  const list = voices ?? [];
 
   return (
     <section className="mb-7 border-b border-border pb-7">
-      {expanded ? (
-        <>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <span className={labelClass}>Voice</span>
-            <button
-              type="button"
-              onClick={() => setExpanded(false)}
-              className="cursor-pointer text-xs text-muted transition-colors hover:text-foreground"
-            >
-              Collapse ↑
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {voices.map((voice) => {
-              const selected = voice.modelId === value;
-              const playing = previewingId === voice.modelId;
-              const tags = [
-                ...(voice.gender ? [voice.gender] : []),
-                ...(voice.goodFor ?? []),
-              ];
-              const canPreview = Boolean(previewUrl(voice.modelId));
-              return (
-                <button
-                  key={voice.modelId}
-                  type="button"
-                  disabled={disabled || !canPreview}
-                  aria-pressed={selected}
-                  aria-label={
-                    playing
-                      ? `Pause ${voice.name} sample`
-                      : `Select and play ${voice.name}`
-                  }
-                  onClick={() => activateVoice(voice.modelId)}
-                  className={`cursor-pointer rounded-[6px] border-2 p-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+      {/* Mobile: Voice label above the scroller */}
+      <span className={`mb-2 block sm:hidden ${labelClass}`}>Voice</span>
+      <div className="flex items-center gap-3">
+        <span className={`hidden w-12 shrink-0 sm:block ${labelClass}`}>
+          Voice
+        </span>
+        <div className="flex min-h-[3.5rem] min-w-0 flex-1 items-center gap-2.5 overflow-x-auto py-0.5">
+          {list.map((voice) => {
+            const selected = voice.modelId === value;
+            const playing = previewingId === voice.modelId;
+            const canPreview = Boolean(previewUrl(voice.modelId));
+            return (
+              <button
+                key={voice.modelId}
+                ref={selected ? selectedBtnRef : undefined}
+                type="button"
+                disabled={disabled || !canPreview}
+                aria-pressed={selected}
+                aria-label={
+                  playing
+                    ? `Pause ${voice.name} sample`
+                    : `Select and play ${voice.name}`
+                }
+                onClick={() => activateVoice(voice.modelId)}
+                className={`flex shrink-0 cursor-pointer items-center border-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  selected
+                    ? "border-accent bg-card"
+                    : "border-border bg-card"
+                } flex-col gap-1 rounded-lg px-3 py-2 sm:flex-row sm:gap-2 sm:rounded-full sm:px-3.5`}
+              >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors ${
                     selected
-                      ? "border-accent bg-card"
-                      : "border-border bg-card hover:border-accent/40"
+                      ? "bg-accent-button text-on-accent"
+                      : "bg-accent/20 text-accent-link"
                   }`}
+                  aria-hidden
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors ${
-                        selected
-                          ? "bg-accent-button text-on-accent"
-                          : "bg-accent/20 text-accent-link"
-                      }`}
-                      aria-hidden
-                    >
-                      <PlayPauseIcon playing={playing} size={12} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-display text-[15px] font-normal text-foreground">
-                      {voice.name}
-                    </span>
-                  </div>
-                  <p className="mt-2 min-h-[2.25em] text-xs leading-[1.5] text-muted">
-                    {voice.description?.trim() ?? ""}
-                  </p>
-                  {tags.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-[8px] bg-accent-soft/50 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-accent-link"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <div className="flex items-center gap-3">
-          <span className={labelClass}>Voice</span>
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto py-0.5">
-            {voices.map((voice) => {
-              const selected = voice.modelId === value;
-              const playing = previewingId === voice.modelId;
-              const canPreview = Boolean(previewUrl(voice.modelId));
-              return (
-                <button
-                  key={voice.modelId}
-                  type="button"
-                  disabled={disabled || !canPreview}
-                  aria-pressed={selected}
-                  aria-label={
-                    playing
-                      ? `Pause ${voice.name} sample`
-                      : `Select and play ${voice.name}`
-                  }
-                  onClick={() => activateVoice(voice.modelId)}
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border-2 px-3.5 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    selected
-                      ? "border-accent bg-card"
-                      : "border-border bg-card"
-                  }`}
+                  <PlayPauseIcon playing={playing} size={10} />
+                </span>
+                <span
+                  className={`whitespace-nowrap text-sm leading-none ${
+                    selected ? "font-medium" : "font-normal"
+                  } text-foreground`}
                 >
-                  <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors ${
-                      selected
-                        ? "bg-accent-button text-on-accent"
-                        : "bg-accent/20 text-accent-link"
-                    }`}
-                    aria-hidden
-                  >
-                    <PlayPauseIcon playing={playing} size={10} />
-                  </span>
-                  <span
-                    className={`text-sm leading-none ${
-                      selected ? "font-medium" : "font-normal"
-                    } text-foreground`}
-                  >
-                    {voice.name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="ml-auto shrink-0 cursor-pointer text-xs text-muted transition-colors hover:text-foreground"
-          >
-            Details ↓
-          </button>
+                  {voice.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      )}
+      </div>
       <audio ref={audioRef} className="hidden" playsInline />
     </section>
   );

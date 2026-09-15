@@ -262,6 +262,10 @@ export function buildAppBreadcrumbs(
   opts?: {
     lifeAreaTitle?: string | null;
     createMeditationStyle?: string | null;
+    /** Random Script create path — show “Random” instead of “By Type”. */
+    createRandomScript?: boolean;
+    /** Title for `/journal/my/[entryId]` (mobile entry editor). */
+    journalEntryTitle?: string | null;
     hash?: string;
     search?: string;
   },
@@ -303,10 +307,12 @@ export function buildAppBreadcrumbs(
       pathname.startsWith("/meditate/create")
         ? parseCreateMeditationPathname(pathname)
         : { path: "pending" as const, styleStep: "type" as const, mix: false, valid: true };
-    // Match create-path card eyebrows (By Type, Chat, Ideate, Journal, Direct).
+    // Match create-path card eyebrows (By Type, Chat, Ideate, Journal, Direct, Random).
     const pathLabel =
       parsed.path === "style"
-        ? "By Type"
+        ? opts?.createRandomScript
+          ? "Random"
+          : "By Type"
         : parsed.path === "freeflow"
           ? "Chat"
           : parsed.path === "goal"
@@ -325,20 +331,21 @@ export function buildAppBreadcrumbs(
           path: "style",
           styleStep: "questions",
         });
+        const stylePathLabel = opts?.createRandomScript ? "Random" : "By Type";
         if (parsed.mix) {
-          // Audio settings — keep By Type / type name trail, then Audio.
-          crumbs.push({ label: "By Type", href: byTypeHref });
+          // Audio settings — keep path / type name trail, then Audio.
+          crumbs.push({ label: stylePathLabel, href: byTypeHref });
           if (styleName) {
             crumbs.push({ label: styleName, href: questionsHref });
           }
           crumbs.push({ label: "Audio", href: null });
         } else if (parsed.styleStep === "questions") {
-          // Always parent-link By Type; type name is current when known.
-          crumbs.push({ label: "By Type", href: byTypeHref });
+          // Always parent-link path label; type name is current when known.
+          crumbs.push({ label: stylePathLabel, href: byTypeHref });
           crumbs.push({ label: styleName || "Questions", href: null });
         } else {
           // Type picker
-          crumbs.push({ label: "By Type", href: null });
+          crumbs.push({ label: stylePathLabel, href: null });
         }
       } else if (parsed.mix) {
         crumbs.push({
@@ -392,6 +399,14 @@ export function buildAppBreadcrumbs(
       return [
         { label: "Journal", href: "/journal/my" },
         { label: "New entry", href: null },
+      ];
+    }
+    const entryMatch = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+    if (entryMatch?.[1]) {
+      const title = opts?.journalEntryTitle?.trim() || "Entry";
+      return [
+        { label: "Journal", href: "/journal/my" },
+        { label: title, href: null },
       ];
     }
     return [{ label: "Journal", href: null }];
