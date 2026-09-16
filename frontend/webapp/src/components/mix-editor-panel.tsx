@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
@@ -98,19 +98,21 @@ function IconMixReset({ className }: { className?: string }) {
   );
 }
 
-const MixVerticalFader = memo(
-  function MixVerticalFader({
+const MixGainFader = memo(
+  function MixGainFader({
     label,
     disabled,
     initialGain,
     onLiveChange,
     onCommit,
+    orientation = "vertical",
   }: {
     label: string;
     disabled: boolean;
     initialGain: number;
     onLiveChange: (gain: number) => void;
     onCommit: (gain: number) => void;
+    orientation?: "vertical" | "horizontal";
   }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const labelRef = useRef<HTMLSpanElement>(null);
@@ -130,7 +132,7 @@ const MixVerticalFader = memo(
       if (labelRef.current) labelRef.current.textContent = `${initialGain}%`;
     }, [initialGain]);
 
-    function onInput(e: React.FormEvent<HTMLInputElement>) {
+    function onInput(e: FormEvent<HTMLInputElement>) {
       draggingRef.current = true;
       const v = Number(e.currentTarget.value);
       if (!Number.isFinite(v)) return;
@@ -145,6 +147,46 @@ const MixVerticalFader = memo(
       commitRef.current(gainRef.current);
     }
 
+    const range = (
+      <input
+        ref={inputRef}
+        type="range"
+        min={0}
+        max={100}
+        defaultValue={initialGain}
+        disabled={disabled}
+        onInput={onInput}
+        onPointerDown={() => {
+          draggingRef.current = true;
+        }}
+        onPointerUp={commit}
+        onMouseUp={commit}
+        onTouchEnd={commit}
+        onKeyUp={commit}
+        className={
+          orientation === "horizontal"
+            ? "h-8 w-full min-w-0 cursor-pointer accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            : "h-10 w-36 origin-center -rotate-90 cursor-pointer accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        }
+        aria-label={`${label} level`}
+        aria-orientation={orientation}
+      />
+    );
+
+    if (orientation === "horizontal") {
+      return (
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {range}
+          <span
+            ref={labelRef}
+            className="w-9 shrink-0 text-right tabular-nums text-xs text-muted"
+          >
+            {initialGain}%
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -153,34 +195,15 @@ const MixVerticalFader = memo(
         <span ref={labelRef} className="tabular-nums text-xs text-muted">
           {initialGain}%
         </span>
-        <div className="flex h-36 w-10 items-center justify-center">
-          <input
-            ref={inputRef}
-            type="range"
-            min={0}
-            max={100}
-            defaultValue={initialGain}
-            disabled={disabled}
-            onInput={onInput}
-            onPointerDown={() => {
-              draggingRef.current = true;
-            }}
-            onPointerUp={commit}
-            onMouseUp={commit}
-            onTouchEnd={commit}
-            onKeyUp={commit}
-            className="h-10 w-36 origin-center -rotate-90 cursor-pointer accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label={`${label} level`}
-            aria-orientation="vertical"
-          />
-        </div>
+        <div className="flex h-36 w-10 items-center justify-center">{range}</div>
       </div>
     );
   },
   (a, b) =>
     a.label === b.label &&
     a.disabled === b.disabled &&
-    a.initialGain === b.initialGain,
+    a.initialGain === b.initialGain &&
+    a.orientation === b.orientation,
 );
 
 export function MixEditorPanel({
@@ -206,6 +229,8 @@ export function MixEditorPanel({
   stripPlayingMusicKey = null,
   repositionToken = 0,
   bottomInsetPx = 0,
+  /** Focus: prefer Soundscape when the session bed is empty. Library keeps mixer default. */
+  preferSoundscapeWhenEmpty = false,
 }: {
   title: string;
   /** Remount / reposition key (e.g. meditation sk). */
@@ -236,6 +261,7 @@ export function MixEditorPanel({
   repositionToken?: number;
   /** Reserve space at the viewport bottom (e.g. audio strip height). */
   bottomInsetPx?: number;
+  preferSoundscapeWhenEmpty?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -296,6 +322,97 @@ export function MixEditorPanel({
 
   closeRef.current = closeAndSave;
 
+  const [compactMixer, setCompactMixer] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => setCompactMixer(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const mixerChannels = [
+    {
+      label: "Music",
+      key: musicKey,
+      setKey: setMusicKey,
+      gain: musicGain,
+      setGain: setMusicGain,
+      items: musicItems,
+      category: "music" as const,
+      channel: "music" as const,
+    },
+    {
+      label: "Ambience",
+      key: natureKey,
+      setKey: setNatureKey,
+      gain: natureGain,
+      setGain: setNatureGain,
+      items: natureItems,
+      category: "ambience" as const,
+      channel: "nature" as const,
+    },
+    {
+      label: "Drums",
+      key: drumsKey,
+      setKey: setDrumsKey,
+      gain: drumsGain,
+      setGain: setDrumsGain,
+      items: drumsItems,
+      category: "drums" as const,
+      channel: "drums" as const,
+    },
+    {
+      label: "Noise",
+      key: noiseKey,
+      setKey: setNoiseKey,
+      gain: noiseGain,
+      setGain: setNoiseGain,
+      items: noiseItems,
+      category: "noise" as const,
+      channel: "noise" as const,
+    },
+  ] as const;
+
+  function onMixerKeyChange(
+    channel: (typeof mixerChannels)[number]["channel"],
+    setKey: (v: string) => void,
+    value: string,
+  ) {
+    let next = mixWithKey(mixRef.current, channel, value);
+    // First mixer pick while a soundscape still occupies music:
+    // drop the soundscape so the strip switches to the mix.
+    if (
+      channel !== "music" &&
+      isSoundscapeKey(compositionItems, mixRef.current.musicKey)
+    ) {
+      next = { ...next, musicKey: "" };
+      setMusicKey("");
+    }
+    setKey(value);
+    mixRef.current = next;
+    previewNow(next);
+  }
+
+  function onMixerGainLive(
+    channel: (typeof mixerChannels)[number]["channel"],
+    gain: number,
+  ) {
+    mixRef.current = mixWithGain(mixRef.current, channel, gain);
+    onLiveVolume(channel, gain);
+  }
+
+  function onMixerGainCommit(
+    channel: (typeof mixerChannels)[number]["channel"],
+    setGain: (v: number) => void,
+    gain: number,
+  ) {
+    const next = mixWithGain(mixRef.current, channel, gain);
+    setGain(gain);
+    mixRef.current = next;
+    previewNow(next);
+  }
+
   const drumsLockedForMelodic = isMelodicMusicKey(musicItems, musicKey);
   const soundscapeSelected = isSoundscapeKey(compositionItems, musicKey);
   /** Catalog key for the current soundscape (storage key may differ by extension). */
@@ -306,9 +423,16 @@ export function MixEditorPanel({
           backgroundAudioStreamingKey(musicKey),
       )?.key ?? musicKey)
     : "";
-  const [bedTab, setBedTab] = useState<"soundscape" | "mixer">(
-    soundscapeSelected ? "soundscape" : "mixer",
-  );
+  const hasMixerBeds =
+    Boolean(natureKey.trim()) ||
+    Boolean(drumsKey.trim()) ||
+    Boolean(noiseKey.trim()) ||
+    (Boolean(musicKey.trim()) && !soundscapeSelected);
+  const [bedTab, setBedTab] = useState<"soundscape" | "mixer">(() => {
+    if (soundscapeSelected) return "soundscape";
+    if (hasMixerBeds) return "mixer";
+    return preferSoundscapeWhenEmpty ? "soundscape" : "mixer";
+  });
   const mediaBase = getMedimadeMediaBaseUrl();
   const previewRef = useRef<HTMLAudioElement | null>(null);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
@@ -423,7 +547,7 @@ export function MixEditorPanel({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchorEl, editorKey, placement, repositionToken, bottomInsetPx]);
+  }, [anchorEl, editorKey, placement, repositionToken, bottomInsetPx, compactMixer, bedTab]);
 
   const panelMaxHeight =
     typeof window !== "undefined"
@@ -454,7 +578,7 @@ export function MixEditorPanel({
       ref={panelRef}
       role="dialog"
       aria-label="Background mix"
-      className="fixed z-[80] w-[28rem] overflow-y-auto overflow-x-visible rounded-xl border border-border bg-card p-4 text-sm text-foreground shadow-xl transition-[top] duration-150 ease-out"
+      className="fixed z-[80] w-[min(calc(100vw-1rem),28rem)] max-w-[28rem] overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-card p-3 text-sm text-foreground shadow-xl transition-[top] duration-150 ease-out sm:overflow-x-visible sm:p-4"
       style={{
         top: pos?.top ?? -9999,
         left: pos?.left ?? -9999,
@@ -516,7 +640,7 @@ export function MixEditorPanel({
         />
       </div>
       {bedTab === "soundscape" ? (
-        <div className="mt-3 max-h-72 overflow-y-auto pr-1">
+        <div className="mt-3 max-h-[min(18rem,42vh)] overflow-y-auto overflow-x-hidden pr-1 sm:max-h-72">
           <SoundscapePicker
             variant="create"
             compact
@@ -554,121 +678,100 @@ export function MixEditorPanel({
             />
           )}
         </div>
-      ) : (
-        <div className="mt-3 flex items-end justify-center gap-3">
-          {(
-            [
-              {
-                label: "Music",
-                key: musicKey,
-                setKey: setMusicKey,
-                gain: musicGain,
-                setGain: setMusicGain,
-                items: musicItems,
-                category: "music" as const,
-                channel: "music" as const,
-              },
-              {
-                label: "Ambience",
-                key: natureKey,
-                setKey: setNatureKey,
-                gain: natureGain,
-                setGain: setNatureGain,
-                items: natureItems,
-                category: "ambience" as const,
-                channel: "nature" as const,
-              },
-              {
-                label: "Drums",
-                key: drumsKey,
-                setKey: setDrumsKey,
-                gain: drumsGain,
-                setGain: setDrumsGain,
-                items: drumsItems,
-                category: "drums" as const,
-                channel: "drums" as const,
-              },
-              {
-                label: "Noise",
-                key: noiseKey,
-                setKey: setNoiseKey,
-                gain: noiseGain,
-                setGain: setNoiseGain,
-                items: noiseItems,
-                category: "noise" as const,
-                channel: "noise" as const,
-              },
-            ] as const
-          ).map((row) => {
-            const drumsLocked = row.channel === "drums" && drumsLockedForMelodic;
-            return (
-              <DrumsLockedWrap
-                key={row.label}
-                locked={drumsLocked}
-                className="flex min-w-0 flex-1 flex-col items-center gap-1"
-              >
-                <MixVerticalFader
-                  label={row.label}
-                  disabled={!row.key || drumsLocked}
-                  initialGain={row.gain}
-                  onLiveChange={(gain) => {
-                    mixRef.current = mixWithGain(
-                      mixRef.current,
-                      row.channel,
-                      gain,
-                    );
-                    onLiveVolume(row.channel, gain);
-                  }}
-                  onCommit={(gain) => {
-                    const next = mixWithGain(
-                      mixRef.current,
-                      row.channel,
-                      gain,
-                    );
-                    row.setGain(gain);
-                    mixRef.current = next;
-                    previewNow(next);
-                  }}
-                />
-                <SoundFolderSelect
-                  category={row.category}
-                  items={row.items}
-                  value={
-                    row.channel === "music" &&
-                    isSoundscapeKey(compositionItems, row.key)
-                      ? ""
-                      : row.key
-                  }
-                  compact
-                  disabled={drumsLocked}
-                  onChange={(value) => {
-                    let next = mixWithKey(
-                      mixRef.current,
-                      row.channel,
-                      value,
-                    );
-                    // First mixer pick while a soundscape still occupies music:
-                    // drop the soundscape so the strip switches to the mix.
-                    if (
-                      row.channel !== "music" &&
-                      isSoundscapeKey(
-                        compositionItems,
-                        mixRef.current.musicKey,
-                      )
-                    ) {
-                      next = { ...next, musicKey: "" };
-                      setMusicKey("");
+      ) : compactMixer ? (
+          <div className="mt-3 flex flex-col">
+            {mixerChannels.map((row) => {
+              const drumsLocked =
+                row.channel === "drums" && drumsLockedForMelodic;
+              return (
+                <DrumsLockedWrap
+                  key={row.label}
+                  locked={drumsLocked}
+                  className="relative border-b border-border/70 py-3 last:border-b-0"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="w-[4.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
+                      {row.label}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <SoundFolderSelect
+                        category={row.category}
+                        items={row.items}
+                        value={
+                          row.channel === "music" &&
+                          isSoundscapeKey(compositionItems, row.key)
+                            ? ""
+                            : row.key
+                        }
+                        compact
+                        disabled={drumsLocked}
+                        onChange={(value) =>
+                          onMixerKeyChange(row.channel, row.setKey, value)
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 flex min-w-0 items-center gap-2 pl-[4.5rem]">
+                    <MixGainFader
+                      label={row.label}
+                      orientation="horizontal"
+                      disabled={!row.key || drumsLocked}
+                      initialGain={row.gain}
+                      onLiveChange={(gain) =>
+                        onMixerGainLive(row.channel, gain)
+                      }
+                      onCommit={(gain) =>
+                        onMixerGainCommit(row.channel, row.setGain, gain)
+                      }
+                    />
+                  </div>
+                </DrumsLockedWrap>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 flex items-end justify-center gap-3">
+            {mixerChannels.map((row) => {
+              const drumsLocked =
+                row.channel === "drums" && drumsLockedForMelodic;
+              return (
+                <DrumsLockedWrap
+                  key={row.label}
+                  locked={drumsLocked}
+                  className="flex min-w-0 flex-1 flex-col items-center gap-1"
+                >
+                  <MixGainFader
+                    label={row.label}
+                    orientation="vertical"
+                    disabled={!row.key || drumsLocked}
+                    initialGain={row.gain}
+                    onLiveChange={(gain) =>
+                      onMixerGainLive(row.channel, gain)
                     }
-                    row.setKey(value);
-                    mixRef.current = next;
-                    previewNow(next);
-                  }}
-                />
-              </DrumsLockedWrap>
-            );
-          })}
-        </div>
-      )}
+                    onCommit={(gain) =>
+                      onMixerGainCommit(row.channel, row.setGain, gain)
+                    }
+                  />
+                  <SoundFolderSelect
+                    category={row.category}
+                    items={row.items}
+                    value={
+                      row.channel === "music" &&
+                      isSoundscapeKey(compositionItems, row.key)
+                        ? ""
+                        : row.key
+                    }
+                    compact
+                    disabled={drumsLocked}
+                    onChange={(value) =>
+                      onMixerKeyChange(row.channel, row.setKey, value)
+                    }
+                  />
+                </DrumsLockedWrap>
+              );
+            })}
+          </div>
+        )}
       {error ? (
         <p className="mt-2 text-xs text-danger">{error}</p>
       ) : null}

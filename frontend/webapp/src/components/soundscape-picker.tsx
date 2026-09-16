@@ -168,12 +168,12 @@ export function SoundscapePicker({
     return (
       <div>
         {categories.length > 0 ? (
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="mb-3 flex flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:overflow-visible">
             <button
               type="button"
               aria-pressed={categoryFilter === "all"}
               onClick={() => setCategoryFilter("all")}
-              className={`cursor-pointer rounded-[20px] border-2 px-3 py-1.5 text-sm transition-colors ${
+              className={`shrink-0 cursor-pointer rounded-[20px] border-2 px-3 py-1.5 text-sm transition-colors ${
                 categoryFilter === "all"
                   ? "border-accent bg-accent-soft/40 text-foreground"
                   : "border-border bg-card text-foreground hover:border-accent/40"
@@ -189,7 +189,7 @@ export function SoundscapePicker({
                   type="button"
                   aria-pressed={active}
                   onClick={() => setCategoryFilter(id)}
-                  className={`cursor-pointer rounded-[20px] border-2 px-3 py-1.5 text-sm transition-colors ${
+                  className={`shrink-0 cursor-pointer rounded-[20px] border-2 px-3 py-1.5 text-sm transition-colors ${
                     active
                       ? "border-accent bg-accent-soft/40 text-foreground"
                       : "border-border bg-card text-foreground hover:border-accent/40"
@@ -240,7 +240,7 @@ export function SoundscapePicker({
                       if (value !== item.key) onChange(item.key);
                       onTogglePreview(item.key);
                     }}
-                    className={`flex w-full items-center gap-3 rounded-[6px] border-2 px-4 py-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    className={`flex w-full min-w-0 max-w-full items-center gap-2.5 rounded-[6px] border-2 px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:gap-3 sm:px-4 sm:py-3.5 ${
                       selected
                         ? "border-accent bg-card"
                         : "border-border bg-card hover:border-accent/40"

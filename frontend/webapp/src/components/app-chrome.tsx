@@ -162,54 +162,60 @@ export function AppChrome({ children }: { children: ReactNode }) {
   );
 
   // Avoid flashing the wrong chrome (or protected page body) before session hydrate.
-  if (!ready) {
-    if (gateProtected) {
+  const chrome = (() => {
+    if (!ready) {
+      if (gateProtected) {
+        return (
+          <>
+            <div
+              className="h-14 shrink-0 border-b border-border bg-nav"
+              aria-hidden
+            />
+            <MainShell>
+              <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
+                Loading…
+              </div>
+            </MainShell>
+          </>
+        );
+      }
       return (
         <>
-          <div className="h-14 shrink-0 border-b border-border bg-nav" aria-hidden />
-          <MainShell>
-            <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
-              Loading…
-            </div>
-          </MainShell>
+          <div
+            className="h-14 shrink-0 border-b border-border bg-nav"
+            aria-hidden
+          />
+          <MainShell>{children}</MainShell>
         </>
       );
     }
-    return (
-      <>
-        <div className="h-14 shrink-0 border-b border-border bg-nav" aria-hidden />
-        <MainShell>{children}</MainShell>
-      </>
-    );
-  }
 
-  if (!showAppChrome) {
-    // While redirecting away from a protected URL (no session), don't flash app content.
-    if (gateProtected && !signedIn) {
+    if (!showAppChrome) {
+      // While redirecting away from a protected URL (no session), don't flash app content.
+      if (gateProtected && !signedIn) {
+        return (
+          <>
+            <SiteHeader />
+            <MainShell>
+              <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
+                Redirecting…
+              </div>
+            </MainShell>
+          </>
+        );
+      }
       return (
         <>
           <SiteHeader />
-          <MainShell>
-            <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
-              Redirecting…
-            </div>
-          </MainShell>
+          <MainShell>{children}</MainShell>
+          <Suspense fallback={null}>
+            <SignInOverlayHost />
+          </Suspense>
         </>
       );
     }
-    return (
-      <>
-        <SiteHeader />
-        <MainShell>{children}</MainShell>
-        <Suspense fallback={null}>
-          <SignInOverlayHost />
-        </Suspense>
-      </>
-    );
-  }
 
-  return (
-    <AppPrimaryTabsProvider>
+    return (
       <div className="flex min-h-0 flex-1 flex-col">
         <AppTopBar
           mobileSidebarOpen={mobileOpen}
@@ -242,6 +248,8 @@ export function AppChrome({ children }: { children: ReactNode }) {
         </div>
         <AssistantChatFab />
       </div>
-    </AppPrimaryTabsProvider>
-  );
+    );
+  })();
+
+  return <AppPrimaryTabsProvider>{chrome}</AppPrimaryTabsProvider>;
 }

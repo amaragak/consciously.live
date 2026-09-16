@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  IconBulb,
   IconNotebook,
   IconSparkles,
   IconTargetArrow,
@@ -35,7 +34,7 @@ const pillars = [
     href: "/manifest",
     title: "Manifest",
     body: "Steps, and what's really stopping you.",
-    Icon: IconBulb,
+    Icon: IconSparkles,
     highlight: false,
   },
   {

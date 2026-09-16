@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  IconBulb,
   IconMessageCircle,
   IconNotebook,
   IconSparkles,
@@ -21,10 +20,10 @@ const features = [
     Icon: IconNotebook,
   },
   {
-    href: "/dream",
+    href: "/manifest",
     title: "Manifest",
     body: "Name the project, the resistance, and the next steps — then build a visualisation or manifestation practice from what’s blocking you.",
-    Icon: IconBulb,
+    Icon: IconSparkles,
   },
   {
     href: "/focus",

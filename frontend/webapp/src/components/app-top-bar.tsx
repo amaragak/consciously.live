@@ -148,14 +148,18 @@ function BreadcrumbChevron() {
 function BreadcrumbCrumb({
   crumb,
   last,
+  allowTruncate,
 }: {
   crumb: AppBreadcrumbCrumb;
   last: boolean;
+  /** Only the current (usually title) crumb should truncate. */
+  allowTruncate: boolean;
 }) {
+  const textClass = allowTruncate ? "min-w-0 truncate" : "shrink-0";
   if (last || !crumb.href) {
     return (
       <span
-        className={`min-w-0 truncate ${
+        className={`${textClass} ${
           last ? "text-foreground" : "italic text-muted"
         }`}
       >
@@ -166,7 +170,7 @@ function BreadcrumbCrumb({
   return (
     <Link
       href={crumb.href}
-      className="min-w-0 truncate italic text-accent-link underline-offset-2 hover:underline"
+      className={`${textClass} italic text-accent-link underline-offset-2 hover:underline`}
     >
       {crumb.label}
     </Link>
@@ -377,8 +381,8 @@ export function AppTopBar({
         </Link>
       </div>
 
-      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3 overflow-visible px-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 overflow-visible md:gap-2">
+      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3 overflow-hidden px-3 pr-[5.75rem] sm:px-4 md:pr-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden md:gap-2">
           <Link
             href="/"
             className="inline-flex shrink-0 items-center md:hidden"
@@ -396,7 +400,7 @@ export function AppTopBar({
           {mobileCrumbs.length > 0 ? (
             <nav
               aria-label="Breadcrumb"
-              className="flex min-w-0 items-center overflow-visible font-display text-sm font-medium tracking-tight md:hidden"
+              className="flex min-w-0 items-center overflow-hidden font-display text-sm font-medium tracking-tight md:hidden"
             >
               {mobileCrumbs.map((c, i) => {
                 const last = i === mobileCrumbs.length - 1;
@@ -415,7 +419,11 @@ export function AppTopBar({
                         ) : null}
                       </>
                     ) : null}
-                    <BreadcrumbCrumb crumb={c} last={last} />
+                    <BreadcrumbCrumb
+                      crumb={c}
+                      last={last}
+                      allowTruncate={last}
+                    />
                   </Fragment>
                 );
               })}
@@ -425,14 +433,18 @@ export function AppTopBar({
           {/* Desktop: full trail */}
           <nav
             aria-label="Breadcrumb"
-            className="hidden min-w-0 items-center truncate font-display text-lg font-medium tracking-tight md:flex"
+            className="hidden min-w-0 items-center overflow-hidden font-display text-lg font-medium tracking-tight md:flex"
           >
             {crumbs.map((c, i) => {
               const last = i === crumbs.length - 1;
               return (
                 <Fragment key={`${c.label}-${i}`}>
                   {i > 0 ? <BreadcrumbChevron /> : null}
-                  <BreadcrumbCrumb crumb={c} last={last} />
+                  <BreadcrumbCrumb
+                    crumb={c}
+                    last={last}
+                    allowTruncate={last}
+                  />
                 </Fragment>
               );
             })}

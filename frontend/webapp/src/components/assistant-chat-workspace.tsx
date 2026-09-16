@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantChatCapabilitiesFab } from "@/components/assistant-chat-capabilities-fab";
@@ -443,16 +442,6 @@ export function AssistantChatWorkspace() {
               mobileComposeChrome ? "" : "max-sm:hidden"
             }`}
           >
-            {routeThreadId ? (
-              <div className="relative z-[1] flex shrink-0 items-center px-3 py-2 sm:hidden">
-                <Link
-                  href="/chat/my"
-                  className="text-xs font-semibold text-accent-link underline-offset-2 hover:underline"
-                >
-                  ← Chats
-                </Link>
-              </div>
-            ) : null}
             <AssistantChatConversation
               messages={chat.messages}
               input={chat.input}

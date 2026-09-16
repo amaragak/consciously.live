@@ -41,20 +41,15 @@ export function AppPrimaryTabsProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function usePrimaryTabsContext(): PrimaryTabsContextValue {
-  const ctx = useContext(PrimaryTabsContext);
-  if (!ctx) {
-    throw new Error(
-      "App primary tabs components must be used within AppPrimaryTabsProvider",
-    );
-  }
-  return ctx;
+function usePrimaryTabsContext(): PrimaryTabsContextValue | null {
+  return useContext(PrimaryTabsContext);
 }
 
 /** Mount point in the desktop top bar (centered). */
 export function AppPrimaryTabsSlot({ className }: { className?: string }) {
-  const { setTarget } = usePrimaryTabsContext();
-  return <div ref={setTarget} className={className} />;
+  const ctx = usePrimaryTabsContext();
+  if (!ctx) return null;
+  return <div ref={ctx.setTarget} className={className} />;
 }
 
 /**
@@ -62,20 +57,21 @@ export function AppPrimaryTabsSlot({ className }: { className?: string }) {
  * Pair with a `md:hidden` copy in the page content for mobile.
  */
 export function AppPrimaryTabsDesktop({ children }: { children: ReactNode }) {
-  const { target } = usePrimaryTabsContext();
-  if (!target) return null;
-  return createPortal(children, target);
+  const ctx = usePrimaryTabsContext();
+  if (!ctx?.target) return null;
+  return createPortal(children, ctx.target);
 }
 
 /** Mount point in the top bar trailing cluster (left of marketing CTA). */
 export function AppTopBarTrailingSlot({ className }: { className?: string }) {
-  const { setTrailingTarget } = usePrimaryTabsContext();
-  return <div ref={setTrailingTarget} className={className} />;
+  const ctx = usePrimaryTabsContext();
+  if (!ctx) return null;
+  return <div ref={ctx.setTrailingTarget} className={className} />;
 }
 
 /** Renders into the top-bar trailing slot (create-audio Dev controls, etc.). */
 export function AppTopBarTrailingPortal({ children }: { children: ReactNode }) {
-  const { trailingTarget } = usePrimaryTabsContext();
-  if (!trailingTarget) return null;
-  return createPortal(children, trailingTarget);
+  const ctx = usePrimaryTabsContext();
+  if (!ctx?.trailingTarget) return null;
+  return createPortal(children, ctx.trailingTarget);
 }

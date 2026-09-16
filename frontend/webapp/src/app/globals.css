@@ -830,6 +830,13 @@ main[data-app-layout="focus"][data-focus-tasks="closed"] {
   --focus-tasks-w: 0px;
 }
 
+/* Mobile: tasks stack under the timer — pattern uses the full viewport width. */
+@media (max-width: 639px) {
+  main[data-app-layout="focus"] {
+    --focus-tasks-w: 0px;
+  }
+}
+
 main[data-app-layout="focus"] .page-pattern-tile {
   /*
    * Ease-out fades along both sides of the timer column; fully clear in

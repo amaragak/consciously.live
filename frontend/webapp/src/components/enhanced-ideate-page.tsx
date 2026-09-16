@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  IconBulb,
   IconEye,
   IconListCheck,
   IconSparkles,
@@ -16,7 +15,7 @@ const cards = [
   {
     title: "Hold the dream",
     body: "Name the project or outcome without forcing a plan — start from desire, not a spreadsheet.",
-    Icon: IconBulb,
+    Icon: IconSparkles,
   },
   {
     title: "Find the block",

@@ -226,15 +226,29 @@ export function FocusTimerView() {
   useEffect(() => {
     const main = document.querySelector("main[data-app-layout='focus']");
     const root = document.documentElement;
-    const value = tasksShelfOpen ? "open" : "closed";
-    if (main instanceof HTMLElement) main.dataset.focusTasks = value;
-    root.dataset.focusTasks = value;
-    root.style.setProperty(
-      "--focus-tasks-w",
-      tasksShelfOpen ? "320px" : "0px",
-    );
+    const mq = window.matchMedia("(min-width: 640px)");
+
+    const sync = () => {
+      // Side shelf only on sm+; mobile stacks tasks under the timer.
+      const sideOpen = tasksShelfOpen && mq.matches;
+      const value = sideOpen ? "open" : "closed";
+      const width = sideOpen ? "320px" : "0px";
+      if (main instanceof HTMLElement) {
+        main.dataset.focusTasks = value;
+        main.style.setProperty("--focus-tasks-w", width);
+      }
+      root.dataset.focusTasks = value;
+      root.style.setProperty("--focus-tasks-w", width);
+    };
+
+    sync();
+    mq.addEventListener("change", sync);
     return () => {
-      if (main instanceof HTMLElement) delete main.dataset.focusTasks;
+      mq.removeEventListener("change", sync);
+      if (main instanceof HTMLElement) {
+        delete main.dataset.focusTasks;
+        main.style.removeProperty("--focus-tasks-w");
+      }
       delete root.dataset.focusTasks;
       root.style.removeProperty("--focus-tasks-w");
     };
@@ -1001,11 +1015,11 @@ export function FocusTimerView() {
   ) : null;
 
   return (
-    <div className="group/focus relative flex min-h-0 w-full flex-1 flex-row overflow-hidden">
-      {/* LEFT — timer (number vertically centred in the focus column) */}
+    <div className="group/focus relative flex min-h-0 w-full flex-1 flex-col overflow-hidden sm:flex-row">
+      {/* Timer — full width on mobile; left column on sm+ */}
       <div
-        className={`relative flex min-h-0 min-w-0 flex-1 flex-col px-12 py-10 ${
-          tasksShelfOpen ? "border-r-[0.5px] border-border" : ""
+        className={`relative flex min-h-0 min-w-0 flex-1 flex-col px-4 py-8 sm:px-12 sm:py-10 ${
+          tasksShelfOpen ? "sm:border-r-[0.5px] sm:border-border" : ""
         }`}
       >
         <div
@@ -1205,6 +1219,7 @@ export function FocusTimerView() {
             placement="below-start"
             showReset={false}
             disableLocalPreview
+            preferSoundscapeWhenEmpty
             stripPlayingMusicKey={
               playingS3Key?.startsWith(FOCUS_AMBIENT_S3_PREFIX)
                 ? (nowPlaying?.musicKey ?? null)
@@ -1348,9 +1363,9 @@ export function FocusTimerView() {
         </div>
       </div>
 
-      {/* RIGHT — tasks */}
+      {/* Tasks — under timer on mobile; right shelf on sm+ */}
       {tasksShelfOpen ? (
-      <aside className="focus-task-shelf relative flex h-full w-[320px] shrink-0 flex-col px-6 pb-5 pt-7">
+      <aside className="focus-task-shelf relative flex max-h-[min(42vh,22rem)] w-full shrink-0 flex-col border-t border-border px-4 pb-5 pt-4 sm:h-full sm:max-h-none sm:w-[320px] sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-7">
         <div className="mb-3.5 flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
             Tasks

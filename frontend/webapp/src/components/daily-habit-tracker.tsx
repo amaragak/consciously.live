@@ -256,9 +256,7 @@ export function DailyHabitTracker() {
     }
   };
 
-  const showFullStreak = status.fullStreak > 0;
-  const showPartialStreak = status.partialStreak > 0;
-  const showStreaks = showFullStreak || showPartialStreak;
+  const showStreaks = status.fullStreak > 0 || status.partialStreak > 0;
 
   return (
     <div
@@ -268,30 +266,26 @@ export function DailyHabitTracker() {
       <div className="mx-auto flex max-w-6xl flex-col gap-5 px-6 py-5 sm:flex-row sm:items-start sm:gap-8">
         {showStreaks ? (
           <div className="flex w-full shrink-0 gap-6 sm:w-auto sm:gap-8">
-            {showFullStreak ? (
-              <div className="min-w-0 flex-1 sm:w-[148px] sm:flex-none">
-                <StreakBlock
-                  label="Full streak"
-                  days={status.fullStreak}
-                  help="Consecutive days you did all your dailies"
-                  record={status.fullStreakRecord}
-                  showDots
-                  todayComplete={todayComplete}
-                />
-              </div>
-            ) : null}
-            {showPartialStreak ? (
-              <div className="min-w-0 flex-1 sm:w-[148px] sm:flex-none">
-                <StreakBlock
-                  label="Partial streak"
-                  days={status.partialStreak}
-                  help="Consecutive days you did at least one of your dailies"
-                  record={status.partialStreakRecord}
-                  showDots
-                  todayComplete={todayPartial}
-                />
-              </div>
-            ) : null}
+            <div className="min-w-0 flex-1 sm:w-[148px] sm:flex-none">
+              <StreakBlock
+                label="Full streak"
+                days={status.fullStreak}
+                help="Consecutive days you did all your dailies"
+                record={status.fullStreakRecord}
+                showDots
+                todayComplete={todayComplete}
+              />
+            </div>
+            <div className="min-w-0 flex-1 sm:w-[148px] sm:flex-none">
+              <StreakBlock
+                label="Partial streak"
+                days={status.partialStreak}
+                help="Consecutive days you did at least one of your dailies"
+                record={status.partialStreakRecord}
+                showDots
+                todayComplete={todayPartial}
+              />
+            </div>
           </div>
         ) : null}
 

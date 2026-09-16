@@ -194,7 +194,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
       <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
         <div className="flex flex-col gap-3 border-b border-border/70 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <nav
-            className="order-2 flex w-full min-w-0 flex-wrap gap-x-5 gap-y-1 sm:order-1 sm:w-auto sm:gap-x-6"
+            className="order-2 flex w-full min-w-0 flex-nowrap gap-x-5 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] sm:order-1 sm:w-auto sm:flex-wrap sm:gap-x-6 sm:overflow-visible"
             role="tablist"
             aria-label="Project views"
           >
@@ -216,7 +216,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
                   role="tab"
                   aria-selected={active}
                   onClick={() => setTab(item.id)}
-                  className={`-mb-px cursor-pointer border-b-2 pb-2.5 text-sm transition-colors ${
+                  className={`-mb-px shrink-0 cursor-pointer whitespace-nowrap border-b-2 pb-2.5 text-sm transition-colors ${
                     active
                       ? "border-selected font-semibold text-foreground"
                       : "border-transparent text-muted hover:border-border hover:text-foreground"

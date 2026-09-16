@@ -6,10 +6,10 @@ import {
   BookOpen,
   Code2,
   Focus,
-  Lightbulb,
   MessageSquare,
   Moon,
   Shield,
+  Sparkles,
   Sun,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -108,7 +108,7 @@ const SECTION_ICONS: Record<string, ReactNode> = {
     </svg>
   ),
   journal: <BookOpen aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
-  ideate: <Lightbulb aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
+  ideate: <Sparkles aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   focus: <Focus aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   admin: <Shield aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   api: <Code2 aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,

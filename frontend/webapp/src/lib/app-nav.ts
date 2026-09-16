@@ -456,10 +456,7 @@ export function buildAppBreadcrumbs(
   }
 
   if (pathname.startsWith("/focus")) {
-    return [
-      { label: "Focus", href: "/focus/my" },
-      { label: "Timer", href: null },
-    ];
+    return [{ label: "Focus", href: null }];
   }
   if (pathname.startsWith("/admin")) {
     return [{ label: "Admin", href: null }];

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Focus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
 import { PlanResistanceNudge } from "@/components/plan/plan-resistance-nudge";
 import {
@@ -477,6 +477,41 @@ export function PlanSubtaskCard({
     el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
   }, [subtask.dreamText, collapsed, isDone]);
 
+  function openFocusPreflight(e: MouseEvent) {
+    e.stopPropagation();
+    setFocusPreflightOpen(true);
+  }
+
+  function removeGoal(e: MouseEvent) {
+    e.stopPropagation();
+    if (!window.confirm("Remove this goal and its To Dos?")) return;
+    let store = loadIdeateStore();
+    store = deleteSubtask(store, subtask.id);
+    saveIdeateStore(store);
+    onRefresh();
+  }
+
+  const goalActions = (
+    <>
+      <button
+        type="button"
+        onClick={openFocusPreflight}
+        className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-muted hover:text-foreground"
+      >
+        <Focus aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
+        Start focus session on these To Dos
+      </button>
+      <button
+        type="button"
+        aria-label="Remove goal"
+        onClick={removeGoal}
+        className="cursor-pointer text-[12px] text-muted hover:text-foreground"
+      >
+        Remove
+      </button>
+    </>
+  );
+
   return (
     <>
     <article
@@ -532,32 +567,10 @@ export function PlanSubtaskCard({
           </button>
         </div>
         <div className="flex shrink-0 items-center gap-3 pt-0.5">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setFocusPreflightOpen(true);
-            }}
-            className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-muted hover:text-foreground"
-          >
-            <Focus aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
-            Start focus session on these To Dos
-          </button>
-          <button
-            type="button"
-            aria-label="Remove goal"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!window.confirm("Remove this goal and its To Dos?")) return;
-              let store = loadIdeateStore();
-              store = deleteSubtask(store, subtask.id);
-              saveIdeateStore(store);
-              onRefresh();
-            }}
-            className="cursor-pointer text-[12px] text-muted hover:text-foreground"
-          >
-            Remove
-          </button>
+          {/* Desktop: actions stay in the header row */}
+          <div className="hidden items-center gap-3 sm:flex">
+            {goalActions}
+          </div>
           <button
             type="button"
             aria-expanded={open}
@@ -588,9 +601,7 @@ export function PlanSubtaskCard({
         className="grid transition-[grid-template-rows] duration-200 ease-[ease]"
         style={{ gridTemplateRows: collapsed ? "0fr" : "1fr" }}
       >
-        <div
-          className={`min-h-0 ${collapsed ? "overflow-hidden" : "overflow-visible"}`}
-        >
+        <div className="min-h-0 overflow-hidden">
           <div className={collapsed ? "" : "pb-7 pt-4"}>
             {open && isDone && showUndoDone ? (
               <button
@@ -658,41 +669,45 @@ export function PlanSubtaskCard({
             ) : null}
 
             {todos.length > 0 ? (
-              <div className="mt-4">
-                <ul className="space-y-1">
-                  {todos.map((todo) => (
-                    <li key={todo.id}>
-                      <label className="flex cursor-pointer items-start gap-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={todo.isChecked}
-                          onChange={() => toggleTodo(todo)}
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
-                        />
-                        <span
-                          className={`text-sm leading-relaxed ${
-                            todo.isChecked
-                              ? "text-muted line-through"
-                              : "text-foreground"
-                          }`}
-                        >
-                          {todo.title}
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-                {nudgeTodo ? (
-                  <PlanResistanceNudge
-                    todo={nudgeTodo}
-                    projectId={subtask.projectId}
-                    subtaskId={subtask.id}
-                    copySeed={nudgeTodo.id}
-                    persistent
-                    onRecorded={() => onRefresh()}
-                  />
-                ) : null}
-              </div>
+              <ul className="mt-4 space-y-1">
+                {todos.map((todo) => (
+                  <li key={todo.id}>
+                    <label className="flex cursor-pointer items-start gap-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={todo.isChecked}
+                        onChange={() => toggleTodo(todo)}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+                      />
+                      <span
+                        className={`text-sm leading-relaxed ${
+                          todo.isChecked
+                            ? "text-muted line-through"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {todo.title}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {/* Mobile: action row is in-flow under to-dos (not beside the title) */}
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 sm:hidden">
+              {goalActions}
+            </div>
+
+            {nudgeTodo ? (
+              <PlanResistanceNudge
+                todo={nudgeTodo}
+                projectId={subtask.projectId}
+                subtaskId={subtask.id}
+                copySeed={nudgeTodo.id}
+                persistent
+                onRecorded={() => onRefresh()}
+              />
             ) : null}
           </div>
         </div>
