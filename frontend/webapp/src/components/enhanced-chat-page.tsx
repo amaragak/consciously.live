@@ -14,7 +14,7 @@ const cards = [
   },
   {
     title: "Do things in the app",
-    body: "Log a gratitude, add a task to a life area, or open Create Meditation — without hunting through menus.",
+    body: "Log a gratitude, add a goal to a life area, or open Create Meditation — without hunting through menus.",
     Icon: IconSparkles,
   },
   {
@@ -76,7 +76,7 @@ export function EnhancedChatPage() {
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-marketing-muted sm:text-lg">
             Share what&apos;s on your mind without rushing to a fix. When a
-            small action would serve you — a gratitude line, a task on a life
+            small action would serve you — a gratitude line, a goal on a life
             area, a guided session — Chat can do it in place, still in the same
             thread.
           </p>

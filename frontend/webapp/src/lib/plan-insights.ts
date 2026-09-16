@@ -230,13 +230,13 @@ export function buildLifeAreaInsightSnapshot(
   if (todos.length > 0) {
     signals.push({
       id: "tasks",
-      label: "Steps",
-      detail: `${doneTodos.length} of ${todos.length} done · ${openSubtasks.length} open task${openSubtasks.length === 1 ? "" : "s"}`,
+      label: "To Dos",
+      detail: `${doneTodos.length} of ${todos.length} done · ${openSubtasks.length} open goal${openSubtasks.length === 1 ? "" : "s"}`,
     });
   } else if (subtasks.length > 0) {
     signals.push({
       id: "tasks",
-      label: "Tasks",
+      label: "Goals",
       detail: `${doneSubtasks.length} of ${subtasks.length} complete`,
     });
   }
@@ -377,7 +377,7 @@ export function buildLifeAreaInsightSnapshot(
     signals,
     canSynthesize,
     emptyHint:
-      "Write in Vision, add thoughts, or create a few tasks — then refresh for a full insight.",
+      "Write in Vision, add thoughts, or create a few goals — then refresh for a full insight.",
   };
 }
 
@@ -447,7 +447,7 @@ function buildSynthesisPrompt(
   }
 
   if (subtasks.length) {
-    lines.push("", "Tasks & steps:");
+    lines.push("", "Goals & To Dos:");
     for (const s of subtasks.slice(0, 12)) {
       lines.push(`- [${s.status}] ${s.title}`);
       if (s.dreamText.trim()) {

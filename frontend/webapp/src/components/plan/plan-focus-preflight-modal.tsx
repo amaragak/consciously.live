@@ -21,7 +21,7 @@ export function PlanFocusPreflightModal({
   const label =
     taskTitle.trim().length > 48
       ? `${taskTitle.trim().slice(0, 47).trimEnd()}…`
-      : taskTitle.trim() || "these tasks";
+      : taskTitle.trim() || "this goal";
 
   return (
     <div

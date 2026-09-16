@@ -40,7 +40,7 @@ const ITEMS: {
   {
     pillar: "lifeArea",
     name: "Make progress on a life area",
-    help: "Complete any task or subtask in Manifest, or add a thought",
+    help: "Complete any goal or To Do in Manifest, or add a thought",
   },
 ];
 

@@ -138,7 +138,7 @@ export function PlanSubtasksPanel({
           </p>
         ) : allDone && subtasks.length > 0 ? (
           <p className="mb-4 inline-block rounded-full border border-accent/20 bg-accent-soft/15 px-3 py-1 text-xs font-medium text-accent-link">
-            All subtasks done
+            All goals done
           </p>
         ) : null}
 
@@ -146,7 +146,7 @@ export function PlanSubtasksPanel({
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Add a task..."
+            placeholder="Add a goal..."
             className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none ring-accent/25 focus:ring-2"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -169,7 +169,7 @@ export function PlanSubtasksPanel({
               value={sort}
               onChange={(e) => setSort(e.target.value as SubtaskSortKey)}
               className="cursor-pointer border-0 bg-transparent py-1 text-[12px] text-muted outline-none hover:text-foreground"
-              aria-label="Sort tasks"
+              aria-label="Sort goals"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -182,7 +182,7 @@ export function PlanSubtasksPanel({
 
         {subtasks.length === 0 ? (
           <p className="mt-8 text-sm text-muted">
-            No tasks yet — add one when you&apos;re ready.
+            No goals yet — add one when you&apos;re ready.
           </p>
         ) : null}
       </div>

@@ -902,7 +902,7 @@ export function FocusTimerView() {
         {ideateLevel === "tasks" ? (
           areaTasks.length === 0 ? (
             <p className="px-2 py-3 text-sm text-muted">
-              No tasks in this life area.
+              No goals in this life area.
             </p>
           ) : (
             <ul className="flex flex-col">
@@ -933,7 +933,7 @@ export function FocusTimerView() {
         {ideateLevel === "subtasks" ? (
           taskTodos.length === 0 ? (
             <p className="px-2 py-3 text-sm text-muted">
-              No subtasks under this task.
+              No To Dos under this goal.
             </p>
           ) : (
             <ul className="flex flex-col">
@@ -1703,7 +1703,7 @@ export function FocusTimerView() {
                     {ideateLevel === "tasks" ? (
                       areaTasks.length === 0 ? (
                         <p className="py-2 text-sm text-muted">
-                          No tasks in this life area.
+                          No goals in this life area.
                         </p>
                       ) : (
                         <ul className="flex flex-col gap-0.5">
@@ -1734,7 +1734,7 @@ export function FocusTimerView() {
                     {ideateLevel === "subtasks" ? (
                       taskTodos.length === 0 ? (
                         <p className="py-2 text-sm text-muted">
-                          No subtasks under this task.
+                          No To Dos under this goal.
                         </p>
                       ) : (
                         <ul className="flex flex-col gap-1">

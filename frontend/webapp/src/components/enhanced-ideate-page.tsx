@@ -25,7 +25,7 @@ const cards = [
   },
   {
     title: "Shape the work",
-    body: "Break the vision into tasks you can actually move — gentle structure, not busywork.",
+    body: "Break the vision into goals and To Dos you can actually move — gentle structure, not busywork.",
     Icon: IconListCheck,
   },
   {

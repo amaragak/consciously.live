@@ -198,7 +198,7 @@ export function PlanSubtaskCard({
       .filter((l) => l.length > 6)
       .join("\n");
     const focusTaskContext = [
-      `Task: ${subtask.title.trim() || "Untitled"}`,
+      `Goal: ${subtask.title.trim() || "Untitled"}`,
       subtask.dreamText.trim()
         ? `What this involves: ${subtask.dreamText.trim()}`
         : "",
@@ -493,7 +493,7 @@ export function PlanSubtaskCard({
             checked={isDone}
             onChange={() => toggleSubtaskChecked()}
             onClick={(e) => e.stopPropagation()}
-            aria-label={isDone ? "Mark task not done" : "Mark task done"}
+            aria-label={isDone ? "Mark goal not done" : "Mark goal done"}
             className="mt-1.5 h-4 w-4 shrink-0 cursor-pointer accent-accent"
           />
           <button
@@ -541,14 +541,14 @@ export function PlanSubtaskCard({
             className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-muted hover:text-foreground"
           >
             <Focus aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
-            Start focus session on these tasks
+            Start focus session on these To Dos
           </button>
           <button
             type="button"
-            aria-label="Remove subtask"
+            aria-label="Remove goal"
             onClick={(e) => {
               e.stopPropagation();
-              if (!window.confirm("Remove this subtask and its todos?")) return;
+              if (!window.confirm("Remove this goal and its To Dos?")) return;
               let store = loadIdeateStore();
               store = deleteSubtask(store, subtask.id);
               saveIdeateStore(store);
@@ -561,7 +561,7 @@ export function PlanSubtaskCard({
           <button
             type="button"
             aria-expanded={open}
-            aria-label={collapsed ? "Expand task" : "Collapse task"}
+            aria-label={collapsed ? "Expand goal" : "Collapse goal"}
             onClick={() => setOpen((v) => !v)}
             className="cursor-pointer text-muted"
           >
@@ -632,7 +632,7 @@ export function PlanSubtaskCard({
                   onClick={() => void runBreakdown()}
                   className="mt-3 cursor-pointer rounded-full border border-[#1E2530] bg-transparent px-4 py-2 text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#F4F0E8] dark:text-[#F4F0E8]"
                 >
-                  {breakdownLoading ? "Creating…" : "Create subtasks"}
+                  {breakdownLoading ? "Creating…" : "Create To Dos"}
                 </button>
               </div>
             ) : null}

@@ -348,7 +348,7 @@ export function PlanInsightsPanel({
           }
         >
           {snapshot.canSynthesize
-            ? "Refresh for a full read across vision, thoughts, tasks, blockers, and check-ins."
+            ? "Refresh for a full read across vision, thoughts, goals, blockers, and check-ins."
             : snapshot.emptyHint}
         </p>
       ) : (

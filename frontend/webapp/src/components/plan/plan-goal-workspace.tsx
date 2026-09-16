@@ -192,16 +192,16 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
   return (
     <div className="min-h-[calc(100vh-3.5rem)]">
       <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
-        <div className="@container flex items-end justify-between gap-4 border-b border-border/70">
+        <div className="flex flex-col gap-3 border-b border-border/70 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <nav
-            className="flex min-w-0 flex-wrap gap-x-6 gap-y-1"
+            className="order-2 flex w-full min-w-0 flex-wrap gap-x-5 gap-y-1 sm:order-1 sm:w-auto sm:gap-x-6"
             role="tablist"
             aria-label="Project views"
           >
             {(
               [
                 { id: "vision" as const, label: "Vision" },
-                { id: "steps" as const, label: "Tasks", count: stepCount },
+                { id: "steps" as const, label: "Goals", count: stepCount },
                 { id: "thoughts" as const, label: "Thoughts" },
                 { id: "insights" as const, label: "Insights" },
                 { id: "meditations" as const, label: "Meditations" },
@@ -232,7 +232,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
               );
             })}
           </nav>
-          <div className="mb-1.5 flex shrink-0 items-center gap-2">
+          <div className="order-1 flex shrink-0 items-center gap-2 sm:order-2 sm:mb-1.5">
             <button
               type="button"
               onClick={() =>

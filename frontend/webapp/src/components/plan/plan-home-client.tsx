@@ -994,7 +994,7 @@ export function PlanHomeClient() {
               >
                 &ldquo;{manifesto}&rdquo;
               </p>
-              <div className="absolute -right-1 -top-[14px] z-[1] flex items-center gap-1">
+              <div className="absolute -right-3 -top-[22px] z-[1] flex items-center gap-1">
                 <button
                   type="button"
                   onClick={beginEditManifesto}
@@ -1029,7 +1029,7 @@ export function PlanHomeClient() {
 
           <Link
             href="/manifest/my/vision-board"
-            className="mt-3 inline-flex items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            className="mx-auto mt-3 flex w-fit items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             Open vision board →
           </Link>
@@ -1243,7 +1243,7 @@ export function PlanHomeClient() {
           <p className="mb-5 max-w-xl font-sans text-sm text-muted sm:mb-6">
             Add the areas of your life you want to grow.
           </p>
-          <ul className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:gap-[10px]">
             {orderedDreams.map((d) => {
               const snippet = lifeAreaSnippet(d);
               const bgVars = lifeAreaCardBgVars(
@@ -1256,20 +1256,20 @@ export function PlanHomeClient() {
                 <li key={d.id} className="min-w-0">
                   <Link
                     href={`/manifest/goal/${encodeURIComponent(d.id)}`}
-                    className="life-area-card group relative flex aspect-square cursor-pointer flex-col rounded-[4px] p-[22px] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-150 hover:-translate-y-[3px] hover:shadow-[0_16px_40px_rgba(0,0,0,0.16),0_4px_12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_24px_rgba(0,0,0,0.45),0_2px_8px_rgba(0,0,0,0.3)] dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.55),0_4px_12px_rgba(0,0,0,0.35)]"
+                    className="life-area-card group relative flex cursor-pointer flex-col rounded-[4px] px-4 py-3 shadow-[0_4px_14px_rgba(0,0,0,0.08),0_1px_4px_rgba(0,0,0,0.05)] transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-[0_8px_20px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_14px_rgba(0,0,0,0.35),0_1px_4px_rgba(0,0,0,0.25)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.45),0_2px_6px_rgba(0,0,0,0.3)] sm:aspect-square sm:p-[22px] sm:shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] sm:hover:-translate-y-[3px] sm:hover:shadow-[0_16px_40px_rgba(0,0,0,0.16),0_4px_12px_rgba(0,0,0,0.1)] dark:sm:shadow-[0_8px_24px_rgba(0,0,0,0.45),0_2px_8px_rgba(0,0,0,0.3)] dark:sm:hover:shadow-[0_16px_40px_rgba(0,0,0,0.55),0_4px_12px_rgba(0,0,0,0.35)]"
                     style={bgVars}
                   >
-                    <h3 className="shrink-0 pr-2 font-display text-xl font-medium leading-snug tracking-tight text-[#1E2530] dark:text-[#F4F0E8] sm:text-[1.375rem]">
+                    <h3 className="shrink-0 truncate font-display text-base font-medium leading-snug tracking-tight text-[#1E2530] dark:text-[#F4F0E8] sm:pr-2 sm:text-xl sm:text-[1.375rem]">
                       {d.title.trim() || "Untitled"}
                     </h3>
                     <p
-                      className={`mt-2 line-clamp-3 min-h-0 flex-1 font-sans text-sm leading-relaxed text-[rgba(60,35,15,0.6)] dark:text-[#A8B0BC] ${
+                      className={`mt-0.5 font-sans text-[12px] leading-snug text-[rgba(60,35,15,0.6)] dark:text-[#A8B0BC] max-sm:truncate sm:mt-2 sm:line-clamp-3 sm:min-h-0 sm:flex-1 sm:text-sm sm:leading-relaxed ${
                         snippet ? "" : "italic"
                       }`}
                     >
                       {snippet ?? "Nothing written yet"}
                     </p>
-                    <p className="mt-auto shrink-0 pt-3 pr-11 font-sans text-[11px] leading-snug text-[rgba(60,35,15,0.4)] dark:text-[#A8B0BC]/70">
+                    <p className="mt-1.5 shrink-0 font-sans text-[11px] leading-snug text-[rgba(60,35,15,0.4)] dark:text-[#A8B0BC]/70 sm:mt-auto sm:pt-3 sm:pr-11">
                       Last interacted on {lastInteracted}
                     </p>
                     <span
@@ -1290,7 +1290,7 @@ export function PlanHomeClient() {
                   type="button"
                   onClick={() => setModalOpen(true)}
                   aria-label="Add new life area"
-                  className="group flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-[4px] border-2 border-dashed bg-transparent transition-[border-color] duration-200"
+                  className="group flex min-h-[56px] w-full cursor-pointer flex-row items-center justify-center gap-2 rounded-[4px] border-2 border-dashed bg-transparent transition-[border-color] duration-200 sm:aspect-square sm:min-h-0 sm:flex-col"
                   style={{
                     borderColor: "rgba(180,140,80,0.35)",
                   }}
@@ -1301,12 +1301,11 @@ export function PlanHomeClient() {
                     e.currentTarget.style.borderColor = "rgba(180,140,80,0.35)";
                   }}
                 >
-                  <span className="px-2 text-center font-sans text-[13px] font-bold uppercase tracking-[0.06em] text-[#1E2530] opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 group-focus-visible:opacity-100 sm:text-[14px] dark:text-[#F4F0E8]">
+                  <span className="order-2 px-2 text-center font-sans text-[13px] font-bold uppercase tracking-[0.06em] text-[#1E2530] opacity-100 transition-opacity duration-200 ease-out sm:order-1 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-visible:opacity-100 sm:text-[14px] dark:text-[#F4F0E8]">
                     Add new life area
                   </span>
                   <span
-                    className="font-sans font-light leading-none text-[rgba(180,140,80,0.45)] transition-[transform,color] duration-200 ease-out group-hover:scale-125 group-hover:text-[#1E2530] group-focus-visible:scale-125 group-focus-visible:text-[#1E2530] dark:group-hover:text-[#F4F0E8] dark:group-focus-visible:text-[#F4F0E8]"
-                    style={{ fontSize: "36px" }}
+                    className="order-1 font-sans text-[28px] font-light leading-none text-[rgba(180,140,80,0.45)] transition-[transform,color] duration-200 ease-out group-hover:scale-125 group-hover:text-[#1E2530] group-focus-visible:scale-125 group-focus-visible:text-[#1E2530] sm:order-2 sm:text-[36px] dark:group-hover:text-[#F4F0E8] dark:group-focus-visible:text-[#F4F0E8]"
                     aria-hidden
                   >
                     +
@@ -1371,7 +1370,7 @@ export function PlanHomeClient() {
                         value={editValueDraft}
                         onChange={(e) => setEditValueDraft(e.target.value)}
                         maxLength={120}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 font-display text-2xl outline-none ring-accent/30 focus:ring-2"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 font-display text-xl outline-none ring-accent/30 focus:ring-2 sm:text-2xl"
                       />
                       <div className="flex gap-2">
                         <button
@@ -1401,7 +1400,7 @@ export function PlanHomeClient() {
                       <button
                         type="button"
                         onClick={() => openEditValue(v)}
-                        className="min-w-0 flex-1 cursor-pointer text-left font-display text-[26px] font-normal leading-[1.2] text-foreground transition-opacity hover:opacity-80"
+                        className="min-w-0 flex-1 cursor-pointer text-left font-display text-[20px] font-normal leading-[1.25] text-foreground transition-opacity hover:opacity-80 sm:text-[26px] sm:leading-[1.2]"
                       >
                         {v.text}
                       </button>
@@ -1521,7 +1520,7 @@ export function PlanHomeClient() {
                         onChange={(e) => setEditQuoteDraft(e.target.value)}
                         rows={3}
                         maxLength={400}
-                        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-left font-display text-xl outline-none ring-accent/30 focus:ring-2"
+                        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-left font-display text-lg outline-none ring-accent/30 focus:ring-2 sm:text-xl"
                       />
                       <label
                         className="sr-only"
@@ -1561,17 +1560,17 @@ export function PlanHomeClient() {
                       </div>
                     </form>
                   ) : (
-                    <div className="flex items-baseline gap-3">
+                    <div className="flex items-start gap-3 sm:items-baseline">
                       <button
                         type="button"
                         onClick={() => openEditQuote(q)}
-                        className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-baseline gap-x-4 gap-y-1 text-left transition-opacity hover:opacity-80"
+                        className="flex min-w-0 flex-1 cursor-pointer flex-col gap-1 text-left transition-opacity hover:opacity-80 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-4 sm:gap-y-1"
                       >
-                        <p className="min-w-0 flex-1 font-display text-[22px] font-normal italic leading-[1.4] text-foreground">
+                        <p className="w-full min-w-0 font-display text-[17px] font-normal italic leading-[1.4] text-foreground sm:flex-1 sm:text-[22px]">
                           &ldquo;{q.text}&rdquo;
                         </p>
                         {q.attribution?.trim() ? (
-                          <p className="shrink-0 font-sans text-[13px] font-normal text-muted">
+                          <p className="w-full shrink-0 font-sans text-[13px] font-normal text-muted sm:w-auto">
                             — {q.attribution.trim()}
                           </p>
                         ) : null}
@@ -1863,16 +1862,16 @@ export function PlanHomeClient() {
                           onClick={openOrAdd}
                           className="w-full cursor-pointer text-left"
                         >
-                          <span className="block font-display text-[19px] font-normal leading-[1.4] text-foreground">
+                          <span className="block font-display text-[15px] font-normal leading-[1.4] text-foreground sm:text-[19px]">
                             {q.text}
                           </span>
-                          <span className="mt-2 block font-sans text-base font-medium text-accent-link">
+                          <span className="mt-2 block font-sans text-sm font-medium text-accent-link sm:text-base">
                             Add this question →
                           </span>
                         </button>
                       ) : (
                         <>
-                          <p className="font-display text-[19px] font-normal leading-[1.4] text-foreground">
+                          <p className="font-display text-[15px] font-normal leading-[1.4] text-foreground sm:text-[19px]">
                             {q.text}
                           </p>
                           <button
@@ -1881,11 +1880,11 @@ export function PlanHomeClient() {
                             className="mt-2 w-full cursor-pointer text-left"
                           >
                             {answer ? (
-                              <span className="block whitespace-pre-wrap font-sans text-base font-normal leading-[1.6] text-muted transition-opacity hover:opacity-80">
+                              <span className="block whitespace-pre-wrap font-sans text-sm font-normal leading-[1.6] text-muted transition-opacity hover:opacity-80 sm:text-base">
                                 {answer}
                               </span>
                             ) : (
-                              <span className="block font-sans text-base font-medium text-accent-link">
+                              <span className="block font-sans text-sm font-medium text-accent-link sm:text-base">
                                 Add your answer →
                               </span>
                             )}

@@ -82,7 +82,7 @@ export function PlanTodoDraftList({
   return (
     <div className="mt-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-        Proposed tasks
+        Proposed To Dos
       </p>
       <p className="mt-1 text-xs leading-relaxed text-muted">
         Edit or remove anything that doesn&apos;t fit, then save what&apos;s left.
@@ -137,12 +137,12 @@ export function PlanTodoDraftList({
                       }
                     }}
                     className="w-full border-0 bg-transparent px-1 py-1 text-sm outline-none ring-1 ring-accent/30"
-                    aria-label="Edit task title"
+                    aria-label="Edit To Do title"
                   />
                 ) : (
                   <p className="px-1 py-1 text-sm leading-snug text-foreground">
                     {row.title.trim() || (
-                      <span className="text-muted">Untitled task</span>
+                      <span className="text-muted">Untitled To Do</span>
                     )}
                   </p>
                 )}
@@ -186,7 +186,7 @@ export function PlanTodoDraftList({
         <input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="Add your own task"
+          placeholder="Add your own To Do"
           className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/25 focus:ring-2"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -212,8 +212,8 @@ export function PlanTodoDraftList({
         {saving
           ? "Saving…"
           : saveCount === 0
-            ? "Save tasks"
-            : `Save ${saveCount} task${saveCount === 1 ? "" : "s"}`}
+            ? "Save To Dos"
+            : `Save ${saveCount} To Do${saveCount === 1 ? "" : "s"}`}
       </button>
     </div>
   );

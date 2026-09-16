@@ -471,7 +471,7 @@ function applyTodo(
   action: Extract<AssistantAction, { name: "add_todo" }>,
 ): AssistantActionResult {
   const title = action.title.trim();
-  if (!title) return { ok: false, label: "Missing task title" };
+  if (!title) return { ok: false, label: "Missing goal title" };
 
   let store = loadIdeateStore();
   const area = resolveLifeArea(store, action);
@@ -501,7 +501,7 @@ function applyTodo(
       return {
         ok: false,
         label:
-          "Couldn't find that parent task. Add the task first, then checklist items under it.",
+          "Couldn't find that parent goal. Add the goal first, then To Dos under it.",
       };
     }
     const siblings = store.todos.filter((t) => t.subtaskId === parent.id);
@@ -512,21 +512,21 @@ function applyTodo(
     saveIdeateStore(store);
     return {
       ok: true,
-      label: `Added checklist item under ${parent.title.trim() || "task"}`,
+      label: `Added To Do under ${parent.title.trim() || "goal"}`,
       detail: previewSnippet(title),
       href: lifeAreaTasksHref(area.id, parent.id),
-      linkLabel: "Open task",
+      linkLabel: "Open goal",
     };
   }
 
-  // Ideate UI “task” = IdeateSubtask (not a nested checklist todo).
+  // Ideate UI “goal” = IdeateSubtask (not a nested checklist To Do).
   const subtask = createSubtask(area.id, title);
   store = upsertSubtask(store, subtask);
   saveIdeateStore(store);
 
   return {
     ok: true,
-    label: `Added task to ${area.title.trim() || "life area"}`,
+    label: `Added goal to ${area.title.trim() || "life area"}`,
     detail: previewSnippet(title),
     href: lifeAreaTasksHref(area.id, subtask.id),
     linkLabel: "Open life area",
