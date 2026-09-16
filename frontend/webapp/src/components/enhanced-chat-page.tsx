@@ -19,7 +19,7 @@ const cards = [
   },
   {
     title: "Knows your tools",
-    body: "Journal, Ideate, Meditate, Sounds, and Focus aren’t separate worlds. Chat can point you to the right one when it helps.",
+    body: "Journal, Manifest, Meditate, Sounds, and Focus aren’t separate worlds. Chat can point you to the right one when it helps.",
     Icon: IconTopologyStar3,
   },
   {

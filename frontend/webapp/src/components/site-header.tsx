@@ -31,7 +31,7 @@ import { markSpaClientNavigation } from "@/lib/spa-client-nav";
 const marketingNav: { href: string; label: string }[] = [
   { href: "/meditate", label: "Meditate" },
   { href: "/journal", label: "Journal" },
-  { href: "/ideate", label: "Ideate" },
+  { href: "/manifest", label: "Manifest" },
   { href: "/focus", label: "Focus" },
   { href: "/chat", label: "Chat" },
   { href: "/pricing", label: "Pricing" },
@@ -158,9 +158,11 @@ export function SiteHeader() {
           <nav className="hidden items-center gap-1 sm:flex">
             {marketingNav.map((item) => {
               const active =
-                item.href === "/ideate"
-                  ? sectionActive(pathname, "/ideate") ||
-                    sectionActive(pathname, "/dream")
+                item.href === "/manifest"
+                  ? sectionActive(pathname, "/manifest") ||
+                    sectionActive(pathname, "/ideate") ||
+                    sectionActive(pathname, "/dream") ||
+                    sectionActive(pathname, "/plan")
                   : sectionActive(pathname, item.href);
               return (
                 <Link

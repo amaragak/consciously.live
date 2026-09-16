@@ -1,7 +1,7 @@
 /**
  * Vision board preview mosaic.
  * `asymmetric` — marketing pitch collage.
- * `grid` — straight 4×2 square grid (/ideate/my).
+ * `grid` — straight 4×2 square grid (/manifest/my).
  * Slots prefer images when provided; remaining slots use color fills.
  */
 
@@ -25,8 +25,10 @@ export const VISION_BOARD_EMPTY_COLORS = [
 
 export const VISION_BOARD_MOSAIC_SLOT_COUNT = 5;
 export const VISION_BOARD_GRID_SLOT_COUNT = 8;
+/** Single-row teaser strip on Ideate Overview (mobile). */
+export const VISION_BOARD_STRIP_SLOT_COUNT = 6;
 
-type Layout = "asymmetric" | "grid";
+type Layout = "asymmetric" | "grid" | "strip";
 
 type Props = {
   colors: readonly string[];
@@ -101,6 +103,25 @@ export function VisionBoardMosaic({
     const src = images?.[i];
     return typeof src === "string" && src.trim() ? src : null;
   };
+
+  if (layout === "strip") {
+    return (
+      <div
+        className={`flex h-32 shrink-0 ${gapClassName} ${radiusClassName} ${sizeClassName} ${className}`}
+        aria-hidden
+      >
+        {Array.from({ length: VISION_BOARD_STRIP_SLOT_COUNT }, (_, i) => (
+          <MosaicCell
+            key={i}
+            className={`aspect-square h-full w-auto shrink-0 ${cellRadiusClassName}`}
+            color={c(i)}
+            imageSrc={img(i)}
+            objectPosition="center 20%"
+          />
+        ))}
+      </div>
+    );
+  }
 
   if (layout === "grid") {
     return (

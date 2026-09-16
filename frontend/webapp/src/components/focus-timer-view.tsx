@@ -789,7 +789,7 @@ export function FocusTimerView() {
 
   const drawerTabOptions = [
     { id: "session" as const, label: "Session tasks" },
-    { id: "ideate" as const, label: "Import from Ideate" },
+    { id: "ideate" as const, label: "Import from Manifest" },
   ];
 
   function taskCountForArea(areaId: string): number {
@@ -806,7 +806,7 @@ export function FocusTimerView() {
     <div
       ref={ideateFlyoutRef}
       role="dialog"
-      aria-label="Add from Ideate"
+      aria-label="Add from Manifest"
       className="focus-ideate-flyout absolute left-0 top-full z-[160] mt-2 w-[min(100vw-2rem,18.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-lg"
     >
       <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2.5">
@@ -866,10 +866,10 @@ export function FocusTimerView() {
             <p className="px-2 py-3 text-sm text-muted">
               No life areas yet.{" "}
               <Link
-                href="/ideate/my?new=1"
+                href="/manifest/my?new=1"
                 className="font-medium text-accent-link underline-offset-2 hover:underline"
               >
-                Add one in Ideate
+                Add one in Manifest
               </Link>
               .
             </p>
@@ -1400,7 +1400,7 @@ export function FocusTimerView() {
             onClick={openIdeatePicker}
             className="cursor-pointer rounded-full border border-border bg-background/80 px-3 py-1 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft/40 hover:text-foreground"
           >
-            Add from Ideate →
+            Add from Manifest →
           </button>
           {ideateFlyout}
         </div>
@@ -1539,7 +1539,7 @@ export function FocusTimerView() {
                     <ul className="flex flex-col gap-2">
                       {tasks.length === 0 ? (
                         <li className="py-2 text-sm text-muted">
-                          No tasks yet. Add one below or import from Ideate.
+                          No tasks yet. Add one below or import from Manifest.
                         </li>
                       ) : (
                         tasks.map((t) => (
@@ -1667,10 +1667,10 @@ export function FocusTimerView() {
                         <p className="py-2 text-sm text-muted">
                           No life areas yet.{" "}
                           <Link
-                            href="/ideate/my?new=1"
+                            href="/manifest/my?new=1"
                             className="font-medium text-accent-link underline-offset-2 hover:underline"
                           >
-                            Add one in Ideate
+                            Add one in Manifest
                           </Link>
                           .
                         </p>

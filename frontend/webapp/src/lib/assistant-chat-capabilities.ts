@@ -187,7 +187,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "list_life_areas",
     verb: "list",
     domain: "ideate",
-    summary: "List Ideate life areas",
+    summary: "List Manifest life areas",
     status: "planned",
   },
   {
@@ -249,7 +249,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "get_ideate_store",
     verb: "get",
     domain: "ideate",
-    summary: "Fetch full Ideate store (cloud/local)",
+    summary: "Fetch full Manifest store (cloud/local)",
     status: "planned",
   },
   {
@@ -257,7 +257,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "put_ideate_store",
     verb: "put",
     domain: "ideate",
-    summary: "Push Ideate store to cloud",
+    summary: "Push Manifest store to cloud",
     status: "planned",
   },
   {
@@ -355,7 +355,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "navigate_create_from_idea",
     verb: "navigate",
     domain: "meditate",
-    summary: "Open Create → from Ideate life area",
+    summary: "Open Create → from Manifest life area",
     params: ["lifeAreaId?"],
     status: "planned",
   },

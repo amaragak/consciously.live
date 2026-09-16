@@ -56,8 +56,8 @@ export function buildPlanCreateHandoffApiContent(h: PlanCreateHandoff): string {
       : PLAN_CREATE_FIRST_MESSAGE,
     "",
     preFocus
-      ? "This is an Ideate → Focus preflight handoff. Keep the script brief and energising. Prefer wrapping up with [[READY]] quickly when there is enough material."
-      : "This is an Ideate life-area handoff. The user already wrote dream / resistance / vision below — treat that as primary material for a Visualization meditation.",
+      ? "This is a Manifest → Focus preflight handoff. Keep the script brief and energising. Prefer wrapping up with [[READY]] quickly when there is enough material."
+      : "This is a Manifest life-area handoff. The user already wrote dream / resistance / vision below — treat that as primary material for a Visualization meditation.",
     preFocus
       ? "Ask at most one short follow-up only if something essential is missing."
       : "Ask at most one short follow-up only if something essential for the visualization is missing. Prefer wrapping up with [[READY]] when the vision is already concrete.",

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function DreamVisionBoardRedirectPage() {
-  redirect("/ideate/my/vision-board");
+  redirect("/manifest/my/vision-board");
 }

@@ -129,7 +129,7 @@ function resolveParentTask(
 }
 
 function lifeAreaTasksHref(lifeAreaId: string, taskId: string): string {
-  return `/ideate/goal/${encodeURIComponent(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
+  return `/manifest/goal/${encodeURIComponent(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
 }
 
 function persistTodayGratitude(
@@ -483,7 +483,7 @@ function applyTodo(
       .slice(0, 6);
     const hint = names.length
       ? ` Try one of: ${names.join(", ")}.`
-      : " Add a life area in Ideate first.";
+      : " Add a life area in Manifest first.";
     return {
       ok: false,
       label: `Couldn't find that life area.${hint}`,

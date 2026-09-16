@@ -275,7 +275,7 @@ function LifeAreaCards({
   if (dreams.length === 0) {
     return (
       <Link
-        href="/ideate/my?new=1"
+        href="/manifest/my?new=1"
         aria-label="Add new life area"
         className="flex min-h-[72px] w-full items-center justify-center rounded-[4px] border-2 border-dashed bg-transparent transition-[border-color] duration-200"
         style={{ borderColor: "rgba(180,140,80,0.35)" }}
@@ -300,7 +300,7 @@ function LifeAreaCards({
         return (
           <li key={d.id} className="min-w-0">
             <Link
-              href={`/ideate/goal/${encodeURIComponent(d.id)}`}
+              href={`/manifest/goal/${encodeURIComponent(d.id)}`}
               className="life-area-card group relative flex cursor-pointer items-center gap-4 rounded-[4px] px-4 py-3.5 shadow-[0_4px_14px_rgba(0,0,0,0.08),0_1px_4px_rgba(0,0,0,0.05)] transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-[0_8px_20px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_14px_rgba(0,0,0,0.35),0_1px_4px_rgba(0,0,0,0.25)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.45),0_2px_6px_rgba(0,0,0,0.3)] sm:px-5"
               style={bgVars}
             >
@@ -402,9 +402,7 @@ function IdeateDashboardBand({
     <section className="w-full bg-marketing-band-ideate">
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-6 sm:px-6 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.55fr)] md:items-stretch md:gap-10 md:px-7">
         <div className="flex min-h-0 min-w-0 flex-col">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-marketing-eyebrow">
-            Ideate
-          </p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-marketing-eyebrow">Manifest</p>
           <h2 className="mt-2 font-display text-[26px] font-normal leading-snug tracking-tight text-marketing-ink">
             {stat}
           </h2>
@@ -664,11 +662,11 @@ export function WelcomeDashboard() {
           nav={
             <>
               <span className="md:hidden">
-                <NavGhost href="/ideate/my">Open Ideate</NavGhost>
+                <NavGhost href="/manifest/my">Open Manifest</NavGhost>
               </span>
               <span className="hidden md:contents">
-                <NavGhost href="/ideate/my">Overview</NavGhost>
-                <NavGhost href="/ideate/my/vision-board">Vision board</NavGhost>
+                <NavGhost href="/manifest/my">Overview</NavGhost>
+                <NavGhost href="/manifest/my/vision-board">Vision board</NavGhost>
               </span>
             </>
           }

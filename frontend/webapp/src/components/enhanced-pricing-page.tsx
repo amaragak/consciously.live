@@ -24,7 +24,7 @@ const tiers: Tier[] = [
     href: "/journal/my",
     features: [
       "Journal — entries, gratitudes, insights",
-      "Ideate — life areas, vision, tasks",
+      "Manifest — life areas, vision, tasks",
       "Focus — stay with one thing",
       "Community & program meditations",
       "Library listening for shared sessions",

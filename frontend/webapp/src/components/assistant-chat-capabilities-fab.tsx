@@ -13,7 +13,7 @@ import {
 const DOMAIN_LABEL: Record<AssistantCapability["domain"], string> = {
   coach: "Companion",
   journal: "Journal",
-  ideate: "Ideate",
+  ideate: "Manifest",
   meditate: "Meditate",
   library: "Library",
   sounds: "Sounds",

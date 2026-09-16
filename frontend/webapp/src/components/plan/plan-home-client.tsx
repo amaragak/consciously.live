@@ -204,6 +204,7 @@ export function PlanHomeClient() {
   const [hydrated, setHydrated] = useState(false);
   const addPickerRef = useRef<HTMLDivElement>(null);
   const heroBgPickerRef = useRef<HTMLDivElement>(null);
+  const mobileHeroBgPickerRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
   const manifestoReqRef = useRef(0);
 
@@ -230,6 +231,7 @@ export function PlanHomeClient() {
     const onDoc = (e: MouseEvent) => {
       const t = e.target as Node;
       if (heroBgPickerRef.current?.contains(t)) return;
+      if (mobileHeroBgPickerRef.current?.contains(t)) return;
       setHeroBgPickerOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -309,7 +311,7 @@ export function PlanHomeClient() {
   const { ready: cloudReady, revision, signedIn } = useIdeateCloud();
   const sessionActive = signedIn;
 
-  // Sidebar "Add a life area" deep-link (`/ideate/my?new=1`).
+  // Sidebar "Add a life area" deep-link (`/manifest/my?new=1`).
   const newLifeAreaHandledRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -323,10 +325,10 @@ export function PlanHomeClient() {
     setModalOpen(true);
     params.delete("new");
     const qs = params.toString();
-    router.replace(`/ideate/my${qs ? `?${qs}` : ""}${window.location.hash}`);
+    router.replace(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [hydrated, cloudReady, router]);
 
-  // Guests never wait on the cloud provider — missing provider used to brick /ideate/my
+  // Guests never wait on the cloud provider — missing provider used to brick /manifest/my
   // on eternal "Loading…". Seed + paint from local demos immediately.
   useEffect(() => {
     if (sessionActive) return;
@@ -717,7 +719,7 @@ export function PlanHomeClient() {
       ) ?? store.dreams[0];
     if (match) {
       router.push(
-        `/ideate/goal/${encodeURIComponent(match.id)}?focus=regret&note=${encodeURIComponent(regret.statement.slice(0, 120))}`,
+        `/manifest/goal/${encodeURIComponent(match.id)}?focus=regret&note=${encodeURIComponent(regret.statement.slice(0, 120))}`,
       );
       return;
     }
@@ -847,12 +849,197 @@ export function PlanHomeClient() {
 
   const heroBgOption = getIdeateHeroBgOption(heroBg);
 
+  const renderHeroBgPickerMenu = () =>
+    heroBgPickerOpen ? (
+      <div
+        role="listbox"
+        aria-label="Hero background"
+        className="absolute right-0 top-full z-20 mt-2 grid w-[14.5rem] grid-cols-3 gap-3 rounded-xl border border-white/20 bg-black/80 p-3 shadow-lg backdrop-blur-md"
+      >
+        {IDEATE_HERO_BG_OPTIONS.map((opt) => {
+          const selected = opt.id === heroBg;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              aria-label={opt.label}
+              title={opt.label}
+              onClick={() => {
+                setHeroBg(opt.id);
+                saveIdeateHeroBg(opt.id);
+                setHeroBgPickerOpen(false);
+              }}
+              className={`mx-auto h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-full border bg-cover bg-center transition-[box-shadow] ${
+                selected
+                  ? "border-transparent ring-2 ring-white ring-offset-2 ring-offset-black"
+                  : "border-white/30 hover:border-white/70"
+              }`}
+              style={{
+                backgroundColor: opt.swatch,
+                backgroundImage: opt.swatchImage
+                  ? `url(${opt.swatchImage})`
+                  : undefined,
+              }}
+            />
+          );
+        })}
+      </div>
+    ) : null;
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] pb-20">
-      {/* Vision board hero — editable mandala band */}
+      {/* Mobile: photo strip + quote on plain page bg (no text overlay on photos) */}
+      <div className="sm:hidden">
+        <section
+          className={`home-hero group/hero relative w-full ${heroBgOption.className}`}
+          aria-label="Vision board"
+        >
+          <div className="w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+            <div
+              className="w-max min-w-full"
+              style={{
+                filter:
+                  "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
+              }}
+            >
+              <VisionBoardMosaic
+                layout="strip"
+                colors={mosaicColors(visionItems)}
+                images={mosaicImages(visionItems, visionTileUrls)}
+                sizeClassName="w-max min-w-full"
+                gapClassName="gap-1"
+                radiusClassName="rounded-none"
+                cellRadiusClassName="rounded-none"
+              />
+            </div>
+          </div>
+          <div
+            ref={mobileHeroBgPickerRef}
+            className="home-hero-chrome absolute right-3 top-2.5 z-[5]"
+          >
+            <button
+              type="button"
+              onClick={() => setHeroBgPickerOpen((o) => !o)}
+              aria-label="Change hero background"
+              aria-expanded={heroBgPickerOpen}
+              title="Background"
+              className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/50 bg-black/60 text-white opacity-90 shadow-[0_2px_10px_rgb(0_0_0_/_0.35)] backdrop-blur-sm transition-[opacity,colors] hover:border-white hover:bg-black/80 hover:text-white"
+            >
+              <IconPencil size={15} stroke={1.75} aria-hidden />
+            </button>
+            {renderHeroBgPickerMenu()}
+          </div>
+        </section>
+
+        <div className="bg-black px-4 pb-5 pt-4">
+          {valueTexts.length === 0 ? (
+            <p className="font-display text-[18px] font-normal italic leading-[1.4] text-white/80">
+              Add a few values below — we&apos;ll distil what you stand for into
+              one sentence.
+            </p>
+          ) : manifestoLoading && !manifesto ? (
+            <p className="font-display text-[18px] font-normal italic leading-[1.4] text-white/80">
+              Distilling…
+            </p>
+          ) : editingManifesto ? (
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveEditManifesto();
+              }}
+            >
+              <label className="sr-only" htmlFor="ideate-manifesto-edit-mobile">
+                Edit manifesto
+              </label>
+              <textarea
+                id="ideate-manifesto-edit-mobile"
+                autoFocus
+                rows={4}
+                value={manifestoDraft}
+                onChange={(e) => setManifestoDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelEditManifesto();
+                  }
+                }}
+                className="w-full resize-none rounded-xl border border-white/35 bg-black/35 px-3 py-2.5 text-left font-display text-[18px] font-normal italic leading-[1.4] text-white outline-none ring-white/25 focus:ring-2"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={cancelEditManifesto}
+                  className="cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!manifestoDraft.trim()}
+                  className="cursor-pointer rounded-full border border-white bg-black px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="group/manifesto relative">
+              <p
+                className={`font-display text-[18px] font-normal italic leading-[1.4] text-white transition-opacity ${
+                  manifestoRefreshing ? "opacity-60" : ""
+                }`}
+              >
+                &ldquo;{manifesto}&rdquo;
+              </p>
+              <div className="absolute -right-1 -top-[14px] z-[1] flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={beginEditManifesto}
+                  aria-label="Edit manifesto"
+                  title="Edit"
+                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:border-white hover:bg-black/75 hover:text-white"
+                >
+                  <IconPencil size={14} stroke={1.75} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={refreshManifesto}
+                  disabled={manifestoRefreshing}
+                  aria-label="Regenerate manifesto"
+                  title="Regenerate"
+                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:border-white hover:bg-black/75 hover:text-white disabled:cursor-wait disabled:opacity-70"
+                >
+                  {manifestoRefreshing ? (
+                    <IconLoader2
+                      size={14}
+                      stroke={1.75}
+                      className="animate-spin"
+                      aria-hidden
+                    />
+                  ) : (
+                    <IconRefresh size={14} stroke={1.75} aria-hidden />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <Link
+            href="/manifest/my/vision-board"
+            className="mt-3 inline-flex items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            Open vision board →
+          </Link>
+        </div>
+      </div>
+
+      {/* Desktop / tablet: existing overlay hero — unchanged */}
       <section
         ref={heroRef}
-        className={`home-hero home-hero--ideate-depth group/hero relative w-full ${heroBgOption.className}`}
+        className={`home-hero home-hero--ideate-depth group/hero relative hidden w-full sm:block ${heroBgOption.className}`}
         aria-label="Vision board"
       >
         <div
@@ -873,43 +1060,7 @@ export function PlanHomeClient() {
           >
             <IconPencil size={15} stroke={1.75} aria-hidden />
           </button>
-          {heroBgPickerOpen ? (
-            <div
-              role="listbox"
-              aria-label="Hero background"
-              className="absolute right-0 top-full z-20 mt-2 grid w-[14.5rem] grid-cols-3 gap-3 rounded-xl border border-white/20 bg-black/80 p-3 shadow-lg backdrop-blur-md"
-            >
-              {IDEATE_HERO_BG_OPTIONS.map((opt) => {
-                const selected = opt.id === heroBg;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    aria-label={opt.label}
-                    title={opt.label}
-                    onClick={() => {
-                      setHeroBg(opt.id);
-                      saveIdeateHeroBg(opt.id);
-                      setHeroBgPickerOpen(false);
-                    }}
-                    className={`mx-auto h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-full border bg-cover bg-center transition-[box-shadow] ${
-                      selected
-                        ? "border-transparent ring-2 ring-white ring-offset-2 ring-offset-black"
-                        : "border-white/30 hover:border-white/70"
-                    }`}
-                    style={{
-                      backgroundColor: opt.swatch,
-                      backgroundImage: opt.swatchImage
-                        ? `url(${opt.swatchImage})`
-                        : undefined,
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
+          {renderHeroBgPickerMenu()}
         </div>
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
           <div className="relative w-full">
@@ -1048,7 +1199,7 @@ export function PlanHomeClient() {
               )}
 
               <Link
-                href="/ideate/my/vision-board"
+                href="/manifest/my/vision-board"
                 className="mt-6 inline-flex items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
               >
                 Open vision board →
@@ -1104,7 +1255,7 @@ export function PlanHomeClient() {
               return (
                 <li key={d.id} className="min-w-0">
                   <Link
-                    href={`/ideate/goal/${encodeURIComponent(d.id)}`}
+                    href={`/manifest/goal/${encodeURIComponent(d.id)}`}
                     className="life-area-card group relative flex aspect-square cursor-pointer flex-col rounded-[4px] p-[22px] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-150 hover:-translate-y-[3px] hover:shadow-[0_16px_40px_rgba(0,0,0,0.16),0_4px_12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_24px_rgba(0,0,0,0.45),0_2px_8px_rgba(0,0,0,0.3)] dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.55),0_4px_12px_rgba(0,0,0,0.35)]"
                     style={bgVars}
                   >
@@ -1925,7 +2076,7 @@ export function PlanHomeClient() {
                     onClick={() => exploreRegretInIdeate(r)}
                     className="mt-2 cursor-pointer font-sans text-[13px] font-medium text-accent-link opacity-0 transition-opacity group-hover:opacity-100"
                   >
-                    Explore in Ideate →
+                    Explore in Manifest →
                   </button>
                   <button
                     type="button"

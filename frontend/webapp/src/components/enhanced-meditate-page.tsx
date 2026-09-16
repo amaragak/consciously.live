@@ -32,8 +32,8 @@ const pillars = [
     highlight: false,
   },
   {
-    href: "/ideate",
-    title: "Ideate",
+    href: "/manifest",
+    title: "Manifest",
     body: "Steps, and what's really stopping you.",
     Icon: IconBulb,
     highlight: false,
@@ -191,9 +191,7 @@ export function EnhancedMeditatePage() {
             </Link>
           </div>
           <div className="order-1 lg:order-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-marketing-eyebrow">
-              Ideate
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-marketing-eyebrow">Manifest</p>
             <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-marketing-ink sm:text-4xl">
               Turn what&apos;s blocking you into what you meditate on.
             </h2>

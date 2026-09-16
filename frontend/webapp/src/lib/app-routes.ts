@@ -68,12 +68,14 @@ const PROTECTED_PREFIXES: PrefixRule[] = [
   { prefix: "/create", marketing: "/meditate" },
   { prefix: "/library", marketing: "/meditate" },
   { prefix: "/journal/my", marketing: "/journal" },
-  { prefix: "/ideate/my", marketing: "/ideate" },
-  { prefix: "/ideate/goal", marketing: "/ideate" },
-  { prefix: "/dream/my", marketing: "/ideate" },
-  { prefix: "/dream/goal", marketing: "/ideate" },
-  { prefix: "/plan/goal", marketing: "/ideate" },
-  { prefix: "/plan/my", marketing: "/ideate" },
+  { prefix: "/manifest/my", marketing: "/manifest" },
+  { prefix: "/manifest/goal", marketing: "/manifest" },
+  { prefix: "/ideate/my", marketing: "/manifest" },
+  { prefix: "/ideate/goal", marketing: "/manifest" },
+  { prefix: "/dream/my", marketing: "/manifest" },
+  { prefix: "/dream/goal", marketing: "/manifest" },
+  { prefix: "/plan/goal", marketing: "/manifest" },
+  { prefix: "/plan/my", marketing: "/manifest" },
   { prefix: "/focus/my", marketing: "/focus" },
   { prefix: "/admin", marketing: "/" },
   { prefix: "/schedule", marketing: "/" },
@@ -99,7 +101,7 @@ export function marketingFallbackForPath(pathname: string): string {
 
 /**
  * Build marketing URL with sign-in overlay + return path.
- * e.g. /ideate?signin=1&next=%2Fideate%2Fmy
+ * e.g. /manifest?signin=1&next=%2Fmanifest%2Fmy
  */
 export function marketingSignInUrl(
   pathname: string,
@@ -129,8 +131,10 @@ export function isPublicAuthPath(pathname: string): boolean {
 const MARKETING_ROOT_APP_DESTINATIONS: Record<string, string> = {
   "/meditate": "/meditate/library/creations",
   "/journal": "/journal/my",
-  "/ideate": "/ideate/my",
-  "/dream": "/ideate/my",
+  "/manifest": "/manifest/my",
+  "/ideate": "/manifest/my",
+  "/dream": "/manifest/my",
+  "/plan": "/manifest/my",
   "/focus": "/focus/my",
   "/chat": "/chat/my",
 };

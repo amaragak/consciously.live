@@ -28,7 +28,10 @@ import {
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
 import {
   deriveEntryTitle,
+  formatJournalEntryDate,
   loadJournalStoreRaw,
+  localDateKey,
+  localDateKeyFromIso,
   subscribeJournalStore,
 } from "@/lib/journal-storage";
 import {
@@ -37,7 +40,7 @@ import {
 } from "@/lib/journal-entry-live-title";
 
 function lifeAreaTitleFromPath(pathname: string): string | null {
-  const m = pathname.match(/^\/ideate\/goal\/([^/?#]+)/);
+  const m = pathname.match(/^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/);
   if (!m?.[1]) return null;
   try {
     const id = decodeURIComponent(m[1]);
@@ -95,6 +98,27 @@ function journalEntryTitleFromPath(pathname: string): string | null {
     return entry.title.trim() || deriveEntryTitle(entry.contentHtml);
   } catch {
     return "Entry";
+  }
+}
+
+function gratitudeEntryLabelFromPath(pathname: string): string | null {
+  const m = /^\/journal\/my\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+  if (!m?.[1]) return null;
+  let id: string;
+  try {
+    id = decodeURIComponent(m[1]);
+  } catch {
+    id = m[1];
+  }
+  try {
+    const entry = loadJournalStoreRaw().entries.find((e) => e.id === id);
+    if (!entry) return "Gratitude";
+    if (localDateKeyFromIso(entry.createdAt) === localDateKey()) {
+      return "Today";
+    }
+    return formatJournalEntryDate(entry.createdAt);
+  } catch {
+    return "Gratitude";
   }
 }
 
@@ -299,6 +323,7 @@ export function AppTopBar({
           createMeditationStyle: createMeditationStyleFromSession(pathname),
           createRandomScript: Boolean(readCreateSession()?.randomScript),
           journalEntryTitle: journalEntryTitleFromPath(pathname),
+          gratitudeEntryLabel: gratitudeEntryLabelFromPath(pathname),
           hash: typeof window !== "undefined" ? window.location.hash : "",
           search: typeof window !== "undefined" ? window.location.search : "",
         }),

@@ -4329,14 +4329,12 @@ export function CreateWorkspace({
                   : "cursor-pointer"
               }`}
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
-                Ideate
-              </span>
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">Manifest</span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 Move towards a goal
               </span>
               <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
-                Pick a goal from Ideate for a visualization that helps you step toward it.
+                Pick a goal from Manifest for a visualization that helps you step toward it.
               </p>
               {!planGoalsReady ? (
                 <p className="mt-1 text-[12px] text-muted sm:mt-2.5 sm:text-[13px]">
@@ -4344,7 +4342,7 @@ export function CreateWorkspace({
                 </p>
               ) : !hasPlanGoals ? (
                 <Link
-                  href="/ideate/my"
+                  href="/manifest/my"
                   onClick={(e) => e.stopPropagation()}
                   className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >
@@ -4933,7 +4931,7 @@ export function CreateWorkspace({
               {phase === "goalPick" ? (
                 <div className="mt-3 space-y-3 rounded-xl border border-border bg-background px-3 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Your goals (from Ideate)
+                    Your goals (from Manifest)
                   </p>
                   {!planGoalsReady ? (
                     <p className="text-sm text-muted">Loading goals…</p>
@@ -4941,11 +4939,9 @@ export function CreateWorkspace({
                     <p className="text-sm leading-relaxed text-muted">
                       Add a project in{" "}
                       <Link
-                        href="/ideate/my"
+                        href="/manifest/my"
                         className="cursor-pointer font-semibold text-accent-link underline-offset-2 hover:underline"
-                      >
-                        Ideate
-                      </Link>{" "}
+                      >Manifest</Link>{" "}
                       to use this flow.
                     </p>
                   ) : introTypingDone ? (

@@ -54,11 +54,11 @@ export const APP_NAV_MAIN: AppNavSection[] = [
   },
   {
     id: "ideate",
-    label: "Ideate",
-    href: "/ideate/my",
+    label: "Manifest",
+    href: "/manifest/my",
     children: [
-      { id: "overview", label: "Overview", href: "/ideate/my" },
-      { id: "vision-board", label: "Vision board", href: "/ideate/my/vision-board" },
+      { id: "overview", label: "Overview", href: "/manifest/my" },
+      { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
   },
@@ -149,14 +149,14 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
       pathname.startsWith("/journal/my/insights/")
     );
   }
-  if (pathOnly === "/ideate/my") {
-    // Exact overview only — `/ideate/my/vision-board` is a sibling link.
-    return pathname === "/ideate/my";
+  if (pathOnly === "/manifest/my") {
+    // Exact overview only — `/manifest/my/vision-board` is a sibling link.
+    return pathname === "/manifest/my";
   }
-  if (pathOnly === "/ideate/my/vision-board") {
+  if (pathOnly === "/manifest/my/vision-board") {
     return (
-      pathname === "/ideate/my/vision-board" ||
-      pathname.startsWith("/ideate/my/vision-board/")
+      pathname === "/manifest/my/vision-board" ||
+      pathname.startsWith("/manifest/my/vision-board/")
     );
   }
   if (pathOnly === "/chat/my") {
@@ -183,7 +183,12 @@ export function activeNavSectionId(pathname: string): string | null {
     return "meditate";
   }
   if (pathname.startsWith("/journal")) return "journal";
-  if (pathname.startsWith("/ideate") || pathname.startsWith("/dream")) {
+  if (
+    pathname.startsWith("/manifest") ||
+    pathname.startsWith("/ideate") ||
+    pathname.startsWith("/dream") ||
+    pathname.startsWith("/plan")
+  ) {
     return "ideate";
   }
   if (pathname.startsWith("/focus") || pathname.startsWith("/extension")) {
@@ -228,15 +233,18 @@ export function isSubItemActive(
     );
   }
   if (sectionId === "ideate" && sub.id === "overview") {
-    if (pathname.startsWith("/ideate/goal/")) return false;
-    return (
-      pathname === "/ideate/my" ||
-      pathname.startsWith("/ideate/my/")
-    );
+    // Exact overview only — vision-board and goals are sibling routes.
+    if (
+      pathname.startsWith("/manifest/my/vision-board") ||
+      pathname.startsWith("/manifest/goal/")
+    ) {
+      return false;
+    }
+    return pathname === "/manifest/my";
   }
   if (sectionId === "ideate" && sub.id.startsWith("life-area:")) {
     const dreamId = sub.id.slice("life-area:".length);
-    const m = pathname.match(/^\/ideate\/goal\/([^/?#]+)/);
+    const m = pathname.match(/^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/);
     if (!m?.[1]) return false;
     try {
       return decodeURIComponent(m[1]) === dreamId;
@@ -254,7 +262,7 @@ export type AppBreadcrumbCrumb = {
 
 /**
  * Build breadcrumb crumbs for the logged-in top bar (no brand).
- * `lifeAreaTitle` is used when on `/ideate/goal/[id]`.
+ * `lifeAreaTitle` is used when on `/manifest/goal/[id]`.
  * `createMeditationStyle` is used on By Type questions / mix steps.
  */
 export function buildAppBreadcrumbs(
@@ -266,6 +274,8 @@ export function buildAppBreadcrumbs(
     createRandomScript?: boolean;
     /** Title for `/journal/my/[entryId]` (mobile entry editor). */
     journalEntryTitle?: string | null;
+    /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
+    gratitudeEntryLabel?: string | null;
     hash?: string;
     search?: string;
   },
@@ -307,7 +317,7 @@ export function buildAppBreadcrumbs(
       pathname.startsWith("/meditate/create")
         ? parseCreateMeditationPathname(pathname)
         : { path: "pending" as const, styleStep: "type" as const, mix: false, valid: true };
-    // Match create-path card eyebrows (By Type, Chat, Ideate, Journal, Direct, Random).
+    // Match create-path card eyebrows (By Type, Chat, Manifest, Journal, Direct, Random).
     const pathLabel =
       parsed.path === "style"
         ? opts?.createRandomScript
@@ -316,7 +326,7 @@ export function buildAppBreadcrumbs(
         : parsed.path === "freeflow"
           ? "Chat"
           : parsed.path === "goal"
-            ? "Ideate"
+            ? "Manifest"
             : parsed.path === "journalReflect"
               ? "Journal"
               : parsed.path === "oneShot"
@@ -381,6 +391,16 @@ export function buildAppBreadcrumbs(
       pathname.startsWith("/journal/my/gratitudes/")
     ) {
       const isNew = new URLSearchParams(search).get("new") === "1";
+      const gratitudeEntryMatch =
+        /^\/journal\/my\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+      if (gratitudeEntryMatch?.[1]) {
+        const label = opts?.gratitudeEntryLabel?.trim() || "Gratitude";
+        return [
+          { label: "Journal", href: "/journal/my" },
+          { label: "Gratitudes", href: "/journal/my/gratitudes" },
+          { label, href: null },
+        ];
+      }
       return [
         { label: "Journal", href: "/journal/my" },
         { label: isNew ? "New gratitude" : "Gratitudes", href: null },
@@ -412,27 +432,27 @@ export function buildAppBreadcrumbs(
     return [{ label: "Journal", href: null }];
   }
 
-  if (pathname.startsWith("/ideate/goal/")) {
+  if (pathname.startsWith("/manifest/goal/")) {
     const title = opts?.lifeAreaTitle?.trim() || "Life area";
     return [
-      { label: "Ideate", href: "/ideate/my" },
+      { label: "Manifest", href: "/manifest/my" },
       { label: title, href: null },
     ];
   }
-  if (pathname.startsWith("/ideate")) {
-    if (pathname.startsWith("/ideate/my/vision-board")) {
+  if (pathname.startsWith("/manifest")) {
+    if (pathname.startsWith("/manifest/my/vision-board")) {
       return [
-        { label: "Ideate", href: "/ideate/my" },
+        { label: "Manifest", href: "/manifest/my" },
         { label: "Vision board", href: null },
       ];
     }
-    if (pathname.startsWith("/ideate/my")) {
+    if (pathname.startsWith("/manifest/my")) {
       return [
-        { label: "Ideate", href: "/ideate/my" },
+        { label: "Manifest", href: "/manifest/my" },
         { label: "Overview", href: null },
       ];
     }
-    return [{ label: "Ideate", href: null }];
+    return [{ label: "Manifest", href: null }];
   }
 
   if (pathname.startsWith("/focus")) {

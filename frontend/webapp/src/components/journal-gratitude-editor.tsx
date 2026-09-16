@@ -32,7 +32,7 @@ export function JournalGratitudeEditor({ createdAt, lines, onChange, children }:
   const displayLines = Array.from({ length: slotCount }, (_, i) => lines[i] ?? "");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-journal-warm-border bg-journal-warm-bg shadow-sm">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-journal-warm-border bg-journal-warm-bg shadow-sm max-sm:flex-none sm:flex-1">
       <div className="relative z-10 shrink-0 border-b border-journal-warm-border bg-journal-warm-bg px-5 py-4 sm:px-6">
         <h2 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
           {isToday ? "Today" : dateLabel}
@@ -47,7 +47,7 @@ export function JournalGratitudeEditor({ createdAt, lines, onChange, children }:
               : `Three things you were grateful for on ${dateLabel}.`}
         </p>
       </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
+      <div className="space-y-5 px-5 pt-5 pb-4 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-contain sm:px-6 sm:py-6">
         {displayLines.map((value, i) => {
           const Icon = FIELD_ICONS[i] ?? IconSparkles;
           const ariaLabel = ariaLabelForIndex(i);
@@ -66,17 +66,17 @@ export function JournalGratitudeEditor({ createdAt, lines, onChange, children }:
                   next[i] = e.target.value;
                   onChange(next);
                 }}
-                rows={3}
+                rows={2}
                 placeholder="I’m grateful for…"
                 aria-label={ariaLabel}
-                className="min-h-[4.5rem] min-w-0 flex-1 resize-y rounded-2xl border border-journal-warm-border bg-journal-warm-input-bg px-4 py-3 text-base leading-relaxed text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
+                className="min-w-0 flex-1 resize-y rounded-2xl border border-journal-warm-border bg-journal-warm-input-bg px-4 text-base leading-relaxed text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2 max-sm:h-[2.75rem] max-sm:min-h-[2.75rem] max-sm:resize-none max-sm:overflow-y-auto max-sm:py-2.5 sm:min-h-[4rem] sm:py-3"
               />
             </div>
           );
         })}
       </div>
       {children ? (
-        <div className="relative z-10 shrink-0 border-t border-journal-warm-border bg-journal-warm-bg px-5 py-3 sm:px-6">
+        <div className="relative z-10 shrink-0 border-t border-journal-warm-border bg-journal-warm-bg px-5 py-3 sm:px-6 sm:py-3">
           {children}
         </div>
       ) : null}

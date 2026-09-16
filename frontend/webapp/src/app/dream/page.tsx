@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Legacy URL — product is Ideate. */
+/** Legacy URL — product section is Manifest. */
 export default function DreamRedirectPage() {
-  redirect("/ideate");
+  redirect("/manifest");
 }

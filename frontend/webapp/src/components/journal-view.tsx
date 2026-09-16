@@ -20,7 +20,7 @@ import {
   type JournalImportPreviewRow,
 } from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
-import { Calendar, ChevronLeft, Folder } from "lucide-react";
+import { Calendar, Folder } from "lucide-react";
 import { JournalLockGate } from "@/components/journal-lock-gate";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
@@ -382,7 +382,6 @@ export function JournalView() {
   >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
-  const [mobileEntryMenuOpen, setMobileEntryMenuOpen] = useState(false);
   const pathname = usePathname() || "/journal/my";
   const router = useRouter();
   const section = journalSectionFromPath(pathname);
@@ -427,7 +426,6 @@ export function JournalView() {
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const dateMenuRef = useRef<HTMLDivElement | null>(null);
   const filtersMenuRef = useRef<HTMLDivElement | null>(null);
-  const mobileEntryMenuRef = useRef<HTMLDivElement | null>(null);
   const activeIdRef = useRef<string | null>(null);
   const latestHtmlRef = useRef("<p></p>");
   const latestTitleRef = useRef("");
@@ -518,28 +516,6 @@ export function JournalView() {
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    if (!mobileEntryMenuOpen) return;
-    function onDoc(e: MouseEvent) {
-      if (!mobileEntryMenuRef.current?.contains(e.target as Node)) {
-        setMobileEntryMenuOpen(false);
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMobileEntryMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [mobileEntryMenuOpen]);
-
-  useEffect(() => {
-    setMobileEntryMenuOpen(false);
-  }, [routeEntryId, routeGratitudeId]);
 
   const persist = useCallback(
     (
@@ -1016,7 +992,6 @@ export function JournalView() {
     latestGratitudeRef.current = next?.gratitude ?? emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
     persist(remaining, nextId);
-    setMobileEntryMenuOpen(false);
     if (journalTab === "journal" && journalEntryIdFromPath(pathname)) {
       router.push(
         nextId
@@ -1135,15 +1110,8 @@ export function JournalView() {
     return () => clearJournalEntryLiveTitle(routeEntryId);
   }, [section, routeEntryId]);
 
-  const openGratitudesList = useCallback(() => {
-    flushSaveSync();
-    setMobileEntryMenuOpen(false);
-    router.push(JOURNAL_SECTION_HREF.gratitude);
-  }, [flushSaveSync, router]);
-
   const moveActiveToFolder = useCallback(
     (folderId: string) => {
-      setMobileEntryMenuOpen(false);
       if (folderId) {
         patchActive({ folderId });
       } else {
@@ -1228,10 +1196,10 @@ export function JournalView() {
 
   const openLifeAreaFromActive = useCallback(() => {
     if (activeLifeArea) {
-      router.push(`/ideate/goal/${encodeURIComponent(activeLifeArea.id)}`);
+      router.push(`/manifest/goal/${encodeURIComponent(activeLifeArea.id)}`);
       return;
     }
-    router.push("/ideate/my");
+    router.push("/manifest/my");
   }, [activeLifeArea, router]);
 
   const createGratitudeEntry = useCallback(() => {
@@ -1452,6 +1420,9 @@ export function JournalView() {
     journalTab === "gratitude" && !insightsOpen && hydrated && Boolean(activeEntry);
 
   const journalComposeChrome = journalTab === "journal" && !insightsOpen;
+  /** Mobile gratitude list: full-bleed band like journal list (not compose). */
+  const gratitudeListMobileChrome =
+    journalTab === "gratitude" && !insightsOpen && !mobileGratitudeCompose;
 
   return (
     <JournalLockGate>
@@ -1459,20 +1430,26 @@ export function JournalView() {
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
     <div
       className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden ${
-        !mobileComposeChrome ? "journal-mobile-paisley-bg" : ""
+        !mobileJournalEditor && !mobileInsightsLetter
+          ? "journal-mobile-paisley-bg"
+          : ""
       } ${
         journalComposeChrome
           ? "relative z-[1] max-w-6xl border-r-[0.5px] border-border px-0 pb-0 pt-0"
-          : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
+          : gratitudeListMobileChrome
+            ? "mx-auto max-w-6xl px-4 pb-6 pt-2 max-sm:px-0 max-sm:pb-0 sm:px-6 sm:pb-6 sm:pt-4"
+            : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
       }`}
     >
       <div
         className={`shrink-0 ${
-          journalComposeChrome ? "px-4 sm:px-6" : ""
+          journalComposeChrome || gratitudeListMobileChrome
+            ? "px-4 sm:px-6"
+            : ""
         } ${mobileComposeChrome ? "max-sm:hidden" : ""} ${
           importBatchId
             ? "mb-3"
-            : journalComposeChrome
+            : journalComposeChrome || gratitudeListMobileChrome
               ? "mb-0"
               : "mb-3 md:mb-0"
         }`}
@@ -1514,50 +1491,6 @@ export function JournalView() {
           </p>
         ) : null}
       </div>
-
-      {mobileGratitudeCompose ? (
-        <div className="mb-3 flex shrink-0 items-center justify-between gap-2 sm:hidden">
-          <button
-            type="button"
-            onClick={openGratitudesList}
-            className="inline-flex cursor-pointer items-center gap-0.5 text-sm font-semibold text-accent-link"
-            aria-label="Back to Gratitudes list"
-          >
-            <ChevronLeft aria-hidden className="size-5" strokeWidth={2} />
-            Gratitudes
-          </button>
-          <div ref={mobileEntryMenuRef} className="relative">
-            <button
-              type="button"
-              aria-label="Day actions"
-              aria-haspopup="menu"
-              aria-expanded={mobileEntryMenuOpen}
-              onClick={() => setMobileEntryMenuOpen((v) => !v)}
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-accent-soft/50 hover:text-foreground"
-            >
-              <IconEntryMore />
-            </button>
-            {mobileEntryMenuOpen ? (
-              <div
-                role="menu"
-                className="absolute right-0 top-full z-30 mt-1 min-w-[9rem] rounded-xl border border-border bg-card py-1 shadow-lg"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMobileEntryMenuOpen(false);
-                    deleteActive();
-                  }}
-                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft/40"
-                >
-                  Delete day
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       {insightsMounted ? (
         <div
@@ -1613,7 +1546,7 @@ export function JournalView() {
                 }`
               : `gap-3 overflow-visible border-b border-border pb-4 lg:max-h-none lg:w-64 lg:border-b-0 lg:pb-0 ${
                   journalTab === "gratitude"
-                    ? "max-h-[22rem] max-sm:max-h-none max-sm:min-h-0 max-sm:flex-1 max-sm:border-b-0 max-sm:pb-0 sm:max-h-[22rem] lg:max-h-none"
+                    ? "max-h-[22rem] max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:border-b-[0.5px] max-sm:bg-marketing-band-d max-sm:px-3 max-sm:pb-5 max-sm:pt-3 max-sm:shadow-md sm:max-h-[22rem] lg:max-h-none"
                     : "max-h-[22rem]"
                 } ${mobileComposeChrome ? "max-sm:hidden" : ""}`
           }`}

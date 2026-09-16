@@ -341,7 +341,7 @@ export function AppSidebar({
       ...lifeAreas.map((d) => ({
         id: `life-area:${d.id}`,
         label: d.title,
-        href: `/ideate/goal/${encodeURIComponent(d.id)}`,
+        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
       })),
     ];
   }, [lifeAreas]);
@@ -441,7 +441,7 @@ export function AppSidebar({
               emptyAction={
                 section.id === "ideate" && lifeAreas.length === 0
                   ? {
-                      href: "/ideate/my?new=1",
+                      href: "/manifest/my?new=1",
                       label: "Add a life area",
                     }
                   : undefined

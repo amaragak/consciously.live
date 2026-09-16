@@ -1,9 +1,8 @@
-import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
-
+/** Legacy layout — pages redirect to /manifest/my. */
 export default function IdeateMyLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <IdeateCloudProvider>{children}</IdeateCloudProvider>;
+  return children;
 }

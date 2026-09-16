@@ -1,14 +1,8 @@
-import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
-
-export const metadata = {
-  title: "Dream workspace",
-  description: "Reflect, explore resistance, and shape a vision for your dream.",
-};
-
-export default function IdeateGoalLayout({
+/** Legacy layout — page redirects to /manifest/goal. */
+export default function DreamGoalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <IdeateCloudProvider>{children}</IdeateCloudProvider>;
+  return children;
 }

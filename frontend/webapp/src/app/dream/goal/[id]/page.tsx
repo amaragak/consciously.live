@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Legacy URL — workspace lives under /ideate/goal. */
+/** Legacy URL — workspace lives under /manifest/goal. */
 export default async function DreamGoalRedirectPage({
   params,
   searchParams,
@@ -20,7 +20,7 @@ export default async function DreamGoalRedirectPage({
   const qs = q.toString();
   redirect(
     qs
-      ? `/ideate/goal/${encodeURIComponent(id)}?${qs}`
-      : `/ideate/goal/${encodeURIComponent(id)}`,
+      ? `/manifest/goal/${encodeURIComponent(id)}?${qs}`
+      : `/manifest/goal/${encodeURIComponent(id)}`,
   );
 }

@@ -124,11 +124,11 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
     if (next === "vision") params.delete("tab");
     else params.set("tab", next);
     const q = params.toString();
-    // Stay on /ideate/goal — /dream/goal redirects and remounts the whole page.
+    // Stay on /manifest/goal — legacy /ideate|/dream|/plan paths redirect.
     router.replace(
       q
-        ? `/ideate/goal/${encodeURIComponent(dreamId)}?${q}`
-        : `/ideate/goal/${encodeURIComponent(dreamId)}`,
+        ? `/manifest/goal/${encodeURIComponent(dreamId)}?${q}`
+        : `/manifest/goal/${encodeURIComponent(dreamId)}`,
       { scroll: false },
     );
   }
@@ -175,10 +175,10 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
         </p>
         {missing ? (
           <Link
-            href="/ideate/my"
+            href="/manifest/my"
             className="mt-6 inline-block text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
           >
-            Back to Ideate
+            Back to Manifest
           </Link>
         ) : null}
       </div>

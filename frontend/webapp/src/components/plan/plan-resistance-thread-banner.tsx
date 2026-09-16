@@ -58,7 +58,7 @@ export function PlanResistanceThreadBanner({
         </button>
         {projectId ? (
           <Link
-            href={`/dream/goal/${encodeURIComponent(projectId)}`}
+            href={`/manifest/goal/${encodeURIComponent(projectId)}`}
             className="rounded-full px-4 py-2 text-sm text-muted hover:text-foreground"
           >
             View project
