@@ -2101,6 +2101,8 @@ export async function createMeditationAudioJob(params: {
   claudeModel?: string;
   /** Dev: Fish qualitative tags vs ffmpeg silence chunks. Default segmented. */
   fishPauseMode?: FishPauseMode;
+  /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
+  longerBreaks?: boolean;
   /** Program shelf audio — keep off My Creations. */
   excludeFromLibrary?: boolean;
   /** Ideate life-area id when generated from that area / goal path. */
@@ -2157,6 +2159,7 @@ export async function createMeditationAudioJob(params: {
     ...(params.fishPauseMode === "native" || params.fishPauseMode === "segmented"
       ? { fishPauseMode: params.fishPauseMode }
       : {}),
+    ...(params.longerBreaks === true ? { longerBreaks: true } : {}),
     meditationTargetMinutes,
     ...(params.journalMode === true ? { journalMode: true } : {}),
     ...(params.excludeFromLibrary === true ? { excludeFromLibrary: true } : {}),
@@ -2675,6 +2678,7 @@ export type AdminPauseBands = {
   medium: number;
   long: number;
   "extra-long": number;
+  open: number;
 };
 
 export type AdminVoiceState = {

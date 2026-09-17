@@ -213,7 +213,7 @@ export function scriptLabBeatsToolDefinition(): {
                 type: "string",
                 enum: [...SCRIPT_PAUSE_BANDS],
                 description:
-                  "Standalone silence beat. When set alone, this is the ONLY field needed — omit beatType and custom. One of: extra-short, short, medium, long, extra-long.",
+                  "Standalone silence beat. When set alone, this is the ONLY field needed — omit beatType and custom. One of: extra-short, short, medium, long, extra-long, open.",
               },
               custom: {
                 type: "boolean",

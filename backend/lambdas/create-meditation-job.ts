@@ -58,6 +58,8 @@ export async function handler(
     claudeModel?: string;
     /** `native` = Fish `[break]` / `[long-break]` …; `segmented` = ffmpeg silence (default). */
     fishPauseMode?: string;
+    /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
+    longerBreaks?: boolean;
     /** When true, do not index the result in the personal library (program shelf audio). */
     excludeFromLibrary?: boolean;
     /** Ideate life-area id when generated from that area / goal path. */
@@ -197,6 +199,7 @@ export async function handler(
         claudeModel,
         fishPauseMode:
           body.fishPauseMode === "native" ? "native" : "segmented",
+        ...(body.longerBreaks === true ? { longerBreaks: true } : {}),
         ...(voiceFxPreset ? { voiceFxPreset } : {}),
         backgroundSoundKey,
         ...(backgroundNatureKey ? { backgroundNatureKey } : {}),

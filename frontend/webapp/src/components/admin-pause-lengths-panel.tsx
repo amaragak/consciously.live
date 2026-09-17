@@ -13,6 +13,7 @@ const PAUSE_FIELDS: Array<{ id: keyof AdminPauseBands; label: string }> = [
   { id: "medium", label: "Medium" },
   { id: "long", label: "Long" },
   { id: "extra-long", label: "Extra long" },
+  { id: "open", label: "Open practice" },
 ];
 
 export function AdminPauseLengthsPanel(props: {
@@ -64,14 +65,14 @@ export function AdminPauseLengthsPanel(props: {
         </p>
       ) : null}
       {pauses ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-5">
+        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {PAUSE_FIELDS.map((f) => (
             <label key={f.id} className="block text-xs font-medium text-muted">
               {f.label}
               <input
                 type="number"
                 min={0.2}
-                max={120}
+                max={f.id === "open" ? 180 : 120}
                 step={0.1}
                 value={pauses[f.id]}
                 onChange={(e) =>

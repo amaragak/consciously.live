@@ -127,9 +127,11 @@ function scriptStoryPauseBudgetGuidanceAppendix(targetMinutes: number): string {
 /** Pause-budget guidance scaled to target duration. */
 export function scriptPauseBudgetGuidanceAppendix(
   targetMinutes: number,
-  options?: { meditationType?: string | null },
+  options?: { meditationType?: string | null; longerBreaks?: boolean },
 ): string {
-  if (isStoryMeditationType(options?.meditationType)) {
+  const longerBreaks = options?.longerBreaks === true;
+  // Story keeps narrative pacing unless longer breaks is on (then open sits apply).
+  if (isStoryMeditationType(options?.meditationType) && !longerBreaks) {
     return scriptStoryPauseBudgetGuidanceAppendix(targetMinutes);
   }
 
@@ -141,6 +143,21 @@ export function scriptPauseBudgetGuidanceAppendix(
   const targetPauseLo = Math.round(stemSeconds * tierLo);
   const targetPauseHi = Math.round(stemSeconds * tierHi);
   const xlCap = maxExtraLongPausesForTarget(targetMinutes);
+
+  // Longer-breaks: ordinary line pacing stays standard; open-practice appendix is separate.
+  if (longerBreaks) {
+    return [
+      "",
+      "### Pause budget — ordinary line pacing (longer breaks)",
+      `This is a **${targetMinutes}-minute** script. Ordinary line-to-line pauses still follow the **${tier.label}** contemplative mix below — do **not** inflate every gap.`,
+      "",
+      `For the **guided spoken sections**, use the usual bands: **short** / **medium** / **long** / **extra-long** (~12 s). ${tier.bandMix}`,
+      "",
+      "**Critical:** multi-minute self-paced silence is **not** done with stacks of `extra-long`. Follow the **Longer breaks — open practice** section for `[[PAUSE open]]` / timed `[[PAUSE 60s]]` etc.",
+      "",
+      `Planning check: guided sections alone should feel like normal pacing; open sits supply the bulk of the silence so the stem still hits ~**${stemSeconds}** s.`,
+    ].join("\n");
+  }
 
   return [
     "",

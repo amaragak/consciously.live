@@ -19,11 +19,9 @@ import { parseBuffer } from "music-metadata";
 import { loudnormMp3Buffer } from "../lib/ffmpeg-loudnorm";
 import {
   type KnownMeditationType,
-  creatorChoseSpecificMeditationTechnique,
   inferPresetTypeFromScriptHeuristic,
   knownMeditationTypesJsonArrayBlock,
   normalizeMeditationType,
-  styleAdherenceBlockForPrompt,
 } from "../lib/meditation-types";
 import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
 import {
@@ -39,16 +37,11 @@ import {
   normalizeTtsProvider,
   type TtsProvider,
 } from "../lib/orpheus-voices";
-import {
-  getFleetScriptWordTargets,
-  scriptDurationPlanningAppendix,
-} from "../lib/script-duration-planning-prompt";
-import { GENDER_NEUTRAL_SCRIPT_RULES } from "../lib/meditation-script-generate-prompt";
+import { buildMeditationScriptGenerationPrompt } from "../lib/meditation-script-generate-prompt";
 import {
   fishPauseTagStyleForModel,
   parseScriptIntoSegments,
   replacePauseMarkersWithFishNative,
-  SCRIPT_PAUSE_PROMPT_RULES,
   stripPauseMarkers as spokenPlainWithoutPauses,
   sumPauseMarkerSeconds,
 } from "../lib/script-pause-bands";
@@ -613,67 +606,23 @@ async function generateScriptFromClaude(params: {
   transcript: string;
   speechSpeed: number;
   journalMode: boolean;
-  /** Guided length target (2, 5, or 10 minutes); scales word targets from the 5‑minute baseline. */
+  /** Guided length target (2, 5, 10, or 20 minutes); scales word targets. */
   targetMinutes: number;
+  /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
+  longerBreaks?: boolean;
 }): Promise<{
   script: string;
   usage: { input_tokens: number; output_tokens: number } | null;
 }> {
-  const words = getFleetScriptWordTargets({
+  const prompt = buildMeditationScriptGenerationPrompt({
+    transcript: params.transcript,
+    meditationStyle: params.meditationStyle?.trim() ?? "",
+    journalMode: params.journalMode,
     targetMinutes: params.targetMinutes,
     speechSpeed: params.speechSpeed,
+    includeSegmentPlaceholders: false,
+    longerBreaks: params.longerBreaks === true,
   });
-  const wordsMin = words.min;
-  const wordsMax = words.max;
-
-  const styleForScript = params.meditationStyle?.trim() ?? "";
-  const styleHint = styleForScript
-    ? `Preferred meditation style from the creator: "${styleForScript}".`
-    : "The creator has not locked a style label yet — infer an appropriate approach from the chat.";
-  const styleLocked = creatorChoseSpecificMeditationTechnique({
-    journalMode: params.journalMode,
-    meditationStyle: styleForScript,
-  });
-  const lockBlock = styleLocked
-    ? [
-        "",
-        styleAdherenceBlockForPrompt(styleForScript),
-        "",
-        "The script must spend a substantial part of the practice on the chosen technique above (not a brief nod while the rest is a generic unrelated meditation), while still reflecting the user’s situation from the conversation.",
-      ].join("\n")
-    : "";
-
-  const userContent = [
-    styleHint,
-    lockBlock,
-    "",
-    "### Conversation between creator and guide (chronological)",
-    params.transcript?.trim() || "(No messages yet.)",
-    "",
-    "### Your task",
-    "Write the complete guided meditation script that a human guide would read aloud for recording.",
-    `Target length: about **${params.targetMinutes} minutes** at a calm, unhurried speaking pace (roughly ${wordsMin}–${wordsMax} words).`,
-    "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
-    "Match the emotional tone, intentions, and imagery implied by the conversation.",
-    "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
-    GENDER_NEUTRAL_SCRIPT_RULES,
-    "Phrase for natural text-to-speech: avoid single-word sentences or standalone one-word lines (they often get wrong stress or intonation). Prefer multi-word phrases and full sentences—for example, instead of ending with “Sleep.” alone, close with something like “When you’re ready, let yourself drift into sleep.”",
-    SCRIPT_PAUSE_PROMPT_RULES,
-    "Output **only** the words the guide speaks and these [[PAUSE …]] named-band markers; do not output other markdown or commentary.",
-    scriptDurationPlanningAppendix(params.targetMinutes, {
-      speechSpeed: params.speechSpeed,
-    }),
-  ].join("\n");
-
-  const system = [
-    "You are an expert meditation scriptwriter for medimade.io.",
-    "You write speakable, production-ready guided meditation scripts.",
-    "If the creator is joking or playful, it is OK to include whimsical subject matter, but the meditation itself must remain genuinely calming, coherent, and high-quality—not a joke script. Use playful imagery as a vehicle for grounding, breath, and emotional regulation.",
-    "Never generate hate/harassment, sexual content involving minors, non-consensual sexual content, graphic sexual content, instructions for wrongdoing, or glorification of self-harm. If the creator asks for something socially unacceptable, refuse briefly and produce a safe alternative meditation topic.",
-    GENDER_NEUTRAL_SCRIPT_RULES,
-    "You phrase lines for natural TTS: avoid isolated one-word sentences; use multi-word phrases where possible.",
-    "You place pauses **generously and often** for clarity and pacing—especially spacious where self-paced work needs room—while keeping each silence **motivated** (never mechanical fillers). For **guided** in-then-out breath pairs, keep the gap between steps **short**; reserve long silences for open practice without an immediate next cue.",
-  ].join(" ");
 
   const upstream = await fetch(ANTHROPIC_URL, {
     method: "POST",
@@ -684,9 +633,9 @@ async function generateScriptFromClaude(params: {
     },
     body: JSON.stringify({
       model: params.model,
-      max_tokens: 8192,
-      system,
-      messages: [{ role: "user", content: userContent } satisfies ChatTurn],
+      max_tokens: prompt.maxTokens,
+      system: prompt.system,
+      messages: [{ role: "user", content: prompt.userContent } satisfies ChatTurn],
     }),
   });
 
@@ -1053,6 +1002,8 @@ async function synthesizeScriptWithPauses(params: {
   speed: number;
   fishTtsModel?: string;
   pauseBands?: Awaited<ReturnType<typeof loadPauseBandSeconds>>;
+  /** Multiply band seconds at render (default PAUSE_RENDER_SCALE). */
+  pauseScale?: number;
   /** When set, loudnorm + Pedalboard run once over the assembled track. */
   voiceFx?: { preset: string; bucket: string; jobId: string };
 }): Promise<{
@@ -1066,6 +1017,7 @@ async function synthesizeScriptWithPauses(params: {
     >;
   };
 }> {
+  const pauseScale = params.pauseScale ?? PAUSE_RENDER_SCALE;
   const segments = parseScriptIntoSegments(params.script, params.pauseBands);
   const fishOpts = { fishTtsModel: params.fishTtsModel };
   const voiceFx = params.voiceFx;
@@ -1148,7 +1100,7 @@ async function synthesizeScriptWithPauses(params: {
       i: sectionTimings.length,
       ttsMs: elapsedMs(ttsStarted),
       utf8Bytes,
-      pauseSec: seg.pauseSeconds > 0 ? seg.pauseSeconds * PAUSE_RENDER_SCALE : undefined,
+      pauseSec: seg.pauseSeconds > 0 ? seg.pauseSeconds * pauseScale : undefined,
     });
     const segPath = `/tmp/seg-${id}-${i}.mp3`;
     fs.writeFileSync(segPath, segBuf);
@@ -1164,7 +1116,7 @@ async function synthesizeScriptWithPauses(params: {
         "-i",
         "anullsrc=channel_layout=mono:sample_rate=44100",
         "-t",
-        (seg.pauseSeconds * PAUSE_RENDER_SCALE).toFixed(2),
+        (seg.pauseSeconds * pauseScale).toFixed(2),
         "-q:a",
         "9",
         "-acodec",
@@ -1421,6 +1373,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     excludeFromLibrary?: boolean;
     lifeAreaId?: string;
     creationProvenance?: unknown;
+    /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
+    longerBreaks?: boolean;
   };
 
   let jobItem: JobItem | null = null;
@@ -1475,6 +1429,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     backgroundMusicGain?: number;
     backgroundDrumsGain?: number;
     backgroundNoiseGain?: number;
+    longerBreaks?: boolean;
   } = {
     transcript: jobItem.transcript,
     meditationStyle: jobItem.meditationStyle,
@@ -1499,6 +1454,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     backgroundMusicGain: jobItem.backgroundMusicGain,
     backgroundDrumsGain: jobItem.backgroundDrumsGain,
     backgroundNoiseGain: jobItem.backgroundNoiseGain,
+    longerBreaks: jobItem.longerBreaks === true,
   };
 
   const ttsProvider = normalizeTtsProvider(body.ttsProvider ?? jobItem.ttsProvider);
@@ -1535,6 +1491,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const targetMinutes = coerceMeditationTargetMinutes(
     body.meditationTargetMinutes,
   );
+  const longerBreaks = body.longerBreaks === true;
+  const pauseRenderScale = PAUSE_RENDER_SCALE;
   const styleTrimmed = meditationStyle.trim();
   const isJournalCatalog =
     journalModeFromJob ||
@@ -1630,6 +1588,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       console.log("generating script from Claude", {
         meditationStylePresent: Boolean(meditationStyle?.trim()),
         targetMinutes,
+        longerBreaks,
       });
       const scriptStarted = Date.now();
       const claudeKey = await getClaudeApiKey();
@@ -1641,6 +1600,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         speechSpeed,
         journalMode: journalModeFromJob,
         targetMinutes,
+        longerBreaks,
       });
       scriptTextUsed = gen.script;
       generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
@@ -1651,6 +1611,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       console.log("generated script", {
         chars: scriptTextUsed.length,
         targetMinutes,
+        longerBreaks,
         scriptMs: generationTimings.phases.scriptMs,
       });
     }
@@ -1814,11 +1775,15 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       : {};
 
     pauseSecondsTotal =
-      sumPauseMarkerSeconds(ttsScript, pauseBands) * PAUSE_RENDER_SCALE;
+      sumPauseMarkerSeconds(ttsScript, pauseBands) * pauseRenderScale;
 
     const fishPauseMode = normalizeFishPauseMode(jobItem.fishPauseMode);
+    // Open / timed multi-minute sits need ffmpeg silence — Fish native tags cannot hold 60–120s.
     const useFishNative =
-      fishPauseMode === "native" && ttsProvider === "fish" && Boolean(fishKey);
+      !longerBreaks &&
+      fishPauseMode === "native" &&
+      ttsProvider === "fish" &&
+      Boolean(fishKey);
 
     let audio: Buffer;
     let utf8Bytes: number;
@@ -1843,7 +1808,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         speed: speechSpeed,
         fishTtsModel,
         pauseBands,
-        pauseScale: PAUSE_RENDER_SCALE,
+        pauseScale: pauseRenderScale,
         ...voiceFxOpt,
       });
       audio = result.audio;
@@ -1855,6 +1820,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         reference_id: referenceId,
         ttsProvider,
         fishTtsModel,
+        longerBreaks,
+        pauseRenderScale,
       });
       const result = await synthesizeScriptWithPauses({
         provider: ttsProvider,
@@ -1865,6 +1832,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         speed: speechSpeed,
         fishTtsModel,
         pauseBands,
+        pauseScale: pauseRenderScale,
         ...voiceFxOpt,
       });
       audio = result.audio;

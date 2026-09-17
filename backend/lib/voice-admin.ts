@@ -76,7 +76,9 @@ function coercePauseSeconds(raw: unknown): PauseBandSeconds {
   const o = raw as Record<string, unknown>;
   for (const band of SCRIPT_PAUSE_BANDS) {
     const n = Number(o[band]);
-    if (Number.isFinite(n) && n > 0 && n <= 120) base[band] = n;
+    // `open` sits can be up to ~3 minutes; other bands stay under two minutes.
+    const max = band === "open" ? 180 : 120;
+    if (Number.isFinite(n) && n > 0 && n <= max) base[band] = n;
   }
   return base;
 }

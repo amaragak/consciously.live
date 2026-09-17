@@ -2,7 +2,7 @@
  * Named pause bands in generated scripts (`[[PAUSE medium]]`).
  * Seconds live only here so we can retune render without changing scripts.
  *
- * Legacy `[[PAUSE 3s]]` still parses for old library rows.
+ * Legacy / longer-breaks timed markers `[[PAUSE 60s]]` still parse.
  */
 export const SCRIPT_PAUSE_BANDS = [
   "extra-short",
@@ -10,6 +10,8 @@ export const SCRIPT_PAUSE_BANDS = [
   "medium",
   "long",
   "extra-long",
+  /** Self-paced open practice (~1 min). Longer-breaks mode; not routine line spacing. */
+  "open",
 ] as const;
 
 export type ScriptPauseBand = (typeof SCRIPT_PAUSE_BANDS)[number];
@@ -21,7 +23,12 @@ export const SCRIPT_PAUSE_BAND_SECONDS: Record<ScriptPauseBand, number> = {
   medium: 4,
   long: 7,
   "extra-long": 12,
+  /** Default open-practice sit; override with `[[PAUSE 90s]]` etc. when needed. */
+  open: 75,
 };
+
+/** Hard cap on timed `[[PAUSE Ns]]` markers (safety). */
+export const SCRIPT_PAUSE_TIMED_MAX_SECONDS = 180;
 
 export const TITLE_PAUSE_MARKER = "[[PAUSE medium]]";
 
@@ -43,6 +50,12 @@ const BAND_ALIASES: Record<string, ScriptPauseBand> = {
   extralong: "extra-long",
   xl: "extra-long",
   xlong: "extra-long",
+  open: "open",
+  practice: "open",
+  "open practice": "open",
+  "open-practice": "open",
+  "self paced": "open",
+  "self-paced": "open",
 };
 
 export const SCRIPT_PAUSE_MARKER_RE = /\[\[PAUSE\s+([^\]]+)\]\]/gi;
@@ -60,7 +73,9 @@ export function secondsForPauseSpec(
   const band = normalizePauseBand(raw);
   if (band) return map[band];
   const n = parseFloat(raw.trim().replace(/s$/i, ""));
-  if (Number.isFinite(n) && n > 0) return n;
+  if (Number.isFinite(n) && n > 0) {
+    return Math.min(n, SCRIPT_PAUSE_TIMED_MAX_SECONDS);
+  }
   return 0;
 }
 
@@ -110,6 +125,7 @@ export function fishPauseTagStyleForModel(model: string | null | undefined): Fis
 /**
  * Map our named bands → Fish pause cues.
  * Admin band seconds still apply on the segmented (ffmpeg) path only.
+ * `open` / long timed pauses need the segmented path — Fish tags cannot hold 60–120s.
  */
 export function fishPauseCueForBand(band: ScriptPauseBand): FishPauseCue {
   switch (band) {
@@ -121,6 +137,7 @@ export function fishPauseCueForBand(band: ScriptPauseBand): FishPauseCue {
       return "long pause";
     case "long":
     case "extra-long":
+    case "open":
       return "long-break";
   }
 }
@@ -208,7 +225,7 @@ export function parseScriptIntoSegments(
   return segments;
 }
 
-/** Prompt block: scripts use named bands only, never seconds. */
+/** Prompt block: scripts use named bands only, never seconds (standard / Script Lab). */
 export const SCRIPT_PAUSE_PROMPT_RULES = [
   "Use **liberal** natural pauses with inline markers `[[PAUSE short]]`, `[[PAUSE medium]]`, `[[PAUSE long]]`, or `[[PAUSE extra long]]` only — **never** write seconds (no `3s`, `6s`, `1.5s`, etc.). Optional `[[PAUSE extra short]]` for a very brief bridge.",
   "Include them **often**—after most sentences or sense-units, at **every** meaningful transition (arrival → practice, shifts in technique or imagery, closing), and wherever a human guide would breathe or let a phrase land—not only at rare dramatic beats.",
@@ -218,3 +235,123 @@ export const SCRIPT_PAUSE_PROMPT_RULES = [
   "When the listener truly follows in their own time—with no next instruction arriving soon—prefer **extra long** (sometimes several markers in a row when one sustained silence fits); never rush the next line while they are meant to be practising alone, and never stack extra-long silence where the script does not call for it.",
   "Place pause markers on their own or immediately after a sentence, never splitting words.",
 ].join("\n");
+
+/**
+ * Open-practice silence plan for longer-breaks mode.
+ * Spoken guidance stays roughly normal density; duration is hit with cued 1–2 min sits.
+ */
+export type LongerBreaksOpenPracticePlan = {
+  targetMinutes: number;
+  /** How many open sits to place. */
+  countLo: number;
+  countHi: number;
+  /** Suggested seconds per open sit (custom timed markers). */
+  secondsLo: number;
+  secondsHi: number;
+  /** Default `[[PAUSE open]]` band seconds. */
+  openBandSeconds: number;
+  /** Typical total open-practice silence to budget into the stem. */
+  typicalOpenSeconds: number;
+  /** Spoken+ordinary-pause budget so stem ≈ target. */
+  spokenBudgetMinutes: number;
+};
+
+export function longerBreaksOpenPracticePlan(
+  targetMinutes: number,
+): LongerBreaksOpenPracticePlan {
+  const mins =
+    typeof targetMinutes === "number" &&
+    Number.isFinite(targetMinutes) &&
+    targetMinutes > 0
+      ? targetMinutes
+      : 5;
+  const openBandSeconds = SCRIPT_PAUSE_BAND_SECONDS.open;
+
+  let countLo: number;
+  let countHi: number;
+  let secondsLo: number;
+  let secondsHi: number;
+  let typicalOpenSeconds: number;
+
+  if (mins <= 3) {
+    // A true 60–120s open barely fits a 2-minute sit — one shorter open.
+    countLo = 1;
+    countHi = 1;
+    secondsLo = 25;
+    secondsHi = 40;
+    typicalOpenSeconds = 35;
+  } else if (mins <= 7) {
+    countLo = 1;
+    countHi = 2;
+    secondsLo = 45;
+    secondsHi = 75;
+    typicalOpenSeconds = 70;
+  } else if (mins <= 14) {
+    countLo = 2;
+    countHi = 3;
+    secondsLo = 60;
+    secondsHi = 90;
+    typicalOpenSeconds = 160;
+  } else {
+    countLo = 3;
+    countHi = 4;
+    secondsLo = 60;
+    secondsHi = 120;
+    typicalOpenSeconds = 300;
+  }
+
+  const spokenBudgetMinutes = Math.max(
+    1.5,
+    Math.round(((mins * 60 - typicalOpenSeconds) / 60) * 10) / 10,
+  );
+
+  return {
+    targetMinutes: mins,
+    countLo,
+    countHi,
+    secondsLo,
+    secondsHi,
+    openBandSeconds,
+    typicalOpenSeconds,
+    spokenBudgetMinutes,
+  };
+}
+
+/**
+ * Longer-breaks mode only: self-paced cues + multi-minute open sits.
+ * Ordinary line pauses stay on short/medium/long/extra-long — do not inflate those.
+ */
+export function scriptLongerBreaksOpenPracticeRules(
+  targetMinutes: number,
+): string {
+  const plan = longerBreaksOpenPracticePlan(targetMinutes);
+  const stemSeconds = Math.round(plan.targetMinutes * 60);
+
+  return [
+    "",
+    "### Longer breaks — open practice (hard priority)",
+    `The creator chose **longer breaks**. The voice stem must still land near **${plan.targetMinutes} minutes** (~**${stemSeconds}** s) — same Length setting as usual.`,
+    "",
+    "**What changes:** insert a few **properly cued self-paced practice sits** with **long open silence** (about **one to two minutes** each on longer sits). Do **not** merely thin every line or spam `extra-long` (that band is only ~12 s).",
+    "",
+    "**What stays the same:** between ordinary spoken lines, keep using `[[PAUSE short]]` / `medium` / `long` / `extra long` as in a normal guided script. Guided in→out breath pairs stay **short** / **extra short**.",
+    "",
+    "**Cue → open silence (required pattern):**",
+    "1. Speak a clear self-paced invitation, e.g. “I’ll give you some time here — follow along at your own pace,” “Take as long as you need with this,” “Stay with this in your own time; I’ll wait,” “Practise this on your own for a little while.”",
+    "2. Immediately after that cue, place **one** open-practice pause marker (not a stack of `extra-long`).",
+    "3. After the silence, continue with the next guided section (or closing).",
+    "",
+    "**Open-practice pause markers (longer-breaks only):**",
+    `- Preferred default: \`[[PAUSE open]]\` (~**${plan.openBandSeconds}** s of silence).`,
+    `- When you need a specific length: timed markers are allowed here — \`[[PAUSE 60s]]\`, \`[[PAUSE 90s]]\`, \`[[PAUSE 120s]]\` (whole seconds only; max **${SCRIPT_PAUSE_TIMED_MAX_SECONDS}**). Pick the duration that fits the cue and the remaining time budget.`,
+    "- Never use timed seconds for ordinary line spacing — only for these cued open sits.",
+    "",
+    "**Budget for this Length:**",
+    `- Place about **${plan.countLo}–${plan.countHi}** open-practice sits.`,
+    `- Each open sit ~**${plan.secondsLo}–${plan.secondsHi}** s (use timed markers when \`open\` is the wrong size).`,
+    `- Together they should contribute roughly **~${plan.typicalOpenSeconds}** s of silence.`,
+    `- Write the **spoken guided content** as roughly a **${plan.spokenBudgetMinutes}-minute** script (normal density + ordinary pauses). The open sits fill the rest so the stem hits **${plan.targetMinutes}** minutes.`,
+    "",
+    "**Do not:** replace open sits with many `extra-long` markers; pad with filler talk; change the Length target; put a minute of silence without a self-paced cue first.",
+  ].join("\n");
+}

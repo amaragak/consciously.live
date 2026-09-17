@@ -1184,6 +1184,11 @@ export function CreateWorkspace({
   const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
   const [meditationTargetMinutes, setMeditationTargetMinutes] =
     useState<MeditationTargetMinutes>(5);
+  /**
+   * Experienced pacing: cued open-practice sits (~1–2 min) so Length still matches.
+   * Default off — standard guided density.
+   */
+  const [longerBreaks, setLongerBreaks] = useState(false);
   /** Dev-only Claude A/B for coach chat + script generation. */
   const [claudeModelChoice, setClaudeModelChoice] = useState<string>(
     CLAUDE_HAIKU_45_MODEL_ID,
@@ -3693,8 +3698,11 @@ export function CreateWorkspace({
             : null;
       // Length on this page is authoritative: reuse a chat script only when it
       // was written for the same target; otherwise the worker regenerates.
+      // Longer-breaks mode always regenerates — chat scripts use standard pacing.
       const scriptTextForJob =
-        existingScript && scriptTargetMinutes === meditationTargetMinutes
+        !longerBreaks &&
+        existingScript &&
+        scriptTargetMinutes === meditationTargetMinutes
           ? existingScript
           : "";
 
@@ -3777,6 +3785,7 @@ export function CreateWorkspace({
         meditationStyle,
         journalMode: journalMode === true,
         meditationTargetMinutes,
+        ...(longerBreaks ? { longerBreaks: true } : {}),
         transcript,
         scriptText: scriptTextForJob,
         reference_id: speakerModelId,
@@ -5411,7 +5420,36 @@ export function CreateWorkspace({
             />
           </div>
 
-          <div className="mb-1 flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1">
+            <div className="min-w-0">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                Pacing
+              </span>
+              <p className="text-xs leading-snug text-muted">
+                {longerBreaks
+                  ? "Same length, with cued “take your time” sits of about a minute or two."
+                  : "Continuous guidance with short natural pauses between lines."}
+              </p>
+            </div>
+            <SegmentedPillTabs
+              aria-label="Meditation pacing"
+              value={longerBreaks ? "longer" : "standard"}
+              onChange={(id) => setLongerBreaks(id === "longer")}
+              disabled={soundControlsDisabled}
+              options={[
+                { id: "standard", label: "Guided" },
+                { id: "longer", label: "Open sits" },
+              ]}
+            />
+          </div>
+
+          <div
+            className="shrink-0 border-t border-border"
+            role="separator"
+            aria-hidden
+          />
+
+          <div className="mb-1 flex shrink-0 flex-wrap items-center justify-between gap-3 pt-2">
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
               Sound
             </span>

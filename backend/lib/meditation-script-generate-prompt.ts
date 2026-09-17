@@ -6,7 +6,7 @@ import {
   getFleetScriptWordTargets,
   scriptDurationPlanningAppendix,
 } from "./script-duration-planning-prompt";
-import { SCRIPT_PAUSE_PROMPT_RULES } from "./script-pause-bands";
+import { SCRIPT_PAUSE_PROMPT_RULES, scriptLongerBreaksOpenPracticeRules } from "./script-pause-bands";
 import {
   scriptLabBreathReturnDisambiguationGeneration,
   scriptLabClosingPhaseTagRulesForType,
@@ -51,13 +51,21 @@ export function buildMeditationScriptGenerationPrompt(params: {
   speechSpeed: number;
   includeSegmentPlaceholders: boolean;
   segmentTags?: SegmentTagForPrompt[];
+  /** Experienced pacing — cued open sits (~1–2 min), same Length target. */
+  longerBreaks?: boolean;
 }): { system: string; userContent: string; maxTokens: number } {
+  const longerBreaks = params.longerBreaks === true;
   const words = getFleetScriptWordTargets({
     targetMinutes: params.targetMinutes,
     speechSpeed: params.speechSpeed,
+    longerBreaks,
   });
   const scriptWordsMin = words.min;
   const scriptWordsMax = words.max;
+  const spokenBudgetNote =
+    longerBreaks && words.spokenBudgetMinutes != null
+      ? `Write the **guided spoken sections** like a ~**${words.spokenBudgetMinutes}-minute** script (roughly ${scriptWordsMin}–${scriptWordsMax} words), then add cued open-practice sits so the full stem hits **${params.targetMinutes} minutes**.`
+      : `Target length: about **${params.targetMinutes} minutes** at a calm, unhurried speaking pace (roughly ${scriptWordsMin}–${scriptWordsMax} words).`;
   const styleForScript = params.meditationStyle.trim();
   const storyType = isStoryMeditationType(
     params.journalMode ? null : styleForScript,
@@ -108,15 +116,19 @@ export function buildMeditationScriptGenerationPrompt(params: {
     "",
     "### Your task",
     "Write the complete guided meditation script that a human guide would read aloud for recording.",
-    `Target length: about **${params.targetMinutes} minutes** at a calm, unhurried speaking pace (roughly ${scriptWordsMin}–${scriptWordsMax} words).`,
+    spokenBudgetNote,
     "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
     "Match the emotional tone, intentions, and imagery implied by the conversation.",
     "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
     GENDER_NEUTRAL_SCRIPT_RULES,
     "Phrase for natural text-to-speech: avoid single-word sentences or standalone one-word lines (they often get wrong stress or intonation). Prefer multi-word phrases and full sentences—for example, instead of ending with “Sleep.” alone, close with something like “When you’re ready, let yourself drift into sleep.”",
     SCRIPT_PAUSE_PROMPT_RULES,
+    ...(longerBreaks
+      ? [scriptLongerBreaksOpenPracticeRules(params.targetMinutes)]
+      : []),
     scriptPauseBudgetGuidanceAppendix(params.targetMinutes, {
       meditationType: meditationTypeForRules,
+      longerBreaks,
     }),
     // Closing-phase tag rules are emitted once in the structured-beats section
     // below; the sleep-only copy here was a verbatim duplicate.
@@ -202,6 +214,7 @@ export function buildMeditationScriptGenerationPrompt(params: {
   userParts.push(
     scriptDurationPlanningAppendix(params.targetMinutes, {
       speechSpeed: params.speechSpeed,
+      longerBreaks,
     }),
   );
 
@@ -227,9 +240,11 @@ export function buildMeditationScriptGenerationPrompt(params: {
     "Never generate hate/harassment, sexual content involving minors, non-consensual sexual content, graphic sexual content, instructions for wrongdoing, or glorification of self-harm. If the user asks for something socially unacceptable, refuse briefly and offer a safe alternative topic.",
     GENDER_NEUTRAL_SCRIPT_RULES,
     "You phrase lines for natural TTS: avoid isolated one-word sentences; use multi-word phrases where possible.",
-    storyType
-      ? `You scale pause bands for Story narrative pacing (${params.targetMinutes} min): keep silences modest — **medium** max in narrative sections, **long** only at major scene/emotional boundaries, **never extra-long**. Reach duration with story content, not contemplative silence.`
-      : `You scale pause density and band weight to the target duration (${params.targetMinutes} min): longer scripts need substantially more silence than shorter ones — reach duration with more pause beats dominated by **long**, not by spraying **extra-long** throughout the core, and not with extra speech.`,
+    longerBreaks
+      ? `You are in **longer breaks** mode for this ${params.targetMinutes}-minute script: keep ordinary line pacing normal, and hit Length with a few **cued self-paced open sits** using \`[[PAUSE open]]\` or timed \`[[PAUSE 60s]]\` / \`90s\` / \`120s\` (not stacks of 12s extra-long).`
+      : storyType
+        ? `You scale pause bands for Story narrative pacing (${params.targetMinutes} min): keep silences modest — **medium** max in narrative sections, **long** only at major scene/emotional boundaries, **never extra-long**. Reach duration with story content, not contemplative silence.`
+        : `You scale pause density and band weight to the target duration (${params.targetMinutes} min): longer scripts need substantially more silence than shorter ones — reach duration with more pause beats dominated by **long**, not by spraying **extra-long** throughout the core, and not with extra speech.`,
   ];
 
   if (params.includeSegmentPlaceholders) {
