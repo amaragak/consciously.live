@@ -957,20 +957,21 @@ export async function searchUserContentRemote(
     throw new Error(msg);
   }
   const hits = Array.isArray(data.hits) ? data.hits : [];
-  return hits
-    .map((h) => {
-      if (!h || typeof h !== "object") return null;
-      const o = h as Record<string, unknown>;
-      return {
-        objectID: typeof o.objectID === "string" ? o.objectID : "",
-        type: typeof o.type === "string" ? o.type : "",
-        title: typeof o.title === "string" ? o.title : "",
-        body: typeof o.body === "string" ? o.body : "",
-        href: typeof o.href === "string" ? o.href : "/",
-        updatedAt: typeof o.updatedAt === "number" ? o.updatedAt : undefined,
-      } satisfies UserContentSearchHit;
-    })
-    .filter((h): h is UserContentSearchHit => Boolean(h?.objectID));
+  const out: UserContentSearchHit[] = [];
+  for (const h of hits) {
+    if (!h || typeof h !== "object") continue;
+    const o = h as Record<string, unknown>;
+    if (typeof o.objectID !== "string" || !o.objectID) continue;
+    out.push({
+      objectID: o.objectID,
+      type: typeof o.type === "string" ? o.type : "",
+      title: typeof o.title === "string" ? o.title : "",
+      body: typeof o.body === "string" ? o.body : "",
+      href: typeof o.href === "string" ? o.href : "/",
+      ...(typeof o.updatedAt === "number" ? { updatedAt: o.updatedAt } : {}),
+    });
+  }
+  return out;
 }
 
 /**
