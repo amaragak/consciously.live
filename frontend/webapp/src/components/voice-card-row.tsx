@@ -222,7 +222,7 @@ export function VoiceCardRow({
   const list = voices ?? [];
 
   return (
-    <section className="mb-7 border-b border-border pb-7">
+    <section className="shrink-0">
       {/* Mobile: Voice label above the scroller */}
       <span className={`mb-2 block sm:hidden ${labelClass}`}>Voice</span>
       <div className="flex items-center gap-3">
