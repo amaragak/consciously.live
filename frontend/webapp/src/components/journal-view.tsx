@@ -35,6 +35,10 @@ import {
   runJournalInsightsRemote,
 } from "@/lib/medimade-api";
 import {
+  sortByAlgoliaOrder,
+  useUserContentSearchIds,
+} from "@/lib/use-user-content-search";
+import {
   emptyGratitudeLines,
   entriesForCloudPut,
   findGratitudeEntryForLocalDate,
@@ -903,9 +907,15 @@ export function JournalView() {
     [entries, journalTab],
   );
 
+  const algoliaType = journalTab === "gratitude" ? "gratitude" : "journal";
+  const {
+    ids: algoliaIds,
+    orderedIds: algoliaOrderedIds,
+  } = useUserContentSearchIds(searchQuery, algoliaType);
+
   const filteredTabEntries = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return tabEntries.filter((e) => {
+    const filtered = tabEntries.filter((e) => {
       if (jumpDate && localDateKeyFromIso(e.createdAt) !== jumpDate) {
         return false;
       }
@@ -920,6 +930,7 @@ export function JournalView() {
         return false;
       }
       if (!q) return true;
+      if (algoliaIds) return algoliaIds.has(e.id);
       const hay = [
         e.title,
         stripHtmlToText(e.contentHtml),
@@ -931,7 +942,17 @@ export function JournalView() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [tabEntries, searchQuery, jumpDate, importBatchId, journalTab, selectedFolderId]);
+    return sortByAlgoliaOrder(filtered, algoliaOrderedIds, (e) => e.id);
+  }, [
+    tabEntries,
+    searchQuery,
+    jumpDate,
+    importBatchId,
+    journalTab,
+    selectedFolderId,
+    algoliaIds,
+    algoliaOrderedIds,
+  ]);
 
   const sidebarGroups = useMemo(() => {
     if (journalTab === "journal") {

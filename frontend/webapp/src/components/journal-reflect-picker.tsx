@@ -18,6 +18,10 @@ import {
   type JournalEntry,
   type JournalFolder,
 } from "@/lib/journal-storage";
+import {
+  sortByAlgoliaOrder,
+  useUserContentSearchIds,
+} from "@/lib/use-user-content-search";
 
 function htmlToParagraphs(html: string): string[] {
   const parts = html
@@ -125,6 +129,11 @@ export function JournalReflectPicker({
   const [mobileDateOpen, setMobileDateOpen] = useState(false);
   const dateMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const {
+    ids: algoliaIds,
+    orderedIds: algoliaOrderedIds,
+  } = useUserContentSearchIds(searchQuery, "journal");
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const next = journalEntriesForReflectPicker(entries).filter((e) => {
@@ -135,6 +144,7 @@ export function JournalReflectPicker({
         return false;
       }
       if (!q) return true;
+      if (algoliaIds) return algoliaIds.has(e.id);
       const hay = [
         e.title,
         stripHtmlToText(e.contentHtml),
@@ -145,13 +155,24 @@ export function JournalReflectPicker({
         .toLowerCase();
       return hay.includes(q);
     });
+    if (algoliaOrderedIds?.length) {
+      return sortByAlgoliaOrder(next, algoliaOrderedIds, (e) => e.id);
+    }
     next.sort((a, b) => {
       const da = new Date(a.updatedAt).getTime();
       const db = new Date(b.updatedAt).getTime();
       return sortOrder === "oldest" ? da - db : db - da;
     });
     return next;
-  }, [entries, folderId, jumpDate, searchQuery, sortOrder]);
+  }, [
+    entries,
+    folderId,
+    jumpDate,
+    searchQuery,
+    sortOrder,
+    algoliaIds,
+    algoliaOrderedIds,
+  ]);
 
   const mobileFilterActive = Boolean(folderId) || sortOrder !== "newest";
 

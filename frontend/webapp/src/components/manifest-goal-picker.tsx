@@ -4,6 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 import { SearchInput } from "@/components/search-input";
+import {
+  sortByAlgoliaOrder,
+  useUserContentSearchIds,
+} from "@/lib/use-user-content-search";
 
 export type ManifestGoalPickerGoal = {
   id: string;
@@ -114,10 +118,19 @@ export function ManifestGoalPicker({
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
+  const {
+    ids: algoliaIds,
+    orderedIds: algoliaOrderedIds,
+  } = useUserContentSearchIds(searchQuery, "life_area,goal");
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const next = lifeAreas.filter((area) => {
       if (!q) return true;
+      if (algoliaIds) {
+        if (algoliaIds.has(area.id)) return true;
+        return area.goals.some((g) => algoliaIds.has(g.id));
+      }
       const hay = [
         area.title,
         area.preview,
@@ -130,13 +143,16 @@ export function ManifestGoalPicker({
         .toLowerCase();
       return hay.includes(q);
     });
+    if (algoliaOrderedIds?.length) {
+      return sortByAlgoliaOrder(next, algoliaOrderedIds, (a) => a.id);
+    }
     next.sort((a, b) => {
       const da = new Date(a.createdAt).getTime();
       const db = new Date(b.createdAt).getTime();
       return sortOrder === "oldest" ? da - db : db - da;
     });
     return next;
-  }, [lifeAreas, searchQuery, sortOrder]);
+  }, [lifeAreas, searchQuery, sortOrder, algoliaIds, algoliaOrderedIds]);
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {

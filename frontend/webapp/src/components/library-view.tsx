@@ -27,6 +27,10 @@ import {
   backgroundAudioStreamingKey,
   type BackgroundAudioItem,
 } from "@/lib/medimade-api";
+import {
+  sortByAlgoliaOrder,
+  useUserContentSearchIds,
+} from "@/lib/use-user-content-search";
 import { useMobileOrTouchChrome } from "@/hooks/use-mobile-or-touch-chrome";
 import {
   shouldRenderDevUi,
@@ -992,6 +996,13 @@ export default function LibraryView({
     return [...pendingRows, ...sortedItems];
   }, [libraryTab, pendingRows, sortedItems, sortedCommunityItems]);
 
+  const {
+    ids: algoliaMeditationIds,
+    orderedIds: algoliaMeditationOrderedIds,
+  } = useUserContentSearchIds(searchQuery, "meditation", {
+    enabled: libraryTab === "meditations",
+  });
+
   const visibleItems: LibraryMeditationRow[] = useMemo(() => {
     const tokens = librarySearchTokens(searchQuery);
     if (libraryTab === "programs") return [];
@@ -1014,8 +1025,21 @@ export default function LibraryView({
         : afterFav.filter(
             (x) => libraryMeditationCategoryLabel(x) === categoryFilter,
           );
-    return [...pendingRows, ...afterCat].filter((x) =>
+    const catalogued = afterCat.filter((x) => {
+      if (!tokens.length) return true;
+      if (algoliaMeditationIds) {
+        return Boolean(x.sk && algoliaMeditationIds.has(x.sk));
+      }
+      return libraryRowMatchesSearch(x, tokens);
+    });
+    const pendingMatched = pendingRows.filter((x) =>
       libraryRowMatchesSearch(x, tokens),
+    );
+    const merged = [...pendingMatched, ...catalogued];
+    return sortByAlgoliaOrder(
+      merged,
+      algoliaMeditationOrderedIds,
+      (x) => (isPendingRow(x) ? x.pendingKey : x.sk || x.s3Key),
     );
   }, [
     sortedItems,
@@ -1025,6 +1049,8 @@ export default function LibraryView({
     libraryTab,
     pendingRows,
     searchQuery,
+    algoliaMeditationIds,
+    algoliaMeditationOrderedIds,
   ]);
 
   useEffect(() => {
