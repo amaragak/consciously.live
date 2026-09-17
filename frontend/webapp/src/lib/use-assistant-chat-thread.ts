@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { streamAssistantChat, generateAssistantChatTitle } from "@/lib/assistant-chat-api";
+import { streamAssistantChat, generateAssistantChatTitle, isProvisionalAssistantChatTitle } from "@/lib/assistant-chat-api";
 import { executeAssistantActions, formatActionResultsForApiThread } from "@/lib/assistant-chat-actions";
 import { scheduleAssistantChatCloudPush } from "@/lib/assistant-chat-cloud";
 import {
@@ -34,6 +34,36 @@ function persistThread(thread: AssistantChatThread): void {
   const store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
   saveAssistantChatStore(store);
   scheduleAssistantChatCloudPush(store);
+}
+
+/** Replace leftover first-message titles with a Haiku summary (once per thread). */
+const haikuHealAttempted = new Set<string>();
+
+async function healProvisionalThreadTitle(
+  threadId: string,
+  opts?: { setTitle?: (t: string) => void; activeId?: string | null },
+): Promise<void> {
+  if (haikuHealAttempted.has(threadId)) return;
+  const store = loadAssistantChatStore();
+  const thread = store.threads.find((t) => t.id === threadId);
+  if (!thread || thread.titleManual) return;
+  if (thread.mode?.type === "life_area_ideate") return;
+  const firstUser = thread.messages.find((m) => m.role === "user" && m.text.trim());
+  if (!firstUser) return;
+  if (!isProvisionalAssistantChatTitle(thread.title, firstUser.text)) return;
+  haikuHealAttempted.add(threadId);
+  const smart = await generateAssistantChatTitle(firstUser.text);
+  const cleaned = smart ? sanitizeAssistantChatTitle(smart) : "";
+  if (!cleaned) return;
+  const latest = loadAssistantChatStore().threads.find((t) => t.id === threadId);
+  if (!latest || latest.titleManual) return;
+  if (!isProvisionalAssistantChatTitle(latest.title, firstUser.text)) return;
+  if (opts?.activeId === threadId) opts.setTitle?.(cleaned);
+  persistThread({
+    ...latest,
+    title: cleaned,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 function resolveSystemSupplement(
@@ -148,6 +178,10 @@ export function useAssistantChatThread(opts: {
       createdAt: thread.createdAt,
       mode: thread.mode,
     };
+    void healProvisionalThreadTitle(thread.id, {
+      setTitle,
+      activeId: thread.id,
+    });
     return thread;
   }, []);
 
@@ -463,33 +497,32 @@ export function useAssistantChatThread(opts: {
       ...(mode ? { mode } : {}),
     });
 
-    // Claude-style: briefly summarise the first user message into a thread title.
-    if (
+    // Start Haiku title in parallel with the stream — await before final persist
+    // so we never leave the first-message provisional title stuck.
+    const shouldHaikuTitle =
       isFirstUserTurn &&
       !titleManual &&
-      mode?.type !== "life_area_ideate"
-    ) {
-      const titleThreadId = id;
-      const titleCreatedAt = createdAt ?? new Date().toISOString();
-      const titleMode = mode;
-      void (async () => {
-        const smart = await generateAssistantChatTitle(trimmed);
-        const cleaned = smart ? sanitizeAssistantChatTitle(smart) : "";
-        if (!cleaned) return;
-        const store = loadAssistantChatStore();
-        const thread = store.threads.find((t) => t.id === titleThreadId);
-        if (!thread || thread.titleManual) return;
-        // Always prefer Haiku over provisional / derived titles.
-        if (activeIdRef.current === titleThreadId) setTitle(cleaned);
-        persistThread({
-          ...thread,
-          title: cleaned,
-          updatedAt: new Date().toISOString(),
-          createdAt: thread.createdAt || titleCreatedAt,
-          ...(titleMode ? { mode: titleMode } : {}),
-        });
-      })();
-    }
+      mode?.type !== "life_area_ideate";
+    const titlePromise: Promise<string | null> = shouldHaikuTitle
+      ? generateAssistantChatTitle(trimmed)
+          .then((smart) => {
+            const cleaned = smart ? sanitizeAssistantChatTitle(smart) : "";
+            if (!cleaned) return null;
+            // Live-update breadcrumb/sidebar as soon as Haiku returns.
+            const store = loadAssistantChatStore();
+            const thread = store.threads.find((t) => t.id === id);
+            if (thread && !thread.titleManual) {
+              if (activeIdRef.current === id) setTitle(cleaned);
+              persistThread({
+                ...thread,
+                title: cleaned,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+            return cleaned;
+          })
+          .catch(() => null)
+      : Promise.resolve(null);
 
     let assistantStarted = false;
     let acc = "";
@@ -576,18 +609,21 @@ export function useAssistantChatThread(opts: {
       const manual = existing?.titleManual === true;
       const excludeFromFabResume =
         existing?.excludeFromFabResume === true || handedOffToCreate;
-      // Re-read title after actions — Haiku may have landed while we streamed.
-      const latestTitle =
+
+      const haikuTitle = shouldHaikuTitle ? await titlePromise : null;
+      const storedTitle =
         loadAssistantChatStore().threads.find((t) => t.id === sendThreadId)
           ?.title ?? existing?.title;
       const nextTitle = manual
-        ? (latestTitle ?? existing!.title)
-        : latestTitle && latestTitle !== "New chat"
-          ? latestTitle
-          : deriveAssistantChatTitle(nextMessages) ||
-            (mode?.type === "life_area_ideate"
-              ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
-              : "New chat");
+        ? (storedTitle ?? existing!.title)
+        : haikuTitle ||
+          (storedTitle &&
+          storedTitle !== "New chat" &&
+          !isProvisionalAssistantChatTitle(storedTitle, trimmed)
+            ? storedTitle
+            : null) ||
+          midTitle ||
+          "New chat";
       if (activeIdRef.current === sendThreadId) setTitle(nextTitle);
 
       // Always persist for this send's thread — even if UI moved to another chat.
@@ -611,7 +647,23 @@ export function useAssistantChatThread(opts: {
           { role: "assistant", text: `Sorry — ${msg}` },
         ]);
       }
-      // Keep the user turn that was already persisted.
+      // Keep the user turn that was already persisted. Still try to land Haiku title.
+      if (shouldHaikuTitle) {
+        const haikuTitle = await titlePromise;
+        if (haikuTitle) {
+          const thread = loadAssistantChatStore().threads.find(
+            (t) => t.id === sendThreadId,
+          );
+          if (thread && !thread.titleManual) {
+            if (activeIdRef.current === sendThreadId) setTitle(haikuTitle);
+            persistThread({
+              ...thread,
+              title: haikuTitle,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
     } finally {
       busyRef.current = false;
       setBusy(false);

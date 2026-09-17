@@ -1,3 +1,5 @@
+import { deriveAssistantChatTitleProvisional } from "@/lib/assistant-chat-title";
+
 export type AssistantChatTurn = {
   role: "user" | "assistant";
   content: string;
@@ -25,6 +27,7 @@ export async function generateAssistantChatTitle(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: message.slice(0, 2_000) }),
+      cache: "no-store",
     });
     if (!res.ok) return null;
     const j = (await res.json()) as { title?: string };
@@ -33,6 +36,29 @@ export async function generateAssistantChatTitle(
   } catch {
     return null;
   }
+}
+
+/** True when the stored title is still just a clip of the first user message. */
+export function isProvisionalAssistantChatTitle(
+  title: string,
+  firstUserMessage: string,
+): boolean {
+  const t = title.trim();
+  const msg = firstUserMessage.trim().replace(/\s+/g, " ");
+  if (!t || !msg || t === "New chat") return true;
+  const provisional = deriveAssistantChatTitleProvisional(msg);
+  if (t === provisional) return true;
+  if (t === msg) return true;
+  // Provisional often adds an ellipsis when clipped.
+  if (provisional.endsWith("…") && t === provisional.slice(0, -1)) return true;
+  // Near-verbatim: title is a prefix of the message (common failed-Haiku leftover).
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const nt = norm(t);
+  const nm = norm(msg);
+  if (nt.length >= 12 && (nm.startsWith(nt) || nt.startsWith(nm.slice(0, nt.length)))) {
+    return true;
+  }
+  return false;
 }
 
 /**
