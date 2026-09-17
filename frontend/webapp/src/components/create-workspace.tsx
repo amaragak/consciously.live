@@ -5408,8 +5408,8 @@ export function CreateWorkspace({
         {workspaceSectionStep === 2 ? (
         <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-4 sm:gap-3 sm:px-6">
-          {/* Voice + pacing share one block so parent gap doesn’t stack between them. */}
-          <div className="flex shrink-0 flex-col gap-1.5">
+          {/* Voice | equal pad | Pacing | equal pad | Sound — dividers frame pacing evenly */}
+          <div className="flex shrink-0 flex-col">
             <VoiceCardRow
               voices={fishSpeakers}
               value={speakerModelId}
@@ -5418,7 +5418,7 @@ export function CreateWorkspace({
               previewUrl={speakerPreviewUrl}
               stopNonce={voiceCardStopNonce}
             />
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-3">
               <div className="min-w-0">
                 <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
                   Pacing
@@ -5441,25 +5441,24 @@ export function CreateWorkspace({
               />
             </div>
             <div className="border-t border-border" role="separator" aria-hidden />
-          </div>
-
-          <div className="mb-1 flex shrink-0 flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-              Sound
-            </span>
-            <SegmentedPillTabs
-              aria-label="Sound bed"
-              value={soundMode}
-              onChange={(mode) => {
-                if (soundMode === mode) return;
-                stopAllAudioPreview();
-                setSoundMode(mode);
-              }}
-              options={[
-                { id: "soundscape", label: "Soundscapes" },
-                { id: "mixer", label: "Build your own" },
-              ]}
-            />
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                Sound
+              </span>
+              <SegmentedPillTabs
+                aria-label="Sound bed"
+                value={soundMode}
+                onChange={(mode) => {
+                  if (soundMode === mode) return;
+                  stopAllAudioPreview();
+                  setSoundMode(mode);
+                }}
+                options={[
+                  { id: "soundscape", label: "Soundscapes" },
+                  { id: "mixer", label: "Build your own" },
+                ]}
+              />
+            </div>
           </div>
 
           {soundMode === "soundscape" ? (
