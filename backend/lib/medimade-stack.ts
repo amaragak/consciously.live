@@ -30,6 +30,8 @@ export const BREVO_SECRET_NAME = "medimade/BREVO_API_KEY";
 export const RUNPODS_SECRET_NAME = "medimade/RUNPODS_API_KEY";
 /** RunPod upstream URL (runsync or `/v1/audio/speech` on the Orpheus FastAPI worker). */
 export const RUNPODS_URL_SECRET_NAME = "medimade/RUNPODS_URL";
+/** Algolia credentials JSON: { appId, adminApiKey, searchApiKey, indexName? }. */
+export const ALGOLIA_SECRET_NAME = "medimade/ALGOLIA";
 
 export class MedimadeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -75,6 +77,12 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "RunpodsUrl",
       RUNPODS_URL_SECRET_NAME,
+    );
+
+    const algoliaSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "AlgoliaCreds",
+      ALGOLIA_SECRET_NAME,
     );
 
     // Storage for generated MP3s, served via CloudFront (streaming-friendly).
@@ -811,11 +819,13 @@ export class MedimadeStack extends cdk.Stack {
         environment: {
           MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
         },
       },
     );
     meditationAnalyticsTable.grantReadWriteData(libraryDraft);
     authJwtSecret.grantRead(libraryDraft);
+    algoliaSecret.grantRead(libraryDraft);
 
     const libraryDraftIntegration = new integrations.HttpLambdaIntegration(
       "LibraryDraftIntegration",
@@ -1399,12 +1409,14 @@ export class MedimadeStack extends cdk.Stack {
         /** Legacy `journal/stores/{ownerId}.json` — read + delete on first GET after DDB migration. */
         MEDIA_BUCKET_NAME: mediaBucket.bucketName,
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
       },
     });
     journalTable.grantReadWriteData(journalStore);
     mediaBucket.grantRead(journalStore);
     mediaBucket.grantDelete(journalStore);
     authJwtSecret.grantRead(journalStore);
+    algoliaSecret.grantRead(journalStore);
 
     httpApi.addRoutes({
       path: "/journal/store",
@@ -1416,6 +1428,29 @@ export class MedimadeStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "JournalStoreIntegration",
         journalStore,
+      ),
+    });
+
+    const searchFn = new lambda_nodejs.NodejsFunction(this, "SearchFunction", {
+      entry: path.join(__dirname, "../lambdas/search.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
+      },
+    });
+    authJwtSecret.grantRead(searchFn);
+    algoliaSecret.grantRead(searchFn);
+
+    httpApi.addRoutes({
+      path: "/search",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "SearchIntegration",
+        searchFn,
       ),
     });
 
@@ -1551,11 +1586,13 @@ export class MedimadeStack extends cdk.Stack {
         environment: {
           IDEATE_TABLE_NAME: ideateTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
         },
       },
     );
     ideateTable.grantReadWriteData(ideateStore);
     authJwtSecret.grantRead(ideateStore);
+    algoliaSecret.grantRead(ideateStore);
 
     httpApi.addRoutes({
       path: "/ideate/store",
@@ -1898,6 +1935,11 @@ export class MedimadeStack extends cdk.Stack {
     new cdk.CfnOutput(this, "BrevoSecretName", {
       description: "Put your Brevo API key as the secret string value (transactional email)",
       value: BREVO_SECRET_NAME,
+    });
+    new cdk.CfnOutput(this, "AlgoliaSecretName", {
+      description:
+        'JSON secret: {"appId","adminApiKey","searchApiKey","indexName?"} for GET /search',
+      value: ALGOLIA_SECRET_NAME,
     });
     new cdk.CfnOutput(this, "MediaCloudFrontDomain", {
       value: mediaDistribution.domainName,

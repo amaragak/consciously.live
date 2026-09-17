@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { LogoMark } from "@/components/logo-mark";
 import { AppPrimaryTabsSlot, AppTopBarTrailingSlot } from "@/components/app-primary-tabs";
+import { AppGlobalSearch } from "@/components/app-global-search";
 import { AppNotificationsBell } from "@/components/app-notifications-bell";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
@@ -472,6 +473,7 @@ export function AppTopBar({
           </AlphaChromeButton>
         </div>
         <div className="flex items-center gap-0.5 md:gap-2">
+          <AppGlobalSearch />
           <span className="relative translate-x-[5px] md:translate-x-0">
             <AppNotificationsBell />
           </span>

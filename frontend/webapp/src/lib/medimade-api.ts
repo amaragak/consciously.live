@@ -915,6 +915,64 @@ export async function putIdeateStoreRemote(
   }
 }
 
+export type UserContentSearchHit = {
+  objectID: string;
+  type: string;
+  title: string;
+  body: string;
+  href: string;
+  updatedAt?: number;
+};
+
+/**
+ * Algolia-backed search across journal, gratitudes, Manifest, meditations.
+ * Filtered server-side by JWT email (guest → alexmaragakis@hotmail.co.uk).
+ */
+export async function searchUserContentRemote(
+  query: string,
+  opts?: { type?: string },
+): Promise<UserContentSearchHit[]> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  }
+  const q = query.trim();
+  if (!q) return [];
+  const params = new URLSearchParams({ q: q.slice(0, 200) });
+  if (opts?.type?.trim()) params.set("type", opts.type.trim());
+  const res = await medimadeFetch(`${base}/search?${params}`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+  const hits = Array.isArray(data.hits) ? data.hits : [];
+  return hits
+    .map((h) => {
+      if (!h || typeof h !== "object") return null;
+      const o = h as Record<string, unknown>;
+      return {
+        objectID: typeof o.objectID === "string" ? o.objectID : "",
+        type: typeof o.type === "string" ? o.type : "",
+        title: typeof o.title === "string" ? o.title : "",
+        body: typeof o.body === "string" ? o.body : "",
+        href: typeof o.href === "string" ? o.href : "/",
+        updatedAt: typeof o.updatedAt === "number" ? o.updatedAt : undefined,
+      } satisfies UserContentSearchHit;
+    })
+    .filter((h): h is UserContentSearchHit => Boolean(h?.objectID));
+}
+
 /**
  * Loads journal from `GET /journal/store`.
  * Requires a session JWT (including Continue as guest — same cloud path as any account).

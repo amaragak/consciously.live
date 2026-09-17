@@ -11,6 +11,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { optionalUserJson, requireUserJson } from "../lib/medimade-auth-http";
+import { scheduleIndexJournalStore } from "../lib/algolia-index-journal";
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient, {
@@ -570,7 +571,8 @@ export async function handler(
 
   const auth = await requireUserJson(event);
   if ("statusCode" in auth) return auth;
-  const ownerId = (auth as { sub: string }).sub;
+  const ownerId = (auth as { sub: string; email?: string }).sub;
+  const ownerEmail = (auth as { sub: string; email?: string }).email;
 
   let body: { store?: unknown };
   try {
@@ -606,6 +608,8 @@ export async function handler(
     if (msg.includes("activeEntryId")) return json(400, { error: msg });
     return json(500, { error: msg });
   }
+
+  scheduleIndexJournalStore(ownerEmail, body.store.entries);
 
   return json(200, { ok: true });
 }

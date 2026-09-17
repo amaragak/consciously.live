@@ -14,6 +14,7 @@ import {
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { optionalUserJson, parseBearer, requireUserJson } from "../lib/medimade-auth-http";
+import { scheduleIndexIdeateBundle } from "../lib/algolia-index-ideate";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -310,7 +311,9 @@ export async function handler(
   if (method === "PUT") {
     const auth = await requireUserJson(event);
     if ("statusCode" in auth) return auth;
-    const ownerId = (auth as { sub: string }).sub.trim();
+    const owner = auth as { sub: string; email?: string };
+    const ownerId = owner.sub.trim();
+    const ownerEmail = owner.email;
 
     let bodyRaw = event.body ?? "";
     if (event.isBase64Encoded && bodyRaw) {
@@ -426,6 +429,7 @@ export async function handler(
           },
         }),
       );
+      scheduleIndexIdeateBundle(ownerEmail, bundle);
       return json(200, { ok: true, store: bundle });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "DynamoDB write failed";

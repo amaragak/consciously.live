@@ -13,6 +13,7 @@ Create a secret with this **exact name** (full path string):
 | **`medimade/OPENAI_API_KEY`** | Your OpenAI API key (plain text; used for **Whisper** journal transcription via `POST /journal/transcribe`) |
 | **`medimade/RUNPODS_API_KEY`** | Your RunPod API key (plain text; used for **Orpheus TTS** via `POST /orpheus/tts`) |
 | **`medimade/RUNPODS_URL`** | RunPod endpoint URL (plain text), e.g. `https://api.runpod.ai/v2/<endpoint-id>` — suffix optional (`/runsync` or `/run` appended by client) |
+| **`medimade/ALGOLIA`** | JSON: `{"appId":"…","adminApiKey":"…","searchApiKey":"…","indexName":"consciously"}` — user-content search (`GET /search?q=`) |
 
 Create or update them **before** you exercise the API (stack deploy can succeed even if a secret does not exist yet; the Lambda that needs it will fail until the secret is present).
 
@@ -52,6 +53,15 @@ aws secretsmanager create-secret \
   --secret-string "YOUR_OPENAI_KEY" \
   --profile mm
 ```
+
+```bash
+aws secretsmanager create-secret \
+  --name medimade/ALGOLIA \
+  --secret-string '{"appId":"YOUR_APP_ID","adminApiKey":"YOUR_ADMIN_KEY","searchApiKey":"YOUR_SEARCH_KEY","indexName":"consciously"}' \
+  --profile mm
+```
+
+Algolia indexes are scoped by **email** (`userId`). Guest Continuations use `alexmaragakis@hotmail.co.uk`. Journal/gratitude + Manifest (ideate) reindex on each cloud PUT; meditation drafts upsert on save. Query: `GET /search?q=…` (Bearer JWT).
 
 ## Prerequisites
 

@@ -15,6 +15,7 @@ import {
   meditationGlobalUserPk,
   meditationUserPk,
 } from "../lib/meditation-user-pk";
+import { scheduleIndexMeditation } from "../lib/algolia-index-meditation";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -62,7 +63,7 @@ export async function handler(
 
   const auth = await requireUserJson(event);
   if ("statusCode" in auth) return auth;
-  const user = auth as { sub: string };
+  const user = auth as { sub: string; email?: string };
   const userPk = meditationUserPk(user.sub);
   const globalPk = meditationGlobalUserPk();
   const legacyPk = LEGACY_MEDITATION_PARTITION_PK;
@@ -197,15 +198,23 @@ export async function handler(
           },
         }),
       );
+      const savedTitle =
+        titleIn ??
+        (meditationStyle
+          ? `Draft · ${meditationStyle}`.slice(0, 200)
+          : "Draft");
+      scheduleIndexMeditation({
+        email: user.email,
+        sk,
+        title: savedTitle,
+        meditationStyle,
+        updatedAt: createdAt,
+      });
       return json(200, {
         sk,
         id,
         createdAt,
-        title:
-          titleIn ??
-          (meditationStyle
-            ? `Draft · ${meditationStyle}`.slice(0, 200)
-            : "Draft"),
+        title: savedTitle,
       });
     }
 
@@ -241,6 +250,14 @@ export async function handler(
         },
       }),
     );
+
+    scheduleIndexMeditation({
+      email: user.email,
+      sk,
+      title,
+      meditationStyle,
+      updatedAt: createdAt,
+    });
 
     return json(200, { sk, id, createdAt, title });
   } catch (e) {
