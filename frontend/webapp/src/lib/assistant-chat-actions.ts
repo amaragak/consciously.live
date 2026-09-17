@@ -14,12 +14,12 @@ import {
   deriveEntryTitle,
   entriesForCloudPut,
   findGratitudeEntryForLocalDate,
+  formatJournalEntryDate,
   gratitudeLinesToHtml,
   gratitudeTitleForDate,
   isGratitudeEntry,
   loadJournalStore,
   localDateKey,
-  localDateKeyFromIso,
   newGratitudeJournalEntry,
   newJournalEntry,
   normalizeGratitudeLines,
@@ -62,6 +62,16 @@ import {
 } from "@/lib/plan-ideate-store";
 import type { AssistantAction } from "@/lib/assistant-chat-protocol";
 
+export type AssistantActionResultItem = {
+  id?: string;
+  title: string;
+  body?: string;
+  meta?: string;
+  subtitle?: string;
+  lines?: string[];
+  href?: string;
+};
+
 export type AssistantActionResult = {
   ok: boolean;
   /** Short confirmation shown in chat (e.g. “Saved to today’s gratitudes”). */
@@ -72,6 +82,8 @@ export type AssistantActionResult = {
   href?: string;
   /** Link button copy when `href` is set. */
   linkLabel?: string;
+  /** Structured rows for list/get results. */
+  items?: AssistantActionResultItem[];
 };
 
 const LAST_CHAT_JOURNAL_ENTRY_KEY = "mm_assistant_last_journal_entry_id_v1";
@@ -164,13 +176,34 @@ function lifeAreaTasksHref(lifeAreaId: string, taskId: string): string {
   return `/manifest/goal/${encodeURIComponent(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
 }
 
-function persistTodayGratitude(
+function gratitudeResultItem(entry: JournalEntry): AssistantActionResultItem {
+  const lines = normalizeGratitudeLines(entry.gratitude)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return {
+    id: entry.id,
+    title: "Gratitudes",
+    meta: formatJournalEntryDate(entry.createdAt),
+    lines: lines.length ? lines : ["Empty"],
+    href: `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`,
+  };
+}
+
+function gratitudeResultFromEntry(
+  entry: JournalEntry,
+  label: string,
+): AssistantActionResult {
+  return {
+    ok: true,
+    label,
+    items: [gratitudeResultItem(entry)],
+  };
+}
+
+function persistGratitudeEntry(
+  base: JournalEntry | null,
   nextLines: string[],
-  opts: {
-    label: string;
-    detail?: string;
-    linkLabel?: string;
-  },
+  opts: { label: string },
 ): AssistantActionResult {
   const lines = normalizeGratitudeLines(nextLines);
   if (!lines.some((l) => l.trim())) {
@@ -178,18 +211,21 @@ function persistTodayGratitude(
   }
 
   let store = loadJournalStore();
-  const today = localDateKey();
-  const existing = findGratitudeEntryForLocalDate(store.entries, today);
-  const entry: JournalEntry = existing
+  const now = new Date();
+  const entry: JournalEntry = base
     ? {
-        ...existing,
+        ...base,
         gratitude: lines,
         contentHtml: gratitudeLinesToHtml(lines),
-        title: gratitudeTitleForDate(new Date()),
-        updatedAt: new Date().toISOString(),
+        title: gratitudeTitleForDate(
+          Number.isNaN(new Date(base.createdAt).getTime())
+            ? now
+            : new Date(base.createdAt),
+        ),
+        updatedAt: now.toISOString(),
       }
     : {
-        ...newGratitudeJournalEntry(),
+        ...newGratitudeJournalEntry(now),
         gratitude: lines,
         contentHtml: gratitudeLinesToHtml(lines),
       };
@@ -203,13 +239,72 @@ function persistTodayGratitude(
   saveJournalStore(store, { source: "assistant-chat" });
   syncJournalCloud(store);
 
-  return {
-    ok: true,
-    label: opts.label,
-    ...(opts.detail ? { detail: opts.detail } : {}),
-    href: `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`,
-    linkLabel: opts.linkLabel ?? "Open gratitude",
-  };
+  return gratitudeResultFromEntry(entry, opts.label);
+}
+
+function persistTodayGratitude(
+  nextLines: string[],
+  opts: { label: string },
+): AssistantActionResult {
+  const store = loadJournalStore();
+  const existing = findGratitudeEntryForLocalDate(store.entries, localDateKey());
+  return persistGratitudeEntry(existing ?? null, nextLines, opts);
+}
+
+function resolveGratitudeEntryForUpdate(action: {
+  id?: string;
+  date?: string;
+  match?: string;
+  index?: number;
+}): JournalEntry | undefined {
+  const store = loadJournalStore();
+  if (action.id) {
+    return store.entries.find(
+      (e) => e.id === action.id && isGratitudeEntry(e),
+    );
+  }
+  if (action.date) {
+    return (
+      findGratitudeEntryForLocalDate(store.entries, action.date) ?? undefined
+    );
+  }
+
+  const today = findGratitudeEntryForLocalDate(store.entries, localDateKey());
+  const recent = [...store.entries]
+    .filter(isGratitudeEntry)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+
+  const match = (action.match ?? "").trim();
+  if (match) {
+    if (today) {
+      const lines = normalizeGratitudeLines(today.gratitude);
+      if (findGratitudeMatchIndex(lines, match) >= 0) return today;
+    }
+    for (const e of recent) {
+      const lines = normalizeGratitudeLines(e.gratitude);
+      if (findGratitudeMatchIndex(lines, match) >= 0) return e;
+    }
+  }
+
+  if (action.index != null && action.index >= 1) {
+    if (today) {
+      const filled = normalizeGratitudeLines(today.gratitude).filter((l) =>
+        l.trim(),
+      );
+      if (action.index <= filled.length) return today;
+    }
+    for (const e of recent) {
+      const filled = normalizeGratitudeLines(e.gratitude).filter((l) =>
+        l.trim(),
+      );
+      if (action.index <= filled.length) return e;
+    }
+  }
+
+  return today ?? recent[0];
 }
 
 /** Fill empty slots first; append beyond 3 when full. Never overwrite filled lines. */
@@ -285,26 +380,11 @@ function applyGratitudeAdd(
   const prev = normalizeGratitudeLines(existing?.gratitude);
   const changed =
     next.length !== prev.length || next.some((l, i) => l !== prev[i]);
-  const detail = previewSnippet(
-    action.lines.map((l) => l.trim()).filter(Boolean).join(" · ") ||
-      next.filter((l) => l.trim()).at(-1) ||
-      "",
-  );
-  if (!changed) {
-    return {
-      ok: true,
-      label: "Already in today’s gratitudes",
-      ...(detail ? { detail } : {}),
-      href: existing
-        ? `/journal/my/gratitudes/${encodeURIComponent(existing.id)}`
-        : undefined,
-      linkLabel: "Open gratitude",
-    };
+  if (!changed && existing) {
+    return gratitudeResultFromEntry(existing, "Already in today’s gratitudes");
   }
   return persistTodayGratitude(next, {
     label: "Saved to today’s gratitudes",
-    detail,
-    linkLabel: "Open gratitude",
   });
 }
 
@@ -314,36 +394,38 @@ function applyGratitudeUpdate(
   const text = action.text.trim();
   if (!text) return { ok: false, label: "No gratitude text to update" };
 
-  const store = loadJournalStore();
-  const today = localDateKey();
-  const existing = findGratitudeEntryForLocalDate(store.entries, today);
-  const lines = normalizeGratitudeLines(existing?.gratitude);
-  const idx = findGratitudeMatchIndex(lines, action.match);
-
-  if (idx < 0) {
-    // No prior line — treat as a fresh add rather than inventing overwrite.
+  const existing = resolveGratitudeEntryForUpdate(action);
+  if (!existing) {
+    // No entry to edit — treat as a fresh add rather than inventing overwrite.
     return applyGratitudeAdd({ name: "add_gratitude", lines: [text] });
   }
 
-  const detail = previewSnippet(text);
+  const lines = normalizeGratitudeLines(existing.gratitude);
+  const filled = lines
+    .map((l, i) => ({ l: l.trim(), i }))
+    .filter((x) => x.l);
+
+  let idx = -1;
+  if (action.index != null && action.index >= 1) {
+    const hit = filled[action.index - 1];
+    idx = hit ? hit.i : -1;
+  }
+  if (idx < 0 && action.match) {
+    idx = findGratitudeMatchIndex(lines, action.match);
+  }
+
+  if (idx < 0) {
+    return { ok: false, label: "Couldn't find that gratitude line" };
+  }
+
   if (lines[idx]!.trim() === text) {
-    return {
-      ok: true,
-      label: "Gratitude already up to date",
-      detail,
-      href: existing
-        ? `/journal/my/gratitudes/${encodeURIComponent(existing.id)}`
-        : undefined,
-      linkLabel: "Open gratitude",
-    };
+    return gratitudeResultFromEntry(existing, "Gratitude already up to date");
   }
 
   const next = [...lines];
   next[idx] = text;
-  return persistTodayGratitude(next, {
-    label: "Updated today’s gratitude",
-    detail,
-    linkLabel: "Open gratitude",
+  return persistGratitudeEntry(existing, next, {
+    label: "Updated",
   });
 }
 
@@ -400,9 +482,16 @@ function applyJournalEntry(
   return {
     ok: true,
     label: "Saved journal entry",
-    detail: previewSnippet(title),
-    href: `/journal/my/${encodeURIComponent(entry.id)}`,
-    linkLabel: "Open journal",
+    items: [
+      {
+        id: entry.id,
+        title: "Journal",
+        meta: formatJournalEntryDate(entry.createdAt),
+        subtitle: title.slice(0, 120),
+        body: stripHtmlToText(contentHtml).trim() || undefined,
+        href: `/journal/my/${encodeURIComponent(entry.id)}`,
+      },
+    ],
   };
 }
 
@@ -492,10 +581,17 @@ function applyJournalUpdate(
 
   return {
     ok: true,
-    label: "Updated journal entry",
-    detail: previewSnippet(title),
-    href: `/journal/my/${encodeURIComponent(entry.id)}`,
-    linkLabel: "Open journal",
+    label: "Updated",
+    items: [
+      {
+        id: entry.id,
+        title: "Journal",
+        meta: formatJournalEntryDate(entry.createdAt),
+        subtitle: entry.title || "Untitled",
+        body: stripHtmlToText(entry.contentHtml).trim() || undefined,
+        href: `/journal/my/${encodeURIComponent(entry.id)}`,
+      },
+    ],
   };
 }
 
@@ -600,21 +696,10 @@ function applyListGratitudes(
       linkLabel: "Open journal",
     };
   }
-  const detail = rows
-    .map((e) => {
-      const lines = normalizeGratitudeLines(e.gratitude)
-        .map((l) => l.trim())
-        .filter(Boolean);
-      const day = localDateKeyFromIso(e.createdAt);
-      return `${day}: ${lines.slice(0, 2).join(" · ") || e.title}`;
-    })
-    .join(" · ");
   return {
     ok: true,
-    label: `${rows.length} gratitude entr${rows.length === 1 ? "y" : "ies"}`,
-    detail: previewSnippet(detail, 160),
-    href: `/journal/my/gratitudes/${encodeURIComponent(rows[0]!.id)}`,
-    linkLabel: "Open latest",
+    label: "Gratitudes",
+    items: rows.map((e) => gratitudeResultItem(e)),
   };
 }
 
@@ -634,16 +719,7 @@ function applyGetGratitude(
   if (!entry) {
     return { ok: false, label: "Couldn't find that gratitude" };
   }
-  const lines = normalizeGratitudeLines(entry.gratitude)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  return {
-    ok: true,
-    label: entry.title || "Gratitude",
-    detail: previewSnippet(lines.join(" · ") || "Empty", 160),
-    href: `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`,
-    linkLabel: "Open",
-  };
+  return gratitudeResultFromEntry(entry, "Gratitudes");
 }
 
 function applyListJournalEntries(
@@ -655,10 +731,12 @@ function applyListJournalEntries(
   if (action.folderId) {
     rows = rows.filter((e) => e.folderId === action.folderId);
   }
-  rows = [...rows].sort(
-    (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  ).slice(0, limit);
+  rows = [...rows]
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
+    .slice(0, limit);
   if (!rows.length) {
     return {
       ok: true,
@@ -669,10 +747,15 @@ function applyListJournalEntries(
   }
   return {
     ok: true,
-    label: `${rows.length} journal entr${rows.length === 1 ? "y" : "ies"}`,
-    detail: previewSnippet(rows.map((e) => e.title).join(" · "), 160),
-    href: `/journal/my/${encodeURIComponent(rows[0]!.id)}`,
-    linkLabel: "Open latest",
+    label: "Journal",
+    items: rows.map((e) => ({
+      id: e.id,
+      title: "Journal",
+      meta: formatJournalEntryDate(e.createdAt),
+      subtitle: e.title || "Untitled",
+      body: stripHtmlToText(e.contentHtml).trim() || undefined,
+      href: `/journal/my/${encodeURIComponent(e.id)}`,
+    })),
   };
 }
 
@@ -686,10 +769,17 @@ function applyGetJournalEntry(
   if (!entry) return { ok: false, label: "Couldn't find that journal entry" };
   return {
     ok: true,
-    label: entry.title || "Journal entry",
-    detail: previewSnippet(stripHtmlToText(entry.contentHtml), 160),
-    href: `/journal/my/${encodeURIComponent(entry.id)}`,
-    linkLabel: "Open",
+    label: "Journal",
+    items: [
+      {
+        id: entry.id,
+        title: "Journal",
+        meta: formatJournalEntryDate(entry.createdAt),
+        subtitle: entry.title || "Untitled",
+        body: stripHtmlToText(entry.contentHtml).trim() || undefined,
+        href: `/journal/my/${encodeURIComponent(entry.id)}`,
+      },
+    ],
   };
 }
 
@@ -704,18 +794,16 @@ async function applyGetJournalInsights(): Promise<AssistantActionResult> {
         linkLabel: "Open insights",
       };
     }
-    const overview =
-      insights.topics.find((t) => t.topicId === "overview") ??
-      insights.topics[0]!;
     return {
       ok: true,
       label: "Journal insights",
-      detail: previewSnippet(
-        stripHtmlToText(overview.summaryMarkdown).replace(/[#*_`]/g, ""),
-        160,
-      ),
-      href: "/journal/my/insights",
-      linkLabel: "Open insights",
+      items: insights.topics.slice(0, 6).map((t) => ({
+        id: t.topicId,
+        title: t.topicId.replace(/_/g, " "),
+        meta: "Insight",
+        body: stripHtmlToText(t.summaryMarkdown).replace(/[#*_`]/g, "").trim(),
+        href: "/journal/my/insights",
+      })),
     };
   } catch (e) {
     return {
@@ -728,22 +816,24 @@ async function applyGetJournalInsights(): Promise<AssistantActionResult> {
 async function applyRunJournalInsights(): Promise<AssistantActionResult> {
   try {
     const insights = await runJournalInsightsRemote({ mode: "update" });
-    const overview =
-      insights.topics.find((t) => t.topicId === "overview") ??
-      insights.topics[0];
+    if (!insights.topics?.length) {
+      return {
+        ok: true,
+        label: "Refreshed journal insights",
+        href: "/journal/my/insights",
+        linkLabel: "Open insights",
+      };
+    }
     return {
       ok: true,
       label: "Refreshed journal insights",
-      ...(overview
-        ? {
-            detail: previewSnippet(
-              stripHtmlToText(overview.summaryMarkdown).replace(/[#*_`]/g, ""),
-              160,
-            ),
-          }
-        : {}),
-      href: "/journal/my/insights",
-      linkLabel: "Open insights",
+      items: insights.topics.slice(0, 6).map((t) => ({
+        id: t.topicId,
+        title: t.topicId.replace(/_/g, " "),
+        meta: "Insight",
+        body: stripHtmlToText(t.summaryMarkdown).replace(/[#*_`]/g, "").trim(),
+        href: "/journal/my/insights",
+      })),
     };
   } catch (e) {
     return {
@@ -767,15 +857,16 @@ async function applyListWeeklyLetters(): Promise<AssistantActionResult> {
     return {
       ok: true,
       label: `${letters.length} weekly letter${letters.length === 1 ? "" : "s"}`,
-      detail: previewSnippet(
-        letters
-          .slice(0, 5)
-          .map((l) => l.weekKey)
-          .join(" · "),
-        120,
-      ),
-      href: "/journal/my/insights",
-      linkLabel: "Open weekly",
+      items: letters.slice(0, 8).map((l) => ({
+        id: l.weekKey,
+        title: l.weekKey,
+        meta: "Weekly letter",
+        body:
+          l.weekStart && l.weekEnd
+            ? `${l.weekStart} → ${l.weekEnd}`
+            : undefined,
+        href: `/journal/my/insights/${encodeURIComponent(l.weekKey)}`,
+      })),
     };
   } catch (e) {
     return {
@@ -800,17 +891,21 @@ async function applyGetWeeklyReflection(
         linkLabel: "Open weekly",
       };
     }
+    const href = res.weekKey
+      ? `/journal/my/insights/${encodeURIComponent(res.weekKey)}`
+      : "/journal/my/insights";
     return {
       ok: true,
-      label: `Weekly reflection ${res.weekKey || ""}`.trim(),
-      detail: previewSnippet(
-        res.reflection.letterMarkdown.replace(/[#*_`]/g, ""),
-        160,
-      ),
-      href: res.weekKey
-        ? `/journal/my/insights/${encodeURIComponent(res.weekKey)}`
-        : "/journal/my/insights",
-      linkLabel: "Open weekly",
+      label: "Weekly reflection",
+      items: [
+        {
+          id: res.weekKey || "week",
+          title: res.weekKey || "This week",
+          meta: "Weekly letter",
+          body: res.reflection.letterMarkdown.replace(/[#*_`]/g, "").trim(),
+          href,
+        },
+      ],
     };
   } catch (e) {
     return {
@@ -857,9 +952,19 @@ function applyListLifeAreas(): AssistantActionResult {
   return {
     ok: true,
     label: `${areas.length} life area${areas.length === 1 ? "" : "s"}`,
-    detail: previewSnippet(areas.map((d) => d.title).join(" · "), 160),
-    href: `/manifest/goal/${encodeURIComponent(areas[0]!.id)}`,
-    linkLabel: "Open first",
+    items: areas.map((d) => {
+      const goals = store.subtasks.filter((s) => s.projectId === d.id);
+      const openTodos = store.todos.filter(
+        (t) => !t.isChecked && goals.some((g) => g.id === t.subtaskId),
+      );
+      return {
+        id: d.id,
+        title: d.title.trim() || "Untitled",
+        meta: "Life area",
+        body: `${goals.length} goal${goals.length === 1 ? "" : "s"} · ${openTodos.length} open To Do${openTodos.length === 1 ? "" : "s"}`,
+        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+      };
+    }),
   };
 }
 
@@ -877,13 +982,21 @@ function applyGetLifeArea(
   );
   return {
     ok: true,
-    label: area.title,
-    detail: previewSnippet(
-      `${goals.length} goal${goals.length === 1 ? "" : "s"} · ${openTodos.length} open To Do${openTodos.length === 1 ? "" : "s"}`,
-      120,
-    ),
-    href: `/manifest/goal/${encodeURIComponent(area.id)}`,
-    linkLabel: "Open",
+    label: "Life area",
+    items: [
+      {
+        id: area.id,
+        title: area.title.trim() || "Untitled",
+        meta: "Life area",
+        body: [
+          area.dreamText?.trim() || undefined,
+          `${goals.length} goal${goals.length === 1 ? "" : "s"} · ${openTodos.length} open To Do${openTodos.length === 1 ? "" : "s"}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        href: `/manifest/goal/${encodeURIComponent(area.id)}`,
+      },
+    ],
   };
 }
 
@@ -965,17 +1078,22 @@ function applyListTodos(
   return {
     ok: true,
     label: `${todos.length} To Do${todos.length === 1 ? "" : "s"}`,
-    detail: previewSnippet(
-      todos
-        .slice(0, 6)
-        .map((t) => t.title)
-        .join(" · "),
-      160,
-    ),
-    href: area
-      ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
-      : "/manifest/my",
-    linkLabel: "Open",
+    items: todos.slice(0, 12).map((t) => {
+      const parent = store.subtasks.find((s) => s.id === t.subtaskId);
+      return {
+        id: t.id,
+        title: t.title.trim() || "To Do",
+        meta: t.isChecked ? "Done" : parent?.title?.trim() || "To Do",
+        body: parent
+          ? `Under ${parent.title.trim() || "goal"}`
+          : undefined,
+        href: parent
+          ? lifeAreaTasksHref(parent.projectId, parent.id)
+          : area
+            ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
+            : "/manifest/my",
+      };
+    }),
   };
 }
 
@@ -1059,12 +1177,20 @@ function applyGetIdeateStore(): AssistantActionResult {
   return {
     ok: true,
     label: "Manifest snapshot",
-    detail: previewSnippet(
-      `${areas.length} areas · ${store.subtasks.length} goals · ${openTodos} open To Dos`,
-      120,
-    ),
-    href: "/manifest/my",
-    linkLabel: "Open Manifest",
+    items: [
+      {
+        title: "Manifest",
+        meta: "Snapshot",
+        body: `${areas.length} areas · ${store.subtasks.length} goals · ${openTodos} open To Dos`,
+        href: "/manifest/my",
+      },
+      ...areas.slice(0, 6).map((d) => ({
+        id: d.id,
+        title: d.title.trim() || "Untitled",
+        meta: "Life area",
+        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+      })),
+    ],
   };
 }
 
@@ -1106,16 +1232,13 @@ function applyListVisionBoard(): AssistantActionResult {
   return {
     ok: true,
     label: `${items.length} vision item${items.length === 1 ? "" : "s"}`,
-    detail: previewSnippet(
-      items
-        .slice(0, 6)
-        .map((i) => i.label)
-        .filter(Boolean)
-        .join(" · "),
-      160,
-    ),
-    href: "/manifest/my/vision-board",
-    linkLabel: "Open vision board",
+    items: items.slice(0, 10).map((i) => ({
+      id: i.id,
+      title: i.label?.trim() || "Vision item",
+      meta: "Vision board",
+      body: i.prompt?.trim() || undefined,
+      href: "/manifest/my/vision-board",
+    })),
   };
 }
 
@@ -1142,12 +1265,18 @@ async function applyListLibrary(
     return {
       ok: true,
       label: `${items.length} meditation${items.length === 1 ? "" : "s"}`,
-      detail: previewSnippet(
-        items.map((m) => m.title || "Untitled").join(" · "),
-        160,
-      ),
-      href: "/meditate/library/creations",
-      linkLabel: "Open library",
+      items: items.map((m) => {
+        const focus = m.sk || m.s3Key;
+        return {
+          id: focus,
+          title: m.title || "Untitled",
+          meta: [m.meditationStyle, m.favourite ? "Favourite" : null]
+            .filter(Boolean)
+            .join(" · ") || "Meditation",
+          body: m.description?.trim() || undefined,
+          href: `/meditate/library/creations?focus=${encodeURIComponent(focus)}`,
+        };
+      }),
     };
   } catch (e) {
     return {
@@ -1169,14 +1298,18 @@ async function applyGetMeditation(
     const focus = m.sk || m.s3Key;
     return {
       ok: true,
-      label: m.title || "Meditation",
-      detail: previewSnippet(
-        [m.meditationStyle, m.description].filter(Boolean).join(" · ") ||
-          "Ready to play",
-        140,
-      ),
-      href: `/meditate/library/creations?focus=${encodeURIComponent(focus)}`,
-      linkLabel: "Open",
+      label: "Meditation",
+      items: [
+        {
+          id: focus,
+          title: m.title || "Meditation",
+          meta: m.meditationStyle?.trim() || "Meditation",
+          body: [m.description?.trim(), m.scriptText?.trim()?.slice(0, 600)]
+            .filter(Boolean)
+            .join("\n\n"),
+          href: `/meditate/library/creations?focus=${encodeURIComponent(focus)}`,
+        },
+      ],
     };
   } catch (e) {
     return {
@@ -1269,15 +1402,13 @@ async function applyListPrograms(): Promise<AssistantActionResult> {
     return {
       ok: true,
       label: `${programs.length} program${programs.length === 1 ? "" : "s"}`,
-      detail: previewSnippet(
-        programs
-          .slice(0, 6)
-          .map((p) => p.title || p.id)
-          .join(" · "),
-        160,
-      ),
-      href: "/meditate/library/creations",
-      linkLabel: "Open library",
+      items: programs.slice(0, 8).map((p) => ({
+        id: p.id,
+        title: p.title || p.id,
+        meta: "Program",
+        body: p.description?.trim() || undefined,
+        href: "/meditate/library/creations",
+      })),
     };
   } catch (e) {
     return {
@@ -1335,18 +1466,22 @@ function applyNavigateCreateFromIdea(
 async function applyListSounds(): Promise<AssistantActionResult> {
   try {
     const beds = await listBackgroundAudio();
-    const counts = [
-      `nature ${beds.nature?.length ?? 0}`,
-      `music ${beds.music?.length ?? 0}`,
-      `drums ${beds.drums?.length ?? 0}`,
-      `noise ${beds.noise?.length ?? 0}`,
-    ].join(" · ");
     return {
       ok: true,
       label: "Background sounds",
-      detail: counts,
-      href: "/meditate/sounds",
-      linkLabel: "Open sounds",
+      items: [
+        {
+          title: "Sounds library",
+          meta: "Sounds",
+          body: [
+            `Nature ${beds.nature?.length ?? 0}`,
+            `Music ${beds.music?.length ?? 0}`,
+            `Drums ${beds.drums?.length ?? 0}`,
+            `Noise ${beds.noise?.length ?? 0}`,
+          ].join(" · "),
+          href: "/meditate/sounds",
+        },
+      ],
     };
   } catch (e) {
     return {
@@ -1369,12 +1504,12 @@ function applyListSoundMixes(): AssistantActionResult {
   return {
     ok: true,
     label: `${store.presets.length} saved mix${store.presets.length === 1 ? "" : "es"}`,
-    detail: previewSnippet(
-      store.presets.map((p) => p.name).join(" · "),
-      160,
-    ),
-    href: "/meditate/sounds",
-    linkLabel: "Open sounds",
+    items: store.presets.map((p) => ({
+      id: p.id,
+      title: p.name,
+      meta: "Sound mix",
+      href: "/meditate/sounds",
+    })),
   };
 }
 
@@ -1422,17 +1557,14 @@ function applyGetFocusSession(): AssistantActionResult {
   return {
     ok: true,
     label: "Focus session",
-    detail: previewSnippet(
-      [
-        hint.task ? `Task: ${hint.task}` : null,
-        `${hint.sessionsToday} session${hint.sessionsToday === 1 ? "" : "s"} today`,
-      ]
-        .filter(Boolean)
-        .join(" · ") || "Open Focus to start",
-      140,
-    ),
-    href: "/focus/my",
-    linkLabel: "Open Focus",
+    items: [
+      {
+        title: hint.task || "Focus",
+        meta: "Focus",
+        body: `${hint.sessionsToday} session${hint.sessionsToday === 1 ? "" : "s"} today`,
+        href: "/focus/my",
+      },
+    ],
   };
 }
 
@@ -1515,18 +1647,21 @@ function applyNavigate(
 async function applyGetDailyStatus(): Promise<AssistantActionResult> {
   try {
     const status = await fetchDashboardDailyStatus();
-    const bits = [
-      status.gratitude ? "gratitude ✓" : "gratitude —",
-      status.meditation ? "meditation ✓" : "meditation —",
-      status.lifeArea ? "life area ✓" : "life area —",
-      `streak ${status.fullStreak}`,
-    ];
     return {
       ok: true,
       label: "Daily status",
-      detail: bits.join(" · "),
-      href: "/home",
-      linkLabel: "Open home",
+      items: [
+        {
+          title: `Streak ${status.fullStreak}`,
+          meta: "Today",
+          body: [
+            `Gratitude ${status.gratitude ? "✓" : "—"}`,
+            `Meditation ${status.meditation ? "✓" : "—"}`,
+            `Life area ${status.lifeArea ? "✓" : "—"}`,
+          ].join(" · "),
+          href: "/home",
+        },
+      ],
     };
   } catch (e) {
     return {

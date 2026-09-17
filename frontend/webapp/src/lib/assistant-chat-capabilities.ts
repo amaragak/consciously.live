@@ -63,8 +63,8 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "update_gratitude",
     verb: "put",
     domain: "journal",
-    summary: "Enrich an existing gratitude line (match prior text)",
-    params: ["match", "text"],
+    summary: "Replace a gratitude line by match text or 1-based index",
+    params: ["text", "match?", "index?", "date?", "id?"],
     status: "live",
   },
   {

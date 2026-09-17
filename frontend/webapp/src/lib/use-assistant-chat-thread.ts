@@ -533,6 +533,7 @@ export function useAssistantChatThread(opts: {
           href: r.href,
           linkLabel: r.linkLabel,
           ok: r.ok,
+          ...(r.items?.length ? { items: r.items } : {}),
         }));
       } catch {
         actionResults = undefined;

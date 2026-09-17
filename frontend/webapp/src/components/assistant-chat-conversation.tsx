@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import { AssistantChatActionResults } from "@/components/assistant-chat-action-results";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { DictationMicButton, appendSpokenText } from "@/components/dictation-mic-button";
 import { assistantChatBubbles } from "@/lib/assistant-chat-protocol";
@@ -248,39 +248,7 @@ export function AssistantChatConversation({
                     );
                   })}
                   {!isUser && msg.actionResults?.length ? (
-                    <div className="mt-2 flex w-full max-w-[80%] flex-col gap-2">
-                      {msg.actionResults.map((result, ri) => (
-                        <div
-                          key={ri}
-                          className={`flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border px-3.5 py-2.5 text-sm ${
-                            result.ok
-                              ? "border-accent/20 bg-accent-soft text-foreground"
-                              : "border-danger/30 bg-danger/5 text-danger"
-                          }`}
-                          role="status"
-                        >
-                          <span className="min-w-0 flex-1">
-                            <span className="font-medium">
-                              {result.ok ? "✓ " : ""}
-                              {result.label}
-                            </span>
-                            {result.detail ? (
-                              <span className="mt-0.5 block truncate text-muted">
-                                {result.detail}
-                              </span>
-                            ) : null}
-                          </span>
-                          {result.ok && result.href ? (
-                            <Link
-                              href={result.href}
-                              className="shrink-0 font-semibold text-accent-link underline-offset-2 hover:underline"
-                            >
-                              {result.linkLabel ?? "Open"}
-                            </Link>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
+                    <AssistantChatActionResults results={msg.actionResults} />
                   ) : null}
                 </div>
               );

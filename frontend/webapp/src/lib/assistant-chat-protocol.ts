@@ -62,8 +62,14 @@ export type AssistantAction =
     }
   | {
       name: "update_gratitude";
-      /** Substring / prior text to find today’s line. */
-      match: string;
+      /** Substring / prior text to find the line (optional if `index` is set). */
+      match?: string;
+      /** 1-based line position in the target entry (optional if `match` is set). */
+      index?: number;
+      /** Target entry id (optional — defaults to today, else most recent). */
+      id?: string;
+      /** Local date key YYYY-MM-DD (optional). */
+      date?: string;
       /** Full replacement text for that line. */
       text: string;
     }
@@ -274,8 +280,20 @@ function coerceAction(
   if (name === "update_gratitude") {
     const match = optStr(params, "match", "prev", "from");
     const text = optStr(params, "text", "line", "to");
-    if (!match || !text) return null;
-    return { name: "update_gratitude", match, text };
+    const index = optInt(params, "index", "n", "slot", "lineIndex");
+    const id = optStr(params, "id");
+    const date = optStr(params, "date", "day");
+    if (!text) return null;
+    const hasIndex = index != null && index >= 1;
+    if (!match && !hasIndex) return null;
+    return {
+      name: "update_gratitude",
+      text,
+      ...(match ? { match } : {}),
+      ...(hasIndex ? { index } : {}),
+      ...(id ? { id } : {}),
+      ...(date ? { date } : {}),
+    };
   }
   if (
     name === "add_journal_entry" ||
@@ -715,8 +733,14 @@ export function encodeAssistantAction(action: AssistantAction): string {
       return `[[ACTION:add_gratitude|${action.lines
         .map((line, i) => `line${i + 1}=${enc(line)}`)
         .join("|")}]]`;
-    case "update_gratitude":
-      return `[[ACTION:update_gratitude|match=${enc(action.match)}|text=${enc(action.text)}]]`;
+    case "update_gratitude": {
+      const parts = [`text=${enc(action.text)}`];
+      if (action.match) parts.unshift(`match=${enc(action.match)}`);
+      if (action.index != null) parts.push(`index=${action.index}`);
+      if (action.id) parts.push(`id=${enc(action.id)}`);
+      if (action.date) parts.push(`date=${enc(action.date)}`);
+      return `[[ACTION:update_gratitude|${parts.join("|")}]]`;
+    }
     case "add_journal_entry":
       add("title", action.title);
       add("body", action.body);

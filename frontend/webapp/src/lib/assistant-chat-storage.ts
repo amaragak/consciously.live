@@ -4,12 +4,29 @@
 
 import { deriveAssistantChatTitleProvisional } from "@/lib/assistant-chat-title";
 
+export type AssistantChatActionResultItem = {
+  id?: string;
+  /** Small header (e.g. “Gratitudes”, “Journal”). */
+  title: string;
+  /** Optional date / secondary label shown opposite the header. */
+  meta?: string;
+  /** Strong middle line when there is no `lines` list (e.g. journal title). */
+  subtitle?: string;
+  /** Body preview — may be long; UI clamps with show-more. */
+  body?: string;
+  /** Structured list rows (gratitude lines, todos). Preferred over `body` when set. */
+  lines?: string[];
+  href?: string;
+};
+
 export type AssistantChatActionResult = {
   label: string;
   detail?: string;
   href?: string;
   linkLabel?: string;
   ok: boolean;
+  /** Structured rows for list/get — rendered as content cards. */
+  items?: AssistantChatActionResultItem[];
 };
 
 export type AssistantChatUiMessage = {
