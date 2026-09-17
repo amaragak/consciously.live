@@ -170,7 +170,7 @@ export type AssistantAction =
   | {
       name: "put_sound_mix";
       id?: string;
-      name: string;
+      mixName: string;
       natureKey?: string;
       musicKey?: string;
       drumsKey?: string;
@@ -629,7 +629,7 @@ function coerceAction(
     }
     return {
       name: "put_sound_mix",
-      name: mixName,
+      mixName,
       ...(id ? { id } : {}),
       ...(natureKey || fromLayers.natureKey
         ? { natureKey: natureKey || fromLayers.natureKey }
@@ -866,7 +866,7 @@ export function encodeAssistantAction(action: AssistantAction): string {
       return `[[ACTION:list_sound_mixes]]`;
     case "put_sound_mix":
       add("id", action.id);
-      add("name", action.name);
+      add("name", action.mixName);
       add("natureKey", action.natureKey);
       add("musicKey", action.musicKey);
       add("drumsKey", action.drumsKey);

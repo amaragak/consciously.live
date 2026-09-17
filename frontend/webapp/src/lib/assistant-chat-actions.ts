@@ -1521,10 +1521,10 @@ function applyPutSoundMix(
     ? store.presets.find((p) => p.id === action.id)
     : undefined;
   const now = new Date().toISOString();
-  const base = existing ?? newMixerPreset(action.name);
+  const base = existing ?? newMixerPreset(action.mixName);
   const next = {
     ...base,
-    name: action.name.trim() || base.name,
+    name: action.mixName.trim() || base.name,
     updatedAt: now,
     ...(action.natureKey != null ? { natureKey: action.natureKey } : {}),
     ...(action.musicKey != null ? { musicKey: action.musicKey } : {}),
