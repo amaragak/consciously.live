@@ -32,6 +32,7 @@ import {
 } from "../lib/meditation-user-pk";
 import { coerceClaudeModel, parseAnthropicMessageUsage } from "../lib/anthropic-pricing";
 import { coerceMeditationTargetMinutes } from "../lib/meditation-target-minutes";
+import { sanitizeMeditationCreationProvenance } from "../lib/meditation-creation-provenance";
 import { estimateCoachChatTokensFromTranscript } from "../lib/claude-coach-chat-estimate";
 import { orpheusTtsWav } from "../lib/orpheus-tts-client";
 import {
@@ -1417,6 +1418,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     backgroundMusicGain?: number;
     backgroundDrumsGain?: number;
     backgroundNoiseGain?: number;
+    excludeFromLibrary?: boolean;
+    lifeAreaId?: string;
+    creationProvenance?: unknown;
   };
 
   let jobItem: JobItem | null = null;
@@ -1523,6 +1527,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     typeof body.lifeAreaId === "string" && body.lifeAreaId.trim()
       ? body.lifeAreaId.trim().slice(0, 128)
       : undefined;
+  const creationProvenance = sanitizeMeditationCreationProvenance(
+    jobItem.creationProvenance,
+  );
   /** Dev A/B from the create flow; unsupported ids fall back to Haiku. */
   const claudeModel = coerceClaudeModel(body.claudeModel);
   const targetMinutes = coerceMeditationTargetMinutes(
@@ -2029,6 +2036,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           meditationType: libraryMeditationType,
           description: libraryDescription,
           ...(lifeAreaId ? { lifeAreaId } : {}),
+          ...(creationProvenance ? { creationProvenance } : {}),
           scriptText: scriptForLibrary,
           scriptTruncated,
           rating: null,

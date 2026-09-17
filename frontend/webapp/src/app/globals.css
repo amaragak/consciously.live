@@ -60,6 +60,7 @@
   --color-deep: var(--deep);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-rail: var(--surface-rail);
   --color-on-accent: var(--on-accent);
   --color-overlay: var(--overlay);
   --color-nav: var(--nav);

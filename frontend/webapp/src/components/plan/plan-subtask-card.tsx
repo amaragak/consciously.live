@@ -593,7 +593,7 @@ export function PlanSubtaskCard({
       {collapsed ? (
         <div
           aria-hidden
-          className="-mb-px border-b border-border transition-[border-color] duration-200 ease-[ease] group-hover:border-[#F1AC73]"
+          className="-mb-px border-b border-border transition-[border-color] duration-200 ease-[ease] group-hover:border-[#F0A855]"
         />
       ) : null}
 

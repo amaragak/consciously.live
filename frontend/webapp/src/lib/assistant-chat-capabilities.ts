@@ -1,6 +1,6 @@
 /**
  * Catalog of assistant-chat capabilities for the product control plane.
- * Includes live ACTION markers and planned get/list/put surfaces.
+ * Includes live ACTION markers across get/list/put/navigate surfaces.
  */
 
 export type AssistantCapabilityStatus = "live" | "planned";
@@ -92,7 +92,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     status: "live",
   },
 
-  // —— Journal (planned) ——
+  // —— Journal ——
   {
     id: "list_gratitudes",
     action: "list_gratitudes",
@@ -100,7 +100,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "journal",
     summary: "List recent gratitude entries",
     params: ["limit?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_gratitude",
@@ -109,7 +109,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "journal",
     summary: "Fetch one gratitude by id or date",
     params: ["id?", "date?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "list_journal_entries",
@@ -118,7 +118,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "journal",
     summary: "List freeform journal entries",
     params: ["folderId?", "limit?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_journal_entry",
@@ -127,7 +127,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "journal",
     summary: "Fetch a journal entry by id",
     params: ["id"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "add_journal_entry",
@@ -153,7 +153,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "get",
     domain: "journal",
     summary: "Fetch journal insights snapshot",
-    status: "planned",
+    status: "live",
   },
   {
     id: "run_journal_insights",
@@ -161,7 +161,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "run",
     domain: "journal",
     summary: "Regenerate journal insights",
-    status: "planned",
+    status: "live",
   },
   {
     id: "list_weekly_letters",
@@ -169,7 +169,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "list",
     domain: "journal",
     summary: "List weekly reflection letters",
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_weekly_reflection",
@@ -178,17 +178,17 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "journal",
     summary: "Fetch weekly reflection for a week",
     params: ["weekKey?"],
-    status: "planned",
+    status: "live",
   },
 
-  // —— Ideate (planned) ——
+  // —— Ideate / Manifest ——
   {
     id: "list_life_areas",
     action: "list_life_areas",
     verb: "list",
     domain: "ideate",
     summary: "List Manifest life areas",
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_life_area",
@@ -197,7 +197,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "ideate",
     summary: "Fetch one life area + tasks",
     params: ["id?", "title?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "create_life_area",
@@ -206,7 +206,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "ideate",
     summary: "Create a life area",
     params: ["title", "description?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_life_area",
@@ -215,7 +215,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "ideate",
     summary: "Update life area fields",
     params: ["id", "title?", "description?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "list_todos",
@@ -224,7 +224,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "ideate",
     summary: "List tasks for a life area",
     params: ["lifeAreaId?", "lifeAreaTitle?", "openOnly?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_todo",
@@ -233,7 +233,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "ideate",
     summary: "Update a task (title / checked)",
     params: ["todoId", "title?", "checked?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "delete_todo",
@@ -242,7 +242,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "ideate",
     summary: "Remove a task",
     params: ["todoId"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_ideate_store",
@@ -250,7 +250,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "get",
     domain: "ideate",
     summary: "Fetch full Manifest store (cloud/local)",
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_ideate_store",
@@ -258,7 +258,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "put",
     domain: "ideate",
     summary: "Push Manifest store to cloud",
-    status: "planned",
+    status: "live",
   },
   {
     id: "list_vision_board",
@@ -266,10 +266,10 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "list",
     domain: "ideate",
     summary: "List vision-board items",
-    status: "planned",
+    status: "live",
   },
 
-  // —— Meditate / library (planned) ——
+  // —— Meditate / library ——
   {
     id: "list_library",
     action: "list_library",
@@ -277,7 +277,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "library",
     summary: "List library meditations",
     params: ["favouritesOnly?", "limit?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_meditation",
@@ -286,7 +286,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "library",
     summary: "Fetch meditation metadata / script",
     params: ["sk"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_meditation_favourite",
@@ -295,7 +295,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "library",
     summary: "Favourite / unfavourite a meditation",
     params: ["sk", "favourite"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_meditation_archived",
@@ -304,7 +304,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "library",
     summary: "Archive / restore a meditation",
     params: ["sk", "archived"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_meditation_public",
@@ -313,7 +313,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "library",
     summary: "Set meditation public flag",
     params: ["sk", "isPublic"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "play_meditation",
@@ -322,7 +322,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "library",
     summary: "Play a library meditation in the strip",
     params: ["sk"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "list_programs",
@@ -330,7 +330,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "list",
     domain: "library",
     summary: "List meditation programs",
-    status: "planned",
+    status: "live",
   },
   {
     id: "navigate_create_by_type",
@@ -339,7 +339,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "meditate",
     summary: "Open Create → By Type",
     params: ["style?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "navigate_create_from_journal",
@@ -348,7 +348,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "meditate",
     summary: "Open Create → from journal",
     params: ["entryId?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "navigate_create_from_idea",
@@ -357,17 +357,17 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "meditate",
     summary: "Open Create → from Manifest life area",
     params: ["lifeAreaId?"],
-    status: "planned",
+    status: "live",
   },
 
-  // —— Sounds (planned) ——
+  // —— Sounds ——
   {
     id: "list_sounds",
     action: "list_sounds",
     verb: "list",
     domain: "sounds",
     summary: "List background sounds / categories",
-    status: "planned",
+    status: "live",
   },
   {
     id: "list_sound_mixes",
@@ -375,7 +375,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "list",
     domain: "sounds",
     summary: "List saved sound mixes",
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_sound_mix",
@@ -384,17 +384,17 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "sounds",
     summary: "Save or update a sound mix",
     params: ["id?", "name", "layers"],
-    status: "planned",
+    status: "live",
   },
 
-  // —— Focus (planned) ——
+  // —— Focus ——
   {
     id: "get_focus_session",
     action: "get_focus_session",
     verb: "get",
     domain: "focus",
     summary: "Get current focus timer state",
-    status: "planned",
+    status: "live",
   },
   {
     id: "start_focus",
@@ -403,7 +403,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "focus",
     summary: "Start a focus session",
     params: ["minutes?", "todoId?"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "pause_focus",
@@ -411,7 +411,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "run",
     domain: "focus",
     summary: "Pause the focus timer",
-    status: "planned",
+    status: "live",
   },
   {
     id: "stop_focus",
@@ -419,10 +419,10 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "run",
     domain: "focus",
     summary: "Stop / reset the focus timer",
-    status: "planned",
+    status: "live",
   },
 
-  // —— Nav / account (planned) ——
+  // —— Nav / account ——
   {
     id: "navigate",
     action: "navigate",
@@ -430,7 +430,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "nav",
     summary: "Open an in-app route",
     params: ["href"],
-    status: "planned",
+    status: "live",
   },
   {
     id: "get_daily_status",
@@ -438,7 +438,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     verb: "get",
     domain: "account",
     summary: "Fetch dashboard daily status",
-    status: "planned",
+    status: "live",
   },
   {
     id: "put_daily_check",
@@ -447,7 +447,7 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     domain: "account",
     summary: "Mark a daily check item",
     params: ["key", "done"],
-    status: "planned",
+    status: "live",
   },
 ] as const;
 

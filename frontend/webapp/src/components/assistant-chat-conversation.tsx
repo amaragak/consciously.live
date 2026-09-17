@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { DictationMicButton, appendSpokenText } from "@/components/dictation-mic-button";
 import { assistantChatBubbles } from "@/lib/assistant-chat-protocol";
+import { ASSISTANT_CHAT_PANEL_CLASSIC_STYLE } from "@/lib/assistant-chat-ui-flags";
 import type { AssistantChatUiMessage } from "@/lib/assistant-chat-storage";
 
 const SLOW_REPLY_MS = 7000;
@@ -89,19 +90,38 @@ export function AssistantChatConversation({
   setError,
   onSend,
   compact = false,
-  emptyHint = "What's on your mind today?",
+  emptyHint =
+    "What would help right now? I can help you journal, note a gratitude, shape a goal, or start a meditation — or we can just talk something through.",
 }: Props) {
+  /** FAB (`compact`) always classic; full panel follows the flag. */
+  const classicBubbles = compact || ASSISTANT_CHAT_PANEL_CLASSIC_STYLE;
   const showTyping =
     (opening && messages.length === 0) ||
     (busy && messages[messages.length - 1]?.role === "user");
   const showEmptyChrome = !opening && messages.length === 0 && !error;
-  const textSize = compact ? "text-base" : "text-lg";
+  // 16px main chat (also iOS input no-zoom floor). FAB compact matches.
+  const textSize = "text-base";
+
+  // FAB remounts this pane without changing messages — force bottom on mount.
+  useLayoutEffect(() => {
+    isAtBottomRef.current = true;
+    const run = () => {
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+        isAtBottomRef.current = true;
+      }
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(run);
+    });
+  }, [isAtBottomRef, scrollRef]);
 
   return (
-    <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
       <div
         ref={scrollRef}
-        className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto ${
+        className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent ${
           compact ? "px-3" : "px-4 sm:px-5"
         }`}
         onScroll={(e) => {
@@ -111,10 +131,21 @@ export function AssistantChatConversation({
         }}
       >
         {showEmptyChrome ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">
-            <p className="font-display text-center text-[16px] font-normal text-muted">
-              {emptyHint}
-            </p>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 sm:px-8">
+            <div className="w-full max-w-md text-center">
+              {!compact ? (
+                <p className="font-display text-2xl font-medium tracking-tight text-foreground sm:text-[1.75rem]">
+                  Chat
+                </p>
+              ) : null}
+              <p
+                className={`font-display text-[16px] font-normal leading-relaxed text-muted ${
+                  compact ? "" : "mt-3"
+                }`}
+              >
+                {emptyHint}
+              </p>
+            </div>
           </div>
         ) : (
           <div className="mt-auto flex w-full min-w-0 flex-col py-3">
@@ -133,41 +164,86 @@ export function AssistantChatConversation({
                   key={`${msg.role}-${i}`}
                   className={`flex w-full min-w-0 flex-col ${
                     isUser ? "items-end" : "items-start"
-                  } ${groupedWithNext ? "mb-1" : "mb-3"}`}
+                  } ${groupedWithNext ? "mb-1" : "mb-6"}`}
                 >
                   {parts.map((part, pi) => {
                     const lastPart = pi === parts.length - 1;
                     const showTail = lastPart && !groupedWithNext;
-                    const radius = isUser
-                      ? showTail
-                        ? "rounded-[1.25rem] rounded-br-sm"
-                        : "rounded-[1.25rem]"
-                      : showTail
-                        ? "rounded-[1.25rem] rounded-bl-sm"
-                        : "rounded-[1.25rem]";
-                    const bubbleBase = `chat-bubble relative px-3.5 py-2.5 ${radius}`;
-                    const bubble = isUser
-                      ? `${bubbleBase} bg-accent-soft ${textSize} leading-[1.5] text-foreground ${
-                          showTail ? "chat-bubble-tail-right" : ""
-                        }`
-                      : `${bubbleBase} bg-card ${textSize} leading-[1.5] text-foreground ${
-                          showTail ? "chat-bubble-tail-left" : ""
-                        }`;
+
+                    if (classicBubbles) {
+                      const radius = isUser
+                        ? showTail
+                          ? "rounded-xl rounded-br-sm"
+                          : "rounded-xl"
+                        : showTail
+                          ? "rounded-xl rounded-bl-sm"
+                          : "rounded-xl";
+                      const bubbleBase = `chat-bubble relative px-3 py-2 ${radius}`;
+                      const bubble = isUser
+                        ? `${bubbleBase} bg-accent-soft ${textSize} leading-[1.5] text-foreground ${
+                            showTail ? "chat-bubble-tail-right" : ""
+                          }`
+                        : `${bubbleBase} bg-card ${textSize} leading-[1.5] text-foreground ${
+                            showTail ? "chat-bubble-tail-left" : ""
+                          }`;
+                      return (
+                        <div
+                          key={pi}
+                          className={`flex w-full min-w-0 ${
+                            isUser ? "justify-end" : "justify-start"
+                          } ${lastPart ? "" : "mb-1"}`}
+                        >
+                          <div className="chat-bubble-shell">
+                            <div className={bubble}>
+                              <ChatMarkdown
+                                text={part}
+                                className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    /* Modern panel: user bubbles only; assistant is plain text. */
+                    if (isUser) {
+                      const radius = showTail
+                        ? "rounded-xl rounded-br-sm"
+                        : "rounded-xl";
+                      return (
+                        <div
+                          key={pi}
+                          className={`flex w-full min-w-0 justify-end ${
+                            lastPart ? "" : "mb-1"
+                          }`}
+                        >
+                          <div className="chat-bubble-shell">
+                            <div
+                              className={`chat-bubble relative px-3 py-2 ${radius} bg-black/[0.028] dark:bg-accent-soft ${textSize} leading-[1.5] text-foreground ${
+                                showTail ? "chat-bubble-tail-right" : ""
+                              }`}
+                            >
+                              <ChatMarkdown
+                                text={part}
+                                className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={pi}
-                        className={`flex w-full min-w-0 ${
-                          isUser ? "justify-end" : "justify-start"
-                        } ${lastPart ? "" : "mb-1"}`}
+                        className={`flex w-full min-w-0 max-w-[min(100%,42rem)] justify-start ${
+                          lastPart ? "" : "mb-3"
+                        }`}
                       >
-                        <div className="chat-bubble-shell">
-                          <div className={bubble}>
-                            <ChatMarkdown
-                              text={part}
-                              className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
-                            />
-                          </div>
-                        </div>
+                        <ChatMarkdown
+                          text={part}
+                          className={`${textSize} font-normal leading-[1.5] text-foreground`}
+                        />
                       </div>
                     );
                   })}
@@ -178,7 +254,7 @@ export function AssistantChatConversation({
                           key={ri}
                           className={`flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border px-3.5 py-2.5 text-sm ${
                             result.ok
-                              ? "border-border bg-background text-foreground"
+                              ? "border-accent/20 bg-accent-soft text-foreground"
                               : "border-danger/30 bg-danger/5 text-danger"
                           }`}
                           role="status"
@@ -216,9 +292,11 @@ export function AssistantChatConversation({
       </div>
 
       <form
-        className={`relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 bg-background pointer-events-auto ${
-          compact ? "px-3 pb-2.5 pt-2" : "px-4 pb-3 pt-2 sm:px-5"
-        }`}
+        className={`relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 pointer-events-auto ${
+          classicBubbles
+            ? "bg-background"
+            : "bg-transparent"
+        } ${compact ? "px-3 pb-2.5 pt-2" : "px-4 pb-3 pt-2 sm:px-5"}`}
         onSubmit={(e) => {
           e.preventDefault();
           onSend();
@@ -235,7 +313,7 @@ export function AssistantChatConversation({
             disabled={busy || opening}
             placeholder="Share what’s on your mind…"
             className={`min-w-0 flex-1 rounded-xl border border-border bg-background px-3 outline-none ring-accent/30 focus:ring-2 ${
-              compact ? "py-2 text-base" : "py-2.5 text-lg"
+              compact ? "py-2 text-base" : "py-2.5 text-base"
             }`}
           />
           <DictationMicButton

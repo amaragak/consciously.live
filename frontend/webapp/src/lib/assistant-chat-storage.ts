@@ -2,6 +2,8 @@
  * Persisted Consciously Chat threads (localStorage + optional cloud sync).
  */
 
+import { deriveAssistantChatTitleProvisional } from "@/lib/assistant-chat-title";
+
 export type AssistantChatActionResult = {
   label: string;
   detail?: string;
@@ -32,6 +34,11 @@ export type AssistantChatThread = {
   title: string;
   /** When true, auto-rename from first message is skipped. */
   titleManual?: boolean;
+  /**
+   * When true, the floating FAB will not resume this thread (e.g. after
+   * create_meditation). Full Chat sidebar still lists it.
+   */
+  excludeFromFabResume?: boolean;
   messages: AssistantChatUiMessage[];
   apiThread: AssistantChatApiTurn[];
   mode?: AssistantChatThreadMode;
@@ -131,6 +138,7 @@ function normalizeThread(raw: unknown): AssistantChatThread | null {
     updatedAt: o.updatedAt,
     title: o.title.trim().slice(0, 120) || "New chat",
     ...(o.titleManual === true ? { titleManual: true } : {}),
+    ...(o.excludeFromFabResume === true ? { excludeFromFabResume: true } : {}),
     messages,
     apiThread,
     ...(mode ? { mode } : {}),
@@ -296,8 +304,8 @@ export function deriveAssistantChatTitle(
 ): string {
   const firstUser = messages.find((m) => m.role === "user" && m.text.trim());
   if (!firstUser) return "New chat";
-  const t = firstUser.text.trim().replace(/\s+/g, " ");
-  return t.length > 48 ? `${t.slice(0, 47).trimEnd()}…` : t;
+  // Provisional only — smart titles come from /api/assistant-chat/title.
+  return deriveAssistantChatTitleProvisional(firstUser.text);
 }
 
 /** Rename a thread; marks title as user-owned so auto-derive won't overwrite. */
@@ -407,4 +415,41 @@ export function threadNeedsSessionOpen(thread: AssistantChatThread): boolean {
   if (hasUser) return false;
   if (thread.messages.length === 0) return true;
   return false;
+}
+
+/** FAB resumes a thread only if last activity was within this window. */
+export const ASSISTANT_CHAT_FAB_RESUME_MAX_AGE_MS = 60 * 60 * 1000;
+
+export function assistantChatThreadActivityMs(
+  thread: AssistantChatThread,
+): number {
+  const updated = Date.parse(thread.updatedAt);
+  if (Number.isFinite(updated)) return updated;
+  const created = Date.parse(thread.createdAt);
+  return Number.isFinite(created) ? created : 0;
+}
+
+/** Whether the FAB may reopen this thread (fresh + not create-handoff excluded). */
+export function isAssistantChatThreadFabResumable(
+  thread: AssistantChatThread,
+  nowMs = Date.now(),
+): boolean {
+  if (thread.excludeFromFabResume) return false;
+  const activity = assistantChatThreadActivityMs(thread);
+  if (!activity) return false;
+  return nowMs - activity <= ASSISTANT_CHAT_FAB_RESUME_MAX_AGE_MS;
+}
+
+/**
+ * Most recently updated thread the FAB should resume, or null → start new.
+ * Full Chat sidebar still lists every persisted thread.
+ */
+export function pickAssistantChatFabResumeThread(
+  store: AssistantChatStoreV1,
+  nowMs = Date.now(),
+): AssistantChatThread | null {
+  for (const thread of store.threads) {
+    if (isAssistantChatThreadFabResumable(thread, nowMs)) return thread;
+  }
+  return null;
 }

@@ -103,6 +103,7 @@ type OutItem = {
   claudeHaiku45WorkerOutputTokens: number | null;
   claudeHaiku45ChatEstInputTokens: number | null;
   claudeHaiku45ChatEstOutputTokens: number | null;
+  creationProvenance: unknown | null;
   generationTimings: {
     phases: {
       scriptMs?: number;
@@ -561,6 +562,10 @@ function buildLibraryItems(params: {
       claudeHaiku45WorkerOutputTokens: optTokens(row.claudeHaiku45WorkerOutputTokens),
       claudeHaiku45ChatEstInputTokens: optTokens(row.claudeHaiku45ChatEstInputTokens),
       claudeHaiku45ChatEstOutputTokens: optTokens(row.claudeHaiku45ChatEstOutputTokens),
+      creationProvenance:
+        row.creationProvenance && typeof row.creationProvenance === "object"
+          ? row.creationProvenance
+          : null,
       generationTimings: parseGenerationTimings(row.generationTimings),
     });
   }
@@ -629,6 +634,7 @@ function buildLibraryItems(params: {
       claudeHaiku45WorkerOutputTokens: null,
       claudeHaiku45ChatEstInputTokens: null,
       claudeHaiku45ChatEstOutputTokens: null,
+      creationProvenance: null,
       generationTimings: null,
     });
   }
@@ -665,7 +671,9 @@ export async function handler(
 
     if (community) {
       const ddbItems = await scanPublicMeditationItems(tableName);
-      const items = buildLibraryItems({ ddbItems, s3Objects: [], cfDomain, speakerNames });
+      const items = buildLibraryItems({ ddbItems, s3Objects: [], cfDomain, speakerNames }).map(
+        (item) => ({ ...item, creationProvenance: null }),
+      );
       const mixTable = process.env.MEDITATION_LISTENER_MIX_TABLE_NAME;
       const listenerPk = mixTable
         ? mixListenerPk({

@@ -9,10 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { LibraryHowMadeModal } from "@/components/library-how-made-modal";
 import {
   type LibraryMeditationItem,
   libraryMeditationCategoryLabel,
 } from "@/lib/medimade-api";
+import { parseMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
   MEDITATION_TYPE_PILL_CLASS,
   meditationTypePillColors,
@@ -245,6 +247,7 @@ export function LibraryMeditationCard({
   devOverlay,
 }: LibraryMeditationCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [howMadeOpen, setHowMadeOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -470,13 +473,20 @@ export function LibraryMeditationCard({
   const canPublic =
     !hideOwnerActions && Boolean(m.sk) && !m.isDraft && Boolean(onPublicChange);
   const canScript = Boolean(m.scriptText && m.sk != null && onToggleScript);
+  const canHowMade = !isPendingRow(item) && !hideOwnerActions;
+  const howMadeProvenance = !isPendingRow(item)
+    ? parseMeditationCreationProvenance(item.creationProvenance) ??
+      item.creationProvenance ??
+      null
+    : null;
   const hasMenuItems =
     canFavourite ||
     (canEditMix && Boolean(onOpenMix)) ||
     canPublic ||
     canArchive ||
     canShare ||
-    canScript;
+    canScript ||
+    canHowMade;
 
   const playControl = isPlaying ? (
     <div className="flex items-center gap-2">
@@ -606,6 +616,19 @@ export function LibraryMeditationCard({
               {open ? "Hide script" : "Show script"}
             </button>
           ) : null}
+          {canHowMade ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setHowMadeOpen(true);
+                setMenuOpen(false);
+              }}
+              className={menuItemClass}
+            >
+              How this was made
+            </button>
+          ) : null}
           {canShare ? (
             <button
               type="button"
@@ -716,6 +739,7 @@ export function LibraryMeditationCard({
 
   if (viewMode === "grid") {
     return (
+      <>
       <li
         ref={itemRef}
         className={`group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
@@ -759,10 +783,19 @@ export function LibraryMeditationCard({
           </div>
         </div>
       </li>
+      <LibraryHowMadeModal
+        open={howMadeOpen}
+        title={m.title}
+        provenance={howMadeProvenance}
+        meditationStyleFallback={m.meditationStyle}
+        onClose={() => setHowMadeOpen(false)}
+      />
+      </>
     );
   }
 
   return (
+    <>
     <li
       ref={itemRef}
       className={`group relative min-w-0 overflow-visible rounded-[6px] border bg-card p-4 ${
@@ -816,5 +849,13 @@ export function LibraryMeditationCard({
         </div>
       ) : null}
     </li>
+    <LibraryHowMadeModal
+      open={howMadeOpen}
+      title={m.title}
+      provenance={howMadeProvenance}
+      meditationStyleFallback={m.meditationStyle}
+      onClose={() => setHowMadeOpen(false)}
+    />
+    </>
   );
 }

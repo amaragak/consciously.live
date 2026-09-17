@@ -34,6 +34,7 @@ import {
   parseCreateMeditationPathname,
   type CreateMeditationPath,
 } from "@/lib/create-meditation-path";
+import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
   clearCreateSession,
   createSessionSatisfiesRoute,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/create-session-storage";
 import { setCreateMainChatVisible } from "@/lib/assistant-chat-fab-visibility";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
+import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
 import { MeditationTypeCardGrid } from "@/components/community-category-grid";
 import {
   DictationMicButton,
@@ -150,6 +152,12 @@ import {
 } from "@/lib/focus-session-handoff";
 import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
+import {
+  loadIdeateStore,
+  sortSubtasks,
+  subtasksForProject,
+  type IdeateSubtask,
+} from "@/lib/plan-ideate-store";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import {
   applySpeechElementVolume,
@@ -638,8 +646,111 @@ function inferCreationPathFromDraft(
 }
 
 const GOAL_PICK_INTRO = "Which goal would you like to move towards?";
-const OPENING_GOAL =
-  "I’ll write a visualization around this goal. What would success look like, and how would it feel?";
+const GOAL_CREATE_LIFE_AREA_MESSAGE =
+  "Please create a visualization meditation for this life area as a whole";
+const GOAL_CREATE_FOCUS_GOAL_MESSAGE =
+  "Please create a visualization meditation that helps me move towards this goal";
+
+function lifeAreaDescriptionFromDream(d: PlanDream): string {
+  const parts: string[] = [];
+  if (d.dreamText.trim()) parts.push(d.dreamText.trim());
+  if (d.obstacleText.trim()) {
+    parts.push(`What's in the way:\n${d.obstacleText.trim()}`);
+  }
+  if (d.visionText.trim()) {
+    parts.push(`Vision:\n${d.visionText.trim()}`);
+  }
+  return parts.join("\n\n").trim().slice(0, 12000) || d.firstThought.trim();
+}
+
+function goalPreviewFromSubtask(s: IdeateSubtask): string {
+  return (
+    s.dreamText.trim() ||
+    s.visionText.trim() ||
+    s.resistanceText.trim() ||
+    ""
+  ).slice(0, 160);
+}
+
+function buildManifestHandoffApiContent(opts: {
+  lifeAreaTitle: string;
+  dreamText: string;
+  obstacleText: string;
+  visionText: string;
+  focusGoal?: {
+    title: string;
+    dreamText: string;
+    resistanceText: string;
+    visionText: string;
+  } | null;
+  siblingGoalTitles?: string[];
+  guidance?: string;
+}): string {
+  const lifeLines: string[] = [
+    `Life area: ${opts.lifeAreaTitle.trim() || "Untitled"}`,
+  ];
+  if (opts.dreamText.trim()) {
+    lifeLines.push("", "The dream:", opts.dreamText.trim());
+  }
+  if (opts.obstacleText.trim()) {
+    lifeLines.push("", "What's in the way:", opts.obstacleText.trim());
+  }
+  if (opts.visionText.trim()) {
+    lifeLines.push("", "Vision:", opts.visionText.trim());
+  }
+
+  const focus = opts.focusGoal;
+  const lead = focus
+    ? GOAL_CREATE_FOCUS_GOAL_MESSAGE
+    : GOAL_CREATE_LIFE_AREA_MESSAGE;
+
+  const focusBlock = focus
+    ? [
+        "",
+        "--- Focus goal ---",
+        `Goal: ${focus.title.trim() || "Untitled goal"}`,
+        ...(focus.dreamText.trim()
+          ? ["What they want:", focus.dreamText.trim()]
+          : []),
+        ...(focus.resistanceText.trim()
+          ? ["What's in the way:", focus.resistanceText.trim()]
+          : []),
+        ...(focus.visionText.trim()
+          ? ["Vision of success:", focus.visionText.trim()]
+          : []),
+        "--- End focus goal ---",
+      ]
+    : opts.siblingGoalTitles && opts.siblingGoalTitles.length
+      ? [
+          "",
+          "Goals in this life area (for context — none singled out):",
+          ...opts.siblingGoalTitles.map((t) => `- ${t}`),
+        ]
+      : [];
+
+  const guidanceNote = opts.guidance?.trim() ?? "";
+  return [
+    lead,
+    "",
+    focus
+      ? "Shape the visualisation around the focus goal below, while staying grounded in the full life-area context (dream, blockers, vision)."
+      : "Shape a general visualisation for this life area using the dream, blockers, and vision below.",
+    "",
+    "--- Life area context ---",
+    ...lifeLines,
+    "--- End life area context ---",
+    ...focusBlock,
+    ...(guidanceNote
+      ? [
+          "",
+          "--- Guide note ---",
+          "The creator added this note about how to use the material (not a change to meditation style):",
+          guidanceNote,
+          "--- End guide note ---",
+        ]
+      : []),
+  ].join("\n");
+}
 
 function parseCoachDisplayText(raw: string): { text: string; ready: boolean } {
   let ready = false;
@@ -689,6 +800,9 @@ type PlanGoal = {
   description: string;
   createdAt: string;
   tasks: PlanTask[];
+  dreamText: string;
+  obstacleText: string;
+  visionText: string;
 };
 
 type PlanStateV1 = {
@@ -697,29 +811,36 @@ type PlanStateV1 = {
 };
 
 function dreamToPlanGoal(d: PlanDream): PlanGoal {
-  const parts: string[] = [];
-  if (d.dreamText.trim()) parts.push(d.dreamText.trim());
-  if (d.obstacleText.trim()) {
-    parts.push(`What's in the way:\n${d.obstacleText.trim()}`);
-  }
-  if (d.visionText.trim()) {
-    parts.push(`Vision:\n${d.visionText.trim()}`);
-  }
-  const description =
-    parts.join("\n\n").trim().slice(0, 12000) || d.firstThought.trim();
   return {
     id: d.id,
     title: d.title.trim() || "Untitled",
-    description,
+    description: lifeAreaDescriptionFromDream(d),
     createdAt: d.createdAt,
     tasks: [],
+    dreamText: d.dreamText,
+    obstacleText: d.obstacleText,
+    visionText: d.visionText,
   };
 }
 
-function loadPlanGoals(): PlanGoal[] {
-  if (typeof window === "undefined") return [];
-  const dreamRows = loadPlanDreamsStore().dreams.map(dreamToPlanGoal);
+function loadManifestLifeAreas(): {
+  lifeAreas: PlanGoal[];
+  goalsByLifeArea: Record<string, IdeateSubtask[]>;
+} {
+  if (typeof window === "undefined") {
+    return { lifeAreas: [], goalsByLifeArea: {} };
+  }
+  const store = loadIdeateStore();
+  const dreamRows = store.dreams.map(dreamToPlanGoal);
   const dreamIds = new Set(dreamRows.map((g) => g.id));
+  const goalsByLifeArea: Record<string, IdeateSubtask[]> = {};
+  for (const d of store.dreams) {
+    goalsByLifeArea[d.id] = sortSubtasks(
+      subtasksForProject(store, d.id),
+      "updated_desc",
+    );
+  }
+
   let legacy: PlanGoal[] = [];
   try {
     const raw = window.localStorage.getItem("mm_plan_v1");
@@ -732,6 +853,13 @@ function loadPlanGoals(): PlanGoal[] {
             .filter(
               (g) => g && typeof g.id === "string" && typeof g.title === "string",
             )
+            .map((g) => ({
+              ...g,
+              dreamText: g.dreamText ?? g.description ?? "",
+              obstacleText: g.obstacleText ?? "",
+              visionText: g.visionText ?? "",
+              tasks: Array.isArray(g.tasks) ? g.tasks : [],
+            }))
             .slice(0, 50);
         }
       }
@@ -739,7 +867,24 @@ function loadPlanGoals(): PlanGoal[] {
   } catch {
     legacy = [];
   }
-  return [...dreamRows, ...legacy.filter((g) => !dreamIds.has(g.id))];
+
+  // Fallback when ideate store is empty but legacy dreams exist.
+  if (dreamRows.length === 0) {
+    const fromDreamsStore = loadPlanDreamsStore().dreams.map(dreamToPlanGoal);
+    for (const g of fromDreamsStore) dreamIds.add(g.id);
+    return {
+      lifeAreas: [
+        ...fromDreamsStore,
+        ...legacy.filter((g) => !dreamIds.has(g.id)),
+      ],
+      goalsByLifeArea,
+    };
+  }
+
+  return {
+    lifeAreas: [...dreamRows, ...legacy.filter((g) => !dreamIds.has(g.id))],
+    goalsByLifeArea,
+  };
 }
 
 function JournalHandoffEntryCards({
@@ -1255,9 +1400,15 @@ export function CreateWorkspace({
     () => new Set<string>(),
   );
   const [journalReflectGuidance, setJournalReflectGuidance] = useState("");
+  const [goalReflectGuidance, setGoalReflectGuidance] = useState("");
   const [planGoals, setPlanGoals] = useState<PlanGoal[]>([]);
+  const [goalsByLifeArea, setGoalsByLifeArea] = useState<
+    Record<string, IdeateSubtask[]>
+  >({});
   const [planGoalsReady, setPlanGoalsReady] = useState(false);
   const [goalSelectedId, setGoalSelectedId] = useState<string | null>(null);
+  /** Optional Manifest goal (IdeateSubtask) under the selected life area. */
+  const [goalFocusId, setGoalFocusId] = useState<string | null>(null);
   const [lifeAreaId, setLifeAreaId] = useState<string | null>(null);
   const [oneShotPrompt, setOneShotPrompt] = useState("");
 
@@ -1391,6 +1542,7 @@ export function CreateWorkspace({
     );
     setJournalReflectGuidance(s.journalReflectGuidance ?? "");
     setGoalSelectedId(s.goalSelectedId);
+    setGoalFocusId(null);
     setLifeAreaId(s.lifeAreaId ?? null);
     setOneShotPrompt(s.oneShotPrompt ?? "");
     if (s.draftSk) setDraftSk(s.draftSk);
@@ -1845,9 +1997,14 @@ export function CreateWorkspace({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setPlanGoals(loadPlanGoals());
-    setPlanGoalsReady(true);
-    const onFocus = () => setPlanGoals(loadPlanGoals());
+    const sync = () => {
+      const loaded = loadManifestLifeAreas();
+      setPlanGoals(loaded.lifeAreas);
+      setGoalsByLifeArea(loaded.goalsByLifeArea);
+      setPlanGoalsReady(true);
+    };
+    sync();
+    const onFocus = () => sync();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
@@ -2490,9 +2647,7 @@ export function CreateWorkspace({
       (creationPath === "freeflow" &&
         journalMode &&
         phase === "feeling" &&
-        !meditationStyle) ||
-      (phase === "journalPick" && creationPath === "journalReflect") ||
-      (phase === "goalPick" && creationPath === "goal");
+        !meditationStyle);
     if (!introTypingPhase) return;
     const idx = (() => {
       for (let i = 0; i < messages.length; i++) {
@@ -2505,13 +2660,7 @@ export function CreateWorkspace({
     })();
     if (idx < 0) return;
     const opening =
-      phase === "journalPick" && creationPath === "journalReflect"
-        ? JOURNAL_REFLECT_PICK_INTRO
-        : phase === "goalPick" && creationPath === "goal"
-          ? GOAL_PICK_INTRO
-          : creationPath === "style"
-            ? OPENING_STYLE
-            : OPENING_JOURNAL;
+      creationPath === "style" ? OPENING_STYLE : OPENING_JOURNAL;
     const m = messages[idx];
     if (m.text === opening) {
       setIntroTypingDone(true);
@@ -2543,12 +2692,6 @@ export function CreateWorkspace({
   ]);
 
   function openingTextForCurrentIntro(): string {
-    if (phase === "journalPick" && creationPath === "journalReflect") {
-      return JOURNAL_REFLECT_PICK_INTRO;
-    }
-    if (phase === "goalPick" && creationPath === "goal") {
-      return GOAL_PICK_INTRO;
-    }
     if (creationPath === "style") {
       return OPENING_STYLE;
     }
@@ -2604,8 +2747,10 @@ export function CreateWorkspace({
       setMessages([]);
     } else if (creationPath === "goal") {
       setGoalSelectedId(null);
+      setGoalFocusId(null);
+      setGoalReflectGuidance("");
       setPhase("goalPick");
-      setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+      setMessages([]);
     } else if (creationPath === "oneShot") {
       setOneShotPrompt("");
       setPhase("promptPick");
@@ -2647,7 +2792,11 @@ export function CreateWorkspace({
       setJournalReflectSelectedIds(new Set());
       setJournalReflectGuidance("");
     }
-    if (next !== "goal") setGoalSelectedId(null);
+    if (next !== "goal") {
+      setGoalSelectedId(null);
+      setGoalFocusId(null);
+      setGoalReflectGuidance("");
+    }
     if (next !== "goal" && next !== "freeflow") {
       setLifeAreaId(null);
       writeLinkedLifeAreaId(null);
@@ -2798,6 +2947,8 @@ export function CreateWorkspace({
     setCreationPath("goal");
     setJournalMode(true);
     setGoalSelectedId(null);
+    setGoalFocusId(null);
+    setGoalReflectGuidance("");
     setLifeAreaId(null);
     writeLinkedLifeAreaId(null);
     setPhase("goalPick");
@@ -2806,9 +2957,8 @@ export function CreateWorkspace({
     setClaudeThread([]);
     setMeditationStyle(null);
     setInput("");
-    setIntroTypingDone(false);
-    setIntroTypingSession((s) => s + 1);
-    setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+    setIntroTypingDone(true);
+    setMessages([]);
     setScriptTargetMinutes(null);
     setMobileCreateStep("chat");
     initialChatAutofocusDoneRef.current = false;
@@ -2889,66 +3039,84 @@ export function CreateWorkspace({
     pushCreate({ path: "style", mix: true });
   }
 
-  async function confirmGoalSelection() {
-    const id = goalSelectedId?.trim() ?? "";
-    if (!id || chatLoading) return;
-    const goal = planGoals.find((g) => g.id === id);
-    if (!goal) return;
+  function confirmGoalSelection() {
+    const lifeAreaId = goalSelectedId?.trim() ?? "";
+    if (!lifeAreaId) return;
+    const lifeArea = planGoals.find((g) => g.id === lifeAreaId);
+    if (!lifeArea) return;
 
-    setLifeAreaId(id);
-    writeLinkedLifeAreaId(id);
+    setLifeAreaId(lifeAreaId);
+    writeLinkedLifeAreaId(lifeAreaId);
 
-    const lines: string[] = [];
-    lines.push(`Goal: ${goal.title.trim() || "Untitled goal"}`);
-    if (goal.description?.trim()) lines.push(`Context: ${goal.description.trim()}`);
-    const openTasks = (goal.tasks ?? [])
-      .filter((t) => t && !t.done && (t.title ?? "").trim())
-      .slice(0, 6)
-      .map((t) => `- ${t.title.trim()}`);
-    if (openTasks.length) {
-      lines.push("");
-      lines.push("Current tasks:");
-      lines.push(...openTasks);
-    }
-    const goalSummary = lines.join("\n");
+    const focusId = goalFocusId?.trim() || null;
+    const focusSubtask =
+      focusId != null
+        ? (goalsByLifeArea[lifeAreaId] ?? []).find((s) => s.id === focusId) ??
+          null
+        : null;
 
-    const styleHint = "Manifestation";
-    const history: MedimadeChatTurn[] = [
-      { role: "assistant", content: OPENING_GOAL },
-      { role: "user", content: goalSummary },
-    ];
+    const siblingGoalTitles = (goalsByLifeArea[lifeAreaId] ?? [])
+      .filter((s) => s.status !== "done")
+      .map((s) => s.title.trim() || "Untitled goal")
+      .filter(Boolean)
+      .slice(0, 12);
 
+    const guidance = goalReflectGuidance.trim();
+    const apiUserContent = buildManifestHandoffApiContent({
+      lifeAreaTitle: lifeArea.title,
+      dreamText: lifeArea.dreamText || lifeArea.description,
+      obstacleText: lifeArea.obstacleText || "",
+      visionText: lifeArea.visionText || "",
+      focusGoal: focusSubtask
+        ? {
+            title: focusSubtask.title,
+            dreamText: focusSubtask.dreamText,
+            resistanceText: focusSubtask.resistanceText,
+            visionText: focusSubtask.visionText,
+          }
+        : null,
+      siblingGoalTitles: focusSubtask ? undefined : siblingGoalTitles,
+      guidance: guidance || undefined,
+    });
+
+    setJournalMode(true);
     setPhase("claude");
     setIntroTypingDone(true);
-    setMeditationStyle(styleHint);
-    setClaudeThread([]);
+    setMeditationStyle("Manifestation");
+    setClaudeThread([{ role: "user", content: apiUserContent }]);
     setInput("");
     setMessages([
       {
         role: "user",
-        text: goalSummary,
+        text: apiUserContent,
         variant: "chat",
       },
     ]);
-    setChatBusy(true);
+    setScriptTargetMinutes(null);
+    setChatBusy(false);
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    pushCreate({ path: "goal", mix: true });
+  }
 
-    try {
-      const text = await streamCoachChat(
-        {
-          meditationStyle: styleHint,
-          messages: history,
-        },
-      );
-      setClaudeThread([...history, { role: "assistant", content: text }]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not reach the guide.";
-      setMessages((m) => [...m, { role: "assistant", text: `Sorry — ${msg}` }]);
-    } finally {
-      setChatBusy(false);
-      requestAnimationFrame(() => {
-        chatInputRef.current?.focus();
-      });
+  function selectManifestLifeArea(id: string) {
+    if (goalSelectedId === id) {
+      if (goalFocusId) {
+        // Already on this life area with a goal focus → switch to general.
+        setGoalFocusId(null);
+        return;
+      }
+      setGoalSelectedId(null);
+      setGoalFocusId(null);
+      return;
     }
+    setGoalSelectedId(id);
+    setGoalFocusId(null);
+  }
+
+  function selectManifestGoal(lifeAreaId: string, goalId: string) {
+    setGoalSelectedId(lifeAreaId);
+    setGoalFocusId((prev) => (prev === goalId ? null : goalId));
   }
 
   function selectJournalReflectEntry(id: string) {
@@ -3022,6 +3190,76 @@ export function CreateWorkspace({
     devRandomTranscriptRef.current = null;
     initialChatAutofocusDoneRef.current = false;
     pushCreate({ path: "pending" });
+  }
+
+  /** Journal/one-shot skip a visible chat step — back from audio returns to the picker. */
+  function restoreJournalReflectPicker() {
+    setPhase("journalPick");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+  }
+
+  function restoreOneShotPromptPicker() {
+    setPhase("promptPick");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+  }
+
+  function restoreGoalPicker() {
+    setPhase("goalPick");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+  }
+
+  function goBackFromAudio() {
+    if (randomScript) {
+      goBackToChatStyle();
+      return;
+    }
+    if (creationPath === "style") {
+      pushCreate({ path: "style", styleStep: "questions" });
+      return;
+    }
+    if (creationPath === "journalReflect") {
+      restoreJournalReflectPicker();
+      pushCreate({ path: "journalReflect" });
+      return;
+    }
+    if (creationPath === "oneShot") {
+      restoreOneShotPromptPicker();
+      pushCreate({ path: "oneShot" });
+      return;
+    }
+    if (creationPath === "goal") {
+      restoreGoalPicker();
+      pushCreate({ path: "goal" });
+      return;
+    }
+    // Freeflow: audio was reached from the coach chat — return there.
+    pushCreate({
+      path: creationPath === "pending" ? "freeflow" : creationPath,
+    });
   }
 
   function goToAudioSettings() {
@@ -3103,8 +3341,8 @@ export function CreateWorkspace({
         setCreateStripStep(2);
         setMobileCreateStep("audio");
       } else {
-        setCreateStripStep(1);
-        setMobileCreateStep("chat");
+        // Picker is the only pre-audio step — never restore the synthetic handoff chat.
+        restoreJournalReflectPicker();
       }
       return;
     }
@@ -3118,8 +3356,8 @@ export function CreateWorkspace({
         setCreateStripStep(2);
         setMobileCreateStep("audio");
       } else {
-        setCreateStripStep(1);
-        setMobileCreateStep("chat");
+        // Picker is the only pre-audio step — never restore a synthetic handoff chat.
+        restoreGoalPicker();
       }
       return;
     }
@@ -3133,9 +3371,7 @@ export function CreateWorkspace({
         setCreateStripStep(2);
         setMobileCreateStep("audio");
       } else {
-        setCreateStripStep(1);
-        setMobileCreateStep("chat");
-        setPhase("promptPick");
+        restoreOneShotPromptPicker();
       }
     }
   }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, router, seedJournalContext, seedPlanContext]);
@@ -3481,6 +3717,62 @@ export function CreateWorkspace({
 
       const linkedLifeAreaId =
         lifeAreaId?.trim() || readLinkedLifeAreaId() || "";
+      const journalCardsForProvenance = messages
+        .flatMap((m) => m.journalSegments ?? [])
+        .slice(0, 4);
+      const manifestLifeArea = linkedLifeAreaId
+        ? planGoals.find((g) => g.id === linkedLifeAreaId)
+        : null;
+      const manifestFocus =
+        linkedLifeAreaId && goalFocusId
+          ? (goalsByLifeArea[linkedLifeAreaId] ?? []).find(
+              (s) => s.id === goalFocusId,
+            ) ?? null
+          : null;
+      const creationProvenance = buildMeditationCreationProvenance({
+        creationPath,
+        randomScript,
+        meditationStyle,
+        styleQuestionAnswers,
+        chatMessages:
+          creationPath === "freeflow"
+            ? messages.map((m) => ({
+                role: m.role,
+                text: m.text,
+                ...(m.variant ? { variant: m.variant } : {}),
+              }))
+            : undefined,
+        journalEntries:
+          creationPath === "journalReflect" && journalCardsForProvenance.length
+            ? journalCardsForProvenance
+            : undefined,
+        journalGuidance:
+          creationPath === "journalReflect"
+            ? journalReflectGuidance
+            : undefined,
+        manifest:
+          creationPath === "goal" && manifestLifeArea
+            ? {
+                lifeAreaTitle: manifestLifeArea.title,
+                dreamText:
+                  manifestLifeArea.dreamText || manifestLifeArea.description,
+                obstacleText: manifestLifeArea.obstacleText || "",
+                visionText: manifestLifeArea.visionText || "",
+                focusGoalTitle: manifestFocus?.title,
+                focusGoalDetail:
+                  [
+                    manifestFocus?.dreamText,
+                    manifestFocus?.resistanceText,
+                    manifestFocus?.visionText,
+                  ]
+                    .filter((t) => typeof t === "string" && t.trim())
+                    .join("\n\n") || undefined,
+                guidance: goalReflectGuidance.trim() || undefined,
+              }
+            : undefined,
+        directPrompt:
+          creationPath === "oneShot" ? oneShotPrompt : undefined,
+      });
       const { jobId } = await createMeditationAudioJob({
         meditationStyle,
         journalMode: journalMode === true,
@@ -3497,6 +3789,7 @@ export function CreateWorkspace({
         speed: speechSpeed,
         voiceFxPreset: voiceFxOn ? "mixer" : null,
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
+        ...(creationProvenance ? { creationProvenance } : {}),
         // A soundscape replaces the whole bed: it rides the music slot alone,
         // and the mixer's own selections stay out of this render.
         ...(soundscapeActive
@@ -4047,6 +4340,10 @@ export function CreateWorkspace({
     creationPath === "journalReflect" &&
     phase === "journalPick" &&
     workspaceSectionStep !== 2;
+  const showGoalPick =
+    creationPath === "goal" &&
+    phase === "goalPick" &&
+    workspaceSectionStep !== 2;
   const showPromptPick =
     creationPath === "oneShot" &&
     phase === "promptPick" &&
@@ -4060,6 +4357,7 @@ export function CreateWorkspace({
     !showStyleTypePick &&
     !showStyleQuestions &&
     !showJournalPick &&
+    !showGoalPick &&
     !showPromptPick &&
     workspaceSectionStep === 1;
   const showAudioPlayAll = workspaceSectionStep === 2;
@@ -4114,6 +4412,7 @@ export function CreateWorkspace({
     !showStyleTypePick &&
     !showStyleQuestions &&
     !showJournalPick &&
+    !showGoalPick &&
     !showPromptPick &&
     !chatHasAnyMessageRow &&
     !showChatTyping &&
@@ -4334,7 +4633,7 @@ export function CreateWorkspace({
                 Move towards a goal
               </span>
               <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
-                Pick a goal from Manifest for a visualization that helps you step toward it.
+                Pick a life area — optionally focus on one goal — for a visualization grounded in your dream and blockers.
               </p>
               {!planGoalsReady ? (
                 <p className="mt-1 text-[12px] text-muted sm:mt-2.5 sm:text-[13px]">
@@ -4680,6 +4979,64 @@ export function CreateWorkspace({
             </CreateFlowFooterBar>
           </div>
         ) : null}
+        {showGoalPick ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
+              <ManifestGoalPicker
+                lifeAreas={planGoals.map((g) => ({
+                  id: g.id,
+                  title: g.title,
+                  createdAt: g.createdAt,
+                  dreamText: g.dreamText || "",
+                  obstacleText: g.obstacleText || "",
+                  visionText: g.visionText || "",
+                  preview: g.description,
+                  goals: (goalsByLifeArea[g.id] ?? []).map((s) => ({
+                    id: s.id,
+                    title: s.title,
+                    preview: goalPreviewFromSubtask(s),
+                    done: s.status === "done",
+                  })),
+                }))}
+                listReady={planGoalsReady}
+                selectedLifeAreaId={goalSelectedId}
+                selectedGoalId={goalFocusId}
+                onSelectLifeArea={selectManifestLifeArea}
+                onSelectGoal={selectManifestGoal}
+                guidance={goalReflectGuidance}
+                onGuidanceChange={setGoalReflectGuidance}
+              />
+            </div>
+            <CreateFlowFooterBar>
+              <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+                  onClick={goBackToChatStyle}
+                  disabled={chatControlsDisabled}
+                  aria-label="Back to chat style selection"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Chat style</span>
+                </CreateFlowNavPill>
+              </div>
+              <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+              <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+                  disabled={
+                    chatLoading || chatControlsDisabled || !goalSelectedId
+                  }
+                  onClick={confirmGoalSelection}
+                  aria-label="Next: audio and voice settings"
+                >
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+              </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
         {showPromptPick ? (
           <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
             <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
@@ -4725,7 +5082,7 @@ export function CreateWorkspace({
             </CreateFlowFooterBar>
           </div>
         ) : null}
-        {workspaceSectionStep === 1 && !showStyleTypePick && !showStyleQuestions && !showJournalPick && !showPromptPick ? (
+        {workspaceSectionStep === 1 && !showStyleTypePick && !showStyleQuestions && !showJournalPick && !showGoalPick && !showPromptPick ? (
         <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
         <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
           <div
@@ -4818,7 +5175,7 @@ export function CreateWorkspace({
                     key={`${msg.role}-${i}-${msg.variant ?? "u"}`}
                     className={`flex w-full min-w-0 flex-col ${
                       isUser ? "items-end" : "items-start"
-                    } ${groupedWithNext ? "mb-1" : "mb-3"}`}
+                    } ${groupedWithNext ? "mb-1" : "mb-6"}`}
                   >
                     {parts.map((part, pi) => {
                       const lastPart = pi === parts.length - 1;
@@ -4829,12 +5186,12 @@ export function CreateWorkspace({
                         !moreCoachBubblesComing;
                       const radius = isUser
                         ? showTail
-                          ? "rounded-[1.25rem] rounded-br-sm"
-                          : "rounded-[1.25rem]"
+                          ? "rounded-xl rounded-br-sm"
+                          : "rounded-xl"
                         : showTail
-                          ? "rounded-[1.25rem] rounded-bl-sm"
-                          : "rounded-[1.25rem]";
-                      const bubbleBase = `chat-bubble relative px-3.5 py-2.5 ${radius}`;
+                          ? "rounded-xl rounded-bl-sm"
+                          : "rounded-xl";
+                      const bubbleBase = `chat-bubble relative px-3 py-2 ${radius}`;
                       const bubble = isUser
                         ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
                             showTail ? "chat-bubble-tail-right" : ""
@@ -4928,74 +5285,6 @@ export function CreateWorkspace({
                 </div>
                 </Tooltip.Provider>
               )}
-              {phase === "goalPick" ? (
-                <div className="mt-3 space-y-3 rounded-xl border border-border bg-background px-3 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Your goals (from Manifest)
-                  </p>
-                  {!planGoalsReady ? (
-                    <p className="text-sm text-muted">Loading goals…</p>
-                  ) : !hasPlanGoals ? (
-                    <p className="text-sm leading-relaxed text-muted">
-                      Add a project in{" "}
-                      <Link
-                        href="/manifest/my"
-                        className="cursor-pointer font-semibold text-accent-link underline-offset-2 hover:underline"
-                      >Manifest</Link>{" "}
-                      to use this flow.
-                    </p>
-                  ) : introTypingDone ? (
-                    <>
-                      <ul className="max-h-[min(16rem,42vh)] space-y-1.5 overflow-y-auto pr-1">
-                        {[...planGoals]
-                          .sort((a, b) =>
-                            (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
-                          )
-                          .slice(0, 25)
-                          .map((g) => {
-                            const title = (g.title ?? "").trim() || "Untitled goal";
-                            const preview = (g.description ?? "").trim();
-                            const previewLine =
-                              preview.length > 96 ? `${preview.slice(0, 93)}…` : preview;
-                            const openTasks = (g.tasks ?? []).filter((t) => !t.done).length;
-                            return (
-                              <li key={g.id}>
-                                <label className="flex cursor-pointer gap-3 rounded-lg border border-transparent px-2 py-2 hover:border-border hover:bg-accent-soft/25">
-                                  <input
-                                    type="radio"
-                                    name="goal-pick"
-                                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-foreground"
-                                    checked={goalSelectedId === g.id}
-                                    onChange={() => setGoalSelectedId(g.id)}
-                                  />
-                                  <span className="min-w-0">
-                                    <span className="block text-sm font-medium text-foreground">
-                                      {title}
-                                    </span>
-                                    <span className="mt-0.5 block text-xs text-muted">
-                                      {openTasks ? `${openTasks} open tasks` : "No open tasks"}
-                                      {previewLine ? ` · ${previewLine}` : ""}
-                                    </span>
-                                  </span>
-                                </label>
-                              </li>
-                            );
-                          })}
-                      </ul>
-                      <div className="flex justify-end border-t border-border/60 pt-3">
-                        <button
-                          type="button"
-                          disabled={chatLoading || !goalSelectedId}
-                          onClick={() => void confirmGoalSelection()}
-                          className="cursor-pointer rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
-                        >
-                          Continue with selected
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
               {showChatTyping ? <ChatTypingIndicator /> : null}
               <div ref={messagesEndRef} />
               </div>
@@ -5385,27 +5674,29 @@ export function CreateWorkspace({
           <CreateFlowFooterBar>
             <div className="flex min-w-0 flex-1 justify-start">
             <CreateFlowNavPill
-              onClick={() => {
-                if (randomScript) {
-                  goBackToChatStyle();
-                  return;
-                }
-                if (creationPath === "style") {
-                  pushCreate({ path: "style", styleStep: "questions" });
-                  return;
-                }
-                pushCreate({
-                  path: creationPath === "pending" ? "freeflow" : creationPath,
-                });
-              }}
+              onClick={goBackFromAudio}
               aria-label={
                 creationPath === "style"
                   ? "Back to questions"
-                  : "Back to script and chat"
+                  : creationPath === "journalReflect"
+                    ? "Back to journal entry picker"
+                    : creationPath === "goal"
+                      ? "Back to goal picker"
+                      : creationPath === "oneShot"
+                        ? "Back to prompt"
+                        : "Back to script and chat"
               }
             >
               <IconChevronLeft className="shrink-0 text-accent-link" />
-              {creationPath === "style" ? "Questions" : "Script"}
+              {creationPath === "style"
+                ? "Questions"
+                : creationPath === "journalReflect"
+                  ? "Journal"
+                  : creationPath === "goal"
+                    ? "Goal"
+                    : creationPath === "oneShot"
+                      ? "Prompt"
+                      : "Script"}
             </CreateFlowNavPill>
             </div>
             <div className="flex shrink-0 justify-center">{lengthBarControl}</div>

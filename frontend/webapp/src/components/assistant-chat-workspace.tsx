@@ -25,6 +25,7 @@ import {
   threadPreview,
   type AssistantChatThread,
 } from "@/lib/assistant-chat-storage";
+import { ASSISTANT_CHAT_PANEL_CLASSIC_STYLE } from "@/lib/assistant-chat-ui-flags";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -145,13 +146,15 @@ export function AssistantChatWorkspace() {
 
   const newHandledRef = useRef(false);
 
-  // ?new=1 → create thread + navigate
+  // Landing on /chat/my (breadcrumb, sidebar Chat, or direct URL) → always a fresh thread.
+  // Also handles ?new=1.
   useEffect(() => {
     if (!cloudReady || !chat.hydrated) return;
-    if (searchParams?.get("new") !== "1") {
+    if (routeThreadId) {
       newHandledRef.current = false;
       return;
     }
+    if (pathname !== "/chat/my" && pathname !== "/chat/my/") return;
     if (newHandledRef.current) return;
     newHandledRef.current = true;
     let cancelled = false;
@@ -167,32 +170,22 @@ export function AssistantChatWorkspace() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudReady, chat.hydrated, searchParams]);
+  }, [cloudReady, chat.hydrated, pathname, routeThreadId, searchParams]);
 
-  // Keep URL in sync when hook created a thread on /chat/my
-  useEffect(() => {
-    if (!chat.hydrated || !chat.activeId) return;
-    if (routeThreadId === chat.activeId) return;
-    if (routeThreadId) return; // invalid id handled below
-    if (pathname === "/chat/my" || pathname === "/chat/my/") {
-      router.replace(`/chat/my/${encodeURIComponent(chat.activeId)}`);
-    }
-  }, [chat.hydrated, chat.activeId, routeThreadId, pathname, router]);
-
-  // Invalid thread id in URL → go to list / latest
+  // Invalid thread id in URL → start a fresh chat
   useEffect(() => {
     if (!chat.hydrated || !routeThreadId) return;
     if (chat.activeId === routeThreadId) return;
     const store = loadAssistantChatStore();
     if (!store.threads.some((t) => t.id === routeThreadId)) {
-      const fallback = store.activeThreadId ?? store.threads[0]?.id;
-      router.replace(
-        fallback
-          ? `/chat/my/${encodeURIComponent(fallback)}`
-          : "/chat/my",
-      );
+      void (async () => {
+        const id = await chat.createNewThread();
+        router.replace(
+          id ? `/chat/my/${encodeURIComponent(id)}` : "/chat/my",
+        );
+      })();
     }
-  }, [chat.hydrated, chat.activeId, routeThreadId, router]);
+  }, [chat, chat.hydrated, chat.activeId, routeThreadId, router]);
 
   const groups = useMemo(
     () => groupAssistantChatThreadsForSidebar(storeThreads),
@@ -264,18 +257,26 @@ export function AssistantChatWorkspace() {
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
-      <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-0 opacity-15"
-          style={{
-            backgroundImage:
-              'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
-            backgroundRepeat: "repeat",
-            backgroundSize: "286px 320px",
-            backgroundPosition: "center top",
-          }}
-        />
+      <div
+        className={`relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl overflow-hidden border-r-[0.5px] border-border ${
+          ASSISTANT_CHAT_PANEL_CLASSIC_STYLE
+            ? "bg-[color:var(--card-warm-bg)]"
+            : "bg-transparent"
+        }`}
+      >
+        {ASSISTANT_CHAT_PANEL_CLASSIC_STYLE ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-0 opacity-15"
+            style={{
+              backgroundImage:
+                'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
+              backgroundRepeat: "repeat",
+              backgroundSize: "286px 320px",
+              backgroundPosition: "center top",
+            }}
+          />
+        ) : null}
 
         <AssistantChatCapabilitiesFab />
 
@@ -283,15 +284,26 @@ export function AssistantChatWorkspace() {
           {/* Collapsed rail (desktop) */}
           {collapsed ? (
             <aside
-              className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 border-r-[0.5px] border-border bg-surface-2 px-1.5 py-3 md:flex ${
+              className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-1.5 py-3 md:flex ${
                 mobileComposeChrome ? "" : ""
               }`}
             >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
+                style={{
+                  backgroundImage:
+                    'url("/patterns/hero/adobestock-2162625652.webp")',
+                  backgroundRepeat: "repeat",
+                  backgroundSize: "220px auto",
+                  backgroundPosition: "center top",
+                }}
+              />
               <button
                 type="button"
                 onClick={toggleCollapsed}
                 aria-label="Expand chat list"
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground"
+                className="relative z-[1] flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground"
               >
                 <IconChevron dir="right" />
               </button>
@@ -300,20 +312,31 @@ export function AssistantChatWorkspace() {
                 onClick={() => void onNewChat()}
                 disabled={chat.busy || chat.opening}
                 aria-label="New chat"
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent disabled:opacity-50"
+                className="relative z-[1] flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent disabled:opacity-50"
               >
                 +
               </button>
             </aside>
           ) : (
             <aside
-              className={`relative z-[1] flex min-h-0 flex-col gap-3 border-b-[0.5px] border-border bg-surface-2 px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+              className={`relative z-[1] flex min-h-0 flex-col gap-3 overflow-hidden border-b-[0.5px] border-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                 mobileComposeChrome
                   ? "max-sm:hidden"
-                  : "max-sm:min-h-0 max-sm:flex-1"
+                  : "max-sm:h-fit max-sm:max-h-full max-sm:min-h-0 max-sm:flex-1 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
+                style={{
+                  backgroundImage:
+                    'url("/patterns/hero/adobestock-2162625652.webp")',
+                  backgroundRepeat: "repeat",
+                  backgroundSize: "220px auto",
+                  backgroundPosition: "center top",
+                }}
+              />
+              <div className="relative z-[1] flex items-center gap-2">
                 <button
                   type="button"
                   onClick={toggleCollapsed}
@@ -332,7 +355,7 @@ export function AssistantChatWorkspace() {
                 </button>
               </div>
 
-              <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+              <nav className="relative z-[1] min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
                 {groups.length === 0 ? (
                   <p className="px-1 text-xs text-muted">No chats yet</p>
                 ) : (
@@ -341,15 +364,18 @@ export function AssistantChatWorkspace() {
                       <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
                         {group.label}
                       </p>
-                      <ul className="space-y-1">
+                      <ul className="space-y-1.5">
                         {group.threads.map((t) => {
                           const isActive = t.id === chat.activeId;
                           const isRenaming = renamingId === t.id;
+                          const metaMuted = isActive
+                            ? "text-faint"
+                            : "text-muted";
                           return (
                             <li key={t.id} className="group relative">
                               {isRenaming ? (
                                 <form
-                                  className="rounded-[6px] border-[0.5px] border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] px-2 py-1.5"
+                                  className="rounded-xl border border-border border-l-[3px] border-l-accent bg-card px-3 py-2 shadow-sm"
                                   onSubmit={(e) => {
                                     e.preventDefault();
                                     commitRename();
@@ -370,7 +396,7 @@ export function AssistantChatWorkspace() {
                                     }}
                                     aria-label="Chat name"
                                     placeholder="Chat name"
-                                    className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] font-medium outline-none ring-accent/30 focus:ring-2"
+                                    className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm font-semibold outline-none ring-accent/30 focus:ring-2"
                                   />
                                 </form>
                               ) : (
@@ -382,23 +408,31 @@ export function AssistantChatWorkspace() {
                                       e.preventDefault();
                                       beginRename(t);
                                     }}
-                                    className={`w-full cursor-pointer rounded-[6px] border-[0.5px] px-2.5 py-2 pr-14 text-left transition-colors ${
+                                    className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 pr-14 text-left transition-colors ${
                                       isActive
-                                        ? "border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] text-foreground"
-                                        : "border-transparent bg-transparent text-foreground hover:bg-[color:var(--card-warm-bg)]/50"
+                                        ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                        : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                                     }`}
                                   >
-                                    <span className="block truncate text-[13px] font-medium">
+                                    <span className="line-clamp-2 text-sm font-semibold">
                                       {t.title}
                                     </span>
-                                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted">
+                                    <span className="mt-0.5 line-clamp-2 text-xs text-muted">
                                       {threadPreview(t)}
                                     </span>
-                                    <span className="mt-1 block text-[11px] text-muted">
-                                      {formatAssistantChatThreadDate(
-                                        t.updatedAt,
-                                      )}
-                                    </span>
+                                    <div
+                                      className={`mt-2 border-t pt-2 text-[10px] leading-snug ${
+                                        isActive
+                                          ? "border-border-subtle"
+                                          : "border-border"
+                                      } ${metaMuted}`}
+                                    >
+                                      <time dateTime={t.updatedAt}>
+                                        {formatAssistantChatThreadDate(
+                                          t.updatedAt,
+                                        )}
+                                      </time>
+                                    </div>
                                   </button>
                                   <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                                     <button
@@ -408,7 +442,7 @@ export function AssistantChatWorkspace() {
                                         e.stopPropagation();
                                         beginRename(t);
                                       }}
-                                      className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted hover:bg-background hover:text-foreground"
+                                      className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted hover:bg-accent-soft/50 hover:text-foreground"
                                     >
                                       Rename
                                     </button>

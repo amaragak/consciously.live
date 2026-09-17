@@ -814,35 +814,35 @@ export function JournalView() {
       const html = latestHtmlRef.current;
       const title = latestTitleRef.current;
       const gratitude = latestGratitudeRef.current;
-      setEntries((prev) => {
-        const prevEntry = prev.find((e) => e.id === id);
-        if (
-          !prevEntry ||
-          !journalEntryDraftChanged(prevEntry, {
-            contentHtml: html,
-            title,
-            gratitude,
-          })
-        ) {
-          return prev;
-        }
-        const next = prev.map((e) =>
-          e.id === id
-            ? {
-                ...e,
-                contentHtml: html,
-                title,
-                updatedAt: new Date().toISOString(),
-                ...(isGratitudeEntry(e)
-                  ? { kind: "gratitude" as const, gratitude }
-                  : {}),
-              }
-            : e,
-        );
-        entriesRef.current = next;
-        persist(next, id);
-        return next;
-      });
+      const prev = entriesRef.current;
+      const prevEntry = prev.find((e) => e.id === id);
+      if (
+        !prevEntry ||
+        !journalEntryDraftChanged(prevEntry, {
+          contentHtml: html,
+          title,
+          gratitude,
+        })
+      ) {
+        return;
+      }
+      const next = prev.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              contentHtml: html,
+              title,
+              updatedAt: new Date().toISOString(),
+              ...(isGratitudeEntry(e)
+                ? { kind: "gratitude" as const, gratitude }
+                : {}),
+            }
+          : e,
+      );
+      entriesRef.current = next;
+      setEntries(next);
+      // Persist after setState — never inside an updater (notifies AppTopBar).
+      persist(next, id);
     }, 450);
   }, [persist]);
 
@@ -958,16 +958,14 @@ export function JournalView() {
     (partial: Partial<JournalEntry>) => {
       const id = activeIdRef.current;
       if (!id) return;
-      setEntries((prev) => {
-        const next = prev.map((e) =>
-          e.id === id
-            ? { ...e, ...partial, updatedAt: new Date().toISOString() }
-            : e,
-        );
-        entriesRef.current = next;
-        persist(next, id);
-        return next;
-      });
+      const next = entriesRef.current.map((e) =>
+        e.id === id
+          ? { ...e, ...partial, updatedAt: new Date().toISOString() }
+          : e,
+      );
+      entriesRef.current = next;
+      setEntries(next);
+      persist(next, id);
     },
     [persist],
   );
@@ -1152,12 +1150,10 @@ export function JournalView() {
     const e = newJournalEntry(
       selectedFolderId ? { folderId: selectedFolderId } : undefined,
     );
-    setEntries((prev) => {
-      const next = [e, ...prev];
-      entriesRef.current = next;
-      persist(next, e.id);
-      return next;
-    });
+    const next = [e, ...entriesRef.current];
+    entriesRef.current = next;
+    setEntries(next);
+    persist(next, e.id);
     setActiveEntryId(e.id);
     latestHtmlRef.current = e.contentHtml;
     latestTitleRef.current = e.title;
@@ -1205,12 +1201,10 @@ export function JournalView() {
   const createGratitudeEntry = useCallback(() => {
     flushSaveSync();
     const e = newGratitudeJournalEntry();
-    setEntries((prev) => {
-      const next = [e, ...prev];
-      entriesRef.current = next;
-      persist(next, e.id);
-      return next;
-    });
+    const next = [e, ...entriesRef.current];
+    entriesRef.current = next;
+    setEntries(next);
+    persist(next, e.id);
     setActiveEntryId(e.id);
     latestHtmlRef.current = e.contentHtml;
     latestTitleRef.current = e.title;
@@ -1320,12 +1314,10 @@ export function JournalView() {
       return existing.id;
     }
     const e = newGratitudeJournalEntry();
-    setEntries((prev) => {
-      const next = [e, ...prev];
-      entriesRef.current = next;
-      persist(next, e.id);
-      return next;
-    });
+    const next = [e, ...entriesRef.current];
+    entriesRef.current = next;
+    setEntries(next);
+    persist(next, e.id);
     setActiveEntryId(e.id);
     latestHtmlRef.current = e.contentHtml;
     latestTitleRef.current = e.title;
@@ -1419,10 +1411,8 @@ export function JournalView() {
   const showGratitudeEditor =
     journalTab === "gratitude" && !insightsOpen && hydrated && Boolean(activeEntry);
 
-  const journalComposeChrome = journalTab === "journal" && !insightsOpen;
-  /** Mobile gratitude list: full-bleed band like journal list (not compose). */
-  const gratitudeListMobileChrome =
-    journalTab === "gratitude" && !insightsOpen && !mobileGratitudeCompose;
+  const journalComposeChrome =
+    (journalTab === "journal" || journalTab === "gratitude") && !insightsOpen;
 
   return (
     <JournalLockGate>
@@ -1430,26 +1420,24 @@ export function JournalView() {
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
     <div
       className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden ${
-        !mobileJournalEditor && !mobileInsightsLetter
+        !mobileJournalEditor &&
+        !mobileGratitudeCompose &&
+        !mobileInsightsLetter
           ? "journal-mobile-paisley-bg"
           : ""
       } ${
         journalComposeChrome
           ? "relative z-[1] max-w-6xl border-r-[0.5px] border-border px-0 pb-0 pt-0"
-          : gratitudeListMobileChrome
-            ? "mx-auto max-w-6xl px-4 pb-6 pt-2 max-sm:px-0 max-sm:pb-0 sm:px-6 sm:pb-6 sm:pt-4"
-            : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
+          : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
       }`}
     >
       <div
         className={`shrink-0 ${
-          journalComposeChrome || gratitudeListMobileChrome
-            ? "px-4 sm:px-6"
-            : ""
+          journalComposeChrome ? "px-4 sm:px-6" : ""
         } ${mobileComposeChrome ? "max-sm:hidden" : ""} ${
           importBatchId
             ? "mb-3"
-            : journalComposeChrome || gratitudeListMobileChrome
+            : journalComposeChrome
               ? "mb-0"
               : "mb-3 md:mb-0"
         }`}
@@ -1507,22 +1495,31 @@ export function JournalView() {
       {!insightsOpen ? (
       <div
         className={`flex min-h-0 flex-1 overflow-hidden ${
-          journalTab === "journal"
+          journalTab === "journal" || journalTab === "gratitude"
             ? "flex-col gap-0 md:flex-row"
             : "flex-col gap-6 lg:flex-row lg:gap-4"
         }`}
       >
         {journalTab === "journal" && sidebarCollapsed ? (
           <aside
-            className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 border-r-[0.5px] border-border bg-marketing-band-d px-1.5 py-3 md:flex ${
-              mobileComposeChrome ? "" : ""
-            }`}
+            className="relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-1.5 py-3 md:flex"
           >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
+              style={{
+                backgroundImage:
+                  'url("/patterns/hero/adobestock-2162625652.webp")',
+                backgroundRepeat: "repeat",
+                backgroundSize: "220px auto",
+                backgroundPosition: "center top",
+              }}
+            />
             <button
               type="button"
               onClick={toggleSidebarCollapsed}
               aria-label="Expand journal list"
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground"
+              className="relative z-[1] flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground"
             >
               <JournalSidebarChevron dir="right" />
             </button>
@@ -1530,7 +1527,7 @@ export function JournalView() {
               type="button"
               onClick={createEntry}
               aria-label="New entry"
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent"
+              className="relative z-[1] flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent"
             >
               +
             </button>
@@ -1538,21 +1535,32 @@ export function JournalView() {
         ) : (
         <aside
           className={`flex shrink-0 flex-col ${
-            journalTab === "journal"
-              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-border bg-marketing-band-d px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+            journalTab === "journal" || journalTab === "gratitude"
+              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                   mobileComposeChrome
                     ? "max-sm:hidden"
                     : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
                 }`
-              : `gap-3 overflow-visible border-b border-border pb-4 lg:max-h-none lg:w-64 lg:border-b-0 lg:pb-0 ${
-                  journalTab === "gratitude"
-                    ? "max-h-[22rem] max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:border-b-[0.5px] max-sm:bg-marketing-band-d max-sm:px-3 max-sm:pb-5 max-sm:pt-3 max-sm:shadow-md sm:max-h-[22rem] lg:max-h-none"
-                    : "max-h-[22rem]"
-                } ${mobileComposeChrome ? "max-sm:hidden" : ""}`
+              : `gap-3 overflow-visible border-b border-border pb-4 lg:max-h-none lg:w-64 lg:border-b-0 lg:pb-0 max-h-[22rem] ${
+                  mobileComposeChrome ? "max-sm:hidden" : ""
+                }`
           }`}
         >
+          {journalTab === "journal" || journalTab === "gratitude" ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
+              style={{
+                backgroundImage:
+                  'url("/patterns/hero/adobestock-2162625652.webp")',
+                backgroundRepeat: "repeat",
+                backgroundSize: "220px auto",
+                backgroundPosition: "center top",
+              }}
+            />
+          ) : null}
           {journalTab === "journal" ? (
-            <div className="flex flex-col gap-2">
+            <div className="relative z-[1] flex flex-col gap-2">
               <div className="hidden items-center gap-2 sm:flex">
                 <button
                   type="button"
@@ -1814,25 +1822,22 @@ export function JournalView() {
               </div>
             </div>
           ) : (
-            <>
+            <div className="relative z-[1] flex flex-col gap-2">
               <button
                 type="button"
                 onClick={openTodayGratitudeCompose}
-                className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+                className="w-full cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
               >
                 + Add a gratitude for today
               </button>
-              <div className="flex items-center gap-1.5">
-                <div className="min-w-0 flex-1">
-                  <SearchInput
-                    className="w-full"
-                    inputClassName="py-2"
-                    value={searchQuery}
-                    onChange={setSearchQuery}
-                    placeholder="Search entries"
-                  />
-                </div>
-                {/* Mobile: date + settings consolidated row companion */}
+              <div className="flex items-center gap-2">
+                <SearchInput
+                  className="min-w-0 flex-1"
+                  inputClassName="py-2"
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder="Search entries..."
+                />
                 <div ref={filtersMenuRef} className="relative shrink-0 sm:hidden">
                   <button
                     type="button"
@@ -1889,44 +1894,45 @@ export function JournalView() {
                   />
                 </span>
               </div>
-              <p className="text-sm font-semibold text-foreground">Past days</p>
-              <div className="hidden items-center gap-1.5 sm:flex">
-                <div ref={dateMenuRef} className="relative shrink-0">
-                  <button
-                    type="button"
-                    title="Jump to a specific day."
-                    aria-label="Jump to a specific day."
-                    aria-haspopup="dialog"
-                    aria-expanded={sidebarMenu === "date"}
-                    onClick={() =>
-                      setSidebarMenu((m) => (m === "date" ? null : "date"))
-                    }
-                    className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border transition-colors ${
-                      jumpDate
-                        ? "border-accent/40 bg-accent-soft/40 text-foreground"
-                        : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground"
-                    }`}
-                  >
-                    <Calendar aria-hidden className="size-4" strokeWidth={2} />
-                  </button>
-                  {sidebarMenu === "date" ? (
-                    <JumpToDayPopover
-                      jumpDate={jumpDate}
-                      onPick={applyJumpDate}
-                      onClear={clearJumpDate}
-                    />
-                  ) : null}
+              <div className="flex items-center justify-end gap-1.5">
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  <div ref={dateMenuRef} className="relative shrink-0">
+                    <button
+                      type="button"
+                      title="Jump to a specific day."
+                      aria-label="Jump to a specific day."
+                      aria-haspopup="dialog"
+                      aria-expanded={sidebarMenu === "date"}
+                      onClick={() =>
+                        setSidebarMenu((m) => (m === "date" ? null : "date"))
+                      }
+                      className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border transition-colors ${
+                        jumpDate
+                          ? "border-accent/40 bg-accent-soft/40 text-foreground"
+                          : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground"
+                      }`}
+                    >
+                      <Calendar aria-hidden className="size-4" strokeWidth={2} />
+                    </button>
+                    {sidebarMenu === "date" ? (
+                      <JumpToDayPopover
+                        jumpDate={jumpDate}
+                        onPick={applyJumpDate}
+                        onClear={clearJumpDate}
+                      />
+                    ) : null}
+                  </div>
+                  <JournalChromeMoreMenu
+                    onImport={() => setImportOpen(true)}
+                    onSettings={() => setSettingsOpen(true)}
+                  />
                 </div>
-                <JournalChromeMoreMenu
-                  onImport={() => setImportOpen(true)}
-                  onSettings={() => setSettingsOpen(true)}
-                />
               </div>
-            </>
+            </div>
           )}
           <nav
-            className={`min-h-0 space-y-5 pr-1 [scrollbar-gutter:stable] ${
-              journalTab === "journal"
+            className={`relative z-[1] min-h-0 space-y-5 pr-1 [scrollbar-gutter:stable] ${
+              journalTab === "journal" || journalTab === "gratitude"
                 ? "max-sm:grow-0 max-sm:overflow-visible flex-1 overflow-y-auto"
                 : "flex-1 overflow-y-auto"
             }`}
@@ -1993,7 +1999,7 @@ export function JournalView() {
                               className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                                 isActive
                                   ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
-                                  : "border-border bg-background text-foreground hover:border-accent/40"
+                                  : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                               }`}
                             >
                               <span className="line-clamp-2 text-sm font-semibold">
@@ -2032,7 +2038,7 @@ export function JournalView() {
                             className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                               isActive
                                 ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
-                                : "border-border bg-background text-foreground hover:border-accent/40"
+                                : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >
                             <span className="line-clamp-2 text-sm font-semibold">
@@ -2064,7 +2070,9 @@ export function JournalView() {
 
         <section
           className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
-            journalTab === "journal" ? "bg-transparent" : ""
+            journalTab === "journal" || journalTab === "gratitude"
+              ? "bg-transparent"
+              : ""
           } ${
             (journalTab === "journal" && !mobileJournalEditor) ||
             (journalTab === "gratitude" && !mobileGratitudeCompose)
@@ -2073,15 +2081,23 @@ export function JournalView() {
           }`}
         >
           {jumpDate && filteredTabEntries.length === 0 ? (
-            <div className="flex min-h-[12rem] flex-1 items-center rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="flex min-h-[12rem] flex-1 items-center bg-background p-6">
               <p className="text-sm text-muted">No entry on this day.</p>
             </div>
           ) : showGratitudeEditor && activeEntry ? (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <JournalGratitudeEditor
                 createdAt={activeEntry.createdAt}
                 lines={gratitudeDraft}
                 onChange={onGratitudeChange}
+                onDelete={
+                  mobileGratitudeCompose ? undefined : deleteActive
+                }
+                footerNote={
+                  mobileGratitudeCompose
+                    ? undefined
+                    : "Autosaves in this browser. Come back tomorrow for a fresh page; today’s three stay here."
+                }
               >
                 <JournalEntryMeta
                   mood={activeEntry.mood}
@@ -2090,23 +2106,6 @@ export function JournalView() {
                   onTagsChange={(tags) => patchActive({ tags })}
                 />
               </JournalGratitudeEditor>
-              <div
-                className={`shrink-0 flex-wrap items-center gap-3 ${
-                  mobileGratitudeCompose ? "hidden sm:flex" : "flex"
-                }`}
-              >
-                <p className="text-sm text-muted">
-                  Autosaves in this browser. Come back tomorrow for a fresh page;
-                  today’s three stay here.
-                </p>
-                <button
-                  type="button"
-                  onClick={deleteActive}
-                  className="cursor-pointer text-xs font-medium text-muted underline-offset-2 hover:text-danger hover:underline"
-                >
-                  Delete day
-                </button>
-              </div>
             </div>
           ) : hydrated &&
             activeEntryId &&
@@ -2203,7 +2202,7 @@ export function JournalView() {
               </JournalRichEditor>
             </>
           ) : (
-            <div className="min-h-[12rem] rounded-2xl border border-border bg-card shadow-sm" />
+            <div className="min-h-[12rem] flex-1 bg-background" />
           )}
         </section>
       </div>

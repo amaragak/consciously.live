@@ -23,7 +23,7 @@ export const FOCUS_PATTERN_OPTIONS: readonly FocusPatternOption[] = [
   {
     id: "default",
     label: "Default",
-    swatch: "#FAF8F3",
+    swatch: "#FBFAF6",
     swatchImage: "/patterns/paisley-tile-800-offwhite.webp",
   },
   {

@@ -25,7 +25,7 @@ export type IdeateHeroBgOption = {
 };
 
 export const IDEATE_HERO_BG_OPTIONS: readonly IdeateHeroBgOption[] = [
-  { id: "paper", label: "Paper", swatch: "#FAF8F3", className: "" },
+  { id: "paper", label: "Paper", swatch: "#FBFAF6", className: "" },
   { id: "black", label: "Black", swatch: "#000000", className: "home-hero--ideate" },
   { id: "navy", label: "Navy", swatch: "#1E2530", className: "home-hero--ideate-navy" },
   {

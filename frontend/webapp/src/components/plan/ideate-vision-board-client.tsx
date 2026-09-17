@@ -1003,7 +1003,7 @@ export function IdeateVisionBoardClient() {
                     : "border border-dashed border-[#D4CBB8] bg-[#F5F1E7] dark:border-border dark:bg-accent-soft/20"
                 } ${
                   isOver
-                    ? "outline outline-2 outline-offset-[-2px] outline-[#F1AC73]"
+                    ? "outline outline-2 outline-offset-[-2px] outline-[#F0A855]"
                     : ""
                 } ${isDraggingHere ? "opacity-50" : ""}`}
                 onDragOver={(e) => {
@@ -1193,7 +1193,7 @@ export function IdeateVisionBoardClient() {
                       {open ? (
                         <div
                           role="menu"
-                          className="absolute left-1/2 top-[calc(100%+0.4rem)] z-20 w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-[#E5DFD0] bg-[#FAF8F3] p-2 shadow-[0_12px_40px_rgba(30,37,48,0.18)] dark:border-border dark:bg-card"
+                          className="absolute left-1/2 top-[calc(100%+0.4rem)] z-20 w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-[#E5DFD0] bg-[#FBFAF6] p-2 shadow-[0_12px_40px_rgba(30,37,48,0.18)] dark:border-border dark:bg-card"
                         >
                           {menuMode === "actions" ? (
                             <div className="flex flex-col gap-0.5">

@@ -1597,21 +1597,21 @@ export function PlanHomeClient() {
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("author")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F1AC73]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A855]/60 hover:bg-accent-soft/30"
                   >
                     From a thinker
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("work")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F1AC73]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A855]/60 hover:bg-accent-soft/30"
                   >
                     From a work
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("original")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F1AC73]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A855]/60 hover:bg-accent-soft/30"
                   >
                     Write your own
                   </button>
@@ -1697,7 +1697,7 @@ export function PlanHomeClient() {
                           const selected = authorSelectedQuotes.has(text);
                           return (
                             <li key={text}>
-                              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 px-3 py-2.5 transition-colors hover:border-[#F1AC73]/45">
+                              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 px-3 py-2.5 transition-colors hover:border-[#F0A855]/45">
                                 <input
                                   type="checkbox"
                                   checked={selected}
@@ -1850,7 +1850,7 @@ export function PlanHomeClient() {
               return (
                 <li
                   key={q.id}
-                  className={`group border-l-2 border-[#F1AC73] pl-5 ${
+                  className={`group border-l-2 border-[#F0A855] pl-5 ${
                     i === questionCells.length - 1 ? "mb-0" : "mb-5"
                   }`}
                 >
@@ -2171,7 +2171,7 @@ export function PlanHomeClient() {
           <div
             role="dialog"
             aria-labelledby="ideate-add-dream-title"
-            className="max-h-[min(92vh,40rem)] w-full max-w-lg overflow-y-auto rounded-[16px] border border-[#E5DFD0] bg-[#FAF8F3] p-6 shadow-xl dark:border-border dark:bg-card"
+            className="max-h-[min(92vh,40rem)] w-full max-w-lg overflow-y-auto rounded-[16px] border border-[#E5DFD0] bg-[#FBFAF6] p-6 shadow-xl dark:border-border dark:bg-card"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
@@ -2261,7 +2261,7 @@ export function PlanHomeClient() {
                 type="button"
                 disabled={!newTitle.trim()}
                 onClick={() => addDream()}
-                className="cursor-pointer rounded-full bg-[#F1AC73] px-5 py-2.5 text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-full bg-[#F0A855] px-5 py-2.5 text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Create
               </button>

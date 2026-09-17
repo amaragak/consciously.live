@@ -1,6 +1,16 @@
 import { createMeditationHref } from "@/lib/create-meditation-path";
 import { getMedimadeSessionJwt } from "@/lib/auth-session";
 import {
+  dispatchFocusChatControl,
+  readFocusChatRunningHint,
+} from "@/lib/focus-chat-control";
+import {
+  focusMyHrefFromIdeate,
+  writeFocusSessionHandoff,
+} from "@/lib/focus-session-handoff";
+import { loadIdeateVisionBoardStore } from "@/lib/ideate-vision-board";
+import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import {
   deriveEntryTitle,
   entriesForCloudPut,
   findGratitudeEntryForLocalDate,
@@ -9,6 +19,7 @@ import {
   isGratitudeEntry,
   loadJournalStore,
   localDateKey,
+  localDateKeyFromIso,
   newGratitudeJournalEntry,
   newJournalEntry,
   normalizeGratitudeLines,
@@ -17,17 +28,38 @@ import {
   type JournalEntry,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
-import { putJournalStoreRemote } from "@/lib/medimade-api";
+import {
+  fetchDashboardDailyStatus,
+  fetchJournalInsightsRemote,
+  fetchJournalWeeklyReflectionRemote,
+  listBackgroundAudio,
+  listJournalWeeklyLettersRemote,
+  listLibraryMeditations,
+  listLibraryPrograms,
+  patchMeditationArchived,
+  patchMeditationFavourite,
+  patchMeditationPublic,
+  putDashboardDailyManualCheck,
+  putJournalStoreRemote,
+  runJournalInsightsRemote,
+} from "@/lib/medimade-api";
+import {
+  loadMixerPresetStore,
+  newMixerPreset,
+  saveMixerPresetStore,
+} from "@/lib/mixer-preset-storage";
+import { createPlanDream } from "@/lib/plan-dreams";
 import {
   createSubtask,
   createTodo,
   loadIdeateStore,
   saveIdeateStore,
+  upsertDream,
   upsertSubtask,
   upsertTodo,
+  deleteTodo,
   type IdeateStoreV2,
 } from "@/lib/plan-ideate-store";
-import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import type { AssistantAction } from "@/lib/assistant-chat-protocol";
 
 export type AssistantActionResult = {
@@ -548,28 +580,1098 @@ function applyCreateMeditation(
   };
 }
 
-/** Apply a single assistant ACTION against local stores / routes. */
-export function executeAssistantAction(
-  action: AssistantAction,
+function applyListGratitudes(
+  action: Extract<AssistantAction, { name: "list_gratitudes" }>,
 ): AssistantActionResult {
+  const store = loadJournalStore();
+  const limit = Math.min(20, Math.max(1, action.limit ?? 7));
+  const rows = store.entries
+    .filter(isGratitudeEntry)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
+    .slice(0, limit);
+  if (!rows.length) {
+    return {
+      ok: true,
+      label: "No gratitudes yet",
+      href: "/journal/my/gratitudes",
+      linkLabel: "Open journal",
+    };
+  }
+  const detail = rows
+    .map((e) => {
+      const lines = normalizeGratitudeLines(e.gratitude)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const day = localDateKeyFromIso(e.createdAt);
+      return `${day}: ${lines.slice(0, 2).join(" · ") || e.title}`;
+    })
+    .join(" · ");
+  return {
+    ok: true,
+    label: `${rows.length} gratitude entr${rows.length === 1 ? "y" : "ies"}`,
+    detail: previewSnippet(detail, 160),
+    href: `/journal/my/gratitudes/${encodeURIComponent(rows[0]!.id)}`,
+    linkLabel: "Open latest",
+  };
+}
+
+function applyGetGratitude(
+  action: Extract<AssistantAction, { name: "get_gratitude" }>,
+): AssistantActionResult {
+  const store = loadJournalStore();
+  let entry: JournalEntry | undefined;
+  if (action.id) {
+    entry = store.entries.find(
+      (e) => e.id === action.id && isGratitudeEntry(e),
+    );
+  } else if (action.date) {
+    entry =
+      findGratitudeEntryForLocalDate(store.entries, action.date) ?? undefined;
+  }
+  if (!entry) {
+    return { ok: false, label: "Couldn't find that gratitude" };
+  }
+  const lines = normalizeGratitudeLines(entry.gratitude)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return {
+    ok: true,
+    label: entry.title || "Gratitude",
+    detail: previewSnippet(lines.join(" · ") || "Empty", 160),
+    href: `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`,
+    linkLabel: "Open",
+  };
+}
+
+function applyListJournalEntries(
+  action: Extract<AssistantAction, { name: "list_journal_entries" }>,
+): AssistantActionResult {
+  const store = loadJournalStore();
+  const limit = Math.min(20, Math.max(1, action.limit ?? 8));
+  let rows = freeformJournalEntries(store.entries);
+  if (action.folderId) {
+    rows = rows.filter((e) => e.folderId === action.folderId);
+  }
+  rows = [...rows].sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  ).slice(0, limit);
+  if (!rows.length) {
+    return {
+      ok: true,
+      label: "No journal entries yet",
+      href: "/journal/my",
+      linkLabel: "Open journal",
+    };
+  }
+  return {
+    ok: true,
+    label: `${rows.length} journal entr${rows.length === 1 ? "y" : "ies"}`,
+    detail: previewSnippet(rows.map((e) => e.title).join(" · "), 160),
+    href: `/journal/my/${encodeURIComponent(rows[0]!.id)}`,
+    linkLabel: "Open latest",
+  };
+}
+
+function applyGetJournalEntry(
+  action: Extract<AssistantAction, { name: "get_journal_entry" }>,
+): AssistantActionResult {
+  const store = loadJournalStore();
+  const entry = freeformJournalEntries(store.entries).find(
+    (e) => e.id === action.id,
+  );
+  if (!entry) return { ok: false, label: "Couldn't find that journal entry" };
+  return {
+    ok: true,
+    label: entry.title || "Journal entry",
+    detail: previewSnippet(stripHtmlToText(entry.contentHtml), 160),
+    href: `/journal/my/${encodeURIComponent(entry.id)}`,
+    linkLabel: "Open",
+  };
+}
+
+async function applyGetJournalInsights(): Promise<AssistantActionResult> {
   try {
-    if (action.name === "add_gratitude") return applyGratitudeAdd(action);
-    if (action.name === "update_gratitude") return applyGratitudeUpdate(action);
-    if (action.name === "add_journal_entry") return applyJournalEntry(action);
-    if (action.name === "update_journal_entry") return applyJournalUpdate(action);
-    if (action.name === "add_todo") return applyTodo(action);
-    if (action.name === "create_meditation") {
-      return applyCreateMeditation(action);
+    const insights = await fetchJournalInsightsRemote();
+    if (!insights?.topics?.length) {
+      return {
+        ok: true,
+        label: "No journal insights yet",
+        href: "/journal/my/insights",
+        linkLabel: "Open insights",
+      };
     }
-    return { ok: false, label: "Unknown action" };
+    const overview =
+      insights.topics.find((t) => t.topicId === "overview") ??
+      insights.topics[0]!;
+    return {
+      ok: true,
+      label: "Journal insights",
+      detail: previewSnippet(
+        stripHtmlToText(overview.summaryMarkdown).replace(/[#*_`]/g, ""),
+        160,
+      ),
+      href: "/journal/my/insights",
+      linkLabel: "Open insights",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't load insights",
+    };
+  }
+}
+
+async function applyRunJournalInsights(): Promise<AssistantActionResult> {
+  try {
+    const insights = await runJournalInsightsRemote({ mode: "update" });
+    const overview =
+      insights.topics.find((t) => t.topicId === "overview") ??
+      insights.topics[0];
+    return {
+      ok: true,
+      label: "Refreshed journal insights",
+      ...(overview
+        ? {
+            detail: previewSnippet(
+              stripHtmlToText(overview.summaryMarkdown).replace(/[#*_`]/g, ""),
+              160,
+            ),
+          }
+        : {}),
+      href: "/journal/my/insights",
+      linkLabel: "Open insights",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't refresh insights",
+    };
+  }
+}
+
+async function applyListWeeklyLetters(): Promise<AssistantActionResult> {
+  try {
+    const { letters } = await listJournalWeeklyLettersRemote();
+    if (!letters.length) {
+      return {
+        ok: true,
+        label: "No weekly letters yet",
+        href: "/journal/my/insights",
+        linkLabel: "Open weekly",
+      };
+    }
+    return {
+      ok: true,
+      label: `${letters.length} weekly letter${letters.length === 1 ? "" : "s"}`,
+      detail: previewSnippet(
+        letters
+          .slice(0, 5)
+          .map((l) => l.weekKey)
+          .join(" · "),
+        120,
+      ),
+      href: "/journal/my/insights",
+      linkLabel: "Open weekly",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't list weekly letters",
+    };
+  }
+}
+
+async function applyGetWeeklyReflection(
+  action: Extract<AssistantAction, { name: "get_weekly_reflection" }>,
+): Promise<AssistantActionResult> {
+  try {
+    const res = await fetchJournalWeeklyReflectionRemote(
+      action.weekKey ? { week: action.weekKey } : undefined,
+    );
+    if (!res.reflection) {
+      return {
+        ok: true,
+        label: "No weekly reflection for that week",
+        href: "/journal/my/insights",
+        linkLabel: "Open weekly",
+      };
+    }
+    return {
+      ok: true,
+      label: `Weekly reflection ${res.weekKey || ""}`.trim(),
+      detail: previewSnippet(
+        res.reflection.letterMarkdown.replace(/[#*_`]/g, ""),
+        160,
+      ),
+      href: res.weekKey
+        ? `/journal/my/insights/${encodeURIComponent(res.weekKey)}`
+        : "/journal/my/insights",
+      linkLabel: "Open weekly",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't load weekly reflection",
+    };
+  }
+}
+
+function resolveLifeAreaFlexible(
+  store: IdeateStoreV2,
+  opts: { lifeAreaId?: string; lifeAreaTitle?: string; id?: string; title?: string },
+) {
+  const id = (opts.lifeAreaId ?? opts.id ?? "").trim();
+  if (id) {
+    const byId = store.dreams.find((d) => d.id === id);
+    if (byId) return byId;
+  }
+  const needle = (opts.lifeAreaTitle ?? opts.title ?? "").trim().toLowerCase();
+  if (!needle) return null;
+  const dreams = store.dreams.filter((d) => !isDemoIdeateDream(d));
+  const pool = dreams.length ? dreams : store.dreams;
+  const exact = pool.find((d) => d.title.trim().toLowerCase() === needle);
+  if (exact) return exact;
+  return (
+    pool.find((d) => {
+      const t = d.title.trim().toLowerCase();
+      return t.includes(needle) || needle.includes(t);
+    }) ?? null
+  );
+}
+
+function applyListLifeAreas(): AssistantActionResult {
+  const store = loadIdeateStore();
+  const areas = store.dreams.filter((d) => !isDemoIdeateDream(d));
+  if (!areas.length) {
+    return {
+      ok: true,
+      label: "No life areas yet",
+      href: "/manifest/my",
+      linkLabel: "Open Manifest",
+    };
+  }
+  return {
+    ok: true,
+    label: `${areas.length} life area${areas.length === 1 ? "" : "s"}`,
+    detail: previewSnippet(areas.map((d) => d.title).join(" · "), 160),
+    href: `/manifest/goal/${encodeURIComponent(areas[0]!.id)}`,
+    linkLabel: "Open first",
+  };
+}
+
+function applyGetLifeArea(
+  action: Extract<AssistantAction, { name: "get_life_area" }>,
+): AssistantActionResult {
+  const store = loadIdeateStore();
+  const area = resolveLifeAreaFlexible(store, action);
+  if (!area) return { ok: false, label: "Couldn't find that life area" };
+  const goals = store.subtasks.filter((s) => s.projectId === area.id);
+  const openTodos = store.todos.filter(
+    (t) =>
+      !t.isChecked &&
+      goals.some((g) => g.id === t.subtaskId),
+  );
+  return {
+    ok: true,
+    label: area.title,
+    detail: previewSnippet(
+      `${goals.length} goal${goals.length === 1 ? "" : "s"} · ${openTodos.length} open To Do${openTodos.length === 1 ? "" : "s"}`,
+      120,
+    ),
+    href: `/manifest/goal/${encodeURIComponent(area.id)}`,
+    linkLabel: "Open",
+  };
+}
+
+function applyCreateLifeArea(
+  action: Extract<AssistantAction, { name: "create_life_area" }>,
+): AssistantActionResult {
+  const title = action.title.trim();
+  if (!title) return { ok: false, label: "Missing life area title" };
+  let store = loadIdeateStore();
+  const dream = createPlanDream({
+    title,
+    ...(action.description?.trim()
+      ? { dreamText: action.description.trim(), firstThought: action.description.trim() }
+      : {}),
+  });
+  store = upsertDream(store, dream);
+  saveIdeateStore(store);
+  return {
+    ok: true,
+    label: "Created life area",
+    detail: previewSnippet(title),
+    href: `/manifest/goal/${encodeURIComponent(dream.id)}`,
+    linkLabel: "Open",
+  };
+}
+
+function applyPutLifeArea(
+  action: Extract<AssistantAction, { name: "put_life_area" }>,
+): AssistantActionResult {
+  let store = loadIdeateStore();
+  const existing = store.dreams.find((d) => d.id === action.id);
+  if (!existing) return { ok: false, label: "Couldn't find that life area" };
+  const next = {
+    ...existing,
+    ...(action.title?.trim() ? { title: action.title.trim() } : {}),
+    ...(action.description?.trim()
+      ? {
+          dreamText: action.description.trim(),
+          firstThought: action.description.trim(),
+        }
+      : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  store = upsertDream(store, next);
+  saveIdeateStore(store);
+  return {
+    ok: true,
+    label: "Updated life area",
+    detail: previewSnippet(next.title),
+    href: `/manifest/goal/${encodeURIComponent(next.id)}`,
+    linkLabel: "Open",
+  };
+}
+
+function applyListTodos(
+  action: Extract<AssistantAction, { name: "list_todos" }>,
+): AssistantActionResult {
+  const store = loadIdeateStore();
+  const area = resolveLifeAreaFlexible(store, action);
+  if (!area && (action.lifeAreaId || action.lifeAreaTitle)) {
+    return { ok: false, label: "Couldn't find that life area" };
+  }
+  const goals = area
+    ? store.subtasks.filter((s) => s.projectId === area.id)
+    : store.subtasks;
+  const goalIds = new Set(goals.map((g) => g.id));
+  let todos = store.todos.filter((t) => goalIds.has(t.subtaskId));
+  if (action.openOnly) todos = todos.filter((t) => !t.isChecked);
+  if (!todos.length) {
+    return {
+      ok: true,
+      label: "No To Dos found",
+      href: area
+        ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
+        : "/manifest/my",
+      linkLabel: "Open Manifest",
+    };
+  }
+  return {
+    ok: true,
+    label: `${todos.length} To Do${todos.length === 1 ? "" : "s"}`,
+    detail: previewSnippet(
+      todos
+        .slice(0, 6)
+        .map((t) => t.title)
+        .join(" · "),
+      160,
+    ),
+    href: area
+      ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
+      : "/manifest/my",
+    linkLabel: "Open",
+  };
+}
+
+function applyPutTodo(
+  action: Extract<AssistantAction, { name: "put_todo" }>,
+): AssistantActionResult {
+  let store = loadIdeateStore();
+  const todo = store.todos.find((t) => t.id === action.todoId);
+  if (!todo) {
+    // Also allow updating a goal (subtask) by id when used as "todo"
+    const goal = store.subtasks.find((s) => s.id === action.todoId);
+    if (!goal) return { ok: false, label: "Couldn't find that To Do" };
+    const next = {
+      ...goal,
+      ...(action.title?.trim() ? { title: action.title.trim() } : {}),
+      ...(action.checked != null
+        ? { status: action.checked ? ("done" as const) : ("not_started" as const) }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    store = upsertSubtask(store, next);
+    saveIdeateStore(store);
+    return {
+      ok: true,
+      label: "Updated goal",
+      detail: previewSnippet(next.title),
+      href: lifeAreaTasksHref(goal.projectId, goal.id),
+      linkLabel: "Open",
+    };
+  }
+  const next = {
+    ...todo,
+    ...(action.title?.trim() ? { title: action.title.trim() } : {}),
+    ...(action.checked != null
+      ? {
+          isChecked: action.checked,
+          checkedAt: action.checked ? new Date().toISOString() : null,
+          wasUnchecked: action.checked ? false : true,
+        }
+      : {}),
+  };
+  store = upsertTodo(store, next);
+  saveIdeateStore(store);
+  const parent = store.subtasks.find((s) => s.id === todo.subtaskId);
+  return {
+    ok: true,
+    label: action.checked === true ? "Marked To Do done" : "Updated To Do",
+    detail: previewSnippet(next.title),
+    href: parent
+      ? lifeAreaTasksHref(parent.projectId, parent.id)
+      : "/manifest/my",
+    linkLabel: "Open",
+  };
+}
+
+function applyDeleteTodo(
+  action: Extract<AssistantAction, { name: "delete_todo" }>,
+): AssistantActionResult {
+  let store = loadIdeateStore();
+  const todo = store.todos.find((t) => t.id === action.todoId);
+  if (!todo) return { ok: false, label: "Couldn't find that To Do" };
+  const title = todo.title;
+  const parent = store.subtasks.find((s) => s.id === todo.subtaskId);
+  store = deleteTodo(store, action.todoId);
+  saveIdeateStore(store);
+  return {
+    ok: true,
+    label: "Removed To Do",
+    detail: previewSnippet(title),
+    href: parent
+      ? lifeAreaTasksHref(parent.projectId, parent.id)
+      : "/manifest/my",
+    linkLabel: "Open",
+  };
+}
+
+function applyGetIdeateStore(): AssistantActionResult {
+  const store = loadIdeateStore();
+  const areas = store.dreams.filter((d) => !isDemoIdeateDream(d));
+  const openTodos = store.todos.filter((t) => !t.isChecked).length;
+  return {
+    ok: true,
+    label: "Manifest snapshot",
+    detail: previewSnippet(
+      `${areas.length} areas · ${store.subtasks.length} goals · ${openTodos} open To Dos`,
+      120,
+    ),
+    href: "/manifest/my",
+    linkLabel: "Open Manifest",
+  };
+}
+
+async function applyPutIdeateStore(): Promise<AssistantActionResult> {
+  try {
+    if (!getMedimadeSessionJwt()) {
+      return {
+        ok: false,
+        label: "Sign in to sync Manifest to the cloud",
+      };
+    }
+    const { scheduleIdeateCloudPush } = await import("@/lib/ideate-cloud");
+    scheduleIdeateCloudPush(0);
+    return {
+      ok: true,
+      label: "Syncing Manifest to cloud",
+      href: "/manifest/my",
+      linkLabel: "Open Manifest",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't sync Manifest",
+    };
+  }
+}
+
+function applyListVisionBoard(): AssistantActionResult {
+  const board = loadIdeateVisionBoardStore();
+  const items = board.items ?? [];
+  if (!items.length) {
+    return {
+      ok: true,
+      label: "Vision board is empty",
+      href: "/manifest/my/vision-board",
+      linkLabel: "Open vision board",
+    };
+  }
+  return {
+    ok: true,
+    label: `${items.length} vision item${items.length === 1 ? "" : "s"}`,
+    detail: previewSnippet(
+      items
+        .slice(0, 6)
+        .map((i) => i.label)
+        .filter(Boolean)
+        .join(" · "),
+      160,
+    ),
+    href: "/manifest/my/vision-board",
+    linkLabel: "Open vision board",
+  };
+}
+
+async function applyListLibrary(
+  action: Extract<AssistantAction, { name: "list_library" }>,
+): Promise<AssistantActionResult> {
+  try {
+    let items = await listLibraryMeditations();
+    if (action.favouritesOnly) {
+      items = items.filter((m) => m.favourite === true);
+    }
+    const limit = Math.min(20, Math.max(1, action.limit ?? 8));
+    items = items.slice(0, limit);
+    if (!items.length) {
+      return {
+        ok: true,
+        label: action.favouritesOnly
+          ? "No favourites yet"
+          : "Library is empty",
+        href: "/meditate/library/creations",
+        linkLabel: "Open library",
+      };
+    }
+    return {
+      ok: true,
+      label: `${items.length} meditation${items.length === 1 ? "" : "s"}`,
+      detail: previewSnippet(
+        items.map((m) => m.title || "Untitled").join(" · "),
+        160,
+      ),
+      href: "/meditate/library/creations",
+      linkLabel: "Open library",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't list library",
+    };
+  }
+}
+
+async function applyGetMeditation(
+  action: Extract<AssistantAction, { name: "get_meditation" }>,
+): Promise<AssistantActionResult> {
+  try {
+    const items = await listLibraryMeditations();
+    const m = items.find(
+      (x) => x.sk === action.sk || x.id === action.sk || x.s3Key === action.sk,
+    );
+    if (!m) return { ok: false, label: "Couldn't find that meditation" };
+    const focus = m.sk || m.s3Key;
+    return {
+      ok: true,
+      label: m.title || "Meditation",
+      detail: previewSnippet(
+        [m.meditationStyle, m.description].filter(Boolean).join(" · ") ||
+          "Ready to play",
+        140,
+      ),
+      href: `/meditate/library/creations?focus=${encodeURIComponent(focus)}`,
+      linkLabel: "Open",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't load meditation",
+    };
+  }
+}
+
+async function applyPutMeditationFavourite(
+  action: Extract<AssistantAction, { name: "put_meditation_favourite" }>,
+): Promise<AssistantActionResult> {
+  try {
+    await patchMeditationFavourite(action.sk, action.favourite);
+    return {
+      ok: true,
+      label: action.favourite ? "Added to favourites" : "Removed from favourites",
+      href: `/meditate/library/creations?focus=${encodeURIComponent(action.sk)}`,
+      linkLabel: "Open",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't update favourite",
+    };
+  }
+}
+
+async function applyPutMeditationArchived(
+  action: Extract<AssistantAction, { name: "put_meditation_archived" }>,
+): Promise<AssistantActionResult> {
+  try {
+    await patchMeditationArchived(action.sk, action.archived);
+    return {
+      ok: true,
+      label: action.archived ? "Archived meditation" : "Restored meditation",
+      href: "/meditate/library/creations",
+      linkLabel: "Open library",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't update archive",
+    };
+  }
+}
+
+async function applyPutMeditationPublic(
+  action: Extract<AssistantAction, { name: "put_meditation_public" }>,
+): Promise<AssistantActionResult> {
+  try {
+    await patchMeditationPublic(action.sk, action.isPublic);
+    return {
+      ok: true,
+      label: action.isPublic ? "Made meditation public" : "Made meditation private",
+      href: `/meditate/library/creations?focus=${encodeURIComponent(action.sk)}`,
+      linkLabel: "Open",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't update public flag",
+    };
+  }
+}
+
+function applyPlayMeditation(
+  action: Extract<AssistantAction, { name: "play_meditation" }>,
+): AssistantActionResult {
+  const href = `/meditate/library/creations?focus=${encodeURIComponent(action.sk)}&play=1`;
+  return {
+    ok: true,
+    label: "Ready to play",
+    href,
+    linkLabel: "Play",
+  };
+}
+
+async function applyListPrograms(): Promise<AssistantActionResult> {
+  try {
+    const programs = await listLibraryPrograms();
+    if (!programs.length) {
+      return {
+        ok: true,
+        label: "No programs yet",
+        href: "/meditate/library/creations",
+        linkLabel: "Open library",
+      };
+    }
+    return {
+      ok: true,
+      label: `${programs.length} program${programs.length === 1 ? "" : "s"}`,
+      detail: previewSnippet(
+        programs
+          .slice(0, 6)
+          .map((p) => p.title || p.id)
+          .join(" · "),
+        160,
+      ),
+      href: "/meditate/library/creations",
+      linkLabel: "Open library",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't list programs",
+    };
+  }
+}
+
+function applyNavigateCreateByType(
+  action: Extract<AssistantAction, { name: "navigate_create_by_type" }>,
+): AssistantActionResult {
+  const href = createMeditationHref({ path: "style" });
+  return {
+    ok: true,
+    label: "Create by type is ready",
+    ...(action.style?.trim()
+      ? { detail: previewSnippet(action.style) }
+      : {}),
+    href,
+    linkLabel: "Open Create",
+  };
+}
+
+function applyNavigateCreateFromJournal(
+  action: Extract<AssistantAction, { name: "navigate_create_from_journal" }>,
+): AssistantActionResult {
+  let href = createMeditationHref({ path: "journalReflect" });
+  if (action.entryId?.trim()) {
+    href += `${href.includes("?") ? "&" : "?"}entryId=${encodeURIComponent(action.entryId.trim())}`;
+  }
+  return {
+    ok: true,
+    label: "Create from journal is ready",
+    href,
+    linkLabel: "Open Create",
+  };
+}
+
+function applyNavigateCreateFromIdea(
+  action: Extract<AssistantAction, { name: "navigate_create_from_idea" }>,
+): AssistantActionResult {
+  let href = createMeditationHref({ path: "goal" });
+  if (action.lifeAreaId?.trim()) {
+    href += `${href.includes("?") ? "&" : "?"}lifeAreaId=${encodeURIComponent(action.lifeAreaId.trim())}`;
+  }
+  return {
+    ok: true,
+    label: "Create from Manifest is ready",
+    href,
+    linkLabel: "Open Create",
+  };
+}
+
+async function applyListSounds(): Promise<AssistantActionResult> {
+  try {
+    const beds = await listBackgroundAudio();
+    const counts = [
+      `nature ${beds.nature?.length ?? 0}`,
+      `music ${beds.music?.length ?? 0}`,
+      `drums ${beds.drums?.length ?? 0}`,
+      `noise ${beds.noise?.length ?? 0}`,
+    ].join(" · ");
+    return {
+      ok: true,
+      label: "Background sounds",
+      detail: counts,
+      href: "/meditate/sounds",
+      linkLabel: "Open sounds",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't list sounds",
+    };
+  }
+}
+
+function applyListSoundMixes(): AssistantActionResult {
+  const store = loadMixerPresetStore();
+  if (!store.presets.length) {
+    return {
+      ok: true,
+      label: "No saved mixes yet",
+      href: "/meditate/sounds",
+      linkLabel: "Open sounds",
+    };
+  }
+  return {
+    ok: true,
+    label: `${store.presets.length} saved mix${store.presets.length === 1 ? "" : "es"}`,
+    detail: previewSnippet(
+      store.presets.map((p) => p.name).join(" · "),
+      160,
+    ),
+    href: "/meditate/sounds",
+    linkLabel: "Open sounds",
+  };
+}
+
+function applyPutSoundMix(
+  action: Extract<AssistantAction, { name: "put_sound_mix" }>,
+): AssistantActionResult {
+  const store = loadMixerPresetStore();
+  const existing = action.id
+    ? store.presets.find((p) => p.id === action.id)
+    : undefined;
+  const now = new Date().toISOString();
+  const base = existing ?? newMixerPreset(action.name);
+  const next = {
+    ...base,
+    name: action.name.trim() || base.name,
+    updatedAt: now,
+    ...(action.natureKey != null ? { natureKey: action.natureKey } : {}),
+    ...(action.musicKey != null ? { musicKey: action.musicKey } : {}),
+    ...(action.drumsKey != null ? { drumsKey: action.drumsKey } : {}),
+    ...(action.noiseKey != null ? { noiseKey: action.noiseKey } : {}),
+    ...(action.natureGain != null ? { natureGain: action.natureGain } : {}),
+    ...(action.musicGain != null ? { musicGain: action.musicGain } : {}),
+    ...(action.drumsGain != null ? { drumsGain: action.drumsGain } : {}),
+    ...(action.noiseGain != null ? { noiseGain: action.noiseGain } : {}),
+  };
+  const presets = existing
+    ? store.presets.map((p) => (p.id === existing.id ? next : p))
+    : [...store.presets, next];
+  saveMixerPresetStore({
+    version: 1,
+    activeId: next.id,
+    presets,
+  });
+  return {
+    ok: true,
+    label: existing ? "Updated sound mix" : "Saved sound mix",
+    detail: previewSnippet(next.name),
+    href: "/meditate/sounds",
+    linkLabel: "Open sounds",
+  };
+}
+
+function applyGetFocusSession(): AssistantActionResult {
+  const hint = readFocusChatRunningHint();
+  return {
+    ok: true,
+    label: "Focus session",
+    detail: previewSnippet(
+      [
+        hint.task ? `Task: ${hint.task}` : null,
+        `${hint.sessionsToday} session${hint.sessionsToday === 1 ? "" : "s"} today`,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "Open Focus to start",
+      140,
+    ),
+    href: "/focus/my",
+    linkLabel: "Open Focus",
+  };
+}
+
+function applyStartFocus(
+  action: Extract<AssistantAction, { name: "start_focus" }>,
+): AssistantActionResult {
+  const minutes =
+    action.minutes && action.minutes > 0
+      ? Math.min(120, action.minutes)
+      : undefined;
+  if (action.todoId?.trim()) {
+    writeFocusSessionHandoff({ v: 1, subtaskId: action.todoId.trim() });
+  }
+  dispatchFocusChatControl({
+    cmd: "start",
+    ...(minutes != null ? { minutes } : {}),
+  });
+  const href = action.todoId?.trim()
+    ? focusMyHrefFromIdeate()
+    : minutes != null
+      ? `/focus/my?minutes=${minutes}&autoStart=1`
+      : "/focus/my?autoStart=1";
+  return {
+    ok: true,
+    label: minutes != null ? `Start ${minutes}-min Focus` : "Start Focus",
+    href,
+    linkLabel: "Open Focus",
+  };
+}
+
+function applyPauseFocus(): AssistantActionResult {
+  dispatchFocusChatControl({ cmd: "pause" });
+  return {
+    ok: true,
+    label: "Pause Focus",
+    href: "/focus/my",
+    linkLabel: "Open Focus",
+  };
+}
+
+function applyStopFocus(): AssistantActionResult {
+  dispatchFocusChatControl({ cmd: "stop" });
+  return {
+    ok: true,
+    label: "Stop Focus",
+    href: "/focus/my",
+    linkLabel: "Open Focus",
+  };
+}
+
+function applyNavigate(
+  action: Extract<AssistantAction, { name: "navigate" }>,
+): AssistantActionResult {
+  const raw = action.href.trim();
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("://")) {
+    return { ok: false, label: "Invalid in-app path" };
+  }
+  const allowedPrefixes = [
+    "/journal",
+    "/manifest",
+    "/meditate",
+    "/focus",
+    "/account",
+    "/home",
+    "/chat",
+    "/library",
+  ];
+  if (!allowedPrefixes.some((p) => raw === p || raw.startsWith(`${p}/`))) {
+    return { ok: false, label: "That route isn’t available from chat" };
+  }
+  return {
+    ok: true,
+    label: "Ready to open",
+    detail: previewSnippet(raw, 80),
+    href: raw,
+    linkLabel: "Open",
+  };
+}
+
+async function applyGetDailyStatus(): Promise<AssistantActionResult> {
+  try {
+    const status = await fetchDashboardDailyStatus();
+    const bits = [
+      status.gratitude ? "gratitude ✓" : "gratitude —",
+      status.meditation ? "meditation ✓" : "meditation —",
+      status.lifeArea ? "life area ✓" : "life area —",
+      `streak ${status.fullStreak}`,
+    ];
+    return {
+      ok: true,
+      label: "Daily status",
+      detail: bits.join(" · "),
+      href: "/home",
+      linkLabel: "Open home",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't load daily status",
+    };
+  }
+}
+
+async function applyPutDailyCheck(
+  action: Extract<AssistantAction, { name: "put_daily_check" }>,
+): Promise<AssistantActionResult> {
+  try {
+    await putDashboardDailyManualCheck({
+      dateKey: localDateKey(),
+      pillar: action.key,
+      checked: action.done,
+    });
+    return {
+      ok: true,
+      label: action.done
+        ? `Marked ${action.key} done`
+        : `Cleared ${action.key} check`,
+      href: "/home",
+      linkLabel: "Open home",
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      label: e instanceof Error ? e.message : "Couldn't update daily check",
+    };
+  }
+}
+
+/** Apply a single assistant ACTION against local stores / routes. */
+export async function executeAssistantAction(
+  action: AssistantAction,
+): Promise<AssistantActionResult> {
+  try {
+    switch (action.name) {
+      case "add_gratitude":
+        return applyGratitudeAdd(action);
+      case "update_gratitude":
+        return applyGratitudeUpdate(action);
+      case "add_journal_entry":
+        return applyJournalEntry(action);
+      case "update_journal_entry":
+        return applyJournalUpdate(action);
+      case "list_gratitudes":
+        return applyListGratitudes(action);
+      case "get_gratitude":
+        return applyGetGratitude(action);
+      case "list_journal_entries":
+        return applyListJournalEntries(action);
+      case "get_journal_entry":
+        return applyGetJournalEntry(action);
+      case "get_journal_insights":
+        return applyGetJournalInsights();
+      case "run_journal_insights":
+        return applyRunJournalInsights();
+      case "list_weekly_letters":
+        return applyListWeeklyLetters();
+      case "get_weekly_reflection":
+        return applyGetWeeklyReflection(action);
+      case "add_todo":
+        return applyTodo(action);
+      case "list_life_areas":
+        return applyListLifeAreas();
+      case "get_life_area":
+        return applyGetLifeArea(action);
+      case "create_life_area":
+        return applyCreateLifeArea(action);
+      case "put_life_area":
+        return applyPutLifeArea(action);
+      case "list_todos":
+        return applyListTodos(action);
+      case "put_todo":
+        return applyPutTodo(action);
+      case "delete_todo":
+        return applyDeleteTodo(action);
+      case "get_ideate_store":
+        return applyGetIdeateStore();
+      case "put_ideate_store":
+        return applyPutIdeateStore();
+      case "list_vision_board":
+        return applyListVisionBoard();
+      case "create_meditation":
+        return applyCreateMeditation(action);
+      case "list_library":
+        return applyListLibrary(action);
+      case "get_meditation":
+        return applyGetMeditation(action);
+      case "put_meditation_favourite":
+        return applyPutMeditationFavourite(action);
+      case "put_meditation_archived":
+        return applyPutMeditationArchived(action);
+      case "put_meditation_public":
+        return applyPutMeditationPublic(action);
+      case "play_meditation":
+        return applyPlayMeditation(action);
+      case "list_programs":
+        return applyListPrograms();
+      case "navigate_create_by_type":
+        return applyNavigateCreateByType(action);
+      case "navigate_create_from_journal":
+        return applyNavigateCreateFromJournal(action);
+      case "navigate_create_from_idea":
+        return applyNavigateCreateFromIdea(action);
+      case "list_sounds":
+        return applyListSounds();
+      case "list_sound_mixes":
+        return applyListSoundMixes();
+      case "put_sound_mix":
+        return applyPutSoundMix(action);
+      case "get_focus_session":
+        return applyGetFocusSession();
+      case "start_focus":
+        return applyStartFocus(action);
+      case "pause_focus":
+        return applyPauseFocus();
+      case "stop_focus":
+        return applyStopFocus();
+      case "navigate":
+        return applyNavigate(action);
+      case "get_daily_status":
+        return applyGetDailyStatus();
+      case "put_daily_check":
+        return applyPutDailyCheck(action);
+      default: {
+        const _exhaustive: never = action;
+        return { ok: false, label: `Unknown action: ${String(_exhaustive)}` };
+      }
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Action failed";
     return { ok: false, label: msg };
   }
 }
 
-export function executeAssistantActions(
+export async function executeAssistantActions(
   actions: AssistantAction[],
-): AssistantActionResult[] {
-  return actions.map(executeAssistantAction);
+): Promise<AssistantActionResult[]> {
+  const out: AssistantActionResult[] = [];
+  for (const action of actions) {
+    out.push(await executeAssistantAction(action));
+  }
+  return out;
 }

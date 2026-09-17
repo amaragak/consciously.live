@@ -7,6 +7,34 @@ export function getAssistantChatUrl(): string {
   return "/api/assistant-chat";
 }
 
+export function getAssistantChatTitleUrl(): string {
+  return "/api/assistant-chat/title";
+}
+
+/**
+ * Ask Haiku for a short thread title from the first user message.
+ * Returns null on failure — caller keeps the provisional title.
+ */
+export async function generateAssistantChatTitle(
+  firstUserMessage: string,
+): Promise<string | null> {
+  const message = firstUserMessage.trim();
+  if (!message) return null;
+  try {
+    const res = await fetch(getAssistantChatTitleUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message.slice(0, 2_000) }),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { title?: string };
+    const title = typeof j.title === "string" ? j.title.trim() : "";
+    return title || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Streams assistant-chat SSE (`{d}` / `{done}` / `{error}`), same shape as coach chat.
  */

@@ -14,8 +14,9 @@ import {
   ASSISTANT_CHAT_OPEN_EVENT,
   type AssistantChatOpenDetail,
 } from "@/lib/assistant-chat-launch";
-import { clearLegacyAssistantChatKeys, loadAssistantChatStore } from "@/lib/assistant-chat-storage";
+import { clearLegacyAssistantChatKeys, assistantChatThreadActivityMs, loadAssistantChatStore, pickAssistantChatFabResumeThread } from "@/lib/assistant-chat-storage";
 import {
+  consumeCreateChatShownAtMs,
   isCreateMainChatVisible,
   subscribeCreateMainChatVisible,
 } from "@/lib/assistant-chat-fab-visibility";
@@ -204,13 +205,26 @@ export function AssistantChatFab() {
       void chat.startLifeAreaIdeate(pending.lifeAreaId);
       return;
     }
-    if (!chat.activeId) {
-      const existing = loadAssistantChatStore().threads[0];
-      if (existing) {
-        chat.selectThread(existing.id);
+    const createChatShownAt = consumeCreateChatShownAtMs();
+    const resume = pickAssistantChatFabResumeThread(loadAssistantChatStore());
+    // After Create Meditation → Chat, don't reopen a pre-Create Consciously Chat.
+    // A thread updated after that Create session (e.g. full Chat) may still resume.
+    if (
+      createChatShownAt > 0 &&
+      (!resume ||
+        assistantChatThreadActivityMs(resume) <= createChatShownAt)
+    ) {
+      void chat.createNewThread();
+      return;
+    }
+    if (resume) {
+      if (chat.activeId !== resume.id) {
+        chat.selectThread(resume.id);
       } else {
-        void chat.createNewThread();
+        chat.scrollToBottom(true);
       }
+    } else {
+      void chat.createNewThread();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- launch-driven
   }, [open, hidden, enabled, chat.hydrated, launchSeq]);

@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { streamAssistantChat } from "@/lib/assistant-chat-api";
+import { streamAssistantChat, generateAssistantChatTitle } from "@/lib/assistant-chat-api";
 import { executeAssistantActions } from "@/lib/assistant-chat-actions";
 import { scheduleAssistantChatCloudPush } from "@/lib/assistant-chat-cloud";
 import {
@@ -14,12 +14,12 @@ import {
   lifeAreaIdeateThreadTitle,
 } from "@/lib/assistant-chat-life-area";
 import { parseAssistantDisplayText } from "@/lib/assistant-chat-protocol";
-import { ASSISTANT_SESSION_OPEN } from "@/lib/assistant-chat-system-prompt";
 import {
   ASSISTANT_CHAT_STORE_CHANGED,
   deriveAssistantChatTitle,
   loadAssistantChatStore,
   newAssistantChatThread,
+  pickAssistantChatFabResumeThread,
   saveAssistantChatStore,
   threadNeedsSessionOpen,
   upsertAssistantChatThread,
@@ -28,6 +28,7 @@ import {
   type AssistantChatThreadMode,
   type AssistantChatUiMessage,
 } from "@/lib/assistant-chat-storage";
+import { sanitizeAssistantChatTitle } from "@/lib/assistant-chat-title";
 
 function persistThread(thread: AssistantChatThread): void {
   const store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
@@ -42,14 +43,15 @@ function resolveSystemSupplement(
   return buildLifeAreaIdeateSystemSupplement(mode.lifeAreaId) ?? undefined;
 }
 
-function openingCueForMode(mode: AssistantChatThreadMode | undefined): string {
+function openingCueForMode(mode: AssistantChatThreadMode | undefined): string | null {
   if (mode?.type === "life_area_ideate") return ASSISTANT_LIFE_AREA_IDEATE_OPEN;
-  return ASSISTANT_SESSION_OPEN;
+  // Default chat: no LLM opening — empty chrome invites the first user message.
+  return null;
 }
 
 export function useAssistantChatThread(opts: {
   threadId: string | null;
-  /** When true, create a thread if none and run SESSION_OPEN when needed. */
+  /** When true, load `threadId` (full Chat). When false, FAB resume rules apply. */
   autoOpen: boolean;
 }) {
   const { threadId, autoOpen } = opts;
@@ -85,20 +87,42 @@ export function useAssistantChatThread(opts: {
     activeIdRef.current = activeId;
   }, [activeId]);
 
-  const scrollToBottomIfPinned = useCallback(() => {
-    if (!isAtBottomRef.current) return;
-    requestAnimationFrame(() => {
-      if (!isAtBottomRef.current) return;
+  const scrollToBottom = useCallback((force = false) => {
+    const run = () => {
+      if (!force && !isAtBottomRef.current) return;
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+        isAtBottomRef.current = true;
+        return;
+      }
       messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      isAtBottomRef.current = true;
+    };
+    // Double rAF: scroll container may not have final height on first paint
+    // (FAB panel open, thread switch, markdown layout).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(run);
     });
   }, []);
+
+  const scrollToBottomIfPinned = useCallback(() => {
+    scrollToBottom(false);
+  }, [scrollToBottom]);
 
   useLayoutEffect(() => {
     scrollToBottomIfPinned();
   }, [messages, busy, opening, scrollToBottomIfPinned]);
 
+  // Opening a thread (or switching) should always land on the latest message.
+  useLayoutEffect(() => {
+    isAtBottomRef.current = true;
+    scrollToBottom(true);
+  }, [activeId, scrollToBottom]);
+
   const loadThreadById = useCallback((id: string | null) => {
     const store = loadAssistantChatStore();
+    isAtBottomRef.current = true;
     if (!id) {
       setActiveId(null);
       setMessages([]);
@@ -129,11 +153,13 @@ export function useAssistantChatThread(opts: {
 
   const runSessionOpen = useCallback(
     async (thread: AssistantChatThread) => {
+      const cue = openingCueForMode(thread.mode);
+      if (!cue) return;
+
       const nonce = ++openNonceRef.current;
       setOpening(true);
       setError(null);
 
-      const cue = openingCueForMode(thread.mode);
       const history: AssistantChatApiTurn[] = [
         { role: "user", content: cue },
       ];
@@ -201,21 +227,30 @@ export function useAssistantChatThread(opts: {
 
   const ensureThreadAndMaybeOpen = useCallback(async () => {
     let store = loadAssistantChatStore();
-    let id = threadId ?? store.activeThreadId;
-    let thread = id ? store.threads.find((t) => t.id === id) : undefined;
+    let id: string | null | undefined;
+    let thread: AssistantChatThread | undefined;
 
-    // FAB (autoOpen false): resume most recent thread instead of starting empty.
-    if (!thread && !autoOpen && store.threads[0]) {
-      thread = store.threads[0];
-      id = thread.id;
+    if (!autoOpen) {
+      // FAB: only resume a thread with recent activity (and not create-excluded).
+      const resume = pickAssistantChatFabResumeThread(store);
+      thread = resume ?? undefined;
+      id = resume?.id;
+    } else if (threadId) {
+      id = threadId;
+      thread = store.threads.find((t) => t.id === id);
+    } else {
+      // Full Chat at /chat/my with no id — workspace creates a fresh thread.
+      // Do not resume the last active chat.
+      setHydrated(true);
+      loadThreadById(null);
+      return;
     }
 
-    if (!thread && autoOpen) {
-      thread = newAssistantChatThread();
-      store = upsertAssistantChatThread(store, thread);
-      saveAssistantChatStore(store);
-      scheduleAssistantChatCloudPush();
-      id = thread.id;
+    if (!thread && autoOpen && threadId) {
+      // Invalid id — hydrate empty; workspace redirects.
+      setHydrated(true);
+      loadThreadById(null);
+      return;
     }
 
     if (!thread || !id) {
@@ -227,7 +262,7 @@ export function useAssistantChatThread(opts: {
     loadThreadById(id);
     setHydrated(true);
 
-    if (autoOpen && threadNeedsSessionOpen(thread)) {
+    if (thread.mode?.type === "life_area_ideate" && threadNeedsSessionOpen(thread)) {
       await runSessionOpen(thread);
     }
   }, [threadId, autoOpen, loadThreadById, runSessionOpen]);
@@ -256,8 +291,21 @@ export function useAssistantChatThread(opts: {
   const createNewThread = useCallback(async () => {
     if (busyRef.current) return null;
     openNonceRef.current += 1;
+    setOpening(false);
     const thread = newAssistantChatThread();
-    const store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
+    let store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
+    // Avoid stacking blank “New chat” rows from repeated /chat/my entries.
+    store = {
+      ...store,
+      threads: store.threads.filter(
+        (t) =>
+          t.id === thread.id ||
+          t.messages.length > 0 ||
+          Boolean(t.mode) ||
+          t.titleManual === true ||
+          t.title.trim() !== "New chat",
+      ),
+    };
     saveAssistantChatStore(store);
     scheduleAssistantChatCloudPush(store);
     setActiveId(thread.id);
@@ -267,9 +315,9 @@ export function useAssistantChatThread(opts: {
     setError(null);
     setInput("");
     threadMetaRef.current = { createdAt: thread.createdAt, mode: thread.mode };
-    await runSessionOpen(thread);
+    requestAnimationFrame(() => chatInputRef.current?.focus());
     return thread.id;
-  }, [runSessionOpen]);
+  }, []);
 
   const startLifeAreaIdeate = useCallback(
     async (lifeAreaId: string) => {
@@ -309,7 +357,10 @@ export function useAssistantChatThread(opts: {
       setError(null);
       setInput("");
       const thread = loadThreadById(id);
-      if (thread && threadNeedsSessionOpen(thread)) {
+      if (
+        thread?.mode?.type === "life_area_ideate" &&
+        threadNeedsSessionOpen(thread)
+      ) {
         void runSessionOpen(thread);
       }
       const store = loadAssistantChatStore();
@@ -387,15 +438,16 @@ export function useAssistantChatThread(opts: {
     setApiThread(history);
 
     // Persist immediately so a refresh / navigation cannot lose the turn.
-    const titleManual =
-      loadAssistantChatStore().threads.find((t) => t.id === id)?.titleManual ===
-      true;
+    const existingMid = loadAssistantChatStore().threads.find((t) => t.id === id);
+    const titleManual = existingMid?.titleManual === true;
+    const isFirstUserTurn = !priorMessages.some(
+      (m) => m.role === "user" && m.text.trim(),
+    );
     const midTitle = titleManual
-      ? loadAssistantChatStore().threads.find((t) => t.id === id)!.title
-      : deriveAssistantChatTitle(messagesAfterUser) ||
-        (mode?.type === "life_area_ideate"
-          ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
-          : "New chat");
+      ? existingMid!.title
+      : mode?.type === "life_area_ideate"
+        ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
+        : deriveAssistantChatTitle(messagesAfterUser) || "New chat";
     if (!titleManual) setTitle(midTitle);
     persistThread({
       id,
@@ -403,10 +455,41 @@ export function useAssistantChatThread(opts: {
       updatedAt: new Date().toISOString(),
       title: midTitle,
       ...(titleManual ? { titleManual: true } : {}),
+      ...(existingMid?.excludeFromFabResume
+        ? { excludeFromFabResume: true }
+        : {}),
       messages: messagesAfterUser,
       apiThread: history,
       ...(mode ? { mode } : {}),
     });
+
+    // Claude-style: briefly summarise the first user message into a thread title.
+    if (
+      isFirstUserTurn &&
+      !titleManual &&
+      mode?.type !== "life_area_ideate"
+    ) {
+      const titleThreadId = id;
+      const titleCreatedAt = createdAt ?? new Date().toISOString();
+      const titleMode = mode;
+      void (async () => {
+        const smart = await generateAssistantChatTitle(trimmed);
+        const cleaned = smart ? sanitizeAssistantChatTitle(smart) : "";
+        if (!cleaned) return;
+        const store = loadAssistantChatStore();
+        const thread = store.threads.find((t) => t.id === titleThreadId);
+        if (!thread || thread.titleManual) return;
+        // Always prefer Haiku over provisional / derived titles.
+        if (activeIdRef.current === titleThreadId) setTitle(cleaned);
+        persistThread({
+          ...thread,
+          title: cleaned,
+          updatedAt: new Date().toISOString(),
+          createdAt: thread.createdAt || titleCreatedAt,
+          ...(titleMode ? { mode: titleMode } : {}),
+        });
+      })();
+    }
 
     let assistantStarted = false;
     let acc = "";
@@ -443,7 +526,7 @@ export function useAssistantChatThread(opts: {
       const parsed = parseAssistantDisplayText(raw);
       let actionResults: AssistantChatUiMessage["actionResults"];
       try {
-        const results = executeAssistantActions(parsed.actions);
+        const results = await executeAssistantActions(parsed.actions);
         actionResults = results.map((r) => ({
           label: r.label,
           detail: r.detail,
@@ -454,6 +537,14 @@ export function useAssistantChatThread(opts: {
       } catch {
         actionResults = undefined;
       }
+
+      const handedOffToCreate = parsed.actions.some(
+        (a) =>
+          a.name === "create_meditation" ||
+          a.name === "navigate_create_by_type" ||
+          a.name === "navigate_create_from_journal" ||
+          a.name === "navigate_create_from_idea",
+      );
 
       const nextApi: AssistantChatApiTurn[] = [
         ...history,
@@ -477,12 +568,20 @@ export function useAssistantChatThread(opts: {
         (t) => t.id === sendThreadId,
       );
       const manual = existing?.titleManual === true;
+      const excludeFromFabResume =
+        existing?.excludeFromFabResume === true || handedOffToCreate;
+      // Re-read title after actions — Haiku may have landed while we streamed.
+      const latestTitle =
+        loadAssistantChatStore().threads.find((t) => t.id === sendThreadId)
+          ?.title ?? existing?.title;
       const nextTitle = manual
-        ? existing!.title
-        : deriveAssistantChatTitle(nextMessages) ||
-          (mode?.type === "life_area_ideate"
-            ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
-            : "New chat");
+        ? (latestTitle ?? existing!.title)
+        : latestTitle && latestTitle !== "New chat"
+          ? latestTitle
+          : deriveAssistantChatTitle(nextMessages) ||
+            (mode?.type === "life_area_ideate"
+              ? lifeAreaIdeateThreadTitle(mode.lifeAreaId)
+              : "New chat");
       if (activeIdRef.current === sendThreadId) setTitle(nextTitle);
 
       // Always persist for this send's thread — even if UI moved to another chat.
@@ -492,6 +591,7 @@ export function useAssistantChatThread(opts: {
         updatedAt: new Date().toISOString(),
         title: nextTitle,
         ...(manual ? { titleManual: true } : {}),
+        ...(excludeFromFabResume ? { excludeFromFabResume: true } : {}),
         messages: nextMessages,
         apiThread: nextApi,
         ...(mode ? { mode } : {}),
@@ -525,6 +625,7 @@ export function useAssistantChatThread(opts: {
     messagesEndRef,
     isAtBottomRef,
     scrollRef,
+    scrollToBottom,
     busy,
     opening,
     error,

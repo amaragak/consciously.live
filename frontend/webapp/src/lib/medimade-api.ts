@@ -6,6 +6,7 @@ import {
   setMedimadeSession,
 } from "./auth-session";
 import type { GenerationTimings } from "./meditation-analytics";
+import type { MeditationCreationProvenance } from "./meditation-creation-provenance";
 import type { MixerFactoryPreset } from "./mixer-factory-presets";
 import { normalizeFactoryPreset } from "./mixer-factory-presets";
 
@@ -2045,6 +2046,8 @@ export async function createMeditationAudioJob(params: {
   excludeFromLibrary?: boolean;
   /** Ideate life-area id when generated from that area / goal path. */
   lifeAreaId?: string | null;
+  /** Create-path snapshot for Library “How this was made”. */
+  creationProvenance?: MeditationCreationProvenance | null;
   speed?: number;
   /** If set, applies voice FX (Pedalboard) after loudness normalization. */
   voiceFxPreset?: string | null;
@@ -2100,6 +2103,9 @@ export async function createMeditationAudioJob(params: {
     ...(params.excludeFromLibrary === true ? { excludeFromLibrary: true } : {}),
     ...(typeof params.lifeAreaId === "string" && params.lifeAreaId.trim()
       ? { lifeAreaId: params.lifeAreaId.trim() }
+      : {}),
+    ...(params.creationProvenance
+      ? { creationProvenance: params.creationProvenance }
       : {}),
     ...(params.voiceFxPreset ? { voiceFxPreset: params.voiceFxPreset } : {}),
     ...(sessionTokenForBody() ? { sessionToken: sessionTokenForBody() } : {}),
@@ -3492,6 +3498,8 @@ export type LibraryMeditationItem = {
   claudeHaiku45ChatEstOutputTokens?: number | null;
   /** Per-phase + per speech-section worker timings (dev flyover). */
   generationTimings?: GenerationTimings | null;
+  /** Create-path snapshot for “How this was made” (when saved at generate time). */
+  creationProvenance?: MeditationCreationProvenance | null;
 };
 
 export const MEDITATION_DRAFT_STATE_VERSION = 1 as const;

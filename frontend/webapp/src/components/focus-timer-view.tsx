@@ -39,6 +39,10 @@ import {
   readFocusSessionHandoff,
 } from "@/lib/focus-session-handoff";
 import {
+  FOCUS_CHAT_CONTROL_EVENT,
+  type FocusChatControlDetail,
+} from "@/lib/focus-chat-control";
+import {
   FOCUS_PREFLIGHT_CHANGED_EVENT,
   readActiveFocusPreflightLink,
   writeFocusActiveIdeateSubtask,
@@ -174,6 +178,8 @@ export function FocusTimerView() {
   } = useLibraryPlayer();
   const searchParams = useSearchParams();
   const fromIdeateToken = searchParams.get("fromIdeate");
+  const autoStart = searchParams.get("autoStart") === "1";
+  const minutesParam = searchParams.get("minutes");
   const [name, setName] = useState("there");
   const [greeting, setGreeting] = useState("Good morning");
   const [taskInput, setTaskInput] = useState("");
@@ -290,6 +296,58 @@ export function FocusTimerView() {
     setIdeateStore(store);
     setTasksShelfOpen(true);
   }, [fromIdeateToken]);
+
+  // Chat ACTION: auto-start + minutes query, plus live pause/stop/start events.
+  useEffect(() => {
+    const minsRaw = minutesParam ? Number(minutesParam) : NaN;
+    if (Number.isFinite(minsRaw) && minsRaw > 0) {
+      const mins = Math.min(120, Math.max(1, Math.floor(minsRaw)));
+      setFocusMinutes(mins);
+      setMode("focus");
+      setDurationSec(mins * 60);
+      setRemainingSec(mins * 60);
+      remainingRef.current = mins * 60;
+    }
+    if (autoStart) {
+      setRunning(true);
+    }
+  }, [autoStart, minutesParam]);
+
+  useEffect(() => {
+    const onControl = (ev: Event) => {
+      const detail = (ev as CustomEvent<FocusChatControlDetail>).detail;
+      if (!detail?.cmd) return;
+      if (detail.cmd === "pause") {
+        setRunning(false);
+        endAtRef.current = null;
+        return;
+      }
+      if (detail.cmd === "stop") {
+        setRunning(false);
+        endAtRef.current = null;
+        const mins = focusMinutes;
+        const sec = mins * 60;
+        setDurationSec(sec);
+        setRemainingSec(sec);
+        remainingRef.current = sec;
+        return;
+      }
+      if (detail.cmd === "start") {
+        if (detail.minutes && detail.minutes > 0) {
+          const mins = Math.min(120, Math.floor(detail.minutes));
+          setFocusMinutes(mins);
+          setMode("focus");
+          const sec = mins * 60;
+          setDurationSec(sec);
+          setRemainingSec(sec);
+          remainingRef.current = sec;
+        }
+        setRunning(true);
+      }
+    };
+    window.addEventListener(FOCUS_CHAT_CONTROL_EVENT, onControl);
+    return () => window.removeEventListener(FOCUS_CHAT_CONTROL_EVENT, onControl);
+  }, [focusMinutes]);
 
   useEffect(() => {
     const sync = () => setPreflight(readActiveFocusPreflightLink());

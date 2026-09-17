@@ -18,6 +18,7 @@ import {
   buildAppBreadcrumbs,
   type AppBreadcrumbCrumb,
 } from "@/lib/app-nav";
+import { ASSISTANT_CHAT_STORE_CHANGED } from "@/lib/assistant-chat-storage";
 import { enterMarketingPreviewMode } from "@/lib/marketing-preview";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
@@ -321,17 +322,20 @@ export function AppTopBar({
 
   useLayoutEffect(() => {
     const rebuild = () => {
-      setCrumbs(
-        buildAppBreadcrumbs(pathname, {
-          lifeAreaTitle: lifeAreaTitleFromPath(pathname),
-          createMeditationStyle: createMeditationStyleFromSession(pathname),
-          createRandomScript: Boolean(readCreateSession()?.randomScript),
-          journalEntryTitle: journalEntryTitleFromPath(pathname),
-          gratitudeEntryLabel: gratitudeEntryLabelFromPath(pathname),
-          hash: typeof window !== "undefined" ? window.location.hash : "",
-          search: typeof window !== "undefined" ? window.location.search : "",
-        }),
-      );
+      // Defer so journal (or other) store writes never setState into TopBar mid-render.
+      queueMicrotask(() => {
+        setCrumbs(
+          buildAppBreadcrumbs(pathname, {
+            lifeAreaTitle: lifeAreaTitleFromPath(pathname),
+            createMeditationStyle: createMeditationStyleFromSession(pathname),
+            createRandomScript: Boolean(readCreateSession()?.randomScript),
+            journalEntryTitle: journalEntryTitleFromPath(pathname),
+            gratitudeEntryLabel: gratitudeEntryLabelFromPath(pathname),
+            hash: typeof window !== "undefined" ? window.location.hash : "",
+            search: typeof window !== "undefined" ? window.location.search : "",
+          }),
+        );
+      });
     };
     rebuild();
     const unsubIdeate = subscribeIdeateCloud(rebuild);
@@ -339,12 +343,14 @@ export function AppTopBar({
     const unsubLiveTitle = subscribeJournalEntryLiveTitle(rebuild);
     window.addEventListener("storage", rebuild);
     window.addEventListener(CREATE_SESSION_CHANGED_EVENT, rebuild);
+    window.addEventListener(ASSISTANT_CHAT_STORE_CHANGED, rebuild);
     return () => {
       unsubIdeate();
       unsubJournal();
       unsubLiveTitle();
       window.removeEventListener("storage", rebuild);
       window.removeEventListener(CREATE_SESSION_CHANGED_EVENT, rebuild);
+      window.removeEventListener(ASSISTANT_CHAT_STORE_CHANGED, rebuild);
     };
   }, [pathname]);
 
@@ -381,8 +387,8 @@ export function AppTopBar({
         </Link>
       </div>
 
-      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3 overflow-hidden px-3 pr-[5.75rem] sm:px-4 md:pr-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden md:gap-2">
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3 overflow-hidden px-3 pr-[5.75rem] sm:px-4 md:pr-4">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-2 overflow-hidden md:max-w-[min(100%,calc(50vw-10rem))] md:gap-2">
           <Link
             href="/"
             className="inline-flex shrink-0 items-center md:hidden"
@@ -501,8 +507,9 @@ export function AppTopBar({
         </div>
       </div>
 
-      {/* True viewport centre (full header width), not content-area centre. */}
-      <div className="pointer-events-none absolute inset-0 z-[5] hidden items-center justify-center md:flex">
+      {/* True viewport centre (full header width), not content-area centre.
+          Above the breadcrumb flex row so tab clicks aren't swallowed. */}
+      <div className="pointer-events-none absolute inset-0 z-[15] hidden items-center justify-center md:flex">
         <AppPrimaryTabsSlot className="pointer-events-auto flex max-w-[min(100%,48rem)] items-center justify-center overflow-x-auto" />
       </div>
     </header>

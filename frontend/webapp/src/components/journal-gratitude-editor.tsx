@@ -23,18 +23,28 @@ type Props = {
   lines: JournalGratitudeLines;
   onChange: (lines: JournalGratitudeLines) => void;
   children?: ReactNode;
+  footerNote?: string;
+  onDelete?: () => void;
 };
 
-export function JournalGratitudeEditor({ createdAt, lines, onChange, children }: Props) {
+export function JournalGratitudeEditor({
+  createdAt,
+  lines,
+  onChange,
+  children,
+  footerNote,
+  onDelete,
+}: Props) {
   const isToday = localDateKeyFromIso(createdAt) === localDateKey();
   const dateLabel = formatJournalEntryDate(createdAt);
   const slotCount = Math.max(3, lines.length);
   const displayLines = Array.from({ length: slotCount }, (_, i) => lines[i] ?? "");
+  const showFooter = Boolean(children || footerNote || onDelete);
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-journal-warm-border bg-journal-warm-bg shadow-sm max-sm:flex-none sm:flex-1">
-      <div className="relative z-10 shrink-0 border-b border-journal-warm-border bg-journal-warm-bg px-5 py-4 sm:px-6">
-        <h2 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background max-sm:flex-none">
+      <div className="relative z-10 shrink-0 border-b border-border px-7 pb-3 pt-3">
+        <h2 className="font-display text-[26px] font-normal tracking-tight text-foreground">
           {isToday ? "Today" : dateLabel}
         </h2>
         <p className="mt-1 text-sm text-muted">
@@ -47,7 +57,7 @@ export function JournalGratitudeEditor({ createdAt, lines, onChange, children }:
               : `Three things you were grateful for on ${dateLabel}.`}
         </p>
       </div>
-      <div className="space-y-5 px-5 pt-5 pb-4 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-contain sm:px-6 sm:py-6">
+      <div className="space-y-5 px-7 pt-5 pb-4 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-contain sm:py-6">
         {displayLines.map((value, i) => {
           const Icon = FIELD_ICONS[i] ?? IconSparkles;
           const ariaLabel = ariaLabelForIndex(i);
@@ -69,15 +79,35 @@ export function JournalGratitudeEditor({ createdAt, lines, onChange, children }:
                 rows={2}
                 placeholder="I’m grateful for…"
                 aria-label={ariaLabel}
-                className="min-w-0 flex-1 resize-y rounded-2xl border border-journal-warm-border bg-journal-warm-input-bg px-4 text-base leading-relaxed text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2 max-sm:h-[2.75rem] max-sm:min-h-[2.75rem] max-sm:resize-none max-sm:overflow-y-auto max-sm:py-2.5 sm:min-h-[4rem] sm:py-3"
+                className="min-w-0 flex-1 resize-y rounded-xl border border-border bg-background px-4 text-base leading-relaxed text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2 max-sm:h-[2.75rem] max-sm:min-h-[2.75rem] max-sm:resize-none max-sm:overflow-y-auto max-sm:py-2.5 sm:min-h-[4rem] sm:py-3"
               />
             </div>
           );
         })}
       </div>
-      {children ? (
-        <div className="relative z-10 shrink-0 border-t border-journal-warm-border bg-journal-warm-bg px-5 py-3 sm:px-6 sm:py-3">
+      {showFooter ? (
+        <div className="relative z-10 shrink-0 border-t border-border px-7 py-3">
           {children}
+          {footerNote || onDelete ? (
+            <div
+              className={`flex flex-wrap items-center gap-3 ${
+                children ? "mt-3" : ""
+              }`}
+            >
+              {footerNote ? (
+                <p className="text-sm text-muted">{footerNote}</p>
+              ) : null}
+              {onDelete ? (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="cursor-pointer text-xs font-medium text-muted underline-offset-2 hover:text-danger hover:underline"
+                >
+                  Delete day
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

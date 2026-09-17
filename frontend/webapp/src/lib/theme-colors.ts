@@ -11,7 +11,7 @@ import {
 } from "@/lib/color-scheme";
 
 /** Brand fill — gold-peach. Text on this fill must use `onAccent` (#3D2E10). */
-export const PRIMARY = "#F1AC73";
+export const PRIMARY = "#F0A855";
 
 /** Links and accent text on cream (deeper amber — peach fill on cream fails contrast). */
 export const ACCENT_LINK = "#B8703A";
@@ -48,8 +48,8 @@ export const INFO = "#0284c7";
 
 const NAV = "#33465C";
 // const NAV = "#6E88A3";
-/** Light app canvas + header base — one off-white (#FAF8F3). */
-const APP_CANVAS_LIGHT = "#FAF8F3";
+/** Light app canvas + header base — midway between #FAF8F3 and #FCFBF8. */
+const APP_CANVAS_LIGHT = "#FBFAF6";
 /** Light-mode header base — matches app canvas. */
 const NAV_LIGHT = APP_CANVAS_LIGHT;
 const NAV_FOREGROUND = WHITE;
@@ -64,7 +64,7 @@ export const STAR_IDLE = "rgb(212 176 128 / 0.3)";
 /** Dark-mode empty stars (slightly higher contrast on navy). */
 export const STAR_IDLE_DARK = "#B5AF9F";
 
-const GOLD_LIGHT = "#F1AC73";
+const GOLD_LIGHT = "#F0A855";
 
 /**
  * Paper / ink / chrome. Independent of PRIMARY.
@@ -259,6 +259,8 @@ type Semantic = {
   surface: string;
   /** Secondary raised surface — see SURFACE_2_* (not `--card`). */
   surface2: string;
+  /** List rails — midpoint of main sidebar (`surface2`) and header/canvas. */
+  surfaceRail: string;
   onAccent: string;
   overlay: string;
   nav: string;
@@ -374,12 +376,16 @@ function assemble(
   const accentButton = dark ? DARK_PRIMARY : ACCENT_BUTTON_FILL;
   const warmCreamBg = mixHex(PRIMARY, paper.background, WARM_CREAM_BG_MIX);
   const warmCreamBorder = mixHex(PRIMARY, paper.background, WARM_CREAM_BORDER_MIX);
+  const surface2 = dark ? SURFACE_2_DARK : SURFACE_2_LIGHT;
+  /** Header/canvas base matches `--background` (light: nav; dark: paper). */
+  const headerCanvas = dark ? paper.background : NAV_LIGHT;
   return {
     ...paper,
     ...brand,
     accentButton,
     gold,
-    surface2: dark ? SURFACE_2_DARK : SURFACE_2_LIGHT,
+    surface2,
+    surfaceRail: mixHex(surface2, headerCanvas, 0.5),
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
     nav: dark ? NAV : NAV_LIGHT,
@@ -546,6 +552,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--deep": s.deep,
     "--surface": s.surface,
     "--surface-2": s.surface2,
+    "--surface-rail": s.surfaceRail,
     "--on-accent": s.onAccent,
     "--overlay": s.overlay,
     "--nav": s.nav,

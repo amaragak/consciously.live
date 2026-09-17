@@ -16,6 +16,7 @@ import {
 } from "../lib/orpheus-voices";
 import { coerceClaudeModel } from "../lib/anthropic-pricing";
 import { coerceMeditationTargetMinutes } from "../lib/meditation-target-minutes";
+import { sanitizeMeditationCreationProvenance } from "../lib/meditation-creation-provenance";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const lambdaClient = new LambdaClient({});
@@ -70,6 +71,8 @@ export async function handler(
     backgroundMusicGain?: number;
     backgroundDrumsGain?: number;
     backgroundNoiseGain?: number;
+    /** Snapshot of create-path inputs for Library “How this was made”. */
+    creationProvenance?: unknown;
   };
   try {
     body = JSON.parse(event.body || "{}");
@@ -150,6 +153,10 @@ export async function handler(
     body.meditationTargetMinutes,
   );
 
+  const creationProvenance = sanitizeMeditationCreationProvenance(
+    body.creationProvenance,
+  );
+
   const claudeModel = coerceClaudeModel(body.claudeModel);
 
   const rawFishModel =
@@ -185,6 +192,7 @@ export async function handler(
         ...(journalMode ? { journalMode: true } : {}),
         ...(excludeFromLibrary ? { excludeFromLibrary: true } : {}),
         ...(lifeAreaId ? { lifeAreaId } : {}),
+        ...(creationProvenance ? { creationProvenance } : {}),
         meditationTargetMinutes,
         claudeModel,
         fishPauseMode:
