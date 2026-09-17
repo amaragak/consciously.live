@@ -1435,23 +1435,36 @@ export class MedimadeStack extends cdk.Stack {
       entry: path.join(__dirname, "../lambdas/search.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
-      timeout: cdk.Duration.seconds(15),
-      memorySize: 256,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
       environment: {
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
+        JOURNAL_TABLE_NAME: journalTable.tableName,
+        IDEATE_TABLE_NAME: ideateTable.tableName,
+        MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
       },
     });
     authJwtSecret.grantRead(searchFn);
     algoliaSecret.grantRead(searchFn);
+    journalTable.grantReadData(searchFn);
+    ideateTable.grantReadData(searchFn);
+    meditationAnalyticsTable.grantReadData(searchFn);
+
+    const searchIntegration = new integrations.HttpLambdaIntegration(
+      "SearchIntegration",
+      searchFn,
+    );
 
     httpApi.addRoutes({
       path: "/search",
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
-      integration: new integrations.HttpLambdaIntegration(
-        "SearchIntegration",
-        searchFn,
-      ),
+      integration: searchIntegration,
+    });
+    httpApi.addRoutes({
+      path: "/search/reindex",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: searchIntegration,
     });
 
     const assistantChatStore = new lambda_nodejs.NodejsFunction(

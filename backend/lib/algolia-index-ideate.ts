@@ -208,7 +208,7 @@ export function ideateBundleToAlgoliaRecords(
   return out;
 }
 
-const MANIFEST_TYPES = [
+export const MANIFEST_ALGOLIA_TYPES = [
   "life_area",
   "goal",
   "todo",
@@ -229,7 +229,7 @@ export function scheduleIndexIdeateBundle(
     const records = ideateBundleToAlgoliaRecords(userId, bundle);
     await replaceUserRecords({
       userId,
-      types: [...MANIFEST_TYPES],
+      types: [...MANIFEST_ALGOLIA_TYPES],
       records,
     });
   });

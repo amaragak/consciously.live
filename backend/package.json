@@ -17,7 +17,8 @@
     "build-fastembed-layer": "bash scripts/build-fastembed-layer",
     "build-runpod-orpheus": "bash scripts/build-runpod-orpheus",
     "build-orpheus-serverless": "bash scripts/build-orpheus-serverless",
-    "deploy-orpheus-serverless": "bash scripts/deploy-orpheus-serverless"
+    "deploy-orpheus-serverless": "bash scripts/deploy-orpheus-serverless",
+    "backfill-algolia": "tsx scripts/backfill-algolia.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1019.0",
