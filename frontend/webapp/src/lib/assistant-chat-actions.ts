@@ -1810,3 +1810,56 @@ export async function executeAssistantActions(
   }
   return out;
 }
+
+/**
+ * Compact ground-truth block appended to the assistant API turn so the model
+ * can refer to ordinals ("last one", "second") on the next user message.
+ * Not shown in the UI (only `apiThread` content).
+ */
+export function formatActionResultsForApiThread(
+  results: AssistantActionResult[],
+): string {
+  if (!results.length) return "";
+  const blocks: string[] = [];
+  for (const r of results) {
+    const status = r.ok ? "ok" : "error";
+    const head = [`[${status}] ${r.label}`];
+    if (r.detail?.trim()) head.push(r.detail.trim());
+    if (r.items?.length) {
+      for (const item of r.items) {
+        const titleBits = [item.title, item.meta, item.subtitle]
+          .map((s) => s?.trim())
+          .filter(Boolean);
+        const lines = (item.lines ?? [])
+          .map((l) => l.trim())
+          .filter(Boolean);
+        if (lines.length) {
+          blocks.push(
+            [
+              ...head,
+              titleBits.length ? titleBits.join(" · ") : null,
+              ...lines.map((l, i) => `${i + 1}. ${l}`),
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          );
+        } else {
+          const body = item.body?.trim();
+          blocks.push(
+            [
+              ...head,
+              titleBits.length ? titleBits.join(" · ") : null,
+              body ? body.slice(0, 400) : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          );
+        }
+      }
+    } else {
+      blocks.push(head.filter(Boolean).join(" — "));
+    }
+  }
+  if (!blocks.length) return "";
+  return `[[ACTION_RESULT]]\n${blocks.join("\n---\n")}\n[[/ACTION_RESULT]]`;
+}

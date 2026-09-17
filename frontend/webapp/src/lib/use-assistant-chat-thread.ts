@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { streamAssistantChat, generateAssistantChatTitle } from "@/lib/assistant-chat-api";
-import { executeAssistantActions } from "@/lib/assistant-chat-actions";
+import { executeAssistantActions, formatActionResultsForApiThread } from "@/lib/assistant-chat-actions";
 import { scheduleAssistantChatCloudPush } from "@/lib/assistant-chat-cloud";
 import {
   ASSISTANT_LIFE_AREA_IDEATE_OPEN,
@@ -525,6 +525,7 @@ export function useAssistantChatThread(opts: {
 
       const parsed = parseAssistantDisplayText(raw);
       let actionResults: AssistantChatUiMessage["actionResults"];
+      let apiAssistantContent = raw;
       try {
         const results = await executeAssistantActions(parsed.actions);
         actionResults = results.map((r) => ({
@@ -535,6 +536,10 @@ export function useAssistantChatThread(opts: {
           ok: r.ok,
           ...(r.items?.length ? { items: r.items } : {}),
         }));
+        const resultCtx = formatActionResultsForApiThread(results);
+        if (resultCtx) {
+          apiAssistantContent = `${raw.trimEnd()}\n\n${resultCtx}`;
+        }
       } catch {
         actionResults = undefined;
       }
@@ -549,7 +554,7 @@ export function useAssistantChatThread(opts: {
 
       const nextApi: AssistantChatApiTurn[] = [
         ...history,
-        { role: "assistant", content: raw },
+        { role: "assistant", content: apiAssistantContent },
       ];
       const nextMessages: AssistantChatUiMessage[] = [
         ...messagesAfterUser,
