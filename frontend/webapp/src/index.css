@@ -337,6 +337,10 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
   margin-right: auto;
 }
 
+:root.dark main[data-page-kind="standard"] {
+  --page-pattern-opacity: 0.18;
+}
+
 .page-pattern-tile {
   position: absolute;
   top: 0;
@@ -362,6 +366,10 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
     rgb(0 0 0 / 0.28) calc(var(--content-col-end, 72rem) + var(--content-edge, 0px) * 0.4),
     rgb(0 0 0 / 0.72) 100%
   );
+}
+
+:root.dark .page-pattern-tile {
+  background-image: url("/patterns/paisley-tile-800-tonal-navy.webp");
 }
 
 main[data-app-layout="signed-in"] .page-pattern-tile {
