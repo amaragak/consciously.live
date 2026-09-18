@@ -60,7 +60,7 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
       >
         {snippet ?? "Nothing written yet"}
       </p>
-      <p className="mt-1.5 shrink-0 font-sans text-[11px] leading-snug text-[rgba(60,35,15,0.4)] dark:text-[#A8B0BC]/70 sm:mt-auto sm:pt-3 sm:pr-11">
+      <p className="mt-1.5 shrink-0 font-sans text-[11px] leading-snug text-[rgba(60,35,15,0.4)] dark:text-[#C4CAD4] sm:mt-auto sm:pt-3 sm:pr-11">
         Last interacted on {lastInteracted}
       </p>
       <span

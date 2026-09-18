@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Class-based dark mode (header toggle). Default is light. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f6f3ee;
   --foreground: #1c1917;
