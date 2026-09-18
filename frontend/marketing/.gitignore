@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+# Workspace package — lockfile lives at repo root.
+/package-lock.json
 /.pnp
 .pnp.*
 .yarn/*

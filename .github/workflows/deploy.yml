@@ -7,7 +7,7 @@ on:
       - "backend/**"
       - "frontend/marketing/**"
       - "frontend/webapp/**"
-      - "frontend/react-common/**"
+      - "frontend/common/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
@@ -54,7 +54,7 @@ jobs:
             app:
               - 'frontend/webapp/**'
             shared:
-              - 'frontend/react-common/**'
+              - 'frontend/common/**'
             workflow:
               - '.github/workflows/deploy.yml'
 
@@ -78,7 +78,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
-            frontend/marketing/package-lock.json
             frontend/marketing/deploy/package-lock.json
             package-lock.json
 
@@ -187,23 +186,18 @@ jobs:
             } > frontend/webapp/.env
           fi
 
-      - name: Install marketing dependencies
-        if: steps.plan.outputs.marketing == 'true'
-        run: |
-          npm ci --prefix frontend/marketing
-          npm ci --prefix frontend/marketing/deploy
-
-      - name: Install app + shared package dependencies
-        if: steps.plan.outputs.app == 'true'
+      # Marketing + webapp + @consciously/common are npm workspaces — install from
+      # repo root only. Never `npm ci --prefix frontend/marketing` (that treats the
+      # private workspace package as a registry dependency and 404s).
+      - name: Install frontend workspace dependencies
+        if: steps.plan.outputs.frontend == 'true'
         run: npm ci
 
       - name: Install SST deploy tooling
         if: steps.plan.outputs.frontend == 'true'
         working-directory: frontend/marketing/deploy
         run: |
-          if [ ! -d node_modules ]; then
-            npm ci
-          fi
+          npm ci
           npm run install-platform
 
       - name: Deploy frontend (SST prod)
