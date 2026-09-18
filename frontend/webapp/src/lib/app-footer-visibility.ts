@@ -1,9 +1,18 @@
 /**
- * Whether the shared AppFooter should render for this route + chrome layout.
- * Hidden on auth and immersive full-height workspaces so they keep their own
- * bottom chrome (create bar, timer, editors).
+ * SPA never mounts the marketing site footer — only marketing Next does.
  */
 export function shouldShowAppFooter(
+  _pathname: string,
+  _layout: "default" | "app" = "default",
+): boolean {
+  return false;
+}
+
+/**
+ * Document-scroll pages grow with content (MainShell scrolls).
+ * Immersive workspaces fill the viewport and manage their own overflow.
+ */
+export function shouldUseDocumentScroll(
   pathname: string,
   layout: "default" | "app" = "default",
 ): boolean {
@@ -16,9 +25,9 @@ export function shouldShowAppFooter(
     return false;
   }
   if (path === "/focus/my" || path.startsWith("/focus/my/")) return false;
+  if (path === "/focus" || path.startsWith("/focus/")) return false;
   if (path.startsWith("/admin")) return false;
 
-  // Immersive in-app workspaces — footer would fight flex fill / overflow shells.
   if (layout === "app") {
     if (path.startsWith("/chat/my")) return false;
     if (path.startsWith("/journal/my")) return false;

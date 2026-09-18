@@ -107,17 +107,177 @@ body {
   animation: ideate-scroll-hint-bounce 1.5s ease infinite;
 }
 
-/* Minimal Manifest hero surface (full pattern CSS lives on marketing). */
+/* Manifest / Ideate hero — ported from marketing globals (stock BGs + paisley). */
 .home-hero {
   position: relative;
   overflow: hidden;
+  background-color: var(--home-hero-bg, #fbfaf6);
+  background-image: none;
+  --home-hero-pattern-opacity: 0.2;
+  --home-hero-pattern-mask-linear: linear-gradient(
+    to right,
+    black 0%,
+    transparent 30%,
+    transparent 70%,
+    black 100%
+  );
+  --home-hero-pattern-mask: var(--home-hero-pattern-mask-linear);
+}
+
+.home-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--home-hero-pattern-opacity);
+  background-image: url("/patterns/paisley-tile-800-offwhite.webp");
+  background-repeat: repeat;
+  background-size: 800px 800px;
+  -webkit-mask-image: var(--home-hero-pattern-mask);
+  mask-image: var(--home-hero-pattern-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+.dark .home-hero::before {
+  background-image: url("/patterns/paisley-tile-800-tonal-navy.webp");
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.home-hero > *:not(.home-hero-chrome) {
+  position: relative;
+  z-index: 1;
+}
+
+.home-hero > .home-hero-chrome {
+  z-index: 5;
+}
+
+.home-hero--full-pattern::before {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.home-hero.home-hero--ideate {
+  --home-hero-bg: #000000;
+  --home-hero-pattern-opacity: 0.55;
+  background-color: #000000;
+}
+
+.dark .home-hero.home-hero--ideate {
+  --home-hero-pattern-opacity: 0.45;
+}
+
+.home-hero.home-hero--ideate-navy {
+  --home-hero-bg: #1e2530;
+  --home-hero-pattern-opacity: 0.42;
   background-color: #1e2530;
-  color: #fff;
+}
+
+.dark .home-hero.home-hero--ideate-navy {
+  --home-hero-pattern-opacity: 0.38;
+}
+
+.home-hero.home-hero--stock {
+  --home-hero-pattern-opacity: 1;
+}
+
+.home-hero.home-hero--stock::before,
+.dark .home-hero.home-hero--stock::before {
+  -webkit-mask-image: none;
+  mask-image: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+}
+
+.home-hero.home-hero--stock-mandala {
+  --home-hero-bg: #1a1820;
+  background-color: #1a1820;
+}
+.home-hero.home-hero--stock-mandala::before,
+.dark .home-hero.home-hero--stock-mandala::before {
+  background-image: url("/patterns/hero/adobestock-1713569649.webp");
+  background-repeat: repeat;
+  background-size: 520px 520px;
+  opacity: 0.72;
+}
+
+.home-hero.home-hero--stock-floral {
+  --home-hero-bg: #f3eee6;
+  background-color: #f3eee6;
+}
+.home-hero.home-hero--stock-floral::before,
+.dark .home-hero.home-hero--stock-floral::before {
+  background-image: url("/patterns/hero/adobestock-2156039259.webp");
+  background-repeat: repeat;
+  background-size: 640px 640px;
+  opacity: 0.9;
+}
+
+.home-hero.home-hero--stock-ornate {
+  --home-hero-bg: #ede8df;
+  background-color: #ede8df;
+}
+.home-hero.home-hero--stock-ornate::before,
+.dark .home-hero.home-hero--stock-ornate::before {
+  background-image: url("/patterns/hero/adobestock-2162625652.webp");
+  background-repeat: repeat;
+  background-size: 640px 640px;
+  opacity: 0.88;
+}
+
+.home-hero.home-hero--stock-waves {
+  --home-hero-bg: #2a4a6a;
+  background-color: #2a4a6a;
+}
+.home-hero.home-hero--stock-waves::before,
+.dark .home-hero.home-hero--stock-waves::before {
+  background-image: url("/patterns/hero/adobestock-2157180245.webp");
+  opacity: 0.95;
+}
+
+.home-hero.home-hero--stock-celestial {
+  --home-hero-bg: #0b1a3a;
+  background-color: #0b1a3a;
+}
+.home-hero.home-hero--stock-celestial::before,
+.dark .home-hero.home-hero--stock-celestial::before {
+  background-image: url("/patterns/hero/adobestock-2055049378.webp");
+  opacity: 0.92;
+}
+
+.home-hero.home-hero--stock-astrology {
+  --home-hero-bg: #12182a;
+  background-color: #12182a;
+}
+.home-hero.home-hero--stock-astrology::before,
+.dark .home-hero.home-hero--stock-astrology::before {
+  background-image: url("/patterns/hero/adobestock-2089052451.webp");
+  opacity: 0.92;
 }
 
 .home-hero.home-hero--ideate-depth {
-  background:
-    radial-gradient(ellipse 80% 60% at 50% 40%, #2a3340 0%, #1e2530 55%, #12161c 100%);
+  box-shadow:
+    inset 0 22px 36px -10px rgb(0 0 0 / 0.55),
+    inset 0 -22px 36px -10px rgb(0 0 0 / 0.55);
+}
+
+.dark .home-hero.home-hero--ideate-depth {
+  box-shadow:
+    inset 0 22px 40px -10px rgb(0 0 0 / 0.7),
+    inset 0 -22px 40px -10px rgb(0 0 0 / 0.7);
+}
+
+.life-area-card {
+  background-color: var(--life-area-bg);
+}
+.dark .life-area-card {
+  background-color: var(--life-area-bg-dark);
 }
 
 
@@ -212,5 +372,207 @@ main[data-app-layout="signed-in"] .page-pattern-tile {
     rgb(0 0 0 / 0.28) calc(var(--content-col-end, 72rem) + var(--content-edge, 0px) * 0.4),
     rgb(0 0 0 / 0.72) 100%
   );
+}
+
+/*
+ * Focus app: patterned edges on the timer column (clear centre band).
+ * Pattern tiles + data-focus-pattern selectors — ported from marketing globals.
+ */
+main[data-app-layout="focus"] {
+  --page-pattern-opacity: calc(var(--home-hero-pattern-opacity, 0.2) * 0.5);
+  --focus-tasks-w: 320px;
+  --focus-fade-end: 0.22;
+  --focus-fade-start-right: 0.78;
+}
+
+main[data-app-layout="focus"][data-focus-tasks="closed"] {
+  --focus-tasks-w: 0px;
+}
+
+@media (max-width: 639px) {
+  main[data-app-layout="focus"] {
+    --focus-tasks-w: 0px;
+  }
+}
+
+main[data-app-layout="focus"] .page-pattern-tile {
+  --page-pattern-gutter-mask: linear-gradient(
+    to right,
+    black 0%,
+    rgb(0 0 0 / 0.97) calc((100% - var(--focus-tasks-w)) * 0.03),
+    rgb(0 0 0 / 0.9) calc((100% - var(--focus-tasks-w)) * 0.07),
+    rgb(0 0 0 / 0.75) calc((100% - var(--focus-tasks-w)) * 0.11),
+    rgb(0 0 0 / 0.55) calc((100% - var(--focus-tasks-w)) * 0.15),
+    rgb(0 0 0 / 0.35) calc((100% - var(--focus-tasks-w)) * 0.18),
+    rgb(0 0 0 / 0.18) calc((100% - var(--focus-tasks-w)) * 0.2),
+    rgb(0 0 0 / 0.06) calc((100% - var(--focus-tasks-w)) * 0.21),
+    transparent calc((100% - var(--focus-tasks-w)) * var(--focus-fade-end)),
+    transparent
+      calc((100% - var(--focus-tasks-w)) * var(--focus-fade-start-right)),
+    rgb(0 0 0 / 0.06)
+      calc((100% - var(--focus-tasks-w)) * 0.79),
+    rgb(0 0 0 / 0.18)
+      calc((100% - var(--focus-tasks-w)) * 0.8),
+    rgb(0 0 0 / 0.35)
+      calc((100% - var(--focus-tasks-w)) * 0.82),
+    rgb(0 0 0 / 0.55)
+      calc((100% - var(--focus-tasks-w)) * 0.85),
+    rgb(0 0 0 / 0.75)
+      calc((100% - var(--focus-tasks-w)) * 0.89),
+    rgb(0 0 0 / 0.9)
+      calc((100% - var(--focus-tasks-w)) * 0.93),
+    rgb(0 0 0 / 0.97)
+      calc((100% - var(--focus-tasks-w)) * 0.97),
+    black calc(100% - var(--focus-tasks-w)),
+    transparent calc(100% - var(--focus-tasks-w)),
+    transparent 100%
+  );
+}
+
+main[data-app-layout="focus"][data-focus-pattern="mandala"] .page-pattern-tile {
+  background-image: url("/patterns/hero/adobestock-1713569649.webp");
+  background-size: 520px 520px;
+  opacity: 0.36;
+}
+
+main[data-app-layout="focus"][data-focus-pattern="floral"] .page-pattern-tile {
+  background-image: url("/patterns/hero/adobestock-2156039259.webp");
+  background-size: 640px 640px;
+  opacity: 0.45;
+}
+
+main[data-app-layout="focus"][data-focus-pattern="ornate"] .page-pattern-tile {
+  background-image: url("/patterns/hero/adobestock-2162625652.webp");
+  background-size: 640px 640px;
+  opacity: 0.44;
+}
+
+main[data-app-layout="focus"][data-focus-pattern="waves"] .page-pattern-tile {
+  background-image: url("/patterns/hero/adobestock-2157180245.webp");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.475;
+}
+
+main[data-app-layout="focus"][data-focus-pattern="celestial"] .page-pattern-tile {
+  background-image: url("/patterns/hero/adobestock-2055049378.webp");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.46;
+}
+
+main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile {
+  background-image: url("/patterns/hero/adobestock-2089052451.webp");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.46;
+}
+
+:root.dark main[data-app-layout="focus"] .page-pattern-tile {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.focus-progress-track {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.focus-task-shelf {
+  background-color: rgb(255 252 247);
+}
+
+:root.dark .focus-task-shelf {
+  background-color: var(--card);
+}
+
+/* Create path cards — chrome via Tailwind bg-card; class keeps hover/selected accent bar. */
+.create-path-card {
+  position: relative;
+  overflow: hidden;
+  box-shadow: none;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+.create-path-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: var(--accent);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+.create-path-card:hover:not(:disabled):not([aria-disabled="true"]),
+.create-path-card[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  transform: translateY(-1px);
+}
+.create-path-card:hover:not(:disabled):not([aria-disabled="true"])::before,
+.create-path-card[aria-pressed="true"]::before {
+  opacity: 1;
+}
+.create-path-card:disabled,
+.create-path-card[aria-disabled="true"] {
+  opacity: 0.62;
+  cursor: not-allowed;
+  transform: none;
+}
+.create-path-card:disabled::before,
+.create-path-card[aria-disabled="true"]::before {
+  opacity: 0;
+}
+.create-path-card[aria-disabled="true"] a {
+  opacity: calc(1 / 0.62);
+}
+.create-path-card-placeholder {
+  min-height: 100%;
+  border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--border) 85%, var(--muted));
+  background: transparent;
+}
+
+/* Site footer — floral stock tile (same asset as Manifest “Floral”). */
+.app-footer {
+  position: relative;
+  overflow: hidden;
+  background-color: #f3eee6;
+}
+.app-footer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/patterns/hero/adobestock-2156039259.webp");
+  background-repeat: repeat;
+  background-size: 640px 640px;
+  background-position: center;
+  opacity: 0.88;
+}
+:root.dark .app-footer {
+  background-color: #1a1820;
+}
+:root.dark .app-footer::before {
+  opacity: 0.35;
+}
+
+.app-footer-card {
+  background-color: #fffcf8;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow: 0 1px 2px rgb(28 25 23 / 0.04);
+}
+:root.dark .app-footer-card {
+  background-color: #1e2530;
+  border-color: color-mix(in srgb, #fffcf8 10%, transparent);
+  box-shadow: none;
 }
 

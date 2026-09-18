@@ -4,7 +4,7 @@ import { usePathname } from "@/lib/spa-nav";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppFooter } from "@/components/app-footer";
 import { useLibraryPlayer } from "@/components/library-player-provider";
-import { shouldShowAppFooter } from "@/lib/app-footer-visibility";
+import { shouldShowAppFooter, shouldUseDocumentScroll } from "@/lib/app-footer-visibility";
 import {
   FOCUS_PATTERN_CHANGED_EVENT,
   loadFocusPattern,
@@ -66,8 +66,12 @@ export function MainShell({
     layout !== "app" && isMarketingHeroRoute(pathname);
   const isFocusApp =
     layout === "app" &&
-    (pathname === "/focus/my" || pathname.startsWith("/focus/my/"));
+    (pathname === "/focus" ||
+      pathname.startsWith("/focus/") ||
+      pathname === "/focus/my" ||
+      pathname.startsWith("/focus/my/"));
   const showFooter = shouldShowAppFooter(pathname, layout);
+  const documentScroll = shouldUseDocumentScroll(pathname, layout);
   const contentRef = useRef<HTMLDivElement>(null);
   const patternTileActive = !isHeroPage;
   const tileHeightPx = usePatternTileHeight(contentRef, patternTileActive);
@@ -78,6 +82,12 @@ export function MainShell({
     !isFocusApp && nowPlaying && playerStripHeightPx > 0
       ? playerStripHeightPx + 16
       : 0;
+
+  /**
+   * Document scroll: content grows with the page.
+   * Immersive fill: full-height workspaces with their own internal overflow
+   * (create / journal / chat / focus).
+   */
 
   useEffect(() => {
     if (!isFocusApp) return;
@@ -110,7 +120,11 @@ export function MainShell({
       ) : null}
       <div
         ref={contentRef}
-        className="relative z-[1] flex min-h-0 w-full flex-1 flex-col"
+        className={
+          documentScroll
+            ? "relative z-[1] flex w-full min-h-full flex-col"
+            : "relative z-[1] flex min-h-0 w-full flex-1 flex-col"
+        }
       >
         {children}
         {showFooter ? <AppFooter /> : null}
