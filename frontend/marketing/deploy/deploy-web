@@ -17,8 +17,9 @@
 #
 #   --stage   Optional. SST stage: dev | development | prod | production (default: dev).
 #   --profile Optional. Sets AWS_PROFILE for this deploy. If omitted and AWS_PROFILE is unset, uses mm.
-#   --only    Optional. marketing | app | all (default: all). Uses SST --target so the
-#             other site is left untouched (not removed).
+#   --only    Optional. marketing | app | all (default: all). Uses SST --target and
+#             MEDIMADE_SST_ONLY so the other site is not constructed (Next.js still
+#             needs OpenNext output if constructed) and is not removed from the stack.
 #
 # Prereqs:
 #   cd frontend/marketing/deploy && npm install && npm run install-platform
@@ -188,9 +189,17 @@ fi
 
 SST_ARGS=(deploy --stage "$STAGE")
 case "$ONLY" in
-  marketing) SST_ARGS+=(--target "$SST_TARGET_MARKETING") ;;
-  app) SST_ARGS+=(--target "$SST_TARGET_APP") ;;
-  all) ;;
+  marketing)
+    export MEDIMADE_SST_ONLY=marketing
+    SST_ARGS+=(--target "$SST_TARGET_MARKETING")
+    ;;
+  app)
+    export MEDIMADE_SST_ONLY=app
+    SST_ARGS+=(--target "$SST_TARGET_APP")
+    ;;
+  all)
+    export MEDIMADE_SST_ONLY=all
+    ;;
 esac
 
 SST_BIN="$DEPLOY_DIR/node_modules/.bin/sst"

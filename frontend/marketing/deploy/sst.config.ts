@@ -5,6 +5,12 @@
 //
 // Deploy: `./frontend/marketing/deploy/deploy-web [--stage …] [--profile name]`
 // Stage ids are only `dev` or `prod` (deploy-web accepts production/development as aliases).
+//
+// Selective deploys (MEDIMADE_SST_ONLY=marketing|app) must not construct the other
+// site: sst.aws.Nextjs always loads .open-next/open-next.output.json, so an
+// app-only deploy would fail even with `sst deploy --target LoggedInSpa`.
+// Pair selective construction with deploy-web’s `--target` so the omitted site
+// is not removed from the stack.
 
 function nextPublicEnvFromProcess(): Record<string, string> {
   const keys = [
@@ -61,6 +67,14 @@ function viteEnvFromProcess(): Record<string, string> {
   return out;
 }
 
+/** `all` | `marketing` | `app` — set by deploy-web for selective deploys. */
+function deployOnly(): "all" | "marketing" | "app" {
+  const raw = (process.env.MEDIMADE_SST_ONLY || "all").trim().toLowerCase();
+  if (raw === "marketing" || raw === "web" || raw === "next") return "marketing";
+  if (raw === "app" || raw === "spa" || raw === "loggedinspa") return "app";
+  return "all";
+}
+
 export default $config({
   app(input) {
     return {
@@ -70,6 +84,10 @@ export default $config({
     };
   },
   async run() {
+    const only = deployOnly();
+    const deployMarketing = only === "all" || only === "marketing";
+    const deployApp = only === "all" || only === "app";
+
     // Custom domain + ACM must stay attached on the CloudFront distribution that
     // DNS points at. Detaching (MEDIMADE_SST_ATTACH_DOMAIN=0) previously left
     // consciously.live on a cert-less distribution → HTTPS name mismatch.
@@ -81,45 +99,53 @@ export default $config({
     const spaCertArn =
       "arn:aws:acm:us-east-1:382309212161:certificate/d1efcdd8-63ad-4e0c-88ed-ed177338b440";
 
-    const marketing = new sst.aws.Nextjs("Web", {
-      path: "..",
-      environment: nextPublicEnvFromProcess(),
-      ...(attachDomain
-        ? {
-            domain: {
-              name: "consciously.live",
-              aliases: ["www.consciously.live"],
-              // DNS in Cloudflare (not Route 53); CNAME apex+www → this CF domain.
-              dns: false,
-              cert: marketingCertArn,
-            },
-          }
-        : {}),
-    });
+    const marketing = deployMarketing
+      ? new sst.aws.Nextjs("Web", {
+          path: "..",
+          environment: nextPublicEnvFromProcess(),
+          ...(attachDomain
+            ? {
+                domain: {
+                  name: "consciously.live",
+                  aliases: ["www.consciously.live"],
+                  // DNS in Cloudflare (not Route 53); CNAME apex+www → this CF domain.
+                  dns: false,
+                  cert: marketingCertArn,
+                },
+              }
+            : {}),
+        })
+      : undefined;
 
     // SPA custom domain. Cloudflare CNAME app → dyaxvhlmage80.cloudfront.net
     // (DNS-only, same pattern as www). Default on; set MEDIMADE_SPA_ATTACH_DOMAIN=0
     // only for temporary cloudfront.net previews.
     const attachSpaDomain =
       attachDomain && process.env.MEDIMADE_SPA_ATTACH_DOMAIN !== "0";
-    const spa = new sst.aws.StaticSite("LoggedInSpa", {
-      path: "../../webapp",
-      build: {
-        command: "npm run build",
-        output: "dist",
-      },
-      environment: viteEnvFromProcess(),
-      ...(attachSpaDomain
-        ? {
-            domain: {
-              name: "app.consciously.live",
-              dns: false,
-              cert: spaCertArn,
-            },
-          }
-        : {}),
-    });
+    const spa = deployApp
+      ? new sst.aws.StaticSite("LoggedInSpa", {
+          path: "../../webapp",
+          build: {
+            command: "npm run build",
+            output: "dist",
+          },
+          environment: viteEnvFromProcess(),
+          ...(attachSpaDomain
+            ? {
+                domain: {
+                  name: "app.consciously.live",
+                  dns: false,
+                  cert: spaCertArn,
+                },
+              }
+            : {}),
+        })
+      : undefined;
 
-    return { url: marketing.url, marketingUrl: marketing.url, appUrl: spa.url };
+    return {
+      url: marketing?.url,
+      marketingUrl: marketing?.url,
+      appUrl: spa?.url,
+    };
   },
 });
