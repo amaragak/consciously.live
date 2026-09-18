@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const marketingRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  // Pin package root so Turbopack does not treat src/app as the project.
+  turbopack: {
+    root: marketingRoot,
+  },
   async headers() {
     return [
       {
