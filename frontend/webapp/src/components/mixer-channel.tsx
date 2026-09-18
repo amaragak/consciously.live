@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import * as Switch from "@radix-ui/react-switch";

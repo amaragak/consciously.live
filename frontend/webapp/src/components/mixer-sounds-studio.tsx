@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, MoreHorizontal } from "lucide-react";
 import { IconPlus } from "@tabler/icons-react";
 import { MixerChannel, MixerVoiceChannel } from "@/components/mixer-channel";
@@ -129,8 +127,9 @@ export function MixerSoundsStudio({
   initialFactoryPresets?: MixerFactoryPreset[] | null;
 }) {
   const isAdmin = variant === "admin";
-  const pathname = usePathname() || SOUNDS_HREF;
-  const router = useRouter();
+  const { pathname: pathnameRaw } = useLocation();
+  const pathname = pathnameRaw || SOUNDS_HREF;
+  const navigate = useNavigate();
   const soundsRoute = isAdmin ? { kind: "list" as const } : soundsRouteFromPath(pathname);
   const mobileEditorOpen =
     !isAdmin &&
@@ -394,7 +393,9 @@ export function MixerSoundsStudio({
       setNameDraft(p.name);
       setMix(emptyMixerMix());
       setSaveError(null);
-      router.replace(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+      navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`, {
+        replace: true,
+      });
       return;
     }
 
@@ -405,7 +406,7 @@ export function MixerSoundsStudio({
       if (!p) {
         // createNew may navigate before presets state commits
         if (activeId === route.id) return;
-        router.replace(SOUNDS_HREF);
+        navigate(SOUNDS_HREF, { replace: true });
         return;
       }
       if (activeId === p.id && !loadedFactoryId) return;
@@ -421,7 +422,7 @@ export function MixerSoundsStudio({
       if (factoryPresetsLoading) return;
       const p = factoryPresets.find((x) => x.id === route.id);
       if (!p) {
-        router.replace(SOUNDS_HREF);
+        navigate(SOUNDS_HREF, { replace: true });
         return;
       }
       if (loadedFactoryId === p.id) return;
@@ -447,7 +448,7 @@ export function MixerSoundsStudio({
     factoryPresetsLoading,
     activeId,
     loadedFactoryId,
-    router,
+    navigate,
   ]);
 
   useEffect(() => {
@@ -809,7 +810,7 @@ export function MixerSoundsStudio({
       savedId: p.id,
     });
     if (!isAdmin && opts?.navigate !== false) {
-      router.push(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+      navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
     }
   }
 
@@ -830,7 +831,7 @@ export function MixerSoundsStudio({
       },
     });
     if (!isAdmin && opts?.navigate !== false) {
-      router.push(`${SOUNDS_HREF}/preset/${encodeURIComponent(p.id)}`);
+      navigate(`${SOUNDS_HREF}/preset/${encodeURIComponent(p.id)}`);
     }
   }
 
@@ -920,11 +921,11 @@ export function MixerSoundsStudio({
     setLoadedFactoryId(null);
     setNameDraft(p.name);
     setMix(emptyMixerMix());
-    router.push(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+    navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
   }
 
   function openSoundsList() {
-    router.push(SOUNDS_HREF);
+    navigate(SOUNDS_HREF);
   }
 
   async function saveCurrent() {

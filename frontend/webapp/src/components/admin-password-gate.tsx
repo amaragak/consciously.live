@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 const ADMIN_PASSWORD = "ajm93";

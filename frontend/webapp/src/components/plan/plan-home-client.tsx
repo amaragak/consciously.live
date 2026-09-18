@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { Link, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconChevronDown, IconEye, IconLoader2, IconPencil, IconRefresh, IconSparkles, IconWind } from "@tabler/icons-react";
 import { LifeAreaCard } from "@/components/plan/life-area-card";
@@ -70,7 +68,6 @@ import {
   writePlanCreateHandoff,
   type PlanCreateHandoffV2,
 } from "@/lib/plan-create-handoff";
-import { useRouter } from "next/navigation";
 import {
   VisionBoardMosaic,
   VISION_BOARD_EMPTY_COLORS,
@@ -299,7 +296,7 @@ function ManifestOverviewSkeleton({
 }
 
 export function PlanHomeClient() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [dreams, setDreams] = useState<PlanDream[]>([]);
   const [visionItems, setVisionItems] = useState<VisionBoardItem[]>([]);
   const [visionTileUrls, setVisionTileUrls] = useState<Record<string, string>>(
@@ -486,7 +483,7 @@ export function PlanHomeClient() {
     setModalOpen(true);
     params.delete("new");
     const qs = params.toString();
-    router.replace(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`);
+    navigate(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
   }, [hydrated, cloudReady, router]);
 
   // Guests never wait on the cloud provider — missing provider used to brick /manifest/my
@@ -879,7 +876,7 @@ export function PlanHomeClient() {
           d.title.toLowerCase().includes(regret.category.toLowerCase()),
       ) ?? store.dreams[0];
     if (match) {
-      router.push(
+      navigate(
         `/manifest/goal/${encodeURIComponent(match.id)}?focus=regret&note=${encodeURIComponent(regret.statement.slice(0, 120))}`,
       );
       return;
@@ -1187,7 +1184,7 @@ export function PlanHomeClient() {
           )}
 
           <Link
-            href="/manifest/my/vision-board"
+            to="/manifest/my/vision-board"
             className="mx-auto mt-3 flex w-fit items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             Open vision board →
@@ -1358,7 +1355,7 @@ export function PlanHomeClient() {
               )}
 
               <Link
-                href="/manifest/my/vision-board"
+                to="/manifest/my/vision-board"
                 className="mt-6 inline-flex items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
               >
                 Open vision board →

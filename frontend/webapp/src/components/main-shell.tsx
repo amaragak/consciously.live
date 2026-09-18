@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname } from "@/lib/spa-nav";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppFooter } from "@/components/app-footer";
 import { useLibraryPlayer } from "@/components/library-player-provider";

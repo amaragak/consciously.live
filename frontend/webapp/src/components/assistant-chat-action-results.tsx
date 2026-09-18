@@ -1,7 +1,5 @@
-"use client";
-
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type {
   AssistantChatActionResult,
   AssistantChatActionResultItem,
@@ -122,7 +120,7 @@ function ActionResultCard({ item }: { item: AssistantChatActionResultItem }) {
 
   if (item.href) {
     return (
-      <Link href={item.href} className={`${shellClass} cursor-pointer`}>
+      <Link to={item.href} className={`${shellClass} cursor-pointer`}>
         {inner}
       </Link>
     );
@@ -154,7 +152,7 @@ function ConfirmationChip({ result }: { result: AssistantChatActionResult }) {
       </span>
       {result.ok && result.href ? (
         <Link
-          href={result.href}
+          to={result.href}
           className="shrink-0 font-semibold text-accent-link underline-offset-2 hover:underline"
         >
           {result.linkLabel ?? "Open"}

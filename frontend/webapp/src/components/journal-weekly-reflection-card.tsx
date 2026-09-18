@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useState } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import {
@@ -166,7 +164,7 @@ export function JournalWeeklyReflectionCard({
         <p className="mt-4 text-sm italic text-muted">
           Set{" "}
           <code className="rounded bg-background px-1 py-0.5 not-italic">
-            NEXT_PUBLIC_MEDIMADE_API_URL
+            VITE_MEDIMADE_API_URL
           </code>{" "}
           to enable weekly reflections.
         </p>

@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconArrowRight } from "@tabler/icons-react";
 import {
@@ -87,7 +85,7 @@ function formatCheckInDate(iso: string | null): string {
 function NavPrimary({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
-      href={href}
+      to={href}
       className="inline-flex items-center justify-center rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
     >
       {children}
@@ -98,7 +96,7 @@ function NavPrimary({ href, children }: { href: string; children: ReactNode }) {
 function NavGhost({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
-      href={href}
+      to={href}
       className="inline-flex items-center justify-center gap-1.5 rounded-full border border-marketing-ink/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-marketing-ink transition-colors hover:bg-marketing-ink/[0.04]"
     >
       {children}
@@ -138,7 +136,7 @@ function RecentColumn({ rows }: { rows: RecentRow[] }) {
               className="border-b border-marketing-ink/10 first:border-t"
             >
               <Link
-                href={row.href}
+                to={row.href}
                 className="flex cursor-pointer items-center justify-between gap-4 py-3 transition-colors hover:bg-marketing-ink/[0.03]"
               >
                 <span className="min-w-0 flex-1">
@@ -194,7 +192,7 @@ function RecentMeditationsColumn({ items }: { items: LibraryMeditationItem[] }) 
               >
                 <div className="flex items-center gap-3 py-3 transition-colors group-hover:bg-marketing-ink/[0.03]">
                   <Link
-                    href="/meditate/library/creations"
+                    to="/meditate/library/creations"
                     className="min-w-0 flex-1 cursor-pointer"
                   >
                     <span className="block truncate text-[13px] font-semibold text-marketing-ink">
@@ -275,7 +273,7 @@ function LifeAreaCards({
   if (dreams.length === 0) {
     return (
       <Link
-        href="/manifest/my?new=1"
+        to="/manifest/my?new=1"
         aria-label="Add new life area"
         className="flex min-h-[72px] w-full items-center justify-center rounded-[4px] border-2 border-dashed bg-transparent transition-[border-color] duration-200"
         style={{ borderColor: "rgba(180,140,80,0.35)" }}
@@ -300,7 +298,7 @@ function LifeAreaCards({
         return (
           <li key={d.id} className="min-w-0">
             <Link
-              href={`/manifest/goal/${encodeURIComponent(d.id)}`}
+              to={`/manifest/goal/${encodeURIComponent(d.id)}`}
               className="life-area-card group relative flex cursor-pointer items-center gap-4 rounded-[4px] px-4 py-3.5 shadow-[0_4px_14px_rgba(0,0,0,0.08),0_1px_4px_rgba(0,0,0,0.05)] transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-[0_8px_20px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_14px_rgba(0,0,0,0.35),0_1px_4px_rgba(0,0,0,0.25)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.45),0_2px_6px_rgba(0,0,0,0.3)] sm:px-5"
               style={bgVars}
             >

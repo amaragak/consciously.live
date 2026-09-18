@@ -37,11 +37,15 @@ export function allowedWebOrigins(): string[] {
     primary,
     "https://consciously.live",
     "https://www.consciously.live",
+    "https://app.consciously.live",
+    "https://dyaxvhlmage80.cloudfront.net",
     "https://d2nu9q5wynnhfv.cloudfront.net",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
   ].filter((v, i, a) => a.indexOf(v) === i);
 }
 

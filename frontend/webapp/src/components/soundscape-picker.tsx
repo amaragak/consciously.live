@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";

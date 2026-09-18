@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useState } from "react";
 import {
@@ -9,7 +8,7 @@ import {
 
 /** True on local/dev hosts where gated “dev UI” may appear when flags are on. */
 export function isLocalDevHost(): boolean {
-  if (process.env.NODE_ENV !== "production") return true;
+  if (import.meta.env.DEV) return true;
   if (typeof window === "undefined") return false;
   const host = window.location.hostname;
   return host === "localhost" || host === "127.0.0.1";

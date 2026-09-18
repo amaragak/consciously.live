@@ -1,5 +1,3 @@
-"use client";
-
 import { getMedimadeApiBase } from "@/lib/medimade-api";
 import {
   appendSpokenText,

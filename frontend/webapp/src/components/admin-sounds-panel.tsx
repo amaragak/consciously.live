@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
 import { SoundTrimWaveform } from "@/components/sound-trim-waveform";

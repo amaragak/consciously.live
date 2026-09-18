@@ -1,7 +1,22 @@
+# node
+node_modules/
+dist/
+.next/
+.open-next/
+.sst/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+
 # Voice test clips (keep runner + script tracked; .venv is local only)
 audio/voice-test-audio/*
 !audio/voice-test-audio/pedalboard_local_fx.py
 !audio/voice-test-audio/run-pedalboard-fx
 audio/voice-test-audio/.venv
-.DS_Store
 audio/bg-audio

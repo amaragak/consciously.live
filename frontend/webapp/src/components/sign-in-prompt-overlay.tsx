@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Link, useRouter, useSearchParams  } from "@/lib/spa-nav";
 import { Suspense, useEffect, useState } from "react";
 import {
   ensureMedimadeSession,

@@ -1,7 +1,5 @@
-"use client";
-
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 import { SearchInput } from "@/components/search-input";
 import {
@@ -199,7 +197,7 @@ export function ManifestGoalPicker({
               <>
                 Add a life area in{" "}
                 <Link
-                  href="/manifest/my"
+                  to="/manifest/my"
                   className="font-semibold text-accent-link underline-offset-2 hover:underline"
                 >
                   Manifest

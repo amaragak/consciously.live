@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# Deploy marketing (Next.js) and/or app (Vite SPA) via SST.
+#
+# Loads ../.env when present so NEXT_PUBLIC_* / VITE_* are available at build time.
+#
+# Usage (from repo root or anywhere):
+#   ./frontend/marketing/deploy/deploy-web
+#   ./frontend/marketing/deploy/deploy-web --stage prod --profile mm
+#   ./frontend/marketing/deploy/deploy-web --stage production --only marketing
+#   ./frontend/marketing/deploy/deploy-web --stage prod --only app
+#
+#   --stage   Optional. SST stage: dev | development | prod | production (default: dev).
+#   --profile Optional. Sets AWS_PROFILE for this deploy. If omitted and AWS_PROFILE is unset, uses mm.
+#   --only    Optional. marketing | app | all (default: all). Uses SST --target so the
+#             other site is left untouched (not removed).
+#
+# Prereqs:
+#   cd frontend/marketing/deploy && npm install && npm run install-platform
+#   (and frontend/webapp deps installed — workspaces from repo root — when deploying app)
+set -euo pipefail
+
+DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MARKETING_DIR="$(cd "$DEPLOY_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$DEPLOY_DIR/../../.." && pwd)"
+ENV_FILE="$MARKETING_DIR/.env"
+APP_ENV_FILE="$REPO_ROOT/frontend/webapp/.env"
+
+STAGE="dev"
+PROFILE=""
+ONLY="all"
+
+# SST component names in sst.config.ts
+SST_TARGET_MARKETING="Web"
+SST_TARGET_APP="LoggedInSpa"
+
+normalize_stage() {
+  local s
+  s="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$s" in
+    dev | development) echo "dev" ;;
+    prod | production) echo "prod" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+normalize_only() {
+  local s
+  s="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$s" in
+    all | both) echo "all" ;;
+    marketing | web | next) echo "marketing" ;;
+    app | spa | loggedinspa) echo "app" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+usage() {
+  echo "Usage: $0 [--stage <name>] [--profile <aws-profile>] [--only marketing|app|all]" >&2
+  echo "  --stage   default: dev. Allowed: dev, development, prod, production" >&2
+  echo "            (SST always uses stage ids \"dev\" or \"prod\".)" >&2
+  echo "  --profile optional; passed as AWS_PROFILE for this run" >&2
+  echo "  --only    default: all. Deploy only marketing (Next) or app (Vite SPA)." >&2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --stage)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --stage requires a value" >&2
+        usage
+        exit 1
+      fi
+      STAGE="$(normalize_stage "$2")"
+      shift 2
+      ;;
+    --profile)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --profile requires a value" >&2
+        usage
+        exit 1
+      fi
+      PROFILE="$2"
+      shift 2
+      ;;
+    --only)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --only requires a value (marketing|app|all)" >&2
+        usage
+        exit 1
+      fi
+      ONLY="$(normalize_only "$2")"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$STAGE" != "dev" && "$STAGE" != "prod" ]]; then
+  echo "error: --stage must be \"dev\" or \"prod\" (got: $STAGE)" >&2
+  exit 1
+fi
+
+if [[ "$ONLY" != "all" && "$ONLY" != "marketing" && "$ONLY" != "app" ]]; then
+  echo "error: --only must be \"marketing\", \"app\", or \"all\" (got: $ONLY)" >&2
+  exit 1
+fi
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+if [ -f "$APP_ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$APP_ENV_FILE"
+  set +a
+fi
+
+# Mirror NEXT_PUBLIC_* into VITE_* when SPA env is unset.
+export VITE_MEDIMADE_API_URL="${VITE_MEDIMADE_API_URL:-${NEXT_PUBLIC_MEDIMADE_API_URL:-}}"
+export VITE_MEDIMADE_MEDIA_BASE_URL="${VITE_MEDIMADE_MEDIA_BASE_URL:-${NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL:-}}"
+export VITE_MEDIMADE_CHAT_URL="${VITE_MEDIMADE_CHAT_URL:-${NEXT_PUBLIC_MEDIMADE_CHAT_URL:-}}"
+export VITE_ASSISTANT_CHAT_URL="${VITE_ASSISTANT_CHAT_URL:-${NEXT_PUBLIC_ASSISTANT_CHAT_URL:-}}"
+export VITE_MARKETING_ORIGIN="${VITE_MARKETING_ORIGIN:-https://consciously.live}"
+export NEXT_PUBLIC_APP_ORIGIN="${NEXT_PUBLIC_APP_ORIGIN:-https://app.consciously.live}"
+
+if [[ -z "${NEXT_PUBLIC_MEDIMADE_API_URL:-}" ]]; then
+  echo "error: NEXT_PUBLIC_MEDIMADE_API_URL is not set." >&2
+  echo "        CI should write it via write-webapp-env-from-outputs.mjs before this script." >&2
+  echo "        Locally: ensure $ENV_FILE exists, or export the var." >&2
+  exit 1
+fi
+
+if [[ "$ONLY" == "app" || "$ONLY" == "all" ]]; then
+  if [[ -z "${VITE_MEDIMADE_API_URL:-}" ]]; then
+    echo "error: VITE_MEDIMADE_API_URL is not set (needed for SPA deploy)." >&2
+    exit 1
+  fi
+fi
+
+echo "Deploying (--only=${ONLY}) with NEXT_PUBLIC_MEDIMADE_API_URL=${NEXT_PUBLIC_MEDIMADE_API_URL}"
+echo "  NEXT_PUBLIC_APP_ORIGIN=${NEXT_PUBLIC_APP_ORIGIN}"
+if [[ "$ONLY" == "app" || "$ONLY" == "all" ]]; then
+  echo "  VITE_MEDIMADE_API_URL=${VITE_MEDIMADE_API_URL}"
+fi
+
+if [[ -n "$PROFILE" ]]; then
+  export AWS_PROFILE="$PROFILE"
+elif [[ -z "${AWS_PROFILE:-}" ]]; then
+  if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -z "${AWS_ROLE_ARN:-}" ]]; then
+    export AWS_PROFILE=mm
+  fi
+fi
+
+cd "$DEPLOY_DIR"
+
+if [[ "$STAGE" == "prod" && "${MEDIMADE_SST_ATTACH_DOMAIN:-}" == "0" ]]; then
+  echo "error: MEDIMADE_SST_ATTACH_DOMAIN=0 on prod leaves consciously.live without a valid HTTPS cert on the live CloudFront distribution." >&2
+  echo "        Unset it (or set to 1) so domain+ACM stay attached. Use attach=0 only for temporary cloudfront.net previews with DNS not pointed at that distro." >&2
+  exit 1
+fi
+
+SST_ARGS=(deploy --stage "$STAGE")
+case "$ONLY" in
+  marketing) SST_ARGS+=(--target "$SST_TARGET_MARKETING") ;;
+  app) SST_ARGS+=(--target "$SST_TARGET_APP") ;;
+  all) ;;
+esac
+
+SST_BIN="$DEPLOY_DIR/node_modules/.bin/sst"
+if [ -f "$SST_BIN" ]; then
+  exec "$SST_BIN" "${SST_ARGS[@]}"
+else
+  exec npx --yes sst@latest "${SST_ARGS[@]}"
+fi

@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, usePathname, useRouter  } from "@/lib/spa-nav";
 import {
   BookOpen,
   Code2,

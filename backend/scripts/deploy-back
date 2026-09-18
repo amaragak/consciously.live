@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploy CDK stack and sync stack outputs into:
-#   frontend/webapp/.env   — NEXT_PUBLIC_MEDIMADE_* (Next.js)
-#   frontend/mobile/.env   — EXPO_PUBLIC_MEDIMADE_* (Expo)
+#   frontend/marketing/.env   — NEXT_PUBLIC_MEDIMADE_* (Next.js)
+#   frontend/mobile/.env  — EXPO_PUBLIC_MEDIMADE_* (Expo)
+#   frontend/extension/.env — VITE_MEDIMADE_* (Chrome extension)
 # Usage (from anywhere):
 #   backend/scripts/deploy-back
 #   backend/scripts/deploy-back --profile mm
@@ -24,7 +25,7 @@ export AWS_REGION="${AWS_REGION:-$CDK_DEFAULT_REGION}"
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-$CDK_DEFAULT_REGION}"
 
 REPO_ROOT="$(cd "$BACKEND_ROOT/.." && pwd)"
-WEBAPP_ENV="$REPO_ROOT/frontend/webapp/.env"
+WEBAPP_ENV="$REPO_ROOT/frontend/marketing/.env"
 MOBILE_ENV="$REPO_ROOT/frontend/mobile/.env"
 EXT_ENV="$REPO_ROOT/frontend/extension/.env"
 OUTPUTS="$(mktemp)"
@@ -38,7 +39,7 @@ extra_args=()
 # Auth (magic-link) deploy-time context.
 # Provide these as env vars so deploys work like other helper scripts.
 # - MEDIMADE_AUTH_EMAIL_FROM: sender email (must be allowed in Brevo)
-# - MEDIMADE_AUTH_WEBAPP_ORIGIN: where the magic-link should send the user (e.g. https://app.yourdomain.com)
+# - MEDIMADE_AUTH_WEBAPP_ORIGIN: where the magic-link should send the user (e.g. https://webapp.yourdomain.com)
 has_context() {
   local key="$1"
   shift

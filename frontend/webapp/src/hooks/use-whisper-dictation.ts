@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { transcribeJournalAudio } from "@/lib/medimade-api";
 

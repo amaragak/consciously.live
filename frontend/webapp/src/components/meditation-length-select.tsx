@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";

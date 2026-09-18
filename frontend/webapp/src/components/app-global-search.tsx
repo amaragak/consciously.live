@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/spa-nav";
 import { useEffect, useId, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
 import {

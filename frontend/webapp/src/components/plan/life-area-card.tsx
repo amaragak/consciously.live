@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { IconArrowRight } from "@tabler/icons-react";
 import { lifeAreaCardBgVars } from "@/lib/ideate-life-area-colors";
 
@@ -48,7 +46,7 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
 
   return (
     <Link
-      href={href}
+      to={href}
       className={`${CARD_CLASS} ${CARD_INTERACTIVE_CLASS}`}
       style={bgVars}
     >

@@ -1,8 +1,5 @@
-"use client";
-
-import Link from "next/link";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   PlanLifeAreaThoughtsLog,
@@ -93,8 +90,8 @@ function persistDream(next: PlanDream) {
 type Props = { dreamId: string };
 
 export function PlanGoalWorkspace({ dreamId }: Props) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const urlTab = tabFromSearchParams(searchParams);
   const [tab, setTabLocal] = useState<ProjectTab>(urlTab);
   const [dream, setDream] = useState<PlanDream | null>(null);
@@ -155,11 +152,11 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
     else params.set("tab", next);
     const q = params.toString();
     // Stay on /manifest/goal — legacy /ideate|/dream|/plan paths redirect.
-    router.replace(
+    navigate(
       q
         ? `/manifest/goal/${encodeURIComponent(dreamId)}?${q}`
         : `/manifest/goal/${encodeURIComponent(dreamId)}`,
-      { scroll: false },
+      { replace: true, preventScrollReset: true },
     );
   }
 
@@ -190,7 +187,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
     };
     writePlanCreateHandoff(handoff);
     patch({ meditationsGenerated: dream.meditationsGenerated + 1 });
-    router.push("/meditate/create/from-chat?fromDream=1");
+    navigate("/meditate/create/from-chat?fromDream=1");
   }
 
   if ((isMedimadeSessionActive() && !cloudReady) || missing || !dream) {
@@ -201,7 +198,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
             This project isn’t here anymore—or the link is old.
           </p>
           <Link
-            href="/manifest/my"
+            to="/manifest/my"
             className="mt-6 inline-block text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
           >
             Back to Manifest

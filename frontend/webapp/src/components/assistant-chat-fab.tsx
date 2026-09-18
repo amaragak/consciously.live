@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, usePathname  } from "@/lib/spa-nav";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
 import {

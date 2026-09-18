@@ -165,7 +165,12 @@ export async function handler(
       new GetCommand({ TableName: magicTable, Key: { token: tokenHash } }),
     );
     const item = got.Item as { email?: string; ttl?: number; kind?: string } | undefined;
-    if (!item?.email || typeof item.email !== "string" || item.kind === "rate") {
+    if (
+      !item?.email ||
+      typeof item.email !== "string" ||
+      item.kind === "rate" ||
+      item.kind === "handoff"
+    ) {
       return json(event, 400, { error: "Invalid or expired sign-in link" });
     }
     const ttl =

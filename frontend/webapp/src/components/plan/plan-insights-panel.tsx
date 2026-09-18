@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Insights for a life-area — structured synthesis persists on the dream (ideate cloud).
  */

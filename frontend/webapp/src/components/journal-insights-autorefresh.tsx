@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { useLocation } from "react-router-dom";
 import {
   fetchJournalInsightsRemote,
   getMedimadeApiBase,
@@ -70,7 +68,7 @@ export function scheduleJournalInsightsRefreshAfterLeavingEditor(): void {
 }
 
 export function JournalInsightsAutoRefresh() {
-  const pathname = usePathname() || "/";
+  const pathname = useLocation().pathname || "/";
   const prevPathRef = useRef<string>(pathname);
 
   useEffect(() => {

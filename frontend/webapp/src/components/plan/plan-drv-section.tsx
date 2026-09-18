@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { PlanClaudeCallout } from "@/components/plan/plan-claude-callout";
 import { streamPlanCoachReply } from "@/lib/plan-claude";

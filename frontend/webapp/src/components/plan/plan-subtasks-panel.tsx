@@ -1,6 +1,4 @@
-"use client";
-
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlanSubtaskCard } from "@/components/plan/plan-subtask-card";
 import {
@@ -46,7 +44,7 @@ export function PlanSubtasksPanel({
   storeTick = 0,
   embedded = false,
 }: Props) {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const focusTaskId = (searchParams.get("task") ?? "").trim() || null;
   const [newTitle, setNewTitle] = useState("");
   const [sort, setSort] = useState<SubtaskSortKey>("created_asc");

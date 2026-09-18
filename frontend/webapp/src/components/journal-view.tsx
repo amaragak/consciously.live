@@ -1,6 +1,4 @@
-"use client";
-
-import { usePathname, useRouter } from "next/navigation";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JournalInsightsView } from "@/components/journal-insights-view";
 import { scheduleJournalInsightsRefreshAfterLeavingEditor } from "@/components/journal-insights-autorefresh";
@@ -22,7 +20,6 @@ import {
 import { SearchInput } from "@/components/search-input";
 import { Calendar, Folder } from "lucide-react";
 import { JournalLockGate } from "@/components/journal-lock-gate";
-import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
   getMedimadeSessionJwt,
@@ -386,8 +383,9 @@ export function JournalView() {
   >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
-  const pathname = usePathname() || "/journal/my";
-  const router = useRouter();
+  const { pathname: pathnameRaw } = useLocation();
+  const pathname = pathnameRaw || "/journal/my";
+  const navigate = useNavigate();
   const section = journalSectionFromPath(pathname);
   const routeEntryId = journalEntryIdFromPath(pathname);
   const routeGratitudeId = gratitudeEntryIdFromPath(pathname);
@@ -1012,7 +1010,7 @@ export function JournalView() {
     setGratitudeDraft(latestGratitudeRef.current);
     persist(remaining, nextId);
     if (journalTab === "journal" && journalEntryIdFromPath(pathname)) {
-      router.push(
+      navigate(
         nextId
           ? `/journal/my/${encodeURIComponent(nextId)}`
           : JOURNAL_SECTION_HREF.journal,
@@ -1021,13 +1019,13 @@ export function JournalView() {
       journalTab === "gratitude" &&
       gratitudeEntryIdFromPath(pathname)
     ) {
-      router.push(
+      navigate(
         nextId
           ? `/journal/my/gratitudes/${encodeURIComponent(nextId)}`
           : JOURNAL_SECTION_HREF.gratitude,
       );
     }
-  }, [journalTab, persist, pathname, router]);
+  }, [journalTab, persist, pathname, navigate]);
 
   const applyEntrySelection = useCallback(
     (nextId: string) => {
@@ -1062,18 +1060,18 @@ export function JournalView() {
       if (journalTab === "journal") {
         if (isGratitudeEntry(entry)) return;
         if (journalEntryIdFromPath(pathname) === nextId) return;
-        router.push(`/journal/my/${encodeURIComponent(nextId)}`);
+        navigate(`/journal/my/${encodeURIComponent(nextId)}`);
         return;
       }
       if (journalTab === "gratitude") {
         if (!isGratitudeEntry(entry)) return;
         if (gratitudeEntryIdFromPath(pathname) === nextId) return;
-        router.push(
+        navigate(
           `/journal/my/gratitudes/${encodeURIComponent(nextId)}`,
         );
       }
     },
-    [applyEntrySelection, journalTab, pathname, router],
+    [applyEntrySelection, journalTab, pathname, navigate],
   );
 
   /** Deep-link / browser back: sync active entry from `/journal/:id`. */
@@ -1084,13 +1082,13 @@ export function JournalView() {
       (e) => e.id === routeEntryId && !isGratitudeEntry(e),
     );
     if (!found) {
-      router.replace(JOURNAL_SECTION_HREF.journal);
+      navigate(JOURNAL_SECTION_HREF.journal, { replace: true });
       return;
     }
     if (activeIdRef.current !== routeEntryId) {
       applyEntrySelection(routeEntryId);
     }
-  }, [hydrated, section, routeEntryId, entries, applyEntrySelection, router]);
+  }, [hydrated, section, routeEntryId, entries, applyEntrySelection, navigate]);
 
   /** Deep-link / browser back: sync from `/journal/my/gratitudes/:id`. */
   useEffect(() => {
@@ -1100,7 +1098,7 @@ export function JournalView() {
       (e) => e.id === routeGratitudeId && isGratitudeEntry(e),
     );
     if (!found) {
-      router.replace(JOURNAL_SECTION_HREF.gratitude);
+      navigate(JOURNAL_SECTION_HREF.gratitude, { replace: true });
       return;
     }
     if (activeIdRef.current !== routeGratitudeId) {
@@ -1112,7 +1110,7 @@ export function JournalView() {
     routeGratitudeId,
     entries,
     applyEntrySelection,
-    router,
+    navigate,
   ]);
 
   useEffect(() => {
@@ -1180,8 +1178,8 @@ export function JournalView() {
     latestTitleRef.current = e.title;
     latestGratitudeRef.current = emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
-    router.push(`/journal/my/${encodeURIComponent(e.id)}`);
-  }, [flushSaveSync, persist, selectedFolderId, router]);
+    navigate(`/journal/my/${encodeURIComponent(e.id)}`);
+  }, [flushSaveSync, persist, selectedFolderId, navigate]);
 
   const generateMeditationFromActive = useCallback(() => {
     const entry = activeEntry;
@@ -1208,16 +1206,16 @@ export function JournalView() {
     } catch {
       /* ignore */
     }
-    router.push("/meditate/create?fromJournal=1");
-  }, [activeEntry, flushSaveSync, router]);
+    navigate("/meditate/create?fromJournal=1");
+  }, [activeEntry, flushSaveSync, navigate]);
 
   const openLifeAreaFromActive = useCallback(() => {
     if (activeLifeArea) {
-      router.push(`/manifest/goal/${encodeURIComponent(activeLifeArea.id)}`);
+      navigate(`/manifest/goal/${encodeURIComponent(activeLifeArea.id)}`);
       return;
     }
-    router.push("/manifest/my");
-  }, [activeLifeArea, router]);
+    navigate("/manifest/my");
+  }, [activeLifeArea, navigate]);
 
   const createGratitudeEntry = useCallback(() => {
     flushSaveSync();
@@ -1231,8 +1229,8 @@ export function JournalView() {
     latestTitleRef.current = e.title;
     latestGratitudeRef.current = e.gratitude ?? emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
-    router.push(`/journal/my/gratitudes/${encodeURIComponent(e.id)}`);
-  }, [flushSaveSync, persist, router]);
+    navigate(`/journal/my/gratitudes/${encodeURIComponent(e.id)}`);
+  }, [flushSaveSync, persist, navigate]);
 
   // Sidebar deep-links: `/journal/my?new=1` and `/journal/my/gratitudes?new=1`.
   const newEntryHandledRef = useRef(false);
@@ -1274,14 +1272,14 @@ export function JournalView() {
       persist(next, first.id);
       setImportBatchId(batchId);
       setImportOpen(false);
-      router.push(`/journal/my/${encodeURIComponent(first.id)}`);
+      navigate(`/journal/my/${encodeURIComponent(first.id)}`);
       if (getMedimadeSessionJwt()) {
         void runJournalInsightsRemote().catch(() => {
           /* insights can catch up later */
         });
       }
     },
-    [flushSaveSync, persist, selectedFolderId, router],
+    [flushSaveSync, persist, selectedFolderId, navigate],
   );
 
   const addNamedFolder = useCallback(() => {
@@ -1351,8 +1349,8 @@ export function JournalView() {
     const id = openTodayGratitude();
     if (!id) return;
     if (gratitudeEntryIdFromPath(pathname) === id) return;
-    router.push(`/journal/my/gratitudes/${encodeURIComponent(id)}`);
-  }, [openTodayGratitude, pathname, router]);
+    navigate(`/journal/my/gratitudes/${encodeURIComponent(id)}`);
+  }, [openTodayGratitude, pathname, navigate]);
 
   const activateJournalList = useCallback(() => {
     const free = entriesRef.current.filter((e) => !isGratitudeEntry(e));
@@ -1463,18 +1461,8 @@ export function JournalView() {
               : "mb-3 md:mb-0"
         }`}
       >
-        <AppPrimaryTabsDesktop>
-          <SegmentedPillTabs
-            aria-label="Journal section"
-            value={section}
-            onChange={(id) => {
-              flushSaveSync();
-              router.push(JOURNAL_SECTION_HREF[id]);
-            }}
-            options={JOURNAL_SECTION_TABS}
-          />
-        </AppPrimaryTabsDesktop>
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 py-1.5 md:hidden">
+        {/* SPA shell has no top-bar tab slot; keep section tabs in-page at all breakpoints. */}
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 py-1.5">
           <SegmentedPillTabs
             className="min-w-0 flex-1 shadow-md"
             equalWidth
@@ -1482,7 +1470,7 @@ export function JournalView() {
             value={section}
             onChange={(id) => {
               flushSaveSync();
-              router.push(JOURNAL_SECTION_HREF[id]);
+              navigate(JOURNAL_SECTION_HREF[id]);
             }}
             options={JOURNAL_SECTION_TABS}
           />

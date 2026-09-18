@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/spa-nav";
 import { LogoMark } from "@/components/logo-mark";
 
 const FOOTER_NAV: { href: string; label: string }[] = [

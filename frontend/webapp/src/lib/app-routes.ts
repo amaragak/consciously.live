@@ -2,6 +2,12 @@
  * App vs marketing route helpers — auth gating and post-login redirects.
  */
 
+import {
+  appHref,
+  isSpaAppPath,
+  spaPathForAppPath,
+} from "@/lib/app-origins";
+
 const AUTH_NEXT_STORAGE_KEY = "mm_auth_next_v1";
 
 /** Same-origin path only (no protocol-relative URLs). */
@@ -66,7 +72,6 @@ const PROTECTED_PREFIXES: PrefixRule[] = [
   { prefix: "/meditate/library", marketing: "/meditate" },
   { prefix: "/meditate/sounds", marketing: "/meditate" },
   { prefix: "/create", marketing: "/meditate" },
-  { prefix: "/library", marketing: "/meditate" },
   { prefix: "/journal/my", marketing: "/journal" },
   { prefix: "/manifest/my", marketing: "/manifest" },
   { prefix: "/manifest/goal", marketing: "/manifest" },
@@ -142,18 +147,18 @@ export function isPublicAuthPath(pathname: string): boolean {
 
 /**
  * Marketing section roots → app destinations for signed-in users.
- * Exact path only (not nested routes). `/` is handled as the welcome dashboard
- * (same URL, different page) rather than a redirect.
+ * Exact path only (not nested routes). `/` is not listed — signed-in home
+ * redirects to the SPA in `app/page.tsx` so the marketing landing stays public.
  */
 const MARKETING_ROOT_APP_DESTINATIONS: Record<string, string> = {
-  "/meditate": "/meditate/library/creations",
-  "/journal": "/journal/my",
-  "/manifest": "/manifest/my",
-  "/ideate": "/manifest/my",
-  "/dream": "/manifest/my",
-  "/plan": "/manifest/my",
-  "/focus": "/focus/my",
-  "/chat": "/chat/my",
+  "/meditate": "__SPA__/meditate/library/creations",
+  "/journal": "__SPA__/journal/my",
+  "/manifest": "__SPA__/manifest/my",
+  "/ideate": "__SPA__/manifest/my",
+  "/dream": "__SPA__/manifest/my",
+  "/plan": "__SPA__/manifest/my",
+  "/focus": "__SPA__/focus",
+  "/chat": "__SPA__/chat/my",
 };
 
 /** Normalize pathname (no query/hash, no trailing slash except `/`). */
@@ -165,12 +170,29 @@ export function normalizeAppPathname(pathname: string): string {
 
 /**
  * If this marketing root should bounce signed-in users into the app, return
- * the destination. Otherwise null (including `/`, which stays as welcome home).
+ * the destination. Otherwise null (`/` is handled in `app/page.tsx`).
  */
 export function signedInDestinationForMarketingRoot(
   pathname: string,
 ): string | null {
   const path = normalizeAppPathname(pathname);
-  return MARKETING_ROOT_APP_DESTINATIONS[path] ?? null;
+  const dest = MARKETING_ROOT_APP_DESTINATIONS[path];
+  if (!dest) return null;
+  if (dest.startsWith("__SPA__/")) {
+    return appHref(`/${dest.slice("__SPA__/".length)}`);
+  }
+  return dest;
+}
+
+/**
+ * After magic-link verify: SPA-moved paths go to app.consciously.live;
+ * everything else stays on marketing until that section is migrated.
+ */
+export function postAuthDestination(fallback = "/"): string {
+  const next = consumeAuthNext(fallback);
+  if (isSpaAppPath(next)) {
+    return appHref(spaPathForAppPath(next));
+  }
+  return next;
 }
 

@@ -1,11 +1,9 @@
-"use client";
-
 /**
  * Surfaced journal + meditation context for a life area.
  * Only real soft-matched links — never demo stubs.
  */
 
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import type { PlanDream } from "@/lib/plan-dreams";
 import {
@@ -56,7 +54,7 @@ export function PlanReflectSidebarJournal({ dream }: Props) {
             className="border-b border-border/80 last:border-b-0"
           >
             <Link
-              href={e.href}
+              to={e.href}
               className="flex items-baseline justify-between gap-3 py-2.5 transition-opacity hover:opacity-80"
             >
               <span className="min-w-0 truncate text-sm font-medium text-[#1E2530] dark:text-foreground">
@@ -100,7 +98,7 @@ export function PlanReflectSidebarMeditations({ dream }: Props) {
             className="flex items-baseline justify-between gap-3 border-b border-border/80 py-2.5 last:border-b-0"
           >
             <Link
-              href={m.href}
+              to={m.href}
               className="min-w-0 truncate text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-80 dark:text-foreground"
             >
               {m.title}

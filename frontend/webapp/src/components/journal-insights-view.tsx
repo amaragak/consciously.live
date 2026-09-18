@@ -1,7 +1,5 @@
-"use client";
-
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, ChevronUp } from "lucide-react";
 import {
   fetchJournalInsightsRemote,
@@ -203,8 +201,9 @@ function InsightTopicSection(props: {
 }
 
 export function JournalInsightsView() {
-  const pathname = usePathname() || INSIGHTS_HREF;
-  const router = useRouter();
+  const { pathname: pathnameRaw } = useLocation();
+  const pathname = pathnameRaw || INSIGHTS_HREF;
+  const navigate = useNavigate();
   const routeWeekKey = insightsWeekKeyFromPath(pathname);
   const mobileLetterOpen = Boolean(routeWeekKey);
 
@@ -347,14 +346,14 @@ export function JournalInsightsView() {
     (weekKey: string) => {
       setSelectedWeekKey(weekKey);
       if (insightsWeekKeyFromPath(pathname) === weekKey) return;
-      router.push(`${INSIGHTS_HREF}/${encodeURIComponent(weekKey)}`);
+      navigate(`${INSIGHTS_HREF}/${encodeURIComponent(weekKey)}`);
     },
-    [pathname, router],
+    [pathname, navigate],
   );
 
   const openInsightsList = useCallback(() => {
-    router.push(INSIGHTS_HREF);
-  }, [router]);
+    navigate(INSIGHTS_HREF);
+  }, [navigate]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden lg:flex-row lg:gap-4">

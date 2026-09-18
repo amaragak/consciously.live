@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { classifyResistanceText } from "@/lib/plan-breakdown-claude";
 import type { ResistanceCategory } from "@/lib/plan-ideate-store";

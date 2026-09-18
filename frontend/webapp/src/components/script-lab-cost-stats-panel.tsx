@@ -1,5 +1,3 @@
-"use client";
-
 import type { ScriptLabCostSummary } from "@/lib/script-lab-cost";
 import {
   costLineForBreakdownEntry,

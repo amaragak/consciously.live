@@ -1,5 +1,3 @@
-"use client";
-
 export type PdfAnnotationUnit = {
   fileName: string;
   page: number;

@@ -1,7 +1,5 @@
-"use client";
-
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AssistantChatCapabilitiesFab } from "@/components/assistant-chat-capabilities-fab";
 import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
 import {
@@ -72,10 +70,10 @@ function IconChevron({
 }
 
 export function AssistantChatWorkspace() {
-  const pathname = usePathname() || "/chat/my";
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const routeThreadId = threadIdFromPath(pathname);
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const routeThreadId = threadIdFromPath(pathname || "/chat/my");
   const mobileComposeChrome = Boolean(routeThreadId);
 
   const [storeThreads, setStoreThreads] = useState<AssistantChatThread[]>([]);
@@ -164,7 +162,7 @@ export function AssistantChatWorkspace() {
         newHandledRef.current = false;
         return;
       }
-      router.replace(`/chat/my/${encodeURIComponent(id)}`);
+      navigate(`/chat/my/${encodeURIComponent(id)}`, { replace: true });
     })();
     return () => {
       cancelled = true;
@@ -180,12 +178,12 @@ export function AssistantChatWorkspace() {
     if (!store.threads.some((t) => t.id === routeThreadId)) {
       void (async () => {
         const id = await chat.createNewThread();
-        router.replace(
-          id ? `/chat/my/${encodeURIComponent(id)}` : "/chat/my",
-        );
+        navigate(id ? `/chat/my/${encodeURIComponent(id)}` : "/chat/my", {
+          replace: true,
+        });
       })();
     }
-  }, [chat, chat.hydrated, chat.activeId, routeThreadId, router]);
+  }, [chat, chat.hydrated, chat.activeId, routeThreadId, navigate]);
 
   const groups = useMemo(
     () => groupAssistantChatThreadsForSidebar(storeThreads),
@@ -194,15 +192,15 @@ export function AssistantChatWorkspace() {
 
   const onNewChat = useCallback(async () => {
     const id = await chat.createNewThread();
-    if (id) router.push(`/chat/my/${encodeURIComponent(id)}`);
-  }, [chat, router]);
+    if (id) navigate(`/chat/my/${encodeURIComponent(id)}`);
+  }, [chat, navigate]);
 
   const onSelect = useCallback(
     (id: string) => {
       chat.selectThread(id);
-      router.push(`/chat/my/${encodeURIComponent(id)}`);
+      navigate(`/chat/my/${encodeURIComponent(id)}`);
     },
-    [chat, router],
+    [chat, navigate],
   );
 
   const onDelete = useCallback(
@@ -215,13 +213,13 @@ export function AssistantChatWorkspace() {
         const fallback = next.activeThreadId;
         if (fallback) {
           chat.selectThread(fallback);
-          router.push(`/chat/my/${encodeURIComponent(fallback)}`);
+          navigate(`/chat/my/${encodeURIComponent(fallback)}`);
         } else {
           void onNewChat();
         }
       }
     },
-    [chat, onNewChat, refreshSidebar, router],
+    [chat, onNewChat, refreshSidebar, navigate],
   );
 
   const beginRename = useCallback((t: AssistantChatThread) => {

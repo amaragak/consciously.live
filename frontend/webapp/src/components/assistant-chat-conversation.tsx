@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import { AssistantChatActionResults } from "@/components/assistant-chat-action-results";
 import { ChatMarkdown } from "@/components/chat-markdown";

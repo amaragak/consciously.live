@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import * as Switch from "@radix-ui/react-switch";
 import {
   useEffect,
@@ -377,7 +375,7 @@ export function LibraryMeditationCard({
         : "/meditate/create";
     const continueBtn = (
       <Link
-        href={href}
+        to={href}
         className="inline-flex shrink-0 items-center justify-center rounded-full accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
       >
         Continue
@@ -466,8 +464,12 @@ export function LibraryMeditationCard({
   const canEditMix = m.liveMix === true && Boolean(m.sk) && !m.isDraft;
   const archiveDisabled = !m.sk || archiveBusy || ratingBusy || favouriteBusy;
   const publicDisabled = !m.sk;
-  const shareId = m.id?.trim() || "";
-  const canShare = Boolean(allowShare && shareId && onShare);
+  const shareId = isPendingRow(item)
+    ? ""
+    : hideOwnerActions
+      ? m.id?.trim() || m.sk?.trim() || ""
+      : m.sk?.trim() || m.id?.trim() || "";
+  const canShare = Boolean(allowShare && onShare && shareId);
   const canFavourite = !hideOwnerActions && Boolean(onFavourite);
   const canArchive = !hideOwnerActions && Boolean(onArchive);
   const canPublic =

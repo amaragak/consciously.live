@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ASSISTANT_CHAT_CAPABILITIES,

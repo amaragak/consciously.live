@@ -1,4 +1,3 @@
-"use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";

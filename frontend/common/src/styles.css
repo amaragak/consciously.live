@@ -1,0 +1,5 @@
+/**
+ * Optional stylesheet entry for consumers that import CSS directly.
+ * Brand hex → CSS variables is owned by `themeRootCss` from `@consciously/common`
+ * (injected in marketing layout / SPA boot) — keep that as the single source.
+ */

@@ -1,7 +1,4 @@
-"use client";
-
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router-dom";
 import { writePlanCreateHandoff } from "@/lib/plan-create-handoff";
 import type { ResistanceTheme } from "@/lib/plan-resistance-threads";
 
@@ -16,7 +13,7 @@ export function PlanResistanceThreadBanner({
   projectId,
   projectTitle,
 }: Props) {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   function sitWithIt() {
     writePlanCreateHandoff({
@@ -39,7 +36,7 @@ export function PlanResistanceThreadBanner({
         },
       ],
     });
-    router.push("/meditate/create/from-chat?fromDream=1");
+    navigate("/meditate/create/from-chat?fromDream=1");
   }
 
   return (
@@ -58,7 +55,7 @@ export function PlanResistanceThreadBanner({
         </button>
         {projectId ? (
           <Link
-            href={`/manifest/goal/${encodeURIComponent(projectId)}`}
+            to={`/manifest/goal/${encodeURIComponent(projectId)}`}
             className="rounded-full px-4 py-2 text-sm text-muted hover:text-foreground"
           >
             View project

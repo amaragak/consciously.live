@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { applySpeechElementVolume } from "@/lib/bed-volume";

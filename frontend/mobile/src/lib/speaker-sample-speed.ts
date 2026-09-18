@@ -1,5 +1,5 @@
 /**
- * Voice preview samples — keep in sync with `frontend/webapp/src/lib/speaker-sample-speed.ts`.
+ * Voice preview samples — keep in sync with `frontend/marketing/src/lib/speaker-sample-speed.ts`.
  */
 
 export const SPEAKER_SAMPLE_SPEED_MIN = 0.75;

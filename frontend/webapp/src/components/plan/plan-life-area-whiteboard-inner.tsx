@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import { Tldraw, type Editor } from "tldraw";
 import "tldraw/tldraw.css";

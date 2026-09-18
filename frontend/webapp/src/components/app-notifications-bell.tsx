@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/spa-nav";
 import { Bell } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {

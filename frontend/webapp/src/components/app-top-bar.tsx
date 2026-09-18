@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, usePathname, useRouter  } from "@/lib/spa-nav";
 import {
   Fragment,
   useEffect,
@@ -21,6 +20,7 @@ import {
 } from "@/lib/app-nav";
 import { ASSISTANT_CHAT_STORE_CHANGED } from "@/lib/assistant-chat-storage";
 import { enterMarketingPreviewMode } from "@/lib/marketing-preview";
+import { appHref, isCrossOriginApp } from "@/lib/app-origins";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
@@ -464,6 +464,16 @@ export function AppTopBar({
       <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2 sm:right-4">
         <AppTopBarTrailingSlot className="flex max-w-[min(100vw-11rem,28rem)] items-center justify-end overflow-x-auto" />
         <div className="hidden md:contents">
+          {isCrossOriginApp() ? (
+            <AlphaChromeButton
+              title="Open the logged-in SPA (Focus and migrated sections)"
+              onClick={() => {
+                window.location.assign(appHref("/"));
+              }}
+            >
+              Open app
+            </AlphaChromeButton>
+          ) : null}
           <AlphaChromeButton
             title="Alpha — show marketing site without clearing session"
             onClick={() => {

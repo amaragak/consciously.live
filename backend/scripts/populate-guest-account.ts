@@ -56,7 +56,7 @@ const MEDIA_BASE =
 
 const VISION_DIR = join(
   __dirname,
-  "../../frontend/webapp/public/demo/vision-board",
+  "../../frontend/marketing/public/demo/vision-board",
 );
 
 function daysAgoIso(days: number, hour = 9): string {

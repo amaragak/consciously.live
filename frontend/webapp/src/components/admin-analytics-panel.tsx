@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   getMedimadeApiBase,
@@ -170,7 +168,7 @@ export function AdminAnalyticsPanel() {
   useEffect(() => {
     const base = getMedimadeApiBase();
     if (!base) {
-      setError("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+      setError("VITE_MEDIMADE_API_URL is not set");
       return;
     }
     if (!getMedimadeSessionJwt()) {

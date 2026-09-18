@@ -1,5 +1,3 @@
-"use client";
-
 type Props = {
   open: boolean;
   taskTitle: string;

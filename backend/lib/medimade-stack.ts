@@ -140,6 +140,12 @@ export class MedimadeStack extends cdk.Stack {
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       },
     );
+    // Sparse GSI for unlisted share links (only rows with shareToken).
+    meditationAnalyticsTable.addGlobalSecondaryIndex({
+      indexName: "shareTokenIndex",
+      partitionKey: { name: "shareToken", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
 
     /** Journal entries + META row per `ownerId` (opaque client id). Voice binaries stay in S3 via `/journal/voice`. */
     const journalTable = new dynamodb.Table(this, "JournalTable", {
@@ -329,6 +335,25 @@ export class MedimadeStack extends cdk.Stack {
     });
     refreshTable.grantReadWriteData(authRefresh);
     authJwtSecret.grantRead(authRefresh);
+
+    const authHandoff = new lambda_nodejs.NodejsFunction(this, "AuthHandoffFunction", {
+      entry: path.join(__dirname, "../lambdas/auth-handoff.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        MAGIC_LINK_TABLE_NAME: magicLinkTable.tableName,
+        USERS_TABLE_NAME: usersTable.tableName,
+        REFRESH_TABLE_NAME: refreshTable.tableName,
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        AUTH_WEBAPP_ORIGIN: authWebappOrigin,
+      },
+    });
+    magicLinkTable.grantReadWriteData(authHandoff);
+    usersTable.grantReadData(authHandoff);
+    refreshTable.grantReadWriteData(authHandoff);
+    authJwtSecret.grantRead(authHandoff);
 
     const authLogout = new lambda_nodejs.NodejsFunction(this, "AuthLogoutFunction", {
       entry: path.join(__dirname, "../lambdas/auth-logout.ts"),
@@ -527,11 +552,15 @@ export class MedimadeStack extends cdk.Stack {
         allowOrigins: [
           "https://consciously.live",
           "https://www.consciously.live",
+          "https://app.consciously.live",
+          "https://dyaxvhlmage80.cloudfront.net",
           "https://d2nu9q5wynnhfv.cloudfront.net",
           "http://localhost:3000",
           "http://127.0.0.1:3000",
           "http://localhost:3001",
           "http://127.0.0.1:3001",
+          "http://localhost:5173",
+          "http://127.0.0.1:5173",
         ],
         allowCredentials: true,
         maxAge: cdk.Duration.days(1),
@@ -595,6 +624,22 @@ export class MedimadeStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthRefreshIntegration",
         authRefresh,
+      ),
+    });
+    httpApi.addRoutes({
+      path: "/auth/handoff/create",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthHandoffCreateIntegration",
+        authHandoff,
+      ),
+    });
+    httpApi.addRoutes({
+      path: "/auth/handoff/redeem",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthHandoffRedeemIntegration",
+        authHandoff,
       ),
     });
     httpApi.addRoutes({
@@ -989,6 +1034,85 @@ export class MedimadeStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "MeditationPublicIntegration",
         meditationPublic,
+      ),
+    });
+
+    const meditationShare = new lambda_nodejs.NodejsFunction(
+      this,
+      "MeditationShareFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/meditation-share.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        environment: {
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        },
+      },
+    );
+    meditationAnalyticsTable.grantReadWriteData(meditationShare);
+    authJwtSecret.grantRead(meditationShare);
+
+    httpApi.addRoutes({
+      path: "/library/meditations/share",
+      methods: [apigwv2.HttpMethod.PATCH],
+      integration: new integrations.HttpLambdaIntegration(
+        "MeditationShareIntegration",
+        meditationShare,
+      ),
+    });
+
+    const meditationByShareToken = new lambda_nodejs.NodejsFunction(
+      this,
+      "MeditationByShareTokenFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/meditation-by-share-token.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        environment: {
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        },
+      },
+    );
+    meditationAnalyticsTable.grantReadData(meditationByShareToken);
+
+    httpApi.addRoutes({
+      path: "/public/meditations/by-token/{token}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "MeditationByShareTokenIntegration",
+        meditationByShareToken,
+      ),
+    });
+
+    const meditationByPublicId = new lambda_nodejs.NodejsFunction(
+      this,
+      "MeditationByPublicIdFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/meditation-by-public-id.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(20),
+        memorySize: 256,
+        environment: {
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        },
+      },
+    );
+    meditationAnalyticsTable.grantReadData(meditationByPublicId);
+
+    httpApi.addRoutes({
+      path: "/public/meditations/by-id/{id}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "MeditationByPublicIdIntegration",
+        meditationByPublicId,
       ),
     });
 

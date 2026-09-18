@@ -1,7 +1,5 @@
-"use client";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { Link, useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconPencil } from "@tabler/icons-react";
 import {
@@ -176,7 +174,7 @@ export function FocusTimerView() {
     toggleCurrent,
     bedVolumeApiRef,
   } = useLibraryPlayer();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const fromIdeateToken = searchParams.get("fromIdeate");
   const autoStart = searchParams.get("autoStart") === "1";
   const minutesParam = searchParams.get("minutes");
@@ -938,7 +936,7 @@ export function FocusTimerView() {
             <p className="px-2 py-3 text-sm text-muted">
               No life areas yet.{" "}
               <Link
-                href="/manifest/my?new=1"
+                to="/manifest/my?new=1"
                 className="font-medium text-accent-link underline-offset-2 hover:underline"
               >
                 Add one in Manifest
@@ -1740,7 +1738,7 @@ export function FocusTimerView() {
                         <p className="py-2 text-sm text-muted">
                           No life areas yet.{" "}
                           <Link
-                            href="/manifest/my?new=1"
+                            to="/manifest/my?new=1"
                             className="font-medium text-accent-link underline-offset-2 hover:underline"
                           >
                             Add one in Manifest

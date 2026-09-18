@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Meditations created for this life area (Generate meditation / Ideate goal path).
  */

@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { setChatFabFooterInset } from "@/lib/assistant-chat-fab-footer-inset";

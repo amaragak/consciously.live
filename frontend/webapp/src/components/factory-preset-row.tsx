@@ -1,5 +1,3 @@
-"use client";
-
 import { IconPlayerPause, IconPlayerPlay } from "@tabler/icons-react";
 import { FactoryIcon } from "@/components/factory-icons";
 import type { MixerFactoryPreset } from "@/lib/mixer-factory-presets";

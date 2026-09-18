@@ -1,6 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { Focus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
@@ -172,7 +170,7 @@ export function PlanSubtaskCard({
   defaultExpanded = true,
   collapseOthersFromFocus = false,
 }: Props) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(defaultExpanded);
   const [focusPreflightOpen, setFocusPreflightOpen] = useState(false);
 
@@ -184,7 +182,7 @@ export function PlanSubtaskCard({
   function goToFocusSession() {
     writeFocusSessionHandoff({ v: 1, subtaskId: subtask.id });
     writeFocusActiveIdeateSubtask(subtask.id);
-    router.push(focusMyHrefFromIdeate());
+    navigate(focusMyHrefFromIdeate());
   }
 
   function startFocusWithManifestation() {
@@ -272,7 +270,7 @@ export function PlanSubtaskCard({
     }
 
     setFocusPreflightOpen(false);
-    router.push(focusMyHrefFromIdeate());
+    navigate(focusMyHrefFromIdeate());
   }
   const [draftRows, setDraftRows] = useState<TodoDraftRow[] | null>(null);
   const [breakdownLoading, setBreakdownLoading] = useState(false);

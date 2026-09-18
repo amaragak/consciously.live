@@ -1,5 +1,3 @@
-"use client";
-
 import { IconHeart, IconSparkles, IconSun } from "@tabler/icons-react";
 import {
   formatJournalEntryDate,

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import {
   DAILY_HABITS_CHANGED_EVENT,

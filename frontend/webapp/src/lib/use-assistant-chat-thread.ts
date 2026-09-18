@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Shared send / session-open logic for full Chat + floating mini-chat.
  */

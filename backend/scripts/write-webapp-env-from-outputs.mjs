@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Write frontend/webapp/.env (and optional mobile/extension) from either:
+ * Write frontend/marketing/.env (and optional mobile/extension) from either:
  *   - a CDK `--outputs-file` JSON, or
  *   - the live CloudFormation stack (always fresh — preferred in CI)
  *
  * Usage:
- *   node write-webapp-env-from-outputs.mjs <cdk-outputs.json> <webapp/.env> [mobile/.env] [extension/.env]
- *   node write-webapp-env-from-outputs.mjs --stack MedimadeBackend <webapp/.env> [mobile/.env] [extension/.env]
+ *   node write-webapp-env-from-outputs.mjs <cdk-outputs.json> <frontend/marketing/.env> [mobile/.env] [extension/.env]
+ *   node write-webapp-env-from-outputs.mjs --stack MedimadeBackend <frontend/marketing/.env> [mobile/.env] [extension/.env]
  */
 import { execFileSync } from "child_process";
 import fs from "fs";

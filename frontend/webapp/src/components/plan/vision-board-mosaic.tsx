@@ -5,8 +5,6 @@
  * Slots prefer images when provided; remaining slots use color fills.
  */
 
-"use client";
-
 import { VisionBoardImage } from "@/components/plan/vision-board-image";
 
 export const VISION_BOARD_EXAMPLE_COLORS = [

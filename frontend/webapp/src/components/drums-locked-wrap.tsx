@@ -1,4 +1,3 @@
-"use client";
 
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { DRUMS_LOCKED_FOR_MELODIC_HINT } from "@/lib/sound-taxonomy";

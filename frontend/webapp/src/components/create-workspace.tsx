@@ -1,7 +1,5 @@
-"use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
@@ -1123,8 +1121,9 @@ export function CreateWorkspace({
   seedJournalContext = false,
   seedPlanContext = false,
 }: CreateWorkspaceProps) {
-  const router = useRouter();
-  const pathname = usePathname() || CREATE_MEDITATE_ROOT;
+  const navigate = useNavigate();
+  const { pathname: pathnameRaw } = useLocation();
+  const pathname = pathnameRaw || CREATE_MEDITATE_ROOT;
   const parsedCreateRoute = parseCreateMeditationPathname(pathname);
   const isRedirectingToLibraryRef = useRef(false);
   const seedFromHandoff = seedJournalContext || seedPlanContext;
@@ -1142,10 +1141,6 @@ export function CreateWorkspace({
     return 1;
   });
 
-  // Reduce perceived navigation latency (and any browser "redirecting" UI) by prefetching Library.
-  useEffect(() => {
-    router.prefetch("/meditate/library/creations");
-  }, [router]);
 
   const devUi = useDevUiSettings();
   const showCreateAudioDevControls = shouldRenderDevUi(
@@ -1464,7 +1459,7 @@ export function CreateWorkspace({
   }) {
     const href = createHrefForNav(opts);
     pendingUrlSyncRef.current = pathOnly(href);
-    router.push(href);
+    navigate(href);
   }
 
   function applyCreateSession(s: CreateSessionV1) {
@@ -1594,7 +1589,7 @@ export function CreateWorkspace({
     if (parsed.valid && createRouteNeedsPriorState(parsed)) {
       const href = createMeditationPathStartHref(parsed);
       pendingUrlSyncRef.current = href;
-      router.replace(href);
+      navigate(href, { replace: true });
     }
     const sticky = readLinkedLifeAreaId();
     if (sticky) setLifeAreaId(sticky);
@@ -1938,7 +1933,7 @@ export function CreateWorkspace({
           );
           pendingUrlSyncRef.current = href.split("?")[0] ?? href;
           setDraftHydrated(true);
-          router.replace(href);
+          navigate(href, { replace: true });
         }
       } catch (e) {
         if (!cancelled) {
@@ -2042,7 +2037,7 @@ export function CreateWorkspace({
       } catch {
         /* ignore */
       }
-      router.replace("/meditate/create");
+      navigate("/meditate/create", { replace: true });
       return;
     }
 
@@ -2056,7 +2051,7 @@ export function CreateWorkspace({
     }
 
     pendingUrlSyncRef.current = createMeditationHref({ path: "freeflow" });
-    router.replace(pendingUrlSyncRef.current);
+    navigate(pendingUrlSyncRef.current, { replace: true });
 
     const payload = parseJournalMeditationPayload(rawJson);
     if (!payload?.segments.length) {
@@ -2142,13 +2137,13 @@ export function CreateWorkspace({
       } catch {
         /* ignore */
       }
-      router.replace("/meditate/create");
+      navigate("/meditate/create", { replace: true });
       return;
     }
 
     const handoff = readPlanCreateHandoff();
     pendingUrlSyncRef.current = createMeditationHref({ path: "freeflow" });
-    router.replace(pendingUrlSyncRef.current);
+    navigate(pendingUrlSyncRef.current, { replace: true });
 
     const vision = handoff?.visionText?.trim() ?? "";
     if (!handoff || !vision) {
@@ -2867,7 +2862,7 @@ export function CreateWorkspace({
       creationPath: "style",
     });
     pendingUrlSyncRef.current = pathOnly(href);
-    router.push(href);
+    navigate(href);
   }
 
   function confirmStyleQuestions() {
@@ -2901,7 +2896,7 @@ export function CreateWorkspace({
       creationPath: "style",
     });
     pendingUrlSyncRef.current = pathOnly(href);
-    router.push(href);
+    navigate(href);
   }
 
   function beginFreeFlowPath(opts?: { resetLifeArea?: boolean }) {
@@ -3302,7 +3297,7 @@ export function CreateWorkspace({
     pendingUrlSyncRef.current = null;
     const parsed = parseCreateMeditationPathname(pathname);
     if (!parsed.valid) {
-      router.replace(CREATE_MEDITATE_ROOT);
+      navigate(CREATE_MEDITATE_ROOT, { replace: true });
       return;
     }
     if (parsed.path === "pending") {
@@ -3689,7 +3684,7 @@ export function CreateWorkspace({
       return;
     }
     if (!getMedimadeApiBase()) {
-      setAudioError("API URL is not configured (NEXT_PUBLIC_MEDIMADE_API_URL).");
+      setAudioError("API URL is not configured (VITE_MEDIMADE_API_URL).");
       return;
     }
 
@@ -3912,9 +3907,9 @@ export function CreateWorkspace({
       isRedirectingToLibraryRef.current = true;
       clearCreateSession();
       if (consumeReturnToFocusAfterCreate()) {
-        router.push(focusMyHrefFromIdeate());
+        navigate(focusMyHrefFromIdeate());
       } else {
-        router.push(
+        navigate(
           `/meditate/library/creations?focus=${encodeURIComponent(`pending:${jobId}`)}`,
         );
       }
@@ -4668,7 +4663,7 @@ export function CreateWorkspace({
                 </p>
               ) : !hasPlanGoals ? (
                 <Link
-                  href="/manifest/my"
+                  to="/manifest/my"
                   onClick={(e) => e.stopPropagation()}
                   className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >
@@ -4705,7 +4700,7 @@ export function CreateWorkspace({
                 </p>
               ) : !hasReflectableJournal ? (
                 <Link
-                  href="/journal/my"
+                  to="/journal/my"
                   onClick={(e) => e.stopPropagation()}
                   className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >
@@ -5910,7 +5905,7 @@ export function CreateWorkspace({
               </a>
               {audioModalKey ? (
                 <Link
-                  href={`/meditate/library/creations?focus=${encodeURIComponent(audioModalKey)}&play=1`}
+                  to={`/meditate/library/creations?focus=${encodeURIComponent(audioModalKey)}&play=1`}
                   className="cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:border-accent/50"
                 >
                   View in Library

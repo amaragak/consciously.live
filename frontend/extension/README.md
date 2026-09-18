@@ -28,7 +28,7 @@ The extension can load ambient sounds from the backend endpoint:
 `GET /media/background-audio`.
 
 You can configure it two ways:
-- **Recommended**: set `VITE_MEDIMADE_API_URL` in `frontend/extension/.env` (this is auto-written by `frontend/webapp/deploy/deploy-web` when `NEXT_PUBLIC_MEDIMADE_API_URL` is present).
+- **Recommended**: set `VITE_MEDIMADE_API_URL` in `frontend/extension/.env` (this is auto-written by `backend/scripts/deploy-back` / CI when `NEXT_PUBLIC_MEDIMADE_API_URL` is present).
 - **Manual override**: paste the API base URL in the Sounds tab and click **Save**.
 
 ### Ambient sounds assets

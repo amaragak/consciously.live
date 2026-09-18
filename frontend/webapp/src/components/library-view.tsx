@@ -1,11 +1,9 @@
-"use client";
 
 import {
   liveMixTrack,
   useLibraryPlayer,
 } from "@/components/library-player-provider";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { IconAdjustmentsHorizontal, IconPlus } from "@tabler/icons-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
@@ -21,6 +19,7 @@ import {
   patchMeditationFavourite,
   patchMeditationArchived,
   patchMeditationPublic,
+  patchMeditationShare,
   patchMeditationBackgroundMix,
   patchMeditationRating,
   backgroundAudioPlaybackKey,
@@ -52,6 +51,7 @@ import {
   claudeUsdFromTokens,
 } from "@/lib/claude-pricing";
 import { communityLibraryAsItems, itemMatchesLibraryCategory } from "@/lib/community-library";
+import { marketingHref } from "@/lib/origins";
 import {
   loadPendingGenerations,
   savePendingGenerations,
@@ -632,9 +632,9 @@ export default function LibraryView({
   initialItems?: LibraryMeditationItem[] | null;
 }) {
   const alwaysShowRowChrome = useMobileOrTouchChrome();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   const pathSegs = libraryPathSegments(pathname);
   const programDurationProbeTriedRef = useRef(new Set<string>());
   const {
@@ -736,21 +736,21 @@ export default function LibraryView({
     setLibraryTab(tab);
     setExploringProgramId(null);
     setProgramPathKey(null);
-    if (opts?.replace) router.replace(href);
-    else router.push(href);
+    if (opts?.replace) navigate(href, { replace: true });
+    else navigate(href);
   }
 
   function openProgram(program: LibraryProgram) {
     const slug = programUrlSlug(program, programs);
     setExploringProgramId(program.id);
     setProgramPathKey(slug);
-    router.push(`/meditate/library/programs/${encodeURIComponent(slug)}`);
+    navigate(`/meditate/library/programs/${encodeURIComponent(slug)}`);
   }
 
   function closeProgram() {
     setExploringProgramId(null);
     setProgramPathKey(null);
-    router.push("/meditate/library/programs");
+    navigate("/meditate/library/programs");
   }
 
   useEffect(() => {
@@ -1810,9 +1810,11 @@ export default function LibraryView({
         showRating={!isCommunity}
         ratingDisabled={isProgramShelf}
         allowShare={
-          Boolean(shareId) &&
           !isProgramShelf &&
-          (isCommunity || m.isPublic === true)
+          !m.isDraft &&
+          (isCommunity
+            ? Boolean(shareId)
+            : Boolean(m.sk) && !hideOwnerActions)
         }
         alwaysShowRowChrome={alwaysShowRowChrome}
         isSelected={nowPlaying?.s3Key === m.s3Key}
@@ -1849,16 +1851,50 @@ export default function LibraryView({
         onCloseMix={() => mixCloseRef.current?.()}
         shareCopiedId={shareCopiedId}
         onShare={() => {
-          const url = `https://consciously.live/meditate/library/community?id=${encodeURIComponent(shareId)}`;
           void (async () => {
             try {
-              await navigator.clipboard.writeText(url);
-              setShareCopiedId(shareId);
-              window.setTimeout(() => {
-                setShareCopiedId((cur) => (cur === shareId ? null : cur));
-              }, 2000);
-            } catch {
-              window.prompt("Copy this link:", url);
+              let url: string;
+              let copiedKey: string;
+              if (isCommunity) {
+                if (!shareId) return;
+                url = marketingHref(`/library/${encodeURIComponent(shareId)}`);
+                copiedKey = shareId;
+              } else {
+                if (!m.sk) return;
+                const sk = m.sk;
+                let token =
+                  typeof m.shareToken === "string" && m.shareToken.trim()
+                    ? m.shareToken.trim()
+                    : null;
+                if (!token) {
+                  token = await patchMeditationShare(sk, "create");
+                  if (token) {
+                    setItems((prev) =>
+                      prev.map((x) =>
+                        x.sk === sk ? { ...x, shareToken: token } : x,
+                      ),
+                    );
+                  }
+                }
+                if (!token) throw new Error("Could not create share link");
+                url = marketingHref(`/listen/${encodeURIComponent(token)}`);
+                copiedKey = sk;
+              }
+              try {
+                await navigator.clipboard.writeText(url);
+                setShareCopiedId(copiedKey);
+                window.setTimeout(() => {
+                  setShareCopiedId((cur) =>
+                    cur === copiedKey ? null : cur,
+                  );
+                }, 2000);
+              } catch {
+                window.prompt("Copy this link:", url);
+              }
+            } catch (e) {
+              setError(
+                e instanceof Error ? e.message : "Could not create share link",
+              );
             }
           })();
         }}
@@ -2068,7 +2104,7 @@ export default function LibraryView({
             }))}
           />
           <Link
-            href="/meditate/create"
+            to="/meditate/create"
             aria-label="Create new meditation"
             className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity hover:opacity-90"
           >
@@ -2167,7 +2203,7 @@ export default function LibraryView({
             {searchInput}
             <div className="shrink-0">{layoutToggle}</div>
             <Link
-              href="/meditate/create"
+              to="/meditate/create"
               className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >
               + Create new
@@ -2178,7 +2214,7 @@ export default function LibraryView({
         {libraryTab === "programs" ? (
           <div className="mt-3 hidden justify-end md:flex">
             <Link
-              href="/meditate/create"
+              to="/meditate/create"
               className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >
               + Create new
@@ -2204,7 +2240,7 @@ export default function LibraryView({
             {searchInput}
             <div className="shrink-0">{layoutToggle}</div>
             <Link
-              href="/meditate/create"
+              to="/meditate/create"
               className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >
               + Create new

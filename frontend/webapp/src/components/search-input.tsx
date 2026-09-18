@@ -1,5 +1,3 @@
-"use client";
-
 import type { ChangeEvent, Ref } from "react";
 
 function IconSearch({ className }: { className?: string }) {

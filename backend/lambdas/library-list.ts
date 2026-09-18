@@ -59,6 +59,8 @@ type OutItem = {
   favourite: boolean;
   archived: boolean;
   isPublic: boolean;
+  /** Unlisted share link token (owner-only; omitted for community listeners). */
+  shareToken: string | null;
   description: string | null;
   speakerModelId: string | null;
   speakerName: string | null;
@@ -463,6 +465,10 @@ function buildLibraryItems(params: {
     const favourite = row.favourite === true;
     const archived = row.archived === true;
     const isPublic = row.isPublic === true;
+    const shareToken =
+      typeof row.shareToken === "string" && row.shareToken.trim()
+        ? row.shareToken.trim()
+        : null;
     const description =
       typeof row.description === "string" && row.description.trim().length > 0
         ? row.description.trim()
@@ -492,6 +498,7 @@ function buildLibraryItems(params: {
       favourite,
       archived,
       isPublic,
+      shareToken,
       description,
       speakerModelId: referenceId,
       speakerName: referenceId ? speakerNames.get(referenceId) ?? null : null,
@@ -594,6 +601,7 @@ function buildLibraryItems(params: {
       favourite: false,
       archived: false,
       isPublic: false,
+      shareToken: null,
       description: null,
       speakerModelId: null,
       speakerName: null,

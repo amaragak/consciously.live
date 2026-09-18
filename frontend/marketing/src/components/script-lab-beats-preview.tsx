@@ -1,0 +1,210 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import {
+  duplicateBeatTypeIndexSet,
+  type ScriptLabBeat,
+} from "@/lib/script-lab-beats";
+import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+
+const TEXT_PREVIEW_CHARS = 160;
+
+type BeatSource = "segment" | "custom" | "pause";
+
+function beatSource(beat: ScriptLabBeat): BeatSource {
+  if (beat.beatType === "pause") return "pause";
+  return beat.custom ? "custom" : "segment";
+}
+
+const SOURCE_BADGE: Record<
+  BeatSource,
+  { label: string; className: string }
+> = {
+  segment: {
+    label: "Segment",
+    className:
+      "border-violet-400/50 bg-violet-500/10 text-violet-800 dark:text-violet-200",
+  },
+  custom: {
+    label: "Custom",
+    className:
+      "border-sky-400/50 bg-sky-500/10 text-sky-800 dark:text-sky-200",
+  },
+  pause: {
+    label: "Pause",
+    className:
+      "border-stone-400/50 bg-stone-500/10 text-stone-700 dark:text-stone-300",
+  },
+};
+
+function BeatContentPreview({ beat }: { beat: ScriptLabBeat }) {
+  const [expanded, setExpanded] = useState(false);
+  const source = beatSource(beat);
+
+  if (source === "pause") {
+    return (
+      <span className="font-mono text-xs text-muted">
+        pauseBand: <span className="text-foreground">{beat.pauseBand ?? "—"}</span>
+      </span>
+    );
+  }
+
+  if (source === "segment") {
+    return (
+      <div className="min-w-0">
+        <span className="font-mono text-xs font-semibold uppercase tracking-wide text-accent-link">
+          {beat.tag ?? "—"}
+        </span>
+        {beat.text?.trim() ? (
+          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-muted">
+            {beat.text.trim().length > TEXT_PREVIEW_CHARS
+              ? `${beat.text.trim().slice(0, TEXT_PREVIEW_CHARS)}…`
+              : beat.text.trim()}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  const text = beat.text ?? "";
+  if (!text) return <span className="text-xs text-muted">—</span>;
+
+  const needsTruncate = text.length > TEXT_PREVIEW_CHARS;
+  const shown =
+    expanded || !needsTruncate
+      ? text
+      : `${text.slice(0, TEXT_PREVIEW_CHARS).trim()}…`;
+
+  return (
+    <div className="min-w-0">
+      <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">{shown}</p>
+      {needsTruncate ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 cursor-pointer text-[11px] font-medium text-accent-link hover:underline"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function rowClassName(isDuplicate: boolean, isCorrected: boolean): string {
+  if (isDuplicate) {
+    return "border-amber-500/60 bg-amber-500/10";
+  }
+  if (isCorrected) {
+    return "border-emerald-500/60 bg-emerald-500/10";
+  }
+  return "border-border/80 bg-background";
+}
+
+export function ScriptLabBeatsPreview({
+  beats,
+  tagRepeatabilityByName,
+  correctedBeatIndices,
+}: {
+  beats: ScriptLabBeat[];
+  tagRepeatabilityByName?: Record<string, import("@/lib/script-segment-tags").ScriptSegmentRepeatability>;
+  correctedBeatIndices?: Set<number>;
+}) {
+  const duplicateIndices = useMemo(
+    () => duplicateBeatTypeIndexSet(beats, tagRepeatabilityByName),
+    [beats, tagRepeatabilityByName],
+  );
+
+  return (
+    <ol className="space-y-2">
+      {beats.map((beat, index) => {
+        const source = beatSource(beat);
+        const badge = SOURCE_BADGE[source];
+        const isDuplicate = duplicateIndices.has(index);
+        const isCorrected = correctedBeatIndices?.has(index) ?? false;
+
+        return (
+          <li
+            key={`beat-${index}`}
+            className={`flex gap-3 rounded-lg border px-3 py-2 ${rowClassName(isDuplicate, isCorrected)}`}
+          >
+            <span className="w-5 shrink-0 pt-0.5 text-right text-[11px] tabular-nums text-muted">
+              {index + 1}
+            </span>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex rounded-full border border-border bg-muted/30 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground">
+                  {beat.beatType}
+                </span>
+                <span
+                  className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
+                >
+                  {badge.label}
+                </span>
+                {isDuplicate ? (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Duplicate
+                  </span>
+                ) : null}
+                {isCorrected ? (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                    Corrected
+                  </span>
+                ) : null}
+              </div>
+              <BeatContentPreview beat={beat} />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+export type BeatsVerificationView = "after" | "before" | "pass1";
+
+export function ScriptLabBeatsVerificationToggle({
+  view,
+  onChange,
+  correctionsApplied,
+  showPass1,
+  pass2HighlightNote,
+}: {
+  view: BeatsVerificationView;
+  onChange: (view: BeatsVerificationView) => void;
+  correctionsApplied: boolean;
+  /** When true, show Pass 1 skeleton option (V2 runs). */
+  showPass1?: boolean;
+  /** Optional note for green-row meaning when viewing before-verification on V2. */
+  pass2HighlightNote?: boolean;
+}) {
+  const options: Array<{ id: BeatsVerificationView; label: string }> = [];
+  if (showPass1) {
+    options.push({ id: "pass1", label: "Pass 1 skeleton" });
+  }
+  options.push(
+    { id: "before", label: "Before verification" },
+    { id: "after", label: "After verification" },
+  );
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <SegmentedPillTabs
+        aria-label="Beats verification view"
+        value={view}
+        onChange={onChange}
+        options={options}
+      />
+      {view === "after" && correctionsApplied ? (
+        <span className="text-[11px] text-muted">
+          Green rows = beats added by verification (split or conversion)
+        </span>
+      ) : null}
+      {view === "before" && pass2HighlightNote ? (
+        <span className="text-[11px] text-muted">
+          Green rows = beats that differ from Pass 1 skeleton
+        </span>
+      ) : null}
+    </div>
+  );
+}

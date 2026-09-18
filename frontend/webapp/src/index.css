@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f3ee;
+  --foreground: #1c1917;
+  --muted: #78716c;
+  --accent: #F0A855;
+  --accent-link: #B8703A;
+  --accent-button: #F0A855;
+  --accent-soft: color-mix(in srgb, #F0A855 18%, transparent);
+  --on-accent: #3D2E10;
+  --border: #e7e5e4;
+  --card: #fffcf8;
+  --overlay: rgb(28 25 23 / 0.45);
+  --selected: #1e2530;
+  --on-selected: #fffcf8;
+  --danger: #b42318;
+  --danger-soft: color-mix(in srgb, #b42318 12%, transparent);
+  --success: #067647;
+  --surface: #f3eee6;
+  --surface-2: #ebe4da;
+  --surface-rail: #f0ebe3;
+  --nav-active: color-mix(in srgb, #1e2530 6%, transparent);
+  --marketing-ink: #1e2530;
+  --marketing-muted: #5c6570;
+  --marketing-eyebrow: #8a8078;
+  --marketing-band-a: #f3eee6;
+  --marketing-band-c: #ebe6dc;
+  --marketing-band-d: #e4dfd6;
+  --marketing-band-ideate: #e8eef2;
+  --site-header-h: 3.5rem;
+  --app-sidebar-w: 200px;
+  --content-max-width: 72rem;
+  --gold: #ffd700;
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "DM Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #e8f2ef 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #f3ebe3 0%, transparent 50%),
+    var(--background);
+  color: var(--foreground);
+}
+
+.font-display {
+  font-family: "Fraunces", Georgia, serif;
+}
+
+.font-hand {
+  font-family: "Caveat", cursive;
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+.text-accent-link {
+  color: var(--accent-link);
+}
+
+@keyframes vision-board-tile-pulse {
+  0%,
+  100% {
+    background-color: #e4dfd6;
+  }
+  50% {
+    background-color: #d5cfc4;
+  }
+}
+
+.vision-board-tile-skeleton,
+.mm-skeleton {
+  background-color: #e4dfd6;
+  animation: vision-board-tile-pulse 1.25s ease-in-out infinite;
+}
+
+.ideate-frosted-overlay {
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  background: rgb(15 23 42 / 0.25);
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 12px;
+}
+
+@keyframes ideate-scroll-hint-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+.ideate-scroll-hint {
+  animation: ideate-scroll-hint-bounce 1.5s ease infinite;
+}
+
+/* Minimal Manifest hero surface (full pattern CSS lives on marketing). */
+.home-hero {
+  position: relative;
+  overflow: hidden;
+  background-color: #1e2530;
+  color: #fff;
+}
+
+.home-hero.home-hero--ideate-depth {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, #2a3340 0%, #1e2530 55%, #12161c 100%);
+}
+
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-link: var(--accent-link);
+  --color-accent-button: var(--accent-button);
+  --color-on-accent: var(--on-accent);
+  --color-overlay: var(--overlay);
+  --color-selected: var(--selected);
+  --color-on-selected: var(--on-selected);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-rail: var(--surface-rail);
+  --color-nav-active: var(--nav-active);
+  --color-gold: var(--gold);
+  --color-marketing-ink: var(--marketing-ink);
+  --color-marketing-muted: var(--marketing-muted);
+  --color-marketing-eyebrow: var(--marketing-eyebrow);
+  --color-marketing-band-a: var(--marketing-band-a);
+  --color-marketing-band-c: var(--marketing-band-c);
+  --color-marketing-band-d: var(--marketing-band-d);
+  --color-marketing-band-ideate: var(--marketing-band-ideate);
+}
+
+@utility accent-fill-gradient {
+  background-color: var(--accent-button);
+  background-image: none;
+  color: var(--on-accent);
+}
+
+/* App chrome page pattern (ported from marketing globals). */
+main[data-page-kind="standard"] {
+  --content-edge: max(
+    0px,
+    calc((100% - min(100%, var(--content-max-width))) / 2)
+  );
+  --page-pattern-opacity: 0.24;
+}
+
+main[data-page-kind="standard"][data-app-layout="signed-in"] {
+  --content-col-end: min(100%, var(--content-max-width));
+  --content-edge: max(0px, calc(100% - var(--content-col-end)));
+}
+
+main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.page-pattern-tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--page-pattern-opacity, 0.2);
+  background-image: url("/patterns/paisley-tile-800-offwhite.webp");
+  background-repeat: repeat;
+  background-size: 800px 800px;
+  background-position: 0 0;
+  -webkit-mask-image: var(--page-pattern-gutter-mask);
+  mask-image: var(--page-pattern-gutter-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  --page-pattern-gutter-mask: linear-gradient(
+    to right,
+    rgb(0 0 0 / 0.04) 0,
+    rgb(0 0 0 / 0.04) var(--content-col-end, 72rem),
+    rgb(0 0 0 / 0.28) calc(var(--content-col-end, 72rem) + var(--content-edge, 0px) * 0.4),
+    rgb(0 0 0 / 0.72) 100%
+  );
+}
+
+main[data-app-layout="signed-in"] .page-pattern-tile {
+  --page-pattern-gutter-mask: linear-gradient(
+    to right,
+    rgb(0 0 0 / 0.04) 0,
+    rgb(0 0 0 / 0.04) var(--content-col-end, 72rem),
+    rgb(0 0 0 / 0.28) calc(var(--content-col-end, 72rem) + var(--content-edge, 0px) * 0.4),
+    rgb(0 0 0 / 0.72) 100%
+  );
+}
+

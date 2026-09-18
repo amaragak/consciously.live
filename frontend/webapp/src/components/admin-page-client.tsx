@@ -1,9 +1,5 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
-import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 
 const SECTIONS = [
   { href: "/admin/sounds", label: "Sounds" },
@@ -24,7 +20,7 @@ function AdminSectionTabs({ pathname }: { pathname: string }) {
         return (
           <Link
             key={s.href}
-            href={s.href}
+            to={s.href}
             className={`shrink-0 rounded-full px-3 py-1.5 text-sm whitespace-nowrap ${
               active
                 ? "bg-selected font-medium text-on-selected"
@@ -40,7 +36,7 @@ function AdminSectionTabs({ pathname }: { pathname: string }) {
 }
 
 export function AdminPageClient({ children }: { children: ReactNode }) {
-  const pathname = usePathname() || "";
+  const pathname = useLocation().pathname || "";
   const fillViewport = pathname.startsWith("/admin/sound-mixes");
 
   return (
@@ -51,12 +47,8 @@ export function AdminPageClient({ children }: { children: ReactNode }) {
           : "mx-auto w-full max-w-6xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 sm:pb-8"
       }
     >
-      <AppPrimaryTabsDesktop>
-        <div className="flex max-w-full items-center gap-1.5 overflow-x-auto">
-          <AdminSectionTabs pathname={pathname} />
-        </div>
-      </AppPrimaryTabsDesktop>
-      <div className="flex shrink-0 flex-wrap gap-2 md:hidden">
+      {/* SPA shell has no top-bar portal — always show section tabs inline. */}
+      <div className="flex max-w-full items-center gap-1.5 overflow-x-auto">
         <AdminSectionTabs pathname={pathname} />
       </div>
 

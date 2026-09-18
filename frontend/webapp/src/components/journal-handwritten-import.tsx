@@ -1,5 +1,3 @@
-"use client";
-
 import { OCR_LOW_CONFIDENCE, type OcrWord } from "@/lib/journal-import/ocr-browser";
 import type { JournalImportPreviewRow } from "@/lib/journal-import/types";
 import { formatJournalEntryDate } from "@/lib/journal-storage";

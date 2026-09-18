@@ -5,16 +5,17 @@ export type AssistantChatTurn = {
   content: string;
 };
 
-export function getAssistantChatUrl(): string {
-  return "/api/assistant-chat";
-}
-
-export function getAssistantChatTitleUrl(): string {
-  return "/api/assistant-chat/title";
+/** Lambda Function URL (CORS *). Set via VITE_ASSISTANT_CHAT_URL. */
+export function getAssistantChatUrl(): string | null {
+  const u = import.meta.env.VITE_ASSISTANT_CHAT_URL;
+  if (!u || typeof u !== "string") return null;
+  const t = u.trim();
+  return t || null;
 }
 
 /**
  * Ask Haiku for a short thread title from the first user message.
+ * Hits the same Lambda as streaming chat with `{ mode: "title" }`.
  * Returns null on failure — caller keeps the provisional title.
  */
 export async function generateAssistantChatTitle(
@@ -22,11 +23,16 @@ export async function generateAssistantChatTitle(
 ): Promise<string | null> {
   const message = firstUserMessage.trim();
   if (!message) return null;
+  const url = getAssistantChatUrl();
+  if (!url) return null;
   try {
-    const res = await fetch(getAssistantChatTitleUrl(), {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message.slice(0, 2_000) }),
+      body: JSON.stringify({
+        mode: "title",
+        message: message.slice(0, 2_000),
+      }),
       cache: "no-store",
     });
     if (!res.ok) return null;
@@ -73,6 +79,9 @@ export async function streamAssistantChat(
   onDelta: (chunk: string) => void,
 ): Promise<string> {
   const url = getAssistantChatUrl();
+  if (!url) {
+    throw new Error("VITE_ASSISTANT_CHAT_URL is not set");
+  }
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1,0 +1,5943 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import * as Tooltip from "@radix-ui/react-tooltip";
+import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
+import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
+import { MeditationLengthSelect } from "@/components/meditation-length-select";
+import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
+import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
+import {
+  shouldRenderDevUi,
+  useDevUiSettings,
+} from "@/lib/dev-ui-settings";
+import { MixerChannel, MixerPresetChannel, MixerVoiceChannel } from "@/components/mixer-channel";
+import { SoundscapePicker } from "@/components/soundscape-picker";
+import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+import * as Switch from "@radix-ui/react-switch";
+import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
+import {
+  FISH_SPEAKERS,
+  fishSpeakersForPicker,
+} from "@/lib/fish-speakers";
+import {
+  CLAUDE_HAIKU_45_MODEL_ID,
+  CLAUDE_SONNET_45_MODEL_ID,
+} from "@/lib/claude-pricing";
+import {
+  CREATE_MEDITATE_ROOT,
+  createMeditationHref,
+  createMeditationHrefWithDraft,
+  createMeditationPathStartHref,
+  createRouteNeedsPriorState,
+  parseCreateMeditationPathname,
+  type CreateMeditationPath,
+} from "@/lib/create-meditation-path";
+import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
+import {
+  clearCreateSession,
+  createSessionSatisfiesRoute,
+  patchCreateSession,
+  readCreateSession,
+  readLinkedLifeAreaId,
+  writeCreateSession,
+  writeLinkedLifeAreaId,
+  type CreateSessionV1,
+} from "@/lib/create-session-storage";
+import { setCreateMainChatVisible } from "@/lib/assistant-chat-fab-visibility";
+import { JournalReflectPicker } from "@/components/journal-reflect-picker";
+import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
+import { MeditationTypeCardGrid } from "@/components/community-category-grid";
+import {
+  DictationMicButton,
+  appendSpokenText,
+} from "@/components/dictation-mic-button";
+import {
+  type MedimadeChatTurn,
+  type MeditationDraftStateV1,
+  type MeditationTargetMinutes,
+  MEDITATION_DRAFT_STATE_VERSION,
+  coerceMeditationTargetMinutes,
+  streamMedimadeChat,
+  streamMeditationScript,
+  createMeditationAudioJob,
+  getMeditationAudioJobStatus,
+  getMeditationDraft,
+  getMedimadeApiBase,
+  getMedimadeMediaBaseUrl,
+  getMedimadeSessionJwt,
+  fetchJournalStoreRemote,
+  listBackgroundAudio,
+  listFishSpeakers,
+  listOrpheusSpeakers,
+  saveMeditationDraft,
+  backgroundAudioPlaybackKey,
+  backgroundAudioStreamingKey,
+  type FishSpeaker,
+  type OrpheusSpeaker,
+  type TtsProvider,
+  type FishPauseMode,
+  type BackgroundAudioItem,
+} from "@/lib/medimade-api";
+import {
+  DEFAULT_ORPHEUS_VOICE_ID,
+  ORPHEUS_VOICES,
+} from "@/lib/orpheus-voices";
+import {
+  factoryPresetToMix,
+  type MixerFactoryPreset,
+} from "@/lib/mixer-factory-presets";
+import {
+  loadMixerPresetStore,
+  mixerPresetToMix,
+  mixEquals,
+  newMixerPreset,
+  saveMixerPresetStore,
+  type MixerPreset,
+  type MixerPresetMix,
+} from "@/lib/mixer-preset-storage";
+import {
+  FIXED_SPEECH_PREVIEW_SPEED,
+  speakerPreviewLoudFxSampleKey,
+  speakerPreviewLoudSampleKey,
+} from "@/lib/speaker-sample-speed";
+import {
+  buildCreateFlowTranscript,
+  createFlowTranscriptLine,
+  JOURNAL_REFLECT_PICK_INTRO,
+  OPENING_JOURNAL,
+  OPENING_STYLE,
+  packageOneShotPrompt,
+  type JournalHandoffSegment,
+} from "@/lib/create-flow-transcript";
+import {
+  emptyStyleQuestionAnswers,
+  intakeQuestionsForStyle,
+  MEDITATION_STYLE_LABELS as meditationStyles,
+  parseStyleQuestionAnswers,
+  revealedCountFromStyleAnswers,
+  STYLE_ANYTHING_ELSE_PROMPT,
+  transcriptFromStyleAnswers,
+} from "@/lib/meditation-style-intake";
+import {
+  JOURNAL_CREATE_FIRST_MESSAGE,
+  JOURNAL_MEDITATION_PAYLOAD_KEY,
+  buildJournalHandoffApiContent,
+  clearJournalMeditationHandoffJson,
+  deriveEntryTitle,
+  formatJournalEntryDate,
+  isGratitudeEntry,
+  journalEntryPlainForHandoff,
+  loadJournalStore,
+  loadJournalStoreRaw,
+  parseJournalMeditationPayload,
+  peekJournalMeditationHandoffJson,
+  saveJournalStore,
+  withoutDemoJournalEntries,
+  type JournalEntry,
+  type JournalFolder,
+} from "@/lib/journal-storage";
+import {
+  PLAN_CREATE_FIRST_MESSAGE,
+  PLAN_CREATE_OPENING_ASSISTANT,
+  buildPlanCreateHandoffApiContent,
+  clearPlanCreateHandoff,
+  readPlanCreateHandoff,
+} from "@/lib/plan-create-handoff";
+import {
+  consumeReturnToFocusAfterCreate,
+  focusMyHrefFromIdeate,
+  writeReturnToFocusAfterCreate,
+} from "@/lib/focus-session-handoff";
+import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
+import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
+import {
+  loadIdeateStore,
+  sortSubtasks,
+  subtasksForProject,
+  type IdeateSubtask,
+} from "@/lib/plan-ideate-store";
+import { ChatMarkdown } from "@/components/chat-markdown";
+import {
+  applySpeechElementVolume,
+  bedElementVolume,
+  BED_VOICE_INTRO_SECONDS,
+  SOUNDSCAPE_ELEMENT_VOLUME,
+} from "@/lib/bed-volume";
+import {
+  pauseGaplessBed,
+  releaseGaplessBed,
+  resumeGaplessBed,
+  setGaplessBedVolume,
+  syncGaplessBed,
+} from "@/lib/gapless-bed-loop";
+import { playWithLeadBuffer } from "@/lib/audio-lead-buffer";
+import { VoiceCardRow } from "@/components/voice-card-row";
+import {
+  appendPendingLibraryGeneration,
+  type PendingLibraryGeneration,
+} from "@/lib/pending-library-generations";
+
+function mediaFileUrl(base: string, key: string): string {
+  const b = base.replace(/\/$/, "");
+  const path = key.split("/").map(encodeURIComponent).join("/");
+  return `${b}/${path}`;
+}
+
+const SPEAKER_SAMPLE_GAP_MS = 3000;
+
+const DEV_RANDOM_SCRIPT_SEEDS: readonly { style: string; user: string }[] = [
+  {
+    style: "Body scan",
+    user: "My jaw and shoulders are clenched after staring at a screen all day.",
+  },
+  {
+    style: "Breath-led",
+    user: "I can't catch my breath; everything feels rushed.",
+  },
+  {
+    style: "Sleep",
+    user: "I'm exhausted but my mind won't stop replaying the day.",
+  },
+  {
+    style: "Anxiety relief",
+    user: "I have a presentation tomorrow and my stomach is in knots.",
+  },
+  {
+    style: "Visualization",
+    user: "I want to feel like I'm walking somewhere quiet and green.",
+  },
+  {
+    style: "Loving-kindness",
+    user: "I've been hard on myself lately and want to soften.",
+  },
+  {
+    style: "Open awareness",
+    user: "I'm overstimulated and want to just notice what's here without fixing it.",
+  },
+  {
+    style: "Reflection",
+    user: "Something ended this week and I haven't really sat with it.",
+  },
+  {
+    style: "Story",
+    user: "I want a gentle story that helps me feel safe and small in a good way.",
+  },
+  {
+    style: "Affirmation loop",
+    user: "I need simple phrases I can repeat when I start spiraling.",
+  },
+  {
+    style: "Manifestation",
+    user: "I want to feel the life I'm building as if it's already here.",
+  },
+  {
+    style: "Movement meditation",
+    user: "I've been sitting too long; I need to move slowly and wake up my body.",
+  },
+];
+
+function pickDevRandomScriptSeed(): { style: string; transcript: string } {
+  const seed =
+    DEV_RANDOM_SCRIPT_SEEDS[
+      Math.floor(Math.random() * DEV_RANDOM_SCRIPT_SEEDS.length)
+    ]!;
+  return {
+    style: seed.style,
+    transcript: `User: ${seed.user}\n\nGuide: Let's shape a short practice around that.`,
+  };
+}
+
+const parseMeditationTargetMinutes = coerceMeditationTargetMinutes;
+
+function maybeScrollChatToBottom(
+  isAtBottomRef: React.MutableRefObject<boolean>,
+  messagesEndRef: React.MutableRefObject<HTMLDivElement | null>,
+) {
+  if (!isAtBottomRef.current) return;
+  // Ensure we scroll *after* React paints the updated streaming text.
+  requestAnimationFrame(() => {
+    if (!isAtBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    isAtBottomRef.current = true;
+  });
+}
+
+function ChatTypingIndicator() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSlow(true), 7000);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  return (
+    <div
+      className="mb-3 flex w-full items-center justify-start gap-2.5 px-3.5 py-2.5"
+      aria-live="polite"
+      aria-label={slow ? "Taking longer than usual" : "Guide is typing"}
+    >
+      <div className="flex h-4 items-end gap-1.5">
+        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
+        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
+        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
+      </div>
+      {slow ? (
+        <span className="text-sm text-muted">Taking longer than usual…</span>
+      ) : null}
+    </div>
+  );
+}
+
+function IconResetArrow({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* Refresh icon (lucide refresh-cw) */}
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+      <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+    </svg>
+  );
+}
+
+function IconChevronRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+}
+
+function IconChevronLeft({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function IconPaperAirplane({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+    </svg>
+  );
+}
+
+type SoloTrack = "speaker" | "nature" | "music" | "drums" | "noise";
+
+/** Ready-made composition, or the hand-built mixer bed. */
+type SoundBedMode = "soundscape" | "mixer";
+
+/** Compositions have no fader; they sit where a music bed would in the render. */
+const SOUNDSCAPE_GAIN = 100;
+
+type ChatMessage = {
+  role: "assistant" | "user";
+  text: string;
+  /** Distinct styling for generated meditation script vs coach replies. */
+  variant?: "chat" | "script";
+  muted?: boolean;
+  kind?: "divider";
+  /** When set on a user message, render expandable journal entry cards below `text`. */
+  journalSegments?: JournalHandoffSegment[];
+  /** Pin the proceed-to-audio control under this recap message. */
+  audioReadyCta?: boolean;
+};
+
+const meditationStyleTooltip: Record<(typeof meditationStyles)[number], string> = {
+  "Body scan":
+    "Slowly move attention through the body to release tension and build calm awareness.",
+  Visualization:
+    "Guided imagery of a place, object, or presence (including the sacred) to shift mood or rest with what matters to you.",
+  "Breath-led":
+    "Breath-focused practice to steady attention and regulate the nervous system.",
+  Manifestation:
+    "Intention-setting with vivid future focus; supportive, motivating tone.",
+  "Affirmation loop":
+    "Repetitive positive statements to reinforce belief, safety, and self-trust.",
+  Story:
+    "A calm narrative—zen parable, kids’ tale, fable, or a story you inhabit—with sensory detail and a gentle arc.",
+  Reflection:
+    "A gentle reflective practice to process experience and clarify what matters.",
+  Sleep:
+    "Gentle, slower pacing designed to help you wind down and drift off.",
+  "Loving-kindness":
+    "Warm, compassionate phrases for yourself and others (metta practice).",
+  "Anxiety relief":
+    "Grounding cues + reassurance to reduce anxious arousal and regain steadiness.",
+  "Movement meditation":
+    "Slow, mindful movement or walking—attention anchored in the body in motion.",
+  "Open awareness":
+    "Resting in a wide, receptive field—sounds, sensations, and thoughts without fixing on one object.",
+};
+
+/** Shown under the type grid after a card is selected. */
+const meditationStyleDescription: Record<(typeof meditationStyles)[number], string> = {
+  "Body scan":
+    "You rest still while attention moves slowly through the body—feet, legs, torso, arms, face. Noticing sensation (warmth, tightness, space) helps release holding and settle the nervous system. Good when you feel scattered, tense, or disconnected from the body.",
+  Visualization:
+    "The guide paints images you can see and feel: a place, a future moment, an object, an inner quality, or a figure or presence you want to be with—including the sacred, if that’s yours. You stay with the imagery so mood and confidence can shift. Choose this when you want to rehearse a state or rest with something meaningful, not only relax.",
+  "Breath-led":
+    "The breath is the main anchor—its rhythm, the feel of air, or a simple count. Attention keeps returning to inhaling and exhaling to steady the mind and downshift arousal. A clear choice when you want something simple and regulating.",
+  Manifestation:
+    "You name what you want to call in and spend time in the feeling of it already here—vivid, future-facing, still grounded. The tone is supportive rather than striving. Use this when intention and “as if” matter more than a generic unwind.",
+  "Affirmation loop":
+    "Short phrases repeat throughout the practice so they can land in the body, not just the mind (“I am safe,” “I can meet this”). Pacing stays calm; you rest between lines. Helpful for rebuilding self-trust or a kinder inner voice.",
+  Story:
+    "A coherent narrative unfolds—setting, sensory detail, a gentle arc. It might be a zen parable, a kids’ tale, a fable, or a story you step into. Fits when metaphor and story feel more natural than instructions.",
+  Reflection:
+    "Quiet prompts help you look at what you’re carrying: meaning, values, a decision, or an experience that needs space. There are pauses to notice and integrate, not only to relax. Choose this when you want insight, not only calm.",
+  Sleep:
+    "Language, pacing, and imagery are built to wind the system down—no problem-solving, no bright energy. The practice is meant to be listened to in bed and allowed to trail off. Pick this when the goal is drifting, not staying alert.",
+  "Loving-kindness":
+    "Classic metta: warm phrases of goodwill, first toward yourself and then widening to others (a friend, a stranger, all beings). Repetition is the method. Reach for this when you want compassion, connection, or a softer heart.",
+  "Anxiety relief":
+    "Grounding and breath sit alongside working with worry—racing thoughts, what-ifs, a tight chest. The script offers reassurance and a way to meet the mind without feeding it. Use this when anxiety is the thing you need help with today.",
+  "Movement meditation":
+    "Attention lives in slow walking, stretching, or small posture shifts rather than stillness. Sensation of feet, joints, and breath in motion is the practice. Choose this if sitting still feels restless or you want to meditate on the go.",
+  "Open awareness":
+    "Instead of fixing on one object, you rest in a wide field—sounds, body, thoughts—letting experience come and go. Nothing needs to be pushed away or held. Good when you already have some stillness and want a more spacious sit.",
+};
+
+function descriptionForMeditationStyle(label: string): string | null {
+  if ((meditationStyles as readonly string[]).includes(label)) {
+    return meditationStyleDescription[label as (typeof meditationStyles)[number]];
+  }
+  return null;
+}
+
+function StyleIntakeField({
+  label,
+  optional,
+  value,
+  onChange,
+  onAdvance,
+  autoFocus,
+  scrollOnEnter,
+  enterKeyHint = "next",
+  focusNonce = 0,
+}: {
+  label: string;
+  optional?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onAdvance?: () => void;
+  autoFocus?: boolean;
+  scrollOnEnter?: boolean;
+  enterKeyHint?: "next" | "done";
+  /** Bumps on each advance so an already-mounted field can take focus again. */
+  focusNonce?: number;
+}) {
+  const [entered, setEntered] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const shouldFocusRef = useRef(Boolean(autoFocus));
+  shouldFocusRef.current = Boolean(autoFocus);
+  const setTextareaRef = useCallback((el: HTMLTextAreaElement | null) => {
+    textareaRef.current = el;
+    if (el && shouldFocusRef.current) el.focus();
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, []);
+  const syncTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useEffect(() => {
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setEntered(true);
+      return;
+    }
+    const t = window.setTimeout(() => setEntered(true), 20);
+    return () => window.clearTimeout(t);
+  }, []);
+  useLayoutEffect(() => {
+    if (!autoFocus) return;
+    textareaRef.current?.focus();
+  }, [autoFocus, entered, focusNonce]);
+  useLayoutEffect(() => {
+    syncTextareaHeight();
+  }, [value, entered, syncTextareaHeight]);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => syncTextareaHeight());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncTextareaHeight, entered]);
+  useEffect(() => {
+    if (!autoFocus || !entered) return;
+    const scrollCardIntoView = () => {
+      const isNarrow =
+        typeof window !== "undefined" &&
+        window.matchMedia("(max-width: 639px)").matches;
+      cardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        // Mobile: center keeps label + input above the keyboard when possible.
+        block: isNarrow ? "center" : "start",
+        inline: "nearest",
+      });
+    };
+    if (scrollOnEnter) {
+      // After reveal animation / keyboard, keep the whole card (label + input) on screen.
+      scrollCardIntoView();
+      const retry = window.setTimeout(scrollCardIntoView, 280);
+      const tFocus = window.setTimeout(() => {
+        textareaRef.current?.focus();
+        syncTextareaHeight();
+      }, 30);
+      return () => {
+        window.clearTimeout(retry);
+        window.clearTimeout(tFocus);
+      };
+    }
+    const t = window.setTimeout(() => {
+      textareaRef.current?.focus();
+      syncTextareaHeight();
+    }, 30);
+    return () => window.clearTimeout(t);
+  }, [entered, scrollOnEnter, autoFocus, focusNonce, syncTextareaHeight]);
+
+  const canAdvance = Boolean(onAdvance) && Boolean(value.trim());
+  const tryAdvance = () => {
+    if (!onAdvance || !value.trim()) return;
+    onAdvance();
+  };
+
+  return (
+    <div
+      ref={cardRef}
+      className={`scroll-mt-3 rounded-[6px] border border-border bg-card p-4 shadow-none transition-[opacity,transform] duration-500 ease-out sm:scroll-mt-4 sm:p-5 ${
+        entered ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+      }`}
+    >
+      <label className="block">
+        <span className="font-display text-[1.0625rem] font-medium tracking-tight text-foreground sm:text-lg">
+          {label}
+        </span>
+        {optional ? (
+          <span className="mt-1 block text-xs text-muted">Optional</span>
+        ) : null}
+        <div className="mt-3 flex items-end gap-2">
+          <textarea
+            ref={setTextareaRef}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.shiftKey) return;
+              if (!onAdvance) return;
+              e.preventDefault();
+              tryAdvance();
+            }}
+            rows={1}
+            enterKeyHint={enterKeyHint}
+            className="min-h-[2.625rem] min-w-0 flex-1 resize-none overflow-hidden rounded-[6px] border border-border bg-background px-3.5 py-2.5 text-base leading-relaxed text-foreground outline-none transition-colors focus:border-accent focus:ring-0 dark:focus:border-accent"
+          />
+          <DictationMicButton
+            variant="inset"
+            onTranscript={(spoken) => {
+              const current = textareaRef.current?.value ?? value;
+              onChange(appendSpokenText(current, spoken));
+              textareaRef.current?.focus();
+              requestAnimationFrame(() => syncTextareaHeight());
+            }}
+          />
+          {onAdvance ? (
+            <button
+              type="button"
+              onClick={tryAdvance}
+              disabled={!canAdvance}
+              aria-label="Confirm answer, next question"
+              title="Next question"
+              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-accent-link shadow-sm transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-surface dark:hover:bg-accent-soft/30"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+      </label>
+    </div>
+  );
+}
+
+type Phase =
+  | "stylePick"
+  | "styleQuestions"
+  | "style"
+  | "feeling"
+  | "claude"
+  | "journalPick"
+  | "goalPick"
+  | "promptPick";
+
+/** Before chat: user picks style-first vs free-flow vs journal-reflect creation. */
+type CreationPath = CreateMeditationPath;
+
+function inferCreationPathFromDraft(
+  s: MeditationDraftStateV1,
+): "style" | "freeflow" {
+  if (s.journalMode === true) return "freeflow";
+  if (s.journalMode === false) return "style";
+  if (s.phase === "style") return "style";
+  const st = s.meditationStyle?.trim();
+  if (st && st !== "General") return "style";
+  return "freeflow";
+}
+
+const GOAL_PICK_INTRO = "Which goal would you like to move towards?";
+const GOAL_CREATE_LIFE_AREA_MESSAGE =
+  "Please create a visualization meditation for this life area as a whole";
+const GOAL_CREATE_FOCUS_GOAL_MESSAGE =
+  "Please create a visualization meditation that helps me move towards this goal";
+
+function lifeAreaDescriptionFromDream(d: PlanDream): string {
+  const parts: string[] = [];
+  if (d.dreamText.trim()) parts.push(d.dreamText.trim());
+  if (d.obstacleText.trim()) {
+    parts.push(`What's in the way:\n${d.obstacleText.trim()}`);
+  }
+  if (d.visionText.trim()) {
+    parts.push(`Vision:\n${d.visionText.trim()}`);
+  }
+  return parts.join("\n\n").trim().slice(0, 12000) || d.firstThought.trim();
+}
+
+function goalPreviewFromSubtask(s: IdeateSubtask): string {
+  return (
+    s.dreamText.trim() ||
+    s.visionText.trim() ||
+    s.resistanceText.trim() ||
+    ""
+  ).slice(0, 160);
+}
+
+function buildManifestHandoffApiContent(opts: {
+  lifeAreaTitle: string;
+  dreamText: string;
+  obstacleText: string;
+  visionText: string;
+  focusGoal?: {
+    title: string;
+    dreamText: string;
+    resistanceText: string;
+    visionText: string;
+  } | null;
+  siblingGoalTitles?: string[];
+  guidance?: string;
+}): string {
+  const lifeLines: string[] = [
+    `Life area: ${opts.lifeAreaTitle.trim() || "Untitled"}`,
+  ];
+  if (opts.dreamText.trim()) {
+    lifeLines.push("", "The dream:", opts.dreamText.trim());
+  }
+  if (opts.obstacleText.trim()) {
+    lifeLines.push("", "What's in the way:", opts.obstacleText.trim());
+  }
+  if (opts.visionText.trim()) {
+    lifeLines.push("", "Vision:", opts.visionText.trim());
+  }
+
+  const focus = opts.focusGoal;
+  const lead = focus
+    ? GOAL_CREATE_FOCUS_GOAL_MESSAGE
+    : GOAL_CREATE_LIFE_AREA_MESSAGE;
+
+  const focusBlock = focus
+    ? [
+        "",
+        "--- Focus goal ---",
+        `Goal: ${focus.title.trim() || "Untitled goal"}`,
+        ...(focus.dreamText.trim()
+          ? ["What they want:", focus.dreamText.trim()]
+          : []),
+        ...(focus.resistanceText.trim()
+          ? ["What's in the way:", focus.resistanceText.trim()]
+          : []),
+        ...(focus.visionText.trim()
+          ? ["Vision of success:", focus.visionText.trim()]
+          : []),
+        "--- End focus goal ---",
+      ]
+    : opts.siblingGoalTitles && opts.siblingGoalTitles.length
+      ? [
+          "",
+          "Goals in this life area (for context — none singled out):",
+          ...opts.siblingGoalTitles.map((t) => `- ${t}`),
+        ]
+      : [];
+
+  const guidanceNote = opts.guidance?.trim() ?? "";
+  return [
+    lead,
+    "",
+    focus
+      ? "Shape the visualisation around the focus goal below, while staying grounded in the full life-area context (dream, blockers, vision)."
+      : "Shape a general visualisation for this life area using the dream, blockers, and vision below.",
+    "",
+    "--- Life area context ---",
+    ...lifeLines,
+    "--- End life area context ---",
+    ...focusBlock,
+    ...(guidanceNote
+      ? [
+          "",
+          "--- Guide note ---",
+          "The creator added this note about how to use the material (not a change to meditation style):",
+          guidanceNote,
+          "--- End guide note ---",
+        ]
+      : []),
+  ].join("\n");
+}
+
+function parseCoachDisplayText(raw: string): { text: string; ready: boolean } {
+  let ready = false;
+  let s = raw.replace(/\[\[\s*READY\s*\]\]/gi, () => {
+    ready = true;
+    return "";
+  });
+  s = s.replace(/\[\[[^\]]*\]\]/g, "");
+  const open = s.lastIndexOf("[[");
+  if (open !== -1 && !s.slice(open).includes("]]")) {
+    s = s.slice(0, open);
+  }
+  if (s.endsWith("[")) s = s.slice(0, -1);
+  s = s.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n");
+  return { text: s.trimEnd(), ready };
+}
+
+function pinAudioReadyCtaOnLastAssistant(messages: ChatMessage[]): ChatMessage[] {
+  const next = [...messages];
+  for (let i = next.length - 1; i >= 0; i -= 1) {
+    const msg = next[i];
+    if (msg.kind === "divider" || msg.muted) continue;
+    if (msg.role === "assistant" && msg.variant !== "script") {
+      next[i] = { ...msg, audioReadyCta: true };
+      return next;
+    }
+  }
+  return messages;
+}
+
+function coachChatBubbles(text: string): string[] {
+  return text
+    .split(/\n{2,}/g)
+    .map((s) => s.replace(/[ \t]*\n+[ \t]*/g, " ").trim())
+    .filter(Boolean);
+}
+
+type PlanTask = {
+  id: string;
+  title: string;
+  done: boolean;
+};
+
+type PlanGoal = {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  tasks: PlanTask[];
+  dreamText: string;
+  obstacleText: string;
+  visionText: string;
+};
+
+type PlanStateV1 = {
+  v: 1;
+  goals: PlanGoal[];
+};
+
+function dreamToPlanGoal(d: PlanDream): PlanGoal {
+  return {
+    id: d.id,
+    title: d.title.trim() || "Untitled",
+    description: lifeAreaDescriptionFromDream(d),
+    createdAt: d.createdAt,
+    tasks: [],
+    dreamText: d.dreamText,
+    obstacleText: d.obstacleText,
+    visionText: d.visionText,
+  };
+}
+
+function loadManifestLifeAreas(): {
+  lifeAreas: PlanGoal[];
+  goalsByLifeArea: Record<string, IdeateSubtask[]>;
+} {
+  if (typeof window === "undefined") {
+    return { lifeAreas: [], goalsByLifeArea: {} };
+  }
+  const store = loadIdeateStore();
+  const dreamRows = store.dreams.map(dreamToPlanGoal);
+  const dreamIds = new Set(dreamRows.map((g) => g.id));
+  const goalsByLifeArea: Record<string, IdeateSubtask[]> = {};
+  for (const d of store.dreams) {
+    goalsByLifeArea[d.id] = sortSubtasks(
+      subtasksForProject(store, d.id),
+      "updated_desc",
+    );
+  }
+
+  let legacy: PlanGoal[] = [];
+  try {
+    const raw = window.localStorage.getItem("mm_plan_v1");
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object") {
+        const o = parsed as Partial<PlanStateV1>;
+        if (o.v === 1 && Array.isArray(o.goals)) {
+          legacy = (o.goals as PlanGoal[])
+            .filter(
+              (g) => g && typeof g.id === "string" && typeof g.title === "string",
+            )
+            .map((g) => ({
+              ...g,
+              dreamText: g.dreamText ?? g.description ?? "",
+              obstacleText: g.obstacleText ?? "",
+              visionText: g.visionText ?? "",
+              tasks: Array.isArray(g.tasks) ? g.tasks : [],
+            }))
+            .slice(0, 50);
+        }
+      }
+    }
+  } catch {
+    legacy = [];
+  }
+
+  // Fallback when ideate store is empty but legacy dreams exist.
+  if (dreamRows.length === 0) {
+    const fromDreamsStore = loadPlanDreamsStore().dreams.map(dreamToPlanGoal);
+    for (const g of fromDreamsStore) dreamIds.add(g.id);
+    return {
+      lifeAreas: [
+        ...fromDreamsStore,
+        ...legacy.filter((g) => !dreamIds.has(g.id)),
+      ],
+      goalsByLifeArea,
+    };
+  }
+
+  return {
+    lifeAreas: [...dreamRows, ...legacy.filter((g) => !dreamIds.has(g.id))],
+    goalsByLifeArea,
+  };
+}
+
+function JournalHandoffEntryCards({
+  segments,
+}: {
+  segments: JournalHandoffSegment[];
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  return (
+    <ul className="mt-3 space-y-2 border-t border-border/70 pt-3">
+      {segments.map((s) => {
+        const open = openId === s.entryId;
+        return (
+          <li
+            key={s.entryId}
+            className="rounded-lg border border-border bg-background/90 px-3 py-2 text-left"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-foreground">{s.title}</div>
+                {s.createdAt ? (
+                  <div className="mt-0.5 text-xs text-muted">
+                    Created {formatJournalEntryDate(s.createdAt)}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenId(open ? null : s.entryId)}
+                className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-accent-link transition-colors hover:bg-accent-soft/40"
+              >
+                {open ? "Collapse" : "Expand"}
+              </button>
+            </div>
+            {open ? (
+              <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted">
+                {s.bodyPlain.trim() ? s.bodyPlain : "(Empty entry)"}
+              </p>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function isMedimadeTurnLike(x: unknown): x is MedimadeChatTurn {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  if (o.role !== "user" && o.role !== "assistant") return false;
+  if (typeof o.content !== "string") return false;
+  return true;
+}
+
+function isChatMessageLike(
+  x: unknown,
+): x is ChatMessage {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  if (o.role !== "user" && o.role !== "assistant") return false;
+  if (typeof o.text !== "string") return false;
+  if (
+    o.variant != null &&
+    o.variant !== "chat" &&
+    o.variant !== "script"
+  ) {
+    return false;
+  }
+  if (o.journalSegments != null) {
+    if (!Array.isArray(o.journalSegments)) return false;
+    for (const s of o.journalSegments) {
+      if (!s || typeof s !== "object") return false;
+      const q = s as Record<string, unknown>;
+      if (typeof q.entryId !== "string") return false;
+      if (typeof q.title !== "string") return false;
+      if (typeof q.bodyPlain !== "string") return false;
+      if (q.createdAt != null && typeof q.createdAt !== "string") return false;
+    }
+  }
+  return true;
+}
+
+function isDraftStateV1(raw: unknown): raw is MeditationDraftStateV1 {
+  if (!raw || typeof raw !== "object") return false;
+  const o = raw as Record<string, unknown>;
+  if (o.v !== MEDITATION_DRAFT_STATE_VERSION) return false;
+  if (o.phase !== "style" && o.phase !== "feeling" && o.phase !== "claude") {
+    return false;
+  }
+  if (!Array.isArray(o.messages) || !o.messages.every(isChatMessageLike)) {
+    return false;
+  }
+  if (
+    !Array.isArray(o.claudeThread) ||
+    !o.claudeThread.every(isMedimadeTurnLike)
+  ) {
+    return false;
+  }
+  if (typeof o.input !== "string") return false;
+  if (typeof o.speechSpeed !== "number" || !Number.isFinite(o.speechSpeed)) {
+    return false;
+  }
+  if (typeof o.speakerModelId !== "string") return false;
+  if (
+    o.ttsProvider !== undefined &&
+    o.ttsProvider !== "fish" &&
+    o.ttsProvider !== "orpheus"
+  ) {
+    return false;
+  }
+  if (o.orpheusVoiceId !== undefined && typeof o.orpheusVoiceId !== "string") {
+    return false;
+  }
+  if (typeof o.backgroundNatureKey !== "string") return false;
+  if (typeof o.backgroundMusicKey !== "string") return false;
+  // Back-compat: older drafts stored drums; new drafts store noise.
+  const drumsKeyOk = typeof o.backgroundDrumsKey === "string";
+  const noiseKeyOk = typeof o.backgroundNoiseKey === "string";
+  if (!drumsKeyOk && !noiseKeyOk) return false;
+  if (
+    typeof o.backgroundNatureGain !== "number" ||
+    !Number.isFinite(o.backgroundNatureGain)
+  ) {
+    return false;
+  }
+  if (
+    typeof o.backgroundMusicGain !== "number" ||
+    !Number.isFinite(o.backgroundMusicGain)
+  ) {
+    return false;
+  }
+  const drumsGainOk =
+    typeof o.backgroundDrumsGain === "number" &&
+    Number.isFinite(o.backgroundDrumsGain);
+  const noiseGainOk =
+    typeof o.backgroundNoiseGain === "number" &&
+    Number.isFinite(o.backgroundNoiseGain);
+  if (!drumsGainOk && !noiseGainOk) return false;
+  if (o.mobileCreateStep !== "chat" && o.mobileCreateStep !== "audio") {
+    return false;
+  }
+  if (o.meditationStyle != null && typeof o.meditationStyle !== "string") {
+    return false;
+  }
+  if (o.lastUsedScript != null && typeof o.lastUsedScript !== "string") {
+    return false;
+  }
+  if (o.meditationTargetMinutes != null) {
+    if (o.meditationTargetMinutes !== 2 && o.meditationTargetMinutes !== 5 && o.meditationTargetMinutes !== 10) {
+      return false;
+    }
+  }
+  if (o.styleQuestionAnswers != null) {
+    if (
+      !Array.isArray(o.styleQuestionAnswers) ||
+      !o.styleQuestionAnswers.every((x) => typeof x === "string")
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+type CreateWorkspaceProps = {
+  initialDraftSk?: string | null;
+  /** When true, read journal → create handoff from sessionStorage once (if no draft). */
+  seedJournalContext?: boolean;
+  /** When true, read Plan → create handoff from sessionStorage once (if no draft). */
+  seedPlanContext?: boolean;
+};
+
+function getStyleFollowupQuestion(style: string): string {
+  const s = style.trim().toLowerCase();
+  if (s === "manifestation") {
+    return "What do you want to manifest—and what would a “win” look like in real life?";
+  }
+  if (s === "visualization") {
+    return "What do you want to visualize—where are you, and what’s the first vivid detail you can picture?";
+  }
+  if (s === "affirmation loop" || s === "affirmations" || s === "affirmation") {
+    return "How do you want to feel when you’re done—and what words would land gently for you right now?";
+  }
+  if (s === "sleep") {
+    return "How are you feeling as you get ready for sleep—do you want a drifting scene or just body and breath—and how do you want to feel as you drift off?";
+  }
+  if (s === "loving-kindness" || s === "loving kindness" || s === "metta") {
+    return "Who would you like to send kindness to today—yourself, someone else, or both?";
+  }
+  if (s === "anxiety relief" || s === "anxiety") {
+    return "What’s the main worry or pressure right now—and how do you want to feel by the end of this session?";
+  }
+  if (s === "breath-led" || s === "breath led" || s === "breath") {
+    return "Do you want a breathwork-style session, or a simple “follow your breath” meditation?";
+  }
+  if (s === "body scan" || s === "bodyscan") {
+    return "Where are you holding the most tension right now—and what would you like to soften first?";
+  }
+  if (s === "movement meditation" || s === "walking meditation") {
+    return "Do you imagine moving in place, walking slowly, or something else—and what do you want your body to feel by the end?";
+  }
+  if (s === "open awareness") {
+    return "What pulls your attention away most, what’s your position, and what’s the environment like?";
+  }
+  if (s === "story") {
+    return "What style of story is this (zen parable, kids’ tale, fable…), what is it about, and what feeling should it leave you with?";
+  }
+  if (s === "reflection") {
+    return "What do you need to process, do you want an answer or just to sit with it, and what would a helpful insight or shift look like when you’re done?";
+  }
+  const trimmed = style.trim();
+  if (trimmed) {
+    return `How are you feeling today—and what do you want this “${trimmed}” meditation to support?`;
+  }
+  return "How are you feeling today—and what do you want this meditation to support?";
+}
+
+/** Live mixer snapshot on Create audio — factory mixes stay read-only; this is compare-only. */
+type CreateMixSnapshot = MixerPresetMix & {
+  speakerModelId: string;
+  speakerFxPreviewOn: boolean;
+  meditationTargetMinutes: MeditationTargetMinutes;
+};
+
+function createMixSnapshotEquals(a: CreateMixSnapshot, b: CreateMixSnapshot): boolean {
+  return (
+    mixEquals(a, b) &&
+    a.speakerModelId === b.speakerModelId &&
+    a.speakerFxPreviewOn === b.speakerFxPreviewOn &&
+    a.meditationTargetMinutes === b.meditationTargetMinutes
+  );
+}
+
+export function CreateWorkspace({
+  initialDraftSk = null,
+  seedJournalContext = false,
+  seedPlanContext = false,
+}: CreateWorkspaceProps) {
+  const router = useRouter();
+  const pathname = usePathname() || CREATE_MEDITATE_ROOT;
+  const parsedCreateRoute = parseCreateMeditationPathname(pathname);
+  const isRedirectingToLibraryRef = useRef(false);
+  const seedFromHandoff = seedJournalContext || seedPlanContext;
+  const initedCreatePathsRef = useRef(new Set<CreationPath>());
+  const pendingUrlSyncRef = useRef<string | null>(null);
+  const [mobileCreateStep, setMobileCreateStep] = useState<"chat" | "audio">(
+    "chat",
+  );
+  /** 0 = chooser, 1 = script/chat, 2 = audio — same horizontal strip at every viewport width. */
+  const [createStripStep, setCreateStripStep] = useState<0 | 1 | 2>(() => {
+    if (seedFromHandoff) return 1;
+    if (parsedCreateRoute.mix) return 2;
+    if (parsedCreateRoute.path === "pending") return 0;
+    if (parsedCreateRoute.path === "style") return 0;
+    return 1;
+  });
+
+  // Reduce perceived navigation latency (and any browser "redirecting" UI) by prefetching Library.
+  useEffect(() => {
+    router.prefetch("/meditate/library/creations");
+  }, [router]);
+
+  const devUi = useDevUiSettings();
+  const showCreateAudioDevControls = shouldRenderDevUi(
+    devUi.createAudioDevControls,
+  );
+
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (seedFromHandoff) return "claude";
+    if (parsedCreateRoute.path === "style") {
+      return parsedCreateRoute.styleStep === "questions"
+        ? "styleQuestions"
+        : "stylePick";
+    }
+    if (parsedCreateRoute.path === "journalReflect") return "journalPick";
+    if (parsedCreateRoute.path === "goal") return "goalPick";
+    if (parsedCreateRoute.path === "oneShot") return "promptPick";
+    if (parsedCreateRoute.path === "freeflow") return "feeling";
+    return "style";
+  });
+  const [meditationStyle, setMeditationStyle] = useState<string | null>(null);
+  const [claudeThread, setClaudeThread] = useState<MedimadeChatTurn[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatLoadingRef = useRef(false);
+  /** Keep ref + state in lockstep — a stale true ref makes send() silently no-op. */
+  function setChatBusy(busy: boolean) {
+    chatLoadingRef.current = busy;
+    setChatLoading(busy);
+  }
+  const [sendBlockReason, setSendBlockReason] = useState<string | null>(null);
+  const [coachAudioReady, setCoachAudioReady] = useState(false);
+  const [scriptLoading, setScriptLoading] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [audioModalUrl, setAudioModalUrl] = useState<string | null>(null);
+  const [audioModalKey, setAudioModalKey] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [lastUsedScript, setLastUsedScript] = useState<string | null>(null);
+  const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
+  const [meditationTargetMinutes, setMeditationTargetMinutes] =
+    useState<MeditationTargetMinutes>(5);
+  /**
+   * Experienced pacing: cued open-practice sits (~1–2 min) so Length still matches.
+   * Default off — standard guided density.
+   */
+  const [longerBreaks, setLongerBreaks] = useState(false);
+  /** Dev-only Claude A/B for coach chat + script generation. */
+  const [claudeModelChoice, setClaudeModelChoice] = useState<string>(
+    CLAUDE_HAIKU_45_MODEL_ID,
+  );
+  /** Dev: Fish qualitative tags vs our ffmpeg silence chunks (default). */
+  const [fishPauseMode, setFishPauseMode] = useState<FishPauseMode>("segmented");
+  /**
+   * Minutes the latest chat `variant: "script"` bubble was written for.
+   * Audio generate reuses that script only when Length still matches; otherwise
+   * the worker regenerates at the selected length.
+   */
+  const [scriptTargetMinutes, setScriptTargetMinutes] =
+    useState<MeditationTargetMinutes | null>(null);
+  /** When on, speaker row plays CDN `*-fx.wav` (Pedalboard preset mixer); when off, dry Fish `*.mp3`. Dev-only toggle; production always on. */
+  const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
+  const voiceFxOn = showCreateAudioDevControls ? speakerFxPreviewOn : true;
+  const [backgroundNature, setBackgroundNature] = useState<
+    BackgroundAudioItem[]
+  >([]);
+  const [backgroundMusic, setBackgroundMusic] = useState<BackgroundAudioItem[]>(
+    [],
+  );
+  const [backgroundNoise, setBackgroundNoise] = useState<BackgroundAudioItem[]>(
+    [],
+  );
+  const [backgroundDrums, setBackgroundDrums] = useState<BackgroundAudioItem[]>(
+    [],
+  );
+  const [compositions, setCompositions] = useState<BackgroundAudioItem[]>([]);
+  const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(null);
+  /**
+   * Two independent sound beds: a ready-made composition, or the hand-built
+   * mix. Generation reads whichever mode is active, so switching back and
+   * forth never discards the other one.
+   */
+  const [soundMode, setSoundMode] = useState<SoundBedMode>("soundscape");
+  const [compositionKey, setCompositionKey] = useState<string>("");
+  const [compositionPlaying, setCompositionPlaying] = useState(false);
+  const compositionAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [voiceCardStopNonce, setVoiceCardStopNonce] = useState(0);
+  const [backgroundNatureKey, setBackgroundNatureKey] = useState<string>("");
+  const [backgroundMusicKey, setBackgroundMusicKey] = useState<string>("");
+  const [backgroundNoiseKey, setBackgroundNoiseKey] = useState<string>("");
+  const [backgroundDrumsKey, setBackgroundDrumsKey] = useState<string>("");
+  const [backgroundNatureGain, setBackgroundNatureGain] = useState(25);
+  const [backgroundMusicGain, setBackgroundMusicGain] = useState(50);
+  const [backgroundNoiseGain, setBackgroundNoiseGain] = useState(10);
+  const [backgroundDrumsGain, setBackgroundDrumsGain] = useState(40);
+  const [factoryMixes, setFactoryMixes] = useState<MixerFactoryPreset[]>([]);
+  const [userMixPresets, setUserMixPresets] = useState<MixerPreset[]>([]);
+  const [selectedMixKey, setSelectedMixKey] = useState("");
+  const [factoryMixesLoading, setFactoryMixesLoading] = useState(true);
+  const [mixBaseline, setMixBaseline] = useState<CreateMixSnapshot | null>(
+    null,
+  );
+  const mixBaselineReadyRef = useRef(false);
+  const [playAllActive, setPlayAllActive] = useState(false);
+  const [playing, setPlaying] = useState<Record<SoloTrack, boolean>>({
+    speaker: false,
+    nature: false,
+    music: false,
+    drums: false,
+    noise: false,
+  });
+  const previewNatureRef = useRef<HTMLAudioElement | null>(null);
+  const previewMusicRef = useRef<HTMLAudioElement | null>(null);
+  const previewDrumsRef = useRef<HTMLAudioElement | null>(null);
+  const previewNoiseRef = useRef<HTMLAudioElement | null>(null);
+  const speakerSampleRef = useRef<HTMLAudioElement | null>(null);
+  const speakerGapTimeoutRef = useRef<number | null>(null);
+  const playAllVoiceDelayRef = useRef<number | null>(null);
+  const speakerRepeatWantedRef = useRef(false);
+  const lastBgKeysRef = useRef<{
+    nature: string;
+    music: string;
+    drums: string;
+    noise: string;
+  }>({
+    nature: "",
+    music: "",
+    drums: "",
+    noise: "",
+  });
+  /** Live fader values — updated immediately while dragging (avoid waiting on React state). */
+  const bedGainRef = useRef({
+    nature: backgroundNatureGain,
+    music: backgroundMusicGain,
+    drums: backgroundDrumsGain,
+    noise: backgroundNoiseGain,
+  });
+
+  useEffect(() => {
+    bedGainRef.current = {
+      nature: backgroundNatureGain,
+      music: backgroundMusicGain,
+      drums: backgroundDrumsGain,
+      noise: backgroundNoiseGain,
+    };
+  }, [
+    backgroundNatureGain,
+    backgroundMusicGain,
+    backgroundDrumsGain,
+    backgroundNoiseGain,
+  ]);
+
+  function applyLiveBedGain(
+    track: "nature" | "music" | "drums" | "noise",
+    gain: number,
+  ) {
+    bedGainRef.current[track] = gain;
+    const el =
+      track === "nature"
+        ? previewNatureRef.current
+        : track === "music"
+          ? previewMusicRef.current
+          : track === "drums"
+            ? previewDrumsRef.current
+            : previewNoiseRef.current;
+    setGaplessBedVolume(el, bedElementVolume(gain));
+  }
+  // Speakers come from backend `GET /fish/speakers` (single source of truth).
+  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>(() =>
+    fishSpeakersForPicker([...FISH_SPEAKERS]),
+  );
+  const [orpheusSpeakers, setOrpheusSpeakers] = useState<OrpheusSpeaker[]>(
+    () => [...ORPHEUS_VOICES],
+  );
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>("fish");
+  const [orpheusVoiceId, setOrpheusVoiceId] = useState<string>(
+    DEFAULT_ORPHEUS_VOICE_ID,
+  );
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "assistant", text: "", variant: "chat" },
+  ]);
+  const [introTypingDone, setIntroTypingDone] = useState(false);
+  /** Bumped on reset so intro typing re-runs even when `messages.length` stays 1. */
+  const [introTypingSession, setIntroTypingSession] = useState(0);
+  const introTypingTimerRef = useRef<number | null>(null);
+  const coachTypeTargetRef = useRef("");
+  const coachTypeRevealRef = useRef(0);
+  const coachTypePauseTicksRef = useRef(0);
+  const coachTypeTimerRef = useRef<number | null>(null);
+  const coachTypeNetworkDoneRef = useRef(false);
+  const coachTypeOwnsMessageRef = useRef(false);
+  const coachTypeCaughtUpRef = useRef<(() => void) | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const isAtBottomRef = useRef(true);
+  const [input, setInput] = useState("");
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
+  /** Mirrors composer text so send() still works if a re-render races the controlled value. */
+  const inputDraftRef = useRef("");
+  const initialChatAutofocusDoneRef = useRef(false);
+  /** True while we programmatically focus the composer — must not count as user touch. */
+  const autofocusingComposerRef = useRef(false);
+  /** Once the user focuses/types in the composer, never restart intro typing. */
+  const userTouchedComposerRef = useRef(false);
+  const [speakerModelId, setSpeakerModelId] = useState<string>("");
+  const [journalMode, setJournalMode] = useState(
+    () =>
+      Boolean(seedFromHandoff) ||
+      parsedCreateRoute.path === "freeflow" ||
+      parsedCreateRoute.path === "journalReflect" ||
+      parsedCreateRoute.path === "goal",
+  );
+  const [creationPath, setCreationPath] = useState<CreationPath>(() =>
+    seedFromHandoff ? "freeflow" : parsedCreateRoute.path,
+  );
+  /** Which full-width section to show; pending path always maps to chooser (avoids strip/chat flash races). */
+  const workspaceSectionStep: 0 | 1 | 2 =
+    creationPath === "pending" ? 0 : createStripStep;
+
+  // Hide the app Chat FAB while Create’s chat pane is the main content.
+  useEffect(() => {
+    setCreateMainChatVisible(workspaceSectionStep === 1);
+    return () => setCreateMainChatVisible(false);
+  }, [workspaceSectionStep]);
+
+  useEffect(() => {
+    if (creationPath === "pending") {
+      setMobileCreateStep("chat");
+      return;
+    }
+    setMobileCreateStep(createStripStep === 2 ? "audio" : "chat");
+  }, [creationPath, createStripStep]);
+
+  /** On the first screen: which path is selected before tapping “Script”. */
+  const [pendingModeChoice, setPendingModeChoice] = useState<
+    null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript"
+  >(null);
+  const [pendingStyleType, setPendingStyleType] = useState<string | null>(null);
+  const [styleQuestionAnswers, setStyleQuestionAnswers] = useState<
+    [string, string, string, string]
+  >(() => emptyStyleQuestionAnswers());
+  const [styleQuestionsRevealed, setStyleQuestionsRevealed] = useState(1);
+  const [styleIntakeFocusIndex, setStyleIntakeFocusIndex] = useState(0);
+  const [styleIntakeFocusNonce, setStyleIntakeFocusNonce] = useState(0);
+
+  function resetStyleIntakeFocus(revealed = 1) {
+    setStyleQuestionsRevealed(revealed);
+    setStyleIntakeFocusIndex(Math.max(0, revealed - 1));
+    setStyleIntakeFocusNonce((n) => n + 1);
+  }
+  const chooserCardsRef = useRef<HTMLDivElement | null>(null);
+  /** Journal list for Create chooser + in-chat reflect picker (local + optional cloud). */
+  const [journalPickerEntries, setJournalPickerEntries] = useState<JournalEntry[]>(
+    [],
+  );
+  const [journalPickerFolders, setJournalPickerFolders] = useState<JournalFolder[]>(
+    [],
+  );
+  const [journalPickerListReady, setJournalPickerListReady] = useState(false);
+  const [journalReflectSelectedIds, setJournalReflectSelectedIds] = useState(
+    () => new Set<string>(),
+  );
+  const [journalReflectGuidance, setJournalReflectGuidance] = useState("");
+  const [goalReflectGuidance, setGoalReflectGuidance] = useState("");
+  const [planGoals, setPlanGoals] = useState<PlanGoal[]>([]);
+  const [goalsByLifeArea, setGoalsByLifeArea] = useState<
+    Record<string, IdeateSubtask[]>
+  >({});
+  const [planGoalsReady, setPlanGoalsReady] = useState(false);
+  const [goalSelectedId, setGoalSelectedId] = useState<string | null>(null);
+  /** Optional Manifest goal (IdeateSubtask) under the selected life area. */
+  const [goalFocusId, setGoalFocusId] = useState<string | null>(null);
+  const [lifeAreaId, setLifeAreaId] = useState<string | null>(null);
+  const [oneShotPrompt, setOneShotPrompt] = useState("");
+
+  /** Dev: skip chat → audio; Generate asks the worker for a random script. */
+  const [randomScript, setRandomScript] = useState(false);
+  const devRandomSeedRef = useRef<{
+    style: string;
+    transcript: string;
+  } | null>(null);
+
+  const [draftSk, setDraftSk] = useState<string | null>(null);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftSaveMessage, setDraftSaveMessage] = useState<string | null>(null);
+
+  const soundControlsDisabled =
+    audioLoading && !isRedirectingToLibraryRef.current;
+  const chatControlsDisabled =
+    audioLoading && !isRedirectingToLibraryRef.current;
+  const [draftLoadError, setDraftLoadError] = useState<string | null>(null);
+  /**
+   * When `?draftSk=` is present, stays false until the draft fetch finishes (shows “Loading draft…”).
+   * Starts false always so the first paint matches `useSearchParams()` resolving: if `draftSk` appears
+   * only after mount, we never briefly show the chooser then jump to chat.
+   */
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+
+  function createHrefForNav(opts: {
+    path: CreationPath;
+    styleStep?: "type" | "questions";
+    mix?: boolean;
+  }): string {
+    return createMeditationHrefWithDraft(
+      createMeditationHref(opts),
+      draftSk ?? initialDraftSk,
+    );
+  }
+
+  function pathOnly(href: string): string {
+    return href.split("?")[0] ?? href;
+  }
+
+  function pushCreate(opts: {
+    path: CreationPath;
+    styleStep?: "type" | "questions";
+    mix?: boolean;
+  }) {
+    const href = createHrefForNav(opts);
+    pendingUrlSyncRef.current = pathOnly(href);
+    router.push(href);
+  }
+
+  function applyCreateSession(s: CreateSessionV1) {
+    const answers = parseStyleQuestionAnswers(s.styleQuestionAnswers)
+      ?? emptyStyleQuestionAnswers();
+    setStyleQuestionAnswers(answers);
+    {
+      const revealed = Math.max(
+        s.styleQuestionsRevealed,
+        revealedCountFromStyleAnswers(answers),
+      );
+      setStyleQuestionsRevealed(revealed);
+      setStyleIntakeFocusIndex(Math.max(0, Math.min(3, revealed - 1)));
+    }
+    setMeditationStyle(s.meditationStyle);
+    setPendingStyleType(s.pendingStyleType);
+    // Free-flow chat transcript is ephemeral — never revive bubbles after a refresh.
+    if (s.creationPath === "freeflow") {
+      setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+      setClaudeThread([]);
+      setCoachAudioReady(false);
+      setInput("");
+      inputDraftRef.current = "";
+      setMeditationStyle(null);
+      setJournalMode(true);
+      setPhase("feeling");
+      setScriptTargetMinutes(null);
+      setIntroTypingDone(false);
+      setIntroTypingSession((n) => n + 1);
+      userTouchedComposerRef.current = false;
+      initialChatAutofocusDoneRef.current = false;
+    } else {
+      setMessages(
+        s.coachAudioReady && !s.messages.some((m) => m.audioReadyCta)
+          ? pinAudioReadyCtaOnLastAssistant(s.messages)
+          : s.messages,
+      );
+      setClaudeThread(s.claudeThread);
+      setCoachAudioReady(s.coachAudioReady === true);
+      setInput(s.input);
+      {
+        const lastMsg = s.messages[s.messages.length - 1];
+        const hasScript =
+          lastMsg?.role === "assistant" && lastMsg.variant === "script";
+        setScriptTargetMinutes(hasScript ? s.meditationTargetMinutes : null);
+      }
+      const lastAssistant = [...s.messages]
+        .reverse()
+        .find(
+          (m) => m.role === "assistant" && m.variant !== "script" && !m.muted,
+        );
+      const openingComplete =
+        typeof lastAssistant?.text === "string" &&
+        lastAssistant.text.trim().length > 0;
+      setIntroTypingDone(openingComplete);
+    }
+    setSpeakerModelId(s.speakerModelId);
+    setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "fish");
+    setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
+    setSpeakerFxPreviewOn(s.speakerFxPreviewOn);
+    setBackgroundNatureKey(backgroundAudioStreamingKey(s.backgroundNatureKey));
+    setBackgroundMusicKey(backgroundAudioStreamingKey(s.backgroundMusicKey));
+    setBackgroundDrumsKey(backgroundAudioStreamingKey(s.backgroundDrumsKey));
+    setBackgroundNoiseKey(backgroundAudioStreamingKey(s.backgroundNoiseKey));
+    setSoundMode(s.soundMode === "mixer" ? "mixer" : "soundscape");
+    setCompositionKey(backgroundAudioStreamingKey(s.compositionKey ?? ""));
+    setBackgroundNatureGain(s.backgroundNatureGain);
+    setBackgroundMusicGain(s.backgroundMusicGain);
+    setBackgroundDrumsGain(s.backgroundDrumsGain);
+    setBackgroundNoiseGain(s.backgroundNoiseGain);
+    setCreateStripStep(s.createStripStep);
+    setMobileCreateStep(s.mobileCreateStep);
+    setLastUsedScript(s.lastUsedScript);
+    setMeditationTargetMinutes(s.meditationTargetMinutes);
+    setCreationPath(s.creationPath);
+    if (s.creationPath !== "freeflow") {
+      setJournalMode(s.journalMode);
+      setPhase(s.phase === "style" ? "stylePick" : s.phase);
+    }
+    setPendingModeChoice(s.pendingModeChoice);
+    setRandomScript(s.randomScript === true);
+    if (s.randomScript === true) {
+      setMeditationStyle(null);
+    }
+    setJournalReflectSelectedIds(
+      new Set(s.journalReflectSelectedIds.slice(0, 1)),
+    );
+    setJournalReflectGuidance(s.journalReflectGuidance ?? "");
+    setGoalSelectedId(s.goalSelectedId);
+    setGoalFocusId(null);
+    setLifeAreaId(s.lifeAreaId ?? null);
+    setOneShotPrompt(s.oneShotPrompt ?? "");
+    if (s.draftSk) setDraftSk(s.draftSk);
+    initedCreatePathsRef.current = new Set(s.initedPaths);
+    if (s.creationPath !== "pending") {
+      initedCreatePathsRef.current.add(s.creationPath);
+    }
+  }
+
+  useLayoutEffect(() => {
+    if (initialDraftSk?.trim() || seedJournalContext || seedPlanContext) {
+      // Ideate/journal handoff skips full session restore, but keep any sticky
+      // life-area link so Generate still attaches after URL replace remounts.
+      const sticky = readLinkedLifeAreaId();
+      if (sticky) setLifeAreaId(sticky);
+      setSessionHydrated(true);
+      return;
+    }
+    const parsed = parseCreateMeditationPathname(pathname);
+    const session = readCreateSession();
+    const sessionOk =
+      session != null &&
+      parsed.valid &&
+      createSessionSatisfiesRoute(
+        session,
+        parsed.path,
+        parsed.styleStep,
+        parsed.mix,
+      );
+    if (sessionOk && session) {
+      applyCreateSession(session);
+      const sticky = readLinkedLifeAreaId();
+      if (sticky) setLifeAreaId(sticky);
+      setSessionHydrated(true);
+      return;
+    }
+    if (parsed.valid && createRouteNeedsPriorState(parsed)) {
+      const href = createMeditationPathStartHref(parsed);
+      pendingUrlSyncRef.current = href;
+      router.replace(href);
+    }
+    const sticky = readLinkedLifeAreaId();
+    if (sticky) setLifeAreaId(sticky);
+    setSessionHydrated(true);
+    // Restore once per mount (full refresh). Client navigations keep the layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const drumsLockedForMelodic = isMelodicMusicKey(
+    backgroundMusic,
+    backgroundMusicKey,
+  );
+  const drumsPreviewKey = drumsLockedForMelodic ? "" : backgroundDrumsKey;
+  /** True only when the soundscape tab is showing and a piece is chosen. */
+  const soundscapeActive = soundMode === "soundscape" && Boolean(compositionKey);
+
+  const currentBedMix: MixerPresetMix = {
+    musicKey: backgroundMusicKey,
+    natureKey: backgroundNatureKey,
+    drumsKey: backgroundDrumsKey,
+    noiseKey: backgroundNoiseKey,
+    musicGain: backgroundMusicGain,
+    natureGain: backgroundNatureGain,
+    drumsGain: backgroundDrumsGain,
+    noiseGain: backgroundNoiseGain,
+  };
+  const currentMixSnapshot: CreateMixSnapshot = {
+    ...currentBedMix,
+    speakerModelId,
+    speakerFxPreviewOn,
+    meditationTargetMinutes,
+  };
+  const mixDirty =
+    mixBaseline != null &&
+    !createMixSnapshotEquals(currentMixSnapshot, mixBaseline);
+  const selectedFactoryMix = factoryMixes.find(
+    (p) => `factory:${p.id}` === selectedMixKey,
+  );
+  const selectedUserMix = userMixPresets.find(
+    (p) => `user:${p.id}` === selectedMixKey,
+  );
+  const loadedMixName =
+    selectedFactoryMix?.name || selectedUserMix?.name || "";
+  const mixSaveDefaultName = loadedMixName
+    ? `${loadedMixName} (edited)`
+    : "Untitled mix";
+
+  function rememberMixBaseline(mix: CreateMixSnapshot) {
+    mixBaselineReadyRef.current = true;
+    setMixBaseline(mix);
+  }
+
+  function applyBedMix(mix: MixerPresetMix) {
+    setBackgroundMusicKey(mix.musicKey);
+    setBackgroundNatureKey(mix.natureKey);
+    setBackgroundDrumsKey(mix.drumsKey);
+    setBackgroundNoiseKey(mix.noiseKey);
+    setBackgroundMusicGain(mix.musicGain);
+    setBackgroundNatureGain(mix.natureGain);
+    setBackgroundDrumsGain(mix.drumsGain);
+    setBackgroundNoiseGain(mix.noiseGain);
+    rememberMixBaseline({
+      ...mix,
+      speakerModelId,
+      speakerFxPreviewOn,
+      meditationTargetMinutes,
+    });
+    const drumsLocked = isMelodicMusicKey(backgroundMusic, mix.musicKey);
+    setPlaying((p) => ({
+      ...p,
+      music: Boolean(mix.musicKey.trim()),
+      nature: Boolean(mix.natureKey.trim()),
+      drums: Boolean(mix.drumsKey.trim()) && !drumsLocked,
+      noise: Boolean(mix.noiseKey.trim()),
+    }));
+  }
+
+  function onSelectMixPreset(key: string) {
+    setSelectedMixKey(key);
+    if (!key) {
+      rememberMixBaseline(currentMixSnapshot);
+      return;
+    }
+    const sep = key.indexOf(":");
+    const kind = key.slice(0, sep);
+    const id = key.slice(sep + 1);
+    if (kind === "factory") {
+      const p = factoryMixes.find((x) => x.id === id);
+      if (p) applyBedMix(factoryPresetToMix(p));
+      return;
+    }
+    if (kind === "user") {
+      const p = userMixPresets.find((x) => x.id === id);
+      if (p) applyBedMix(mixerPresetToMix(p));
+    }
+  }
+
+  function saveNewMixPreset(name: string) {
+    // Always insert a user mix. Factory presets are never written.
+    const p: MixerPreset = {
+      ...newMixerPreset(name),
+      musicKey: backgroundMusicKey,
+      natureKey: backgroundNatureKey,
+      drumsKey: backgroundDrumsKey,
+      noiseKey: backgroundNoiseKey,
+      musicGain: backgroundMusicGain,
+      natureGain: backgroundNatureGain,
+      drumsGain: backgroundDrumsGain,
+      noiseGain: backgroundNoiseGain,
+    };
+    const store = loadMixerPresetStore();
+    const next = {
+      version: 1 as const,
+      activeId: p.id,
+      presets: [p, ...store.presets.filter((x) => x.id !== p.id)],
+    };
+    saveMixerPresetStore(next);
+    setUserMixPresets(next.presets);
+    setSelectedMixKey(`user:${p.id}`);
+    rememberMixBaseline({
+      ...mixerPresetToMix(p),
+      speakerModelId,
+      speakerFxPreviewOn,
+      meditationTargetMinutes,
+    });
+  }
+
+  useEffect(() => {
+    if (!sessionHydrated || mixBaselineReadyRef.current) return;
+    rememberMixBaseline(currentMixSnapshot);
+    // Capture once after session restore so default beds aren't treated as unsaved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionHydrated]);
+
+  useEffect(() => {
+    if (!drumsLockedForMelodic) return;
+    previewDrumsRef.current?.pause();
+    setPlaying((p) => (p.drums ? { ...p, drums: false } : p));
+  }, [drumsLockedForMelodic]);
+
+  useEffect(() => {
+    if (initialChatAutofocusDoneRef.current) return;
+    if (chatControlsDisabled) return;
+    if (workspaceSectionStep !== 1) return;
+    // Let the opening typewriter finish before stealing focus.
+    if (!introTypingDone) return;
+    initialChatAutofocusDoneRef.current = true;
+    focusChatInput();
+  }, [chatControlsDisabled, workspaceSectionStep, introTypingDone]);
+
+  function buildDraftState(): MeditationDraftStateV1 {
+    const phaseForDraft: MeditationDraftStateV1["phase"] =
+      phase === "stylePick"
+        ? "style"
+        : phase === "styleQuestions" ||
+            phase === "journalPick" ||
+            phase === "goalPick" ||
+            phase === "promptPick"
+          ? "feeling"
+          : phase;
+    return {
+      v: MEDITATION_DRAFT_STATE_VERSION,
+      phase: phaseForDraft,
+      meditationStyle,
+      messages,
+      claudeThread,
+      input,
+      speechSpeed,
+      speakerModelId,
+      ttsProvider,
+      orpheusVoiceId,
+      backgroundNatureKey: backgroundAudioStreamingKey(backgroundNatureKey),
+      backgroundMusicKey: backgroundAudioStreamingKey(backgroundMusicKey),
+      backgroundDrumsKey: backgroundAudioStreamingKey(backgroundDrumsKey),
+      backgroundNoiseKey: backgroundAudioStreamingKey(backgroundNoiseKey),
+      backgroundNatureGain,
+      backgroundMusicGain,
+      backgroundDrumsGain,
+      backgroundNoiseGain,
+      mobileCreateStep,
+      lastUsedScript,
+      meditationTargetMinutes,
+      journalMode: journalMode === true,
+      styleQuestionAnswers,
+    };
+  }
+
+  async function saveCurrentDraft() {
+    if (draftSaving) return;
+    setDraftSaving(true);
+    setDraftSaveMessage(null);
+    try {
+      const out = await saveMeditationDraft({
+        sk: draftSk,
+        meditationStyle,
+        draftState: buildDraftState(),
+      });
+      setDraftSk(out.sk);
+      setDraftSaveMessage("Draft saved to Library → Drafts.");
+    } catch (e) {
+      setDraftSaveMessage(
+        e instanceof Error ? e.message : "Could not save draft",
+      );
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!draftSaveMessage) return;
+    const t = window.setTimeout(() => setDraftSaveMessage(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [draftSaveMessage]);
+
+  useEffect(() => {
+    const sk = initialDraftSk?.trim();
+    if (!sk) {
+      setDraftHydrated(true);
+      return;
+    }
+    setDraftHydrated(false);
+    let cancelled = false;
+    setDraftLoadError(null);
+    void (async () => {
+      try {
+        const row = await getMeditationDraft(sk);
+        if (cancelled) return;
+        if (!isDraftStateV1(row.draftState)) {
+          setDraftLoadError(
+            "This draft could not be loaded (unrecognized format).",
+          );
+          if (!cancelled) setDraftHydrated(true);
+          return;
+        }
+        const s = row.draftState as MeditationDraftStateV1 & {
+          backgroundDrumsKey?: string;
+          backgroundDrumsGain?: number;
+        };
+        const restoredAnswers = parseStyleQuestionAnswers(s.styleQuestionAnswers);
+        const answers = restoredAnswers ?? emptyStyleQuestionAnswers();
+        setStyleQuestionAnswers(answers);
+        {
+          const revealed = revealedCountFromStyleAnswers(answers);
+          setStyleQuestionsRevealed(revealed);
+          setStyleIntakeFocusIndex(Math.max(0, Math.min(3, revealed - 1)));
+        }
+        setMeditationStyle(s.meditationStyle);
+        setMessages(s.messages);
+        setClaudeThread(s.claudeThread);
+        setInput(s.input);
+        setSpeakerModelId(s.speakerModelId);
+        setTtsProvider(
+          s.ttsProvider === "orpheus" || s.ttsProvider === "fish"
+            ? s.ttsProvider
+            : "fish",
+        );
+        setOrpheusVoiceId(
+          typeof s.orpheusVoiceId === "string" && s.orpheusVoiceId.trim()
+            ? s.orpheusVoiceId
+            : DEFAULT_ORPHEUS_VOICE_ID,
+        );
+        setBackgroundNatureKey(
+          backgroundAudioStreamingKey(s.backgroundNatureKey),
+        );
+        setBackgroundMusicKey(
+          backgroundAudioStreamingKey(s.backgroundMusicKey),
+        );
+        setBackgroundDrumsKey(
+          backgroundAudioStreamingKey(s.backgroundDrumsKey ?? ""),
+        );
+        setBackgroundNoiseKey(
+          backgroundAudioStreamingKey(s.backgroundNoiseKey ?? ""),
+        );
+        setBackgroundNatureGain(s.backgroundNatureGain);
+        setBackgroundMusicGain(s.backgroundMusicGain);
+        setBackgroundDrumsGain(s.backgroundDrumsGain ?? 40);
+        setBackgroundNoiseGain(s.backgroundNoiseGain ?? 10);
+        // Drafts only carry a hand-built mix, so open on the mixer when one exists.
+        if (
+          s.backgroundNatureKey ||
+          s.backgroundMusicKey ||
+          s.backgroundDrumsKey ||
+          s.backgroundNoiseKey
+        ) {
+          setSoundMode("mixer");
+        }
+        setMobileCreateStep(s.mobileCreateStep);
+        setLastUsedScript(s.lastUsedScript);
+        setMeditationTargetMinutes(parseMeditationTargetMinutes(s.meditationTargetMinutes));
+        {
+          const restoredMins = parseMeditationTargetMinutes(
+            s.meditationTargetMinutes,
+          );
+          const lastMsg = s.messages?.[s.messages.length - 1];
+          const hasScript =
+            lastMsg?.role === "assistant" && lastMsg.variant === "script";
+          setScriptTargetMinutes(hasScript ? restoredMins : null);
+        }
+        const path = inferCreationPathFromDraft(s);
+        setCreationPath(path);
+        setJournalMode(path === "freeflow");
+        const styleIntake =
+          path === "style" &&
+          Boolean(s.meditationStyle?.trim()) &&
+          restoredAnswers != null &&
+          restoredAnswers.slice(0, 3).some((a) => a.trim().length > 0);
+        if (s.phase === "style" && !s.meditationStyle?.trim()) {
+          setPhase("stylePick");
+        } else if (styleIntake) {
+          setPhase("styleQuestions");
+          setPendingStyleType(s.meditationStyle);
+        } else {
+          setPhase(s.phase);
+        }
+        setCreateStripStep(
+          s.mobileCreateStep === "audio"
+            ? 2
+            : styleIntake
+              ? 0
+              : 1,
+        );
+        setDraftSk(row.sk);
+        initedCreatePathsRef.current.add(path);
+        const restoredStrip =
+          s.mobileCreateStep === "audio" ? 2 : styleIntake ? 0 : 1;
+        const restoredPhase =
+          s.phase === "style" && !s.meditationStyle?.trim()
+            ? "stylePick"
+            : styleIntake
+              ? "styleQuestions"
+              : s.phase;
+        if (!cancelled) {
+          const href = createMeditationHrefWithDraft(
+            createMeditationHref({
+              path,
+              styleStep:
+                restoredPhase === "styleQuestions" ? "questions" : "type",
+              mix: restoredStrip === 2,
+            }),
+            row.sk,
+          );
+          pendingUrlSyncRef.current = href.split("?")[0] ?? href;
+          setDraftHydrated(true);
+          router.replace(href);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setDraftLoadError(
+            e instanceof Error ? e.message : "Could not load draft",
+          );
+          setDraftHydrated(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDraftSk]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    const signedIn = Boolean(getMedimadeSessionJwt());
+    // Session users (incl. Continue as guest): local cache until cloud responds.
+    // Unsigned only: local journal as-is (one-off import if never run).
+    const local = signedIn
+      ? withoutDemoJournalEntries(loadJournalStoreRaw())
+      : loadJournalStore();
+    setJournalPickerEntries(local.entries);
+    setJournalPickerFolders(local.folders ?? []);
+
+    const base = getMedimadeApiBase();
+    if (!base || !signedIn) {
+      setJournalPickerListReady(true);
+      return;
+    }
+    void (async () => {
+      try {
+        const remote = await fetchJournalStoreRemote();
+        if (cancelled || !remote?.entries?.length) return;
+        saveJournalStore(remote);
+        setJournalPickerFolders(remote.folders ?? []);
+        setJournalPickerEntries(remote.entries);
+      } catch {
+        /* offline or no journal yet */
+      } finally {
+        if (!cancelled) setJournalPickerListReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hasReflectableJournal = useMemo(
+    () => journalPickerEntries.some((e) => !isGratitudeEntry(e)),
+    [journalPickerEntries],
+  );
+  const hasPlanGoals = useMemo(() => planGoals.length > 0, [planGoals.length]);
+
+  useEffect(() => {
+    if (pendingModeChoice !== "journalReflect") return;
+    if (!journalPickerListReady) return;
+    if (!hasReflectableJournal) setPendingModeChoice(null);
+  }, [pendingModeChoice, journalPickerListReady, hasReflectableJournal]);
+
+  useEffect(() => {
+    if (pendingModeChoice !== "goal") return;
+    if (!planGoalsReady) return;
+    if (!hasPlanGoals) setPendingModeChoice(null);
+  }, [pendingModeChoice, planGoalsReady, hasPlanGoals]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => {
+      const loaded = loadManifestLifeAreas();
+      setPlanGoals(loaded.lifeAreas);
+      setGoalsByLifeArea(loaded.goalsByLifeArea);
+      setPlanGoalsReady(true);
+    };
+    sync();
+    const onFocus = () => sync();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  /** Chooser cards stay aligned with the active path. */
+  useEffect(() => {
+    if (creationPath === "pending") return;
+    if (creationPath === "style") setPendingModeChoice("style");
+    else if (creationPath === "freeflow") setPendingModeChoice("freeflow");
+    else if (creationPath === "journalReflect") setPendingModeChoice("journalReflect");
+    else if (creationPath === "goal") setPendingModeChoice("goal");
+    else if (creationPath === "oneShot") setPendingModeChoice("oneShot");
+  }, [creationPath]);
+
+  useEffect(() => {
+    if (!seedJournalContext) return;
+    if (seedPlanContext) return;
+    const sk = initialDraftSk?.trim();
+    if (sk) {
+      try {
+        sessionStorage.removeItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
+        clearJournalMeditationHandoffJson();
+      } catch {
+        /* ignore */
+      }
+      router.replace("/meditate/create");
+      return;
+    }
+
+    let rawJson: string | null = null;
+    try {
+      rawJson =
+        peekJournalMeditationHandoffJson() ??
+        sessionStorage.getItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
+    } catch {
+      rawJson = null;
+    }
+
+    pendingUrlSyncRef.current = createMeditationHref({ path: "freeflow" });
+    router.replace(pendingUrlSyncRef.current);
+
+    const payload = parseJournalMeditationPayload(rawJson);
+    if (!payload?.segments.length) {
+      clearJournalMeditationHandoffJson();
+      try {
+        sessionStorage.removeItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    const styleHint = "General";
+    const journalCards: JournalHandoffSegment[] = payload.segments.map((s) => ({
+      entryId: s.entryId,
+      title: s.title,
+      bodyPlain: s.bodyPlain,
+      ...(s.createdAt ? { createdAt: s.createdAt } : {}),
+    }));
+    const apiUserContent = buildJournalHandoffApiContent(payload.segments);
+    const history: MedimadeChatTurn[] = [
+      { role: "assistant", content: OPENING_JOURNAL },
+      { role: "user", content: apiUserContent },
+    ];
+
+    setCreationPath("freeflow");
+    initedCreatePathsRef.current.add("freeflow");
+    setJournalMode(true);
+    setIntroTypingDone(true);
+    setPhase("claude");
+    setMeditationStyle(styleHint);
+    setClaudeThread([]);
+    setInput("");
+    setMessages([
+      {
+        role: "user",
+        text: JOURNAL_CREATE_FIRST_MESSAGE,
+        journalSegments: journalCards,
+      },
+    ]);
+    setChatBusy(true);
+
+    void (async () => {
+      try {
+        const text = await streamCoachChat(
+          {
+            meditationStyle: styleHint,
+            messages: history,
+            journalMode: true,
+            meditationTargetMinutes,
+          },
+        );
+        setClaudeThread([...history, { role: "assistant", content: text }]);
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", text: `Sorry — ${msg}` },
+        ]);
+      } finally {
+        clearJournalMeditationHandoffJson();
+        try {
+          sessionStorage.removeItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
+        } catch {
+          /* ignore */
+        }
+        setChatBusy(false);
+        requestAnimationFrame(() => {
+          chatInputRef.current?.focus();
+        });
+      }
+    })();
+  }, [seedJournalContext, seedPlanContext, initialDraftSk, router]);
+
+  useEffect(() => {
+    if (!seedPlanContext) return;
+    if (seedJournalContext) return;
+    const sk = initialDraftSk?.trim();
+    if (sk) {
+      try {
+        clearPlanCreateHandoff();
+      } catch {
+        /* ignore */
+      }
+      router.replace("/meditate/create");
+      return;
+    }
+
+    const handoff = readPlanCreateHandoff();
+    pendingUrlSyncRef.current = createMeditationHref({ path: "freeflow" });
+    router.replace(pendingUrlSyncRef.current);
+
+    const vision = handoff?.visionText?.trim() ?? "";
+    if (!handoff || !vision) {
+      clearPlanCreateHandoff();
+      return;
+    }
+
+    const targetMinutes =
+      handoff.v === 2 &&
+      (handoff.meditationTargetMinutes === 2 ||
+        handoff.meditationTargetMinutes === 5 ||
+        handoff.meditationTargetMinutes === 10 ||
+        handoff.meditationTargetMinutes === 20)
+        ? handoff.meditationTargetMinutes
+        : meditationTargetMinutes;
+    setMeditationTargetMinutes(targetMinutes);
+    if (handoff.v === 2 && handoff.returnToFocus) {
+      writeReturnToFocusAfterCreate();
+    }
+
+    const linkedLifeAreaId =
+      handoff.v === 2 &&
+      typeof handoff.lifeAreaId === "string" &&
+      handoff.lifeAreaId.trim()
+        ? handoff.lifeAreaId.trim()
+        : null;
+    if (linkedLifeAreaId) {
+      setLifeAreaId(linkedLifeAreaId);
+      // Persist immediately — handoff is cleared after coach reply, and the
+      // create-session write is debounced; without this Generate loses the link.
+      writeLinkedLifeAreaId(linkedLifeAreaId);
+    }
+
+    const apiUserContent = buildPlanCreateHandoffApiContent(handoff);
+    const styleHint = "Visualization";
+    // Do not plant a prior assistant turn in the API history — that skips the
+    // coach's first-turn / [[READY]] rules. Opening copy is UI-only.
+    const history: MedimadeChatTurn[] = [
+      { role: "user", content: apiUserContent },
+    ];
+
+    setCreationPath("freeflow");
+    initedCreatePathsRef.current.add("freeflow");
+    // Visualization technique lock (not open journal mode) so coach format +
+    // [[READY]] / proceed CTA match the style-chat path.
+    setJournalMode(false);
+    setIntroTypingDone(true);
+    setPhase("claude");
+    setMeditationStyle(styleHint);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setInput("");
+    setMessages([
+      {
+        role: "assistant",
+        text: PLAN_CREATE_OPENING_ASSISTANT,
+        variant: "chat",
+      },
+      {
+        role: "user",
+        text:
+          handoff.v === 2 && handoff.returnToFocus
+            ? "Please help me create a short pre-focus manifestation / visualisation meditation."
+            : PLAN_CREATE_FIRST_MESSAGE,
+        variant: "chat",
+      },
+    ]);
+    setChatBusy(true);
+
+    void (async () => {
+      try {
+        const text = await streamCoachChat(
+          {
+            meditationStyle: styleHint,
+            messages: history,
+            journalMode: false,
+            meditationTargetMinutes: targetMinutes,
+          },
+        );
+        setClaudeThread([...history, { role: "assistant", content: text }]);
+        const parsed = parseCoachDisplayText(text);
+        if (parsed.ready) {
+          setCoachAudioReady(true);
+          setMessages((m) => pinAudioReadyCtaOnLastAssistant(m));
+        }
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", text: `Sorry — ${msg}` },
+        ]);
+      } finally {
+        clearPlanCreateHandoff();
+        setChatBusy(false);
+        requestAnimationFrame(() => {
+          chatInputRef.current?.focus();
+        });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot Plan→Create handoff; avoid re-running when session length changes.
+  }, [seedPlanContext, seedJournalContext, initialDraftSk, router]);
+
+  useEffect(() => {
+    void listFishSpeakers()
+      .then((sp) => {
+        const next = fishSpeakersForPicker(sp ?? []);
+        if (next.length === 0) return;
+        setFishSpeakers(next);
+        // If current selection isn't valid anymore, pick Emily, else first.
+        const emily = next.find((s) => s.name.toLowerCase() === "emily");
+        setSpeakerModelId((current) => {
+          if (next.some((s) => s.modelId === current)) return current;
+          return emily?.modelId ?? next[0]!.modelId;
+        });
+      })
+      .catch(() => {
+        setFishSpeakers((current) =>
+          current.length > 0
+            ? current
+            : fishSpeakersForPicker([...FISH_SPEAKERS]),
+        );
+      });
+  }, []);
+
+  useEffect(() => {
+    if (fishSpeakers.length === 0) return;
+    setSpeakerModelId((current) => {
+      if (current && fishSpeakers.some((s) => s.modelId === current)) return current;
+      const emily = fishSpeakers.find((s) => s.name.toLowerCase() === "emily");
+      return emily?.modelId ?? fishSpeakers[0].modelId;
+    });
+  }, [fishSpeakers, speakerModelId]);
+
+  useEffect(() => {
+    void listOrpheusSpeakers()
+      .then((voices) => {
+        if (!voices || voices.length === 0) return;
+        setOrpheusSpeakers(voices);
+        setOrpheusVoiceId((current) => {
+          if (voices.some((v) => v.id === current)) return current;
+          return voices[0]?.id ?? DEFAULT_ORPHEUS_VOICE_ID;
+        });
+      })
+      .catch(() => {
+        // Fall back to bundled ORPHEUS_VOICES constants.
+      });
+  }, []);
+
+  async function generateScript() {
+    if (scriptLoading) return;
+    // Treat mode switches as a new chat: ignore any muted history + dividers + prior scripts.
+    const transcript = buildCreateFlowTranscript(messages);
+    setScriptLoading(true);
+    try {
+      let acc = "";
+      let assistantBubbleStarted = false;
+      await streamMeditationScript(
+        {
+          meditationStyle,
+          transcript,
+          journalMode: journalMode === true,
+          meditationTargetMinutes,
+          speechSpeed,
+        },
+        (d) => {
+          acc += d;
+          if (!assistantBubbleStarted) {
+            assistantBubbleStarted = true;
+            setMessages((m) => [
+              ...m,
+              { role: "assistant", text: acc, variant: "script" },
+            ]);
+            maybeScrollChatToBottom(isAtBottomRef, messagesEndRef);
+          } else {
+            setMessages((m) => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              if (
+                last?.role !== "assistant" ||
+                last.variant !== "script"
+              ) {
+                return m;
+              }
+              next[next.length - 1] = {
+                role: "assistant",
+                text: acc,
+                variant: "script",
+              };
+              return next;
+            });
+            maybeScrollChatToBottom(isAtBottomRef, messagesEndRef);
+          }
+        },
+      );
+      setScriptTargetMinutes(meditationTargetMinutes);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not generate script.";
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", text: `Sorry — ${msg}`, variant: "chat" },
+      ]);
+    } finally {
+      setScriptLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    // Only re-scroll when the user was already at the bottom.
+    // This keeps streaming Claude output visible without yanking the user if they scrolled up.
+    if (!isAtBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "auto",
+      block: "end",
+    });
+    // After we scroll, we know we're at the bottom again.
+    const el = chatScrollRef.current;
+    if (el) isAtBottomRef.current = true;
+  }, [messages.length, chatLoading]);
+
+  function pickStyle(label: string) {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    setMeditationStyle(trimmed);
+    setMessages((m) => [...m, { role: "user", text: trimmed }]);
+    setPhase("feeling");
+    setInput("");
+
+    const style = trimmed;
+    const history: MedimadeChatTurn[] = [{ role: "user", content: trimmed }];
+    setClaudeThread(history);
+    setChatBusy(true);
+
+    void streamCoachChat(
+      {
+        meditationStyle: style,
+        messages: history,
+        journalMode: journalMode === true,
+        meditationTargetMinutes,
+      },
+    )
+      .then((text) => {
+        setClaudeThread([...history, { role: "assistant", content: text }]);
+      })
+      .catch((e) => {
+        const msg =
+          e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `Sorry — ${msg}`,
+          },
+        ]);
+      })
+      .finally(() => {
+        setChatBusy(false);
+      });
+  }
+
+  function abortCoachLetterStream() {
+    if (coachTypeTimerRef.current !== null) {
+      window.clearInterval(coachTypeTimerRef.current);
+      coachTypeTimerRef.current = null;
+    }
+    coachTypeTargetRef.current = "";
+    coachTypeRevealRef.current = 0;
+    coachTypePauseTicksRef.current = 0;
+    coachTypeNetworkDoneRef.current = true;
+    coachTypeOwnsMessageRef.current = false;
+    const done = coachTypeCaughtUpRef.current;
+    coachTypeCaughtUpRef.current = null;
+    done?.();
+  }
+
+  function applyCoachRevealedText(displayed: string) {
+    const parsed = parseCoachDisplayText(displayed);
+    if (parsed.ready) setCoachAudioReady(true);
+    if (!parsed.text && !coachTypeOwnsMessageRef.current) return;
+    setMessages((m) => {
+      const pinCta = parsed.ready && !m.some((msg) => msg.audioReadyCta);
+      if (!coachTypeOwnsMessageRef.current) {
+        coachTypeOwnsMessageRef.current = true;
+        return [
+          ...m,
+          {
+            role: "assistant",
+            text: parsed.text,
+            variant: "chat",
+            ...(pinCta ? { audioReadyCta: true } : {}),
+          },
+        ];
+      }
+      const next = [...m];
+      for (let i = next.length - 1; i >= 0; i -= 1) {
+        const msg = next[i];
+        if (msg.kind === "divider" || msg.muted) continue;
+        if (msg.role === "assistant" && msg.variant !== "script") {
+          const updated: ChatMessage = {
+            ...msg,
+            text: parsed.text,
+            ...(pinCta ? { audioReadyCta: true } : {}),
+          };
+          if (
+            updated.text === msg.text &&
+            Boolean(updated.audioReadyCta) === Boolean(msg.audioReadyCta)
+          ) {
+            return m;
+          }
+          next[i] = updated;
+          return next;
+        }
+        break;
+      }
+      return [
+        ...m,
+        {
+          role: "assistant",
+          text: parsed.text,
+          variant: "chat",
+          ...(pinCta ? { audioReadyCta: true } : {}),
+        },
+      ];
+    });
+    maybeScrollChatToBottom(isAtBottomRef, messagesEndRef);
+  }
+
+  function beginCoachLetterStream() {
+    abortCoachLetterStream();
+    coachTypeTargetRef.current = "";
+    coachTypeRevealRef.current = 0;
+    coachTypePauseTicksRef.current = 0;
+    coachTypeNetworkDoneRef.current = false;
+    coachTypeOwnsMessageRef.current = false;
+    const tickMs = 14;
+    coachTypeTimerRef.current = window.setInterval(() => {
+      if (coachTypePauseTicksRef.current > 0) {
+        coachTypePauseTicksRef.current -= 1;
+        return;
+      }
+      const target = coachTypeTargetRef.current;
+      let i = coachTypeRevealRef.current;
+      if (i >= target.length) {
+        if (coachTypeNetworkDoneRef.current) {
+          if (coachTypeTimerRef.current !== null) {
+            window.clearInterval(coachTypeTimerRef.current);
+            coachTypeTimerRef.current = null;
+          }
+          const done = coachTypeCaughtUpRef.current;
+          coachTypeCaughtUpRef.current = null;
+          done?.();
+        }
+        return;
+      }
+      if (target[i] === "[" && target[i + 1] === "[") {
+        const close = target.indexOf("]]", i + 2);
+        if (close === -1) {
+          if (coachTypeNetworkDoneRef.current) {
+            coachTypeRevealRef.current = target.length;
+            applyCoachRevealedText(target);
+          }
+          return;
+        }
+        coachTypeRevealRef.current = close + 2;
+        applyCoachRevealedText(target.slice(0, close + 2));
+        return;
+      }
+      i += 1;
+      if (target[i - 1] === "\n" && target[i] === "\n") {
+        i += 1;
+        coachTypePauseTicksRef.current = 18;
+      }
+      coachTypeRevealRef.current = i;
+      applyCoachRevealedText(target.slice(0, i));
+    }, tickMs);
+  }
+
+  function onCoachStreamDelta(d: string) {
+    coachTypeTargetRef.current += d;
+  }
+
+  function endCoachLetterStream(): Promise<void> {
+    coachTypeNetworkDoneRef.current = true;
+    if (
+      coachTypeTimerRef.current === null ||
+      coachTypeRevealRef.current >= coachTypeTargetRef.current.length
+    ) {
+      if (coachTypeTimerRef.current !== null) {
+        window.clearInterval(coachTypeTimerRef.current);
+        coachTypeTimerRef.current = null;
+      }
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      coachTypeCaughtUpRef.current = resolve;
+    });
+  }
+
+  async function streamCoachChat(
+    params: Parameters<typeof streamMedimadeChat>[0],
+  ): Promise<string> {
+    beginCoachLetterStream();
+    try {
+      const text = await streamMedimadeChat(params, onCoachStreamDelta);
+      await Promise.race([
+        endCoachLetterStream(),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 8000);
+        }),
+      ]);
+      const parsed = parseCoachDisplayText(text);
+      if (parsed.ready) setCoachAudioReady(true);
+      // Keep [[READY]] in the Claude thread so later turns stay in post-ready mode.
+      return text;
+    } catch (e) {
+      abortCoachLetterStream();
+      throw e;
+    }
+  }
+
+  function clearIntroTyping() {
+    if (introTypingTimerRef.current !== null) {
+      window.clearInterval(introTypingTimerRef.current);
+      introTypingTimerRef.current = null;
+    }
+  }
+
+  function snapIntroOpeningText(fullText: string) {
+    setMessages((prev) => {
+      const next = [...prev];
+      // Only touch the first assistant chat bubble, and only if it still looks
+      // like an incomplete / known opening — never overwrite a Claude reply.
+      for (let i = 0; i < next.length; i += 1) {
+        const m = next[i];
+        if (m.kind === "divider" || m.muted) continue;
+        if (m.role === "assistant" && m.variant !== "script") {
+          const t = m.text;
+          const isIntroLike =
+            t.trim().length === 0 ||
+            t === fullText ||
+            fullText.startsWith(t) ||
+            t === OPENING_STYLE ||
+            t === OPENING_JOURNAL ||
+            t === JOURNAL_REFLECT_PICK_INTRO ||
+            t === GOAL_PICK_INTRO;
+          if (!isIntroLike) return prev;
+          if (t === fullText) return prev;
+          next[i] = { ...m, text: fullText };
+          return next;
+        }
+        break;
+      }
+      return prev;
+    });
+  }
+
+  function startIntroTyping(messageIndex: number, fullText: string) {
+    clearIntroTyping();
+    setIntroTypingDone(false);
+    let i = 0;
+    const tickMs = 14;
+    introTypingTimerRef.current = window.setInterval(() => {
+      // Autofocus / first keystroke can race the interval — stop immediately.
+      if (userTouchedComposerRef.current) {
+        clearIntroTyping();
+        snapIntroOpeningText(fullText);
+        setIntroTypingDone(true);
+        return;
+      }
+      i += 1;
+      setMessages((prev) => {
+        if (!prev[messageIndex] || prev[messageIndex].role !== "assistant") return prev;
+        // Don't keep typing into a bubble that is no longer the intro.
+        const current = prev[messageIndex].text;
+        if (
+          current.trim().length > 0 &&
+          !fullText.startsWith(current) &&
+          current !== OPENING_STYLE &&
+          current !== OPENING_JOURNAL &&
+          current !== JOURNAL_REFLECT_PICK_INTRO &&
+          current !== GOAL_PICK_INTRO
+        ) {
+          clearIntroTyping();
+          setIntroTypingDone(true);
+          return prev;
+        }
+        const next = [...prev];
+        next[messageIndex] = { ...next[messageIndex], text: fullText.slice(0, i) };
+        return next;
+      });
+      if (i >= fullText.length) {
+        clearIntroTyping();
+        setIntroTypingDone(true);
+      }
+    }, tickMs);
+  }
+
+  // Simulate Claude-style streaming for the *opening* guide messages only.
+  useEffect(() => {
+    if (creationPath === "pending") return;
+    if (userTouchedComposerRef.current) return;
+    // Only when we are at the start of a mode (style, journal feeling, or journal pick) and not already chatting.
+    if (chatLoading || scriptLoading) return;
+    if (messages.some((m) => m.role === "user")) return;
+    const introTypingPhase =
+      (creationPath === "style" && phase === "style") ||
+      (creationPath === "freeflow" &&
+        journalMode &&
+        phase === "feeling" &&
+        !meditationStyle);
+    if (!introTypingPhase) return;
+    const idx = (() => {
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        if (m.kind === "divider") continue;
+        if (m.role === "assistant" && m.variant !== "script" && !m.muted) return i;
+        break;
+      }
+      return -1;
+    })();
+    if (idx < 0) return;
+    const opening =
+      creationPath === "style" ? OPENING_STYLE : OPENING_JOURNAL;
+    const m = messages[idx];
+    if (m.text === opening) {
+      setIntroTypingDone(true);
+      return;
+    }
+    // Only type if the message is empty (fresh) or equals one of the opening strings.
+    if (
+      m.text.trim().length === 0 ||
+      m.text === OPENING_STYLE ||
+      m.text === OPENING_JOURNAL ||
+      m.text === JOURNAL_REFLECT_PICK_INTRO ||
+      m.text === GOAL_PICK_INTRO
+    ) {
+      startIntroTyping(idx, opening);
+    }
+    return () => {
+      clearIntroTyping();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    creationPath,
+    phase,
+    journalMode,
+    meditationStyle,
+    chatLoading,
+    scriptLoading,
+    messages.length,
+    introTypingSession,
+  ]);
+
+  function openingTextForCurrentIntro(): string {
+    if (creationPath === "style") {
+      return OPENING_STYLE;
+    }
+    return OPENING_JOURNAL;
+  }
+
+  function stopIntroForComposer() {
+    if (autofocusingComposerRef.current) return;
+    // Already stopped once — never snap again (would overwrite Claude replies).
+    if (userTouchedComposerRef.current) {
+      clearIntroTyping();
+      return;
+    }
+    userTouchedComposerRef.current = true;
+    clearIntroTyping();
+    snapIntroOpeningText(openingTextForCurrentIntro());
+    setIntroTypingDone(true);
+  }
+
+  function focusChatInput() {
+    requestAnimationFrame(() => {
+      autofocusingComposerRef.current = true;
+      chatInputRef.current?.focus();
+      // Release after focus handlers run so a real user focus still stops intro.
+      window.setTimeout(() => {
+        autofocusingComposerRef.current = false;
+      }, 0);
+    });
+  }
+
+  function setComposerInput(next: string) {
+    inputDraftRef.current = next;
+    setInput(next);
+  }
+
+  function resetChatKeepMode() {
+    // Keep creation path / journal mode as-is; reset chat and retrigger the intro typing animation.
+    abortCoachLetterStream();
+    setCoachAudioReady(false);
+    setChatBusy(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setInput("");
+    inputDraftRef.current = "";
+    setIntroTypingDone(false);
+    setIntroTypingSession((s) => s + 1);
+    userTouchedComposerRef.current = false;
+    setScriptTargetMinutes(null);
+    if (creationPath === "journalReflect") {
+      setJournalReflectSelectedIds(new Set());
+      setJournalReflectGuidance("");
+      setPhase("journalPick");
+      setMessages([]);
+    } else if (creationPath === "goal") {
+      setGoalSelectedId(null);
+      setGoalFocusId(null);
+      setGoalReflectGuidance("");
+      setPhase("goalPick");
+      setMessages([]);
+    } else if (creationPath === "oneShot") {
+      setOneShotPrompt("");
+      setPhase("promptPick");
+      setMessages([]);
+    } else if (creationPath === "style") {
+      setPendingStyleType(null);
+      setStyleQuestionAnswers(emptyStyleQuestionAnswers());
+      resetStyleIntakeFocus(1);
+      setPhase("stylePick");
+      setMessages([]);
+    } else {
+      setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+      setPhase(journalMode ? "feeling" : "style");
+    }
+    isAtBottomRef.current = true;
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+    focusChatInput();
+  }
+
+  /**
+   * Starting a branch abandons every other branch: answers given to a different
+   * route no longer describe the meditation being built. Re-entering a branch
+   * that is already started never comes through here, so stepping back via the
+   * breadcrumb or the bottom nav keeps everything already typed.
+   */
+  function startBranch(next: CreationPath) {
+    initedCreatePathsRef.current = new Set([next]);
+    setRandomScript(false);
+    devRandomSeedRef.current = null;
+    if (next !== "style") {
+      setPendingStyleType(null);
+      setStyleQuestionAnswers(emptyStyleQuestionAnswers());
+      resetStyleIntakeFocus(1);
+    }
+    if (next !== "oneShot") setOneShotPrompt("");
+    if (next !== "journalReflect") {
+      setJournalReflectSelectedIds(new Set());
+      setJournalReflectGuidance("");
+    }
+    if (next !== "goal") {
+      setGoalSelectedId(null);
+      setGoalFocusId(null);
+      setGoalReflectGuidance("");
+    }
+    if (next !== "goal" && next !== "freeflow") {
+      setLifeAreaId(null);
+      writeLinkedLifeAreaId(null);
+    }
+  }
+
+  function beginStylePath() {
+    startBranch("style");
+    abortCoachLetterStream();
+    setCoachAudioReady(false);
+    setCreationPath("style");
+    setJournalMode(false);
+    setPhase("stylePick");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setPendingStyleType(null);
+    setStyleQuestionAnswers(emptyStyleQuestionAnswers());
+    resetStyleIntakeFocus(1);
+    setInput("");
+    setIntroTypingDone(false);
+    setMessages([]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    setRandomScript(false);
+    devRandomSeedRef.current = null;
+    initialChatAutofocusDoneRef.current = false;
+    isAtBottomRef.current = true;
+  }
+
+  function confirmStyleTypePick() {
+    const label = pendingStyleType?.trim();
+    if (!label) return;
+    if (meditationStyle !== label) {
+      setStyleQuestionAnswers(emptyStyleQuestionAnswers());
+      resetStyleIntakeFocus(1);
+    } else {
+      const revealed = revealedCountFromStyleAnswers(styleQuestionAnswers);
+      resetStyleIntakeFocus(revealed);
+    }
+    setMeditationStyle(label);
+    setMessages([]);
+    setClaudeThread([]);
+    setChatBusy(false);
+    setScriptLoading(false);
+    setIntroTypingDone(true);
+    setPhase("styleQuestions");
+    const href = createHrefForNav({ path: "style", styleStep: "questions" });
+    // Sync before router.push so breadcrumbs see the type name in one update.
+    patchCreateSession({
+      meditationStyle: label,
+      pendingStyleType: label,
+      phase: "styleQuestions",
+      pathname: pathOnly(href),
+      creationPath: "style",
+    });
+    pendingUrlSyncRef.current = pathOnly(href);
+    router.push(href);
+  }
+
+  function confirmStyleQuestions() {
+    const style = meditationStyle?.trim();
+    if (!style) return;
+    if (
+      !styleQuestionAnswers[0].trim() ||
+      !styleQuestionAnswers[1].trim() ||
+      !styleQuestionAnswers[2].trim()
+    ) {
+      return;
+    }
+    const built = transcriptFromStyleAnswers(style, styleQuestionAnswers);
+    setMessages(built.messages);
+    setClaudeThread(built.claudeThread);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    const href = createHrefForNav({
+      path: "style",
+      styleStep: "questions",
+      mix: true,
+    });
+    patchCreateSession({
+      meditationStyle: style,
+      messages: built.messages,
+      claudeThread: built.claudeThread,
+      mobileCreateStep: "audio",
+      createStripStep: 2,
+      pathname: pathOnly(href),
+      creationPath: "style",
+    });
+    pendingUrlSyncRef.current = pathOnly(href);
+    router.push(href);
+  }
+
+  function beginFreeFlowPath(opts?: { resetLifeArea?: boolean }) {
+    startBranch("freeflow");
+    setCoachAudioReady(false);
+    setCreationPath("freeflow");
+    // Pathname re-init must NOT wipe an Ideate life-area link. Only clear when
+    // the user explicitly starts a fresh Free flow from the mode picker.
+    if (opts?.resetLifeArea) {
+      setLifeAreaId(null);
+      writeLinkedLifeAreaId(null);
+    }
+    setJournalMode(true);
+    setPhase("feeling");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setInput("");
+    inputDraftRef.current = "";
+    setIntroTypingDone(false);
+    setIntroTypingSession((s) => s + 1);
+    setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    initialChatAutofocusDoneRef.current = false;
+    userTouchedComposerRef.current = false;
+    isAtBottomRef.current = true;
+  }
+
+  function beginJournalReflectPath() {
+    setJournalReflectSelectedIds(new Set());
+    setJournalReflectGuidance("");
+    startBranch("journalReflect");
+    setCoachAudioReady(false);
+    setCreationPath("journalReflect");
+    setJournalMode(true);
+    setPhase("journalPick");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setInput("");
+    setIntroTypingDone(true);
+    setMessages([]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    initialChatAutofocusDoneRef.current = false;
+    isAtBottomRef.current = true;
+  }
+
+  function beginGoalPath() {
+    startBranch("goal");
+    setCoachAudioReady(false);
+    setCreationPath("goal");
+    setJournalMode(true);
+    setGoalSelectedId(null);
+    setGoalFocusId(null);
+    setGoalReflectGuidance("");
+    setLifeAreaId(null);
+    writeLinkedLifeAreaId(null);
+    setPhase("goalPick");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setInput("");
+    setIntroTypingDone(true);
+    setMessages([]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    initialChatAutofocusDoneRef.current = false;
+    isAtBottomRef.current = true;
+  }
+
+  function beginOneShotPath() {
+    startBranch("oneShot");
+    setCoachAudioReady(false);
+    setCreationPath("oneShot");
+    setJournalMode(true);
+    setOneShotPrompt("");
+    setPhase("promptPick");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle("General");
+    setInput("");
+    setIntroTypingDone(true);
+    setMessages([]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    initialChatAutofocusDoneRef.current = false;
+    isAtBottomRef.current = true;
+  }
+
+  function confirmOneShotPrompt() {
+    const prompt = oneShotPrompt.trim();
+    if (!prompt) return;
+    const packaged = packageOneShotPrompt(prompt);
+    setMeditationStyle("General");
+    setJournalMode(true);
+    setMessages([{ role: "user", text: packaged, variant: "chat" }]);
+    setClaudeThread([{ role: "user", content: packaged }]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    pushCreate({ path: "oneShot", mix: true });
+  }
+
+  function beginRandomScript() {
+    // Seed is held privately until Generate — do not set meditationStyle in UI/session yet.
+    const seed = pickDevRandomScriptSeed();
+    devRandomSeedRef.current = seed;
+    setRandomScript(true);
+    initedCreatePathsRef.current.add("style");
+    setCreationPath("style");
+    setJournalMode(false);
+    setPhase("claude");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setInput("");
+    setIntroTypingDone(true);
+    setMessages([]);
+    setLastUsedScript(null);
+    setScriptTargetMinutes(null);
+    setAudioError(null);
+    setPendingModeChoice("style");
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    initialChatAutofocusDoneRef.current = false;
+    isAtBottomRef.current = true;
+    const href = createHrefForNav({ path: "style", mix: true });
+    patchCreateSession({
+      randomScript: true,
+      meditationStyle: null,
+      pendingStyleType: null,
+      creationPath: "style",
+      pathname: pathOnly(href),
+      createStripStep: 2,
+      mobileCreateStep: "audio",
+      coachAudioReady: false,
+      messages: [],
+      claudeThread: [],
+    });
+    pendingUrlSyncRef.current = pathOnly(href);
+    pushCreate({ path: "style", mix: true });
+  }
+
+  function confirmGoalSelection() {
+    const lifeAreaId = goalSelectedId?.trim() ?? "";
+    if (!lifeAreaId) return;
+    const lifeArea = planGoals.find((g) => g.id === lifeAreaId);
+    if (!lifeArea) return;
+
+    setLifeAreaId(lifeAreaId);
+    writeLinkedLifeAreaId(lifeAreaId);
+
+    const focusId = goalFocusId?.trim() || null;
+    const focusSubtask =
+      focusId != null
+        ? (goalsByLifeArea[lifeAreaId] ?? []).find((s) => s.id === focusId) ??
+          null
+        : null;
+
+    const siblingGoalTitles = (goalsByLifeArea[lifeAreaId] ?? [])
+      .filter((s) => s.status !== "done")
+      .map((s) => s.title.trim() || "Untitled goal")
+      .filter(Boolean)
+      .slice(0, 12);
+
+    const guidance = goalReflectGuidance.trim();
+    const apiUserContent = buildManifestHandoffApiContent({
+      lifeAreaTitle: lifeArea.title,
+      dreamText: lifeArea.dreamText || lifeArea.description,
+      obstacleText: lifeArea.obstacleText || "",
+      visionText: lifeArea.visionText || "",
+      focusGoal: focusSubtask
+        ? {
+            title: focusSubtask.title,
+            dreamText: focusSubtask.dreamText,
+            resistanceText: focusSubtask.resistanceText,
+            visionText: focusSubtask.visionText,
+          }
+        : null,
+      siblingGoalTitles: focusSubtask ? undefined : siblingGoalTitles,
+      guidance: guidance || undefined,
+    });
+
+    setJournalMode(true);
+    setPhase("claude");
+    setIntroTypingDone(true);
+    setMeditationStyle("Manifestation");
+    setClaudeThread([{ role: "user", content: apiUserContent }]);
+    setInput("");
+    setMessages([
+      {
+        role: "user",
+        text: apiUserContent,
+        variant: "chat",
+      },
+    ]);
+    setScriptTargetMinutes(null);
+    setChatBusy(false);
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    pushCreate({ path: "goal", mix: true });
+  }
+
+  function selectManifestLifeArea(id: string) {
+    if (goalSelectedId === id) {
+      if (goalFocusId) {
+        // Already on this life area with a goal focus → switch to general.
+        setGoalFocusId(null);
+        return;
+      }
+      setGoalSelectedId(null);
+      setGoalFocusId(null);
+      return;
+    }
+    setGoalSelectedId(id);
+    setGoalFocusId(null);
+  }
+
+  function selectManifestGoal(lifeAreaId: string, goalId: string) {
+    setGoalSelectedId(lifeAreaId);
+    setGoalFocusId((prev) => (prev === goalId ? null : goalId));
+  }
+
+  function selectJournalReflectEntry(id: string) {
+    setJournalReflectSelectedIds((prev) => {
+      if (prev.size === 1 && prev.has(id)) return new Set();
+      return new Set([id]);
+    });
+  }
+
+  function confirmJournalReflectSelection() {
+    const id = [...journalReflectSelectedIds][0];
+    if (!id) return;
+    const entry = journalPickerEntries.find((e) => e.id === id);
+    if (!entry) return;
+
+    const journalCards: JournalHandoffSegment[] = [
+      {
+        entryId: entry.id,
+        title: entry.title.trim() || deriveEntryTitle(entry.contentHtml),
+        bodyPlain: journalEntryPlainForHandoff(entry.contentHtml),
+        createdAt: entry.createdAt,
+      },
+    ];
+
+    const guidance = journalReflectGuidance.trim();
+    const apiUserContent = buildJournalHandoffApiContent(
+      journalCards,
+      guidance || undefined,
+    );
+
+    setJournalMode(true);
+    setPhase("claude");
+    setIntroTypingDone(true);
+    setMeditationStyle("General");
+    setClaudeThread([{ role: "user", content: apiUserContent }]);
+    setInput("");
+    setMessages([
+      {
+        role: "user",
+        text: JOURNAL_CREATE_FIRST_MESSAGE,
+        journalSegments: journalCards,
+        variant: "chat",
+      },
+    ]);
+    setScriptTargetMinutes(null);
+    setChatBusy(false);
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    pushCreate({ path: "journalReflect", mix: true });
+  }
+
+  function goBackToChatStyle() {
+    const wasRandom = randomScript;
+    const modeFromPath: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" =
+      creationPath === "style"
+        ? "style"
+        : creationPath === "freeflow"
+          ? "freeflow"
+          : creationPath === "journalReflect"
+            ? "journalReflect"
+            : creationPath === "goal"
+              ? "goal"
+              : creationPath === "oneShot"
+                ? "oneShot"
+            : null;
+    setCreateStripStep(0);
+    setCreationPath("pending");
+    setPendingModeChoice(wasRandom ? "randomScript" : modeFromPath);
+    setMobileCreateStep("chat");
+    setRandomScript(false);
+    devRandomSeedRef.current = null;
+    initialChatAutofocusDoneRef.current = false;
+    pushCreate({ path: "pending" });
+  }
+
+  /** Journal/one-shot skip a visible chat step — back from audio returns to the picker. */
+  function restoreJournalReflectPicker() {
+    setPhase("journalPick");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+  }
+
+  function restoreOneShotPromptPicker() {
+    setPhase("promptPick");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+  }
+
+  function restoreGoalPicker() {
+    setPhase("goalPick");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+  }
+
+  function goBackFromAudio() {
+    if (randomScript) {
+      goBackToChatStyle();
+      return;
+    }
+    if (creationPath === "style") {
+      pushCreate({ path: "style", styleStep: "questions" });
+      return;
+    }
+    if (creationPath === "journalReflect") {
+      restoreJournalReflectPicker();
+      pushCreate({ path: "journalReflect" });
+      return;
+    }
+    if (creationPath === "oneShot") {
+      restoreOneShotPromptPicker();
+      pushCreate({ path: "oneShot" });
+      return;
+    }
+    if (creationPath === "goal") {
+      restoreGoalPicker();
+      pushCreate({ path: "goal" });
+      return;
+    }
+    // Freeflow: audio was reached from the coach chat — return there.
+    pushCreate({
+      path: creationPath === "pending" ? "freeflow" : creationPath,
+    });
+  }
+
+  function goToAudioSettings() {
+    if (!coachAudioReady) return;
+    setMobileCreateStep("audio");
+    setCreateStripStep(2);
+    pushCreate({
+      path: creationPath === "pending" ? "freeflow" : creationPath,
+      styleStep:
+        creationPath === "style" && phase === "styleQuestions"
+          ? "questions"
+          : "type",
+      mix: true,
+    });
+  }
+
+  useEffect(() => {
+    if (!sessionHydrated) return;
+    if (initialDraftSk?.trim() && !draftHydrated) return;
+    if (seedJournalContext || seedPlanContext) {
+      const parsedHandoff = parseCreateMeditationPathname(pathname);
+      if (parsedHandoff.path === "pending") return;
+    }
+    if (pendingUrlSyncRef.current && pathname !== pendingUrlSyncRef.current) {
+      return;
+    }
+    pendingUrlSyncRef.current = null;
+    const parsed = parseCreateMeditationPathname(pathname);
+    if (!parsed.valid) {
+      router.replace(CREATE_MEDITATE_ROOT);
+      return;
+    }
+    if (parsed.path === "pending") {
+      setCreationPath("pending");
+      setCreateStripStep(0);
+      setMobileCreateStep("chat");
+      return;
+    }
+    if (parsed.path === "style") {
+      if (!initedCreatePathsRef.current.has("style")) beginStylePath();
+      else setCreationPath("style");
+      setJournalMode(false);
+      if (parsed.mix) {
+        setCreateStripStep(2);
+        setMobileCreateStep("audio");
+      } else {
+        setCreateStripStep(0);
+        setMobileCreateStep("chat");
+        setPhase(
+          parsed.styleStep === "questions" ? "styleQuestions" : "stylePick",
+        );
+      }
+      return;
+    }
+    if (parsed.path === "freeflow") {
+      if (!initedCreatePathsRef.current.has("freeflow")) beginFreeFlowPath();
+      else {
+        setCreationPath("freeflow");
+        // Chat / free-flow is journal-style unless Ideate locked Visualization.
+        if (meditationStyle !== "Visualization") setJournalMode(true);
+      }
+      if (parsed.mix) {
+        setCreateStripStep(2);
+        setMobileCreateStep("audio");
+      } else {
+        setCreateStripStep(1);
+        setMobileCreateStep("chat");
+      }
+      return;
+    }
+    if (parsed.path === "journalReflect") {
+      if (!initedCreatePathsRef.current.has("journalReflect")) {
+        beginJournalReflectPath();
+      } else {
+        setCreationPath("journalReflect");
+        setJournalMode(true);
+      }
+      if (parsed.mix) {
+        setCreateStripStep(2);
+        setMobileCreateStep("audio");
+      } else {
+        // Picker is the only pre-audio step — never restore the synthetic handoff chat.
+        restoreJournalReflectPicker();
+      }
+      return;
+    }
+    if (parsed.path === "goal") {
+      if (!initedCreatePathsRef.current.has("goal")) beginGoalPath();
+      else {
+        setCreationPath("goal");
+        setJournalMode(true);
+      }
+      if (parsed.mix) {
+        setCreateStripStep(2);
+        setMobileCreateStep("audio");
+      } else {
+        // Picker is the only pre-audio step — never restore a synthetic handoff chat.
+        restoreGoalPicker();
+      }
+      return;
+    }
+    if (parsed.path === "oneShot") {
+      if (!initedCreatePathsRef.current.has("oneShot")) beginOneShotPath();
+      else {
+        setCreationPath("oneShot");
+        setJournalMode(true);
+      }
+      if (parsed.mix) {
+        setCreateStripStep(2);
+        setMobileCreateStep("audio");
+      } else {
+        restoreOneShotPromptPicker();
+      }
+    }
+  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, router, seedJournalContext, seedPlanContext]);
+
+  useEffect(() => {
+    if (!sessionHydrated) return;
+    if (isRedirectingToLibraryRef.current) return;
+    if (initialDraftSk?.trim() && !draftHydrated) return;
+    const t = window.setTimeout(() => {
+      const snapshot: CreateSessionV1 = {
+        v: 1,
+        pathname,
+        creationPath,
+        initedPaths: Array.from(initedCreatePathsRef.current),
+        phase: creationPath === "freeflow" ? "feeling" : phase,
+        journalMode: creationPath === "freeflow" ? true : journalMode,
+        meditationStyle: creationPath === "freeflow" ? null : meditationStyle,
+        pendingStyleType,
+        styleQuestionAnswers,
+        styleQuestionsRevealed,
+        // Free-flow transcript must not survive a refresh.
+        messages: creationPath === "freeflow" ? [] : messages,
+        claudeThread: creationPath === "freeflow" ? [] : claudeThread,
+        input: creationPath === "freeflow" ? "" : input,
+        speakerModelId,
+        ttsProvider,
+        orpheusVoiceId,
+        speakerFxPreviewOn,
+        backgroundNatureKey,
+        backgroundMusicKey,
+        backgroundDrumsKey,
+        backgroundNoiseKey,
+        soundMode,
+        compositionKey,
+        backgroundNatureGain,
+        backgroundMusicGain,
+        backgroundDrumsGain,
+        backgroundNoiseGain,
+        createStripStep,
+        mobileCreateStep,
+        lastUsedScript: creationPath === "freeflow" ? null : lastUsedScript,
+        meditationTargetMinutes,
+        pendingModeChoice,
+        journalReflectSelectedIds: Array.from(journalReflectSelectedIds),
+        journalReflectGuidance,
+        goalSelectedId,
+        lifeAreaId,
+        oneShotPrompt,
+        draftSk,
+        coachAudioReady: creationPath === "freeflow" ? false : coachAudioReady,
+        randomScript,
+      };
+      writeCreateSession(snapshot);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [
+    sessionHydrated,
+    draftHydrated,
+    initialDraftSk,
+    pathname,
+    creationPath,
+    phase,
+    journalMode,
+    meditationStyle,
+    pendingStyleType,
+    styleQuestionAnswers,
+    styleQuestionsRevealed,
+    messages,
+    claudeThread,
+    input,
+    speakerModelId,
+    ttsProvider,
+    orpheusVoiceId,
+    speakerFxPreviewOn,
+    backgroundNatureKey,
+    backgroundMusicKey,
+    backgroundDrumsKey,
+    backgroundNoiseKey,
+    soundMode,
+    compositionKey,
+    backgroundNatureGain,
+    backgroundMusicGain,
+    backgroundDrumsGain,
+    backgroundNoiseGain,
+    createStripStep,
+    mobileCreateStep,
+    lastUsedScript,
+    meditationTargetMinutes,
+    pendingModeChoice,
+    journalReflectSelectedIds,
+    journalReflectGuidance,
+    goalSelectedId,
+    lifeAreaId,
+    oneShotPrompt,
+    draftSk,
+    coachAudioReady,
+    randomScript,
+  ]);
+
+  async function send() {
+    // Prefer live DOM / draft ref — survives re-renders from the intro typewriter.
+    const trimmed = (
+      chatInputRef.current?.value ??
+      inputDraftRef.current ??
+      input
+    ).trim();
+    if (!trimmed) {
+      setSendBlockReason("Type a message first.");
+      return;
+    }
+    // Recover from a desynced lock (ref true, UI idle) so send never soft-locks.
+    if (chatLoadingRef.current && !chatLoading) {
+      chatLoadingRef.current = false;
+    }
+    if (chatLoadingRef.current || chatLoading) {
+      setSendBlockReason("Still waiting on the last reply…");
+      return;
+    }
+    if (scriptLoading) {
+      setSendBlockReason("Script is generating — wait a moment.");
+      return;
+    }
+    if (chatControlsDisabled) {
+      setSendBlockReason("Controls locked while audio is generating.");
+      return;
+    }
+
+    setSendBlockReason(null);
+    stopIntroForComposer();
+    setComposerInput(trimmed);
+    setChatBusy(true);
+
+    // Free-flow / journal-style chat can open without a technique label yet.
+    const openChatWithoutStyle =
+      !meditationStyle?.trim() &&
+      (journalMode ||
+        creationPath === "freeflow" ||
+        creationPath === "goal" ||
+        creationPath === "journalReflect" ||
+        creationPath === "oneShot");
+
+    if (openChatWithoutStyle) {
+      const styleHint = "General";
+      setMeditationStyle(styleHint);
+      setPhase("claude");
+      const history: MedimadeChatTurn[] = [
+        { role: "assistant", content: OPENING_JOURNAL },
+        { role: "user", content: trimmed },
+      ];
+      setMessages((m) => [...m, { role: "user", text: trimmed }]);
+      setComposerInput("");
+      try {
+        const text = await streamCoachChat(
+          {
+            meditationStyle: styleHint,
+            messages: history,
+            journalMode: true,
+            meditationTargetMinutes,
+          },
+        );
+        setClaudeThread([...history, { role: "assistant", content: text }]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [...m, { role: "assistant", text: `Sorry — ${msg}` }]);
+      } finally {
+        setChatBusy(false);
+      }
+      return;
+    }
+
+    if (phase === "style") {
+      const match = meditationStyles.find(
+        (s) => s.trim().toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (match) {
+        setChatBusy(false);
+        pickStyle(match);
+        return;
+      }
+      // Free-text: treat as initial chat message and use it as style label too.
+      setMeditationStyle(trimmed);
+      setPhase("claude");
+      const style = trimmed;
+      const history: MedimadeChatTurn[] = [{ role: "user", content: trimmed }];
+      setMessages((m) => [...m, { role: "user", text: trimmed }]);
+      setComposerInput("");
+      try {
+        const text = await streamCoachChat(
+          {
+            meditationStyle: style,
+            messages: history,
+            journalMode: journalMode === true,
+            meditationTargetMinutes,
+          },
+        );
+        setClaudeThread([
+          ...history,
+          { role: "assistant", content: text },
+        ]);
+        setPhase("claude");
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `Sorry — ${msg}`,
+          },
+        ]);
+      } finally {
+        setChatBusy(false);
+      }
+      return;
+    }
+
+    const style = meditationStyle?.trim() || "General";
+    if (!meditationStyle?.trim()) setMeditationStyle(style);
+
+    if (phase === "feeling") {
+      const firstQuestion = getStyleFollowupQuestion(style);
+      const nextMessages: MedimadeChatTurn[] =
+        claudeThread.length > 0
+          ? [...claudeThread, { role: "user", content: trimmed }]
+          : [
+              { role: "assistant", content: firstQuestion },
+              { role: "user", content: trimmed },
+            ];
+      setMessages((m) => [...m, { role: "user", text: trimmed }]);
+      setComposerInput("");
+      try {
+        const text = await streamCoachChat(
+          {
+            meditationStyle: style,
+            messages: nextMessages,
+            journalMode: journalMode === true,
+            meditationTargetMinutes,
+          },
+        );
+        setClaudeThread([
+          ...nextMessages,
+          { role: "assistant", content: text },
+        ]);
+        setPhase("claude");
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `Sorry — ${msg}`,
+          },
+        ]);
+      } finally {
+        setChatBusy(false);
+      }
+      return;
+    }
+
+    const history: MedimadeChatTurn[] = [
+      ...claudeThread,
+      { role: "user", content: trimmed },
+    ];
+    setMessages((m) => [...m, { role: "user", text: trimmed }]);
+    setComposerInput("");
+    try {
+      const text = await streamCoachChat(
+        {
+          meditationStyle: style,
+          messages: history,
+          journalMode: journalMode === true,
+          meditationTargetMinutes,
+        },
+      );
+      setClaudeThread([
+        ...history,
+        { role: "assistant", content: text },
+      ]);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not reach the guide.";
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `Sorry — ${msg}`,
+        },
+      ]);
+    } finally {
+      setChatBusy(false);
+    }
+  }
+
+  async function generateMeditationAudioAndShow() {
+    if (audioLoading) return;
+    setAudioError(null);
+
+    const voiceId = speakerModelId.trim();
+    if (!voiceId) {
+      setAudioError("Choose a Fish Audio voice before generating.");
+      return;
+    }
+    if (!getMedimadeApiBase()) {
+      setAudioError("API URL is not configured (NEXT_PUBLIC_MEDIMADE_API_URL).");
+      return;
+    }
+
+    // Stop all preview audio while generating.
+    stopAllAudioPreview();
+    setAudioLoading(true);
+    try {
+      const last = messages[messages.length - 1];
+      const existingScript =
+        randomScript
+          ? null
+          : last?.role === "assistant" && last.variant === "script"
+            ? last.text.trim()
+            : null;
+      // Length on this page is authoritative: reuse a chat script only when it
+      // was written for the same target; otherwise the worker regenerates.
+      // Longer-breaks mode always regenerates — chat scripts use standard pacing.
+      const scriptTextForJob =
+        !longerBreaks &&
+        existingScript &&
+        scriptTargetMinutes === meditationTargetMinutes
+          ? existingScript
+          : "";
+
+      const randomSeed = randomScript
+        ? (devRandomSeedRef.current ?? pickDevRandomScriptSeed())
+        : null;
+      if (randomScript && !devRandomSeedRef.current && randomSeed) {
+        devRandomSeedRef.current = randomSeed;
+      }
+      const styleForJob = randomScript
+        ? randomSeed?.style ?? null
+        : meditationStyle;
+
+      const transcript = randomScript
+        ? (randomSeed?.transcript.trim() ||
+          "User: I want a short random guided meditation.\n\nGuide: Let's begin.")
+        : messages
+            .filter((m) => !(m.role === "assistant" && m.variant === "script"))
+            .map((m) => {
+              const line =
+                m.role === "user" && m.journalSegments?.length
+                  ? buildJournalHandoffApiContent(
+                      m.journalSegments,
+                      journalReflectGuidance.trim() || undefined,
+                    )
+                  : createFlowTranscriptLine(m);
+              return `${m.role === "user" ? "User" : "Guide"}: ${line}`;
+            })
+            .join("\n\n");
+
+      const linkedLifeAreaId =
+        lifeAreaId?.trim() || readLinkedLifeAreaId() || "";
+      const journalCardsForProvenance = messages
+        .flatMap((m) => m.journalSegments ?? [])
+        .slice(0, 4);
+      const manifestLifeArea = linkedLifeAreaId
+        ? planGoals.find((g) => g.id === linkedLifeAreaId)
+        : null;
+      const manifestFocus =
+        linkedLifeAreaId && goalFocusId
+          ? (goalsByLifeArea[linkedLifeAreaId] ?? []).find(
+              (s) => s.id === goalFocusId,
+            ) ?? null
+          : null;
+      const creationProvenance = buildMeditationCreationProvenance({
+        creationPath,
+        randomScript,
+        meditationStyle: styleForJob,
+        styleQuestionAnswers,
+        chatMessages:
+          creationPath === "freeflow"
+            ? messages.map((m) => ({
+                role: m.role,
+                text: m.text,
+                ...(m.variant ? { variant: m.variant } : {}),
+              }))
+            : undefined,
+        journalEntries:
+          creationPath === "journalReflect" && journalCardsForProvenance.length
+            ? journalCardsForProvenance
+            : undefined,
+        journalGuidance:
+          creationPath === "journalReflect"
+            ? journalReflectGuidance
+            : undefined,
+        manifest:
+          creationPath === "goal" && manifestLifeArea
+            ? {
+                lifeAreaTitle: manifestLifeArea.title,
+                dreamText:
+                  manifestLifeArea.dreamText || manifestLifeArea.description,
+                obstacleText: manifestLifeArea.obstacleText || "",
+                visionText: manifestLifeArea.visionText || "",
+                focusGoalTitle: manifestFocus?.title,
+                focusGoalDetail:
+                  [
+                    manifestFocus?.dreamText,
+                    manifestFocus?.resistanceText,
+                    manifestFocus?.visionText,
+                  ]
+                    .filter((t) => typeof t === "string" && t.trim())
+                    .join("\n\n") || undefined,
+                guidance: goalReflectGuidance.trim() || undefined,
+              }
+            : undefined,
+        directPrompt:
+          creationPath === "oneShot" ? oneShotPrompt : undefined,
+      });
+      const { jobId } = await createMeditationAudioJob({
+        meditationStyle: styleForJob,
+        journalMode: journalMode === true,
+        meditationTargetMinutes,
+        ...(longerBreaks ? { longerBreaks: true } : {}),
+        transcript,
+        scriptText: scriptTextForJob,
+        reference_id: speakerModelId,
+        ttsProvider: "fish",
+        fishTtsModel: "s2.1-pro-free",
+        claudeModel: showCreateAudioDevControls
+          ? claudeModelChoice
+          : CLAUDE_HAIKU_45_MODEL_ID,
+        fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
+        speed: speechSpeed,
+        voiceFxPreset: voiceFxOn ? "mixer" : null,
+        ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
+        ...(creationProvenance ? { creationProvenance } : {}),
+        // A soundscape replaces the whole bed: it rides the music slot alone,
+        // and the mixer's own selections stay out of this render.
+        ...(soundscapeActive
+          ? {
+              backgroundMusicKey: backgroundAudioStreamingKey(compositionKey),
+              backgroundMusicGain: SOUNDSCAPE_GAIN,
+            }
+          : {}),
+        ...(!soundscapeActive && backgroundNatureKey
+          ? {
+              backgroundNatureKey: backgroundAudioStreamingKey(
+                backgroundNatureKey,
+              ),
+              backgroundNatureGain,
+            }
+          : {}),
+        ...(!soundscapeActive && backgroundMusicKey
+          ? {
+              backgroundMusicKey: backgroundAudioStreamingKey(
+                backgroundMusicKey,
+              ),
+              backgroundMusicGain,
+            }
+          : {}),
+        ...(!soundscapeActive && drumsPreviewKey
+          ? {
+              backgroundDrumsKey: backgroundAudioStreamingKey(
+                drumsPreviewKey,
+              ),
+              backgroundDrumsGain,
+            }
+          : {}),
+        ...(!soundscapeActive && backgroundNoiseKey
+          ? {
+              backgroundNoiseKey: backgroundAudioStreamingKey(
+                backgroundNoiseKey,
+              ),
+              backgroundNoiseGain,
+            }
+          : {}),
+      });
+
+      // Do not redirect until the worker has finished script + library metadata (title/description).
+      // Audio synthesis continues after that; the Library card should show real copy from the job, not client guesses.
+      const metaDeadlineMs = 5 * 60_000;
+      const metaStart = Date.now();
+      let metaTitle = "";
+      let metaDesc = "";
+      while (Date.now() - metaStart < metaDeadlineMs) {
+        let st: Awaited<ReturnType<typeof getMeditationAudioJobStatus>>;
+        try {
+          st = await getMeditationAudioJobStatus(jobId);
+        } catch {
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
+        if (st.status === "failed") {
+          throw new Error(st.error ?? "Generation failed");
+        }
+        const scriptOk = (st.scriptTextUsed ?? "").trim().length > 0;
+        const t = (st.title ?? "").trim();
+        const d = (st.description ?? "").trim();
+        if (scriptOk && t && d) {
+          metaTitle = t;
+          metaDesc = d;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      if (!metaTitle || !metaDesc) {
+        throw new Error(
+          "Timed out waiting for script and library details. Your job may still be running — open Library to check progress.",
+        );
+      }
+
+      const speakerName =
+        fishSpeakers.find((s) => s.modelId === speakerModelId)?.name ?? null;
+
+      const pending: PendingLibraryGeneration = {
+        jobId,
+        createdAt: new Date().toISOString(),
+        title: metaTitle,
+        description: metaDesc,
+        meditationStyle: styleForJob,
+        speakerName,
+        speakerModelId,
+        ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
+      };
+      appendPendingLibraryGeneration(pending);
+      ensurePendingMeditationJobPoller();
+
+      isRedirectingToLibraryRef.current = true;
+      clearCreateSession();
+      if (consumeReturnToFocusAfterCreate()) {
+        router.push(focusMyHrefFromIdeate());
+      } else {
+        router.push(
+          `/meditate/library/creations?focus=${encodeURIComponent(`pending:${jobId}`)}`,
+        );
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Audio generation failed";
+      setAudioError(msg);
+    } finally {
+      // Avoid flashing the button back to "Generate meditation" while we redirect away.
+      if (!isRedirectingToLibraryRef.current) {
+        setAudioLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    setUserMixPresets(loadMixerPresetStore().presets);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const envMediaBase = getMedimadeMediaBaseUrl();
+    (async () => {
+      try {
+        const data = await listBackgroundAudio();
+        if (cancelled) return;
+        setBackgroundNature(data.nature);
+        setBackgroundMusic(data.music);
+        setCompositions(data.compositions);
+        setBackgroundDrums(data.drums);
+        setBackgroundNoise(data.noise);
+        setFactoryMixes(data.factoryMixes ?? []);
+        const fromApi = data.baseUrl?.trim();
+        setMediaBaseUrl(fromApi || envMediaBase || null);
+      } catch {
+        if (cancelled) return;
+        setBackgroundNature([]);
+        setBackgroundMusic([]);
+        setCompositions([]);
+        setBackgroundDrums([]);
+        setBackgroundNoise([]);
+        setFactoryMixes([]);
+        setMediaBaseUrl(envMediaBase || null);
+      } finally {
+        if (!cancelled) setFactoryMixesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const base = mediaBaseUrl;
+    const sync = (
+      el: HTMLAudioElement | null,
+      key: string,
+      track: Exclude<SoloTrack, "speaker">,
+    ) => {
+      if (!el) return;
+      // Mixer 100% is 0.5 so speech at 1.0 stays louder.
+      const volume = bedElementVolume(bedGainRef.current[track]);
+      if (base && key) {
+        const prevKey = lastBgKeysRef.current[track];
+        const keyChanged = prevKey !== key;
+        // Selecting a new sample auto-plays even if the track was paused.
+        const shouldPlay = keyChanged || playing[track];
+        syncGaplessBed(el, {
+          url: mediaFileUrl(base, backgroundAudioPlaybackKey(key)),
+          fallbackUrl: mediaFileUrl(base, backgroundAudioStreamingKey(key)),
+          volume,
+          playing: shouldPlay,
+          onPlaybackBlocked: () => stopTrack(track),
+        });
+        if (shouldPlay) setPlaying((p) => ({ ...p, [track]: true }));
+        lastBgKeysRef.current[track] = key;
+      } else {
+        syncGaplessBed(el, { url: null, volume, playing: false });
+        if (playing[track]) {
+          stopTrack(track);
+        }
+        lastBgKeysRef.current[track] = "";
+      }
+    };
+    sync(previewNatureRef.current, backgroundNatureKey, "nature");
+    sync(previewMusicRef.current, backgroundMusicKey, "music");
+    sync(previewDrumsRef.current, drumsPreviewKey, "drums");
+    sync(previewNoiseRef.current, backgroundNoiseKey, "noise");
+  }, [
+    mediaBaseUrl,
+    backgroundNatureKey,
+    backgroundMusicKey,
+    drumsPreviewKey,
+    backgroundNoiseKey,
+    playing.nature,
+    playing.music,
+    playing.drums,
+    playing.noise,
+  ]);
+
+  function clearSpeakerGapSchedule() {
+    if (playAllVoiceDelayRef.current !== null) {
+      clearTimeout(playAllVoiceDelayRef.current);
+      playAllVoiceDelayRef.current = null;
+    }
+    if (speakerGapTimeoutRef.current !== null) {
+      clearTimeout(speakerGapTimeoutRef.current);
+      speakerGapTimeoutRef.current = null;
+    }
+  }
+
+  const anyTrackPlaying =
+    playing.speaker || playing.nature || playing.music || playing.drums || playing.noise;
+
+  function stopTrack(track: SoloTrack) {
+    setPlayAllActive(false);
+    if (track === "speaker") {
+      clearSpeakerGapSchedule();
+      speakerRepeatWantedRef.current = false;
+      speakerSampleRef.current?.pause();
+    } else if (track === "nature") {
+      pauseGaplessBed(previewNatureRef.current);
+    } else if (track === "music") {
+      pauseGaplessBed(previewMusicRef.current);
+    } else if (track === "drums") {
+      pauseGaplessBed(previewDrumsRef.current);
+    } else if (track === "noise") {
+      pauseGaplessBed(previewNoiseRef.current);
+    }
+    setPlaying((p) => ({ ...p, [track]: false }));
+  }
+
+  /** Sample for any voice in the list, honouring the FX toggle and speed. */
+  function speakerPreviewUrl(modelId: string): string | null {
+    if (!mediaBaseUrl || !modelId) return null;
+    const key = voiceFxOn
+      ? speakerPreviewLoudFxSampleKey(modelId, speechSpeed)
+      : speakerPreviewLoudSampleKey(modelId, speechSpeed);
+    return mediaFileUrl(mediaBaseUrl, key);
+  }
+
+  function soundscapePreviewUrl(key: string): string | null {
+    if (!mediaBaseUrl || !key) return null;
+    return mediaFileUrl(mediaBaseUrl, backgroundAudioPlaybackKey(key));
+  }
+
+  function stopCompositionPreview() {
+    const el = compositionAudioRef.current;
+    if (el) el.pause();
+    setCompositionPlaying(false);
+  }
+
+  function toggleCompositionPreview(key: string) {
+    const el = compositionAudioRef.current;
+    const url = soundscapePreviewUrl(key);
+    if (!el || !url) return;
+    if (compositionPlaying && el.src === url) {
+      stopCompositionPreview();
+      return;
+    }
+    stopAllAudioPreview();
+    if (el.src !== url) {
+      el.src = url;
+      el.load();
+    }
+    // load() resets volume, so this has to be set after it.
+    el.volume = SOUNDSCAPE_ELEMENT_VOLUME;
+    setCompositionPlaying(true);
+    void playWithLeadBuffer(el).catch(() => setCompositionPlaying(false));
+  }
+
+  function stopAllAudioPreview() {
+    clearSpeakerGapSchedule();
+    speakerRepeatWantedRef.current = false;
+    const composition = compositionAudioRef.current;
+    if (composition) composition.pause();
+    setCompositionPlaying(false);
+    pauseGaplessBed(previewNatureRef.current);
+    pauseGaplessBed(previewMusicRef.current);
+    pauseGaplessBed(previewDrumsRef.current);
+    pauseGaplessBed(previewNoiseRef.current);
+    speakerSampleRef.current?.pause();
+    setVoiceCardStopNonce((n) => n + 1);
+    setPlayAllActive(false);
+    setPlaying({ speaker: false, nature: false, music: false, drums: false, noise: false });
+  }
+
+  useEffect(() => {
+    return () => {
+      clearSpeakerGapSchedule();
+      [previewNatureRef, previewMusicRef, previewDrumsRef, previewNoiseRef].forEach((r) => {
+        releaseGaplessBed(r.current);
+      });
+      const sp = speakerSampleRef.current;
+      if (sp) {
+        sp.pause();
+        sp.removeAttribute("src");
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = speakerSampleRef.current;
+    if (!el) return;
+
+    const voiceId = speakerModelId;
+    if (mediaBaseUrl && voiceId) {
+      const key = voiceFxOn
+        ? speakerPreviewLoudFxSampleKey(voiceId, speechSpeed)
+        : speakerPreviewLoudSampleKey(voiceId, speechSpeed);
+      const next = mediaFileUrl(mediaBaseUrl, key);
+      if (el.src !== next) {
+        el.src = next;
+        void el.load();
+      }
+      applySpeechElementVolume(el);
+      if (playing.speaker) {
+        speakerRepeatWantedRef.current = true;
+        void el.play().catch(() => {
+          stopTrack("speaker");
+        });
+      }
+    } else {
+      el.removeAttribute("src");
+      el.load();
+      if (playing.speaker) {
+        stopTrack("speaker");
+      }
+    }
+  }, [
+    mediaBaseUrl,
+    speakerModelId,
+    speechSpeed,
+    voiceFxOn,
+    playing.speaker,
+  ]);
+
+  useEffect(() => {
+    const el = speakerSampleRef.current;
+    if (!el) return;
+    const onEnded = () => {
+      if (!speakerRepeatWantedRef.current) return;
+      clearSpeakerGapSchedule();
+      // Keep UI in "playing" state while we schedule the next repeat.
+      setPlaying((p) => ({ ...p, speaker: true }));
+      speakerGapTimeoutRef.current = window.setTimeout(() => {
+        speakerGapTimeoutRef.current = null;
+        if (!speakerRepeatWantedRef.current) return;
+        const a = speakerSampleRef.current;
+        if (a?.src) {
+          applySpeechElementVolume(a);
+          void a.play().catch(() => {});
+        }
+      }, SPEAKER_SAMPLE_GAP_MS);
+    };
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("ended", onEnded);
+      clearSpeakerGapSchedule();
+    };
+  }, []);
+
+  async function togglePlayAll() {
+    if (!mediaBaseUrl) return;
+    if (anyTrackPlaying || playAllActive || compositionPlaying) {
+      stopAllAudioPreview();
+      return;
+    }
+
+    stopAllAudioPreview();
+
+    // In soundscape mode there is one bed, so "play all" is that piece plus the
+    // voice sample coming in over it.
+    if (soundMode === "soundscape") {
+      if (!compositionKey) return;
+      toggleCompositionPreview(compositionKey);
+      const voice = speakerSampleRef.current;
+      if (voice?.src) {
+        speakerRepeatWantedRef.current = true;
+        applySpeechElementVolume(voice);
+        playAllVoiceDelayRef.current = window.setTimeout(() => {
+          playAllVoiceDelayRef.current = null;
+          applySpeechElementVolume(voice);
+          void voice.play().catch(() => {});
+        }, BED_VOICE_INTRO_SECONDS * 1000);
+        setPlaying((p) => ({ ...p, speaker: true }));
+      }
+      setPlayAllActive(true);
+      return;
+    }
+
+    const parts: Promise<void>[] = [];
+    const sp = speakerSampleRef.current;
+    const hasBed = Boolean(
+      (backgroundNatureKey && previewNatureRef.current?.src) ||
+        (backgroundMusicKey && previewMusicRef.current?.src) ||
+        (drumsPreviewKey && previewDrumsRef.current?.src) ||
+        (backgroundNoiseKey && previewNoiseRef.current?.src),
+    );
+    if (sp?.src) {
+      speakerRepeatWantedRef.current = true;
+      applySpeechElementVolume(sp);
+      if (hasBed) {
+        playAllVoiceDelayRef.current = window.setTimeout(() => {
+          playAllVoiceDelayRef.current = null;
+          applySpeechElementVolume(sp);
+          void sp.play().catch(() => {});
+        }, BED_VOICE_INTRO_SECONDS * 1000);
+      } else {
+        parts.push(sp.play());
+      }
+    } else {
+      speakerRepeatWantedRef.current = false;
+    }
+    if (backgroundNatureKey && previewNatureRef.current?.src) {
+      setGaplessBedVolume(
+        previewNatureRef.current,
+        bedElementVolume(bedGainRef.current.nature),
+      );
+      parts.push(resumeGaplessBed(previewNatureRef.current));
+    }
+    if (backgroundMusicKey && previewMusicRef.current?.src) {
+      setGaplessBedVolume(
+        previewMusicRef.current,
+        bedElementVolume(bedGainRef.current.music),
+      );
+      parts.push(resumeGaplessBed(previewMusicRef.current));
+    }
+    if (drumsPreviewKey && previewDrumsRef.current?.src) {
+      setGaplessBedVolume(
+        previewDrumsRef.current,
+        bedElementVolume(bedGainRef.current.drums),
+      );
+      parts.push(resumeGaplessBed(previewDrumsRef.current));
+    }
+    if (backgroundNoiseKey && previewNoiseRef.current?.src) {
+      setGaplessBedVolume(
+        previewNoiseRef.current,
+        bedElementVolume(bedGainRef.current.noise),
+      );
+      parts.push(resumeGaplessBed(previewNoiseRef.current));
+    }
+
+    if (parts.length === 0) return;
+
+    setPlayAllActive(true);
+    setPlaying({
+      speaker: Boolean(sp?.src),
+      nature: Boolean(backgroundNatureKey && previewNatureRef.current?.src),
+      music: Boolean(backgroundMusicKey && previewMusicRef.current?.src),
+      drums: Boolean(drumsPreviewKey && previewDrumsRef.current?.src),
+      noise: Boolean(backgroundNoiseKey && previewNoiseRef.current?.src),
+    });
+
+    try {
+      await Promise.all(parts);
+    } catch {
+      stopAllAudioPreview();
+    }
+  }
+
+  async function toggleRowPreview(track: SoloTrack) {
+    if (track === "speaker") {
+      if (!mediaBaseUrl || !speakerModelId) return;
+    }
+    if (track === "nature" && !backgroundNatureKey) return;
+    if (track === "music" && !backgroundMusicKey) return;
+    if (track === "drums" && (!backgroundDrumsKey || drumsLockedForMelodic)) return;
+    if (track === "noise" && !backgroundNoiseKey) return;
+
+    const el =
+      track === "speaker"
+        ? speakerSampleRef.current
+        : track === "nature"
+          ? previewNatureRef.current
+          : track === "music"
+            ? previewMusicRef.current
+            : track === "drums"
+              ? previewDrumsRef.current
+              : previewNoiseRef.current;
+
+    if (!el) return;
+
+    if (track === "speaker" && mediaBaseUrl) {
+      if (!speakerModelId) return;
+      const key = voiceFxOn
+        ? speakerPreviewLoudFxSampleKey(speakerModelId, speechSpeed)
+        : speakerPreviewLoudSampleKey(speakerModelId, speechSpeed);
+      const next = mediaFileUrl(mediaBaseUrl, key);
+      if (el.src !== next) {
+        el.src = next;
+        el.load();
+      }
+      applySpeechElementVolume(el);
+    }
+
+    if (!el.src) {
+      return;
+    }
+
+    try {
+      // Individual track toggles should not affect other tracks.
+      // If "Play all" was active, this is now a manual mix.
+      setPlayAllActive(false);
+
+      if (track === "speaker") {
+        clearSpeakerGapSchedule();
+      }
+
+      if (!el.paused) {
+        if (track === "speaker") {
+          el.pause();
+          speakerRepeatWantedRef.current = false;
+          clearSpeakerGapSchedule();
+        } else {
+          pauseGaplessBed(el);
+        }
+        setPlaying((p) => ({ ...p, [track]: false }));
+        return;
+      }
+
+      if (track === "speaker") {
+        speakerRepeatWantedRef.current = true;
+        applySpeechElementVolume(el);
+        await el.play();
+      } else {
+        setGaplessBedVolume(el, bedElementVolume(bedGainRef.current[track]));
+        await resumeGaplessBed(el);
+      }
+      setPlaying((p) => ({ ...p, [track]: true }));
+    } catch {
+      // Don't stop other tracks; just mark this one as not playing.
+      if (track === "speaker") {
+        speakerRepeatWantedRef.current = false;
+        clearSpeakerGapSchedule();
+      }
+      setPlaying((p) => ({ ...p, [track]: false }));
+    }
+  }
+
+  const showPathChooser = creationPath === "pending";
+  const showStyleTypePick =
+    creationPath === "style" &&
+    phase === "stylePick" &&
+    workspaceSectionStep !== 2;
+  const showStyleQuestions =
+    creationPath === "style" &&
+    phase === "styleQuestions" &&
+    workspaceSectionStep !== 2;
+  const showJournalPick =
+    creationPath === "journalReflect" &&
+    phase === "journalPick" &&
+    workspaceSectionStep !== 2;
+  const showGoalPick =
+    creationPath === "goal" &&
+    phase === "goalPick" &&
+    workspaceSectionStep !== 2;
+  const showPromptPick =
+    creationPath === "oneShot" &&
+    phase === "promptPick" &&
+    workspaceSectionStep !== 2;
+  const styleQuestionsReady =
+    styleQuestionAnswers[0].trim().length > 0 &&
+    styleQuestionAnswers[1].trim().length > 0 &&
+    styleQuestionAnswers[2].trim().length > 0;
+  const showChatReset =
+    !showPathChooser &&
+    !showStyleTypePick &&
+    !showStyleQuestions &&
+    !showJournalPick &&
+    !showGoalPick &&
+    !showPromptPick &&
+    workspaceSectionStep === 1;
+  const showAudioPlayAll = workspaceSectionStep === 2;
+  const lastVisibleChat = [...messages]
+    .reverse()
+    .find((m) => !m.muted && m.kind !== "divider");
+  const lastCoachParts =
+    lastVisibleChat?.role === "assistant" && lastVisibleChat.variant !== "script"
+      ? coachChatBubbles(lastVisibleChat.text)
+      : [];
+  const awaitingCoachQuestionBubble =
+    chatLoading &&
+    lastVisibleChat?.role === "assistant" &&
+    lastVisibleChat.variant !== "script" &&
+    /\n\n/.test(lastVisibleChat.text) &&
+    lastCoachParts.length < 2;
+  const showChatTyping =
+    chatLoading &&
+    (awaitingCoachQuestionBubble ||
+      !(
+        lastVisibleChat?.role === "assistant" &&
+        lastVisibleChat.variant !== "script" &&
+        lastVisibleChat.text.trim().length > 0
+      ));
+
+  // Content H1s are retired in favour of the header breadcrumb trail.
+  // By Type pick/questions already omit the chrome title — keep that behaviour.
+  const createPageTitle = null;
+
+  /**
+   * Length applies to the whole meditation — shown in the bottom bar on every
+   * create step (same upward dropdown on Audio as on earlier steps).
+   */
+  const lengthBarControl = (
+    <MeditationLengthSelect
+      value={meditationTargetMinutes}
+      onChange={(mins) =>
+        setMeditationTargetMinutes(parseMeditationTargetMinutes(mins))
+      }
+      disabled={audioLoading}
+    />
+  );
+
+  const showCreateChromeRow = false;
+
+  /** True empty thread only — keep seeded intro placeholders visible while they type in. */
+  const chatHasAnyMessageRow = messages.some(
+    (m) => !m.muted && m.kind !== "divider",
+  );
+  const showChatEmptyPrompt =
+    workspaceSectionStep === 1 &&
+    !showStyleTypePick &&
+    !showStyleQuestions &&
+    !showJournalPick &&
+    !showGoalPick &&
+    !showPromptPick &&
+    !chatHasAnyMessageRow &&
+    !showChatTyping &&
+    phase !== "style" &&
+    phase !== "goalPick" &&
+    phase !== "journalPick";
+
+  return (
+    <div
+      className={`flex h-full min-h-0 w-full flex-1 flex-col ${
+        showPathChooser || showAudioPlayAll
+          ? "pt-2 sm:pt-3"
+          : showChatReset
+            ? "pt-0"
+            : "pt-3 sm:pt-4"
+      }`}
+    >
+      {/* Keep preview elements mounted on every step so src is assigned before the Audio panel. */}
+      <audio ref={previewNatureRef} className="hidden" playsInline />
+      <audio ref={previewMusicRef} className="hidden" playsInline />
+      <audio ref={previewDrumsRef} className="hidden" playsInline />
+      <audio ref={previewNoiseRef} className="hidden" playsInline />
+      <audio ref={speakerSampleRef} className="hidden" playsInline />
+      <audio
+        ref={compositionAudioRef}
+        className="hidden"
+        playsInline
+        onEnded={() => setCompositionPlaying(false)}
+      />
+      {showAudioPlayAll && showCreateAudioDevControls ? (
+        <AppTopBarTrailingPortal>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full border border-dashed border-accent/50 bg-accent-soft/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-link">
+              Dev
+            </span>
+            <div
+              className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
+              role="group"
+              aria-label="Claude model"
+              title="Dev-only A/B for script generation. Production always uses Haiku. Cost per meditation shows in the library flyover."
+            >
+              {(
+                [
+                  [CLAUDE_HAIKU_45_MODEL_ID, "Haiku"],
+                  [CLAUDE_SONNET_45_MODEL_ID, "Sonnet"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={audioLoading}
+                  onClick={() => setClaudeModelChoice(value)}
+                  className={`cursor-pointer px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    claudeModelChoice === value
+                      ? "bg-accent-soft text-foreground"
+                      : "text-muted hover:bg-accent-soft/40 hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
+              role="group"
+              aria-label="Pause render path"
+              title="Our chunks (default): split on [[PAUSE]], ffmpeg silence at admin band lengths. Fish tags: one TTS request with [break] / [short pause] / [long pause] / [long-break]."
+            >
+              {(
+                [
+                  ["segmented", "Our chunks"],
+                  ["native", "Fish tags"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={audioLoading}
+                  onClick={() => setFishPauseMode(value)}
+                  className={`cursor-pointer px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    fishPauseMode === value
+                      ? "bg-accent-soft text-foreground"
+                      : "text-muted hover:bg-accent-soft/40 hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
+              role="group"
+              aria-label="Voice FX"
+              title="Dev-only. Production always applies mixer FX. On: Pedalboard preset WAV. Off: dry loudness-normalized MP3."
+            >
+              {(
+                [
+                  [true, "FX on"],
+                  [false, "FX off"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={audioLoading}
+                  onClick={() => {
+                    setSpeakerFxPreviewOn(value);
+                    setVoiceCardStopNonce((n) => n + 1);
+                  }}
+                  className={`cursor-pointer px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    speakerFxPreviewOn === value
+                      ? "bg-accent-soft text-foreground"
+                      : "text-muted hover:bg-accent-soft/40 hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </AppTopBarTrailingPortal>
+      ) : null}
+      {showCreateChromeRow ? (
+      <div className="mx-auto mb-3 w-full max-w-6xl shrink-0 px-4 sm:px-6">
+          <div className="flex items-center justify-end gap-4">
+              <button
+                type="button"
+                onClick={resetChatKeepMode}
+                disabled={chatControlsDisabled}
+                aria-label="Reset chat"
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <IconResetArrow className="h-3.5 w-3.5" />
+                Reset
+              </button>
+          </div>
+      </div>
+      ) : null}
+
+      {draftLoadError ? (
+        <div
+          className="mx-auto mb-4 w-full max-w-6xl px-4 sm:px-6"
+        >
+        <div
+          className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground"
+          role="alert"
+        >
+          {draftLoadError}
+        </div>
+        </div>
+      ) : null}
+
+      {(!sessionHydrated && !seedFromHandoff && !initialDraftSk?.trim()) ||
+      (creationPath === "pending" &&
+        initialDraftSk?.trim() &&
+        !draftHydrated &&
+        !draftLoadError) ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-sm text-muted">
+          {initialDraftSk?.trim() ? "Loading draft…" : "Loading…"}
+        </div>
+      ) : (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {showPathChooser ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 overflow-y-auto px-4 pt-0 sm:px-6">
+          <div
+            ref={chooserCardsRef}
+            className="grid auto-rows-fr grid-cols-1 items-stretch gap-2.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+          >
+            <button
+              type="button"
+              onClick={() => setPendingModeChoice("style")}
+              aria-pressed={pendingModeChoice === "style"}
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                By type
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Pick a meditation style
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Choose a type, then answer a few questions shaped around what you need today.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingModeChoice("freeflow")}
+              aria-pressed={pendingModeChoice === "freeflow"}
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                Chat
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Free flow chat
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Start from mood and what’s on your mind—open, journal-style questions.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!planGoalsReady || !hasPlanGoals) return;
+                setPendingModeChoice("goal");
+              }}
+              aria-pressed={pendingModeChoice === "goal"}
+              aria-disabled={!planGoalsReady || !hasPlanGoals}
+              className={`create-path-card flex h-full flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6 ${
+                !planGoalsReady || !hasPlanGoals
+                  ? "cursor-not-allowed"
+                  : "cursor-pointer"
+              }`}
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">Manifest</span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Move towards a goal
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Pick a life area — optionally focus on one goal — for a visualization grounded in your dream and blockers.
+              </p>
+              {!planGoalsReady ? (
+                <p className="pointer-events-none absolute bottom-3.5 left-3.5 right-3.5 text-[12px] text-muted sm:bottom-6 sm:left-6 sm:right-6 sm:text-[13px]">
+                  Checking your goals…
+                </p>
+              ) : !hasPlanGoals ? (
+                <Link
+                  href="/manifest/my"
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
+                >
+                  Add a life area to unlock →
+                </Link>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!journalPickerListReady || !hasReflectableJournal) return;
+                setPendingModeChoice("journalReflect");
+              }}
+              aria-pressed={pendingModeChoice === "journalReflect"}
+              aria-disabled={!journalPickerListReady || !hasReflectableJournal}
+              className={`create-path-card flex h-full flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6 ${
+                !journalPickerListReady || !hasReflectableJournal
+                  ? "cursor-not-allowed"
+                  : "cursor-pointer"
+              }`}
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                Journal
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Reflect on a journal entry
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Use a saved entry as context for your meditation.
+              </p>
+              {!journalPickerListReady ? (
+                <p className="pointer-events-none absolute bottom-3.5 left-3.5 right-3.5 text-[12px] text-muted sm:bottom-6 sm:left-6 sm:right-6 sm:text-[13px]">
+                  Checking your saved journal…
+                </p>
+              ) : !hasReflectableJournal ? (
+                <Link
+                  href="/journal/my"
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
+                >
+                  Start journaling to unlock →
+                </Link>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingModeChoice("oneShot")}
+              aria-pressed={pendingModeChoice === "oneShot"}
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                Direct
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                One-shot prompt
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Write what you want once—straight to the script generator, no coaching chat.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingModeChoice("randomScript")}
+              aria-pressed={pendingModeChoice === "randomScript"}
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                Random
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Random Script
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Skip the chat and jump straight to audio with a random style and seed script.
+              </p>
+            </button>
+          </div>
+          <div className="min-h-8 flex-1" aria-hidden />
+          </div>
+          <CreateFlowFooterBar>
+              <div className="flex min-w-0 flex-1 justify-start" />
+              <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+              <div className="flex min-w-0 flex-1 justify-end">
+            {pendingModeChoice ? (
+            <CreateFlowNavPill
+              onClick={() => {
+                const mode = pendingModeChoice;
+                if (!mode) return;
+                if (mode === "randomScript") {
+                  beginRandomScript();
+                  return;
+                }
+                // Coming back to the branch already in progress resumes it; the
+                // begin* reset only runs when the branch actually changes.
+                const resume = initedCreatePathsRef.current.has(mode);
+                if (mode === "style") {
+                  if (!resume) beginStylePath();
+                  pushCreate({ path: "style" });
+                  return;
+                }
+                if (!resume) {
+                  if (mode === "freeflow") {
+                    beginFreeFlowPath({ resetLifeArea: true });
+                  } else if (mode === "journalReflect") {
+                    beginJournalReflectPath();
+                  } else if (mode === "goal") {
+                    beginGoalPath();
+                  } else if (mode === "oneShot") {
+                    beginOneShotPath();
+                  }
+                }
+                setCreateStripStep(1);
+                pushCreate({ path: mode });
+              }}
+              aria-label={
+                pendingModeChoice === "style"
+                  ? "Next: choose a meditation type"
+                  : pendingModeChoice === "journalReflect"
+                    ? "Next: choose a journal entry"
+                    : pendingModeChoice === "goal"
+                      ? "Next: choose a goal"
+                      : pendingModeChoice === "oneShot"
+                        ? "Next: write your prompt"
+                        : pendingModeChoice === "randomScript"
+                          ? "Next: audio with a random script"
+                          : "Next: chat"
+              }
+            >
+              <span>
+                {pendingModeChoice === "style"
+                  ? "Type"
+                  : pendingModeChoice === "journalReflect"
+                    ? "Journal"
+                    : pendingModeChoice === "goal"
+                      ? "Goal"
+                      : pendingModeChoice === "oneShot"
+                        ? "Prompt"
+                        : pendingModeChoice === "randomScript"
+                          ? "Audio"
+                          : "Chat"}
+              </span>
+              <IconChevronRight className="text-accent-link" />
+            </CreateFlowNavPill>
+            ) : null}
+              </div>
+          </CreateFlowFooterBar>
+        </div>
+        ) : null}
+        {showStyleTypePick ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6">
+              <MeditationTypeCardGrid
+                selected={pendingStyleType ?? ""}
+                onSelect={setPendingStyleType}
+                titles={meditationStyleTooltip}
+                variant="picker"
+              />
+              {pendingStyleType ? (
+                <div className="shrink-0 rounded-[6px] border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
+                  <p className="font-display text-[19px] font-normal leading-snug text-foreground">
+                    {pendingStyleType}
+                  </p>
+                  <p className="mt-2.5 text-[15px] font-normal leading-[1.55] text-muted">
+                    {descriptionForMeditationStyle(pendingStyleType)}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <CreateFlowFooterBar>
+                <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+              onClick={() => {
+                    pushCreate({ path: "pending" });
+                  }}
+                  aria-label="Back to how you generate the script"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Back</span>
+                </CreateFlowNavPill>
+                </div>
+                <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+                <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+              disabled={!pendingStyleType}
+                  onClick={confirmStyleTypePick}
+                  aria-label="Continue to questions for this meditation type"
+                >
+                  <span>Questions</span>
+                  <IconChevronRight className="shrink-0 text-accent-link" />
+                </CreateFlowNavPill>
+                </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
+        {showStyleQuestions ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 sm:gap-6 sm:px-6">
+              <div className="space-y-4 pb-4 sm:space-y-7">
+                {intakeQuestionsForStyle(meditationStyle ?? "")
+                  .slice(0, Math.min(3, styleQuestionsRevealed))
+                  .map((q, i) => (
+                    <StyleIntakeField
+                      key={`${meditationStyle ?? "style"}-${i}`}
+                      label={q}
+                      value={styleQuestionAnswers[i]}
+                      autoFocus={styleIntakeFocusIndex === i}
+                      focusNonce={
+                        styleIntakeFocusIndex === i ? styleIntakeFocusNonce : 0
+                      }
+                      scrollOnEnter={i > 0 || styleIntakeFocusNonce > 0}
+                      enterKeyHint={i >= 2 ? "done" : "next"}
+                      onAdvance={() => {
+                        const nextIndex = i + 1;
+                        setStyleQuestionsRevealed((r) =>
+                          Math.max(r, i + 2),
+                        );
+                        setStyleIntakeFocusIndex(nextIndex);
+                        setStyleIntakeFocusNonce((n) => n + 1);
+                      }}
+                      onChange={(v) => {
+                        setStyleQuestionAnswers((prev) => {
+                          const next = [...prev] as [
+                            string,
+                            string,
+                            string,
+                            string,
+                          ];
+                          next[i] = v;
+                          return next;
+                        });
+                      }}
+                    />
+                  ))}
+                {styleQuestionsRevealed >= 4 ? (
+                  <StyleIntakeField
+                    key={`${meditationStyle ?? "style"}-else`}
+                    label={STYLE_ANYTHING_ELSE_PROMPT}
+                    optional
+                    value={styleQuestionAnswers[3]}
+                    autoFocus={styleIntakeFocusIndex === 3}
+                    focusNonce={
+                      styleIntakeFocusIndex === 3 ? styleIntakeFocusNonce : 0
+                    }
+                    scrollOnEnter
+                    enterKeyHint="done"
+                    onChange={(v) => {
+                      setStyleQuestionAnswers((prev) => {
+                        const next = [...prev] as [
+                          string,
+                          string,
+                          string,
+                          string,
+                        ];
+                        next[3] = v;
+                        return next;
+                      });
+                    }}
+                  />
+                ) : null}
+              </div>
+            </div>
+            <CreateFlowFooterBar>
+                <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+              onClick={() => {
+                    pushCreate({ path: "style" });
+                  }}
+                  aria-label="Back to meditation type"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Type</span>
+                </CreateFlowNavPill>
+                </div>
+                <div className="flex shrink-0 justify-center">
+                  {lengthBarControl}
+                </div>
+                <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+              disabled={!styleQuestionsReady}
+                  onClick={confirmStyleQuestions}
+                  aria-label="Continue to audio and voice settings"
+                >
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+                </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
+        {showJournalPick ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
+            <JournalReflectPicker
+              entries={journalPickerEntries}
+              folders={journalPickerFolders}
+              listReady={journalPickerListReady}
+              selectedId={[...journalReflectSelectedIds][0] ?? null}
+              onSelect={selectJournalReflectEntry}
+              guidance={journalReflectGuidance}
+              onGuidanceChange={setJournalReflectGuidance}
+            />
+            </div>
+            <CreateFlowFooterBar>
+                <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+              onClick={goBackToChatStyle}
+                  disabled={chatControlsDisabled}
+                  aria-label="Back to chat style selection"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Chat style</span>
+                </CreateFlowNavPill>
+                </div>
+                <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+                <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+              disabled={
+                    chatLoading ||
+                    chatControlsDisabled ||
+                    journalReflectSelectedIds.size === 0
+                  }
+                  onClick={confirmJournalReflectSelection}
+                  aria-label="Next: audio and voice settings"
+                >
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+                </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
+        {showGoalPick ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
+              <ManifestGoalPicker
+                lifeAreas={planGoals.map((g) => ({
+                  id: g.id,
+                  title: g.title,
+                  createdAt: g.createdAt,
+                  dreamText: g.dreamText || "",
+                  obstacleText: g.obstacleText || "",
+                  visionText: g.visionText || "",
+                  preview: g.description,
+                  goals: (goalsByLifeArea[g.id] ?? []).map((s) => ({
+                    id: s.id,
+                    title: s.title,
+                    preview: goalPreviewFromSubtask(s),
+                    done: s.status === "done",
+                  })),
+                }))}
+                listReady={planGoalsReady}
+                selectedLifeAreaId={goalSelectedId}
+                selectedGoalId={goalFocusId}
+                onSelectLifeArea={selectManifestLifeArea}
+                onSelectGoal={selectManifestGoal}
+                guidance={goalReflectGuidance}
+                onGuidanceChange={setGoalReflectGuidance}
+              />
+            </div>
+            <CreateFlowFooterBar>
+              <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+                  onClick={goBackToChatStyle}
+                  disabled={chatControlsDisabled}
+                  aria-label="Back to chat style selection"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Chat style</span>
+                </CreateFlowNavPill>
+              </div>
+              <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+              <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+                  disabled={
+                    chatLoading || chatControlsDisabled || !goalSelectedId
+                  }
+                  onClick={confirmGoalSelection}
+                  aria-label="Next: audio and voice settings"
+                >
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+              </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
+        {showPromptPick ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
+              <label className="sr-only" htmlFor="one-shot-prompt">
+                Meditation prompt
+              </label>
+              <textarea
+                id="one-shot-prompt"
+                value={oneShotPrompt}
+                onChange={(e) => setOneShotPrompt(e.target.value)}
+                rows={10}
+                placeholder="e.g. A 10-minute body scan for restless sleep, with soft rain imagery and no music references…"
+                className="min-h-[12rem] w-full flex-1 resize-y rounded-2xl border border-border bg-card px-4 py-3 text-base leading-relaxed text-foreground shadow-sm outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
+              />
+            </div>
+            <CreateFlowFooterBar>
+                <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+              onClick={goBackToChatStyle}
+                  disabled={chatControlsDisabled}
+                  aria-label="Back to chat style selection"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Chat style</span>
+                </CreateFlowNavPill>
+                </div>
+                <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+                <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+              disabled={
+                    chatControlsDisabled || oneShotPrompt.trim().length === 0
+                  }
+                  onClick={confirmOneShotPrompt}
+                  aria-label="Next: audio and voice settings"
+                >
+                  <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+                </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
+        {workspaceSectionStep === 1 && !showStyleTypePick && !showStyleQuestions && !showJournalPick && !showGoalPick && !showPromptPick ? (
+        <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
+        <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-0 opacity-15"
+            style={{
+              backgroundImage:
+                'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
+              backgroundRepeat: "repeat",
+              // Smaller tiles → denser repeat; aspect matches 1428×1600 crop.
+              backgroundSize: "286px 320px",
+              backgroundPosition: "center top",
+            }}
+          />
+        <section className="relative z-[1] flex w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
+          {showChatReset ? (
+            <div className="flex shrink-0 items-center justify-end px-4 py-2.5 sm:px-5">
+              <button
+                type="button"
+                onClick={resetChatKeepMode}
+                disabled={chatControlsDisabled}
+                aria-label="Reset chat"
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <IconResetArrow className="h-3.5 w-3.5" />
+                Reset
+              </button>
+            </div>
+          ) : null}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+            <div
+              ref={chatScrollRef}
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 sm:px-5"
+              onScroll={() => {
+                const el = chatScrollRef.current;
+                if (!el) return;
+                const distanceFromBottom =
+                  el.scrollHeight - el.scrollTop - el.clientHeight;
+                // Consider within ~50px as "at bottom".
+                isAtBottomRef.current = distanceFromBottom < 50;
+              }}
+            >
+              {showChatEmptyPrompt ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+                  <p className="font-display text-center text-[18px] font-normal text-muted">
+                    What&apos;s on your mind today?
+                  </p>
+                </div>
+              ) : (
+              <div className="mt-auto flex w-full min-w-0 flex-col py-3">
+              {messages.filter((m) => !m.muted).map((msg, i, visible) => {
+                const isScript =
+                  msg.role === "assistant" && msg.variant === "script";
+                if (msg.kind === "divider") {
+                  return (
+                    <div
+                      key={`divider-${i}`}
+                      className="py-2 text-center text-xs text-muted"
+                    >
+                      {msg.text}
+                    </div>
+                  );
+                }
+                const next = visible[i + 1];
+                const groupedWithNext =
+                  !msg.audioReadyCta &&
+                  !!next &&
+                  next.kind !== "divider" &&
+                  next.role === msg.role &&
+                  (msg.role !== "assistant" ||
+                    (msg.variant === "script") === (next.variant === "script"));
+                const muted = msg.muted ? "opacity-50" : "";
+                const isUser = msg.role === "user";
+                const isLastVisible = i === visible.length - 1;
+                const moreCoachBubblesComing =
+                  chatLoading &&
+                  isLastVisible &&
+                  !isUser &&
+                  !isScript &&
+                  /\n\n/.test(msg.text) &&
+                  coachChatBubbles(msg.text).length < 2;
+                const assistantParts =
+                  !isUser && !isScript ? coachChatBubbles(msg.text) : null;
+                const parts =
+                  assistantParts && assistantParts.length > 0
+                    ? assistantParts
+                    : [msg.text];
+                return (
+                  <div
+                    key={`${msg.role}-${i}-${msg.variant ?? "u"}`}
+                    className={`flex w-full min-w-0 flex-col ${
+                      isUser ? "items-end" : "items-start"
+                    } ${groupedWithNext ? "mb-1" : "mb-6"}`}
+                  >
+                    {parts.map((part, pi) => {
+                      const lastPart = pi === parts.length - 1;
+                      const showTail =
+                        lastPart &&
+                        !groupedWithNext &&
+                        !isScript &&
+                        !moreCoachBubblesComing;
+                      const radius = isUser
+                        ? showTail
+                          ? "rounded-xl rounded-br-sm"
+                          : "rounded-xl"
+                        : showTail
+                          ? "rounded-xl rounded-bl-sm"
+                          : "rounded-xl";
+                      const bubbleBase = `chat-bubble relative px-3 py-2 ${radius}`;
+                      const bubble = isUser
+                        ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
+                            showTail ? "chat-bubble-tail-right" : ""
+                          } ${muted}`
+                        : isScript
+                          ? `${bubbleBase} border border-gold/45 bg-gold/5 text-lg leading-[1.5] text-foreground ${muted}`
+                          : `${bubbleBase} bg-card text-lg leading-[1.5] text-foreground ${
+                              showTail ? "chat-bubble-tail-left" : ""
+                            } ${muted}`;
+                      return (
+                        <div
+                          key={pi}
+                          className={`flex w-full min-w-0 ${
+                            isUser ? "justify-end" : "justify-start"
+                          } ${lastPart ? "" : "mb-1"}`}
+                        >
+                          <div className="chat-bubble-shell">
+                            <div className={bubble}>
+                              {isScript ? (
+                                <>
+                                  <div className="mb-2 inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-link">
+                                    Meditation script · ~5 min
+                                  </div>
+                                  <ChatMarkdown
+                                    text={msg.text}
+                                    className="font-serif text-lg leading-relaxed text-foreground/95"
+                                  />
+                                </>
+                              ) : isUser &&
+                                msg.journalSegments &&
+                                msg.journalSegments.length > 0 ? (
+                                <div className="text-lg leading-[1.5]">
+                                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                                  <JournalHandoffEntryCards
+                                    segments={msg.journalSegments}
+                                  />
+                                </div>
+                              ) : (
+                                <ChatMarkdown
+                                  text={part}
+                                  className="relative z-[2] text-lg font-normal leading-[1.5]"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {msg.audioReadyCta ? (
+                      <div className="mt-2 flex w-full justify-start">
+                        <CreateFlowNavPill
+              onClick={goToAudioSettings}
+                          
+                        >
+                          <span>Proceed to audio settings</span>
+                          <IconChevronRight className="text-accent-link" />
+                        </CreateFlowNavPill>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {phase === "style" && !journalMode && introTypingDone && (
+                <Tooltip.Provider delayDuration={250} disableHoverableContent>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {meditationStyles.map((s) => (
+                    <Tooltip.Root key={s}>
+                      <Tooltip.Trigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => pickStyle(s)}
+                          aria-label={`${s}. ${meditationStyleTooltip[s]}`}
+                          className="cursor-pointer rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:border-accent/50 hover:bg-accent-soft/40"
+                        >
+                          {s}
+                        </button>
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content
+                          side="top"
+                          align="center"
+                          sideOffset={8}
+                          className="max-w-[18rem] rounded-lg border border-border bg-card px-2.5 py-2 text-xs text-foreground shadow-md"
+                        >
+                          {meditationStyleTooltip[s]}
+                          <Tooltip.Arrow className="fill-card stroke-border" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  ))}
+                </div>
+                </Tooltip.Provider>
+              )}
+              {showChatTyping ? <ChatTypingIndicator /> : null}
+              <div ref={messagesEndRef} />
+              </div>
+              )}
+            </div>
+          </div>
+        </section>
+            {phase === "journalPick" || phase === "goalPick" ? null : (
+            <form
+              className="relative z-[1] flex shrink-0 flex-col gap-1 border-t border-border/60 bg-background px-4 pb-3 pt-2 pointer-events-auto sm:px-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              <div className="flex items-center gap-2">
+              <input
+                ref={chatInputRef}
+                value={input}
+                onChange={(e) => {
+                  stopIntroForComposer();
+                  setSendBlockReason(null);
+                  setComposerInput(e.target.value);
+                }}
+                onFocus={() => stopIntroForComposer()}
+                aria-busy={chatLoading || scriptLoading}
+                disabled={chatControlsDisabled}
+                placeholder={
+                  journalMode
+                    ? "Share how you're feeling..."
+                    : phase === "style"
+                      ? "Or type a style (e.g. Yoga nidra)..."
+                      : phase === "feeling"
+                        ? "Share how you feel today…"
+                        : "Reply to the guide…"
+                }
+                className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-lg outline-none ring-accent/30 focus:ring-2"
+              />
+              <DictationMicButton
+                disabled={chatControlsDisabled || chatLoading || scriptLoading}
+                onTranscript={(spoken) => {
+                  stopIntroForComposer();
+                  setComposerInput(appendSpokenText(inputDraftRef.current || input, spoken));
+                  chatInputRef.current?.focus();
+                }}
+              />
+              <button
+                type="submit"
+                aria-disabled={
+                  chatControlsDisabled || chatLoading || scriptLoading
+                }
+                aria-label={chatLoading ? "Sending…" : "Send message"}
+                className={`relative z-[200] flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity ${
+                  chatControlsDisabled || chatLoading || scriptLoading
+                    ? "cursor-not-allowed opacity-60"
+                    : ""
+                }`}
+              >
+                {chatLoading ? (
+                  <span className="text-sm font-medium" aria-hidden>
+                    …
+                  </span>
+                ) : (
+                  <IconPaperAirplane className="pointer-events-none -translate-y-px translate-x-px" />
+                )}
+              </button>
+              </div>
+              {sendBlockReason ? (
+                <p className="text-xs text-danger" role="status">
+                  {sendBlockReason}
+                </p>
+              ) : null}
+            </form>
+            )}
+          <CreateFlowFooterBar className="relative z-[1]">
+            <div className="flex min-w-0 flex-1 justify-start">
+            <CreateFlowNavPill
+              onClick={goBackToChatStyle}
+              disabled={chatControlsDisabled}
+              aria-label="Back to chat style selection"
+            >
+              <IconChevronLeft className="shrink-0 text-accent-link" />
+              <span>Chat style</span>
+            </CreateFlowNavPill>
+            </div>
+            <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+            <div className="flex min-w-0 flex-1 justify-end">
+            <CreateFlowNavPill
+              disabled={
+                !coachAudioReady ||
+                phase === "journalPick" ||
+                phase === "goalPick"
+              }
+              onClick={goToAudioSettings}
+              aria-label="Next: audio and voice settings"
+            >
+              <>
+                    <span className="sm:hidden">Audio</span>
+                    <span className="hidden sm:inline">Audio & voice</span>
+                  </>
+              <IconChevronRight className="text-accent-link" />
+            </CreateFlowNavPill>
+            </div>
+          </CreateFlowFooterBar>
+        </div>
+        <div
+          className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"
+          aria-hidden
+        />
+        </div>
+        ) : null}
+        {workspaceSectionStep === 2 ? (
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-4 sm:gap-3 sm:px-6">
+          {/* Voice | equal pad | Pacing | equal pad | Sound — dividers frame pacing evenly */}
+          <div className="flex shrink-0 flex-col">
+            <VoiceCardRow
+              voices={fishSpeakers}
+              value={speakerModelId}
+              onChange={setSpeakerModelId}
+              disabled={soundControlsDisabled}
+              previewUrl={speakerPreviewUrl}
+              stopNonce={voiceCardStopNonce}
+            />
+            <div className="flex flex-col gap-1.5 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                Pacing
+              </span>
+              <div
+                className="flex items-center gap-2"
+                role="group"
+                aria-label="Meditation pacing"
+              >
+                <span
+                  className={`text-sm font-semibold ${
+                    longerBreaks ? "text-muted" : "text-foreground"
+                  }`}
+                >
+                  Guided
+                </span>
+                <Switch.Root
+                  checked={longerBreaks}
+                  onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
+                  disabled={soundControlsDisabled}
+                  aria-label={
+                    longerBreaks
+                      ? "Switch to guided pacing"
+                      : "Switch to open sits pacing"
+                  }
+                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+                </Switch.Root>
+                <span
+                  className={`text-sm font-semibold ${
+                    longerBreaks ? "text-foreground" : "text-muted"
+                  }`}
+                >
+                  Open sits
+                </span>
+              </div>
+              <p className="text-xs leading-snug text-muted">
+                {longerBreaks
+                  ? "Same length, with cued “take your time” sits of about a minute or two."
+                  : "Continuous guidance with short natural pauses between lines."}
+              </p>
+            </div>
+            <div className="border-t border-border" role="separator" aria-hidden />
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                Sound
+              </span>
+              <SegmentedPillTabs
+                aria-label="Sound bed"
+                value={soundMode}
+                onChange={(mode) => {
+                  if (soundMode === mode) return;
+                  stopAllAudioPreview();
+                  setSoundMode(mode);
+                }}
+                options={[
+                  { id: "soundscape", label: "Soundscapes" },
+                  { id: "mixer", label: "Build your own" },
+                ]}
+              />
+            </div>
+          </div>
+
+          {soundMode === "soundscape" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto pb-1">
+              <SoundscapePicker
+                variant="create"
+                items={compositions}
+                value={compositionKey}
+                onChange={setCompositionKey}
+                previewUrl={soundscapePreviewUrl}
+                playingKey={compositionPlaying ? compositionKey : null}
+                onTogglePreview={(key) => {
+                  if (key !== compositionKey) setCompositionKey(key);
+                  toggleCompositionPreview(key);
+                }}
+                disabled={soundControlsDisabled}
+                loading={factoryMixesLoading}
+              />
+            </div>
+          ) : (
+          <>
+          <div className="shrink-0 pb-2 pt-0">
+            <div className="flex items-center justify-start gap-3">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
+                Preset
+              </span>
+              <div className="min-w-0 w-full max-w-sm sm:w-auto sm:max-w-none">
+                <MixerPresetChannel
+                  layout="toolbar"
+                  factoryPresets={factoryMixes}
+                  userPresets={userMixPresets}
+                  selectedKey={selectedMixKey}
+                  onSelect={onSelectMixPreset}
+                  onSaveNew={saveNewMixPreset}
+                  disabled={soundControlsDisabled}
+                  loading={factoryMixesLoading}
+                  showSave={mixDirty}
+                  modified={mixDirty}
+                  defaultSaveName={mixSaveDefaultName}
+                />
+              </div>
+            </div>
+          </div>
+          {/* Stacked mixer — below lg: each bed is its own card */}
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4 lg:hidden">
+            <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
+              <MixerChannel
+                layout="row"
+                label="Music"
+                category="music"
+                items={backgroundMusic}
+                value={backgroundMusicKey}
+                onChange={setBackgroundMusicKey}
+                gain={backgroundMusicGain}
+                onGainChange={setBackgroundMusicGain}
+                onLiveGainChange={(g) => applyLiveBedGain("music", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundMusicKey}
+                playing={playing.music}
+                onTogglePreview={() => void toggleRowPreview("music")}
+                playDisabled={soundControlsDisabled || !backgroundMusicKey}
+                playAriaLabel={playing.music ? "Pause music" : "Play music"}
+              />
+            </section>
+            <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
+              <MixerChannel
+                layout="row"
+                label="Ambience"
+                category="ambience"
+                items={backgroundNature}
+                value={backgroundNatureKey}
+                onChange={setBackgroundNatureKey}
+                gain={backgroundNatureGain}
+                onGainChange={setBackgroundNatureGain}
+                onLiveGainChange={(g) => applyLiveBedGain("nature", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundNatureKey}
+                playing={playing.nature}
+                onTogglePreview={() => void toggleRowPreview("nature")}
+                playDisabled={soundControlsDisabled || !backgroundNatureKey}
+                playAriaLabel={
+                  playing.nature ? "Pause ambience" : "Play ambience"
+                }
+              />
+            </section>
+            <DrumsLockedWrap locked={drumsLockedForMelodic} className="block">
+              <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
+                <MixerChannel
+                  layout="row"
+                  label="Drums"
+                  category="drums"
+                  items={backgroundDrums}
+                  value={backgroundDrumsKey}
+                  onChange={setBackgroundDrumsKey}
+                  gain={backgroundDrumsGain}
+                  onGainChange={setBackgroundDrumsGain}
+                  onLiveGainChange={(g) => applyLiveBedGain("drums", g)}
+                  disabled={soundControlsDisabled || drumsLockedForMelodic}
+                  faderDisabled={
+                    soundControlsDisabled ||
+                    drumsLockedForMelodic ||
+                    !backgroundDrumsKey
+                  }
+                  playing={playing.drums}
+                  onTogglePreview={() => void toggleRowPreview("drums")}
+                  playDisabled={
+                    soundControlsDisabled ||
+                    drumsLockedForMelodic ||
+                    !backgroundDrumsKey
+                  }
+                  playAriaLabel={playing.drums ? "Pause drums" : "Play drums"}
+                />
+              </section>
+            </DrumsLockedWrap>
+            <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
+              <MixerChannel
+                layout="row"
+                label="Noise"
+                category="noise"
+                items={backgroundNoise}
+                value={backgroundNoiseKey}
+                onChange={setBackgroundNoiseKey}
+                gain={backgroundNoiseGain}
+                onGainChange={setBackgroundNoiseGain}
+                onLiveGainChange={(g) => applyLiveBedGain("noise", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundNoiseKey}
+                playing={playing.noise}
+                onTogglePreview={() => void toggleRowPreview("noise")}
+                playDisabled={soundControlsDisabled || !backgroundNoiseKey}
+                playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
+              />
+            </section>
+          </div>
+
+          {/* Column mixer — lg+: individual channel cards, no global wrapper */}
+          <div className="hidden min-h-0 flex-1 items-stretch gap-2 overflow-x-auto pb-4 lg:flex">
+            <div className="flex h-full min-w-[5.75rem] w-full max-w-[250px] flex-1 items-stretch">
+              <MixerChannel
+                label="Music"
+                category="music"
+                items={backgroundMusic}
+                value={backgroundMusicKey}
+                onChange={setBackgroundMusicKey}
+                gain={backgroundMusicGain}
+                onGainChange={setBackgroundMusicGain}
+                onLiveGainChange={(g) => applyLiveBedGain("music", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundMusicKey}
+                playing={playing.music}
+                onTogglePreview={() => void toggleRowPreview("music")}
+                playDisabled={soundControlsDisabled || !backgroundMusicKey}
+                playAriaLabel={playing.music ? "Pause music" : "Play music"}
+              />
+            </div>
+            <div className="flex h-full min-w-[5.75rem] w-full max-w-[250px] flex-1 items-stretch">
+              <MixerChannel
+                label="Ambience"
+                category="ambience"
+                items={backgroundNature}
+                value={backgroundNatureKey}
+                onChange={setBackgroundNatureKey}
+                gain={backgroundNatureGain}
+                onGainChange={setBackgroundNatureGain}
+                onLiveGainChange={(g) => applyLiveBedGain("nature", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundNatureKey}
+                playing={playing.nature}
+                onTogglePreview={() => void toggleRowPreview("nature")}
+                playDisabled={soundControlsDisabled || !backgroundNatureKey}
+                playAriaLabel={
+                  playing.nature ? "Pause ambience" : "Play ambience"
+                }
+              />
+            </div>
+            <DrumsLockedWrap
+              locked={drumsLockedForMelodic}
+              className="flex h-full min-w-[5.75rem] w-full max-w-[250px] flex-1 items-stretch"
+            >
+              <MixerChannel
+                label="Drums"
+                category="drums"
+                items={backgroundDrums}
+                value={backgroundDrumsKey}
+                onChange={setBackgroundDrumsKey}
+                gain={backgroundDrumsGain}
+                onGainChange={setBackgroundDrumsGain}
+                onLiveGainChange={(g) => applyLiveBedGain("drums", g)}
+                disabled={soundControlsDisabled || drumsLockedForMelodic}
+                faderDisabled={
+                  soundControlsDisabled ||
+                  drumsLockedForMelodic ||
+                  !backgroundDrumsKey
+                }
+                playing={playing.drums}
+                onTogglePreview={() => void toggleRowPreview("drums")}
+                playDisabled={
+                  soundControlsDisabled ||
+                  drumsLockedForMelodic ||
+                  !backgroundDrumsKey
+                }
+                playAriaLabel={playing.drums ? "Pause drums" : "Play drums"}
+              />
+            </DrumsLockedWrap>
+            <div className="flex h-full min-w-[5.75rem] w-full max-w-[250px] flex-1 items-stretch">
+              <MixerChannel
+                label="Noise"
+                category="noise"
+                items={backgroundNoise}
+                value={backgroundNoiseKey}
+                onChange={setBackgroundNoiseKey}
+                gain={backgroundNoiseGain}
+                onGainChange={setBackgroundNoiseGain}
+                onLiveGainChange={(g) => applyLiveBedGain("noise", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundNoiseKey}
+                playing={playing.noise}
+                onTogglePreview={() => void toggleRowPreview("noise")}
+                playDisabled={soundControlsDisabled || !backgroundNoiseKey}
+                playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
+              />
+            </div>
+          </div>
+           </>
+          )}
+         </div>
+          {draftSaveMessage ? (
+            <p
+              className="mx-auto w-full max-w-6xl shrink-0 px-4 py-2 text-center text-xs text-muted sm:px-6 sm:text-right"
+              role="status"
+              aria-live="polite"
+            >
+              {draftSaveMessage}
+            </p>
+          ) : null}
+          {audioError ? (
+            <p
+              className="mx-auto w-full max-w-6xl shrink-0 max-w-full break-words px-4 py-2 text-center text-sm text-danger sm:px-6 sm:text-right"
+              role="alert"
+            >
+              {audioError}
+            </p>
+          ) : null}
+          <CreateFlowFooterBar>
+            <div className="flex min-w-0 flex-1 justify-start">
+            <CreateFlowNavPill
+              onClick={goBackFromAudio}
+              aria-label={
+                creationPath === "style"
+                  ? "Back to questions"
+                  : creationPath === "journalReflect"
+                    ? "Back to journal entry picker"
+                    : creationPath === "goal"
+                      ? "Back to goal picker"
+                      : creationPath === "oneShot"
+                        ? "Back to prompt"
+                        : "Back to script and chat"
+              }
+            >
+              <IconChevronLeft className="shrink-0 text-accent-link" />
+              {creationPath === "style"
+                ? "Questions"
+                : creationPath === "journalReflect"
+                  ? "Journal"
+                  : creationPath === "goal"
+                    ? "Goal"
+                    : creationPath === "oneShot"
+                      ? "Prompt"
+                      : "Script"}
+            </CreateFlowNavPill>
+            </div>
+            <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+            <div className="flex min-w-0 flex-1 justify-end">
+            <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
+              {/* Temporarily hidden
+              <button
+                type="button"
+                onClick={() => void saveCurrentDraft()}
+                disabled={draftSaving || soundControlsDisabled}
+                className="shrink-0 cursor-pointer rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5 dark:border-border dark:bg-surface dark:text-foreground dark:hover:bg-accent-soft/30"
+              >
+                {draftSaving ? "Saving…" : "Save draft"}
+              </button>
+              */}
+              <button
+                type="button"
+                onClick={() => void generateMeditationAudioAndShow()}
+                disabled={audioLoading}
+                className={`accent-fill-gradient shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5 ${
+                  audioLoading ? "animate-pulse" : ""
+                }`}
+              >
+                {audioLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span>Generating…</span>
+                    <svg
+                      className="h-4 w-4 animate-spin"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      aria-hidden
+                    >
+                      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                    </svg>
+                  </span>
+                ) : (
+                  <>
+                    <span className="sm:hidden">Generate</span>
+                    <span className="hidden sm:inline">Generate meditation</span>
+                  </>
+                )}
+              </button>
+            </div>
+            </div>
+          </CreateFlowFooterBar>
+
+          {/*
+          Optional video, Markers, Manifestation (no wiring yet). Restore beside Speaker in sm:grid-cols-2 if needed.
+
+          <Panel title="Optional video">
+            <div className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border text-xs text-muted">
+              Drop logo / short loop
+              <span className="mt-1 text-[10px]">MP4 / MOV · mock UI</span>
+            </div>
+          </Panel>
+
+          <Panel title="Markers">
+            <ul className="space-y-2 text-sm">
+              <li className="flex items-center justify-between rounded-lg bg-background px-3 py-2">
+                <span>Opening chime</span>
+                <span className="text-xs text-muted">0:00</span>
+              </li>
+              <li className="flex items-center justify-between rounded-lg bg-background px-3 py-2">
+                <span>Pause · body settle</span>
+                <span className="text-xs text-muted">2:30</span>
+              </li>
+              <li className="flex items-center justify-between rounded-lg bg-background px-3 py-2">
+                <span>Section chime · visualization</span>
+                <span className="text-xs text-muted">5:00</span>
+              </li>
+            </ul>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-xl border border-border py-2 text-xs font-medium text-muted hover:border-accent/40"
+            >
+              + Add marker
+            </button>
+          </Panel>
+
+          <Panel title="Manifestation focus">
+            <textarea
+              rows={3}
+              placeholder="e.g. Walk on stage feeling grounded; hear the first phrase clearly…"
+              className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+            />
+          </Panel>
+          */}
+        </div>
+        ) : null}
+      </div>
+      )}
+
+      {audioModalUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-4 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Meditation audio</div>
+                <div className="text-xs text-muted">
+                  Streaming from CloudFront (MP3)
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAudioModalUrl(null)}
+                className="cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground"
+              >
+                Close
+              </button>
+            </div>
+
+            {audioError ? (
+              <div className="mt-3 rounded-lg border border-border bg-background p-2 text-xs text-muted">
+                {audioError}
+              </div>
+            ) : null}
+
+            <audio controls src={audioModalUrl} className="mt-4 w-full" />
+
+            {lastUsedScript && (
+              <details className="mt-3 rounded-lg border border-border bg-background p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-foreground">
+                  Show script used for this audio
+                </summary>
+                <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted">
+                  {lastUsedScript}
+                </div>
+              </details>
+            )}
+
+            <div className="mt-3 flex gap-2">
+              <a
+                href={audioModalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:border-accent/50"
+              >
+                Download
+              </a>
+              {audioModalKey ? (
+                <Link
+                  href={`/meditate/library/creations?focus=${encodeURIComponent(audioModalKey)}&play=1`}
+                  className="cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:border-accent/50"
+                >
+                  View in Library
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card shadow-sm">
+      <div className="shrink-0 border-b border-border px-4 py-3">
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      </div>
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}

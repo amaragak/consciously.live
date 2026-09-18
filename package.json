@@ -1,0 +1,21 @@
+{
+  "name": "consciously",
+  "private": true,
+  "workspaces": [
+    "frontend/webapp",
+    "frontend/marketing",
+    "frontend/common"
+  ],
+  "scripts": {
+    "dev": "bash ./scripts/dev-web",
+    "dev:web": "bash ./scripts/dev-web",
+    "dev:marketing": "npm run dev --prefix frontend/marketing",
+    "dev:webapp": "npm run dev -w @consciously/webapp",
+    "build:marketing": "npm run build --prefix frontend/marketing",
+    "build:webapp": "npm run build -w @consciously/webapp",
+    "deploy:web": "bash ./frontend/marketing/deploy/deploy-web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

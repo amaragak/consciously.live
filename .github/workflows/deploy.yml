@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "frontend/marketing/**"
       - "frontend/webapp/**"
+      - "frontend/react-common/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
@@ -13,8 +15,16 @@ on:
         description: "Deploy backend even if paths unchanged"
         type: boolean
         default: false
+      force_marketing:
+        description: "Deploy marketing (Next) even if paths unchanged"
+        type: boolean
+        default: false
+      force_app:
+        description: "Deploy app (Vite SPA) even if paths unchanged"
+        type: boolean
+        default: false
       force_frontend:
-        description: "Deploy frontend even if paths unchanged"
+        description: "Deploy both marketing + app (overrides the two above)"
         type: boolean
         default: false
 
@@ -27,7 +37,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      marketing: ${{ steps.filter.outputs.marketing }}
+      app: ${{ steps.filter.outputs.app }}
+      shared: ${{ steps.filter.outputs.shared }}
+      workflow: ${{ steps.filter.outputs.workflow }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -36,24 +49,26 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
-              - '.github/workflows/deploy.yml'
-            frontend:
+            marketing:
+              - 'frontend/marketing/**'
+            app:
               - 'frontend/webapp/**'
+            shared:
+              - 'frontend/react-common/**'
+            workflow:
               - '.github/workflows/deploy.yml'
 
   deploy:
     needs: changes
     if: >-
       needs.changes.outputs.backend == 'true' ||
-      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.marketing == 'true' ||
+      needs.changes.outputs.app == 'true' ||
+      needs.changes.outputs.shared == 'true' ||
+      needs.changes.outputs.workflow == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      # Path filter only — backend-only does not force a frontend redeploy.
-      # Frontend always refreshes .env from live CloudFormation before build.
-      DEPLOY_BACKEND: ${{ needs.changes.outputs.backend == 'true' || (github.event_name == 'workflow_dispatch' && inputs.force_backend) }}
-      DEPLOY_FRONTEND: ${{ needs.changes.outputs.frontend == 'true' || (github.event_name == 'workflow_dispatch' && inputs.force_frontend) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,8 +78,9 @@ jobs:
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
-            frontend/webapp/package-lock.json
-            frontend/webapp/deploy/package-lock.json
+            frontend/marketing/package-lock.json
+            frontend/marketing/deploy/package-lock.json
+            package-lock.json
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -77,24 +93,60 @@ jobs:
         id: plan
         run: |
           set -euo pipefail
-          BACKEND="${DEPLOY_BACKEND}"
-          FRONTEND="${DEPLOY_FRONTEND}"
-          # workflow_dispatch with no force flags: use path filter; if nothing
-          # matched (rare), deploy both so a manual run still does something.
+
+          BACKEND="${{ needs.changes.outputs.backend }}"
+          MARKETING="${{ needs.changes.outputs.marketing }}"
+          APP="${{ needs.changes.outputs.app }}"
+          SHARED="${{ needs.changes.outputs.shared }}"
+          WORKFLOW="${{ needs.changes.outputs.workflow }}"
+
+          # Shared packages (and workflow edits) rebuild both frontends.
+          if [ "$SHARED" = "true" ] || [ "$WORKFLOW" = "true" ]; then
+            MARKETING=true
+            APP=true
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "$BACKEND" != "true" ] && [ "$FRONTEND" != "true" ]; then
-              if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ needs.changes.outputs.frontend }}" = "true" ]; then
-                BACKEND="${{ needs.changes.outputs.backend }}"
-                FRONTEND="${{ needs.changes.outputs.frontend }}"
-              else
-                BACKEND=true
-                FRONTEND=true
+            if [ "${{ inputs.force_backend }}" = "true" ]; then
+              BACKEND=true
+            fi
+            if [ "${{ inputs.force_frontend }}" = "true" ]; then
+              MARKETING=true
+              APP=true
+            else
+              if [ "${{ inputs.force_marketing }}" = "true" ]; then
+                MARKETING=true
+              fi
+              if [ "${{ inputs.force_app }}" = "true" ]; then
+                APP=true
               fi
             fi
+            # Manual run with no force flags and no path hits: deploy everything.
+            if [ "$BACKEND" != "true" ] && [ "$MARKETING" != "true" ] && [ "$APP" != "true" ]; then
+              BACKEND=true
+              MARKETING=true
+              APP=true
+            fi
           fi
+
+          FRONTEND=false
+          if [ "$MARKETING" = "true" ] || [ "$APP" = "true" ]; then
+            FRONTEND=true
+          fi
+
+          ONLY=all
+          if [ "$MARKETING" = "true" ] && [ "$APP" != "true" ]; then
+            ONLY=marketing
+          elif [ "$APP" = "true" ] && [ "$MARKETING" != "true" ]; then
+            ONLY=app
+          fi
+
           echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
+          echo "marketing=$MARKETING" >> "$GITHUB_OUTPUT"
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
           echo "frontend=$FRONTEND" >> "$GITHUB_OUTPUT"
-          echo "Plan: backend=$BACKEND frontend=$FRONTEND"
+          echo "only=$ONLY" >> "$GITHUB_OUTPUT"
+          echo "Plan: backend=$BACKEND marketing=$MARKETING app=$APP only=$ONLY"
 
       - name: Install backend dependencies
         if: steps.plan.outputs.backend == 'true'
@@ -118,29 +170,51 @@ jobs:
           node backend/scripts/write-webapp-env-from-outputs.mjs \
             --stack MedimadeBackend \
             --region "${{ vars.AWS_REGION || 'eu-west-2' }}" \
-            frontend/webapp/.env \
+            frontend/marketing/.env \
             frontend/mobile/.env \
             frontend/extension/.env
+          if [ -f frontend/marketing/.env ]; then
+            set -a
+            # shellcheck disable=SC1091
+            source frontend/marketing/.env
+            set +a
+            {
+              echo "VITE_MEDIMADE_API_URL=${NEXT_PUBLIC_MEDIMADE_API_URL:-}"
+              echo "VITE_MEDIMADE_MEDIA_BASE_URL=${NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL:-}"
+              echo "VITE_MEDIMADE_CHAT_URL=${NEXT_PUBLIC_MEDIMADE_CHAT_URL:-}"
+              echo "VITE_ASSISTANT_CHAT_URL=${NEXT_PUBLIC_ASSISTANT_CHAT_URL:-}"
+              echo "VITE_MARKETING_ORIGIN=https://consciously.live"
+            } > frontend/webapp/.env
+          fi
 
-      - name: Install webapp dependencies
-        if: steps.plan.outputs.frontend == 'true'
-        working-directory: frontend/webapp
+      - name: Install marketing dependencies
+        if: steps.plan.outputs.marketing == 'true'
+        run: |
+          npm ci --prefix frontend/marketing
+          npm ci --prefix frontend/marketing/deploy
+
+      - name: Install app + shared package dependencies
+        if: steps.plan.outputs.app == 'true'
         run: npm ci
 
       - name: Install SST deploy tooling
         if: steps.plan.outputs.frontend == 'true'
-        working-directory: frontend/webapp/deploy
+        working-directory: frontend/marketing/deploy
         run: |
-          npm ci
+          if [ ! -d node_modules ]; then
+            npm ci
+          fi
           npm run install-platform
 
       - name: Deploy frontend (SST prod)
         if: steps.plan.outputs.frontend == 'true'
-        working-directory: frontend/webapp/deploy
+        working-directory: frontend/marketing/deploy
         env:
           # Prod must keep consciously.live + ACM on the live CloudFront distro.
           # Default attach=1. Set repo Actions var MEDIMADE_SST_ATTACH_DOMAIN=0 only
           # for temporary cloudfront.net previews (DNS must not point at that distro).
-          # Note: vars.* is repository/org Actions Variables — not Environment vars/secrets.
           MEDIMADE_SST_ATTACH_DOMAIN: ${{ vars.MEDIMADE_SST_ATTACH_DOMAIN || '1' }}
-        run: ./deploy-web --stage production
+          # SPA custom domain stays off until ACM covers app.consciously.live.
+          MEDIMADE_SPA_ATTACH_DOMAIN: ${{ vars.MEDIMADE_SPA_ATTACH_DOMAIN || '0' }}
+          NEXT_PUBLIC_APP_ORIGIN: ${{ vars.NEXT_PUBLIC_APP_ORIGIN || 'https://dyaxvhlmage80.cloudfront.net' }}
+        run: ./deploy-web --stage production --only "${{ steps.plan.outputs.only }}"
