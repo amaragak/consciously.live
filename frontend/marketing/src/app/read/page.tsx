@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  fetchPublishedBlogPosts,
+  fetchPublishedBlogIndex,
   formatBlogDate,
 } from "@/lib/public-blog";
 
@@ -13,7 +13,7 @@ export const metadata = {
 export const revalidate = 60;
 
 export default async function ReadIndexPage() {
-  const posts = await fetchPublishedBlogPosts();
+  const { posts, indexSummary } = await fetchPublishedBlogIndex();
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
@@ -23,9 +23,11 @@ export default async function ReadIndexPage() {
       <h1 className="mt-2 font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
         Writing
       </h1>
-      <p className="mt-3 max-w-xl text-base leading-relaxed text-muted">
-        Essays and updates from Consciously.
-      </p>
+      {indexSummary ? (
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-muted">
+          {indexSummary}
+        </p>
+      ) : null}
 
       {posts.length === 0 ? (
         <p className="mt-12 text-sm text-muted">
@@ -45,9 +47,9 @@ export default async function ReadIndexPage() {
                 <h2 className="mt-1 font-display text-2xl font-medium tracking-tight text-foreground transition-opacity group-hover:opacity-80">
                   {post.title}
                 </h2>
-                {post.excerpt ? (
+                {post.excerpt || post.subheader ? (
                   <p className="mt-2 text-[15px] leading-relaxed text-muted">
-                    {post.excerpt}
+                    {post.excerpt || post.subheader}
                   </p>
                 ) : null}
                 <span className="mt-3 inline-block text-sm font-medium text-accent-link">

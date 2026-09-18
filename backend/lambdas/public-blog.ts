@@ -5,6 +5,7 @@ import type {
 import { jsonAuth } from "../lib/medimade-auth-http";
 import {
   getBlogPostBySlug,
+  getBlogSettings,
   listPublishedBlogPosts,
 } from "../lib/blog";
 
@@ -29,9 +30,13 @@ export async function handler(
       if (!post) return json(404, { error: "Not found" });
       return json(200, { post });
     }
-    const posts = await listPublishedBlogPosts();
+    const [posts, settings] = await Promise.all([
+      listPublishedBlogPosts(),
+      getBlogSettings(),
+    ]);
     // Index payload omits full body for bandwidth.
     return json(200, {
+      indexSummary: settings.indexSummary,
       posts: posts.map((p) => ({
         id: p.id,
         slug: p.slug,

@@ -13,6 +13,10 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 });
 
 export const BLOG_PK = "BLOG";
+const BLOG_SETTINGS_SK = "SETTINGS";
+
+export const DEFAULT_BLOG_INDEX_SUMMARY =
+  "Essays and updates from Consciously.";
 
 export type BlogPost = {
   id: string;
@@ -20,6 +24,7 @@ export type BlogPost = {
   title: string;
   /** Optional line under the title on the published article. */
   subheader: string;
+  /** Optional summary on the Read index (/read). */
   excerpt: string;
   /** HTML (TipTap) or legacy markdown body. */
   body: string;
@@ -27,6 +32,12 @@ export type BlogPost = {
   /** ISO timestamp when first published (sticky after unpublish). */
   publishedAt: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+/** Site-level Read index copy (not per-post). */
+export type BlogSettings = {
+  indexSummary: string;
   updatedAt: string;
 };
 
@@ -245,4 +256,46 @@ export async function deleteBlogPost(id: string): Promise<void> {
       Key: { pk: BLOG_PK, sk: skForId(id) },
     }),
   );
+}
+
+export async function getBlogSettings(): Promise<BlogSettings> {
+  const res = await ddb.send(
+    new GetCommand({
+      TableName: tableName(),
+      Key: { pk: BLOG_PK, sk: BLOG_SETTINGS_SK },
+    }),
+  );
+  const item = res.Item as Record<string, unknown> | undefined;
+  const summary =
+    typeof item?.indexSummary === "string" && item.indexSummary.trim()
+      ? item.indexSummary.trim().slice(0, 500)
+      : DEFAULT_BLOG_INDEX_SUMMARY;
+  const updatedAt =
+    typeof item?.updatedAt === "string" && item.updatedAt.trim()
+      ? item.updatedAt.trim()
+      : new Date(0).toISOString();
+  return { indexSummary: summary, updatedAt };
+}
+
+export async function putBlogSettings(input: {
+  indexSummary?: unknown;
+}): Promise<BlogSettings> {
+  const now = new Date().toISOString();
+  const existing = await getBlogSettings();
+  const indexSummary =
+    typeof input.indexSummary === "string"
+      ? input.indexSummary.trim().slice(0, 500) || DEFAULT_BLOG_INDEX_SUMMARY
+      : existing.indexSummary;
+  const settings: BlogSettings = { indexSummary, updatedAt: now };
+  await ddb.send(
+    new PutCommand({
+      TableName: tableName(),
+      Item: {
+        pk: BLOG_PK,
+        sk: BLOG_SETTINGS_SK,
+        ...settings,
+      },
+    }),
+  );
+  return settings;
 }

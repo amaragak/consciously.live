@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deleteAdminBlogPost,
-  listAdminBlogPosts,
+  fetchAdminBlog,
   saveAdminBlogPost,
+  saveAdminBlogSettings,
   type AdminBlogPost,
 } from "@/lib/medimade-api";
 import {
   ReadRichEditor,
   bodyToEditorHtml,
 } from "@/components/read-rich-editor";
+
+const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
 function slugify(title: string): string {
   return (
@@ -50,6 +53,11 @@ function formatWhen(iso: string | null | undefined): string {
 
 export function AdminReadPanel() {
   const [posts, setPosts] = useState<AdminBlogPost[]>([]);
+  const [indexSummary, setIndexSummary] = useState(DEFAULT_INDEX_SUMMARY);
+  const [indexSummaryBusy, setIndexSummaryBusy] = useState(false);
+  const [indexSummaryStatus, setIndexSummaryStatus] = useState<string | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
@@ -62,8 +70,9 @@ export function AdminReadPanel() {
     setLoading(true);
     setError(null);
     try {
-      const list = await listAdminBlogPosts();
+      const { posts: list, settings } = await fetchAdminBlog();
       setPosts(list);
+      setIndexSummary(settings.indexSummary || DEFAULT_INDEX_SUMMARY);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load posts");
     } finally {
@@ -118,6 +127,24 @@ export function AdminReadPanel() {
     }));
   }
 
+  async function onSaveIndexSummary() {
+    setIndexSummaryBusy(true);
+    setIndexSummaryStatus(null);
+    try {
+      const saved = await saveAdminBlogSettings({
+        indexSummary: indexSummary.trim() || DEFAULT_INDEX_SUMMARY,
+      });
+      setIndexSummary(saved.indexSummary);
+      setIndexSummaryStatus("Page intro saved.");
+    } catch (e) {
+      setIndexSummaryStatus(
+        e instanceof Error ? e.message : "Could not save page intro",
+      );
+    } finally {
+      setIndexSummaryBusy(false);
+    }
+  }
+
   async function onSave() {
     if (!draft.title.trim()) {
       setStatus("Title is required.");
@@ -168,7 +195,48 @@ export function AdminReadPanel() {
     selectedId === "new" ? "new" : selectedId ?? "none";
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+    <div className="flex flex-col gap-6">
+      <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+        <h2 className="font-display text-lg font-medium text-foreground">
+          Read page intro
+        </h2>
+        <p className="mt-1 text-xs text-muted">
+          Shown under “Writing” on{" "}
+          <a
+            href="https://consciously.live/read"
+            className="text-accent-link underline underline-offset-2"
+            target="_blank"
+            rel="noreferrer"
+          >
+            /read
+          </a>
+          .
+        </p>
+        <textarea
+          value={indexSummary}
+          onChange={(e) => setIndexSummary(e.target.value)}
+          rows={2}
+          className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+          placeholder={DEFAULT_INDEX_SUMMARY}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={indexSummaryBusy || loading}
+            onClick={() => void onSaveIndexSummary()}
+            className="rounded-lg accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+          >
+            {indexSummaryBusy ? "Saving…" : "Save intro"}
+          </button>
+          {indexSummaryStatus ? (
+            <p className="text-sm text-muted" role="status">
+              {indexSummaryStatus}
+            </p>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <aside className="w-full shrink-0 lg:w-72">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display text-lg font-medium text-foreground">
@@ -266,6 +334,24 @@ export function AdminReadPanel() {
             </div>
             <div>
               <label className="block text-xs font-medium text-muted">
+                Summary{" "}
+                <span className="font-normal text-muted/80">(optional)</span>
+              </label>
+              <textarea
+                value={draft.excerpt}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, excerpt: e.target.value }))
+                }
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                placeholder="Card text on the Read index (/read)"
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                Shown under the title in the post list. Leave blank to hide.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted">
                 Slug
               </label>
               <input
@@ -285,20 +371,6 @@ export function AdminReadPanel() {
               <p className="mt-1 text-[11px] text-muted">
                 Public URL: /read/{draft.slug || "…"}
               </p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted">
-                Excerpt
-              </label>
-              <textarea
-                value={draft.excerpt}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, excerpt: e.target.value }))
-                }
-                rows={2}
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder="Short summary for the index"
-              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted">
@@ -369,6 +441,7 @@ export function AdminReadPanel() {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }

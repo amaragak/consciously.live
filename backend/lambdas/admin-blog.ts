@@ -6,8 +6,10 @@ import { requireAdminJson } from "../lib/admin-auth";
 import { jsonAuth } from "../lib/medimade-auth-http";
 import {
   deleteBlogPost,
+  getBlogSettings,
   listBlogPosts,
   putBlogPost,
+  putBlogSettings,
 } from "../lib/blog";
 
 function json(
@@ -28,8 +30,11 @@ export async function handler(
 
   try {
     if (method === "GET") {
-      const posts = await listBlogPosts();
-      return json(200, { posts });
+      const [posts, settings] = await Promise.all([
+        listBlogPosts(),
+        getBlogSettings(),
+      ]);
+      return json(200, { posts, settings });
     }
     if (method === "PATCH") {
       let body: Record<string, unknown> = {};
@@ -37,6 +42,12 @@ export async function handler(
         body = JSON.parse(event.body || "{}") as Record<string, unknown>;
       } catch {
         return json(400, { error: "Invalid JSON" });
+      }
+      if (body.settings && typeof body.settings === "object") {
+        const settings = await putBlogSettings(
+          body.settings as { indexSummary?: unknown },
+        );
+        return json(200, { settings });
       }
       const post = await putBlogPost(body);
       return json(200, { post });
@@ -49,6 +60,12 @@ export async function handler(
         return json(400, { error: "Invalid JSON" });
       }
       const action = String(body.action ?? "").trim();
+      if (action === "saveSettings") {
+        const settings = await putBlogSettings({
+          indexSummary: body.indexSummary,
+        });
+        return json(200, { settings });
+      }
       if (action === "delete") {
         const id = String(body.id ?? "").trim();
         if (!id) return json(400, { error: "id is required" });

@@ -16,6 +16,13 @@ export type PublicBlogPost = PublicBlogPostSummary & {
   body: string;
 };
 
+export type PublicBlogIndex = {
+  indexSummary: string;
+  posts: PublicBlogPostSummary[];
+};
+
+const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
+
 function apiBase(): string | null {
   const u = process.env.NEXT_PUBLIC_MEDIMADE_API_URL?.trim().replace(/\/$/, "");
   return u || null;
@@ -45,21 +52,41 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
   };
 }
 
-export async function fetchPublishedBlogPosts(): Promise<PublicBlogPostSummary[]> {
+export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
   const base = apiBase();
-  if (!base) return [];
+  if (!base) {
+    return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
+  }
   try {
     const res = await fetch(`${base}/public/blog`, {
       next: { revalidate: 60 },
     });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { posts?: unknown[] };
-    return (data.posts ?? [])
-      .map(coerceSummary)
-      .filter((p): p is PublicBlogPostSummary => Boolean(p));
+    if (!res.ok) {
+      return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
+    }
+    const data = (await res.json()) as {
+      posts?: unknown[];
+      indexSummary?: unknown;
+    };
+    const indexSummary =
+      typeof data.indexSummary === "string" && data.indexSummary.trim()
+        ? data.indexSummary.trim()
+        : DEFAULT_INDEX_SUMMARY;
+    return {
+      indexSummary,
+      posts: (data.posts ?? [])
+        .map(coerceSummary)
+        .filter((p): p is PublicBlogPostSummary => Boolean(p)),
+    };
   } catch {
-    return [];
+    return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
   }
+}
+
+/** @deprecated Prefer fetchPublishedBlogIndex */
+export async function fetchPublishedBlogPosts(): Promise<PublicBlogPostSummary[]> {
+  const { posts } = await fetchPublishedBlogIndex();
+  return posts;
 }
 
 export async function fetchPublishedBlogPost(

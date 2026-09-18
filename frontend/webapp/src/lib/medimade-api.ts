@@ -3547,6 +3547,13 @@ export type AdminBlogPost = {
   updatedAt: string;
 };
 
+export type AdminBlogSettings = {
+  indexSummary: string;
+  updatedAt: string;
+};
+
+const DEFAULT_ADMIN_INDEX_SUMMARY = "Essays and updates from Consciously.";
+
 function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -3571,7 +3578,32 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
   };
 }
 
+function normalizeAdminBlogSettings(raw: unknown): AdminBlogSettings {
+  if (!raw || typeof raw !== "object") {
+    return {
+      indexSummary: DEFAULT_ADMIN_INDEX_SUMMARY,
+      updatedAt: "",
+    };
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    indexSummary:
+      typeof o.indexSummary === "string" && o.indexSummary.trim()
+        ? o.indexSummary.trim()
+        : DEFAULT_ADMIN_INDEX_SUMMARY,
+    updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
+  };
+}
+
 export async function listAdminBlogPosts(): Promise<AdminBlogPost[]> {
+  const { posts } = await fetchAdminBlog();
+  return posts;
+}
+
+export async function fetchAdminBlog(): Promise<{
+  posts: AdminBlogPost[];
+  settings: AdminBlogSettings;
+}> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/blog`, {
@@ -3579,15 +3611,40 @@ export async function listAdminBlogPosts(): Promise<AdminBlogPost[]> {
   });
   const data = (await res.json()) as {
     posts?: unknown[];
+    settings?: unknown;
     error?: string;
     detail?: string;
   };
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
-  return (data.posts ?? [])
-    .map(normalizeAdminBlogPost)
-    .filter((p): p is AdminBlogPost => Boolean(p));
+  return {
+    posts: (data.posts ?? [])
+      .map(normalizeAdminBlogPost)
+      .filter((p): p is AdminBlogPost => Boolean(p)),
+    settings: normalizeAdminBlogSettings(data.settings),
+  };
+}
+
+export async function saveAdminBlogSettings(
+  settings: Pick<AdminBlogSettings, "indexSummary">,
+): Promise<AdminBlogSettings> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ settings }),
+  });
+  const data = (await res.json()) as {
+    settings?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return normalizeAdminBlogSettings(data.settings);
 }
 
 export async function saveAdminBlogPost(
