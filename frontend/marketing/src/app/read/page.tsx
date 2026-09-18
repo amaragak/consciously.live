@@ -16,7 +16,7 @@ export default async function ReadIndexPage() {
   const posts = await fetchPublishedBlogPosts();
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+    <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-marketing-eyebrow">
         Read
       </p>

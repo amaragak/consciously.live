@@ -34,7 +34,7 @@ export default async function ReadPostPage({ params }: Props) {
   if (!post) notFound();
 
   return (
-    <article className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+    <article className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
       <Link
         href="/read"
         className="text-sm font-medium text-muted transition-colors hover:text-foreground"
