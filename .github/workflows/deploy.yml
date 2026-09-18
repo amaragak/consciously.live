@@ -208,7 +208,8 @@ jobs:
           # Default attach=1. Set repo Actions var MEDIMADE_SST_ATTACH_DOMAIN=0 only
           # for temporary cloudfront.net previews (DNS must not point at that distro).
           MEDIMADE_SST_ATTACH_DOMAIN: ${{ vars.MEDIMADE_SST_ATTACH_DOMAIN || '1' }}
-          # SPA custom domain stays off until ACM covers app.consciously.live.
-          MEDIMADE_SPA_ATTACH_DOMAIN: ${{ vars.MEDIMADE_SPA_ATTACH_DOMAIN || '0' }}
-          NEXT_PUBLIC_APP_ORIGIN: ${{ vars.NEXT_PUBLIC_APP_ORIGIN || 'https://dyaxvhlmage80.cloudfront.net' }}
+          # SPA attaches app.consciously.live (ACM d1efcdd8…). Set repo var to 0
+          # only for temporary cloudfront.net previews.
+          MEDIMADE_SPA_ATTACH_DOMAIN: ${{ vars.MEDIMADE_SPA_ATTACH_DOMAIN || '1' }}
+          NEXT_PUBLIC_APP_ORIGIN: ${{ vars.NEXT_PUBLIC_APP_ORIGIN || 'https://app.consciously.live' }}
         run: ./deploy-web --stage production --only "${{ steps.plan.outputs.only }}"

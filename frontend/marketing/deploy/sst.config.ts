@@ -74,10 +74,12 @@ export default $config({
     // DNS points at. Detaching (MEDIMADE_SST_ATTACH_DOMAIN=0) previously left
     // consciously.live on a cert-less distribution → HTTPS name mismatch.
     const attachDomain = process.env.MEDIMADE_SST_ATTACH_DOMAIN !== "0";
-    // ACM must include consciously.live + www + app.consciously.live (or use a
-    // wildcard). Same cert ARN as before until a dedicated app cert is issued.
-    const certArn =
+    // Apex + www only (live marketing CF today).
+    const marketingCertArn =
       "arn:aws:acm:us-east-1:382309212161:certificate/de288d1f-a1f7-436b-ae16-3f79de3d5d98";
+    // Includes app.consciously.live (Issued).
+    const spaCertArn =
+      "arn:aws:acm:us-east-1:382309212161:certificate/d1efcdd8-63ad-4e0c-88ed-ed177338b440";
 
     const marketing = new sst.aws.Nextjs("Web", {
       path: "..",
@@ -89,17 +91,17 @@ export default $config({
               aliases: ["www.consciously.live"],
               // DNS in Cloudflare (not Route 53); CNAME apex+www → this CF domain.
               dns: false,
-              cert: certArn,
+              cert: marketingCertArn,
             },
           }
         : {}),
     });
 
-    // New SPA site. Custom domain needs an ACM cert that includes
-    // app.consciously.live (current consciously.live cert does not).
-    // Set MEDIMADE_SPA_ATTACH_DOMAIN=1 once that SAN/cert exists + Cloudflare CNAME.
+    // SPA custom domain. Cloudflare CNAME app → dyaxvhlmage80.cloudfront.net
+    // (DNS-only, same pattern as www). Default on; set MEDIMADE_SPA_ATTACH_DOMAIN=0
+    // only for temporary cloudfront.net previews.
     const attachSpaDomain =
-      attachDomain && process.env.MEDIMADE_SPA_ATTACH_DOMAIN === "1";
+      attachDomain && process.env.MEDIMADE_SPA_ATTACH_DOMAIN !== "0";
     const spa = new sst.aws.StaticSite("LoggedInSpa", {
       path: "../../webapp",
       build: {
@@ -112,7 +114,7 @@ export default $config({
             domain: {
               name: "app.consciously.live",
               dns: false,
-              cert: certArn,
+              cert: spaCertArn,
             },
           }
         : {}),
