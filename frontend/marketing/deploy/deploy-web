@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Deploy marketing (Next.js) and/or app (Vite SPA) via SST.
 #
-# Prod is owned by GitHub Actions (.github/workflows/deploy.yml). Do not run
-# local --stage prod/production unless MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1 —
-# overlapping local + CI deploys fight over the SST state lock.
+# Frontend prod is owned by GitHub Actions (.github/workflows/deploy.yml).
+# Do not run local --stage prod/production unless MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1
+# — overlapping local + CI frontend deploys fight over the SST state lock.
+# Backend (`backend/scripts/deploy-back`) stays free for local/dev; this guard
+# does not apply there.
 #
 # Loads ../.env when present so NEXT_PUBLIC_* / VITE_* are available at build time.
 #
@@ -112,11 +114,12 @@ if [[ "$STAGE" != "dev" && "$STAGE" != "prod" ]]; then
   exit 1
 fi
 
-# Prod deploys: GitHub Actions only (avoids SST state-lock races with CI).
+# Prod frontend deploys: GitHub Actions only (avoids SST state-lock races with CI).
+# Backend deploy-back is unaffected — keep using it locally for API work.
 if [[ "$STAGE" == "prod" && "${GITHUB_ACTIONS:-}" != "true" && "${MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY:-}" != "1" ]]; then
-  echo "error: prod deploys are owned by GitHub Actions (.github/workflows/deploy.yml)." >&2
-  echo "        Push to main or re-run the Deploy workflow." >&2
-  echo "        Emergency local only: MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1 $0 --stage prod …" >&2
+  echo "error: frontend prod deploys are owned by GitHub Actions (.github/workflows/deploy.yml)." >&2
+  echo "        Push to main or re-run the Deploy workflow. Backend deploy-back is still fine locally." >&2
+  echo "        Emergency local frontend only: MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1 $0 --stage prod …" >&2
   exit 1
 fi
 

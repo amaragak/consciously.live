@@ -4,7 +4,7 @@ Next.js marketing site (and transitional logged-in routes not yet moved to the V
 
 ## Deploy (AWS / SST)
 
-**Production is owned by GitHub Actions** (`.github/workflows/deploy.yml` on `main`). Prefer push / re-run the workflow — don’t run local `--stage prod` in parallel or you’ll hit the SST state lock.
+**Frontend production** is owned by GitHub Actions (`.github/workflows/deploy.yml` on `main`). Prefer push / re-run the workflow — don’t run local `--stage prod` in parallel or you’ll hit the SST state lock. **Backend** (`backend/scripts/deploy-back`) stays fine to run locally for continued API work; this restriction is frontend-only.
 
 Deploys **marketing** (`consciously.live`) and **app** (`app.consciously.live`) together.
 

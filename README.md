@@ -31,8 +31,19 @@ Ports: `MARKETING_PORT=3000 APP_PORT=5173 ./scripts/dev-web`
 
 ## Deploy
 
+**Frontend prod** → GitHub Actions (push to `main` / re-run Deploy). Local `--stage prod` is blocked unless `MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1`.
+
+**Backend** → fine locally anytime:
+
 ```bash
-./frontend/marketing/deploy/deploy-web --stage prod
+./backend/scripts/deploy-back --require-approval never
+```
+
+Frontend (CI or emergency local):
+
+```bash
+# CI owns this; emergency only:
+MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1 ./frontend/marketing/deploy/deploy-web --stage prod
 ```
 
 Deploys marketing and/or webapp via SST (`--only marketing` / `--only app` / `--only all`).
