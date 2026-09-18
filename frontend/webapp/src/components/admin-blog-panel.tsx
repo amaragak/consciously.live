@@ -27,6 +27,7 @@ function blankDraft(): Omit<AdminBlogPost, "id" | "createdAt" | "updatedAt"> & {
   return {
     slug: "",
     title: "",
+    subheader: "",
     excerpt: "",
     body: "",
     published: false,
@@ -94,6 +95,7 @@ export function AdminReadPanel() {
         id: selected.id,
         slug: selected.slug,
         title: selected.title,
+        subheader: selected.subheader,
         excerpt: selected.excerpt,
         body: selected.body,
         published: selected.published,
@@ -128,6 +130,7 @@ export function AdminReadPanel() {
         id: draft.id,
         title: draft.title,
         slug: draft.slug || slugify(draft.title),
+        subheader: draft.subheader,
         excerpt: draft.excerpt,
         body: draft.body,
         published: draft.published,
@@ -245,6 +248,20 @@ export function AdminReadPanel() {
                 onChange={(e) => onTitleChange(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                 placeholder="Post title"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Subheader{" "}
+                <span className="font-normal text-muted/80">(optional)</span>
+              </label>
+              <input
+                value={draft.subheader}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, subheader: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                placeholder="Shown under the title on the published article"
               />
             </div>
             <div>

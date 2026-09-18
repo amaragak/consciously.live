@@ -6,6 +6,7 @@ export type PublicBlogPostSummary = {
   id: string;
   slug: string;
   title: string;
+  subheader: string;
   excerpt: string;
   publishedAt: string | null;
   updatedAt: string;
@@ -31,6 +32,7 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
     id,
     slug,
     title,
+    subheader: typeof o.subheader === "string" ? o.subheader.trim() : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt.trim() : "",
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()

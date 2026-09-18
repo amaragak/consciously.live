@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: Props) {
   if (!post) return { title: "Post" };
   return {
     title: post.title,
-    description: post.excerpt || undefined,
+    description: post.excerpt || post.subheader || undefined,
   };
 }
 
@@ -47,8 +47,10 @@ export default async function ReadPostPage({ params }: Props) {
       <h1 className="mt-2 font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
         {post.title}
       </h1>
-      {post.excerpt ? (
-        <p className="mt-4 text-lg leading-relaxed text-muted">{post.excerpt}</p>
+      {post.subheader ? (
+        <p className="mt-3 max-w-3xl text-base leading-relaxed text-muted sm:text-lg">
+          {post.subheader}
+        </p>
       ) : null}
       <div className="mt-10 border-t border-border pt-8">
         <ReadBody source={post.body} />

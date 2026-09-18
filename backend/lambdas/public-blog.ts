@@ -36,6 +36,7 @@ export async function handler(
         id: p.id,
         slug: p.slug,
         title: p.title,
+        subheader: p.subheader,
         excerpt: p.excerpt,
         publishedAt: p.publishedAt,
         updatedAt: p.updatedAt,

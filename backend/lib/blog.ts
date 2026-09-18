@@ -18,8 +18,10 @@ export type BlogPost = {
   id: string;
   slug: string;
   title: string;
+  /** Optional line under the title on the published article. */
+  subheader: string;
   excerpt: string;
-  /** Markdown body. */
+  /** HTML (TipTap) or legacy markdown body. */
   body: string;
   published: boolean;
   /** ISO timestamp when first published (sticky after unpublish). */
@@ -74,6 +76,10 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
     id,
     slug: slug || slugifyTitle(title),
     title,
+    subheader:
+      typeof raw.subheader === "string"
+        ? raw.subheader.trim().slice(0, 300)
+        : "",
     excerpt:
       typeof raw.excerpt === "string" ? raw.excerpt.trim().slice(0, 500) : "",
     body: typeof raw.body === "string" ? raw.body.slice(0, 100_000) : "",
@@ -200,6 +206,10 @@ export async function putBlogPost(
     id: existingId || randomUUID(),
     slug: unique,
     title,
+    subheader:
+      typeof input.subheader === "string"
+        ? input.subheader.trim().slice(0, 300)
+        : (existing?.subheader ?? ""),
     excerpt:
       typeof input.excerpt === "string"
         ? input.excerpt.trim().slice(0, 500)

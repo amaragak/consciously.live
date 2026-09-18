@@ -3538,6 +3538,7 @@ export type AdminBlogPost = {
   id: string;
   slug: string;
   title: string;
+  subheader: string;
   excerpt: string;
   body: string;
   published: boolean;
@@ -3557,6 +3558,7 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     id,
     slug,
     title,
+    subheader: typeof o.subheader === "string" ? o.subheader : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt : "",
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
