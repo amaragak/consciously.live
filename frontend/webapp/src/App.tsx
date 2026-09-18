@@ -41,7 +41,7 @@ export function App() {
           element={<ManifestVisionBoardPage />}
         />
         <Route path="manifest/goal/:id" element={<ManifestGoalPage />} />
-        {/* Splat keeps CreateWorkspace / LibraryView mounted across nested URLs */}
+        <Route path="meditate/create" element={<CreatePage />} />
         <Route path="meditate/create/*" element={<CreatePage />} />
         <Route
           path="meditate/library"

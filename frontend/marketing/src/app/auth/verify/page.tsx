@@ -18,7 +18,11 @@ type Phase = "working" | "needsName" | "savingName" | "err" | "redirect";
 async function goPostAuth(router: ReturnType<typeof useRouter>): Promise<void> {
   const dest = postAuthDestination("/");
   if (/^https?:\/\//i.test(dest)) {
-    await navigateAuthDestination(dest);
+    const ok = await navigateAuthDestination(dest);
+    if (!ok) {
+      // Stay on marketing home rather than dumping into a signed-out SPA.
+      router.replace("/");
+    }
     return;
   }
   router.replace(dest);

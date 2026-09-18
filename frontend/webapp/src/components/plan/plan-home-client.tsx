@@ -484,7 +484,7 @@ export function PlanHomeClient() {
     params.delete("new");
     const qs = params.toString();
     navigate(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
-  }, [hydrated, cloudReady, router]);
+  }, [hydrated, cloudReady, navigate]);
 
   // Guests never wait on the cloud provider — missing provider used to brick /manifest/my
   // on eternal "Loading…". Seed + paint from local demos immediately.

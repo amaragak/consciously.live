@@ -89,7 +89,13 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
       await loginAsMedimadeGuest();
       exitMarketingPreviewMode();
       rememberAuthNext(next);
-      await navigateAuthDestination(postAuthDestination(next));
+      const ok = await navigateAuthDestination(postAuthDestination(next));
+      if (!ok) {
+        setError(
+          "Guest session started, but the app handoff isn’t available yet.",
+        );
+        setGuestBusy(false);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not start guest session",
@@ -110,7 +116,11 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
       rememberAuthNext(next);
       const dest = postAuthDestination(next);
       if (/^https?:\/\//i.test(dest)) {
-        await navigateAuthDestination(dest);
+        const ok = await navigateAuthDestination(dest);
+        if (!ok) {
+          setError("Could not open the app (session handoff unavailable).");
+          setResumeBusy(false);
+        }
         return;
       }
       router.replace(dest);

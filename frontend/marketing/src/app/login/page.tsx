@@ -79,7 +79,13 @@ function LoginInner() {
       await loginAsMedimadeGuest();
       exitMarketingPreviewMode();
       rememberAuthNext(next);
-      await navigateAuthDestination(postAuthDestination(next));
+      const ok = await navigateAuthDestination(postAuthDestination(next));
+      if (!ok) {
+        setError(
+          "Guest session started, but the app handoff isn’t available yet. Stay on marketing or retry after deploy.",
+        );
+        setGuestBusy(false);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not start guest session",
@@ -100,7 +106,14 @@ function LoginInner() {
       rememberAuthNext(next);
       const dest = postAuthDestination(next);
       if (/^https?:\/\//i.test(dest)) {
-        await navigateAuthDestination(dest);
+        const ok = await navigateAuthDestination(dest);
+        if (!ok) {
+          setError(
+            "Could not open the app (session handoff unavailable). Try again after a backend deploy, or use Open app once handoff is live.",
+          );
+          setResumeBusy(false);
+          return;
+        }
         return;
       }
       router.replace(dest);

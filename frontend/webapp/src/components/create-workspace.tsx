@@ -2125,7 +2125,7 @@ export function CreateWorkspace({
         });
       }
     })();
-  }, [seedJournalContext, seedPlanContext, initialDraftSk, router]);
+  }, [seedJournalContext, seedPlanContext, initialDraftSk, navigate]);
 
   useEffect(() => {
     if (!seedPlanContext) return;
@@ -2245,7 +2245,7 @@ export function CreateWorkspace({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot Plan→Create handoff; avoid re-running when session length changes.
-  }, [seedPlanContext, seedJournalContext, initialDraftSk, router]);
+  }, [seedPlanContext, seedJournalContext, initialDraftSk, navigate]);
 
   useEffect(() => {
     void listFishSpeakers()
@@ -2853,7 +2853,7 @@ export function CreateWorkspace({
     setIntroTypingDone(true);
     setPhase("styleQuestions");
     const href = createHrefForNav({ path: "style", styleStep: "questions" });
-    // Sync before router.push so breadcrumbs see the type name in one update.
+    // Sync before navigate so breadcrumbs see the type name in one update.
     patchCreateSession({
       meditationStyle: label,
       pendingStyleType: label,
@@ -3382,7 +3382,7 @@ export function CreateWorkspace({
         restoreOneShotPromptPicker();
       }
     }
-  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, router, seedJournalContext, seedPlanContext]);
+  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, navigate, seedJournalContext, seedPlanContext]);
 
   useEffect(() => {
     if (!sessionHydrated) return;

@@ -169,8 +169,9 @@ export function normalizeAppPathname(pathname: string): string {
 }
 
 /**
- * If this marketing root should bounce signed-in users into the app, return
- * the destination. Otherwise null (`/` is handled in `app/page.tsx`).
+ * Marketing section roots used to bounce signed-in users into the SPA.
+ * Kept for callers that still map “section → app path”; home / marketing
+ * browsing no longer auto-redirects — use SiteHeader “Go to dashboard”.
  */
 export function signedInDestinationForMarketingRoot(
   pathname: string,
@@ -185,12 +186,13 @@ export function signedInDestinationForMarketingRoot(
 }
 
 /**
- * After magic-link verify: SPA-moved paths (and signed-in home `/`) go to the
- * Vite app; everything else stays on marketing until that section is migrated.
+ * After magic-link verify: SPA-moved paths go to the Vite app; `/` and other
+ * marketing pages stay on marketing (enter the app via “Go to dashboard”).
  */
 export function postAuthDestination(fallback = "/"): string {
   const next = consumeAuthNext(fallback);
-  if (next === "/" || isSpaAppPath(next)) {
+  if (next === "/") return next;
+  if (isSpaAppPath(next)) {
     return appHref(spaPathForAppPath(next));
   }
   return next;

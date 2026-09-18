@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo-mark";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
@@ -26,6 +26,7 @@ import {
   isMarketingPreviewMode,
 } from "@/lib/marketing-preview";
 import { markSpaClientNavigation } from "@/lib/spa-client-nav";
+import { navigateToSpa } from "@/lib/spa-handoff";
 
 /** Marketing / logged-out top nav — section roots only (no app flyouts). */
 const marketingNav: { href: string; label: string }[] = [
@@ -73,6 +74,59 @@ function ColorSchemeToggle({ className = "" }: { className?: string }) {
   );
 }
 
+function AccountMenu({
+  label,
+  onSignOut,
+}: {
+  label: string;
+  onSignOut: () => void;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      const el = detailsRef.current;
+      if (!el?.open) return;
+      if (e.target instanceof Node && !el.contains(e.target)) {
+        el.open = false;
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
+  return (
+    <details ref={detailsRef} className="relative">
+      <summary
+        aria-label="Account menu"
+        title={label}
+        className="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-marketing-nav-chrome text-nav-muted transition-[background-color,color,border-color] duration-150 ease-out hover:bg-nav-active hover:text-nav-foreground [&::-webkit-details-marker]:hidden"
+      >
+        <User aria-hidden className="size-4" strokeWidth={2} />
+      </summary>
+      <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card py-2 shadow-lg">
+        <p
+          className="truncate px-4 py-2 text-sm font-medium text-foreground"
+          title={label}
+        >
+          {label}
+        </p>
+        <div className="my-1 border-t border-border" role="separator" />
+        <button
+          type="button"
+          onClick={() => {
+            if (detailsRef.current) detailsRef.current.open = false;
+            onSignOut();
+          }}
+          className="block w-full px-4 py-2 text-left text-sm text-muted transition-colors hover:bg-accent-soft/50 hover:text-foreground"
+        >
+          Sign out
+        </button>
+      </div>
+    </details>
+  );
+}
+
 export function SiteHeader() {
   const pathname = usePathname() || "/";
   const prevPathnameRef = useRef(pathname);
@@ -82,6 +136,8 @@ export function SiteHeader() {
   const [sessionLabel, setSessionLabel] = useState<string | null>(null);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
+  const [dashboardBusy, setDashboardBusy] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   useEffect(() => {
     if (prevPathnameRef.current !== pathname) {
@@ -118,14 +174,37 @@ export function SiteHeader() {
     try {
       await loginAsMedimadeGuest();
       exitMarketingPreviewMode();
-      // Hard navigation so app chrome mounts even if SPA listeners race.
-      window.location.assign("/");
+      const ok = await navigateToSpa("/");
+      if (!ok) {
+        // Handoff unavailable — stay on marketing signed in.
+        window.location.assign("/");
+      }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Guest login failed";
       console.error("[preview-as-guest]", err);
       setGuestError(msg);
       setGuestBusy(false);
+    }
+  }
+
+  async function goToDashboard() {
+    setDashboardBusy(true);
+    setDashboardError(null);
+    try {
+      exitMarketingPreviewMode();
+      const ok = await navigateToSpa("/");
+      if (!ok) {
+        setDashboardError(
+          "Couldn’t open the app (session handoff unavailable).",
+        );
+        setDashboardBusy(false);
+      }
+    } catch (err) {
+      setDashboardError(
+        err instanceof Error ? err.message : "Couldn’t open the app",
+      );
+      setDashboardBusy(false);
     }
   }
 
@@ -181,19 +260,18 @@ export function SiteHeader() {
             <ColorSchemeToggle className="ml-1" />
             {showSignedInChrome ? (
               <div className="ml-1 flex items-center gap-2">
-                <span
-                  className="hidden max-w-[10rem] truncate text-xs text-nav-muted md:inline"
-                  title={sessionLabel ?? ""}
-                >
-                  {sessionLabel ?? "Signed in"}
-                </span>
                 <button
                   type="button"
-                  onClick={() => clearMedimadeSession()}
-                  className="rounded-lg border border-marketing-nav-chrome px-3 py-2 text-sm text-nav-muted transition-[background-color,color,border-color] duration-150 ease-out hover:bg-nav-active hover:text-nav-foreground"
+                  disabled={dashboardBusy}
+                  onClick={() => void goToDashboard()}
+                  className="rounded-lg accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
-                  Sign out
+                  {dashboardBusy ? "Opening…" : "Dashboard"}
                 </button>
+                <AccountMenu
+                  label={sessionLabel ?? "Signed in"}
+                  onSignOut={() => clearMedimadeSession()}
+                />
               </div>
             ) : (
               <Link
@@ -203,12 +281,14 @@ export function SiteHeader() {
                 Sign in
               </Link>
             )}
-            <Link
-              href="/pro"
-              className="pro-header-cta ml-2 rounded-xl px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
-            >
-              Pro
-            </Link>
+            {dashboardError ? (
+              <p
+                className="ml-2 max-w-[12rem] text-xs text-danger"
+                role="alert"
+              >
+                {dashboardError}
+              </p>
+            ) : null}
           </nav>
           <div className="flex items-center gap-2 sm:hidden">
             {!showSignedInChrome ? (
@@ -269,16 +349,35 @@ export function SiteHeader() {
                   </button>
                 ) : null}
                 {showSignedInChrome ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearMedimadeSession();
-                      closeMobile();
-                    }}
-                    className="block w-full px-4 py-2 text-left text-sm text-muted hover:bg-accent-soft/50"
-                  >
-                    Sign out
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={dashboardBusy}
+                      onClick={() => {
+                        void goToDashboard();
+                        closeMobile();
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm font-semibold text-foreground hover:bg-accent-soft/50"
+                    >
+                      {dashboardBusy ? "Opening…" : "Dashboard"}
+                    </button>
+                    <p
+                      className="truncate px-4 py-2 text-sm font-medium text-foreground"
+                      title={sessionLabel ?? ""}
+                    >
+                      {sessionLabel ?? "Signed in"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearMedimadeSession();
+                        closeMobile();
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm text-muted hover:bg-accent-soft/50"
+                    >
+                      Sign out
+                    </button>
+                  </>
                 ) : (
                   <Link
                     href="/login"
@@ -288,14 +387,11 @@ export function SiteHeader() {
                     Sign in
                   </Link>
                 )}
-                <Link
-                  href="/pro"
-                  onClick={closeMobile}
-                  className="block px-4 py-2 text-sm font-medium text-accent-link hover:bg-accent-soft/50"
-                >
-                  Pro
-                </Link>
-              </div>
+                {dashboardError ? (
+                  <p className="px-4 py-2 text-xs text-danger" role="alert">
+                    {dashboardError}
+                  </p>
+                ) : null}              </div>
             </details>
           </div>
         </div>

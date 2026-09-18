@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { spaPathForAppPath } from "@/lib/app-origins";
 import { navigateToSpa } from "@/lib/spa-handoff";
 
 /** Soft-redirect authenticated marketing routes to the Vite SPA (path + query preserved). */
 export function SpaRedirect({ children }: { children?: React.ReactNode }) {
+  const [failed, setFailed] = useState(false);
+
   useEffect(() => {
-    const raw = `${window.location.pathname}${window.location.search}`;
-    void navigateToSpa(spaPathForAppPath(raw));
+    let cancelled = false;
+    void (async () => {
+      const raw = `${window.location.pathname}${window.location.search}`;
+      const ok = await navigateToSpa(spaPathForAppPath(raw));
+      if (!cancelled && !ok) setFailed(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -19,7 +28,20 @@ export function SpaRedirect({ children }: { children?: React.ReactNode }) {
         </div>
       ) : null}
       <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
-        Redirecting to app…
+        {failed ? (
+          <>
+            Couldn’t open the app from this origin (session handoff unavailable).{" "}
+            <a
+              href="/login"
+              className="text-accent-link underline-offset-2 hover:underline"
+            >
+              Sign in again
+            </a>{" "}
+            or stay on the marketing site.
+          </>
+        ) : (
+          "Redirecting to app…"
+        )}
       </div>
     </>
   );

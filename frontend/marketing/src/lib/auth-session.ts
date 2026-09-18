@@ -63,6 +63,11 @@ export function ensureHasSessionHintCookie(): void {
   setHasSessionHintCookie();
 }
 
+/** Drop the SSR chrome hint when there is no usable access JWT. */
+export function clearHasSessionHintCookieIfPresent(): void {
+  clearHasSessionHintCookie();
+}
+
 let memoryAccessJwt: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
 let accessRefreshTimer: ReturnType<typeof setTimeout> | null = null;
