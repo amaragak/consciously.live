@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Deploy marketing (Next.js) and/or app (Vite SPA) via SST.
 #
+# Prod is owned by GitHub Actions (.github/workflows/deploy.yml). Do not run
+# local --stage prod/production unless MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1 —
+# overlapping local + CI deploys fight over the SST state lock.
+#
 # Loads ../.env when present so NEXT_PUBLIC_* / VITE_* are available at build time.
 #
 # Usage (from repo root or anywhere):
@@ -105,6 +109,14 @@ done
 
 if [[ "$STAGE" != "dev" && "$STAGE" != "prod" ]]; then
   echo "error: --stage must be \"dev\" or \"prod\" (got: $STAGE)" >&2
+  exit 1
+fi
+
+# Prod deploys: GitHub Actions only (avoids SST state-lock races with CI).
+if [[ "$STAGE" == "prod" && "${GITHUB_ACTIONS:-}" != "true" && "${MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY:-}" != "1" ]]; then
+  echo "error: prod deploys are owned by GitHub Actions (.github/workflows/deploy.yml)." >&2
+  echo "        Push to main or re-run the Deploy workflow." >&2
+  echo "        Emergency local only: MEDIMADE_ALLOW_LOCAL_PROD_DEPLOY=1 $0 --stage prod …" >&2
   exit 1
 fi
 
