@@ -2,7 +2,9 @@
 
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AppFooter } from "@/components/app-footer";
 import { useLibraryPlayer } from "@/components/library-player-provider";
+import { shouldShowAppFooter } from "@/lib/app-footer-visibility";
 import {
   FOCUS_PATTERN_CHANGED_EVENT,
   loadFocusPattern,
@@ -65,6 +67,7 @@ export function MainShell({
   const isFocusApp =
     layout === "app" &&
     (pathname === "/focus/my" || pathname.startsWith("/focus/my/"));
+  const showFooter = shouldShowAppFooter(pathname, layout);
   const contentRef = useRef<HTMLDivElement>(null);
   const patternTileActive = !isHeroPage;
   const tileHeightPx = usePatternTileHeight(contentRef, patternTileActive);
@@ -110,6 +113,7 @@ export function MainShell({
         className="relative z-[1] flex min-h-0 w-full flex-1 flex-col"
       >
         {children}
+        {showFooter ? <AppFooter /> : null}
       </div>
     </main>
   );

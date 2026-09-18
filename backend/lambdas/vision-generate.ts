@@ -112,7 +112,7 @@ async function polishVisionPromptWithHaiku(
     "You write image prompts for a personal vision board.",
     "A self-reference photo of the real person is attached to the image model — your job is the TEXT prompt only.",
     "Optional supporting reference photos may also be attached (people, pets, places) — each has a user description.",
-    "Output ONE cohesive scene prompt that guides Gemini to place THAT person in the scene looking their absolute best.",
+    "Output ONE cohesive scene prompt that guides Gemini to place THAT person in an aspirational setting — looking their best, with the environment as important as the figure.",
     "",
     "Identity (must keep):",
     "- Same person as the primary self-reference: face identity, age range, hair color/style family, skin tone, body type, distinctive features.",
@@ -123,7 +123,7 @@ async function polishVisionPromptWithHaiku(
     "- Do not invent extra people/pets that aren't in the scene idea or supporting refs.",
     "",
     "Complimentary enhancement (critical — this is a glow-up, not a documentary copy):",
-    "- Make them clearly MORE attractive than a casual selfie — premium AI portrait / lifestyle campaign quality of the SAME person.",
+    "- Make them clearly MORE attractive than a casual selfie — premium lifestyle / campaign quality of the SAME person (still wide enough to see the scene).",
     "- Actively REMOVE common unflattering cues from everyday photos: dark under-eye circles / patches, eye bags, tiredness, dull or sallow skin, redness, blotchiness, harsh shadows in eye sockets, visible stress lines.",
     "- Eyes: bright, rested, well-slept look with clear whites and soft catchlights — never shadowed, sunken, or heavy under the eyes.",
     "- Skin: even luminous tone, healthy glow, refined texture — like flattering beauty retouching, not plastic/filtered erasure of identity.",
@@ -132,13 +132,14 @@ async function polishVisionPromptWithHaiku(
     "- Do NOT amplify or faithfully reproduce facial flaws from the reference. Identity stays; tiredness and dark patches go.",
     "- Avoid: muddy skin, washed-out light, unflattering angles, double-chin camera height, plastic over-airbrush that invents a different face.",
     "",
-    "Composition (critical for a vision board — person AND situation):",
-    "- Two equal priorities: (1) the person recognizably present, (2) the SITUATION clearly readable.",
-    "- Prefer medium-wide / environmental framing: full body or 3/4 figure with space around them so the scene, props, and setting are obvious.",
-    "- The person should usually occupy roughly 35–55% of the frame — NOT a tight head-and-shoulders crop.",
-    "- Key situational elements from the user's idea (pile of money, beach, kitchen, trail, desk, etc.) must be LARGE and central enough to read at a glance — never tiny strips at the bottom edge or blurred corners.",
-    "- Pull the camera back; show where they are and what they are doing. Lifestyle editorial / cinematic still, not a selfie portrait.",
-    "- Explicitly state framing in the prompt (e.g. 'medium-wide shot, full body seated on a large visible pile of cash, environment readable').",
+    "Composition (critical for a vision board — person AND environment, equal weight):",
+    "- Two equal priorities: (1) the person recognizably present, (2) the ENVIRONMENT / situation clearly readable — setting is not background filler.",
+    "- Default camera: a little FURTHER BACK than a typical lifestyle portrait — wide / medium-wide environmental framing.",
+    "- Prefer full-body or loose three-quarter figure with generous space around them so architecture, landscape, room, props, and context dominate as much as the person.",
+    "- The person should usually occupy roughly **20–40%** of the frame (not half-plus). Environment should fill a similar or larger share.",
+    "- FORBIDDEN by default: tight head-and-shoulders, selfie framing, face filling the center, medium close-up that crops away the room/scene.",
+    "- Key situational elements from the user's idea (beach, kitchen, trail, desk, city, home, etc.) must be LARGE and legible at a glance — never tiny strips at the edges or soft blur behind a dominant face.",
+    "- Explicitly state framing in the prompt (e.g. 'wide environmental shot, full body standing in a sunlit open-plan kitchen overlooking the sea, setting and figure equally clear').",
     "",
     "Vision-board aesthetic:",
     "- Photorealistic, warm, hopeful, cinematic editorial — aspirational magazine/campaign quality.",
@@ -160,7 +161,7 @@ async function polishVisionPromptWithHaiku(
   }
   userParts.push(
     "",
-    "Write one improved image prompt that keeps their identity, makes them look more attractive (soften under-eye darkness), AND frames the shot so the situation is clearly visible — not a tight close-up that crops away the scene.",
+    "Write one improved image prompt that keeps their identity, makes them look more attractive (soften under-eye darkness), AND frames the shot with the camera further back so the environment is as important as the person — not a centered portrait that crops away the scene.",
   );
 
   const res = await fetch(ANTHROPIC_URL, {
@@ -436,7 +437,7 @@ export async function handler(
   const instructionLines = [
     "Create a single cohesive vision-board image.",
     "IMAGE 1 is the PRIMARY SUBJECT (vision-board owner). Keep their identity (same face, age range, hair family, skin tone, body type) — recognizably them, not a different model.",
-    "CRITICAL GLOW-UP: they must look MORE physically attractive than IMAGE 1 — like a flattering beauty-retouched campaign portrait of the same person, never a less-attractive or more-tired version.",
+    "CRITICAL GLOW-UP: they must look MORE physically attractive than IMAGE 1 — flattering beauty-retouched lifestyle campaign quality of the same person, never a less-attractive or more-tired version.",
     "Actively correct unflattering cues that often appear in selfies/reference photos:",
     "- Remove or strongly soften dark under-eye circles, patches, bags, and shadowing in the eye sockets.",
     "- Remove tired / sleep-deprived look; eyes bright, rested, clear whites, soft catchlights.",
@@ -446,12 +447,14 @@ export async function handler(
     "Beauty lighting: soft key + gentle fill that lifts the midface and under-eyes; warm highlights; flattering angle and posture; healthy hair.",
     "If the output would look less attractive than the reference, revise toward a complimentary glow-up instead.",
     "",
-    "COMPOSITION (vision board = person + situation, both must read clearly):",
-    "- Do NOT crop as a tight head-and-shoulders or selfie close-up. Pull the camera back.",
-    "- Prefer medium-wide / environmental framing: full body or three-quarter figure with readable setting and props.",
-    "- Person roughly 35–55% of the frame; the rest shows the situation they are in.",
-    "- Every important situational element in the scene description (e.g. a pile of money they are sitting on) must be LARGE, sharp, and clearly visible — not tiny scraps at the bottom edge or buried in blur.",
-    "- If they are sitting on / interacting with something, show that object fully enough that a viewer instantly understands the story.",
+    "COMPOSITION (vision board = person + environment, equal weight — camera further back by default):",
+    "- Do NOT make the person the sole central focus filling most of the frame.",
+    "- FORBIDDEN: tight head-and-shoulders, selfie crop, face-dominant center portrait, medium close-up that hides the setting.",
+    "- Pull the camera FURTHER BACK than a typical portrait. Prefer wide / medium-wide environmental framing.",
+    "- Full body or loose three-quarter figure with generous space around them; room, landscape, architecture, and props must read clearly.",
+    "- Person roughly **20–40%** of the frame; environment a similar or larger share — setting is as important as the figure.",
+    "- Every important situational element in the scene description must be LARGE, sharp, and clearly visible — not tiny scraps at the edges or soft bokeh behind a dominant face.",
+    "- If they are sitting on / interacting with something, show that object and the surrounding place fully enough that a viewer instantly understands the story and the world they are in.",
   ];
   if (loadedExtras.length) {
     instructionLines.push(

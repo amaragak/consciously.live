@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconArrowRight, IconChevronDown, IconEye, IconLoader2, IconPencil, IconRefresh, IconSparkles, IconWind } from "@tabler/icons-react";
+import { IconChevronDown, IconEye, IconLoader2, IconPencil, IconRefresh, IconSparkles, IconWind } from "@tabler/icons-react";
+import { LifeAreaCard } from "@/components/plan/life-area-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   createPlanDream,
   dreamExcerpt,
@@ -75,7 +77,6 @@ import {
   VISION_BOARD_GRID_SLOT_COUNT,
 } from "@/components/plan/vision-board-mosaic";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
-import { lifeAreaCardBgVars } from "@/lib/ideate-life-area-colors";
 import {
   ensureIdeateManifesto,
   loadStoredManifesto,
@@ -135,6 +136,166 @@ function formatCheckInDate(iso: string | null): string {
   } catch {
     return "—";
   }
+}
+
+function BandRowsSkeleton({
+  rows = 3,
+  large = false,
+}: {
+  rows?: number;
+  large?: boolean;
+}) {
+  return (
+    <ul className="flex flex-col gap-4" aria-hidden>
+      {Array.from({ length: rows }, (_, i) => (
+        <li key={i} className="flex items-start gap-4">
+          <Skeleton className="mt-1.5 h-3 w-6 shrink-0" />
+          <Skeleton
+            className={`max-w-lg flex-1 ${large ? "h-7 sm:h-8" : "h-5"}`}
+            style={{ width: `${72 - i * 10}%` }}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Same layout chrome as the loaded page; slots use shared `loading` components. */
+function ManifestOverviewSkeleton({
+  heroBgClassName,
+}: {
+  heroBgClassName: string;
+}) {
+  return (
+    <div
+      className="min-h-[calc(100vh-3.5rem)] pb-20"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <span className="sr-only">Loading Manifest overview</span>
+
+      <div className="sm:hidden">
+        <section
+          className={`home-hero group/hero relative w-full ${heroBgClassName}`}
+          aria-label="Vision board"
+        >
+          <div className="w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+            <div className="w-max min-w-full">
+              <VisionBoardMosaic
+                layout="strip"
+                loading
+                colors={VISION_BOARD_EMPTY_COLORS}
+                sizeClassName="w-max min-w-full"
+                gapClassName="gap-1"
+                radiusClassName="rounded-none"
+                cellRadiusClassName="rounded-none"
+              />
+            </div>
+          </div>
+        </section>
+        <div className="bg-black px-4 pb-5 pt-4">
+          <div className="h-5 w-[92%] animate-pulse rounded-md bg-white/15" />
+          <div className="mt-2.5 h-5 w-[70%] animate-pulse rounded-md bg-white/10" />
+          <div className="mx-auto mt-4 h-10 w-44 animate-pulse rounded-full bg-white/15" />
+        </div>
+      </div>
+
+      <section
+        className={`home-hero home-hero--ideate-depth group/hero relative hidden w-full sm:block ${heroBgClassName}`}
+        aria-label="Vision board"
+      >
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
+          <div className="relative w-full">
+            <VisionBoardMosaic
+              layout="grid"
+              loading
+              colors={VISION_BOARD_EMPTY_COLORS}
+              sizeClassName="w-full"
+              gapClassName="gap-2.5 sm:gap-3"
+              radiusClassName="rounded-none"
+              cellRadiusClassName="rounded-md"
+            />
+            <div className="absolute left-1/2 top-1/2 z-[2] w-[min(100%,34rem)] -translate-x-1/2 -translate-y-1/2 px-6 text-center sm:w-[min(100%,38rem)]">
+              <div className="mx-auto h-6 w-[88%] animate-pulse rounded-md bg-white/20" />
+              <div className="mx-auto mt-3 h-6 w-[64%] animate-pulse rounded-md bg-white/15" />
+              <div className="mx-auto mt-6 h-10 w-44 animate-pulse rounded-full bg-white/20" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
+        <section
+          className="scroll-mt-20 pb-8 pt-8 sm:pb-10 sm:pt-10"
+          aria-labelledby="ideate-life-areas-heading-skel"
+        >
+          <h2
+            id="ideate-life-areas-heading-skel"
+            className="mb-1.5 font-sans text-[15px] font-medium uppercase tracking-[0.08em] text-muted"
+          >
+            Your life areas
+          </h2>
+          <p className="mb-5 max-w-xl font-sans text-sm text-muted sm:mb-6">
+            Add the areas of your life you want to grow.
+          </p>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:gap-[10px]">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="min-w-0">
+                <LifeAreaCard loading creationIndex={i} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      </section>
+
+      <div className="w-full">
+        <div className="w-full border-b-[0.5px] border-marketing-ink/15 bg-marketing-band-ideate">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <IdeateCollapsibleSection
+              variant="band"
+              loading
+              eyebrow="Values"
+              summary=""
+              collapsed={false}
+              onToggle={() => {}}
+            >
+              <BandRowsSkeleton rows={3} large />
+            </IdeateCollapsibleSection>
+          </div>
+        </div>
+
+        <div className="w-full border-b-[0.5px] border-marketing-ink/15 bg-marketing-band-d">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <IdeateCollapsibleSection
+              variant="band"
+              loading
+              eyebrow="Meaningful quotes"
+              summary=""
+              collapsed={false}
+              onToggle={() => {}}
+            >
+              <BandRowsSkeleton rows={2} large />
+            </IdeateCollapsibleSection>
+          </div>
+        </div>
+
+        <div className="w-full border-b-[0.5px] border-marketing-ink/15 bg-marketing-band-ideate">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <IdeateCollapsibleSection
+              variant="band"
+              loading
+              eyebrow="Questions to yourself"
+              summary=""
+              collapsed={false}
+              onToggle={() => {}}
+            >
+              <BandRowsSkeleton rows={3} />
+            </IdeateCollapsibleSection>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PlanHomeClient() {
@@ -818,11 +979,9 @@ export function PlanHomeClient() {
 
   if (!hydrated || !cloudReady) {
     return (
-      <div className="min-h-[calc(100vh-3.5rem)] pb-16">
-        <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
-          <p className="text-sm text-muted">Loading…</p>
-        </section>
-      </div>
+      <ManifestOverviewSkeleton
+        heroBgClassName={getIdeateHeroBgOption(heroBg).className}
+      />
     );
   }
 
@@ -1246,39 +1405,18 @@ export function PlanHomeClient() {
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:gap-[10px]">
             {orderedDreams.map((d) => {
               const snippet = lifeAreaSnippet(d);
-              const bgVars = lifeAreaCardBgVars(
-                lifeAreaCreationIndex.get(d.id) ?? 0,
-              );
               const lastInteracted = formatCheckInDate(
                 d.updatedAt || d.createdAt,
               );
               return (
                 <li key={d.id} className="min-w-0">
-                  <Link
+                  <LifeAreaCard
                     href={`/manifest/goal/${encodeURIComponent(d.id)}`}
-                    className="life-area-card group relative flex cursor-pointer flex-col rounded-[4px] px-4 py-3 shadow-[0_4px_14px_rgba(0,0,0,0.08),0_1px_4px_rgba(0,0,0,0.05)] transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-[0_8px_20px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_14px_rgba(0,0,0,0.35),0_1px_4px_rgba(0,0,0,0.25)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.45),0_2px_6px_rgba(0,0,0,0.3)] sm:aspect-square sm:p-[22px] sm:shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] sm:hover:-translate-y-[3px] sm:hover:shadow-[0_16px_40px_rgba(0,0,0,0.16),0_4px_12px_rgba(0,0,0,0.1)] dark:sm:shadow-[0_8px_24px_rgba(0,0,0,0.45),0_2px_8px_rgba(0,0,0,0.3)] dark:sm:hover:shadow-[0_16px_40px_rgba(0,0,0,0.55),0_4px_12px_rgba(0,0,0,0.35)]"
-                    style={bgVars}
-                  >
-                    <h3 className="shrink-0 truncate font-display text-base font-medium leading-snug tracking-tight text-[#1E2530] dark:text-[#F4F0E8] sm:pr-2 sm:text-xl sm:text-[1.375rem]">
-                      {d.title.trim() || "Untitled"}
-                    </h3>
-                    <p
-                      className={`mt-0.5 font-sans text-[12px] leading-snug text-[rgba(60,35,15,0.6)] dark:text-[#A8B0BC] max-sm:truncate sm:mt-2 sm:line-clamp-3 sm:min-h-0 sm:flex-1 sm:text-sm sm:leading-relaxed ${
-                        snippet ? "" : "italic"
-                      }`}
-                    >
-                      {snippet ?? "Nothing written yet"}
-                    </p>
-                    <p className="mt-1.5 shrink-0 font-sans text-[11px] leading-snug text-[rgba(60,35,15,0.4)] dark:text-[#A8B0BC]/70 sm:mt-auto sm:pt-3 sm:pr-11">
-                      Last interacted on {lastInteracted}
-                    </p>
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute bottom-[16px] right-[16px] inline-flex h-9 w-9 translate-x-1 items-center justify-center rounded-full border border-[#1E2530] bg-transparent text-[#1E2530] opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 max-md:hidden dark:border-[#F4F0E8] dark:text-[#F4F0E8]"
-                    >
-                      <IconArrowRight size={16} stroke={2} />
-                    </span>
-                  </Link>
+                    title={d.title}
+                    snippet={snippet}
+                    lastInteracted={lastInteracted}
+                    creationIndex={lifeAreaCreationIndex.get(d.id) ?? 0}
+                  />
                 </li>
               );
             })}

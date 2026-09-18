@@ -33,6 +33,7 @@ import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type ProjectTab =
   | "vision"
@@ -41,6 +42,35 @@ type ProjectTab =
   | "whiteboard"
   | "steps"
   | "meditations";
+
+function PlanGoalWorkspaceSkeleton() {
+  return (
+    <div
+      className="min-h-[calc(100vh-3.5rem)]"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <span className="sr-only">Loading life area</span>
+      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
+        <div className="flex flex-col gap-3 border-b border-border/70 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <div className="flex gap-5">
+            <Skeleton className="h-4 w-14" />
+            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <Skeleton className="h-8 w-36 rounded-full" />
+        </div>
+        <div className="py-8">
+          <Skeleton className="h-8 w-[min(100%,18rem)]" />
+          <Skeleton className="mt-3 h-4 w-[min(100%,28rem)]" />
+          <Skeleton className="mt-8 h-40 w-full rounded-xl" />
+          <Skeleton className="mt-4 h-24 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function tabFromSearchParams(sp: URLSearchParams): ProjectTab {
   const t = sp.get("tab");
@@ -164,25 +194,22 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
   }
 
   if ((isMedimadeSessionActive() && !cloudReady) || missing || !dream) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-20 sm:px-6">
-        <p className="text-muted">
-          {isMedimadeSessionActive() && !cloudReady
-            ? "Loading…"
-            : missing
-              ? "This project isn’t here anymore—or the link is old."
-              : "Loading…"}
-        </p>
-        {missing ? (
+    if (missing) {
+      return (
+        <div className="mx-auto max-w-2xl px-4 py-20 sm:px-6">
+          <p className="text-muted">
+            This project isn’t here anymore—or the link is old.
+          </p>
           <Link
             href="/manifest/my"
             className="mt-6 inline-block text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
           >
             Back to Manifest
           </Link>
-        ) : null}
-      </div>
-    );
+        </div>
+      );
+    }
+    return <PlanGoalWorkspaceSkeleton />;
   }
 
   void storeTick;

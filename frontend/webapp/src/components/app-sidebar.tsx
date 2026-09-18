@@ -17,8 +17,9 @@ import {
   APP_NAV_ADMIN,
   APP_NAV_MAIN,
   activeNavSectionId,
+  defaultSidebarExpandState,
   isSubItemActive,
-  loadSidebarExpandState,
+  resolveSidebarExpandState,
   saveSidebarExpandState,
   type AppNavSection,
   type AppNavSubItem,
@@ -262,7 +263,9 @@ export function AppSidebar({
   const router = useRouter();
   const [hash, setHash] = useState("");
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(
+    defaultSidebarExpandState,
+  );
   const [lifeAreas, setLifeAreas] = useState<
     { id: string; title: string }[]
   >([]);
@@ -309,20 +312,7 @@ export function AppSidebar({
   }, []);
 
   useEffect(() => {
-    const stored = loadSidebarExpandState();
-    const active = activeNavSectionId(pathname);
-    const next: Record<string, boolean> = { ...stored };
-    for (const section of [...APP_NAV_MAIN, ...APP_NAV_ADMIN]) {
-      if (section.children?.length) {
-        if (next[section.id] === undefined) {
-          next[section.id] = true;
-        }
-      }
-    }
-    if (active && APP_NAV_MAIN.some((s) => s.id === active && s.children?.length)) {
-      if (stored[active] !== false) next[active] = true;
-    }
-    setExpanded(next);
+    setExpanded(resolveSidebarExpandState(pathname));
   }, [pathname]);
 
   function toggleSection(id: string) {

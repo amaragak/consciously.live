@@ -10,8 +10,13 @@ const PlanLifeAreaWhiteboardInner = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[min(70vh,40rem)] items-center justify-center text-sm text-muted">
-        Loading whiteboard…
+      <div
+        className="flex h-[min(70vh,40rem)] items-center justify-center"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <span className="sr-only">Loading whiteboard</span>
+        <div className="mm-skeleton h-full min-h-[12rem] w-full rounded-[12px]" />
       </div>
     ),
   },

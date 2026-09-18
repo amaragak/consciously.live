@@ -16,6 +16,7 @@ import {
 import { MixerChannel, MixerPresetChannel, MixerVoiceChannel } from "@/components/mixer-channel";
 import { SoundscapePicker } from "@/components/soundscape-picker";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+import * as Switch from "@radix-ui/react-switch";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   FISH_SPEAKERS,
@@ -1419,7 +1420,10 @@ export function CreateWorkspace({
 
   /** Dev: skip chat → audio; Generate asks the worker for a random script. */
   const [randomScript, setRandomScript] = useState(false);
-  const devRandomTranscriptRef = useRef<string | null>(null);
+  const devRandomSeedRef = useRef<{
+    style: string;
+    transcript: string;
+  } | null>(null);
 
   const [draftSk, setDraftSk] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
@@ -1542,6 +1546,9 @@ export function CreateWorkspace({
     }
     setPendingModeChoice(s.pendingModeChoice);
     setRandomScript(s.randomScript === true);
+    if (s.randomScript === true) {
+      setMeditationStyle(null);
+    }
     setJournalReflectSelectedIds(
       new Set(s.journalReflectSelectedIds.slice(0, 1)),
     );
@@ -2786,7 +2793,7 @@ export function CreateWorkspace({
   function startBranch(next: CreationPath) {
     initedCreatePathsRef.current = new Set([next]);
     setRandomScript(false);
-    devRandomTranscriptRef.current = null;
+    devRandomSeedRef.current = null;
     if (next !== "style") {
       setPendingStyleType(null);
       setStyleQuestionAnswers(emptyStyleQuestionAnswers());
@@ -2828,7 +2835,7 @@ export function CreateWorkspace({
     setScriptTargetMinutes(null);
     setMobileCreateStep("chat");
     setRandomScript(false);
-    devRandomTranscriptRef.current = null;
+    devRandomSeedRef.current = null;
     initialChatAutofocusDoneRef.current = false;
     isAtBottomRef.current = true;
   }
@@ -3005,8 +3012,9 @@ export function CreateWorkspace({
   }
 
   function beginRandomScript() {
+    // Seed is held privately until Generate — do not set meditationStyle in UI/session yet.
     const seed = pickDevRandomScriptSeed();
-    devRandomTranscriptRef.current = seed.transcript;
+    devRandomSeedRef.current = seed;
     setRandomScript(true);
     initedCreatePathsRef.current.add("style");
     setCreationPath("style");
@@ -3015,7 +3023,7 @@ export function CreateWorkspace({
     setChatBusy(false);
     setScriptLoading(false);
     setClaudeThread([]);
-    setMeditationStyle(seed.style);
+    setMeditationStyle(null);
     setInput("");
     setIntroTypingDone(true);
     setMessages([]);
@@ -3030,7 +3038,7 @@ export function CreateWorkspace({
     const href = createHrefForNav({ path: "style", mix: true });
     patchCreateSession({
       randomScript: true,
-      meditationStyle: seed.style,
+      meditationStyle: null,
       pendingStyleType: null,
       creationPath: "style",
       pathname: pathOnly(href),
@@ -3192,7 +3200,7 @@ export function CreateWorkspace({
     setPendingModeChoice(wasRandom ? "randomScript" : modeFromPath);
     setMobileCreateStep("chat");
     setRandomScript(false);
-    devRandomTranscriptRef.current = null;
+    devRandomSeedRef.current = null;
     initialChatAutofocusDoneRef.current = false;
     pushCreate({ path: "pending" });
   }
@@ -3706,8 +3714,18 @@ export function CreateWorkspace({
           ? existingScript
           : "";
 
+      const randomSeed = randomScript
+        ? (devRandomSeedRef.current ?? pickDevRandomScriptSeed())
+        : null;
+      if (randomScript && !devRandomSeedRef.current && randomSeed) {
+        devRandomSeedRef.current = randomSeed;
+      }
+      const styleForJob = randomScript
+        ? randomSeed?.style ?? null
+        : meditationStyle;
+
       const transcript = randomScript
-        ? (devRandomTranscriptRef.current?.trim() ||
+        ? (randomSeed?.transcript.trim() ||
           "User: I want a short random guided meditation.\n\nGuide: Let's begin.")
         : messages
             .filter((m) => !(m.role === "assistant" && m.variant === "script"))
@@ -3740,7 +3758,7 @@ export function CreateWorkspace({
       const creationProvenance = buildMeditationCreationProvenance({
         creationPath,
         randomScript,
-        meditationStyle,
+        meditationStyle: styleForJob,
         styleQuestionAnswers,
         chatMessages:
           creationPath === "freeflow"
@@ -3782,7 +3800,7 @@ export function CreateWorkspace({
           creationPath === "oneShot" ? oneShotPrompt : undefined,
       });
       const { jobId } = await createMeditationAudioJob({
-        meditationStyle,
+        meditationStyle: styleForJob,
         journalMode: journalMode === true,
         meditationTargetMinutes,
         ...(longerBreaks ? { longerBreaks: true } : {}),
@@ -3883,7 +3901,7 @@ export function CreateWorkspace({
         createdAt: new Date().toISOString(),
         title: metaTitle,
         description: metaDesc,
-        meditationStyle,
+        meditationStyle: styleForJob,
         speakerName,
         speakerModelId,
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
@@ -4645,7 +4663,7 @@ export function CreateWorkspace({
                 Pick a life area — optionally focus on one goal — for a visualization grounded in your dream and blockers.
               </p>
               {!planGoalsReady ? (
-                <p className="mt-1 text-[12px] text-muted sm:mt-2.5 sm:text-[13px]">
+                <p className="pointer-events-none absolute bottom-3.5 left-3.5 right-3.5 text-[12px] text-muted sm:bottom-6 sm:left-6 sm:right-6 sm:text-[13px]">
                   Checking your goals…
                 </p>
               ) : !hasPlanGoals ? (
@@ -4682,7 +4700,7 @@ export function CreateWorkspace({
                 Use a saved entry as context for your meditation.
               </p>
               {!journalPickerListReady ? (
-                <p className="mt-1 text-[12px] text-muted sm:mt-2.5 sm:text-[13px]">
+                <p className="pointer-events-none absolute bottom-3.5 left-3.5 right-3.5 text-[12px] text-muted sm:bottom-6 sm:left-6 sm:right-6 sm:text-[13px]">
                   Checking your saved journal…
                 </p>
               ) : !hasReflectableJournal ? (
@@ -5418,27 +5436,48 @@ export function CreateWorkspace({
               previewUrl={speakerPreviewUrl}
               stopNonce={voiceCardStopNonce}
             />
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-3">
-              <div className="min-w-0">
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-                  Pacing
-                </span>
-                <p className="text-xs leading-snug text-muted">
-                  {longerBreaks
-                    ? "Same length, with cued “take your time” sits of about a minute or two."
-                    : "Continuous guidance with short natural pauses between lines."}
-                </p>
-              </div>
-              <SegmentedPillTabs
+            <div className="flex flex-col gap-1.5 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                Pacing
+              </span>
+              <div
+                className="flex items-center gap-2"
+                role="group"
                 aria-label="Meditation pacing"
-                value={longerBreaks ? "longer" : "standard"}
-                onChange={(id) => setLongerBreaks(id === "longer")}
-                disabled={soundControlsDisabled}
-                options={[
-                  { id: "standard", label: "Guided" },
-                  { id: "longer", label: "Open sits" },
-                ]}
-              />
+              >
+                <span
+                  className={`text-sm font-semibold ${
+                    longerBreaks ? "text-muted" : "text-foreground"
+                  }`}
+                >
+                  Guided
+                </span>
+                <Switch.Root
+                  checked={longerBreaks}
+                  onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
+                  disabled={soundControlsDisabled}
+                  aria-label={
+                    longerBreaks
+                      ? "Switch to guided pacing"
+                      : "Switch to open sits pacing"
+                  }
+                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+                </Switch.Root>
+                <span
+                  className={`text-sm font-semibold ${
+                    longerBreaks ? "text-foreground" : "text-muted"
+                  }`}
+                >
+                  Open sits
+                </span>
+              </div>
+              <p className="text-xs leading-snug text-muted">
+                {longerBreaks
+                  ? "Same length, with cued “take your time” sits of about a minute or two."
+                  : "Continuous guidance with short natural pauses between lines."}
+              </p>
             </div>
             <div className="border-t border-border" role="separator" aria-hidden />
             <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-3">

@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { PlanGoalWorkspace } from "@/components/plan/plan-goal-workspace";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function IdeateGoalPageInner() {
   const params = useParams();
@@ -20,13 +21,24 @@ function IdeateGoalPageInner() {
   return <PlanGoalWorkspace dreamId={id} />;
 }
 
+function GoalPageFallback() {
+  return (
+    <div
+      className="mx-auto max-w-6xl px-4 py-10 sm:px-6"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <span className="sr-only">Loading life area</span>
+      <Skeleton className="h-4 w-28" />
+      <Skeleton className="mt-4 h-8 w-[min(100%,18rem)]" />
+      <Skeleton className="mt-8 h-40 w-full rounded-xl" />
+    </div>
+  );
+}
+
 export default function IdeateGoalPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="px-4 py-16 text-sm text-muted">Loading…</div>
-      }
-    >
+    <Suspense fallback={<GoalPageFallback />}>
       <IdeateGoalPageInner />
     </Suspense>
   );

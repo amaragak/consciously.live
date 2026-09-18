@@ -5,6 +5,10 @@
  * Slots prefer images when provided; remaining slots use color fills.
  */
 
+"use client";
+
+import { VisionBoardImage } from "@/components/plan/vision-board-image";
+
 export const VISION_BOARD_EXAMPLE_COLORS = [
   "#C4A882",
   "#8FA89A",
@@ -48,6 +52,8 @@ type Props = {
   radiusClassName?: string;
   /** Cell corner radius. */
   cellRadiusClassName?: string;
+  /** Pulse cells instead of images/colors — same grid chrome. */
+  loading?: boolean;
 };
 
 function MosaicCell({
@@ -56,6 +62,7 @@ function MosaicCell({
   className,
   objectPositionClassName = "object-center",
   objectPosition,
+  loading = false,
 }: {
   color: string;
   imageSrc?: string | null;
@@ -63,19 +70,23 @@ function MosaicCell({
   objectPositionClassName?: string;
   /** CSS object-position when class utilities aren't enough (e.g. center 20%). */
   objectPosition?: string;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <div
+        className={`vision-board-tile-skeleton min-h-0 min-w-0 ${className ?? ""}`}
+      />
+    );
+  }
   if (imageSrc) {
     return (
-      <div className={`relative min-h-0 min-w-0 overflow-hidden ${className ?? ""}`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageSrc}
-          alt=""
-          className={`absolute inset-0 h-full w-full object-cover ${objectPosition ? "" : objectPositionClassName}`}
-          style={objectPosition ? { objectPosition } : undefined}
-          draggable={false}
-        />
-      </div>
+      <VisionBoardImage
+        src={imageSrc}
+        frameClassName={`relative min-h-0 min-w-0 overflow-hidden ${className ?? ""}`}
+        imgClassName={`absolute inset-0 h-full w-full object-cover ${objectPosition ? "" : objectPositionClassName}`}
+        objectPosition={objectPosition}
+      />
     );
   }
   return (
@@ -95,11 +106,13 @@ export function VisionBoardMosaic({
   gapClassName = "gap-1.5",
   radiusClassName = "rounded-xl",
   cellRadiusClassName = "rounded-md",
+  loading = false,
 }: Props) {
   const palette =
     colors.length > 0 ? colors : [...VISION_BOARD_EMPTY_COLORS];
   const c = (i: number) => palette[i % palette.length]!;
   const img = (i: number) => {
+    if (loading) return null;
     const src = images?.[i];
     return typeof src === "string" && src.trim() ? src : null;
   };
@@ -109,6 +122,7 @@ export function VisionBoardMosaic({
       <div
         className={`flex h-32 shrink-0 ${gapClassName} ${radiusClassName} ${sizeClassName} ${className}`}
         aria-hidden
+        aria-busy={loading || undefined}
       >
         {Array.from({ length: VISION_BOARD_STRIP_SLOT_COUNT }, (_, i) => (
           <MosaicCell
@@ -117,6 +131,7 @@ export function VisionBoardMosaic({
             color={c(i)}
             imageSrc={img(i)}
             objectPosition="center 20%"
+            loading={loading}
           />
         ))}
       </div>
@@ -131,6 +146,7 @@ export function VisionBoardMosaic({
           gridTemplateColumns: "repeat(4, 1fr)",
         }}
         aria-hidden
+        aria-busy={loading || undefined}
       >
         {Array.from({ length: VISION_BOARD_GRID_SLOT_COUNT }, (_, i) => (
           <MosaicCell
@@ -139,6 +155,7 @@ export function VisionBoardMosaic({
             color={c(i)}
             imageSrc={img(i)}
             objectPosition="center 20%"
+            loading={loading}
           />
         ))}
       </div>
@@ -149,31 +166,37 @@ export function VisionBoardMosaic({
     <div
       className={`grid shrink-0 grid-cols-3 grid-rows-3 overflow-hidden ${gapClassName} ${radiusClassName} ${sizeClassName} ${className}`}
       aria-hidden
+      aria-busy={loading || undefined}
     >
       <MosaicCell
         className={`col-span-2 row-span-2 ${cellRadiusClassName}`}
         color={c(0)}
         imageSrc={img(0)}
+        loading={loading}
       />
       <MosaicCell
         className={cellRadiusClassName}
         color={c(1)}
         imageSrc={img(1)}
+        loading={loading}
       />
       <MosaicCell
         className={cellRadiusClassName}
         color={c(2)}
         imageSrc={img(2)}
+        loading={loading}
       />
       <MosaicCell
         className={`col-span-2 ${cellRadiusClassName}`}
         color={c(3)}
         imageSrc={img(3)}
+        loading={loading}
       />
       <MosaicCell
         className={cellRadiusClassName}
         color={c(4)}
         imageSrc={img(4)}
+        loading={loading}
       />
     </div>
   );

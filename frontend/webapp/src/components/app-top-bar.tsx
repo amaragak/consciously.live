@@ -56,6 +56,8 @@ function lifeAreaTitleFromPath(pathname: string): string | null {
 function createMeditationStyleFromSession(pathname: string): string | null {
   const s = readCreateSession();
   if (!s) return null;
+  // Random solidifies style only at generate — never show a pre-picked type in chrome.
+  if (s.randomScript === true) return null;
   const style = s.meditationStyle?.trim();
   if (style) return style;
   // Only fall back to the pending pick once we've left the type picker URL,

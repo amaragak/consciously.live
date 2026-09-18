@@ -36,6 +36,10 @@ import {
   uploadIdeateVisionMedia,
 } from "@/lib/medimade-api";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
+import {
+  VisionBoardImage,
+  VisionBoardImageSkeleton,
+} from "@/components/plan/vision-board-image";
 
 const SECTION_LABEL =
   "text-sm font-medium uppercase tracking-widest text-[#8A7566]";
@@ -991,6 +995,14 @@ export function IdeateVisionBoardClient() {
             const src = item
               ? item.imageUrl || tileUrls[item.id] || null
               : null;
+            const waitingForSrc = Boolean(
+              item &&
+                !src &&
+                (item.kind === "image" ||
+                  item.prompt ||
+                  visionItemHasImage(item) ||
+                  item.mediaId),
+            );
             const isOver = composeDragOver === slotIndex;
             const isDraggingHere =
               draggingTileId != null && draggingTileId === id;
@@ -998,7 +1010,7 @@ export function IdeateVisionBoardClient() {
               <div
                 key={`compose-slot-${slotIndex}`}
                 className={`group relative aspect-square overflow-hidden rounded-[8px] transition-[outline-color] ${
-                  src
+                  src || waitingForSrc
                     ? "bg-surface-2"
                     : "border border-dashed border-[#D4CBB8] bg-[#F5F1E7] dark:border-border dark:bg-accent-soft/20"
                 } ${
@@ -1024,11 +1036,11 @@ export function IdeateVisionBoardClient() {
               >
                 {src ? (
                   <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <VisionBoardImage
                       src={src}
                       alt={item?.label || `Mosaic slot ${slotIndex + 1}`}
-                      className="absolute inset-0 h-full w-full object-cover object-[center_20%]"
+                      frameClassName="absolute inset-0 overflow-hidden"
+                      imgClassName="absolute inset-0 h-full w-full object-cover object-[center_20%]"
                       draggable={Boolean(id)}
                       onDragStart={(e) => {
                         if (!id) {
@@ -1051,6 +1063,8 @@ export function IdeateVisionBoardClient() {
                       </span>
                     </span>
                   </>
+                ) : waitingForSrc ? (
+                  <VisionBoardImageSkeleton className="absolute inset-0 rounded-none" />
                 ) : (
                   <span className="absolute inset-0 flex items-center justify-center font-sans text-3xl font-medium text-[#8A8272]/55">
                     {slotIndex + 1}
@@ -1085,7 +1099,13 @@ export function IdeateVisionBoardClient() {
               />
             </div>
             {!hydrated ? (
-              <p className="mt-5 text-sm text-muted">Loading…</p>
+              <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {Array.from({ length: 8 }, (_, i) => (
+                  <li key={`lib-skel-${i}`}>
+                    <VisionBoardImageSkeleton className="rounded-[8px]" />
+                  </li>
+                ))}
+              </ul>
             ) : items.length === 0 ? (
               <p className="mt-5 max-w-md text-sm italic text-[#A39C8C]">
                 Nothing in your library yet — generate or upload an image to
@@ -1100,12 +1120,13 @@ export function IdeateVisionBoardClient() {
                   const src = item.imageUrl || tileUrls[item.id];
                   const open = menuTileId === item.id;
                   const versionCount = item.versions?.length ?? 0;
-                  const isImage = Boolean(
-                    src &&
-                      (item.kind === "image" ||
-                        item.prompt ||
-                        visionItemHasImage(item)),
+                  const expectsImage = Boolean(
+                    item.kind === "image" ||
+                      item.prompt ||
+                      visionItemHasImage(item) ||
+                      item.mediaId,
                   );
+                  const isImage = Boolean(src && expectsImage);
                   const canAiEdit = Boolean(item.prompt?.trim());
                   const onMosaic = composeSlotIdSet.has(item.id);
                   return (
@@ -1147,7 +1168,9 @@ export function IdeateVisionBoardClient() {
                         }}
                         className="relative block h-full w-full cursor-grab overflow-hidden rounded-[8px] border border-[#E5DFD0] text-left active:cursor-grabbing dark:border-border disabled:cursor-default"
                         style={
-                          src ? undefined : { backgroundColor: item.color }
+                          src || expectsImage
+                            ? undefined
+                            : { backgroundColor: item.color }
                         }
                         title={
                           isImage
@@ -1158,13 +1181,15 @@ export function IdeateVisionBoardClient() {
                         aria-haspopup="menu"
                       >
                         {src ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <VisionBoardImage
                             src={src}
                             alt={item.label || "Vision board tile"}
-                            className="pointer-events-none h-full w-full object-cover"
+                            frameClassName="pointer-events-none absolute inset-0 overflow-hidden"
+                            imgClassName="h-full w-full object-cover"
                             draggable={false}
                           />
+                        ) : expectsImage ? (
+                          <VisionBoardImageSkeleton className="absolute inset-0 rounded-none" />
                         ) : (
                           <span className="sr-only">{item.label}</span>
                         )}

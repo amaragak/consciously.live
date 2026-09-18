@@ -192,7 +192,17 @@ export function PlanLifeAreaMeditationsPanel({ lifeAreaId }: Props) {
   return (
     <section className="mt-8 w-full min-w-0">
       {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <ul
+          className="flex w-full min-w-0 flex-col gap-3"
+          aria-busy="true"
+          aria-label="Loading meditations"
+        >
+          {[0, 1, 2].map((i) => (
+            <li key={i}>
+              <div className="mm-skeleton h-[4.5rem] w-full rounded-[10px]" />
+            </li>
+          ))}
+        </ul>
       ) : err ? (
         <p className="text-sm text-danger">{err}</p>
       ) : rows.length === 0 ? (

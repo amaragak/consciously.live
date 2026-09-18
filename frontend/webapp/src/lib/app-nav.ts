@@ -342,7 +342,8 @@ export function buildAppBreadcrumbs(
         if (parsed.mix) {
           // Audio settings — keep path / type name trail, then Audio.
           crumbs.push({ label: stylePathLabel, href: byTypeHref });
-          if (styleName) {
+          // Random: style is not chosen until generate — omit type crumb.
+          if (styleName && !opts?.createRandomScript) {
             crumbs.push({ label: styleName, href: questionsHref });
           }
           crumbs.push({ label: "Audio", href: null });
@@ -491,6 +492,37 @@ export function loadSidebarExpandState(): Record<string, boolean> {
   } catch {
     return {};
   }
+}
+
+/** Default: every section with children is expanded (before localStorage merge). */
+export function defaultSidebarExpandState(): Record<string, boolean> {
+  const next: Record<string, boolean> = {};
+  for (const section of [...APP_NAV_MAIN, ...APP_NAV_ADMIN]) {
+    if (section.children?.length) next[section.id] = true;
+  }
+  return next;
+}
+
+/**
+ * Merge stored prefs onto defaults. Missing keys stay expanded; explicit `false` sticks.
+ * Active section is forced open unless the user explicitly collapsed it.
+ */
+export function resolveSidebarExpandState(
+  pathname: string,
+): Record<string, boolean> {
+  const stored = loadSidebarExpandState();
+  const next: Record<string, boolean> = {
+    ...defaultSidebarExpandState(),
+    ...stored,
+  };
+  const active = activeNavSectionId(pathname);
+  if (
+    active &&
+    APP_NAV_MAIN.some((s) => s.id === active && s.children?.length)
+  ) {
+    if (stored[active] !== false) next[active] = true;
+  }
+  return next;
 }
 
 export function saveSidebarExpandState(state: Record<string, boolean>): void {

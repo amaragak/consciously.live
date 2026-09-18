@@ -2,16 +2,15 @@ import type { Metadata } from "next";
 import { Caveat, DM_Sans, Fraunces } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
-import { ColorSchemeBoot } from "@/components/color-scheme-boot";
-import { LibraryPlayerProvider } from "@/components/library-player-provider";
-import { ProfileNameGate } from "@/components/profile-name-gate";
-import { AppChrome } from "@/components/app-chrome";
 import {
   HOME_HERO_PATTERN_DARK,
   HOME_HERO_PATTERN_LIGHT,
 } from "@/lib/color-scheme";
 import { homeHeroPatternCriticalCss, themeRootCss } from "@/lib/theme-colors";
-// import { SiteFooter } from "@/components/site-footer";
+import { ColorSchemeBoot } from "@/components/color-scheme-boot";
+import { LibraryPlayerProvider } from "@/components/library-player-provider";
+import { ProfileNameGate } from "@/components/profile-name-gate";
+import { AppChromeHost } from "@/components/app-chrome-host";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -70,20 +69,7 @@ export default function RootLayout({
           <Suspense fallback={null}>
             <ProfileNameGate />
           </Suspense>
-          <Suspense
-            fallback={
-              <>
-                <div
-                  className="h-14 shrink-0 border-b border-border bg-nav"
-                  aria-hidden
-                />
-                <div className="min-h-0 flex-1" />
-              </>
-            }
-          >
-            <AppChrome>{children}</AppChrome>
-          </Suspense>
-          {/* <SiteFooter /> */}
+          <AppChromeHost>{children}</AppChromeHost>
         </LibraryPlayerProvider>
       </body>
     </html>

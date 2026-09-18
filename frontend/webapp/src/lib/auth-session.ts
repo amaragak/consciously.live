@@ -8,6 +8,8 @@
  * tab rotation and stale cookies routinely return one-off "invalid" responses.
  */
 
+import { HAS_SESSION_HINT_COOKIE } from "@/lib/auth-hint-cookie";
+
 const EMAIL_KEY = "mm_session_email_v1";
 const DISPLAY_NAME_KEY = "mm_session_display_name_v1";
 const ACTIVE_KEY = "mm_session_active_v1";
@@ -20,8 +22,46 @@ const LEGACY_JWT_KEY = "mm_session_jwt_v1";
 /** Legacy client-only guest flag — cleared on real login / logout. */
 const LEGACY_GUEST_KEY = "mm_session_guest_v1";
 
+/**
+ * Same-origin rendering hint for Next.js (not a credential).
+ * Lets the server pick logged-in vs marketing chrome without seeing the JWT.
+ */
+export { HAS_SESSION_HINT_COOKIE };
+const HAS_SESSION_HINT_MAX_AGE_SEC = 30 * 24 * 60 * 60; // 30d — align with refresh TTL
+
 /** Survive HMR so parallel refresh rotations cannot race across module instances. */
 const REFRESH_LOCK_KEY = "__mm_ensure_session_inflight__";
+
+function setHasSessionHintCookie(): void {
+  if (typeof document === "undefined") return;
+  try {
+    const secure =
+      typeof window !== "undefined" && window.location.protocol === "https:"
+        ? "; Secure"
+        : "";
+    document.cookie = `${HAS_SESSION_HINT_COOKIE}=1; Path=/; Max-Age=${HAS_SESSION_HINT_MAX_AGE_SEC}; SameSite=Lax${secure}`;
+  } catch {
+    /* */
+  }
+}
+
+function clearHasSessionHintCookie(): void {
+  if (typeof document === "undefined") return;
+  try {
+    const secure =
+      typeof window !== "undefined" && window.location.protocol === "https:"
+        ? "; Secure"
+        : "";
+    document.cookie = `${HAS_SESSION_HINT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+  } catch {
+    /* */
+  }
+}
+
+/** Refresh the same-origin SSR hint after client confirms a live session. */
+export function ensureHasSessionHintCookie(): void {
+  setHasSessionHintCookie();
+}
 
 let memoryAccessJwt: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
@@ -258,6 +298,7 @@ export function setMedimadeSession(
     if (refreshToken !== undefined) {
       setMedimadeRefreshToken(refreshToken);
     }
+    setHasSessionHintCookie();
     scheduleAccessRefresh();
     window.dispatchEvent(new Event("medimade-session-changed"));
   } catch {
@@ -282,6 +323,7 @@ export function clearMedimadeSession(): void {
   } catch {
     /* */
   }
+  clearHasSessionHintCookie();
   // Wipe before notifying UI so a fast re-login cannot revive stale memory.
   void import("@/lib/ideate-cloud")
     .then((m) => {

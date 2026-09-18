@@ -25,6 +25,7 @@ import {
   saveAppSidebarCollapsed,
 } from "@/lib/app-nav";
 import {
+  ensureHasSessionHintCookie,
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
   getMedimadeSessionJwt,
@@ -60,17 +61,20 @@ function SignInOverlayHost() {
   );
 }
 
+type Props = {
+  children: ReactNode;
+  /** From same-origin `mm_has_session` cookie — SSR + first client paint must match. */
+  initialHasSessionHint: boolean;
+};
+
 /**
- * Logged-out: marketing top nav (+ optional sign-in overlay).
- * Logged-in: sidebar + minimal top bar.
- * Marketing preview keeps the JWT but uses marketing chrome.
- * Protected app URLs redirect to the marketing section with ?signin=1&next=…
+ * Single shell from the server hint; `ensureMedimadeSession` may correct after mount.
  */
-export function AppChrome({ children }: { children: ReactNode }) {
+export function AppChrome({ children, initialHasSessionHint }: Props) {
   const pathname = usePathname() || "/";
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [signedIn, setSignedIn] = useState(false);
+  const [signedIn, setSignedIn] = useState(initialHasSessionHint);
   const [marketingPreview, setMarketingPreview] = useState(false);
   const [ready, setReady] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Guest");
@@ -79,13 +83,18 @@ export function AppChrome({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const sync = () => {
-      setSignedIn(hasAppSession());
-      setMarketingPreview(isMarketingPreviewMode());
+      const nextSignedIn = hasAppSession();
+      const nextPreview = isMarketingPreviewMode();
+      setSignedIn(nextSignedIn);
+      setMarketingPreview(nextPreview);
       setAccountLabel(
         getMedimadeSessionDisplayName()?.trim() ||
           getMedimadeSessionEmail()?.trim() ||
           "Guest",
       );
+      setSidebarCollapsed(loadAppSidebarCollapsed());
+      // Keep SSR hint fresh for returning users (cookie may be missing before this deploy).
+      if (nextSignedIn) ensureHasSessionHintCookie();
       setReady(true);
     };
     void import("@/lib/auth-session").then((m) =>
@@ -103,7 +112,10 @@ export function AppChrome({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [signedIn, marketingPreview, pathname]);
 
-  const showAppChrome = signedIn && !marketingPreview;
+  // Before ready: match SSR hint. After: real session (marketing preview → nav chrome).
+  const showAppChrome = ready
+    ? signedIn && !marketingPreview
+    : initialHasSessionHint;
 
   useEffect(() => {
     if (!showAppChrome) {
@@ -160,96 +172,55 @@ export function AppChrome({ children }: { children: ReactNode }) {
   const bounceToApp = Boolean(
     showAppChrome && signedInDestinationForMarketingRoot(pathname),
   );
+  const redirectingAwayProtected = Boolean(
+    ready && gateProtected && !signedIn,
+  );
 
-  // Avoid flashing the wrong chrome (or protected page body) before session hydrate.
-  const chrome = (() => {
-    if (!ready) {
-      if (gateProtected) {
-        return (
-          <>
+  let body: ReactNode = children;
+  if (redirectingAwayProtected || bounceToApp) {
+    body = (
+      <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
+        Redirecting…
+      </div>
+    );
+  }
+
+  return (
+    <AppPrimaryTabsProvider>
+      {showAppChrome ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <AppTopBar
+            mobileSidebarOpen={mobileOpen}
+            onToggleSidebar={() => setMobileOpen((v) => !v)}
+            sidebarCollapsed={sidebarCollapsed}
+          />
+          <div className="flex min-h-0 flex-1">
             <div
-              className="h-14 shrink-0 border-b border-border bg-nav"
+              className="hidden shrink-0 md:block"
+              style={{ width: "var(--app-sidebar-w, 200px)" }}
               aria-hidden
             />
-            <MainShell>
-              <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
-                Loading…
-              </div>
-            </MainShell>
-          </>
-        );
-      }
-      return (
-        <>
-          <div
-            className="h-14 shrink-0 border-b border-border bg-nav"
-            aria-hidden
-          />
-          <MainShell>{children}</MainShell>
-        </>
-      );
-    }
-
-    if (!showAppChrome) {
-      // While redirecting away from a protected URL (no session), don't flash app content.
-      if (gateProtected && !signedIn) {
-        return (
-          <>
-            <SiteHeader />
-            <MainShell>
-              <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
-                Redirecting…
-              </div>
-            </MainShell>
-          </>
-        );
-      }
-      return (
+            <AppSidebar
+              accountLabel={accountLabel}
+              mobileOpen={mobileOpen}
+              onCloseMobile={() => setMobileOpen(false)}
+              onNavigate={() => setMobileOpen(false)}
+              collapsed={sidebarCollapsed}
+              onToggleCollapsed={toggleSidebarCollapsed}
+            />
+            <MainShell layout="app">{body}</MainShell>
+          </div>
+          <AssistantChatFab />
+        </div>
+      ) : (
         <>
           <SiteHeader />
-          <MainShell>{children}</MainShell>
+          <MainShell>{body}</MainShell>
           <Suspense fallback={null}>
             <SignInOverlayHost />
           </Suspense>
         </>
-      );
-    }
-
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <AppTopBar
-          mobileSidebarOpen={mobileOpen}
-          onToggleSidebar={() => setMobileOpen((v) => !v)}
-          sidebarCollapsed={sidebarCollapsed}
-        />
-        <div className="flex min-h-0 flex-1">
-          <div
-            className="hidden shrink-0 transition-[width] duration-200 ease-out md:block"
-            style={{ width: "var(--app-sidebar-w, 200px)" }}
-            aria-hidden
-          />
-          <AppSidebar
-            accountLabel={accountLabel}
-            mobileOpen={mobileOpen}
-            onCloseMobile={() => setMobileOpen(false)}
-            onNavigate={() => setMobileOpen(false)}
-            collapsed={sidebarCollapsed}
-            onToggleCollapsed={toggleSidebarCollapsed}
-          />
-          <MainShell layout="app">
-            {bounceToApp ? (
-              <div className="mx-auto max-w-md px-4 py-20 text-sm text-muted">
-                Redirecting…
-              </div>
-            ) : (
-              children
-            )}
-          </MainShell>
-        </div>
-        <AssistantChatFab />
-      </div>
-    );
-  })();
-
-  return <AppPrimaryTabsProvider>{chrome}</AppPrimaryTabsProvider>;
+      )}
+    </AppPrimaryTabsProvider>
+  );
 }

@@ -91,6 +91,23 @@ export function isProtectedAppPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((r) => matchesPrefix(path, r.prefix));
 }
 
+/** Protected Manifest (and legacy ideate/dream/plan) routes — own their loading UI. */
+const MANIFEST_APP_PREFIXES = [
+  "/manifest/my",
+  "/manifest/goal",
+  "/ideate/my",
+  "/ideate/goal",
+  "/dream/my",
+  "/dream/goal",
+  "/plan/my",
+  "/plan/goal",
+] as const;
+
+export function isManifestAppPath(pathname: string): boolean {
+  const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  return MANIFEST_APP_PREFIXES.some((prefix) => matchesPrefix(path, prefix));
+}
+
 export function marketingFallbackForPath(pathname: string): string {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
   for (const r of PROTECTED_PREFIXES) {
