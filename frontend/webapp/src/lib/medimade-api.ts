@@ -3632,9 +3632,12 @@ export async function saveAdminBlogSettings(
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/blog`, {
-    method: "PATCH",
+    method: "POST",
     headers: medimadeJsonHeaders(),
-    body: JSON.stringify({ settings }),
+    body: JSON.stringify({
+      action: "saveSettings",
+      indexSummary: settings.indexSummary,
+    }),
   });
   const data = (await res.json()) as {
     settings?: unknown;
@@ -3643,6 +3646,11 @@ export async function saveAdminBlogSettings(
   };
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  if (!data.settings || typeof data.settings !== "object") {
+    throw new Error(
+      "Server did not save page intro — redeploy backend, then try again",
+    );
   }
   return normalizeAdminBlogSettings(data.settings);
 }
