@@ -314,7 +314,7 @@ function LifeAreaCards({
                   {snippet ?? "Nothing written yet"}
                 </span>
               </span>
-              <span className="hidden shrink-0 whitespace-nowrap font-sans text-[11px] text-[rgba(60,35,15,0.45)] sm:block dark:text-[#A8B0BC]/70">
+              <span className="hidden shrink-0 whitespace-nowrap font-sans text-[11px] text-[rgba(60,35,15,0.45)] sm:block dark:text-[#C4CAD4]">
                 {lastInteracted}
               </span>
               <span
