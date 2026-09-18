@@ -16,7 +16,6 @@ export {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
   getMedimadeSessionJwt,
-  isMedimadeGuestAccount,
   isMedimadeSessionActive,
   setMedimadeSession,
 } from "./auth-session";

@@ -11,7 +11,6 @@ import {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
   getMedimadeSessionJwt,
-  isMedimadeGuestAccount,
   isMedimadeSessionActive,
   loginAsMedimadeGuest,
 } from "@/lib/medimade-api";
@@ -149,12 +148,9 @@ export function SiteHeader() {
 
   useEffect(() => {
     const sync = () => {
+      // Dashboard only when a real access JWT is present — never sticky flags alone.
       const jwt = Boolean(getMedimadeSessionJwt());
-      // Shared guest JWT is for “Preview as guest” into the SPA — not a real
-      // marketing sign-in. Keep Sign in / Guest CTAs; hide Dashboard.
-      const signedIn =
-        isMedimadeSessionActive() && jwt && !isMedimadeGuestAccount();
-      setHasSession(signedIn);
+      setHasSession(isMedimadeSessionActive() && jwt);
       setMarketingPreview(isMarketingPreviewMode());
       const email = getMedimadeSessionEmail();
       setSessionLabel(
