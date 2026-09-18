@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AdminAnalyticsPanel } from "./components/admin-analytics-panel";
+import { AdminReadPanel } from "./components/admin-blog-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
 import { AdminProgramsPanel } from "./components/admin-programs-panel";
 import { AdminScriptLabPanel } from "./components/admin-script-lab-panel";
@@ -22,6 +23,7 @@ import { SchedulePage } from "./pages/schedule-page";
 import { SettingsPage } from "./pages/settings-page";
 import { SoundsPage } from "./pages/sounds-page";
 import { LoggedOutShell } from "./shell/logged-out-shell";
+import { CognitoCallbackPage } from "./pages/cognito-callback-page";
 
 export function App() {
   return (
@@ -65,6 +67,8 @@ export function App() {
           />
           <Route path="voice" element={<AdminVoicePanel />} />
           <Route path="programs" element={<AdminProgramsPanel />} />
+          <Route path="blog" element={<AdminReadPanel />} />
+          <Route path="read" element={<AdminReadPanel />} />
           <Route path="analytics" element={<AdminAnalyticsPanel />} />
           <Route path="script-lab" element={<AdminScriptLabPanel />} />
           <Route path="stress-test" element={<AdminStressTestPanel />} />
@@ -72,6 +76,7 @@ export function App() {
         </Route>
       </Route>
       <Route path="login" element={<LoggedOutShell />} />
+      <Route path="auth/cognito/callback" element={<CognitoCallbackPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

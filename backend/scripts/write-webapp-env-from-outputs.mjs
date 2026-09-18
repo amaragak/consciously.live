@@ -171,6 +171,18 @@ const nextPairs = [
   ...(mediaBaseUrl
     ? [["NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL", mediaBaseUrl]]
     : []),
+  ...(stack?.CognitoUserPoolId && typeof stack.CognitoUserPoolId === "string"
+    ? [["NEXT_PUBLIC_COGNITO_USER_POOL_ID", stack.CognitoUserPoolId]]
+    : []),
+  ...(stack?.CognitoClientId && typeof stack.CognitoClientId === "string"
+    ? [["NEXT_PUBLIC_COGNITO_CLIENT_ID", stack.CognitoClientId]]
+    : []),
+  ...(stack?.CognitoDomain && typeof stack.CognitoDomain === "string"
+    ? [["NEXT_PUBLIC_COGNITO_DOMAIN", stack.CognitoDomain]]
+    : []),
+  ...(stack?.CognitoIssuer && typeof stack.CognitoIssuer === "string"
+    ? [["NEXT_PUBLIC_COGNITO_ISSUER", stack.CognitoIssuer]]
+    : []),
 ];
 
 const expoPairs = [

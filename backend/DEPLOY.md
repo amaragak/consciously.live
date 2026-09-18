@@ -190,6 +190,31 @@ backend/scripts/deploy-back --profile mm
 If you see `Auth email is not configured (set MAGIC_LINK_TABLE_NAME, AUTH_EMAIL_FROM, AUTH_WEBAPP_ORIGIN on the Lambda)`,
 it means `authEmailFrom` and/or `authWebappOrigin` were not provided at deploy time (defaults are empty for safety).
 
+### Cognito (password / passkey / social — Cognito-first destination)
+
+Deploy creates a Cognito User Pool (`consciously-users`) with:
+
+- Email sign-in + password policy
+- Passkeys enabled (`FeaturePlan.ESSENTIALS`, RP ID `consciously.live`)
+- Public SPA app client (no secret) + Cognito Hosted UI domain prefix
+- Callbacks for marketing + app + localhost
+
+**Direction: Cognito-first.** Magic-link remains so existing login does not break during the transition; new password / passkey / social flows go through Cognito, then exchange into the same Medimade JWT.
+
+1. Client signs in via Cognito Managed Login (password / passkey; Hosted UI PKCE) or Amplify Auth / custom SRP
+2. `POST /auth/cognito/exchange` with `{ idToken }` → same Medimade JWT session as magic-link
+3. `GET /auth/cognito/config` returns public pool/client/domain for the SPA
+
+Marketing `/login` shows an optional **Password or passkey** button when the pool is live.
+
+Stack outputs: `CognitoUserPoolId`, `CognitoClientId`, `CognitoDomain`, `CognitoIssuer`.
+
+Optional context: `-c cognitoDomainPrefix=consciously-auth` (must be globally unique; default `consciously-auth` or `consciously-<accountId>`).
+
+Cognito resources live in a nested stack (`ConsciouslyCognitoAuth`) so the parent stays under CloudFormation’s 500-resource limit.
+
+Social IdPs (Google/Apple) are not wired yet — add User Pool identity providers when ready; Hosted UI callbacks are already registered.
+
 ## API
 
 - **POST** `{FishTtsUrl}`  

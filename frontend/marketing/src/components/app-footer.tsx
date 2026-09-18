@@ -9,6 +9,7 @@ const FOOTER_NAV: { href: string; label: string }[] = [
   { href: "/manifest", label: "Manifest" },
   { href: "/focus", label: "Focus" },
   { href: "/chat", label: "Chat" },
+  { href: "/read", label: "Read" },
   { href: "/pricing", label: "Pricing" },
 ];
 

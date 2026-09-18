@@ -10,6 +10,7 @@ const SECTIONS = [
   { href: "/admin/sound-mixes", label: "Sound mixes" },
   { href: "/admin/voice", label: "Voice" },
   { href: "/admin/programs", label: "Programs" },
+  { href: "/admin/read", label: "Read" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/script-lab", label: "Script Lab" },
   { href: "/admin/stress-test", label: "Stress Test" },

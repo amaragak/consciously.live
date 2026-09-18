@@ -56,7 +56,9 @@ function isAuthSessionPath(url: string): boolean {
       path.endsWith("/auth/logout") ||
       path.endsWith("/auth/magic-link") ||
       path.endsWith("/auth/magic-link/verify") ||
-      path.endsWith("/auth/guest")
+      path.endsWith("/auth/guest") ||
+      path.endsWith("/auth/cognito/config") ||
+      path.endsWith("/auth/cognito/exchange")
     );
   } catch {
     return false;
@@ -321,6 +323,105 @@ async function verifyMedimadeMagicLinkUncached(
   };
   if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
     throw new Error(data.detail ?? data.error ?? res.statusText ?? "Verification failed");
+  }
+  const displayName =
+    typeof data.displayName === "string" && data.displayName.trim()
+      ? data.displayName.trim()
+      : null;
+  const needsProfileName =
+    typeof data.needsProfileName === "boolean"
+      ? data.needsProfileName
+      : !displayName;
+  return {
+    token: data.token.trim(),
+    refreshToken:
+      typeof data.refreshToken === "string" && data.refreshToken.trim()
+        ? data.refreshToken.trim()
+        : undefined,
+    userId: typeof data.userId === "string" ? data.userId : "",
+    email: typeof data.email === "string" ? data.email : "",
+    needsProfileName,
+    displayName,
+  };
+}
+
+export type CognitoAuthConfig = {
+  enabled: boolean;
+  userPoolId: string | null;
+  clientId: string | null;
+  region: string | null;
+  domain: string | null;
+  issuer: string | null;
+  methods: { password: boolean; passkey: boolean; social: boolean };
+};
+
+/** Public Cognito client config (pool / Hosted UI). Magic-link remains available. */
+export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    return {
+      enabled: false,
+      userPoolId: null,
+      clientId: null,
+      region: null,
+      domain: null,
+      issuer: null,
+      methods: { password: false, passkey: false, social: false },
+    };
+  }
+  const res = await medimadeFetch(`${base}/auth/cognito/config`, {
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<CognitoAuthConfig> & {
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.error ?? res.statusText);
+  }
+  return {
+    enabled: data.enabled === true,
+    userPoolId: typeof data.userPoolId === "string" ? data.userPoolId : null,
+    clientId: typeof data.clientId === "string" ? data.clientId : null,
+    region: typeof data.region === "string" ? data.region : null,
+    domain: typeof data.domain === "string" ? data.domain : null,
+    issuer: typeof data.issuer === "string" ? data.issuer : null,
+    methods: {
+      password: data.methods?.password !== false,
+      passkey: data.methods?.passkey === true,
+      social: data.methods?.social === true,
+    },
+  };
+}
+
+/**
+ * After Cognito sign-in (password / passkey / Hosted UI), exchange the ID token
+ * for a Medimade session JWT (same shape as magic-link verify).
+ */
+export async function exchangeCognitoIdToken(
+  idToken: string,
+): Promise<MedimadeMagicLinkVerifyResult> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const t = idToken.trim();
+  if (!t) throw new Error("idToken is required");
+  const res = await medimadeFetch(`${base}/auth/cognito/exchange`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken: t }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    refreshToken?: string;
+    userId?: string;
+    email?: string;
+    needsProfileName?: unknown;
+    displayName?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
+    throw new Error(data.detail ?? data.error ?? res.statusText ?? "Exchange failed");
   }
   const displayName =
     typeof data.displayName === "string" && data.displayName.trim()

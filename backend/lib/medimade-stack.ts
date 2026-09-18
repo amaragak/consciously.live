@@ -15,6 +15,7 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import type { Construct } from "constructs";
+import { ConsciouslyCognitoAuthNestedStack } from "./consciously-cognito-auth";
 
 /** Create this secret in AWS Secrets Manager before calling the API (see DEPLOY.md). */
 export const FISH_AUDIO_SECRET_NAME = "medimade/FISH_AUDIO_API_KEY";
@@ -659,6 +660,18 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
+    const cognitoAuth = new ConsciouslyCognitoAuthNestedStack(
+      this,
+      "ConsciouslyCognitoAuth",
+      {
+        httpApi,
+        usersTable,
+        refreshTable,
+        authJwtSecret,
+        authWebappOrigin,
+      },
+    );
+
     const meditationJobsTable = new dynamodb.Table(this, "MeditationJobsTable", {
       partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -1297,6 +1310,69 @@ export class MedimadeStack extends cdk.Stack {
         "AdminProgramsIntegration",
         adminPrograms,
       ),
+    });
+
+    const adminBlog = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminBlogFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/admin-blog.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+        },
+      },
+    );
+    voiceAdminTable.grantReadWriteData(adminBlog);
+    authJwtSecret.grantRead(adminBlog);
+
+    httpApi.addRoutes({
+      path: "/admin/blog",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.POST,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminBlogIntegration",
+        adminBlog,
+      ),
+    });
+
+    const publicBlog = new lambda_nodejs.NodejsFunction(
+      this,
+      "PublicBlogFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/public-blog.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+        },
+      },
+    );
+    voiceAdminTable.grantReadData(publicBlog);
+
+    const publicBlogIntegration = new integrations.HttpLambdaIntegration(
+      "PublicBlogIntegration",
+      publicBlog,
+    );
+    httpApi.addRoutes({
+      path: "/public/blog",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: publicBlogIntegration,
+    });
+    httpApi.addRoutes({
+      path: "/public/blog/{slug}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: publicBlogIntegration,
     });
 
     const adminVoice = new lambda_nodejs.NodejsFunction(this, "AdminVoiceFunction", {
@@ -2014,6 +2090,20 @@ export class MedimadeStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "ApiUrl", {
       value: httpApi.apiEndpoint,
+    });
+    new cdk.CfnOutput(this, "CognitoUserPoolId", {
+      value: cognitoAuth.userPool.userPoolId,
+      description: "Consciously Cognito User Pool (password/passkey/social migration)",
+    });
+    new cdk.CfnOutput(this, "CognitoClientId", {
+      value: cognitoAuth.userPoolClient.userPoolClientId,
+    });
+    new cdk.CfnOutput(this, "CognitoDomain", {
+      value: cognitoAuth.userPoolDomain.domainName,
+      description: "Cognito Hosted UI / Managed Login domain prefix host",
+    });
+    new cdk.CfnOutput(this, "CognitoIssuer", {
+      value: cognitoAuth.issuer,
     });
     new cdk.CfnOutput(this, "FishTtsUrl", {
       value: `${httpApi.apiEndpoint}/fish/tts`,

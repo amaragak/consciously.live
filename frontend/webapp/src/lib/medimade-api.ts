@@ -56,7 +56,9 @@ function isAuthSessionPath(url: string): boolean {
       path.endsWith("/auth/logout") ||
       path.endsWith("/auth/magic-link") ||
       path.endsWith("/auth/magic-link/verify") ||
-      path.endsWith("/auth/guest")
+      path.endsWith("/auth/guest") ||
+      path.endsWith("/auth/cognito/config") ||
+      path.endsWith("/auth/cognito/exchange")
     );
   } catch {
     return false;
@@ -321,6 +323,105 @@ async function verifyMedimadeMagicLinkUncached(
   };
   if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
     throw new Error(data.detail ?? data.error ?? res.statusText ?? "Verification failed");
+  }
+  const displayName =
+    typeof data.displayName === "string" && data.displayName.trim()
+      ? data.displayName.trim()
+      : null;
+  const needsProfileName =
+    typeof data.needsProfileName === "boolean"
+      ? data.needsProfileName
+      : !displayName;
+  return {
+    token: data.token.trim(),
+    refreshToken:
+      typeof data.refreshToken === "string" && data.refreshToken.trim()
+        ? data.refreshToken.trim()
+        : undefined,
+    userId: typeof data.userId === "string" ? data.userId : "",
+    email: typeof data.email === "string" ? data.email : "",
+    needsProfileName,
+    displayName,
+  };
+}
+
+export type CognitoAuthConfig = {
+  enabled: boolean;
+  userPoolId: string | null;
+  clientId: string | null;
+  region: string | null;
+  domain: string | null;
+  issuer: string | null;
+  methods: { password: boolean; passkey: boolean; social: boolean };
+};
+
+/** Public Cognito client config (pool / Hosted UI). Magic-link remains available. */
+export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    return {
+      enabled: false,
+      userPoolId: null,
+      clientId: null,
+      region: null,
+      domain: null,
+      issuer: null,
+      methods: { password: false, passkey: false, social: false },
+    };
+  }
+  const res = await medimadeFetch(`${base}/auth/cognito/config`, {
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<CognitoAuthConfig> & {
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.error ?? res.statusText);
+  }
+  return {
+    enabled: data.enabled === true,
+    userPoolId: typeof data.userPoolId === "string" ? data.userPoolId : null,
+    clientId: typeof data.clientId === "string" ? data.clientId : null,
+    region: typeof data.region === "string" ? data.region : null,
+    domain: typeof data.domain === "string" ? data.domain : null,
+    issuer: typeof data.issuer === "string" ? data.issuer : null,
+    methods: {
+      password: data.methods?.password !== false,
+      passkey: data.methods?.passkey === true,
+      social: data.methods?.social === true,
+    },
+  };
+}
+
+/**
+ * After Cognito sign-in (password / passkey / Hosted UI), exchange the ID token
+ * for a Medimade session JWT (same shape as magic-link verify).
+ */
+export async function exchangeCognitoIdToken(
+  idToken: string,
+): Promise<MedimadeMagicLinkVerifyResult> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const t = idToken.trim();
+  if (!t) throw new Error("idToken is required");
+  const res = await medimadeFetch(`${base}/auth/cognito/exchange`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken: t }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    refreshToken?: string;
+    userId?: string;
+    email?: string;
+    needsProfileName?: unknown;
+    displayName?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
+    throw new Error(data.detail ?? data.error ?? res.statusText ?? "Exchange failed");
   }
   const displayName =
     typeof data.displayName === "string" && data.displayName.trim()
@@ -3423,6 +3524,97 @@ export async function deleteAdminProgram(id: string): Promise<void> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/programs`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "delete", id }),
+  });
+  const data = (await res.json()) as { error?: string; detail?: string };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+}
+
+export type AdminBlogPost = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  body: string;
+  published: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const slug = typeof o.slug === "string" ? o.slug.trim() : "";
+  const title = typeof o.title === "string" ? o.title.trim() : "";
+  if (!id || !slug || !title) return null;
+  return {
+    id,
+    slug,
+    title,
+    excerpt: typeof o.excerpt === "string" ? o.excerpt : "",
+    body: typeof o.body === "string" ? o.body : "",
+    published: o.published === true,
+    publishedAt:
+      typeof o.publishedAt === "string" && o.publishedAt.trim()
+        ? o.publishedAt.trim()
+        : null,
+    createdAt: typeof o.createdAt === "string" ? o.createdAt : "",
+    updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
+  };
+}
+
+export async function listAdminBlogPosts(): Promise<AdminBlogPost[]> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as {
+    posts?: unknown[];
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return (data.posts ?? [])
+    .map(normalizeAdminBlogPost)
+    .filter((p): p is AdminBlogPost => Boolean(p));
+}
+
+export async function saveAdminBlogPost(
+  post: Partial<AdminBlogPost> & { id?: string },
+): Promise<AdminBlogPost> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(post),
+  });
+  const data = (await res.json()) as {
+    post?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const saved = normalizeAdminBlogPost(data.post);
+  if (!saved) throw new Error("Invalid blog post response");
+  return saved;
+}
+
+export async function deleteAdminBlogPost(id: string): Promise<void> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
     method: "POST",
     headers: medimadeJsonHeaders(),
     body: JSON.stringify({ action: "delete", id }),

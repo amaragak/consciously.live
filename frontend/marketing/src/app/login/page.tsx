@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
   ensureMedimadeSession,
+  fetchCognitoAuthConfig,
   getMedimadeApiBase,
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
@@ -12,6 +13,7 @@ import {
   loginAsMedimadeGuest,
   requestMedimadeMagicLink,
 } from "@/lib/medimade-api";
+import { beginCognitoHostedLogin } from "@/lib/cognito-auth";
 import { rememberAuthNext, safeAuthNext, postAuthDestination } from "@/lib/app-routes";
 import {
   exitMarketingPreviewMode,
@@ -27,16 +29,33 @@ function LoginInner() {
   const [busy, setBusy] = useState(false);
   const [guestBusy, setGuestBusy] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
+  const [cognitoBusy, setCognitoBusy] = useState(false);
+  const [cognitoEnabled, setCognitoEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [resumeLabel, setResumeLabel] = useState<string | null>(null);
 
   const base = getMedimadeApiBase();
-  const anyBusy = busy || guestBusy || resumeBusy;
+  const anyBusy = busy || guestBusy || resumeBusy || cognitoBusy;
 
   useEffect(() => {
     rememberAuthNext(next);
   }, [next]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cfg = await fetchCognitoAuthConfig();
+        if (!cancelled) setCognitoEnabled(cfg.enabled);
+      } catch {
+        if (!cancelled) setCognitoEnabled(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -91,6 +110,20 @@ function LoginInner() {
         err instanceof Error ? err.message : "Could not start guest session",
       );
       setGuestBusy(false);
+    }
+  }
+
+  async function continueWithCognito() {
+    setError(null);
+    setCognitoBusy(true);
+    try {
+      rememberAuthNext(next);
+      await beginCognitoHostedLogin(next);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not start password sign-in",
+      );
+      setCognitoBusy(false);
     }
   }
 
@@ -173,6 +206,30 @@ function LoginInner() {
 
       {base && !sent ? (
         <>
+          {cognitoEnabled ? (
+            <>
+              <div className="relative my-8">
+                <div className="absolute inset-0 flex items-center" aria-hidden>
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase tracking-wide">
+                  <span className="bg-background px-3 text-muted">or</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={anyBusy}
+                onClick={() => void continueWithCognito()}
+                className="w-full cursor-pointer rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
+              >
+                {cognitoBusy ? "Opening…" : "Password or passkey"}
+              </button>
+              <p className="mt-2 text-center text-xs text-muted">
+                Optional — same account once your email is verified.
+              </p>
+            </>
+          ) : null}
+
           <div className="relative my-8">
             <div className="absolute inset-0 flex items-center" aria-hidden>
               <div className="w-full border-t border-border" />
