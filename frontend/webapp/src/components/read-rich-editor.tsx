@@ -60,7 +60,8 @@ export function ReadRichEditor({
   onHtmlChange,
   linkPosts = [],
 }: Props) {
-  const seededForRef = useRef<string | null>(null);
+  const seedHtmlRef = useRef(initialHtml);
+  seedHtmlRef.current = initialHtml;
   const [linkMenuOpen, setLinkMenuOpen] = useState(false);
   const linkMenuRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -102,10 +103,8 @@ export function ReadRichEditor({
 
   useEffect(() => {
     if (!editor) return;
-    if (seededForRef.current === docId) return;
-    seededForRef.current = docId;
-    editor.commands.setContent(initialHtml || "", { emitUpdate: false });
-  }, [docId, initialHtml, editor]);
+    editor.commands.setContent(seedHtmlRef.current || "", { emitUpdate: false });
+  }, [docId, editor]);
 
   useEffect(() => {
     if (!linkMenuOpen) return;

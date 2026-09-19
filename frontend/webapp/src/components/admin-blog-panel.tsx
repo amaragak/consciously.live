@@ -50,9 +50,11 @@ function slugify(title: string): string {
   );
 }
 
-function blankDraft(): Omit<AdminBlogPost, "id" | "createdAt" | "updatedAt"> & {
+type BlogDraft = Omit<AdminBlogPost, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
-} {
+};
+
+function blankDraft(): BlogDraft {
   return {
     slug: "",
     title: "",
@@ -62,6 +64,20 @@ function blankDraft(): Omit<AdminBlogPost, "id" | "createdAt" | "updatedAt"> & {
     body: "",
     published: false,
     publishedAt: null,
+  };
+}
+
+function draftFromPost(post: AdminBlogPost): BlogDraft {
+  return {
+    id: post.id,
+    slug: post.slug,
+    title: post.title,
+    subheader: post.subheader,
+    excerpt: post.excerpt,
+    tags: post.tags,
+    body: post.body,
+    published: post.published,
+    publishedAt: post.publishedAt,
   };
 }
 
@@ -167,6 +183,7 @@ export function AdminReadPanel() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState(blankDraft());
+  const [editorNonce, setEditorNonce] = useState(0);
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -200,31 +217,29 @@ export function AdminReadPanel() {
   );
 
   useEffect(() => {
-    if (selectedId === "new") {
-      setDraft(blankDraft());
-      setSlugTouched(false);
-      setStatus(null);
-      return;
-    }
-    if (selected) {
-      setDraft({
-        id: selected.id,
-        slug: selected.slug,
-        title: selected.title,
-        subheader: selected.subheader,
-        excerpt: selected.excerpt,
-        tags: selected.tags,
-        body: selected.body,
-        published: selected.published,
-        publishedAt: selected.publishedAt,
-      });
-      setSlugTouched(true);
-      setStatus(null);
-    }
+    if (selectedId === "new" || !selected) return;
+    setDraft(draftFromPost(selected));
+    setSlugTouched(true);
   }, [selectedId, selected]);
 
   function startNew() {
     setSelectedId("new");
+    setDraft(blankDraft());
+    setSlugTouched(false);
+    setStatus(null);
+    setEditorNonce((n) => n + 1);
+  }
+
+  function selectPost(id: string) {
+    if (id === selectedId) return;
+    const post = posts.find((p) => p.id === id);
+    setSelectedId(id);
+    if (post) {
+      setDraft(draftFromPost(post));
+      setSlugTouched(true);
+    }
+    setStatus(null);
+    setEditorNonce((n) => n + 1);
   }
 
   function onTitleChange(title: string) {
@@ -367,7 +382,9 @@ export function AdminReadPanel() {
 
   const editing = selectedId === "new" || Boolean(selected);
   const editorDocId =
-    selectedId === "new" ? "new" : selectedId ?? "none";
+    selectedId === "new"
+      ? `new:${editorNonce}`
+      : `${selectedId ?? "none"}:${editorNonce}`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -507,7 +524,7 @@ export function AdminReadPanel() {
                 <li key={p.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedId(p.id)}
+                    onClick={() => selectPost(p.id)}
                     className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
                       active
                         ? "bg-selected text-on-selected"
@@ -633,6 +650,7 @@ export function AdminReadPanel() {
                 Body
               </label>
               <ReadRichEditor
+                key={editorDocId}
                 docId={editorDocId}
                 initialHtml={bodyToEditorHtml(draft.body)}
                 onHtmlChange={(html) =>
