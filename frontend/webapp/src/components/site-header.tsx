@@ -38,6 +38,10 @@ const marketingNav: { href: string; label: string }[] = [
   { href: "/settings", label: "API" },
 ];
 
+function pricingNavLabel(signedIn: boolean): string {
+  return signedIn ? "Upgrade" : "Sign up";
+}
+
 function sectionActive(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
 }
@@ -156,6 +160,10 @@ export function SiteHeader() {
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
             {marketingNav.map((item) => {
+              const label =
+                item.href === "/pricing"
+                  ? pricingNavLabel(showSignedInChrome)
+                  : item.label;
               const active =
                 item.href === "/manifest"
                   ? sectionActive(pathname, "/manifest") ||
@@ -173,7 +181,7 @@ export function SiteHeader() {
                       : "text-nav-muted"
                   }`}
                 >
-                  {item.label}
+                  {label}
                 </Link>
               );
             })}
@@ -250,7 +258,9 @@ export function SiteHeader() {
                         : "text-muted"
                     }`}
                   >
-                    {item.label}
+                    {item.href === "/pricing"
+                      ? pricingNavLabel(showSignedInChrome)
+                      : item.label}
                   </Link>
                 ))}
                 <div className="my-2 border-t border-border" role="separator" />

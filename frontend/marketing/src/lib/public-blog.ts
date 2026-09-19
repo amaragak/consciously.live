@@ -1,5 +1,8 @@
 /**
  * Server-side public Read helpers for marketing SSR pages (`/read`).
+ *
+ * Responses are cached indefinitely (`revalidate: false`) and tagged so admin
+ * saves can purge via `POST /api/revalidate-blog`.
  */
 
 export type PublicBlogPostSummary = {
@@ -22,6 +25,14 @@ export type PublicBlogIndex = {
   authorPhotoEnabled: boolean;
   posts: PublicBlogPostSummary[];
 };
+
+/** Tag for /read index + list payload. */
+export const BLOG_INDEX_TAG = "blog-index";
+
+/** Tag for a single published post (and its page). */
+export function blogPostTag(slug: string): string {
+  return `blog-post:${slug.trim().toLowerCase()}`;
+}
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
@@ -66,7 +77,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
   }
   try {
     const res = await fetch(`${base}/public/blog`, {
-      cache: "no-store",
+      next: { revalidate: false, tags: [BLOG_INDEX_TAG] },
     });
     if (!res.ok) {
       return {
@@ -122,7 +133,10 @@ export async function fetchPublishedBlogPost(
   if (!base || !s) return null;
   try {
     const res = await fetch(`${base}/public/blog/${encodeURIComponent(s)}`, {
-      next: { revalidate: 60 },
+      next: {
+        revalidate: false,
+        tags: [blogPostTag(s), BLOG_INDEX_TAG],
+      },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { post?: unknown };

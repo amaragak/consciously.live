@@ -7,7 +7,7 @@ import {
   formatBlogDate,
 } from "@/lib/public-blog";
 
-export const revalidate = 60;
+export const revalidate = false;
 
 type Props = {
   params: Promise<{ slug: string }>;

@@ -236,8 +236,28 @@ export function AdminReadPanel() {
         body: draft.body,
         published: draft.published,
       });
-      await refresh();
+      // Apply server response immediately — don’t wait on re-list (avoids a
+      // brief stale title overwrite after capitalization-only edits).
+      setPosts((prev) => {
+        const rest = prev.filter((p) => p.id !== saved.id);
+        return [saved, ...rest].sort((a, b) => {
+          const aT = a.publishedAt || a.updatedAt;
+          const bT = b.publishedAt || b.updatedAt;
+          return bT.localeCompare(aT);
+        });
+      });
       setSelectedId(saved.id);
+      setDraft({
+        id: saved.id,
+        slug: saved.slug,
+        title: saved.title,
+        subheader: saved.subheader,
+        excerpt: saved.excerpt,
+        body: saved.body,
+        published: saved.published,
+        publishedAt: saved.publishedAt,
+      });
+      setSlugTouched(true);
       setStatus(saved.published ? "Saved & published." : "Saved as draft.");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Save failed");

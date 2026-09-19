@@ -119,6 +119,39 @@ if (!chatUrl || typeof chatUrl !== "string") {
 }
 
 /** @type {string | null} */
+let blogRevalidateSecret = null;
+const blogSecretArn =
+  stack?.BlogRevalidateSecretArn &&
+  typeof stack.BlogRevalidateSecretArn === "string"
+    ? stack.BlogRevalidateSecretArn.trim()
+    : "";
+if (blogSecretArn) {
+  try {
+    const secretArgs = [
+      "secretsmanager",
+      "get-secret-value",
+      "--secret-id",
+      blogSecretArn,
+      "--query",
+      "SecretString",
+      "--output",
+      "text",
+    ];
+    // Prefer same region as stack describe when provided via env (CI sets AWS_REGION).
+    const region =
+      process.env.AWS_REGION?.trim() || process.env.AWS_DEFAULT_REGION?.trim();
+    if (region) secretArgs.push("--region", region);
+    const raw = execFileSync("aws", secretArgs, { encoding: "utf8" }).trim();
+    if (raw) blogRevalidateSecret = raw;
+  } catch (e) {
+    console.warn(
+      "Could not read BlogRevalidateSecretArn from Secrets Manager — /read on-demand purge will be unavailable until the next sync.",
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
+
+/** @type {string | null} */
 let mediaBaseUrl = null;
 if (mediaDomain && typeof mediaDomain === "string") {
   const d = mediaDomain.trim();
@@ -183,6 +216,9 @@ const nextPairs = [
   ...(stack?.CognitoIssuer && typeof stack.CognitoIssuer === "string"
     ? [["NEXT_PUBLIC_COGNITO_ISSUER", stack.CognitoIssuer]]
     : []),
+  ...(blogRevalidateSecret
+    ? [["BLOG_REVALIDATE_SECRET", blogRevalidateSecret]]
+    : []),
 ];
 
 const expoPairs = [
@@ -199,7 +235,9 @@ console.log(
     assistantChatUrl ? ", NEXT_PUBLIC_ASSISTANT_CHAT_URL" : ""
   }${
     scriptLabUrl ? ", NEXT_PUBLIC_MEDIMADE_SCRIPT_LAB_URL" : ""
-  }${mediaBaseUrl ? ", NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL" : ""} to ${webappEnv}`,
+  }${mediaBaseUrl ? ", NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL" : ""}${
+    blogRevalidateSecret ? ", BLOG_REVALIDATE_SECRET" : ""
+  } to ${webappEnv}`,
 );
 
 if (mobileEnv) {

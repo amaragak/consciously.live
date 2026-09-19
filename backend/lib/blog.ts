@@ -130,6 +130,9 @@ export async function listBlogPosts(): Promise<BlogPost[]> {
         ":pk": BLOG_PK,
         ":prefix": "POST#",
       },
+      // Admin save → immediate re-list; eventual reads can return the prior title
+      // (capitalization-only edits look like “save did nothing”).
+      ConsistentRead: true,
     }),
   );
   const posts = (res.Items ?? [])
@@ -153,6 +156,7 @@ export async function getBlogPostById(id: string): Promise<BlogPost | null> {
     new GetCommand({
       TableName: tableName(),
       Key: { pk: BLOG_PK, sk: skForId(id) },
+      ConsistentRead: true,
     }),
   );
   if (!res.Item) return null;

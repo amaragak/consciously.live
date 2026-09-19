@@ -1312,6 +1312,20 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
+    /** Shared secret: admin-blog Lambda → marketing `POST /api/revalidate-blog`. */
+    const blogRevalidateSecret = new secretsmanager.Secret(
+      this,
+      "BlogRevalidateSecret",
+      {
+        description:
+          "On-demand revalidation secret for consciously.live /read cache",
+        generateSecretString: {
+          passwordLength: 48,
+          excludePunctuation: true,
+        },
+      },
+    );
+
     const adminBlog = new lambda_nodejs.NodejsFunction(
       this,
       "AdminBlogFunction",
@@ -1327,11 +1341,14 @@ export class MedimadeStack extends cdk.Stack {
           ADMIN_EMAILS: adminEmails,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
+          MARKETING_ORIGIN: authWebappOrigin,
         },
       },
     );
     voiceAdminTable.grantReadWriteData(adminBlog);
     authJwtSecret.grantRead(adminBlog);
+    blogRevalidateSecret.grantRead(adminBlog);
     mediaBucket.grantPut(adminBlog);
     mediaBucket.grantRead(adminBlog);
     mediaBucket.grantDelete(adminBlog);
@@ -2181,6 +2198,11 @@ export class MedimadeStack extends cdk.Stack {
         "S3 bucket that stores generated meditations and background audio",
       value: mediaBucket.bucketName,
       exportName: "MediaBucketName",
+    });
+    new cdk.CfnOutput(this, "BlogRevalidateSecretArn", {
+      description:
+        "Secrets Manager ARN for BLOG_REVALIDATE_SECRET (marketing /read on-demand purge)",
+      value: blogRevalidateSecret.secretArn,
     });
   }
 }

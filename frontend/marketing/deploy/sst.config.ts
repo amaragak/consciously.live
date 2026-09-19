@@ -37,6 +37,14 @@ function nextPublicEnvFromProcess(): Record<string, string> {
   return out;
 }
 
+/** Public + server-only env for the marketing Next.js OpenNext site. */
+function nextEnvFromProcess(): Record<string, string> {
+  const out = nextPublicEnvFromProcess();
+  const revalidate = process.env.BLOG_REVALIDATE_SECRET?.trim();
+  if (revalidate) out.BLOG_REVALIDATE_SECRET = revalidate;
+  return out;
+}
+
 function viteEnvFromProcess(): Record<string, string> {
   const api =
     process.env.VITE_MEDIMADE_API_URL?.trim() ||
@@ -102,7 +110,7 @@ export default $config({
     const marketing = deployMarketing
       ? new sst.aws.Nextjs("Web", {
           path: "..",
-          environment: nextPublicEnvFromProcess(),
+          environment: nextEnvFromProcess(),
           ...(attachDomain
             ? {
                 domain: {

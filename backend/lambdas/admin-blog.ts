@@ -11,11 +11,13 @@ import { requireAdminJson } from "../lib/admin-auth";
 import { jsonAuth } from "../lib/medimade-auth-http";
 import {
   deleteBlogPost,
+  getBlogPostById,
   getBlogSettings,
   listBlogPosts,
   putBlogPost,
   putBlogSettings,
 } from "../lib/blog";
+import { invalidateBlogCache } from "../lib/blog-revalidate";
 
 const s3 = new S3Client({});
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
@@ -116,6 +118,7 @@ async function uploadAuthorPhoto(body: Record<string, unknown>) {
     await deleteAuthorPhotoObject(bucket, previousKey);
   }
 
+  await invalidateBlogCache({ index: true });
   return settings;
 }
 
@@ -150,9 +153,18 @@ export async function handler(
             authorPhotoUrl?: unknown;
           },
         );
+        await invalidateBlogCache({ index: true });
         return json(200, { settings });
       }
+      const existingId =
+        typeof body.id === "string" && body.id.trim() ? body.id.trim() : "";
+      const previous = existingId ? await getBlogPostById(existingId) : null;
       const post = await putBlogPost(body);
+      const slugs = [post.slug];
+      if (previous?.slug && previous.slug !== post.slug) {
+        slugs.push(previous.slug);
+      }
+      await invalidateBlogCache({ index: true, slugs });
       return json(200, { post });
     }
     if (method === "POST") {
@@ -173,6 +185,7 @@ export async function handler(
             ? { authorPhotoEnabled: body.authorPhotoEnabled }
             : {}),
         });
+        await invalidateBlogCache({ index: true });
         return json(200, { settings });
       }
       if (action === "uploadAuthorPhoto") {
@@ -189,12 +202,18 @@ export async function handler(
             authorPhotoKeyFromUrl(existing.authorPhotoUrl),
           );
         }
+        await invalidateBlogCache({ index: true });
         return json(200, { settings });
       }
       if (action === "delete") {
         const id = String(body.id ?? "").trim();
         if (!id) return json(400, { error: "id is required" });
+        const previous = await getBlogPostById(id);
         await deleteBlogPost(id);
+        await invalidateBlogCache({
+          index: true,
+          slugs: previous?.slug ? [previous.slug] : [],
+        });
         return json(200, { ok: true });
       }
       return json(400, { error: "Unknown action" });
