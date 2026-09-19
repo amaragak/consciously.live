@@ -44,7 +44,7 @@ type Props = {
   docId: string;
   initialHtml: string;
   placeholder?: string;
-  onHtmlChange: (html: string) => void;
+  onHtmlChange: (html: string, docId: string) => void;
   /** Other posts available to link (current post excluded by caller). */
   linkPosts?: ReadEditorLinkPost[];
 };
@@ -62,6 +62,8 @@ export function ReadRichEditor({
 }: Props) {
   const seedHtmlRef = useRef(initialHtml);
   seedHtmlRef.current = initialHtml;
+  const onHtmlChangeRef = useRef(onHtmlChange);
+  onHtmlChangeRef.current = onHtmlChange;
   const [linkMenuOpen, setLinkMenuOpen] = useState(false);
   const linkMenuRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -88,7 +90,7 @@ export function ReadRichEditor({
         emptyEditorClass: "is-editor-empty",
       }),
     ],
-    content: initialHtml || "",
+    content: initialHtml || "<p></p>",
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -97,13 +99,15 @@ export function ReadRichEditor({
       },
     },
     onUpdate: ({ editor: ed }) => {
-      onHtmlChange(ed.getHTML());
+      onHtmlChangeRef.current(ed.getHTML(), docId);
     },
-  });
+  }, [docId]);
 
   useEffect(() => {
     if (!editor) return;
-    editor.commands.setContent(seedHtmlRef.current || "", { emitUpdate: false });
+    const html = seedHtmlRef.current?.trim() ? seedHtmlRef.current : "<p></p>";
+    editor.commands.clearContent(false);
+    editor.commands.setContent(html, { emitUpdate: false });
   }, [docId, editor]);
 
   useEffect(() => {

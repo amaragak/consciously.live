@@ -81,6 +81,10 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
   };
 }
 
+function editorDocKey(id: string | "new" | null, nonce: number): string {
+  return id && id !== "new" ? `${id}:${nonce}` : `new:${nonce}`;
+}
+
 function BlogTagsInput({
   tags,
   onChange,
@@ -184,6 +188,7 @@ export function AdminReadPanel() {
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState(blankDraft());
   const [editorNonce, setEditorNonce] = useState(0);
+  const liveEditorDocRef = useRef(editorDocKey(null, 0));
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -216,30 +221,26 @@ export function AdminReadPanel() {
     [posts, selectedId],
   );
 
-  useEffect(() => {
-    if (selectedId === "new" || !selected) return;
-    setDraft(draftFromPost(selected));
-    setSlugTouched(true);
-  }, [selectedId, selected]);
-
   function startNew() {
+    const nextNonce = editorNonce + 1;
+    liveEditorDocRef.current = editorDocKey("new", nextNonce);
     setSelectedId("new");
     setDraft(blankDraft());
     setSlugTouched(false);
     setStatus(null);
-    setEditorNonce((n) => n + 1);
+    setEditorNonce(nextNonce);
   }
 
   function selectPost(id: string) {
     if (id === selectedId) return;
     const post = posts.find((p) => p.id === id);
+    const nextNonce = editorNonce + 1;
+    liveEditorDocRef.current = editorDocKey(id, nextNonce);
     setSelectedId(id);
-    if (post) {
-      setDraft(draftFromPost(post));
-      setSlugTouched(true);
-    }
+    setDraft(post ? draftFromPost(post) : blankDraft());
+    setSlugTouched(Boolean(post));
     setStatus(null);
-    setEditorNonce((n) => n + 1);
+    setEditorNonce(nextNonce);
   }
 
   function onTitleChange(title: string) {
@@ -341,6 +342,7 @@ export function AdminReadPanel() {
           return bT.localeCompare(aT);
         });
       });
+      liveEditorDocRef.current = editorDocKey(saved.id, editorNonce);
       setSelectedId(saved.id);
       setDraft({
         id: saved.id,
@@ -381,10 +383,7 @@ export function AdminReadPanel() {
   }
 
   const editing = selectedId === "new" || Boolean(selected);
-  const editorDocId =
-    selectedId === "new"
-      ? `new:${editorNonce}`
-      : `${selectedId ?? "none"}:${editorNonce}`;
+  const editorDocId = editorDocKey(selectedId, editorNonce);
 
   return (
     <div className="flex flex-col gap-6">
@@ -653,9 +652,10 @@ export function AdminReadPanel() {
                 key={editorDocId}
                 docId={editorDocId}
                 initialHtml={bodyToEditorHtml(draft.body)}
-                onHtmlChange={(html) =>
-                  setDraft((d) => ({ ...d, body: html }))
-                }
+                onHtmlChange={(html, fromDoc) => {
+                  if (fromDoc !== liveEditorDocRef.current) return;
+                  setDraft((d) => ({ ...d, body: html }));
+                }}
                 linkPosts={posts
                   .filter((p) => p.id !== draft.id)
                   .map((p) => ({
