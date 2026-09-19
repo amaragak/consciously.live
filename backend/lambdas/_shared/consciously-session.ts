@@ -6,6 +6,11 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { signConsciouslyJwt } from "./consciously-jwt";
 import {
+  resolvePrivileges,
+  type ConsciouslyPlan,
+  type ConsciouslyRole,
+} from "./consciously-privileges";
+import {
   corsHeadersForEvent,
   newOpaqueToken,
   REFRESH_TOKEN_TTL_SEC,
@@ -22,6 +27,8 @@ export type IssuedSessionPayload = {
   email: string;
   needsProfileName: boolean;
   displayName: string | null;
+  role: ConsciouslyRole;
+  plan: ConsciouslyPlan;
 };
 
 /**
@@ -34,6 +41,9 @@ export async function issueConsciouslySession(params: {
   email: string;
   displayName: string | null;
   needsProfileName: boolean;
+  /** From Users row; ADMIN_EMAILS may still elevate role. */
+  role?: ConsciouslyRole;
+  plan?: ConsciouslyPlan;
 }): Promise<APIGatewayProxyStructuredResultV2> {
   const refreshTable = process.env.REFRESH_TABLE_NAME?.trim();
   if (!refreshTable) {
@@ -47,10 +57,18 @@ export async function issueConsciouslySession(params: {
     };
   }
 
+  const privileges = resolvePrivileges({
+    email: params.email,
+    role: params.role,
+    plan: params.plan,
+  });
+
   const accessToken = await signConsciouslyJwt({
     sub: params.userId,
     email: params.email,
     name: params.displayName ?? undefined,
+    role: privileges.role,
+    plan: privileges.plan,
   });
   const refreshToken = newOpaqueToken(32);
   const refreshHash = sha256Hex(refreshToken);
@@ -64,6 +82,8 @@ export async function issueConsciouslySession(params: {
         userId: params.userId,
         email: params.email,
         ...(params.displayName ? { displayName: params.displayName } : {}),
+        role: privileges.role,
+        plan: privileges.plan,
         createdAt: new Date().toISOString(),
         ttl: nowSec + REFRESH_TOKEN_TTL_SEC,
       },
@@ -77,6 +97,8 @@ export async function issueConsciouslySession(params: {
     email: params.email,
     needsProfileName: params.needsProfileName,
     displayName: params.displayName,
+    role: privileges.role,
+    plan: privileges.plan,
   };
 
   return {

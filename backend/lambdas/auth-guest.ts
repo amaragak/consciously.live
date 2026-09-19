@@ -23,6 +23,7 @@ import {
   sessionSetCookieHeaders,
   sha256Hex,
 } from "./_shared/consciously-auth-tokens";
+import { resolvePrivileges } from "./_shared/consciously-privileges";
 
 /** Shared guest account — Continue-as-guest logs into this user. */
 export const GUEST_ACCOUNT_EMAIL = "alexmaragakis@hotmail.co.uk";
@@ -127,10 +128,17 @@ export async function handler(
 
   try {
     const guest = await getOrCreateGuestUser(usersTable);
+    const privileges = resolvePrivileges({
+      email: guest.email,
+      role: "user",
+      plan: "free",
+    });
     const accessToken = await signConsciouslyJwt({
       sub: guest.userId,
       email: guest.email,
       name: guest.displayName,
+      role: privileges.role,
+      plan: privileges.plan,
     });
     const refreshToken = newOpaqueToken(32);
     const refreshHash = sha256Hex(refreshToken);
@@ -144,6 +152,8 @@ export async function handler(
           userId: guest.userId,
           email: guest.email,
           displayName: guest.displayName,
+          role: privileges.role,
+          plan: privileges.plan,
           createdAt: new Date().toISOString(),
           ttl: nowSec + REFRESH_TOKEN_TTL_SEC,
         },
@@ -160,6 +170,8 @@ export async function handler(
         email: guest.email,
         needsProfileName: false,
         displayName: guest.displayName,
+        role: privileges.role,
+        plan: privileges.plan,
       },
       sessionSetCookieHeaders({ accessToken, refreshToken }),
     );

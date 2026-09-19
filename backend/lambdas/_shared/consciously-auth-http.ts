@@ -95,7 +95,13 @@ export function parseBearer(
   return null;
 }
 
-export type ConsciouslyAuthUser = { sub: string; email?: string; name?: string };
+export type ConsciouslyAuthUser = {
+  sub: string;
+  email?: string;
+  name?: string;
+  role: import("./consciously-privileges").ConsciouslyRole;
+  plan: import("./consciously-privileges").ConsciouslyPlan;
+};
 
 export async function optionalUserJson(
   event: APIGatewayProxyEventV2,
@@ -110,6 +116,8 @@ export async function optionalUserJson(
       sub: claims.sub,
       email: claims.email,
       ...(claims.name ? { name: claims.name } : {}),
+      role: claims.role,
+      plan: claims.plan,
     };
   } catch {
     return null;
@@ -133,6 +141,8 @@ export async function requireUserJson(
       sub: claims.sub,
       email: claims.email,
       ...(claims.name ? { name: claims.name } : {}),
+      role: claims.role,
+      plan: claims.plan,
     };
   } catch {
     return jsonAuth(401, { error: "Invalid or expired session" }, event);

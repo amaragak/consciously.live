@@ -20,6 +20,8 @@ import {
   REFRESH_COOKIE,
   sha256Hex,
 } from "./_shared/consciously-auth-tokens";
+import { resolvePrivileges } from "./_shared/consciously-privileges";
+import { getUserPrivilegesByEmail } from "./_shared/consciously-users";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -128,10 +130,18 @@ export async function handler(
 
   let jwt: string;
   try {
+    const fromUser = await getUserPrivilegesByEmail(email);
+    const privileges = resolvePrivileges({
+      email,
+      role: fromUser.role,
+      plan: fromUser.plan,
+    });
     jwt = await signConsciouslyJwt({
       sub: auth.sub,
       email,
       name: displayName,
+      role: privileges.role,
+      plan: privileges.plan,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not mint session";

@@ -26,7 +26,7 @@ import {
   isMarketingPreviewMode,
 } from "@/lib/marketing-preview";
 import { markSpaClientNavigation } from "@/lib/spa-client-nav";
-import { navigateToSpa } from "@/lib/spa-handoff";
+import { navigateToSpa, SpaHandoffError, spaHrefWithHandoff } from "@/lib/spa-handoff";
 import {
   loadProfilePrefs,
   profileGreetingName,
@@ -230,16 +230,15 @@ export function SiteHeader() {
     setDashboardError(null);
     try {
       exitMarketingPreviewMode();
-      const ok = await navigateToSpa("/");
-      if (!ok) {
-        setDashboardError(
-          "Couldn’t open the app (session handoff unavailable).",
-        );
-        setDashboardBusy(false);
-      }
+      const href = await spaHrefWithHandoff("/");
+      window.location.replace(href);
     } catch (err) {
       setDashboardError(
-        err instanceof Error ? err.message : "Couldn’t open the app",
+        err instanceof SpaHandoffError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Couldn’t open the app",
       );
       setDashboardBusy(false);
     }

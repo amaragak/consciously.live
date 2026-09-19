@@ -21,6 +21,12 @@ const REFRESH_TOKEN_KEY = "mm_session_refresh_v1";
 const LEGACY_JWT_KEY = "mm_session_jwt_v1";
 /** Legacy client-only guest flag — cleared on real login / logout. */
 const LEGACY_GUEST_KEY = "mm_session_guest_v1";
+/**
+ * API origin this browser session was minted against.
+ * When CI switches stacks (Medimade → Consciously), JWTs signed with the old
+ * secret must be dropped or handoff/API calls fail with opaque 401s.
+ */
+const SESSION_API_BASE_KEY = "mm_session_api_base_v1";
 
 /**
  * Same-origin rendering hint for Next.js (not a credential).
@@ -311,7 +317,31 @@ export function setMedimadeSession(
   }
 }
 
-/** Explicit Log out only. No other path may clear the session. */
+/**
+ * When the baked-in API base changes (e.g. MedimadeBackend → ConsciouslyBackend),
+ * drop JWTs signed by the previous stack so handoff/API calls are not opaque 401s.
+ */
+export function reconcileMedimadeSessionWithApiBase(apiBase: string): void {
+  if (typeof window === "undefined") return;
+  const next = apiBase.trim().replace(/\/$/, "");
+  if (!next) return;
+  const prev = readStorage(SESSION_API_BASE_KEY);
+  if (prev === next) return;
+
+  // Bound to a different API, or legacy session from before this key existed.
+  const hasCreds = Boolean(
+    memoryAccessJwt ||
+      readStorage(ACCESS_JWT_KEY) ||
+      readStorage(REFRESH_TOKEN_KEY) ||
+      readStorage(ACTIVE_KEY) === "1",
+  );
+  if (prev || hasCreds) {
+    clearMedimadeSession();
+  }
+  writeStorage(SESSION_API_BASE_KEY, next);
+}
+
+/** Explicit Log out, or API-base cutover via `reconcileMedimadeSessionWithApiBase`. */
 export function clearMedimadeSession(): void {
   if (typeof window === "undefined") return;
   const refreshForLogout = getMedimadeRefreshToken();
@@ -325,6 +355,7 @@ export function clearMedimadeSession(): void {
     window.localStorage.removeItem(DISPLAY_NAME_KEY);
     window.localStorage.removeItem(ACTIVE_KEY);
     window.localStorage.removeItem(LEGACY_GUEST_KEY);
+    window.localStorage.removeItem(SESSION_API_BASE_KEY);
   } catch {
     /* */
   }

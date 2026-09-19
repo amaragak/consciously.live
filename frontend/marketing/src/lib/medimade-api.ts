@@ -3,6 +3,7 @@ import type { JournalStoreV2 } from "./journal-storage";
 import {
   ensureMedimadeSession,
   getMedimadeSessionJwt,
+  reconcileMedimadeSessionWithApiBase,
   setMedimadeSession,
 } from "./auth-session";
 import type { GenerationTimings } from "./meditation-analytics";
@@ -17,6 +18,7 @@ export {
   getMedimadeSessionEmail,
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
+  reconcileMedimadeSessionWithApiBase,
   setMedimadeSession,
 } from "./auth-session";
 
@@ -117,7 +119,9 @@ export function getMedimadeApiBase(): string | null {
   if (!u || typeof u !== "string") return null;
   const t = u.trim();
   if (!t) return null;
-  return t.endsWith("/") ? t.slice(0, -1) : t;
+  const base = t.endsWith("/") ? t.slice(0, -1) : t;
+  reconcileMedimadeSessionWithApiBase(base);
+  return base;
 }
 
 /** Lambda Function URL for Script Lab generate-script (avoids API Gateway 30s timeout). */
@@ -238,6 +242,8 @@ export async function loginAsMedimadeGuest(): Promise<MedimadeMagicLinkVerifyRes
     email?: string;
     needsProfileName?: unknown;
     displayName?: unknown;
+    role?: unknown;
+    plan?: unknown;
     error?: string;
     detail?: string;
   };
@@ -258,6 +264,7 @@ export async function loginAsMedimadeGuest(): Promise<MedimadeMagicLinkVerifyRes
     email: typeof data.email === "string" ? data.email : "",
     needsProfileName: false,
     displayName,
+    ...parseSessionPrivileges(data),
   };
   setMedimadeSession(
     result.token,
@@ -268,6 +275,9 @@ export async function loginAsMedimadeGuest(): Promise<MedimadeMagicLinkVerifyRes
   return result;
 }
 
+export type ConsciouslyRole = "user" | "admin";
+export type ConsciouslyPlan = "free" | "pro";
+
 export type MedimadeMagicLinkVerifyResult = {
   token: string;
   refreshToken?: string;
@@ -275,7 +285,19 @@ export type MedimadeMagicLinkVerifyResult = {
   email: string;
   needsProfileName: boolean;
   displayName: string | null;
+  role: ConsciouslyRole;
+  plan: ConsciouslyPlan;
 };
+
+function parseSessionPrivileges(data: {
+  role?: unknown;
+  plan?: unknown;
+}): { role: ConsciouslyRole; plan: ConsciouslyPlan } {
+  return {
+    role: data.role === "admin" ? "admin" : "user",
+    plan: data.plan === "pro" ? "pro" : "free",
+  };
+}
 
 /** One in-flight (or settled) verify per magic token so React Strict Mode does not burn the token twice. */
 const magicVerifyByToken = new Map<string, Promise<MedimadeMagicLinkVerifyResult>>();
@@ -318,6 +340,8 @@ async function verifyMedimadeMagicLinkUncached(
     email?: string;
     needsProfileName?: unknown;
     displayName?: unknown;
+    role?: unknown;
+    plan?: unknown;
     error?: string;
     detail?: string;
   };
@@ -342,6 +366,7 @@ async function verifyMedimadeMagicLinkUncached(
     email: typeof data.email === "string" ? data.email : "",
     needsProfileName,
     displayName,
+    ...parseSessionPrivileges(data),
   };
 }
 
@@ -417,6 +442,8 @@ export async function exchangeCognitoIdToken(
     email?: string;
     needsProfileName?: unknown;
     displayName?: unknown;
+    role?: unknown;
+    plan?: unknown;
     error?: string;
     detail?: string;
   };
@@ -441,6 +468,7 @@ export async function exchangeCognitoIdToken(
     email: typeof data.email === "string" ? data.email : "",
     needsProfileName,
     displayName,
+    ...parseSessionPrivileges(data),
   };
 }
 

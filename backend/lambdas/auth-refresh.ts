@@ -24,6 +24,8 @@ import {
   sessionSetCookieHeaders,
   sha256Hex,
 } from "./_shared/consciously-auth-tokens";
+import { resolvePrivileges } from "./_shared/consciously-privileges";
+import { getUserPrivilegesByEmail } from "./_shared/consciously-users";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -127,16 +129,28 @@ export async function handler(
   }
 
   const { row, tokenHash } = matched;
-  const displayName =
+  let displayName =
     typeof row.displayName === "string" && row.displayName.trim()
       ? row.displayName.trim()
       : null;
 
   try {
+    const fromUser = await getUserPrivilegesByEmail(row.email!);
+    if (!displayName && fromUser.displayName) {
+      displayName = fromUser.displayName;
+    }
+    const privileges = resolvePrivileges({
+      email: row.email!,
+      role: fromUser.role,
+      plan: fromUser.plan,
+    });
+
     const accessToken = await signConsciouslyJwt({
       sub: row.userId!,
       email: row.email!,
       name: displayName ?? undefined,
+      role: privileges.role,
+      plan: privileges.plan,
     });
     const refreshToken = newOpaqueToken(32);
     const newHash = sha256Hex(refreshToken);
@@ -152,6 +166,8 @@ export async function handler(
           userId: row.userId,
           email: row.email,
           ...(displayName ? { displayName } : {}),
+          role: privileges.role,
+          plan: privileges.plan,
           createdAt: new Date().toISOString(),
           ttl: nowSec + REFRESH_TOKEN_TTL_SEC,
         },
@@ -174,6 +190,8 @@ export async function handler(
         userId: row.userId,
         email: row.email,
         displayName,
+        role: privileges.role,
+        plan: privileges.plan,
       },
       sessionSetCookieHeaders({ accessToken, refreshToken }),
     );

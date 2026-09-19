@@ -103,6 +103,8 @@ export async function handler(
       email: user.email,
       displayName,
       needsProfileName,
+      role: user.role,
+      plan: user.plan,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Cognito exchange failed";

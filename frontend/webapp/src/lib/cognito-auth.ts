@@ -72,8 +72,11 @@ function clearPkce(): void {
   }
 }
 
-/** Start Cognito Hosted UI (password / passkey; social later). */
-export async function beginCognitoHostedLogin(nextPath = "/"): Promise<void> {
+/** Start Cognito Hosted UI (password / passkey / optional IdP like Google). */
+export async function beginCognitoHostedLogin(
+  nextPath = "/",
+  opts?: { identityProvider?: string },
+): Promise<void> {
   const config = await fetchCognitoAuthConfig();
   if (!config.enabled || !config.clientId || !config.domain) {
     throw new Error("Cognito sign-in is not configured yet");
@@ -95,6 +98,10 @@ export async function beginCognitoHostedLogin(nextPath = "/"): Promise<void> {
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("code_challenge", challenge);
+  const idp = opts?.identityProvider?.trim();
+  if (idp) {
+    url.searchParams.set("identity_provider", idp);
+  }
   window.location.assign(url.toString());
 }
 

@@ -3,6 +3,12 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
+import {
+  normalizePlan,
+  normalizeRole,
+  type ConsciouslyPlan,
+  type ConsciouslyRole,
+} from "./consciously-privileges";
 
 const secrets = new SecretsManagerClient({});
 let cachedJwtSecret: string | undefined;
@@ -39,11 +45,21 @@ function decodeBase64urlJson<T>(raw: string): T | null {
 
 const EXP_SECONDS = 60 * 60; // 1 hour access token
 
+export type ConsciouslyJwtClaims = {
+  sub: string;
+  email?: string;
+  name?: string;
+  role: ConsciouslyRole;
+  plan: ConsciouslyPlan;
+};
+
 export async function signConsciouslyJwt(params: {
   sub: string;
   email: string;
   /** Optional display name (only included when non-empty). */
   name?: string | null;
+  role?: ConsciouslyRole;
+  plan?: ConsciouslyPlan;
 }): Promise<string> {
   const secret = await getJwtSecret();
   const now = Math.floor(Date.now() / 1000);
@@ -52,10 +68,14 @@ export async function signConsciouslyJwt(params: {
     typeof params.name === "string" && params.name.trim()
       ? params.name.trim()
       : undefined;
+  const role = normalizeRole(params.role);
+  const plan = normalizePlan(params.plan);
   const payload = base64urlJson({
     sub: params.sub,
     email: params.email,
     ...(name ? { name } : {}),
+    role,
+    plan,
     iat: now,
     exp: now + EXP_SECONDS,
   });
@@ -66,7 +86,7 @@ export async function signConsciouslyJwt(params: {
 
 export async function verifyConsciouslyJwt(
   token: string,
-): Promise<{ sub: string; email?: string; name?: string } | null> {
+): Promise<ConsciouslyJwtClaims | null> {
   const parts = token.trim().split(".");
   if (parts.length !== 3) return null;
   const [h, p, sig] = parts;
@@ -82,6 +102,8 @@ export async function verifyConsciouslyJwt(
     sub?: unknown;
     email?: unknown;
     name?: unknown;
+    role?: unknown;
+    plan?: unknown;
     exp?: unknown;
   }>(p);
   if (!payload || typeof payload.sub !== "string" || !payload.sub.trim()) {
@@ -99,5 +121,11 @@ export async function verifyConsciouslyJwt(
     typeof payload.name === "string" && payload.name.trim()
       ? payload.name.trim()
       : undefined;
-  return { sub: payload.sub.trim(), email, ...(name ? { name } : {}) };
+  return {
+    sub: payload.sub.trim(),
+    email,
+    ...(name ? { name } : {}),
+    role: normalizeRole(payload.role),
+    plan: normalizePlan(payload.plan),
+  };
 }

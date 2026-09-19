@@ -29,6 +29,8 @@ import {
   sessionSetCookieHeaders,
   sha256Hex,
 } from "./_shared/consciously-auth-tokens";
+import { resolvePrivileges } from "./_shared/consciously-privileges";
+import { getUserPrivilegesByEmail } from "./_shared/consciously-users";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -78,10 +80,20 @@ async function issueSession(params: {
     return json(params.event, 500, { error: "REFRESH_TABLE_NAME is not set" });
   }
 
+  const fromUser = await getUserPrivilegesByEmail(params.email);
+  const displayName = params.displayName || fromUser.displayName;
+  const privileges = resolvePrivileges({
+    email: params.email,
+    role: fromUser.role,
+    plan: fromUser.plan,
+  });
+
   const accessToken = await signConsciouslyJwt({
     sub: params.userId,
     email: params.email,
-    name: params.displayName ?? undefined,
+    name: displayName ?? undefined,
+    role: privileges.role,
+    plan: privileges.plan,
   });
   const refreshToken = newOpaqueToken(32);
   const refreshHash = sha256Hex(refreshToken);
@@ -94,7 +106,9 @@ async function issueSession(params: {
         tokenHash: refreshHash,
         userId: params.userId,
         email: params.email,
-        ...(params.displayName ? { displayName: params.displayName } : {}),
+        ...(displayName ? { displayName } : {}),
+        role: privileges.role,
+        plan: privileges.plan,
         createdAt: new Date().toISOString(),
         ttl: nowSec + REFRESH_TOKEN_TTL_SEC,
       },
@@ -109,8 +123,10 @@ async function issueSession(params: {
       refreshToken,
       userId: params.userId,
       email: params.email,
-      displayName: params.displayName,
-      needsProfileName: !params.displayName,
+      displayName,
+      needsProfileName: !displayName,
+      role: privileges.role,
+      plan: privileges.plan,
     },
     sessionSetCookieHeaders({ accessToken, refreshToken }),
   );

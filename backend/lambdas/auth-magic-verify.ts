@@ -101,6 +101,8 @@ export async function handler(
       email: user.email,
       displayName: user.displayName,
       needsProfileName: !Boolean(user.displayName?.trim()),
+      role: user.role,
+      plan: user.plan,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not mint session";

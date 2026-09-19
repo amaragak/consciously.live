@@ -121,7 +121,21 @@ function LoginInner() {
       await beginCognitoHostedLogin(next);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not start password sign-in",
+        err instanceof Error ? err.message : "Could not start Cognito sign-in",
+      );
+      setCognitoBusy(false);
+    }
+  }
+
+  async function continueWithGoogle() {
+    setError(null);
+    setCognitoBusy(true);
+    try {
+      rememberAuthNext(next);
+      await beginCognitoHostedLogin(next, { identityProvider: "Google" });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not start Google sign-in",
       );
       setCognitoBusy(false);
     }
@@ -160,8 +174,9 @@ function LoginInner() {
     <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
       <h1 className="font-display text-3xl font-medium tracking-tight">Sign in</h1>
       <p className="mt-2 text-sm text-muted">
-        We email you a one-time link. No password. Your library and cloud journal are tied to
-        this account.
+        {cognitoEnabled
+          ? "Sign in with password, passkey, or Google when enabled — same Consciously account either way."
+          : "We email you a one-time link. No password. Your library and cloud journal are tied to this account."}
       </p>
 
       {!base ? (
@@ -174,62 +189,82 @@ function LoginInner() {
           Check your email for a sign-in link. You can close this tab.
         </p>
       ) : (
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-foreground">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
-              className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-              placeholder="you@example.com"
-            />
-          </div>
-          {error ? (
-            <p className="text-sm text-danger">{error}</p>
-          ) : null}
-          <button
-            type="submit"
-            disabled={anyBusy}
-            className="w-full rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {busy ? "Sending…" : "Email me a link"}
-          </button>
-        </form>
-      )}
-
-      {base && !sent ? (
         <>
           {cognitoEnabled ? (
-            <>
-              <div className="relative my-8">
-                <div className="absolute inset-0 flex items-center" aria-hidden>
-                  <div className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase tracking-wide">
-                  <span className="bg-background px-3 text-muted">or</span>
-                </div>
-              </div>
+            <div className="mt-8 space-y-3">
               <button
                 type="button"
                 disabled={anyBusy}
                 onClick={() => void continueWithCognito()}
+                className="w-full cursor-pointer rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {cognitoBusy ? "Opening…" : "Continue with Consciously"}
+              </button>
+              <button
+                type="button"
+                disabled={anyBusy}
+                onClick={() => void continueWithGoogle()}
                 className="w-full cursor-pointer rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
               >
-                {cognitoBusy ? "Opening…" : "Password or passkey"}
+                {cognitoBusy ? "Opening…" : "Continue with Google"}
               </button>
-              <p className="mt-2 text-center text-xs text-muted">
-                Optional — same account once your email is verified.
+              <p className="text-center text-xs text-muted">
+                Password, passkey, or Google via Cognito. Google needs the IdP enabled on the user pool.
               </p>
-            </>
+              {error ? <p className="text-sm text-danger">{error}</p> : null}
+            </div>
           ) : null}
 
+          <div className={cognitoEnabled ? "relative my-8" : "mt-8"}>
+            {cognitoEnabled ? (
+              <>
+                <div className="absolute inset-0 flex items-center" aria-hidden>
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase tracking-wide">
+                  <span className="bg-background px-3 text-muted">or email a link</span>
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-foreground">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(ev) => setEmail(ev.target.value)}
+                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                placeholder="you@example.com"
+              />
+            </div>
+            {!cognitoEnabled && error ? (
+              <p className="text-sm text-danger">{error}</p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={anyBusy}
+              className={
+                cognitoEnabled
+                  ? "w-full rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
+                  : "w-full rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+              }
+            >
+              {busy ? "Sending…" : "Email me a link"}
+            </button>
+          </form>
+        </>
+      )}
+
+      {base && !sent ? (
+        <>
           <div className="relative my-8">
             <div className="absolute inset-0 flex items-center" aria-hidden>
               <div className="w-full border-t border-border" />

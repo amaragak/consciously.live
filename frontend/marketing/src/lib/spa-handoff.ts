@@ -9,11 +9,18 @@ import { AUTH_HANDOFF_QUERY } from "@consciously/common";
 import { appHref, isCrossOriginApp } from "@/lib/app-origins";
 import { createAuthHandoff } from "@/lib/medimade-api";
 
+export class SpaHandoffError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpaHandoffError";
+  }
+}
+
 /**
  * Absolute SPA URL with handoff when origins differ.
- * Returns null if a cross-origin handoff could not be minted (caller must stay put).
+ * Throws SpaHandoffError if a cross-origin handoff could not be minted.
  */
-export async function spaHrefWithHandoff(path: string): Promise<string | null> {
+export async function spaHrefWithHandoff(path: string): Promise<string> {
   const dest = appHref(path);
   if (!isCrossOriginApp()) return dest;
   try {
@@ -21,8 +28,18 @@ export async function spaHrefWithHandoff(path: string): Promise<string | null> {
     const url = new URL(dest);
     url.searchParams.set(AUTH_HANDOFF_QUERY, code);
     return url.toString();
-  } catch {
-    return null;
+  } catch (err) {
+    const detail =
+      err instanceof Error && err.message.trim()
+        ? err.message.trim()
+        : "Could not create handoff";
+    // Stale JWT after API stack cutover is the usual cause.
+    if (/invalid or expired session|authorization bearer|unauthorized|401/i.test(detail)) {
+      throw new SpaHandoffError(
+        "Your session is out of date after the backend switch. Sign in again, then open the app.",
+      );
+    }
+    throw new SpaHandoffError(detail);
   }
 }
 
@@ -31,10 +48,13 @@ export async function spaHrefWithHandoff(path: string): Promise<string | null> {
  * @returns false when cross-origin handoff failed (no navigation).
  */
 export async function navigateToSpa(path: string): Promise<boolean> {
-  const href = await spaHrefWithHandoff(path);
-  if (!href) return false;
-  window.location.replace(href);
-  return true;
+  try {
+    const href = await spaHrefWithHandoff(path);
+    window.location.replace(href);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -49,7 +69,6 @@ export async function navigateAuthDestination(dest: string): Promise<boolean> {
       const withHandoff = await spaHrefWithHandoff(
         `${u.pathname}${u.search}${u.hash}`,
       );
-      if (!withHandoff) return false;
       window.location.replace(withHandoff);
       return true;
     } catch {
