@@ -5,13 +5,14 @@ import {
   IconSparkles,
   IconTargetArrow,
 } from "@tabler/icons-react";
+import { MeditateMark } from "@/components/meditate-mark";
 
 const features = [
   {
     href: "/meditate",
     title: "Meditate",
     body: "Personalised guided sessions from a prompt, a style, a chat, a journal entry, or a goal — with voices and sound beds that actually sound good.",
-    Icon: IconSparkles,
+    Icon: MeditateMark,
   },
   {
     href: "/journal",

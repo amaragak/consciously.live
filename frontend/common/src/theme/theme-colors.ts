@@ -441,7 +441,7 @@ function assemble(
       : "0 10px 28px rgb(30 37 48 / 0.06)",
     marketingIconBg: dark
       ? "rgba(255,255,255,0.1)"
-      : mixHex(PRIMARY, paper.background, 0.86),
+      : ACCENT_BUTTON_FILL,
     marketingIconFg: dark ? GOLD_LIGHT : "#33465C",
     marketingPanelBg: dark ? "#12181F" : "#FFFFFF",
     marketingEyebrow: dark ? GOLD_LIGHT : ACCENT_LINK,
@@ -450,7 +450,7 @@ function assemble(
     marketingPillarIdleIconFg: dark ? "#F4F0E8" : "#33465C",
     marketingHighlightIconBg: dark
       ? "rgba(240,168,85,0.22)"
-      : mixHex(PRIMARY, paper.background, 0.86),
+      : ACCENT_BUTTON_FILL,
     marketingHighlightIconFg: dark ? GOLD_LIGHT : ACCENT_LINK,
     marketingNavChrome: dark ? "rgba(255,255,255,0.2)" : "#D8D0BC",
     marketingInputShellBg: dark ? "rgba(255,255,255,0.06)" : "#FFFFFF",

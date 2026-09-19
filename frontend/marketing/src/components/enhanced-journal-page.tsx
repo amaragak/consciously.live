@@ -2,9 +2,9 @@ import Link from "next/link";
 import {
   IconHeart,
   IconNotebook,
-  IconSparkles,
   IconWaveSine,
 } from "@tabler/icons-react";
+import { MeditateMark } from "@/components/meditate-mark";
 
 const cards = [
   {
@@ -25,7 +25,7 @@ const cards = [
   {
     title: "Into meditation",
     body: "Any entry can become the starting point for a guided session when you’re ready to work with it.",
-    Icon: IconSparkles,
+    Icon: MeditateMark,
   },
 ] as const;
 

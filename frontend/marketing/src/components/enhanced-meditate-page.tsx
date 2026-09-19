@@ -11,6 +11,7 @@ import {
   HomeListenSection,
 } from "@/components/home-listen-section";
 import { createMeditationHref } from "@/lib/create-meditation-path";
+import { MeditateMark } from "@/components/meditate-mark";
 
 const journalCreateHref = createMeditationHref({ path: "journalReflect" });
 const ideateCreateHref = createMeditationHref({ path: "goal" });
@@ -20,7 +21,7 @@ const pillars = [
     href: "/meditate/create",
     title: "Meditate",
     body: "By type, chat, or a journal entry.",
-    Icon: IconSparkles,
+    Icon: MeditateMark,
     highlight: true,
   },
   {

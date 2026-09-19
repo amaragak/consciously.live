@@ -10,6 +10,7 @@ import {
   VisionBoardMosaic,
   VISION_BOARD_EXAMPLE_COLORS,
 } from "@/components/plan/vision-board-mosaic";
+import { MeditateMark } from "@/components/meditate-mark";
 
 const cards = [
   {
@@ -30,7 +31,7 @@ const cards = [
   {
     title: "Meditate on it",
     body: "Turn a goal into a visualisation or manifestation session so the work includes your nervous system.",
-    Icon: IconSparkles,
+    Icon: MeditateMark,
   },
 ] as const;
 
