@@ -297,6 +297,7 @@ export function AdminReadPanel() {
           <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-2">
             {authorPhotoUrl ? (
               <img
+                key={authorPhotoUrl}
                 src={authorPhotoUrl}
                 alt="Author"
                 className={`size-24 rounded-full object-cover sm:size-28 ${

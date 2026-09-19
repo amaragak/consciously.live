@@ -2,7 +2,11 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { requireAdminJson } from "../lib/admin-auth";
 import { jsonAuth } from "../lib/medimade-auth-http";
 import {
@@ -15,7 +19,25 @@ import {
 
 const s3 = new S3Client({});
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
-const AUTHOR_PHOTO_KEY = "blog/author-photo.jpg";
+
+/** Extract `blog/author-photo…` key from a media URL (ignores query string). */
+function authorPhotoKeyFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = /\/(blog\/author-photo[^/?#]*)/i.exec(url);
+  return m?.[1] ?? null;
+}
+
+async function deleteAuthorPhotoObject(
+  bucket: string,
+  key: string | null,
+): Promise<void> {
+  if (!key) return;
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  } catch (e) {
+    console.warn("admin-blog: could not delete old author photo", key, e);
+  }
+}
 
 function json(
   statusCode: number,
@@ -68,18 +90,33 @@ async function uploadAuthorPhoto(body: Record<string, unknown>) {
     throw new Error("Image must be under 2 MB (compress before upload)");
   }
 
+  // Unique key per upload — CloudFront’s default cache policy ignores
+  // query strings, so overwriting blog/author-photo.jpg kept serving the old image.
+  const ext =
+    mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+  const key = `blog/author-photo-${Date.now()}.${ext}`;
+
+  const existing = await getBlogSettings();
+  const previousKey = authorPhotoKeyFromUrl(existing.authorPhotoUrl);
+
   await s3.send(
     new PutObjectCommand({
       Bucket: bucket,
-      Key: AUTHOR_PHOTO_KEY,
+      Key: key,
       Body: buf,
       ContentType: mime,
-      CacheControl: "public, max-age=86400",
+      CacheControl: "public, max-age=31536000, immutable",
     }),
   );
 
-  const url = `https://${cfDomain}/${AUTHOR_PHOTO_KEY}?v=${Date.now()}`;
-  return putBlogSettings({ authorPhotoUrl: url });
+  const url = `https://${cfDomain}/${key}`;
+  const settings = await putBlogSettings({ authorPhotoUrl: url });
+
+  if (previousKey && previousKey !== key) {
+    await deleteAuthorPhotoObject(bucket, previousKey);
+  }
+
+  return settings;
 }
 
 export async function handler(
@@ -143,7 +180,15 @@ export async function handler(
         return json(200, { settings });
       }
       if (action === "clearAuthorPhoto") {
+        const existing = await getBlogSettings();
         const settings = await putBlogSettings({ authorPhotoUrl: null });
+        const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
+        if (bucket) {
+          await deleteAuthorPhotoObject(
+            bucket,
+            authorPhotoKeyFromUrl(existing.authorPhotoUrl),
+          );
+        }
         return json(200, { settings });
       }
       if (action === "delete") {

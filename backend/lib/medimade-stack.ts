@@ -1334,6 +1334,7 @@ export class MedimadeStack extends cdk.Stack {
     authJwtSecret.grantRead(adminBlog);
     mediaBucket.grantPut(adminBlog);
     mediaBucket.grantRead(adminBlog);
+    mediaBucket.grantDelete(adminBlog);
 
     httpApi.addRoutes({
       path: "/admin/blog",

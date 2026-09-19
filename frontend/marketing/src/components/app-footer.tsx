@@ -1,7 +1,10 @@
 "use client";
 
+import { IconBrandInstagram } from "@tabler/icons-react";
 import Link from "next/link";
 import { LogoMark } from "@/components/logo-mark";
+
+const INSTAGRAM_URL = "https://www.instagram.com/consciously.live/";
 
 const FOOTER_NAV: { href: string; label: string }[] = [
   { href: "/meditate", label: "Meditate" },
@@ -56,9 +59,20 @@ export function AppFooter() {
             </nav>
           </div>
 
-          <div className="flex flex-col gap-1 border-t border-border pt-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-t border-border pt-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
             <p>© {year} Consciously</p>
-            <p className="sm:text-right">consciously.live</p>
+            <div className="flex items-center gap-3 sm:justify-end">
+              <a
+                href={INSTAGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Instagram @consciously.live"
+                className="inline-flex items-center gap-2 text-muted transition-colors hover:text-foreground"
+              >
+                <IconBrandInstagram size={28} stroke={1.75} aria-hidden />
+                <span>@consciously.live</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
