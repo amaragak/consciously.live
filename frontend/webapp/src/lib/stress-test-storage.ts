@@ -1,3 +1,7 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import type { MeditationStyleLabel } from "@/lib/meditation-style-intake";
 import type { StyleQuestionAnswers } from "@/lib/meditation-style-intake";
 import {
@@ -31,7 +35,7 @@ function canUseStorage(): boolean {
 export function loadSavedStressTestRuns(): SavedStressTestRun[] {
   if (!canUseStorage()) return [];
   try {
-    const raw = window.localStorage.getItem(STRESS_TEST_STORAGE_KEY);
+    const raw = readAccountLocalStorage(STRESS_TEST_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as SavedStressTestRun[];
     return Array.isArray(parsed) ? parsed : [];
@@ -44,7 +48,7 @@ export function saveStressTestRun(entry: SavedStressTestRun): SavedStressTestRun
   if (!canUseStorage()) return [entry];
   const existing = loadSavedStressTestRuns().filter((r) => r.id !== entry.id);
   const next = [entry, ...existing].slice(0, STRESS_TEST_MAX_SAVED_RUNS);
-  window.localStorage.setItem(STRESS_TEST_STORAGE_KEY, JSON.stringify(next));
+  writeAccountLocalStorage(STRESS_TEST_STORAGE_KEY, JSON.stringify(next));
   return next;
 }
 

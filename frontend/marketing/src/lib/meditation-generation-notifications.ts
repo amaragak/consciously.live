@@ -2,6 +2,10 @@
  * Push completed meditation jobs into the in-app notification inbox.
  */
 
+import {
+  readAccountSessionStorage,
+  writeAccountSessionStorage,
+} from "@/lib/account-scoped-storage";
 import { upsertAppNotification } from "@/lib/app-notifications";
 
 const DEDUPE_KEY = "mm_meditation_inbox_dedupe_v1";
@@ -9,7 +13,7 @@ const DEDUPE_KEY = "mm_meditation_inbox_dedupe_v1";
 function alreadyInboxed(jobId: string): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const raw = window.sessionStorage.getItem(DEDUPE_KEY);
+    const raw = readAccountSessionStorage(DEDUPE_KEY);
     if (!raw) return false;
     const arr = JSON.parse(raw) as unknown;
     if (!Array.isArray(arr)) return false;
@@ -22,12 +26,12 @@ function alreadyInboxed(jobId: string): boolean {
 function rememberInboxed(jobId: string): void {
   if (typeof window === "undefined") return;
   try {
-    const raw = window.sessionStorage.getItem(DEDUPE_KEY);
+    const raw = readAccountSessionStorage(DEDUPE_KEY);
     const prev = raw ? (JSON.parse(raw) as unknown) : [];
     const list = Array.isArray(prev)
       ? prev.filter((x): x is string => typeof x === "string")
       : [];
-    window.sessionStorage.setItem(
+    writeAccountSessionStorage(
       DEDUPE_KEY,
       JSON.stringify([...list, jobId].slice(-40)),
     );

@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
 /**
  * Client-side profile prefs for Connect / account UI (scaffold until API owns these fields).
  */
@@ -23,7 +28,7 @@ const DEFAULTS: ProfilePrefs = {
 function readRaw(): ProfilePrefs | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readAccountLocalStorage(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<ProfilePrefs>;
     return {
@@ -69,7 +74,7 @@ export function saveProfilePrefs(prefs: ProfilePrefs): ProfilePrefs {
   };
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      writeAccountLocalStorage(STORAGE_KEY, JSON.stringify(next));
       window.dispatchEvent(new Event(PROFILE_PREFS_CHANGED_EVENT));
       window.dispatchEvent(new Event("medimade-session-changed"));
     } catch {

@@ -4,10 +4,7 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambda_nodejs from "aws-cdk-lib/aws-lambda-nodejs";
-import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as s3n from "aws-cdk-lib/aws-s3-notifications";
-import * as sqs from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import type { ConsciouslyConfigNestedStack } from "./config-nested-stack";
 import type { ConsciouslyDatabaseNestedStack } from "./database-nested-stack";
@@ -31,9 +28,10 @@ export type ConsciouslyApiAdminNestedStackProps = cdk.NestedStackProps & {
 };
 
 /**
- * Admin sounds/programs/blog/voice, TTS, search, voice-fx, bg-audio normalize,
+ * Admin sounds/programs/blog/voice, TTS, search, voice-fx,
  * script lab + embed, public blog, speakers, dev-ui-settings.
  * One shared IAM execution role for all Lambdas in this nest.
+ * Bg-audio normalize lives in Media (S3 notification stays in that nest).
  */
 export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
   readonly adminScriptLabUrl: lambda.FunctionUrl;
@@ -87,39 +85,6 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
     journalTable.grantReadData(role);
     ideateTable.grantReadData(role);
     meditationAnalyticsTable.grantReadData(role);
-
-    /** Normalize failures land here after retries so nothing disappears silently. */
-    const bgAudioNormalizeDlq = new sqs.Queue(this, "BgAudioNormalizeDlq", {
-      retentionPeriod: cdk.Duration.days(14),
-    });
-
-    // Hour-long compositions decode to multi-GB intermediates, so this function
-    // is sized for the worst case rather than the median sample.
-    const bgAudioNormalize = new lambda_nodejs.NodejsFunction(
-      this,
-      "BgAudioNormalizeFunction",
-      {
-        entry: path.join(__dirname, "../../lambdas/bg-audio-normalize.ts"),
-        handler: "handler",
-        runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.minutes(15),
-        memorySize: 3008,
-        ephemeralStorageSize: cdk.Size.mebibytes(10240),
-        retryAttempts: 1,
-        deadLetterQueue: bgAudioNormalizeDlq,
-        layers: [ffmpegLayer],
-        role,
-        environment: {
-          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
-          SOUND_CATALOG_TABLE_NAME: soundCatalogTable.tableName,
-        },
-      },
-    );
-    mediaBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(bgAudioNormalize),
-      { prefix: "background-audio-raw/" },
-    );
 
     const fishTts = new lambda_nodejs.NodejsFunction(this, "FishTtsFunction", {
       entry: path.join(__dirname, "../../lambdas/fish-tts.ts"),
@@ -483,6 +448,16 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const scriptEmbedRole = new iam.Role(this, "ScriptEmbedRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole",
+        ),
+      ],
+    });
+    voiceAdminTable.grantReadWriteData(scriptEmbedRole);
+
     const scriptEmbed = new lambda.Function(this, "ScriptEmbedFunction", {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "handler.handler",
@@ -494,12 +469,13 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       memorySize: 3008,
       ephemeralStorageSize: cdk.Size.mebibytes(1024),
       description: "Embed text / NN search / async store for Script Lab V3 (fastembed)",
-      role,
+      role: scriptEmbedRole,
       environment: {
         FASTEMBED_CACHE_PATH: "/opt/python/model_cache",
         VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
       },
     });
+    // Separate role so grantInvoke(role) does not cycle Role ↔ Function.
     scriptEmbed.grantInvoke(role);
 
     const adminScriptLab = new lambda_nodejs.NodejsFunction(
@@ -616,8 +592,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       },
     });
     this.voiceFxFunction = voiceFx;
-    // Meditate worker invokes via its own role policy (see ApiMeditate).
-    voiceFx.grantInvoke(role);
+    // Do not voiceFx.grantInvoke(role): VoiceFx uses `role` — that cycles Role ↔ Function.
+    // ApiMeditate grants invoke on its own role.
 
     addNestHttpRoutes(this, httpApi, {
       id: "VoiceFxRoute",

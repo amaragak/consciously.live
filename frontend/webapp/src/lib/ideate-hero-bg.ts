@@ -9,6 +9,7 @@ export type IdeateHeroBgId =
   | "mandala"
   | "floral"
   | "ornate"
+  | "amber"
   | "waves"
   | "celestial"
   | "astrology";
@@ -48,6 +49,13 @@ export const IDEATE_HERO_BG_OPTIONS: readonly IdeateHeroBgOption[] = [
     swatch: "#EDE8DF",
     swatchImage: "/patterns/hero/adobestock-2162625652.webp",
     className: "home-hero--stock home-hero--stock-ornate",
+  },
+  {
+    id: "amber",
+    label: "Amber",
+    swatch: "#F3EEE6",
+    swatchImage: "/patterns/paisley-amber-duotone.webp",
+    className: "home-hero--stock home-hero--stock-amber",
   },
   {
     id: "waves",

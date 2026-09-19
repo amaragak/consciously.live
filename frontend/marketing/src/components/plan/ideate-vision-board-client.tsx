@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyVisionBoardRefinement,
@@ -1428,7 +1426,10 @@ export function IdeateVisionBoardClient() {
                 </p>
               ) : null}
               {error ? (
-                <p className="mt-3 text-sm text-[#A65252]" role="alert">
+                <p
+                  className="mt-3 whitespace-pre-wrap break-words rounded-md border border-[#A65252]/40 bg-[#A65252]/5 px-3 py-2.5 font-sans text-[13px] leading-snug text-[#A65252]"
+                  role="alert"
+                >
                   {error}
                 </p>
               ) : null}

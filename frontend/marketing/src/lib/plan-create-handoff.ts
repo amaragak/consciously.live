@@ -1,3 +1,8 @@
+import {
+  readAccountSessionStorage,
+  removeAccountSessionStorage,
+  writeAccountSessionStorage,
+} from "@/lib/account-scoped-storage";
 export const PLAN_CREATE_HANDOFF_KEY = "mm_plan_create_handoff_v1";
 
 /** Shown in chat; full context is in `buildPlanCreateHandoffApiContent`. */
@@ -103,7 +108,7 @@ export function buildPlanCreateHandoffApiContent(h: PlanCreateHandoff): string {
 export function writePlanCreateHandoff(payload: PlanCreateHandoff) {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(PLAN_CREATE_HANDOFF_KEY, JSON.stringify(payload));
+    writeAccountSessionStorage(PLAN_CREATE_HANDOFF_KEY, JSON.stringify(payload));
   } catch {
     /* ignore */
   }
@@ -112,7 +117,7 @@ export function writePlanCreateHandoff(payload: PlanCreateHandoff) {
 export function readPlanCreateHandoff(): PlanCreateHandoff | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(PLAN_CREATE_HANDOFF_KEY);
+    const raw = readAccountSessionStorage(PLAN_CREATE_HANDOFF_KEY);
     if (!raw) return null;
     const o = JSON.parse(raw) as Record<string, unknown>;
     if (o.v === 2) {
@@ -171,7 +176,7 @@ export function readPlanCreateHandoff(): PlanCreateHandoff | null {
 export function clearPlanCreateHandoff() {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.removeItem(PLAN_CREATE_HANDOFF_KEY);
+    removeAccountSessionStorage(PLAN_CREATE_HANDOFF_KEY);
   } catch {
     /* ignore */
   }

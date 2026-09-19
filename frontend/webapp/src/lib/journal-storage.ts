@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { isJournalMoodId } from "@/lib/journal-moods";
 
@@ -77,13 +82,13 @@ export function getOrCreateJournalOwnerId(): string {
     return "";
   }
   try {
-    let id = window.localStorage.getItem(JOURNAL_OWNER_ID_KEY)?.trim();
+    let id = readAccountLocalStorage(JOURNAL_OWNER_ID_KEY)?.trim();
     if (!id) {
       id =
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `o_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-      window.localStorage.setItem(JOURNAL_OWNER_ID_KEY, id);
+      writeAccountLocalStorage(JOURNAL_OWNER_ID_KEY, id);
     }
     return id;
   } catch {
@@ -430,9 +435,9 @@ export function emptyJournalStore(): JournalStoreV2 {
 function markGuestJournalImportDone(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(GUEST_JOURNAL_IMPORT_DONE_KEY, "1");
+    writeAccountLocalStorage(GUEST_JOURNAL_IMPORT_DONE_KEY, "1");
     for (const k of LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS) {
-      window.localStorage.removeItem(k);
+      removeAccountLocalStorage(k);
     }
   } catch {
     /* */
@@ -442,11 +447,11 @@ function markGuestJournalImportDone(): void {
 function hasGuestJournalImportCompleted(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    if (window.localStorage.getItem(GUEST_JOURNAL_IMPORT_DONE_KEY) === "1") {
+    if (readAccountLocalStorage(GUEST_JOURNAL_IMPORT_DONE_KEY) === "1") {
       return true;
     }
     return LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS.some(
-      (k) => window.localStorage.getItem(k) != null,
+      (k) => readAccountLocalStorage(k) != null,
     );
   } catch {
     return false;
@@ -456,10 +461,10 @@ function hasGuestJournalImportCompleted(): boolean {
 function wipeGuestJournalDeviceKeys(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LEGACY_PLAIN_KEY);
-    window.localStorage.removeItem(JOURNAL_OWNER_ID_KEY);
+    removeAccountLocalStorage(LEGACY_PLAIN_KEY);
+    removeAccountLocalStorage(JOURNAL_OWNER_ID_KEY);
     for (const k of LEGACY_GUEST_JOURNAL_IMPORT_DONE_KEYS) {
-      window.localStorage.removeItem(k);
+      removeAccountLocalStorage(k);
     }
   } catch {
     /* */
@@ -493,7 +498,7 @@ export function resetJournalLocalToGuestInitialImport(): void {
   if (isMedimadeSessionActive()) return;
   wipeGuestJournalDeviceKeys();
   try {
-    window.localStorage.removeItem(GUEST_JOURNAL_IMPORT_DONE_KEY);
+    removeAccountLocalStorage(GUEST_JOURNAL_IMPORT_DONE_KEY);
   } catch {
     /* */
   }
@@ -509,7 +514,7 @@ export function loadJournalStoreRaw(): JournalStoreV2 {
     return emptyJournalStore();
   }
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
+    const raw = readAccountLocalStorage(STORE_KEY);
     if (raw) {
       const data = JSON.parse(raw) as unknown;
       if (isStoreV2(data) && data.entries.length > 0) {
@@ -527,7 +532,7 @@ export function loadJournalStoreRaw(): JournalStoreV2 {
         };
       }
     }
-    const legacy = window.localStorage.getItem(LEGACY_PLAIN_KEY);
+    const legacy = readAccountLocalStorage(LEGACY_PLAIN_KEY);
     if (legacy && typeof legacy === "string" && legacy.trim()) {
       const e = newEntry({
         contentHtml: `<p>${escapeLegacyPlain(legacy)}</p>`,
@@ -708,7 +713,7 @@ export function saveJournalStore(
   opts?: { source?: string },
 ) {
   try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    writeAccountLocalStorage(STORE_KEY, JSON.stringify(store));
   } catch {
     /* */
   }

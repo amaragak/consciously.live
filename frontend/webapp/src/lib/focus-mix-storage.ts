@@ -6,6 +6,10 @@ import {
   DEFAULT_MIX_EDITOR_VALUES,
   type MixEditorValues,
 } from "@/components/mix-editor-panel";
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 
 const LS_KEY = "mm_focus_mix_v1";
 
@@ -27,7 +31,7 @@ function isMix(x: unknown): x is MixEditorValues {
 export function loadFocusMix(): MixEditorValues {
   if (typeof window === "undefined") return { ...DEFAULT_MIX_EDITOR_VALUES };
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountLocalStorage(LS_KEY);
     if (!raw) return { ...DEFAULT_MIX_EDITOR_VALUES };
     const parsed = JSON.parse(raw) as unknown;
     if (isMix(parsed)) return parsed;
@@ -40,7 +44,7 @@ export function loadFocusMix(): MixEditorValues {
 export function saveFocusMix(mix: MixEditorValues): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(mix));
+    writeAccountLocalStorage(LS_KEY, JSON.stringify(mix));
   } catch {
     /* */
   }

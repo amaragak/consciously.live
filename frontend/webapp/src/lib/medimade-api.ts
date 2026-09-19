@@ -772,11 +772,14 @@ export async function generateVisionBoardScene(params: {
     /* ignore */
   }
   if (!res.ok) {
-    const msg =
-      (typeof data.detail === "string" && data.detail) ||
-      (typeof data.error === "string" && data.error) ||
-      res.statusText;
-    throw new Error(msg);
+    const errMsg =
+      typeof data.error === "string" && data.error.trim()
+        ? data.error.trim()
+        : "";
+    // Prefer the API's user-facing message; never dump raw provider JSON.
+    throw new Error(
+      errMsg || res.statusText || `Vision generate failed (${res.status})`,
+    );
   }
   const imageBase64 =
     typeof data.imageBase64 === "string" ? data.imageBase64 : "";

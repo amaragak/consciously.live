@@ -1,6 +1,11 @@
 import type { DreamState, PlanDream } from "@/lib/plan-dreams";
 import { normalizeLifeAreaInsights } from "@/lib/plan-dreams";
 import { withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 
 /**
@@ -87,7 +92,7 @@ function isSignedIn(): boolean {
 function removeIdeateLs(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LS_KEY);
+    removeAccountLocalStorage(LS_KEY);
   } catch {
     /* */
   }
@@ -270,7 +275,7 @@ export function loadIdeateStoreRaw(): IdeateStoreV2 {
     return memoryStore ? structuredClone(memoryStore) : emptyIdeateStore();
   }
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountLocalStorage(LS_KEY);
     if (!raw) {
       return migrateV1Raw(null);
     }
@@ -352,7 +357,7 @@ export function saveIdeateStoreLocal(store: IdeateStoreV2) {
   }
   memoryStore = null;
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+    writeAccountLocalStorage(LS_KEY, JSON.stringify(normalized));
   } catch {
     /* ignore */
   }

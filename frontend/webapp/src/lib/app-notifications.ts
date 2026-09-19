@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
 /**
  * In-app notification inbox (top-bar bell). No browser Notification API.
  */
@@ -27,7 +32,7 @@ function notifyChanged(): void {
 export function loadAppNotifications(): AppNotification[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(APP_NOTIFICATIONS_LS_KEY);
+    const raw = readAccountLocalStorage(APP_NOTIFICATIONS_LS_KEY);
     if (!raw) return [];
     const data = JSON.parse(raw) as unknown;
     if (!Array.isArray(data)) return [];
@@ -52,7 +57,7 @@ export function loadAppNotifications(): AppNotification[] {
 export function saveAppNotifications(next: AppNotification[]): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    writeAccountLocalStorage(
       APP_NOTIFICATIONS_LS_KEY,
       JSON.stringify(next.slice(0, 40)),
     );

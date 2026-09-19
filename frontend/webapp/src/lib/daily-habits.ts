@@ -1,6 +1,9 @@
 /**
  * Daily habit tracker — local play events, manual checks, and status helpers.
  * Server truth lives at GET /dashboard/daily-status; this mirrors for offline/guest.
+ *
+ * Local play/manual stores are scoped by session email so one Chrome profile
+ * cannot mark another account’s dailies done.
  */
 
 import {
@@ -12,6 +15,7 @@ import type { JournalEntry } from "@/lib/journal-storage";
 import type { IdeateStoreV2 } from "@/lib/plan-ideate-store";
 import type { PlanDream } from "@/lib/plan-dreams";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { getMedimadeSessionEmail } from "@/lib/auth-session";
 
 export { localDateKey };
 
@@ -40,10 +44,24 @@ type PlayDayRecord = {
 type PlayEventsStore = Record<string, PlayDayRecord>;
 type ManualStore = Record<string, DailyManualChecks>;
 
-const PLAY_LS_KEY = "mm_daily_play_events_v1";
-const MANUAL_LS_KEY = "mm_daily_manual_v1";
+/** Unscoped legacy (pre-account) — only used as fallback for signed-out / anon. */
+const PLAY_LS_KEY_LEGACY = "mm_daily_play_events_v1";
+const MANUAL_LS_KEY_LEGACY = "mm_daily_manual_v1";
 
 export const DAILY_HABITS_CHANGED_EVENT = "medimade-daily-habits-changed";
+
+function accountScopeKey(): string {
+  const email = getMedimadeSessionEmail()?.trim().toLowerCase();
+  return email || "_anon";
+}
+
+function playLsKey(scope = accountScopeKey()): string {
+  return `mm_daily_play_events_v2:${scope}`;
+}
+
+function manualLsKey(scope = accountScopeKey()): string {
+  return `mm_daily_manual_v2:${scope}`;
+}
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -67,13 +85,36 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
+function readPlayStore(): PlayEventsStore {
+  const scoped = readJson<PlayEventsStore>(playLsKey(), {});
+  // Never inherit another account’s play history. Legacy flat store only for anon.
+  if (accountScopeKey() !== "_anon") return scoped;
+  if (Object.keys(scoped).length) return scoped;
+  return readJson<PlayEventsStore>(PLAY_LS_KEY_LEGACY, {});
+}
+
+function writePlayStore(store: PlayEventsStore): void {
+  writeJson(playLsKey(), store);
+}
+
+function readManualStore(): ManualStore {
+  const scoped = readJson<ManualStore>(manualLsKey(), {});
+  if (accountScopeKey() !== "_anon") return scoped;
+  if (Object.keys(scoped).length) return scoped;
+  return readJson<ManualStore>(MANUAL_LS_KEY_LEGACY, {});
+}
+
+function writeManualStore(store: ManualStore): void {
+  writeJson(manualLsKey(), store);
+}
+
 function notifyHabitsChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(DAILY_HABITS_CHANGED_EVENT));
 }
 
 export function loadLocalPlayDay(dateKey = localDateKey()): PlayDayRecord {
-  return readJson<PlayEventsStore>(PLAY_LS_KEY, {})[dateKey] ?? {};
+  return readPlayStore()[dateKey] ?? {};
 }
 
 export function hasLocalMeditationProgress(dateKey = localDateKey()): boolean {
@@ -86,7 +127,7 @@ export function recordLocalPlayStarted(opts: {
   dateKey?: string;
 }): void {
   const dateKey = opts.dateKey ?? localDateKey();
-  const store = readJson<PlayEventsStore>(PLAY_LS_KEY, {});
+  const store = readPlayStore();
   const prev = store[dateKey] ?? {};
   if (prev.playStartedAt) {
     store[dateKey] = {
@@ -100,7 +141,7 @@ export function recordLocalPlayStarted(opts: {
       meditationId: opts.meditationId,
     };
   }
-  writeJson(PLAY_LS_KEY, store);
+  writePlayStore(store);
   notifyHabitsChanged();
 }
 
@@ -110,7 +151,7 @@ export function recordLocalPlayProgress60(opts: {
   dateKey?: string;
 }): void {
   const dateKey = opts.dateKey ?? localDateKey();
-  const store = readJson<PlayEventsStore>(PLAY_LS_KEY, {});
+  const store = readPlayStore();
   const prev = store[dateKey] ?? {};
   if (prev.playProgress60At) return;
   store[dateKey] = {
@@ -119,12 +160,12 @@ export function recordLocalPlayProgress60(opts: {
     playProgress60At: opts.at ?? new Date().toISOString(),
     meditationId: opts.meditationId || prev.meditationId,
   };
-  writeJson(PLAY_LS_KEY, store);
+  writePlayStore(store);
   notifyHabitsChanged();
 }
 
 export function loadLocalManualChecks(dateKey = localDateKey()): DailyManualChecks {
-  return readJson<ManualStore>(MANUAL_LS_KEY, {})[dateKey] ?? {};
+  return readManualStore()[dateKey] ?? {};
 }
 
 export function setLocalManualCheck(
@@ -132,12 +173,12 @@ export function setLocalManualCheck(
   checked: boolean,
   dateKey = localDateKey(),
 ): void {
-  const store = readJson<ManualStore>(MANUAL_LS_KEY, {});
+  const store = readManualStore();
   const day = { ...(store[dateKey] ?? {}) };
   if (checked) day[pillar] = true;
   else delete day[pillar];
   store[dateKey] = day;
-  writeJson(MANUAL_LS_KEY, store);
+  writeManualStore(store);
   notifyHabitsChanged();
 }
 
@@ -294,8 +335,8 @@ export function computeLocalStreak(
   ideate: IdeateStoreV2,
   todayKey = localDateKey(),
 ): number {
-  const playStore = readJson<PlayEventsStore>(PLAY_LS_KEY, {});
-  const manualStore = readJson<ManualStore>(MANUAL_LS_KEY, {});
+  const playStore = readPlayStore();
+  const manualStore = readManualStore();
   return computeLocalStreakWith(
     entries,
     ideate,
@@ -311,8 +352,8 @@ export function computeLocalDailyStatus(
   ideate: IdeateStoreV2,
   dateKey = localDateKey(),
 ): DailyStatus {
-  const playStore = readJson<PlayEventsStore>(PLAY_LS_KEY, {});
-  const manualStore = readJson<ManualStore>(MANUAL_LS_KEY, {});
+  const playStore = readPlayStore();
+  const manualStore = readManualStore();
   const manual = loadLocalManualChecks(dateKey);
   const fullStreak = computeLocalStreakWith(
     entries,

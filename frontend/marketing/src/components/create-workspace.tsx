@@ -1,5 +1,6 @@
 "use client";
 
+import { readAccountLocalStorage } from "@/lib/account-scoped-storage";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -844,7 +845,7 @@ function loadManifestLifeAreas(): {
 
   let legacy: PlanGoal[] = [];
   try {
-    const raw = window.localStorage.getItem("mm_plan_v1");
+    const raw = readAccountLocalStorage("mm_plan_v1");
     if (raw) {
       const parsed = JSON.parse(raw) as unknown;
       if (parsed && typeof parsed === "object") {

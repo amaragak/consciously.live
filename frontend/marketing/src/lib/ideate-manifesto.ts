@@ -3,6 +3,11 @@
  * Signed-in: in-memory + cloud bundle. Guests: device localStorage.
  */
 
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { CLAUDE_HAIKU_45_MODEL_ID } from "@/lib/claude-pricing";
 import { streamMedimadeChat } from "@/lib/medimade-api";
@@ -57,7 +62,7 @@ function normalizeStore(x: unknown): IdeateManifestoStoreV1 | null {
 function removeManifestoLs(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LS_KEY);
+    removeAccountLocalStorage(LS_KEY);
   } catch {
     /* */
   }
@@ -83,7 +88,7 @@ export function loadIdeateManifestoStore(): IdeateManifestoStoreV1 {
     return memoryStore ? structuredClone(memoryStore) : emptyStore();
   }
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountLocalStorage(LS_KEY);
     if (!raw) return emptyStore();
     const parsed = normalizeStore(JSON.parse(raw) as unknown);
     return parsed ?? emptyStore();
@@ -102,7 +107,7 @@ export function saveIdeateManifestoStoreLocal(store: IdeateManifestoStoreV1) {
   }
   memoryStore = null;
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+    writeAccountLocalStorage(LS_KEY, JSON.stringify(normalized));
   } catch {
     /* */
   }

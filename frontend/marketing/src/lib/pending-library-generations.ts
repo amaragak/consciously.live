@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
 /** Client-side placeholders while a meditation audio job is running. */
 
 export type PendingLibraryGeneration = {
@@ -25,7 +30,7 @@ export const PENDING_LIBRARY_GENERATIONS_CHANGED_EVENT =
 export function loadPendingGenerations(): PendingLibraryGeneration[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(PENDING_LIBRARY_GENERATIONS_LS_KEY);
+    const raw = readAccountLocalStorage(PENDING_LIBRARY_GENERATIONS_LS_KEY);
     if (!raw) return [];
     const data = JSON.parse(raw) as unknown;
     if (!Array.isArray(data)) return [];
@@ -46,7 +51,7 @@ export function loadPendingGenerations(): PendingLibraryGeneration[] {
 export function savePendingGenerations(next: PendingLibraryGeneration[]) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    writeAccountLocalStorage(
       PENDING_LIBRARY_GENERATIONS_LS_KEY,
       JSON.stringify(next.slice(0, 20)),
     );

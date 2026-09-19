@@ -27,6 +27,20 @@ let cachedClaudeKey: string | undefined;
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
+/**
+ * Shown when Gemini blocks or returns no image without a usable reason
+ * (e.g. promptFeedback.blockReason = "OTHER" for celebrity likeness).
+ */
+const VISION_GENERATE_HELP_ERROR = [
+  "We couldn't generate that image.",
+  "",
+  "Please try again with:",
+  "• Your own photo — not celebrities or public figures",
+  "• A clear, well-lit, high-resolution face photo",
+  "• No blurry, heavily cropped, or filtered shots",
+  "• A specific, everyday scene description",
+].join("\n");
+
 /** Default = Nano Banana Pro (Gemini 3 Pro Image). Override with VISION_IMAGE_MODEL. */
 const DEFAULT_MODEL = "gemini-3-pro-image";
 const MAX_REF_BYTES = 6 * 1024 * 1024;
@@ -506,26 +520,27 @@ export async function handler(
 
   const rawText = await upstream.text();
   if (!upstream.ok) {
-    let detail = rawText.slice(0, 1500);
-    try {
-      const parsed = JSON.parse(rawText) as {
-        error?: { message?: string };
-      };
-      if (parsed.error?.message) detail = parsed.error.message;
-    } catch {
-      /* keep */
-    }
+    // Pass through the provider body as-is (truncated only if enormous).
+    const forwarded = rawText.trim().slice(0, 12_000);
     return json(upstream.status >= 400 ? upstream.status : 502, {
-      error: "Image generation failed",
-      detail,
+      error: forwarded || "Image generation failed",
+      providerStatus: upstream.status,
+      providerBody: forwarded,
     });
   }
 
   let outB64 = "";
   let outMime = "image/png";
+  let providerJson: unknown = null;
   try {
-    const data = JSON.parse(rawText) as {
+    providerJson = JSON.parse(rawText) as unknown;
+    const data = providerJson as {
+      promptFeedback?: { blockReason?: string; block_reason?: string };
       candidates?: Array<{
+        finishReason?: string;
+        finish_reason?: string;
+        finishMessage?: string;
+        finish_message?: string;
         content?: {
           parts?: Array<{
             text?: string;
@@ -535,7 +550,8 @@ export async function handler(
         };
       }>;
     };
-    const outParts = data.candidates?.[0]?.content?.parts ?? [];
+    const candidate = data.candidates?.[0];
+    const outParts = candidate?.content?.parts ?? [];
     for (const p of outParts) {
       const inline = p.inlineData ?? p.inline_data;
       if (inline?.data) {
@@ -551,14 +567,88 @@ export async function handler(
       }
     }
   } catch {
-    return json(502, { error: "Invalid JSON from image model" });
+    return json(502, {
+      error: "Invalid JSON from image model",
+      providerBody: rawText.slice(0, 12_000),
+    });
   }
 
   if (!outB64) {
+    // Strip any huge base64 blobs for optional debug payload.
+    const redact = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(redact);
+      if (!value || typeof value !== "object") return value;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (
+          (k === "data" || k === "imageBase64") &&
+          typeof v === "string" &&
+          v.length > 200
+        ) {
+          out[k] = `[omitted base64 ${v.length} chars]`;
+        } else {
+          out[k] = redact(v);
+        }
+      }
+      return out;
+    };
+    const data = (providerJson ?? {}) as {
+      promptFeedback?: { blockReason?: string; block_reason?: string };
+      candidates?: Array<{
+        finishReason?: string;
+        finish_reason?: string;
+        finishMessage?: string;
+        finish_message?: string;
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
+    };
+    const blockReason = (
+      data.promptFeedback?.blockReason ??
+      data.promptFeedback?.block_reason ??
+      ""
+    )
+      .toString()
+      .trim()
+      .toUpperCase();
+    const candidate = data.candidates?.[0];
+    const finishReason = (
+      candidate?.finishReason ??
+      candidate?.finish_reason ??
+      ""
+    )
+      .toString()
+      .trim()
+      .toUpperCase();
+    const finishMessage = (
+      candidate?.finishMessage ??
+      candidate?.finish_message ??
+      ""
+    )
+      .toString()
+      .trim();
+    const modelText = (candidate?.content?.parts ?? [])
+      .map((p) => (typeof p.text === "string" ? p.text.trim() : ""))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    const specific =
+      finishMessage ||
+      (modelText.length > 0 && modelText.length < 500 ? modelText : "");
+
+    // Prefer a clear provider message when one exists; otherwise generic tips
+    // (opaque blocks like blockReason "OTHER" aren't actionable for users).
+    const userError = specific || VISION_GENERATE_HELP_ERROR;
+
+    const dump = JSON.stringify(redact(providerJson), null, 2).slice(0, 12_000);
     return json(502, {
-      error: "Model returned no image — try a clearer scene description.",
+      error: userError,
+      providerBody: dump,
+      ...(blockReason ? { blockReason } : {}),
+      ...(finishReason ? { finishReason } : {}),
     });
   }
+
 
   const outBuf = Buffer.from(outB64, "base64");
   const cfDomain = process.env.MEDIA_CLOUDFRONT_DOMAIN?.trim();

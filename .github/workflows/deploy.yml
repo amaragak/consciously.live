@@ -105,6 +105,14 @@ jobs:
             APP=true
           fi
 
+          # Backend CFN outputs are baked into both frontends at build time
+          # (NEXT_PUBLIC_* for marketing, VITE_* for the SPA). Redeploy both when
+          # the API/media/chat URLs may have changed.
+          if [ "$BACKEND" = "true" ]; then
+            MARKETING=true
+            APP=true
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.force_backend }}" = "true" ]; then
               BACKEND=true
@@ -158,9 +166,10 @@ jobs:
         env:
           MEDIMADE_AUTH_EMAIL_FROM: ${{ secrets.MEDIMADE_AUTH_EMAIL_FROM }}
           MEDIMADE_AUTH_WEBAPP_ORIGIN: ${{ secrets.MEDIMADE_AUTH_WEBAPP_ORIGIN }}
-        # ConsciouslyBackend is opt-in (CONSCIOUSLY_STACK=1); do not deploy it here yet.
+          # Include ConsciouslyBackend in the CDK app (MedimadeStack remains defined; not torn down).
+          CONSCIOUSLY_STACK: "1"
         run: |
-          ./scripts/deploy-back MedimadeBackend --require-approval never
+          ./scripts/deploy-back ConsciouslyBackend -c consciouslyStack=true --require-approval never
 
       # Before any frontend build, pull NEXT_PUBLIC_* from the live stack
       # (covers frontend-only and back+front — no GitHub secrets for those URLs).
@@ -168,7 +177,7 @@ jobs:
         if: steps.plan.outputs.frontend == 'true'
         run: |
           node backend/scripts/write-webapp-env-from-outputs.mjs \
-            --stack MedimadeBackend \
+            --stack ConsciouslyBackend \
             --region "${{ vars.AWS_REGION || 'eu-west-2' }}" \
             frontend/marketing/.env \
             frontend/mobile/.env \

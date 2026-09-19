@@ -1,4 +1,9 @@
 import {
+  readAccountSessionStorage,
+  removeAccountSessionStorage,
+  writeAccountSessionStorage,
+} from "@/lib/account-scoped-storage";
+import {
   isMeditationTargetMinutes,
   type MedimadeChatTurn,
   type MeditationTargetMinutes,
@@ -264,7 +269,7 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
 export function readCreateSession(): CreateSessionV1 | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(CREATE_SESSION_STORAGE_KEY);
+    const raw = readAccountSessionStorage(CREATE_SESSION_STORAGE_KEY);
     if (!raw) return null;
     return parseCreateSession(JSON.parse(raw) as unknown);
   } catch {
@@ -275,7 +280,7 @@ export function readCreateSession(): CreateSessionV1 | null {
 export function writeCreateSession(session: CreateSessionV1): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(CREATE_SESSION_STORAGE_KEY, JSON.stringify(session));
+    writeAccountSessionStorage(CREATE_SESSION_STORAGE_KEY, JSON.stringify(session));
     window.dispatchEvent(new Event(CREATE_SESSION_CHANGED_EVENT));
   } catch {
     /* quota / private mode */
@@ -308,10 +313,10 @@ export function writeLinkedLifeAreaId(id: string | null): void {
   try {
     const trimmed = id?.trim() ?? "";
     if (!trimmed) {
-      sessionStorage.removeItem(CREATE_LINKED_LIFE_AREA_KEY);
+      removeAccountSessionStorage(CREATE_LINKED_LIFE_AREA_KEY);
       return;
     }
-    sessionStorage.setItem(CREATE_LINKED_LIFE_AREA_KEY, trimmed);
+    writeAccountSessionStorage(CREATE_LINKED_LIFE_AREA_KEY, trimmed);
   } catch {
     /* ignore */
   }
@@ -320,7 +325,7 @@ export function writeLinkedLifeAreaId(id: string | null): void {
 export function readLinkedLifeAreaId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(CREATE_LINKED_LIFE_AREA_KEY);
+    const raw = readAccountSessionStorage(CREATE_LINKED_LIFE_AREA_KEY);
     const trimmed = raw?.trim() ?? "";
     return trimmed || null;
   } catch {
@@ -331,7 +336,7 @@ export function readLinkedLifeAreaId(): string | null {
 export function clearCreateSession(): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.removeItem(CREATE_SESSION_STORAGE_KEY);
+    removeAccountSessionStorage(CREATE_SESSION_STORAGE_KEY);
   } catch {
     /* ignore */
   }

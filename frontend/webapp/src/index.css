@@ -234,6 +234,18 @@ body {
   opacity: 0.88;
 }
 
+.home-hero.home-hero--stock-amber {
+  --home-hero-bg: #f3eee6;
+  background-color: #f3eee6;
+}
+.home-hero.home-hero--stock-amber::before,
+.dark .home-hero.home-hero--stock-amber::before {
+  background-image: url("/patterns/paisley-amber-duotone.webp");
+  background-repeat: repeat;
+  background-size: 640px 640px;
+  opacity: 0.77;
+}
+
 .home-hero.home-hero--stock-waves {
   --home-hero-bg: #2a4a6a;
   background-color: #2a4a6a;
@@ -456,6 +468,12 @@ main[data-app-layout="focus"][data-focus-pattern="ornate"] .page-pattern-tile {
   background-image: url("/patterns/hero/adobestock-2162625652.webp");
   background-size: 640px 640px;
   opacity: 0.44;
+}
+
+main[data-app-layout="focus"][data-focus-pattern="amber"] .page-pattern-tile {
+  background-image: url("/patterns/paisley-amber-duotone.webp");
+  background-size: 640px 640px;
+  opacity: 0.45;
 }
 
 main[data-app-layout="focus"][data-focus-pattern="waves"] .page-pattern-tile {

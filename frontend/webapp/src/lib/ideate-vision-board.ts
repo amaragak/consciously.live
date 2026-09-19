@@ -4,6 +4,11 @@
  * Guests: device-only metadata + IndexedDB binaries.
  */
 
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 
 export type VisionBoardVersion = {
@@ -95,7 +100,7 @@ function isSignedIn(): boolean {
 function removeVisionLs(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LS_KEY);
+    removeAccountLocalStorage(LS_KEY);
   } catch {
     /* */
   }
@@ -247,7 +252,7 @@ export function loadIdeateVisionBoardStore(): IdeateVisionBoardStoreV1 {
     return memoryStore ? structuredClone(memoryStore) : emptyBoard();
   }
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountLocalStorage(LS_KEY);
     if (!raw) return emptyBoard();
     return normalizeStore(JSON.parse(raw));
   } catch {
@@ -279,7 +284,7 @@ export function saveIdeateVisionBoardStoreLocal(store: IdeateVisionBoardStoreV1)
   }
   memoryStore = null;
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+    writeAccountLocalStorage(LS_KEY, JSON.stringify(normalized));
   } catch {
     /* ignore */
   }

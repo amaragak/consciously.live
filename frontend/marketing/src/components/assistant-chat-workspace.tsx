@@ -104,7 +104,12 @@ export function AssistantChatWorkspace() {
     const onChange = () => refreshSidebar();
     window.addEventListener(ASSISTANT_CHAT_STORE_CHANGED, onChange);
     const onStorage = (ev: StorageEvent) => {
-      if (ev.key !== "mm_assistant_chat_store_v1" && ev.key !== null) return;
+      if (
+        ev.key !== "mm_assistant_chat_store_v1" &&
+        !ev.key?.startsWith("mm_assistant_chat_store_v1:")
+      ) {
+        return;
+      }
       refreshSidebar();
     };
     window.addEventListener("storage", onStorage);
@@ -122,8 +127,10 @@ export function AssistantChatWorkspace() {
       if (!signedIn) {
         clearAssistantChatRemoteSessionCache();
         setCloudReady(true);
+        refreshSidebar();
         return;
       }
+      // wasPulled is keyed by session email — account switch forces a new pull.
       if (wasAssistantChatStorePulledThisSession()) {
         setCloudReady(true);
         refreshSidebar();

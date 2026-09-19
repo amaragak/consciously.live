@@ -126,11 +126,26 @@ export type AssistantAction =
     }
   | {
       name: "put_todo";
-      todoId: string;
+      /** Prefer id when known; otherwise match by title. */
+      todoId?: string;
+      /** Find To Do by title when todoId omitted. */
+      match?: string;
       title?: string;
       checked?: boolean;
+      /** Move under this goal (title match) when set. */
+      parentTaskTitle?: string;
+      lifeAreaId?: string;
+      lifeAreaTitle?: string;
     }
-  | { name: "delete_todo"; todoId: string }
+  | {
+      name: "delete_todo";
+      todoId?: string;
+      /** Find To Do by title when todoId omitted. */
+      title?: string;
+      parentTaskTitle?: string;
+      lifeAreaId?: string;
+      lifeAreaTitle?: string;
+    }
   | { name: "get_ideate_store" }
   | { name: "put_ideate_store" }
   | { name: "list_vision_board" }
@@ -458,20 +473,61 @@ function coerceAction(
   }
   if (name === "put_todo") {
     const todoId = optStr(params, "todoId", "id", "taskId");
-    if (!todoId) return null;
+    const match = optStr(params, "match", "matchTitle", "match_title");
     const title = optStr(params, "title");
     const checked = optBool(params, "checked", "done", "complete");
+    const parentTaskTitle = optStr(
+      params,
+      "parentTaskTitle",
+      "parent_task_title",
+      "parentTitle",
+    );
+    const lifeAreaId = optStr(params, "lifeAreaId", "life_area_id");
+    const lifeAreaTitle = optStr(
+      params,
+      "lifeAreaTitle",
+      "life_area_title",
+      "lifeArea",
+      "life_area",
+    );
+    if (!todoId && !match && !title) return null;
     return {
       name: "put_todo",
-      todoId,
+      ...(todoId ? { todoId } : {}),
+      ...(match ? { match } : {}),
       ...(title ? { title } : {}),
       ...(checked != null ? { checked } : {}),
+      ...(parentTaskTitle ? { parentTaskTitle } : {}),
+      ...(lifeAreaId ? { lifeAreaId } : {}),
+      ...(lifeAreaTitle ? { lifeAreaTitle } : {}),
     };
   }
   if (name === "delete_todo") {
     const todoId = optStr(params, "todoId", "id", "taskId");
-    if (!todoId) return null;
-    return { name: "delete_todo", todoId };
+    const title = optStr(params, "title", "match", "matchTitle");
+    const parentTaskTitle = optStr(
+      params,
+      "parentTaskTitle",
+      "parent_task_title",
+      "parentTitle",
+    );
+    const lifeAreaId = optStr(params, "lifeAreaId", "life_area_id");
+    const lifeAreaTitle = optStr(
+      params,
+      "lifeAreaTitle",
+      "life_area_title",
+      "lifeArea",
+      "life_area",
+    );
+    if (!todoId && !title) return null;
+    return {
+      name: "delete_todo",
+      ...(todoId ? { todoId } : {}),
+      ...(title ? { title } : {}),
+      ...(parentTaskTitle ? { parentTaskTitle } : {}),
+      ...(lifeAreaId ? { lifeAreaId } : {}),
+      ...(lifeAreaTitle ? { lifeAreaTitle } : {}),
+    };
   }
   if (name === "get_ideate_store") {
     return { name: "get_ideate_store" };
@@ -810,11 +866,20 @@ export function encodeAssistantAction(action: AssistantAction): string {
         : `[[ACTION:list_todos]]`;
     case "put_todo":
       add("todoId", action.todoId);
+      add("match", action.match);
       add("title", action.title);
       add("checked", action.checked);
+      add("parentTaskTitle", action.parentTaskTitle);
+      add("lifeAreaId", action.lifeAreaId);
+      add("lifeAreaTitle", action.lifeAreaTitle);
       return `[[ACTION:put_todo|${parts.join("|")}]]`;
     case "delete_todo":
-      return `[[ACTION:delete_todo|todoId=${enc(action.todoId)}]]`;
+      add("todoId", action.todoId);
+      add("title", action.title);
+      add("parentTaskTitle", action.parentTaskTitle);
+      add("lifeAreaId", action.lifeAreaId);
+      add("lifeAreaTitle", action.lifeAreaTitle);
+      return `[[ACTION:delete_todo|${parts.join("|")}]]`;
     case "get_ideate_store":
       return `[[ACTION:get_ideate_store]]`;
     case "put_ideate_store":

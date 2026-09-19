@@ -1,5 +1,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { applySpeechElementVolume } from "@/lib/bed-volume";
 
 const LAST_VOICE_STORAGE_KEY = "mm_last_fish_voice_v1";
@@ -28,7 +32,7 @@ type VoiceCardRowProps = {
 function readLastVoiceId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(LAST_VOICE_STORAGE_KEY)?.trim();
+    const raw = readAccountLocalStorage(LAST_VOICE_STORAGE_KEY)?.trim();
     return raw || null;
   } catch {
     return null;
@@ -38,7 +42,7 @@ function readLastVoiceId(): string | null {
 function writeLastVoiceId(modelId: string) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LAST_VOICE_STORAGE_KEY, modelId);
+    writeAccountLocalStorage(LAST_VOICE_STORAGE_KEY, modelId);
   } catch {
     /* ignore */
   }

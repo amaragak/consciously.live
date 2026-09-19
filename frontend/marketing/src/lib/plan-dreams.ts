@@ -3,6 +3,10 @@
  */
 
 import {
+  accountStorageScope,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+import {
   loadIdeateStore,
   saveIdeateStore,
 } from "@/lib/plan-ideate-store";
@@ -468,7 +472,10 @@ function normalizeState(x: unknown): DreamState {
 
 function migrateLegacyPlanIfNeeded(): PlanDreamsStoreV1 {
   try {
-    const leg = window.localStorage.getItem(LEGACY_PLAN_V1_KEY);
+    const leg =
+      accountStorageScope() === "_anon"
+        ? window.localStorage.getItem(LEGACY_PLAN_V1_KEY)
+        : null;
     if (!leg) return { v: 1, dreams: [] };
     const parsed = JSON.parse(leg) as { v?: number; goals?: unknown[] };
     if (parsed?.v !== 1 || !Array.isArray(parsed.goals)) return { v: 1, dreams: [] };
@@ -505,7 +512,7 @@ function migrateLegacyPlanIfNeeded(): PlanDreamsStoreV1 {
     }
     if (dreams.length) {
       const next: PlanDreamsStoreV1 = { v: 1, dreams };
-      window.localStorage.setItem(PLAN_DREAMS_LS_KEY, JSON.stringify(next));
+      writeAccountLocalStorage(PLAN_DREAMS_LS_KEY, JSON.stringify(next));
     }
     return { v: 1, dreams };
   } catch {

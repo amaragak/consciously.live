@@ -68,8 +68,25 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     runpodsApiKeySecret.grantRead(role);
     runpodsUrlSecret.grantRead(role);
     algoliaSecret.grantRead(role);
-    // Prefer role policy over resource-policy grantInvoke to avoid Admin ↔ Meditate cycles.
-    role.addToPolicy(
+    const workerRole = new iam.Role(this, "MeditationAudioWorkerRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole",
+        ),
+      ],
+    });
+    meditationAnalyticsTable.grantReadWriteData(workerRole);
+    meditationJobsTable.grantReadWriteData(workerRole);
+    soundCatalogTable.grantReadData(workerRole);
+    voiceAdminTable.grantReadData(workerRole);
+    mediaBucket.grantReadWrite(workerRole);
+    fishApiKeySecret.grantRead(workerRole);
+    claudeApiKeySecret.grantRead(workerRole);
+    runpodsApiKeySecret.grantRead(workerRole);
+    runpodsUrlSecret.grantRead(workerRole);
+    algoliaSecret.grantRead(workerRole);
+    workerRole.addToPolicy(
       new iam.PolicyStatement({
         actions: ["lambda:InvokeFunction"],
         resources: [voiceFxFunction.functionArn],
@@ -88,7 +105,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         // 1024 MB ran out of memory on a 153-section script.
         memorySize: 2048,
         layers: [ffmpegLayer],
-        role,
+        role: workerRole,
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
@@ -105,7 +122,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         },
       },
     );
-    // createMeditationJob (same role) invokes the worker.
+    // createMeditationJob (shared nest role) invokes the worker — separate roles avoid CFN cycles.
     meditationAudioWorker.grantInvoke(role);
 
     const createMeditationJob = new lambda_nodejs.NodejsFunction(

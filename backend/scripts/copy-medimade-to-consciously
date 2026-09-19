@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Copy DynamoDB + S3 from MedimadeBackend → ConsciouslyBackend (copy only, no deletes).
+# Usage:
+#   backend/scripts/copy-medimade-to-consciously [--dry-run] [--skip-s3] [--skip-ddb]
+set -euo pipefail
+
+SCRIPT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
+# shellcheck source=lib/default-aws-profile.sh
+source "$SCRIPT_LIB/default-aws-profile.sh"
+medimade_default_aws_profile "$@"
+
+export AWS_REGION="${AWS_REGION:-eu-west-2}"
+export AWS_DEFAULT_REGION="$AWS_REGION"
+
+DRY=0
+SKIP_S3=0
+SKIP_DDB=0
+for a in "$@"; do
+  case "$a" in
+    --dry-run) DRY=1 ;;
+    --skip-s3) SKIP_S3=1 ;;
+    --skip-ddb) SKIP_DDB=1 ;;
+  esac
+done
+
+echo "Region=$AWS_REGION dry=$DRY skip_s3=$SKIP_S3 skip_ddb=$SKIP_DDB"
+
+# Collect DynamoDB table physical IDs from a stack tree (root + nested).
+collect_tables() {
+  local stack="$1"
+  local out="$2"
+  : >"$out"
+  local stacks=("$stack")
+  local i=0
+  while ((i < ${#stacks[@]})); do
+    local s="${stacks[$i]}"
+    i=$((i + 1))
+    while IFS=$'\t' read -r typ logical physical; do
+      [[ -z "${physical:-}" ]] && continue
+      if [[ "$typ" == "AWS::CloudFormation::Stack" ]]; then
+        # ARN …:stack/Name/uuid → Name
+        local nested
+        nested="$(echo "$physical" | awk -F/ '{print $(NF-1)}')"
+        [[ -n "$nested" ]] && stacks+=("$nested")
+      elif [[ "$typ" == "AWS::DynamoDB::Table" ]]; then
+        printf '%s\t%s\n' "$logical" "$physical" >>"$out"
+      fi
+    done < <(aws cloudformation list-stack-resources \
+      --stack-name "$s" \
+      --query 'StackResourceSummaries[].[ResourceType,LogicalResourceId,PhysicalResourceId]' \
+      --output text)
+  done
+}
+
+normalize_key() {
+  local logical="$1"
+  case "$logical" in
+    *MeditationAnalytics*) echo MeditationAnalytics ;;
+    *JournalInsights*) echo JournalInsights ;;
+    *AssistantChat*) echo AssistantChat ;;
+    *FamousQuotes*|*IdeateFamousQuotes*) echo FamousQuotes ;;
+    *IdeateTable*|*Ideate*) echo Ideate ;;
+    *Habits*) echo Habits ;;
+    *SoundCatalog*) echo SoundCatalog ;;
+    *VoiceAdmin*) echo VoiceAdmin ;;
+    *ListenerMix*) echo ListenerMix ;;
+    *MeditationJobs*) echo MeditationJobs ;;
+    *JournalTable*|*Journal) echo Journal ;;
+    *UsersTable*|*MedimadeUsers*) echo Users ;;
+    *MagicLink*) echo MagicLink ;;
+    *Refresh*) echo Refresh ;;
+    *) echo "" ;;
+  esac
+}
+
+SRC_FILE="$(mktemp)"
+DST_FILE="$(mktemp)"
+trap 'rm -f "$SRC_FILE" "$DST_FILE"' EXIT
+
+collect_tables MedimadeBackend "$SRC_FILE"
+collect_tables ConsciouslyBackend "$DST_FILE"
+
+echo "=== Source (Medimade) tables ==="
+cat "$SRC_FILE"
+echo "=== Dest (Consciously) tables ==="
+cat "$DST_FILE"
+
+declare -A SRC_MAP DST_MAP
+while IFS=$'\t' read -r logical physical; do
+  key="$(normalize_key "$logical")"
+  [[ -z "$key" ]] && continue
+  SRC_MAP["$key"]="$physical"
+done <"$SRC_FILE"
+while IFS=$'\t' read -r logical physical; do
+  key="$(normalize_key "$logical")"
+  [[ -z "$key" ]] && continue
+  DST_MAP["$key"]="$physical"
+done <"$DST_FILE"
+
+if [[ "$SKIP_DDB" -eq 0 ]]; then
+  echo "=== DynamoDB copy ==="
+  for key in "${!SRC_MAP[@]}"; do
+    src="${SRC_MAP[$key]}"
+    dst="${DST_MAP[$key]:-}"
+    if [[ -z "$dst" ]]; then
+      echo "SKIP $key: no dest table"
+      continue
+    fi
+    echo "Copy $key: $src → $dst"
+    if [[ "$DRY" -eq 1 ]]; then
+      aws dynamodb describe-table --table-name "$src" \
+        --query 'Table.[ItemCount,TableSizeBytes]' --output text
+      continue
+    fi
+    # Scan + batch-write via python for unprocessed retries
+    python3 - "$src" "$dst" <<'PY'
+import sys, time
+import boto3
+src, dst = sys.argv[1], sys.argv[2]
+ddb = boto3.client("dynamodb")
+copied = 0
+start = None
+while True:
+    kwargs = {"TableName": src}
+    if start:
+        kwargs["ExclusiveStartKey"] = start
+    page = ddb.scan(**kwargs)
+    items = page.get("Items") or []
+    for i in range(0, len(items), 25):
+        chunk = items[i:i+25]
+        req = {dst: [{"PutRequest": {"Item": it}} for it in chunk]}
+        for attempt in range(10):
+            res = ddb.batch_write_item(RequestItems=req)
+            left = (res.get("UnprocessedItems") or {}).get(dst) or []
+            if not left:
+                break
+            req = {dst: left}
+            time.sleep(0.05 * (attempt + 1))
+        copied += len(chunk)
+        print(f"\r  {copied}", end="", flush=True)
+    start = page.get("LastEvaluatedKey")
+    if not start:
+        break
+print(f"\n  done {copied} items")
+PY
+  done
+fi
+
+if [[ "$SKIP_S3" -eq 0 ]]; then
+  SRC_BUCKET="$(aws cloudformation describe-stacks --stack-name MedimadeBackend \
+    --query "Stacks[0].Outputs[?OutputKey=='MediaBucketName'].OutputValue|[0]" --output text)"
+  DST_BUCKET="$(aws cloudformation describe-stacks --stack-name ConsciouslyBackend \
+    --query "Stacks[0].Outputs[?OutputKey=='MediaBucketName'].OutputValue|[0]" --output text)"
+  echo "=== S3 sync ==="
+  echo "s3://$SRC_BUCKET → s3://$DST_BUCKET"
+  if [[ "$DRY" -eq 1 ]]; then
+    aws s3 ls "s3://$SRC_BUCKET" --summarize --human-readable --recursive 2>/dev/null | tail -3
+  else
+    aws s3 sync "s3://$SRC_BUCKET" "s3://$DST_BUCKET" --only-show-errors
+    echo "s3 sync complete"
+  fi
+fi
+
+echo "Finished (source untouched)."

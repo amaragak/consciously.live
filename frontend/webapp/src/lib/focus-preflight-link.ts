@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
 /**
  * Link Ideate-task → Focus preflight 2‑min meditation (pending or ready).
  */
@@ -37,7 +42,7 @@ function emitChanged(): void {
 function loadMap(): LinksMap {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(FOCUS_PREFLIGHT_LINKS_KEY);
+    const raw = readAccountLocalStorage(FOCUS_PREFLIGHT_LINKS_KEY);
     if (!raw) return {};
     const o = JSON.parse(raw) as unknown;
     if (!o || typeof o !== "object") return {};
@@ -55,7 +60,7 @@ function loadMap(): LinksMap {
 function saveMap(map: LinksMap): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(FOCUS_PREFLIGHT_LINKS_KEY, JSON.stringify(map));
+    writeAccountLocalStorage(FOCUS_PREFLIGHT_LINKS_KEY, JSON.stringify(map));
     emitChanged();
   } catch {
     /* ignore */
@@ -103,7 +108,7 @@ function parseLink(raw: unknown): FocusPreflightLink | null {
 export function writeFocusActiveIdeateSubtask(subtaskId: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    writeAccountLocalStorage(
       FOCUS_ACTIVE_IDEATE_SUBTASK_KEY,
       subtaskId.trim(),
     );
@@ -116,7 +121,7 @@ export function writeFocusActiveIdeateSubtask(subtaskId: string): void {
 export function readFocusActiveIdeateSubtask(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const id = window.localStorage.getItem(FOCUS_ACTIVE_IDEATE_SUBTASK_KEY);
+    const id = readAccountLocalStorage(FOCUS_ACTIVE_IDEATE_SUBTASK_KEY);
     return id?.trim() || null;
   } catch {
     return null;

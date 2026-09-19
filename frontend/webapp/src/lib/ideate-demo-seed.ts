@@ -3,6 +3,10 @@
  * UI never seeds these. Ops one-offs: backend scripts for guest@consciously.live.
  */
 
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import {
   loadIdeateReflectionQuestionsStore,
@@ -92,7 +96,7 @@ export function withoutDemoIdeateStore(store: IdeateStoreV2): IdeateStoreV2 {
 function markDemoSeedFlag(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(IDEATE_DEMO_SEED_FLAG_KEY, DEMO_SEED_VERSION);
+    writeAccountLocalStorage(IDEATE_DEMO_SEED_FLAG_KEY, DEMO_SEED_VERSION);
   } catch {
     /* */
   }
@@ -102,7 +106,7 @@ function isCompanionSeedStale(): boolean {
   if (typeof window === "undefined") return true;
   try {
     return (
-      window.localStorage.getItem(IDEATE_DEMO_SEED_FLAG_KEY) !== DEMO_SEED_VERSION
+      readAccountLocalStorage(IDEATE_DEMO_SEED_FLAG_KEY) !== DEMO_SEED_VERSION
     );
   } catch {
     return true;
@@ -923,7 +927,7 @@ function mergeUserStepsOntoDemos(
 function persistGuestIdeateStore(store: IdeateStoreV2): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    writeAccountLocalStorage(
       "mm_plan_dreams_v1",
       JSON.stringify({
         v: 2,

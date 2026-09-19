@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
 /** Local persistence for the logged-in Focus timer page. */
 
 export const FOCUS_TASK_STORAGE_KEY = "mm_focus_task_v1";
@@ -34,7 +39,7 @@ function todayKey(): string {
 export function readFocusTask(): string {
   if (typeof window === "undefined") return "";
   try {
-    return window.localStorage.getItem(FOCUS_TASK_STORAGE_KEY) ?? "";
+    return readAccountLocalStorage(FOCUS_TASK_STORAGE_KEY) ?? "";
   } catch {
     return "";
   }
@@ -43,7 +48,7 @@ export function readFocusTask(): string {
 export function writeFocusTask(value: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(FOCUS_TASK_STORAGE_KEY, value);
+    writeAccountLocalStorage(FOCUS_TASK_STORAGE_KEY, value);
   } catch {
     /* quota / private */
   }
@@ -70,7 +75,7 @@ function parseFocusTaskItem(raw: unknown): FocusTaskItem | null {
 export function readFocusTasksList(): FocusTaskItem[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(FOCUS_TASKS_LIST_STORAGE_KEY);
+    const raw = readAccountLocalStorage(FOCUS_TASKS_LIST_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -85,7 +90,7 @@ export function readFocusTasksList(): FocusTaskItem[] {
 export function writeFocusTasksList(tasks: FocusTaskItem[]): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    writeAccountLocalStorage(
       FOCUS_TASKS_LIST_STORAGE_KEY,
       JSON.stringify(tasks),
     );
@@ -97,7 +102,7 @@ export function writeFocusTasksList(tasks: FocusTaskItem[]): void {
 export function readSessionsCompletedToday(): number {
   if (typeof window === "undefined") return 0;
   try {
-    const raw = window.localStorage.getItem(FOCUS_SESSIONS_TODAY_KEY);
+    const raw = readAccountLocalStorage(FOCUS_SESSIONS_TODAY_KEY);
     if (!raw) return 0;
     const parsed = JSON.parse(raw) as SessionsToday;
     if (!parsed || parsed.date !== todayKey()) return 0;
@@ -114,7 +119,7 @@ export function writeSessionsCompletedToday(count: number): void {
       date: todayKey(),
       count: Math.max(0, Math.min(12, count)),
     };
-    window.localStorage.setItem(
+    writeAccountLocalStorage(
       FOCUS_SESSIONS_TODAY_KEY,
       JSON.stringify(payload),
     );

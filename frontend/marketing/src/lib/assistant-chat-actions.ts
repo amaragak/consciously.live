@@ -1,6 +1,10 @@
 import { createMeditationHref } from "@/lib/create-meditation-path";
 import { getMedimadeSessionJwt } from "@/lib/auth-session";
 import {
+  readAccountSessionStorage,
+  writeAccountSessionStorage,
+} from "@/lib/account-scoped-storage";
+import {
   dispatchFocusChatControl,
   readFocusChatRunningHint,
 } from "@/lib/focus-chat-control";
@@ -91,7 +95,7 @@ const LAST_CHAT_JOURNAL_ENTRY_KEY = "mm_assistant_last_journal_entry_id_v1";
 function rememberChatJournalEntryId(id: string): void {
   if (typeof window === "undefined" || !id.trim()) return;
   try {
-    window.sessionStorage.setItem(LAST_CHAT_JOURNAL_ENTRY_KEY, id.trim());
+    writeAccountSessionStorage(LAST_CHAT_JOURNAL_ENTRY_KEY, id.trim());
   } catch {
     /* */
   }
@@ -100,7 +104,7 @@ function rememberChatJournalEntryId(id: string): void {
 function lastChatJournalEntryId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage.getItem(LAST_CHAT_JOURNAL_ENTRY_KEY)?.trim() || null;
+    return readAccountSessionStorage(LAST_CHAT_JOURNAL_ENTRY_KEY)?.trim() || null;
   } catch {
     return null;
   }
@@ -174,6 +178,59 @@ function resolveParentTask(
 
 function lifeAreaTasksHref(lifeAreaId: string, taskId: string): string {
   return `/manifest/goal/${encodeURIComponent(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
+}
+
+/** Resolve a checklist To Do by id or title (optional parent / life-area scope). */
+function resolveChecklistTodo(
+  store: IdeateStoreV2,
+  opts: {
+    todoId?: string;
+    title?: string;
+    parentTaskTitle?: string;
+    lifeAreaId?: string;
+    lifeAreaTitle?: string;
+  },
+) {
+  const byId = (opts.todoId ?? "").trim();
+  if (byId) {
+    const hit = store.todos.find((t) => t.id === byId);
+    if (hit) return hit;
+  }
+  const needle = (opts.title ?? "").trim().toLowerCase();
+  if (!needle) return null;
+
+  let pool = store.todos;
+  const area = resolveLifeAreaFlexible(store, {
+    lifeAreaId: opts.lifeAreaId,
+    lifeAreaTitle: opts.lifeAreaTitle,
+  });
+  if (area) {
+    const goalIds = new Set(
+      store.subtasks.filter((s) => s.projectId === area.id).map((s) => s.id),
+    );
+    pool = pool.filter((t) => goalIds.has(t.subtaskId));
+  }
+  const parentNeedle = (opts.parentTaskTitle ?? "").trim().toLowerCase();
+  if (parentNeedle) {
+    const parentIds = new Set(
+      store.subtasks
+        .filter((s) => {
+          const t = s.title.trim().toLowerCase();
+          return t === parentNeedle || t.includes(parentNeedle) || parentNeedle.includes(t);
+        })
+        .map((s) => s.id),
+    );
+    pool = pool.filter((t) => parentIds.has(t.subtaskId));
+  }
+
+  const exact = pool.find((t) => t.title.trim().toLowerCase() === needle);
+  if (exact) return exact;
+  return (
+    pool.find((row) => {
+      const t = row.title.trim().toLowerCase();
+      return t.includes(needle) || needle.includes(t);
+    }) ?? null
+  );
 }
 
 function gratitudeResultItem(entry: JournalEntry): AssistantActionResultItem {
@@ -644,6 +701,15 @@ function applyTodo(
       detail: previewSnippet(title),
       href: lifeAreaTasksHref(area.id, parent.id),
       linkLabel: "Open goal",
+      items: [
+        {
+          id: todo.id,
+          title: todo.title.trim() || "To Do",
+          meta: parent.title.trim() || "goal",
+          body: `Under ${parent.title.trim() || "goal"}`,
+          href: lifeAreaTasksHref(area.id, parent.id),
+        },
+      ],
     };
   }
 
@@ -658,6 +724,14 @@ function applyTodo(
     detail: previewSnippet(title),
     href: lifeAreaTasksHref(area.id, subtask.id),
     linkLabel: "Open life area",
+    items: [
+      {
+        id: subtask.id,
+        title: subtask.title.trim() || "Goal",
+        meta: "Goal",
+        href: lifeAreaTasksHref(area.id, subtask.id),
+      },
+    ],
   };
 }
 
@@ -1101,16 +1175,34 @@ function applyPutTodo(
   action: Extract<AssistantAction, { name: "put_todo" }>,
 ): AssistantActionResult {
   let store = loadIdeateStore();
-  const todo = store.todos.find((t) => t.id === action.todoId);
+  const findNeedle = (
+    action.match ??
+    (!action.todoId ? action.title : undefined) ??
+    ""
+  ).trim();
+
+  let todo = resolveChecklistTodo(store, {
+    todoId: action.todoId,
+    title: findNeedle || undefined,
+    lifeAreaId: action.lifeAreaId,
+    lifeAreaTitle: action.lifeAreaTitle,
+  });
+
   if (!todo) {
-    // Also allow updating a goal (subtask) by id when used as "todo"
-    const goal = store.subtasks.find((s) => s.id === action.todoId);
+    const goalId = (action.todoId ?? "").trim();
+    const goal = goalId
+      ? store.subtasks.find((s) => s.id === goalId)
+      : null;
     if (!goal) return { ok: false, label: "Couldn't find that To Do" };
     const next = {
       ...goal,
       ...(action.title?.trim() ? { title: action.title.trim() } : {}),
       ...(action.checked != null
-        ? { status: action.checked ? ("done" as const) : ("not_started" as const) }
+        ? {
+            status: action.checked
+              ? ("done" as const)
+              : ("not_started" as const),
+          }
         : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -1124,9 +1216,47 @@ function applyPutTodo(
       linkLabel: "Open",
     };
   }
+
+  let nextParentId = todo.subtaskId;
+  const moveTo = (action.parentTaskTitle ?? "").trim();
+  if (moveTo) {
+    const currentParent = store.subtasks.find((s) => s.id === todo!.subtaskId);
+    const areaId =
+      currentParent?.projectId ||
+      resolveLifeAreaFlexible(store, {
+        lifeAreaId: action.lifeAreaId,
+        lifeAreaTitle: action.lifeAreaTitle,
+      })?.id;
+    if (!areaId) {
+      return { ok: false, label: "Couldn't find that life area for the move" };
+    }
+    const parent = resolveParentTask(store, areaId, {
+      name: "add_todo",
+      title: "_",
+      parentTaskTitle: moveTo,
+      lifeAreaId: areaId,
+    });
+    if (!parent) {
+      return {
+        ok: false,
+        label:
+          "Couldn't find that parent goal. Add the goal first, then move the To Do under it.",
+      };
+    }
+    nextParentId = parent.id;
+  }
+
+  const rename =
+    action.match && action.title?.trim()
+      ? action.title.trim()
+      : action.todoId && action.title?.trim()
+        ? action.title.trim()
+        : todo.title;
+
   const next = {
     ...todo,
-    ...(action.title?.trim() ? { title: action.title.trim() } : {}),
+    title: rename,
+    subtaskId: nextParentId,
     ...(action.checked != null
       ? {
           isChecked: action.checked,
@@ -1137,10 +1267,16 @@ function applyPutTodo(
   };
   store = upsertTodo(store, next);
   saveIdeateStore(store);
-  const parent = store.subtasks.find((s) => s.id === todo.subtaskId);
+  const parent = store.subtasks.find((s) => s.id === next.subtaskId);
+  const moved = nextParentId !== todo.subtaskId;
   return {
     ok: true,
-    label: action.checked === true ? "Marked To Do done" : "Updated To Do",
+    label:
+      action.checked === true
+        ? "Marked To Do done"
+        : moved
+          ? `Moved To Do under ${parent?.title.trim() || "goal"}`
+          : "Updated To Do",
     detail: previewSnippet(next.title),
     href: parent
       ? lifeAreaTasksHref(parent.projectId, parent.id)
@@ -1153,11 +1289,17 @@ function applyDeleteTodo(
   action: Extract<AssistantAction, { name: "delete_todo" }>,
 ): AssistantActionResult {
   let store = loadIdeateStore();
-  const todo = store.todos.find((t) => t.id === action.todoId);
+  const todo = resolveChecklistTodo(store, {
+    todoId: action.todoId,
+    title: action.title,
+    parentTaskTitle: action.parentTaskTitle,
+    lifeAreaId: action.lifeAreaId,
+    lifeAreaTitle: action.lifeAreaTitle,
+  });
   if (!todo) return { ok: false, label: "Couldn't find that To Do" };
   const title = todo.title;
   const parent = store.subtasks.find((s) => s.id === todo.subtaskId);
-  store = deleteTodo(store, action.todoId);
+  store = deleteTodo(store, todo.id);
   saveIdeateStore(store);
   return {
     ok: true,

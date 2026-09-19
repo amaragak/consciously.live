@@ -2,6 +2,11 @@ import {
   IDEATE_REFLECTION_QUESTION_PRESETS,
   type IdeateReflectionQuestionPreset,
 } from "@/lib/ideate-reflection-question-presets";
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 
 /**
@@ -42,7 +47,7 @@ function isSignedIn(): boolean {
 function removeQuestionsLs(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LS_KEY);
+    removeAccountLocalStorage(LS_KEY);
   } catch {
     /* */
   }
@@ -99,7 +104,7 @@ export function loadIdeateReflectionQuestionsStore(): IdeateReflectionQuestionsS
     return memoryStore ? structuredClone(memoryStore) : emptyQuestions();
   }
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountLocalStorage(LS_KEY);
     if (!raw) return emptyQuestions();
     const parsed = JSON.parse(raw) as { v?: number; questions?: unknown[] };
     if (parsed?.v !== 1 || !Array.isArray(parsed.questions)) {
@@ -136,7 +141,7 @@ export function saveIdeateReflectionQuestionsStoreLocal(
   }
   memoryStore = null;
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+    writeAccountLocalStorage(LS_KEY, JSON.stringify(normalized));
   } catch {
     /* ignore */
   }

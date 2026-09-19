@@ -28,9 +28,10 @@ import {
  * New Consciously backend root stack (parallel to MedimadeBackend).
  *
  * Nested declaration order (dependency direction):
- *   Config → Auth → Database → Media → HttpApi + Layers → Api*
+ *   Config → Auth → Database → layers → Media(with normalize) → HttpApi → Api*
  *
  * HttpApi + layers live on this parent; domain routes/Lambdas live in Api* nests.
+ * Media owns bg-audio normalize + S3 notification (avoids Media ↔ ApiAdmin cycles).
  */
 export class ConsciouslyStack extends cdk.Stack {
   readonly config: ConsciouslyConfigNestedStack;
@@ -51,7 +52,13 @@ export class ConsciouslyStack extends cdk.Stack {
     this.config = new ConsciouslyConfigNestedStack(this, "Config");
     this.auth = new ConsciouslyAuthNestedStack(this, "Auth");
     this.database = new ConsciouslyDatabaseNestedStack(this, "Database");
-    this.media = new ConsciouslyMediaNestedStack(this, "Media");
+
+    const layers = createConsciouslyLayers(this);
+
+    this.media = new ConsciouslyMediaNestedStack(this, "Media", {
+      ffmpegLayer: layers.ffmpegLayer,
+      soundCatalogTable: this.database.soundCatalog,
+    });
 
     this.httpApi = new apigwv2.HttpApi(this, "HttpApi", {
       apiName: "consciously-api",
@@ -73,8 +80,6 @@ export class ConsciouslyStack extends cdk.Stack {
         maxAge: cdk.Duration.days(1),
       },
     });
-
-    const layers = createConsciouslyLayers(this);
 
     this.apiAuth = new ConsciouslyApiAuthNestedStack(this, "ApiAuth", {
       httpApi: this.httpApi,

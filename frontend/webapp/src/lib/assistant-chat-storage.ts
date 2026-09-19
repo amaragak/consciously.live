@@ -1,7 +1,12 @@
 /**
  * Persisted Consciously Chat threads (localStorage + optional cloud sync).
+ * Store is account-scoped (`mm_assistant_chat_store_v1:<email>`).
  */
 
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { deriveAssistantChatTitleProvisional } from "@/lib/assistant-chat-title";
 
 export type AssistantChatActionResultItem = {
@@ -199,7 +204,7 @@ export function loadAssistantChatStore(): AssistantChatStoreV1 {
   if (typeof window === "undefined") return emptyAssistantChatStore();
   clearLegacyAssistantChatKeys();
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
+    const raw = readAccountLocalStorage(STORE_KEY);
     if (!raw) return emptyAssistantChatStore();
     return normalizeAssistantChatStore(JSON.parse(raw) as unknown);
   } catch {
@@ -211,7 +216,7 @@ export function saveAssistantChatStore(store: AssistantChatStoreV1): void {
   if (typeof window === "undefined") return;
   const normalized = normalizeAssistantChatStore(store);
   try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(normalized));
+    writeAccountLocalStorage(STORE_KEY, JSON.stringify(normalized));
   } catch {
     /* */
   }

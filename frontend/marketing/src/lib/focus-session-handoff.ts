@@ -1,3 +1,8 @@
+import {
+  readAccountSessionStorage,
+  removeAccountSessionStorage,
+  writeAccountSessionStorage,
+} from "@/lib/account-scoped-storage";
 /** SessionStorage handoff: Ideate life-area task → Focus timer. */
 
 export const FOCUS_SESSION_HANDOFF_KEY = "mm_focus_session_handoff_v1";
@@ -13,7 +18,7 @@ export type FocusSessionHandoffV1 = {
 export function writeFocusSessionHandoff(payload: FocusSessionHandoffV1): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(
+    writeAccountSessionStorage(
       FOCUS_SESSION_HANDOFF_KEY,
       JSON.stringify(payload),
     );
@@ -25,7 +30,7 @@ export function writeFocusSessionHandoff(payload: FocusSessionHandoffV1): void {
 export function readFocusSessionHandoff(): FocusSessionHandoffV1 | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(FOCUS_SESSION_HANDOFF_KEY);
+    const raw = readAccountSessionStorage(FOCUS_SESSION_HANDOFF_KEY);
     if (!raw) return null;
     const o = JSON.parse(raw) as Record<string, unknown>;
     if (o.v !== 1 || typeof o.subtaskId !== "string" || !o.subtaskId.trim()) {
@@ -40,7 +45,7 @@ export function readFocusSessionHandoff(): FocusSessionHandoffV1 | null {
 export function clearFocusSessionHandoff(): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.removeItem(FOCUS_SESSION_HANDOFF_KEY);
+    removeAccountSessionStorage(FOCUS_SESSION_HANDOFF_KEY);
   } catch {
     /* ignore */
   }
@@ -50,7 +55,7 @@ export function clearFocusSessionHandoff(): void {
 export function writeReturnToFocusAfterCreate(): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(RETURN_TO_FOCUS_AFTER_CREATE_KEY, "1");
+    writeAccountSessionStorage(RETURN_TO_FOCUS_AFTER_CREATE_KEY, "1");
   } catch {
     /* ignore */
   }
@@ -59,8 +64,8 @@ export function writeReturnToFocusAfterCreate(): void {
 export function consumeReturnToFocusAfterCreate(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const v = window.sessionStorage.getItem(RETURN_TO_FOCUS_AFTER_CREATE_KEY);
-    window.sessionStorage.removeItem(RETURN_TO_FOCUS_AFTER_CREATE_KEY);
+    const v = readAccountSessionStorage(RETURN_TO_FOCUS_AFTER_CREATE_KEY);
+    removeAccountSessionStorage(RETURN_TO_FOCUS_AFTER_CREATE_KEY);
     return v === "1";
   } catch {
     return false;

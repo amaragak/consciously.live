@@ -1,4 +1,5 @@
 
+import { readAccountLocalStorage } from "@/lib/account-scoped-storage";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -842,7 +843,7 @@ function loadManifestLifeAreas(): {
 
   let legacy: PlanGoal[] = [];
   try {
-    const raw = window.localStorage.getItem("mm_plan_v1");
+    const raw = readAccountLocalStorage("mm_plan_v1");
     if (raw) {
       const parsed = JSON.parse(raw) as unknown;
       if (parsed && typeof parsed === "object") {

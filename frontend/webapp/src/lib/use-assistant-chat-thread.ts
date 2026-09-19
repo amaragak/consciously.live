@@ -303,6 +303,27 @@ export function useAssistantChatThread(opts: {
     void ensureThreadAndMaybeOpen();
   }, [ensureThreadAndMaybeOpen]);
 
+  // Account switch: drop in-memory thread so we never show another user's chat.
+  useEffect(() => {
+    const onSession = () => {
+      openNonceRef.current += 1;
+      busyRef.current = false;
+      setBusy(false);
+      setOpening(false);
+      setError(null);
+      setInput("");
+      const id = activeIdRef.current;
+      const store = loadAssistantChatStore();
+      if (id && store.threads.some((t) => t.id === id)) {
+        loadThreadById(id);
+      } else {
+        loadThreadById(null);
+      }
+    };
+    window.addEventListener("medimade-session-changed", onSession);
+    return () => window.removeEventListener("medimade-session-changed", onSession);
+  }, [loadThreadById]);
+
   useEffect(() => {
     const onStore = () => {
       const id = activeIdRef.current;

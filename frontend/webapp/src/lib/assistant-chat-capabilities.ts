@@ -231,8 +231,8 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "put_todo",
     verb: "put",
     domain: "ideate",
-    summary: "Update a task (title / checked)",
-    params: ["todoId", "title?", "checked?"],
+    summary: "Update/move a task (by todoId or title; parentTaskTitle to reparent)",
+    params: ["todoId?", "match?", "title?", "checked?", "parentTaskTitle?", "lifeAreaId?"],
     status: "live",
   },
   {
@@ -240,8 +240,8 @@ export const ASSISTANT_CHAT_CAPABILITIES: readonly AssistantCapability[] = [
     action: "delete_todo",
     verb: "delete",
     domain: "ideate",
-    summary: "Remove a task",
-    params: ["todoId"],
+    summary: "Remove a task (by todoId or title)",
+    params: ["todoId?", "title?", "parentTaskTitle?", "lifeAreaId?"],
     status: "live",
   },
   {

@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 
 /**
@@ -35,7 +40,7 @@ function isSignedIn(): boolean {
 function removeValuesLs(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LS_KEY);
+    removeAccountLocalStorage(LS_KEY);
   } catch {
     /* */
   }
@@ -96,7 +101,7 @@ export function loadIdeateValuesStore(): IdeateValuesStoreV1 {
     return memoryStore ? structuredClone(memoryStore) : emptyValues();
   }
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountLocalStorage(LS_KEY);
     if (!raw) return emptyValues();
     const parsed = JSON.parse(raw) as { v?: number; values?: unknown[] };
     if (parsed?.v !== 1 || !Array.isArray(parsed.values)) {
@@ -134,7 +139,7 @@ export function saveIdeateValuesStoreLocal(store: IdeateValuesStoreV1) {
   }
   memoryStore = null;
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+    writeAccountLocalStorage(LS_KEY, JSON.stringify(normalized));
   } catch {
     /* ignore */
   }

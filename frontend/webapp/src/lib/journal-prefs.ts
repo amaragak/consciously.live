@@ -1,3 +1,12 @@
+import {
+  readAccountLocalStorage,
+  readAccountSessionStorage,
+  removeAccountLocalStorage,
+  removeAccountSessionStorage,
+  writeAccountLocalStorage,
+  writeAccountSessionStorage,
+} from "@/lib/account-scoped-storage";
+
 const LOCAL_ONLY_KEY = "mm_journal_keep_local_only";
 const LOCK_KEY = "mm_journal_lock_v1";
 const WEBAUTHN_KEY = "mm_journal_webauthn_v1";
@@ -6,7 +15,7 @@ const UNLOCK_SESSION_KEY = "mm_journal_unlocked_v1";
 export function isJournalLocalOnlyMode(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(LOCAL_ONLY_KEY) === "1";
+    return readAccountLocalStorage(LOCAL_ONLY_KEY) === "1";
   } catch {
     return false;
   }
@@ -14,8 +23,8 @@ export function isJournalLocalOnlyMode(): boolean {
 
 export function setJournalLocalOnlyMode(on: boolean): void {
   try {
-    if (on) window.localStorage.setItem(LOCAL_ONLY_KEY, "1");
-    else window.localStorage.removeItem(LOCAL_ONLY_KEY);
+    if (on) writeAccountLocalStorage(LOCAL_ONLY_KEY, "1");
+    else removeAccountLocalStorage(LOCAL_ONLY_KEY);
   } catch {
     /* */
   }
@@ -48,7 +57,7 @@ async function sha256Hex(data: Uint8Array): Promise<string> {
 
 function readLock(): LockRecord | null {
   try {
-    const raw = window.localStorage.getItem(LOCK_KEY);
+    const raw = readAccountLocalStorage(LOCK_KEY);
     if (!raw) return null;
     const o = JSON.parse(raw) as unknown;
     if (!o || typeof o !== "object") return null;
@@ -76,8 +85,8 @@ export async function setJournalLockPin(pin: string): Promise<void> {
   const hash = await sha256Hex(
     new Uint8Array([...saltBytes, ...enc.encode(trimmed)]),
   );
-  window.localStorage.setItem(LOCK_KEY, JSON.stringify({ salt, hash }));
-  window.sessionStorage.setItem(UNLOCK_SESSION_KEY, "1");
+  writeAccountLocalStorage(LOCK_KEY, JSON.stringify({ salt, hash }));
+  writeAccountSessionStorage(UNLOCK_SESSION_KEY, "1");
 }
 
 export async function verifyJournalLockPin(pin: string): Promise<boolean> {
@@ -93,9 +102,9 @@ export async function verifyJournalLockPin(pin: string): Promise<boolean> {
 
 export function clearJournalLock(): void {
   try {
-    window.localStorage.removeItem(LOCK_KEY);
-    window.localStorage.removeItem(WEBAUTHN_KEY);
-    window.sessionStorage.removeItem(UNLOCK_SESSION_KEY);
+    removeAccountLocalStorage(LOCK_KEY);
+    removeAccountLocalStorage(WEBAUTHN_KEY);
+    removeAccountSessionStorage(UNLOCK_SESSION_KEY);
   } catch {
     /* */
   }
@@ -105,7 +114,7 @@ export function isJournalSessionUnlocked(): boolean {
   if (typeof window === "undefined") return true;
   if (!journalLockIsSet()) return true;
   try {
-    return window.sessionStorage.getItem(UNLOCK_SESSION_KEY) === "1";
+    return readAccountSessionStorage(UNLOCK_SESSION_KEY) === "1";
   } catch {
     return false;
   }
@@ -113,7 +122,7 @@ export function isJournalSessionUnlocked(): boolean {
 
 export function unlockJournalSession(): void {
   try {
-    window.sessionStorage.setItem(UNLOCK_SESSION_KEY, "1");
+    writeAccountSessionStorage(UNLOCK_SESSION_KEY, "1");
   } catch {
     /* */
   }
@@ -121,7 +130,7 @@ export function unlockJournalSession(): void {
 
 export function lockJournalSession(): void {
   try {
-    window.sessionStorage.removeItem(UNLOCK_SESSION_KEY);
+    removeAccountSessionStorage(UNLOCK_SESSION_KEY);
   } catch {
     /* */
   }
@@ -165,14 +174,14 @@ export async function registerJournalPlatformUnlock(): Promise<boolean> {
   })) as PublicKeyCredential | null;
   if (!cred) return false;
   const raw = new Uint8Array(cred.rawId);
-  window.localStorage.setItem(WEBAUTHN_KEY, bytesToB64(raw));
+  writeAccountLocalStorage(WEBAUTHN_KEY, bytesToB64(raw));
   unlockJournalSession();
   return true;
 }
 
 export function journalPlatformUnlockRegistered(): boolean {
   try {
-    return Boolean(window.localStorage.getItem(WEBAUTHN_KEY));
+    return Boolean(readAccountLocalStorage(WEBAUTHN_KEY));
   } catch {
     return false;
   }
@@ -180,7 +189,7 @@ export function journalPlatformUnlockRegistered(): boolean {
 
 export async function unlockJournalWithPlatform(): Promise<boolean> {
   if (!webauthnSupported()) return false;
-  const stored = window.localStorage.getItem(WEBAUTHN_KEY);
+  const stored = readAccountLocalStorage(WEBAUTHN_KEY);
   if (!stored) return false;
   const id = b64ToBytes(stored);
   const cred = await navigator.credentials.get({

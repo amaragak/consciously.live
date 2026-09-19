@@ -8,6 +8,7 @@ export type FocusPatternId =
   | "mandala"
   | "floral"
   | "ornate"
+  | "amber"
   | "waves"
   | "celestial"
   | "astrology";
@@ -43,6 +44,12 @@ export const FOCUS_PATTERN_OPTIONS: readonly FocusPatternOption[] = [
     label: "Ornate",
     swatch: "#EDE8DF",
     swatchImage: "/patterns/hero/adobestock-2162625652.webp",
+  },
+  {
+    id: "amber",
+    label: "Amber",
+    swatch: "#F3EEE6",
+    swatchImage: "/patterns/paisley-amber-duotone.webp",
   },
   {
     id: "waves",

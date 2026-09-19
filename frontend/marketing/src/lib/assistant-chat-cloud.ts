@@ -19,22 +19,32 @@ import {
   saveAssistantChatStore,
   type AssistantChatStoreV1,
 } from "@/lib/assistant-chat-storage";
-import { getMedimadeSessionJwt } from "@/lib/auth-session";
+import {
+  getMedimadeSessionEmail,
+  getMedimadeSessionJwt,
+} from "@/lib/auth-session";
 
-let pulledThisSession = false;
+/** Email the last successful pull was for — must reset on account switch. */
+let pulledForEmail: string | null = null;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pullInFlight: Promise<AssistantChatStoreV1 | null> | null = null;
 
+function currentPullEmail(): string | null {
+  const email = getMedimadeSessionEmail()?.trim().toLowerCase();
+  return email || null;
+}
+
 export function wasAssistantChatStorePulledThisSession(): boolean {
-  return pulledThisSession;
+  const email = currentPullEmail();
+  return Boolean(email) && pulledForEmail === email;
 }
 
 export function markAssistantChatStorePulledThisSession(): void {
-  pulledThisSession = true;
+  pulledForEmail = currentPullEmail();
 }
 
 export function clearAssistantChatRemoteSessionCache(): void {
-  pulledThisSession = false;
+  pulledForEmail = null;
   pullInFlight = null;
   if (pushTimer) {
     clearTimeout(pushTimer);

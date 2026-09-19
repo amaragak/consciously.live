@@ -8,6 +8,7 @@
  * - Guests use the shared Continue-as-guest JWT account (cloud sync).
  */
 
+import { removeAccountLocalStorage } from "@/lib/account-scoped-storage";
 import { getMedimadeSessionJwt, isMedimadeSessionActive } from "@/lib/auth-session";
 import type { IdeateStoreV2 } from "@/lib/plan-ideate-store";
 import { withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
@@ -120,21 +121,21 @@ export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
   clearIdeateManifestoDeviceData();
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem("mm_ideate_demo_seed_v1");
-      window.localStorage.removeItem("mm_ideate_demo_seed_v2");
-      window.localStorage.removeItem("mm_ideate_demo_seed_v3");
-      window.localStorage.removeItem("mm_ideate_demo_seed_v4");
-      window.localStorage.removeItem("mm_ideate_demo_seed_v5");
-      window.localStorage.removeItem("mm_ideate_demo_seed_v6");
-      window.localStorage.removeItem("mm_ideate_demo_seed_v7");
-      window.localStorage.removeItem("mm_ideate_account_backup_v1");
-      window.localStorage.removeItem("mm_plan_dreams_v1");
-      window.localStorage.removeItem("mm_ideate_vision_board_v1");
-      window.localStorage.removeItem("mm_ideate_reflection_questions_v1");
-      window.localStorage.removeItem("mm_ideate_values_v1");
-      window.localStorage.removeItem("mm_ideate_regrets_v1");
-      window.localStorage.removeItem("mm_ideate_quotes_v1");
-      window.localStorage.removeItem("mm_ideate_manifesto_v1");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v1");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v2");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v3");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v4");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v5");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v6");
+      removeAccountLocalStorage("mm_ideate_demo_seed_v7");
+      removeAccountLocalStorage("mm_ideate_account_backup_v1");
+      removeAccountLocalStorage("mm_plan_dreams_v1");
+      removeAccountLocalStorage("mm_ideate_vision_board_v1");
+      removeAccountLocalStorage("mm_ideate_reflection_questions_v1");
+      removeAccountLocalStorage("mm_ideate_values_v1");
+      removeAccountLocalStorage("mm_ideate_regrets_v1");
+      removeAccountLocalStorage("mm_ideate_quotes_v1");
+      removeAccountLocalStorage("mm_ideate_manifesto_v1");
     } catch {
       /* */
     }

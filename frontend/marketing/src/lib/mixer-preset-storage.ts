@@ -1,3 +1,8 @@
+import {
+  readAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
 export type MixerPresetMix = {
   musicKey: string;
   natureKey: string;
@@ -83,7 +88,7 @@ export function loadMixerPresetStore(): MixerPresetStoreV1 {
     return { version: 1, activeId: null, presets: [] };
   }
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
+    const raw = readAccountLocalStorage(STORE_KEY);
     if (!raw) return { version: 1, activeId: null, presets: [] };
     const data = JSON.parse(raw) as unknown;
     if (!data || typeof data !== "object") {
@@ -105,7 +110,7 @@ export function loadMixerPresetStore(): MixerPresetStoreV1 {
 
 export function saveMixerPresetStore(store: MixerPresetStoreV1): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  writeAccountLocalStorage(STORE_KEY, JSON.stringify(store));
 }
 
 export function newMixerPreset(name?: string): MixerPreset {
