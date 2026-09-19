@@ -11,6 +11,9 @@ export const metadata = {
     "Notes on living consciously — practice, product, and the craft of attention.",
 };
 
+/** Always fetch in `next dev` — local never receives the production cache purge. */
+export const dynamic =
+  process.env.NODE_ENV === "development" ? "force-dynamic" : "auto";
 export const revalidate = false;
 
 export default async function ReadIndexPage() {

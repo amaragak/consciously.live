@@ -27,6 +27,11 @@ import {
 } from "@/lib/marketing-preview";
 import { markSpaClientNavigation } from "@/lib/spa-client-nav";
 import { navigateToSpa } from "@/lib/spa-handoff";
+import {
+  loadProfilePrefs,
+  profileGreetingName,
+  PROFILE_PREFS_CHANGED_EVENT,
+} from "@/lib/profile-prefs";
 
 /** Marketing / logged-out top nav — section roots only (no app flyouts). */
 const marketingNav: { href: string; label: string }[] = [
@@ -35,6 +40,7 @@ const marketingNav: { href: string; label: string }[] = [
   { href: "/manifest", label: "Manifest" },
   { href: "/focus", label: "Focus" },
   { href: "/chat", label: "Chat" },
+  { href: "/connect", label: "Connect" },
   { href: "/read", label: "Read" },
   { href: "/pricing", label: "Pricing" },
   { href: "/admin", label: "Admin" },
@@ -87,6 +93,20 @@ function AccountMenu({
   onSignOut: () => void;
 }) {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const [greeting, setGreeting] = useState(label);
+
+  useEffect(() => {
+    const sync = () => {
+      setGreeting(profileGreetingName(loadProfilePrefs(), label));
+    };
+    sync();
+    window.addEventListener(PROFILE_PREFS_CHANGED_EVENT, sync);
+    window.addEventListener("medimade-session-changed", sync);
+    return () => {
+      window.removeEventListener(PROFILE_PREFS_CHANGED_EVENT, sync);
+      window.removeEventListener("medimade-session-changed", sync);
+    };
+  }, [label]);
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -100,6 +120,10 @@ function AccountMenu({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
 
+  const close = () => {
+    if (detailsRef.current) detailsRef.current.open = false;
+  };
+
   return (
     <details ref={detailsRef} className="relative">
       <summary
@@ -109,18 +133,25 @@ function AccountMenu({
       >
         <User aria-hidden className="size-4" strokeWidth={2} />
       </summary>
-      <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card py-2 shadow-lg">
+      <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card py-1.5 shadow-lg">
         <p
-          className="truncate px-4 py-2 text-sm font-medium text-foreground"
-          title={label}
+          className="truncate px-4 py-2.5 text-sm text-muted"
+          title={`Hi, ${greeting}`}
         >
-          {label}
+          Hi, <span className="font-medium text-foreground">{greeting}</span>
         </p>
         <div className="my-1 border-t border-border" role="separator" />
+        <Link
+          href="/profile"
+          onClick={close}
+          className="block w-full px-4 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent-soft/50"
+        >
+          Profile
+        </Link>
         <button
           type="button"
           onClick={() => {
-            if (detailsRef.current) detailsRef.current.open = false;
+            close();
             onSignOut();
           }}
           className="block w-full px-4 py-2 text-left text-sm text-muted transition-colors hover:bg-accent-soft/50 hover:text-foreground"
@@ -374,11 +405,24 @@ export function SiteHeader() {
                       {dashboardBusy ? "Opening…" : "Dashboard"}
                     </button>
                     <p
-                      className="truncate px-4 py-2 text-sm font-medium text-foreground"
+                      className="truncate px-4 py-2 text-sm text-muted"
                       title={sessionLabel ?? ""}
                     >
-                      {sessionLabel ?? "Signed in"}
+                      Hi,{" "}
+                      <span className="font-medium text-foreground">
+                        {profileGreetingName(
+                          loadProfilePrefs(),
+                          sessionLabel,
+                        )}
+                      </span>
                     </p>
+                    <Link
+                      href="/profile"
+                      onClick={closeMobile}
+                      className="block w-full px-4 py-2 text-left text-sm font-medium text-foreground hover:bg-accent-soft/50"
+                    >
+                      Profile
+                    </Link>
                     <button
                       type="button"
                       onClick={() => {

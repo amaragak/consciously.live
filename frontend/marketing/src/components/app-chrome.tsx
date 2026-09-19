@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppPrimaryTabsProvider } from "@/components/app-primary-tabs";
 import { MainShell } from "@/components/main-shell";
 import { SiteHeader } from "@/components/site-header";
+import { ScrollToTopOnNavigate } from "@/components/scroll-to-top-on-navigate";
 import {
   SignInPromptOverlay,
   useSignInPromptQuery,
@@ -123,6 +124,7 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
 
   return (
     <AppPrimaryTabsProvider>
+      <ScrollToTopOnNavigate />
       <SiteHeader />
       <MainShell>{body}</MainShell>
       <Suspense fallback={null}>

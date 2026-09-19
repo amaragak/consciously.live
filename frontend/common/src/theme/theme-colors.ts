@@ -11,7 +11,7 @@ import {
 } from "./color-scheme";
 
 /** Brand fill — gold-peach. Text on this fill must use `onAccent` (#3D2E10). */
-export const PRIMARY = "#F0A855";
+export const PRIMARY = "#F0A865";
 
 /** Links and accent text on cream (deeper amber — peach fill on cream fails contrast). */
 export const ACCENT_LINK = "#B8703A";
@@ -64,7 +64,7 @@ export const STAR_IDLE = "rgb(212 176 128 / 0.3)";
 /** Dark-mode empty stars (slightly higher contrast on navy). */
 export const STAR_IDLE_DARK = "#B5AF9F";
 
-const GOLD_LIGHT = "#F0A855";
+const GOLD_LIGHT = "#F0A865";
 
 /**
  * Paper / ink / chrome. Independent of PRIMARY.

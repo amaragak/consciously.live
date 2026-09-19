@@ -9,6 +9,7 @@ const MARKETING_HERO_ROUTES = new Set([
   "/plan",
   "/focus",
   "/chat",
+  "/connect",
   "/pricing",
 ]);
 

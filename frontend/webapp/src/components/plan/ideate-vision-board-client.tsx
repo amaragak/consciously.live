@@ -1013,7 +1013,7 @@ export function IdeateVisionBoardClient() {
                     : "border border-dashed border-[#D4CBB8] bg-[#F5F1E7] dark:border-border dark:bg-accent-soft/20"
                 } ${
                   isOver
-                    ? "outline outline-2 outline-offset-[-2px] outline-[#F0A855]"
+                    ? "outline outline-2 outline-offset-[-2px] outline-[#F0A865]"
                     : ""
                 } ${isDraggingHere ? "opacity-50" : ""}`}
                 onDragOver={(e) => {

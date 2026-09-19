@@ -1735,21 +1735,21 @@ export function PlanHomeClient() {
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("author")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A855]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A865]/60 hover:bg-accent-soft/30"
                   >
                     From a thinker
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("work")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A855]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A865]/60 hover:bg-accent-soft/30"
                   >
                     From a work
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("original")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A855]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A865]/60 hover:bg-accent-soft/30"
                   >
                     Write your own
                   </button>
@@ -1835,7 +1835,7 @@ export function PlanHomeClient() {
                           const selected = authorSelectedQuotes.has(text);
                           return (
                             <li key={text}>
-                              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 px-3 py-2.5 transition-colors hover:border-[#F0A855]/45">
+                              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 px-3 py-2.5 transition-colors hover:border-[#F0A865]/45">
                                 <input
                                   type="checkbox"
                                   checked={selected}
@@ -1988,7 +1988,7 @@ export function PlanHomeClient() {
               return (
                 <li
                   key={q.id}
-                  className={`group border-l-2 border-[#F0A855] pl-5 ${
+                  className={`group border-l-2 border-[#F0A865] pl-5 ${
                     i === questionCells.length - 1 ? "mb-0" : "mb-5"
                   }`}
                 >
@@ -2399,7 +2399,7 @@ export function PlanHomeClient() {
                 type="button"
                 disabled={!newTitle.trim()}
                 onClick={() => addDream()}
-                className="cursor-pointer rounded-full bg-[#F0A855] px-5 py-2.5 text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-full bg-[#F0A865] px-5 py-2.5 text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Create
               </button>

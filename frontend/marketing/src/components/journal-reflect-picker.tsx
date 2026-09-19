@@ -372,7 +372,7 @@ export function JournalReflectPicker({
                 <div
                   className={`overflow-hidden rounded-xl bg-card ${
                     selected
-                      ? "border-2 border-[#F0A855]"
+                      ? "border-2 border-[#F0A865]"
                       : "border border-border"
                   }`}
                 >

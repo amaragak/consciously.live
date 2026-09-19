@@ -1,8 +1,10 @@
 /**
  * Server-side public Read helpers for marketing SSR pages (`/read`).
  *
- * Responses are cached indefinitely (`revalidate: false`) and tagged so admin
- * saves can purge via `POST /api/revalidate-blog`.
+ * In production, responses are cached indefinitely (`revalidate: false`) and
+ * tagged so admin saves can purge via `POST /api/revalidate-blog` on the
+ * deployed origin. In `next dev`, fetches are uncached — local never receives
+ * that purge, so indefinite cache would stay stale forever.
  */
 
 export type PublicBlogPostSummary = {
@@ -40,6 +42,14 @@ const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 function apiBase(): string | null {
   const u = process.env.NEXT_PUBLIC_MEDIMADE_API_URL?.trim().replace(/\/$/, "");
   return u || null;
+}
+
+/** Prod: indefinite tagged cache. Dev: always hit the API (no local purge). */
+function blogFetchInit(tags: string[]): RequestInit {
+  if (process.env.NODE_ENV === "development") {
+    return { cache: "no-store" };
+  }
+  return { next: { revalidate: false, tags } } as RequestInit;
 }
 
 function coerceTags(raw: unknown): string[] {
@@ -95,9 +105,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
     };
   }
   try {
-    const res = await fetch(`${base}/public/blog`, {
-      next: { revalidate: false, tags: [BLOG_INDEX_TAG] },
-    });
+    const res = await fetch(`${base}/public/blog`, blogFetchInit([BLOG_INDEX_TAG]));
     if (!res.ok) {
       return {
         indexSummary: DEFAULT_INDEX_SUMMARY,
@@ -151,12 +159,10 @@ export async function fetchPublishedBlogPost(
   const s = slug.trim();
   if (!base || !s) return null;
   try {
-    const res = await fetch(`${base}/public/blog/${encodeURIComponent(s)}`, {
-      next: {
-        revalidate: false,
-        tags: [blogPostTag(s), BLOG_INDEX_TAG],
-      },
-    });
+    const res = await fetch(
+      `${base}/public/blog/${encodeURIComponent(s)}`,
+      blogFetchInit([blogPostTag(s), BLOG_INDEX_TAG]),
+    );
     if (!res.ok) return null;
     const data = (await res.json()) as { post?: unknown };
     const summary = coerceSummary(data.post);

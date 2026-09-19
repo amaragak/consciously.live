@@ -78,7 +78,7 @@ export function IdeateCollapsibleSection({
       {isCollapsed && !band ? (
         <div
           aria-hidden
-          className="-mb-px border-b border-border transition-[border-color] duration-200 ease-[ease] group-hover:border-[#F0A855]"
+          className="-mb-px border-b border-border transition-[border-color] duration-200 ease-[ease] group-hover:border-[#F0A865]"
         />
       ) : null}
 

@@ -7,10 +7,10 @@
   --background: #f6f3ee;
   --foreground: #1c1917;
   --muted: #78716c;
-  --accent: #F0A855;
+  --accent: #F0A865;
   --accent-link: #B8703A;
-  --accent-button: #F0A855;
-  --accent-soft: color-mix(in srgb, #F0A855 18%, transparent);
+  --accent-button: #F0A865;
+  --accent-soft: color-mix(in srgb, #F0A865 18%, transparent);
   --on-accent: #3D2E10;
   --border: #e7e5e4;
   --card: #fffcf8;

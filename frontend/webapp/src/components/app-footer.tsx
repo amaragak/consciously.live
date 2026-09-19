@@ -13,6 +13,7 @@ const FOOTER_NAV: { href: string; label: string }[] = [
   { href: "/manifest", label: "Manifest" },
   { href: "/focus", label: "Focus" },
   { href: "/chat", label: "Chat" },
+  { href: "/connect", label: "Connect" },
   { href: "/pricing", label: "Pricing" },
 ];
 
