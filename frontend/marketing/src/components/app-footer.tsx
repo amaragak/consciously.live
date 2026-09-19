@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LogoMark } from "@/components/logo-mark";
 
 const INSTAGRAM_URL = "https://www.instagram.com/consciously.live/";
+const CREATOR_INSTAGRAM_URL = "https://www.instagram.com/alexmaramusic/";
 
 const FOOTER_NAV: { href: string; label: string }[] = [
   { href: "/meditate", label: "Meditate" },
@@ -61,7 +62,7 @@ export function AppFooter() {
 
           <div className="flex flex-col gap-3 border-t border-border pt-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
             <p>© {year} Consciously</p>
-            <div className="flex items-center gap-3 sm:justify-end">
+            <div className="flex flex-col items-start gap-1.5 sm:items-end">
               <a
                 href={INSTAGRAM_URL}
                 target="_blank"
@@ -71,6 +72,14 @@ export function AppFooter() {
               >
                 <IconBrandInstagram size={28} stroke={1.75} aria-hidden />
                 <span>@consciously.live</span>
+              </a>
+              <a
+                href={CREATOR_INSTAGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted transition-colors hover:text-foreground"
+              >
+                Created by @alexmaramusic
               </a>
             </div>
           </div>

@@ -12,6 +12,10 @@ import {
   ReadRichEditor,
   bodyToEditorHtml,
 } from "@/components/read-rich-editor";
+import {
+  MEDITATION_TYPE_PILL_CLASS,
+  meditationTypePillColors,
+} from "@/lib/meditation-type-pill";
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
@@ -86,25 +90,32 @@ function BlogTagsInput({
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-      {tags.map((tag) => (
-        <span
-          key={tag.toLowerCase()}
-          className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background pl-2.5 pr-1 py-0.5 text-xs font-medium text-foreground"
-        >
-          {tag}
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label={`Remove ${tag}`}
-            onClick={() =>
-              onChange(tags.filter((x) => x.toLowerCase() !== tag.toLowerCase()))
-            }
-            className="cursor-pointer rounded px-1 text-muted hover:text-foreground disabled:opacity-50"
+      {tags.map((tag) => {
+        const colors = meditationTypePillColors(tag);
+        return (
+          <span
+            key={tag.toLowerCase()}
+            className={`inline-flex items-center gap-0.5 ${MEDITATION_TYPE_PILL_CLASS} pr-1`}
+            style={{ backgroundColor: colors.bg, color: colors.fg }}
           >
-            ×
-          </button>
-        </span>
-      ))}
+            {tag}
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={`Remove ${tag}`}
+              onClick={() =>
+                onChange(
+                  tags.filter((x) => x.toLowerCase() !== tag.toLowerCase()),
+                )
+              }
+              className="cursor-pointer rounded px-1 opacity-70 hover:opacity-100 disabled:opacity-50"
+              style={{ color: colors.fg }}
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
       <input
         type="text"
         value={draft}
