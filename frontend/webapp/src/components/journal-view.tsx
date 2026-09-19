@@ -528,9 +528,9 @@ export function JournalView() {
       const foldersNext = nextFolders ?? foldersRef.current;
       saveJournalStore(
         {
-          version: 2,
-          activeEntryId: nextActive,
-          entries: nextEntries,
+      version: 2,
+      activeEntryId: nextActive,
+      entries: nextEntries,
           ...(foldersNext.length ? { folders: foldersNext } : {}),
         },
         { source: "journal-view" },
@@ -634,7 +634,7 @@ export function JournalView() {
           if (localIsDemoOnly || localEntries.some(isDemoJournalEntry)) {
             // Demo-only leftovers on a real account → clear them from the cache.
             // Guest Continue-as-guest is a normal account; do not special-seed it.
-            skipCloudPushRef.current = true;
+        skipCloudPushRef.current = true;
             entriesRef.current = [];
             setEntries([]);
             setFolders([]);
@@ -828,23 +828,23 @@ export function JournalView() {
       ) {
         return;
       }
-      const next = prev.map((e) =>
-        e.id === id
-          ? {
-              ...e,
-              contentHtml: html,
-              title,
-              updatedAt: new Date().toISOString(),
+        const next = prev.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                contentHtml: html,
+                title,
+                updatedAt: new Date().toISOString(),
               ...(isGratitudeEntry(e)
                 ? { kind: "gratitude" as const, gratitude }
                 : {}),
-            }
-          : e,
-      );
-      entriesRef.current = next;
+              }
+            : e,
+        );
+        entriesRef.current = next;
       setEntries(next);
       // Persist after setState — never inside an updater (notifies AppTopBar).
-      persist(next, id);
+        persist(next, id);
     }, 450);
   }, [persist]);
 
@@ -882,9 +882,9 @@ export function JournalView() {
       );
       saveJournalStore(
         {
-          version: 2,
-          activeEntryId: id,
-          entries: next,
+        version: 2,
+        activeEntryId: id,
+        entries: next,
           ...(foldersRef.current.length ? { folders: foldersRef.current } : {}),
         },
         { source: "journal-view" },
@@ -1218,7 +1218,7 @@ export function JournalView() {
   }, [activeLifeArea, navigate]);
 
   const createGratitudeEntry = useCallback(() => {
-    flushSaveSync();
+      flushSaveSync();
     const e = newGratitudeJournalEntry();
     const next = [e, ...entriesRef.current];
     entriesRef.current = next;
@@ -1334,9 +1334,9 @@ export function JournalView() {
     }
     const e = newGratitudeJournalEntry();
     const next = [e, ...entriesRef.current];
-    entriesRef.current = next;
+      entriesRef.current = next;
     setEntries(next);
-    persist(next, e.id);
+      persist(next, e.id);
     setActiveEntryId(e.id);
     latestHtmlRef.current = e.contentHtml;
     latestTitleRef.current = e.title;
@@ -1433,7 +1433,7 @@ export function JournalView() {
   const journalComposeChrome =
     (journalTab === "journal" || journalTab === "gratitude") && !insightsOpen;
 
-  return (
+    return (
     <JournalLockGate>
     {/* Match Chat: sidebar + writing stay inside max-w-6xl; pattern gutter takes the right strip. */}
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
@@ -1578,15 +1578,15 @@ export function JournalView() {
                   className="hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
                 >
                   <JournalSidebarChevron dir="left" />
-                </button>
-                <button
-                  type="button"
+            </button>
+            <button
+              type="button"
                   onClick={createEntry}
                   className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
-                >
+            >
                   + New entry
-                </button>
-              </div>
+            </button>
+          </div>
               <div className="flex items-center gap-2">
                 <SearchInput
                   className="min-w-0 flex-1"
@@ -1676,7 +1676,7 @@ export function JournalView() {
                             >
                               Add
                             </button>
-                          </div>
+        </div>
                         ) : (
                           <button
                             type="button"
@@ -1709,7 +1709,7 @@ export function JournalView() {
                             Clear date
                           </button>
                         ) : null}
-                      </div>
+      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1719,14 +1719,14 @@ export function JournalView() {
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
-                <button
-                  type="button"
-                  onClick={createEntry}
+          <button
+            type="button"
+            onClick={createEntry}
                   aria-label="New entry"
                   className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 sm:hidden"
-                >
+          >
                   + New
-                </button>
+          </button>
               </div>
               <div className="flex items-center justify-end gap-1.5">
                 {/* sm+: folder + options */}
@@ -1975,8 +1975,8 @@ export function JournalView() {
                 <div key={group.id}>
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h2 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      {group.label}
-                    </h2>
+                    {group.label}
+                  </h2>
                     {weekMoodDots.length > 0 ? (
                       <div
                         className="flex shrink-0 items-center gap-0.5"
@@ -1997,23 +1997,23 @@ export function JournalView() {
                       const isActive = e.id === activeEntryId;
                       if (journalTab === "journal") {
                         const lifeArea = lifeAreaForJournalEntry(e, planDreams);
-                        const metaMuted = isActive
+                      const metaMuted = isActive
                           ? "text-faint"
-                          : "text-muted";
-                        return (
-                          <li key={e.id}>
-                            <button
-                              type="button"
-                              onClick={() => selectEntry(e.id)}
+                        : "text-muted";
+                      return (
+                        <li key={e.id}>
+                          <button
+                            type="button"
+                            onClick={() => selectEntry(e.id)}
                               className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                                isActive
+                              isActive
                                   ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
                                   : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
-                              }`}
-                            >
-                              <span className="line-clamp-2 text-sm font-semibold">
-                                {sidebarEntryTitle(e.title)}
-                              </span>
+                            }`}
+                          >
+                            <span className="line-clamp-2 text-sm font-semibold">
+                              {sidebarEntryTitle(e.title)}
+                            </span>
                               <span className="mt-0.5 line-clamp-2 text-xs text-muted">
                                 {entryPreview(e)}
                               </span>
@@ -2045,7 +2045,7 @@ export function JournalView() {
                             type="button"
                             onClick={() => selectEntry(e.id)}
                             className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                              isActive
+                                isActive
                                 ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
                                 : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
@@ -2223,7 +2223,7 @@ export function JournalView() {
         aria-hidden
       />
     ) : null}
-    </div>
+            </div>
     <JournalSettingsDialog
       open={settingsOpen}
       onClose={() => setSettingsOpen(false)}

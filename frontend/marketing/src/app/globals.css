@@ -171,39 +171,29 @@ body {
   position: relative;
   margin: 2.25rem 0;
   border: none;
-  padding: 0.35rem 1.75rem 0.35rem 2.75rem;
+  padding: 0.35rem 0.5rem 0.35rem 1.35rem;
   font-family: var(--font-fraunces), Georgia, serif;
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   font-style: italic;
   font-weight: 450;
   line-height: 1.45;
   letter-spacing: -0.01em;
-  color: var(--foreground);
-}
-
-.read-prose blockquote::before,
-.read-prose blockquote::after {
-  position: absolute;
-  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
-  font-style: normal;
-  font-weight: 500;
-  font-size: 3.75rem;
-  line-height: 1;
-  color: var(--accent-link);
-  opacity: 0.45;
-  pointer-events: none;
+  color: var(--muted);
 }
 
 .read-prose blockquote::before {
   content: "\201C";
+  position: absolute;
   left: 0;
-  top: -0.2em;
-}
-
-.read-prose blockquote::after {
-  content: "\201D";
-  right: 0.15rem;
-  bottom: -0.55em;
+  top: -0.15em;
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 3.1rem;
+  line-height: 1;
+  color: var(--accent-link);
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .read-prose blockquote p {

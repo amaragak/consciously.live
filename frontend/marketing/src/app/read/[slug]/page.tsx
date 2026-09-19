@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ReadBody } from "@/components/blog-markdown";
+import { ReadingProgress } from "@/components/reading-progress";
 import { ReadPostTags } from "@/components/read-post-tags";
 import {
   fetchPublishedBlogPost,
@@ -36,6 +37,7 @@ export default async function ReadPostPage({ params }: Props) {
 
   return (
     <article className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+      <ReadingProgress containerId="read-article-body" />
       <Link
         href="/read"
         className="text-sm font-medium text-muted transition-colors hover:text-foreground"
@@ -59,7 +61,7 @@ export default async function ReadPostPage({ params }: Props) {
         </p>
       ) : null}
       <ReadPostTags tags={post.tags} />
-      <div className="mt-6">
+      <div id="read-article-body" className="mt-6">
         <ReadBody source={post.body} />
       </div>
     </article>

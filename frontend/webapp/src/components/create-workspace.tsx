@@ -2430,10 +2430,10 @@ export function CreateWorkspace({
         coachTypeOwnsMessageRef.current = true;
         return [
           ...m,
-          {
-            role: "assistant",
+      {
+        role: "assistant",
             text: parsed.text,
-            variant: "chat",
+        variant: "chat",
             ...(pinCta ? { audioReadyCta: true } : {}),
           },
         ];
@@ -2769,8 +2769,8 @@ export function CreateWorkspace({
       setPhase("stylePick");
       setMessages([]);
     } else {
-      setMessages([{ role: "assistant", text: "", variant: "chat" }]);
-      setPhase(journalMode ? "feeling" : "style");
+    setMessages([{ role: "assistant", text: "", variant: "chat" }]);
+    setPhase(journalMode ? "feeling" : "style");
     }
     isAtBottomRef.current = true;
     requestAnimationFrame(() => {
@@ -3698,7 +3698,7 @@ export function CreateWorkspace({
           ? null
           : last?.role === "assistant" && last.variant === "script"
             ? last.text.trim()
-            : null;
+          : null;
       // Length on this page is authoritative: reuse a chat script only when it
       // was written for the same target; otherwise the worker regenerates.
       // Longer-breaks mode always regenerates — chat scripts use standard pacing.
@@ -3723,7 +3723,7 @@ export function CreateWorkspace({
         ? (randomSeed?.transcript.trim() ||
           "User: I want a short random guided meditation.\n\nGuide: Let's begin.")
         : messages
-            .filter((m) => !(m.role === "assistant" && m.variant === "script"))
+        .filter((m) => !(m.role === "assistant" && m.variant === "script"))
             .map((m) => {
               const line =
                 m.role === "user" && m.journalSegments?.length
@@ -3734,7 +3734,7 @@ export function CreateWorkspace({
                   : createFlowTranscriptLine(m);
               return `${m.role === "user" ? "User" : "Guide"}: ${line}`;
             })
-            .join("\n\n");
+        .join("\n\n");
 
       const linkedLifeAreaId =
         lifeAreaId?.trim() || readLinkedLifeAreaId() || "";
@@ -4218,7 +4218,7 @@ export function CreateWorkspace({
           void sp.play().catch(() => {});
         }, BED_VOICE_INTRO_SECONDS * 1000);
       } else {
-        parts.push(sp.play());
+      parts.push(sp.play());
       }
     } else {
       speakerRepeatWantedRef.current = false;
@@ -4288,7 +4288,7 @@ export function CreateWorkspace({
             ? previewMusicRef.current
             : track === "drums"
               ? previewDrumsRef.current
-              : previewNoiseRef.current;
+            : previewNoiseRef.current;
 
     if (!el) return;
 
@@ -4333,7 +4333,7 @@ export function CreateWorkspace({
       if (track === "speaker") {
         speakerRepeatWantedRef.current = true;
         applySpeechElementVolume(el);
-        await el.play();
+      await el.play();
       } else {
         setGaplessBedVolume(el, bedElementVolume(bedGainRef.current[track]));
         await resumeGaplessBed(el);
@@ -4496,7 +4496,7 @@ export function CreateWorkspace({
                   {label}
                 </button>
               ))}
-            </div>
+      </div>
             <div
               className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
               role="group"
@@ -4740,7 +4740,7 @@ export function CreateWorkspace({
                 Skip the chat and jump straight to audio with a random style and seed script.
               </p>
             </button>
-          </div>
+            </div>
           <div className="min-h-8 flex-1" aria-hidden />
           </div>
           <CreateFlowFooterBar>
@@ -4973,7 +4973,7 @@ export function CreateWorkspace({
                 <div className="flex min-w-0 flex-1 justify-start">
                 <CreateFlowNavPill
               onClick={goBackToChatStyle}
-                  disabled={chatControlsDisabled}
+                        disabled={chatControlsDisabled}
                   aria-label="Back to chat style selection"
                 >
                   <IconChevronLeft className="shrink-0 text-accent-link" />
@@ -5078,7 +5078,7 @@ export function CreateWorkspace({
                 <div className="flex min-w-0 flex-1 justify-start">
                 <CreateFlowNavPill
               onClick={goBackToChatStyle}
-                  disabled={chatControlsDisabled}
+                      disabled={chatControlsDisabled}
                   aria-label="Back to chat style selection"
                 >
                   <IconChevronLeft className="shrink-0 text-accent-link" />
@@ -5100,7 +5100,7 @@ export function CreateWorkspace({
                   </>
                   <IconChevronRight className="text-accent-link" />
                 </CreateFlowNavPill>
-                </div>
+              </div>
             </CreateFlowFooterBar>
           </div>
         ) : null}
@@ -5122,8 +5122,8 @@ export function CreateWorkspace({
         <section className="relative z-[1] flex w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
           {showChatReset ? (
             <div className="flex shrink-0 items-center justify-end px-4 py-2.5 sm:px-5">
-              <button
-                type="button"
+            <button
+              type="button"
                 onClick={resetChatKeepMode}
                 disabled={chatControlsDisabled}
                 aria-label="Reset chat"
@@ -5131,8 +5131,8 @@ export function CreateWorkspace({
               >
                 <IconResetArrow className="h-3.5 w-3.5" />
                 Reset
-              </button>
-            </div>
+            </button>
+          </div>
           ) : null}
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
             <div
@@ -5231,33 +5231,33 @@ export function CreateWorkspace({
                           } ${lastPart ? "" : "mb-1"}`}
                         >
                           <div className="chat-bubble-shell">
-                            <div className={bubble}>
-                              {isScript ? (
-                                <>
+                      <div className={bubble}>
+                        {isScript ? (
+                          <>
                                   <div className="mb-2 inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-link">
-                                    Meditation script · ~5 min
-                                  </div>
-                                  <ChatMarkdown
-                                    text={msg.text}
+                              Meditation script · ~5 min
+                            </div>
+                            <ChatMarkdown
+                              text={msg.text}
                                     className="font-serif text-lg leading-relaxed text-foreground/95"
-                                  />
-                                </>
+                            />
+                          </>
                               ) : isUser &&
-                                msg.journalSegments &&
-                                msg.journalSegments.length > 0 ? (
+                          msg.journalSegments &&
+                          msg.journalSegments.length > 0 ? (
                                 <div className="text-lg leading-[1.5]">
-                                  <p className="whitespace-pre-wrap">{msg.text}</p>
-                                  <JournalHandoffEntryCards
-                                    segments={msg.journalSegments}
-                                  />
-                                </div>
-                              ) : (
-                                <ChatMarkdown
+                            <p className="whitespace-pre-wrap">{msg.text}</p>
+                            <JournalHandoffEntryCards
+                              segments={msg.journalSegments}
+                            />
+                          </div>
+                        ) : (
+                          <ChatMarkdown
                                   text={part}
                                   className="relative z-[2] text-lg font-normal leading-[1.5]"
-                                />
-                              )}
-                            </div>
+                          />
+                        )}
+                      </div>
                           </div>
                         </div>
                       );
@@ -5309,7 +5309,7 @@ export function CreateWorkspace({
               )}
               {showChatTyping ? <ChatTypingIndicator /> : null}
               <div ref={messagesEndRef} />
-              </div>
+            </div>
               )}
             </div>
           </div>
@@ -5373,7 +5373,7 @@ export function CreateWorkspace({
                   <IconPaperAirplane className="pointer-events-none -translate-y-px translate-x-px" />
                 )}
               </button>
-              </div>
+            </div>
               {sendBlockReason ? (
                 <p className="text-xs text-danger" role="status">
                   {sendBlockReason}
@@ -5391,7 +5391,7 @@ export function CreateWorkspace({
               <IconChevronLeft className="shrink-0 text-accent-link" />
               <span>Chat style</span>
             </CreateFlowNavPill>
-            </div>
+          </div>
             <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
             <div className="flex min-w-0 flex-1 justify-end">
             <CreateFlowNavPill
@@ -5409,14 +5409,14 @@ export function CreateWorkspace({
                   </>
               <IconChevronRight className="text-accent-link" />
             </CreateFlowNavPill>
-            </div>
+          </div>
           </CreateFlowFooterBar>
         </div>
         <div
           className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"
           aria-hidden
         />
-        </div>
+          </div>
         ) : null}
         {workspaceSectionStep === 2 ? (
         <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
@@ -5425,9 +5425,9 @@ export function CreateWorkspace({
           <div className="flex shrink-0 flex-col">
             <VoiceCardRow
               voices={fishSpeakers}
-              value={speakerModelId}
+                    value={speakerModelId}
               onChange={setSpeakerModelId}
-              disabled={soundControlsDisabled}
+                    disabled={soundControlsDisabled}
               previewUrl={speakerPreviewUrl}
               stopNonce={voiceCardStopNonce}
             />
@@ -5447,11 +5447,11 @@ export function CreateWorkspace({
                 >
                   Guided
                 </span>
-                <Switch.Root
+                    <Switch.Root
                   checked={longerBreaks}
                   onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
                   disabled={soundControlsDisabled}
-                  aria-label={
+                      aria-label={
                     longerBreaks
                       ? "Switch to guided pacing"
                       : "Switch to open sits pacing"
@@ -5459,7 +5459,7 @@ export function CreateWorkspace({
                   className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-                </Switch.Root>
+                    </Switch.Root>
                 <span
                   className={`text-sm font-semibold ${
                     longerBreaks ? "text-foreground" : "text-muted"
@@ -5493,7 +5493,7 @@ export function CreateWorkspace({
                 ]}
               />
             </div>
-          </div>
+                </div>
 
           {soundMode === "soundscape" ? (
             <div className="min-h-0 flex-1 overflow-y-auto pb-1">
@@ -5507,11 +5507,11 @@ export function CreateWorkspace({
                 onTogglePreview={(key) => {
                   if (key !== compositionKey) setCompositionKey(key);
                   toggleCompositionPreview(key);
-                }}
-                disabled={soundControlsDisabled}
+                    }}
+                    disabled={soundControlsDisabled}
                 loading={factoryMixesLoading}
               />
-            </div>
+                    </div>
           ) : (
           <>
           <div className="shrink-0 pb-2 pt-0">
@@ -5532,8 +5532,8 @@ export function CreateWorkspace({
                   showSave={mixDirty}
                   modified={mixDirty}
                   defaultSaveName={mixSaveDefaultName}
-                />
-              </div>
+                    />
+                  </div>
             </div>
           </div>
           {/* Stacked mixer — below lg: each bed is its own card */}
@@ -5551,7 +5551,7 @@ export function CreateWorkspace({
                 onLiveGainChange={(g) => applyLiveBedGain("music", g)}
                 disabled={soundControlsDisabled}
                 faderDisabled={soundControlsDisabled || !backgroundMusicKey}
-                playing={playing.music}
+                      playing={playing.music}
                 onTogglePreview={() => void toggleRowPreview("music")}
                 playDisabled={soundControlsDisabled || !backgroundMusicKey}
                 playAriaLabel={playing.music ? "Pause music" : "Play music"}
@@ -5563,12 +5563,12 @@ export function CreateWorkspace({
                 label="Ambience"
                 category="ambience"
                 items={backgroundNature}
-                value={backgroundNatureKey}
+                    value={backgroundNatureKey}
                 onChange={setBackgroundNatureKey}
                 gain={backgroundNatureGain}
                 onGainChange={setBackgroundNatureGain}
                 onLiveGainChange={(g) => applyLiveBedGain("nature", g)}
-                disabled={soundControlsDisabled}
+                    disabled={soundControlsDisabled}
                 faderDisabled={soundControlsDisabled || !backgroundNatureKey}
                 playing={playing.nature}
                 onTogglePreview={() => void toggleRowPreview("nature")}
@@ -5626,7 +5626,7 @@ export function CreateWorkspace({
                 playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
               />
             </section>
-          </div>
+                </div>
 
           {/* Column mixer — lg+: individual channel cards, no global wrapper */}
           <div className="hidden min-h-0 flex-1 items-stretch gap-2 overflow-x-auto pb-4 lg:flex">
@@ -5640,14 +5640,14 @@ export function CreateWorkspace({
                 gain={backgroundMusicGain}
                 onGainChange={setBackgroundMusicGain}
                 onLiveGainChange={(g) => applyLiveBedGain("music", g)}
-                disabled={soundControlsDisabled}
+                    disabled={soundControlsDisabled}
                 faderDisabled={soundControlsDisabled || !backgroundMusicKey}
                 playing={playing.music}
                 onTogglePreview={() => void toggleRowPreview("music")}
                 playDisabled={soundControlsDisabled || !backgroundMusicKey}
                 playAriaLabel={playing.music ? "Pause music" : "Play music"}
               />
-            </div>
+                    </div>
             <div className="flex h-full min-w-[5.75rem] w-full max-w-[250px] flex-1 items-stretch">
               <MixerChannel
                 label="Ambience"
@@ -5666,8 +5666,8 @@ export function CreateWorkspace({
                 playAriaLabel={
                   playing.nature ? "Pause ambience" : "Play ambience"
                 }
-              />
-            </div>
+                    />
+                  </div>
             <DrumsLockedWrap
               locked={drumsLockedForMelodic}
               className="flex h-full min-w-[5.75rem] w-full max-w-[250px] flex-1 items-stretch"
@@ -5709,12 +5709,12 @@ export function CreateWorkspace({
                 onLiveGainChange={(g) => applyLiveBedGain("noise", g)}
                 disabled={soundControlsDisabled}
                 faderDisabled={soundControlsDisabled || !backgroundNoiseKey}
-                playing={playing.noise}
+                      playing={playing.noise}
                 onTogglePreview={() => void toggleRowPreview("noise")}
                 playDisabled={soundControlsDisabled || !backgroundNoiseKey}
                 playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
-              />
-            </div>
+                    />
+                </div>
           </div>
            </>
           )}
@@ -5763,7 +5763,7 @@ export function CreateWorkspace({
                       ? "Prompt"
                       : "Script"}
             </CreateFlowNavPill>
-            </div>
+                </div>
             <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
             <div className="flex min-w-0 flex-1 justify-end">
             <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
@@ -5807,7 +5807,7 @@ export function CreateWorkspace({
                 )}
               </button>
             </div>
-            </div>
+          </div>
           </CreateFlowFooterBar>
 
           {/*
@@ -5853,7 +5853,7 @@ export function CreateWorkspace({
           */}
         </div>
         ) : null}
-      </div>
+          </div>
       )}
 
       {audioModalUrl && (
