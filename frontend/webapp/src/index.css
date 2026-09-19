@@ -567,7 +567,7 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   background-repeat: repeat;
   background-size: 640px 640px;
   background-position: center;
-  opacity: 0.88;
+  opacity: 0.77;
 }
 :root.dark .app-footer {
   background-color: #1a1820;

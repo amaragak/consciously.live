@@ -1,10 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConnectUserAvatar } from "@/components/connect-user-avatar";
 import { scrollAppToTop } from "@/lib/scroll-app";
 
-type CategoryId = "all" | "philosophy" | "journeys" | "inquiry";
+/** Matches Tailwind `lg` — side-by-side list + preview. */
+const PREVIEW_MQ = "(min-width: 1024px)";
+
+function useWidePreviewLayout(): boolean {
+  const [wide, setWide] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(PREVIEW_MQ);
+    const sync = () => setWide(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return wide;
+}
+
+type CategoryId = "all" | "philosophy" | "journeys" | "questions";
 
 type Comment = {
   id: string;
@@ -30,7 +47,7 @@ const CATEGORIES: { id: CategoryId; label: string }[] = [
   { id: "all", label: "All" },
   { id: "philosophy", label: "Philosophy" },
   { id: "journeys", label: "Journeys" },
-  { id: "inquiry", label: "Inquiry" },
+  { id: "questions", label: "Questions" },
 ];
 
 function countComments(nodes: Comment[]): number {
@@ -132,7 +149,7 @@ const DEMO_THREADS: Thread[] = [
   },
   {
     id: "t3",
-    category: "inquiry",
+    category: "questions",
     title: "How do you stay kind when you’re angry at the world?",
     excerpt:
       "Looking for lived answers more than slogans — what actually helps in the moment?",
@@ -206,7 +223,7 @@ const DEMO_THREADS: Thread[] = [
 const CATEGORY_LABEL: Record<Exclude<CategoryId, "all">, string> = {
   philosophy: "Philosophy",
   journeys: "Journeys",
-  inquiry: "Inquiry",
+  questions: "Questions",
 };
 
 const MAX_DEPTH = 6;
@@ -373,6 +390,7 @@ function StatsRow({
  * Demo data only; wire to API later.
  */
 export function ConnectForum() {
+  const widePreview = useWidePreviewLayout();
   const [category, setCategory] = useState<CategoryId>("all");
   const [threads, setThreads] = useState(DEMO_THREADS);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -396,7 +414,16 @@ export function ConnectForum() {
   );
 
   const selected =
-    filtered.find((t) => t.id === selectedId) ?? filtered[0] ?? null;
+    filtered.find((t) => t.id === selectedId) ??
+    (widePreview ? filtered[0] ?? null : null);
+
+  function selectFromList(threadId: string) {
+    if (widePreview) {
+      setSelectedId(threadId);
+      return;
+    }
+    openDetail(threadId);
+  }
 
   function toggleLike(threadId: string) {
     setLikedIds((prev) => {
@@ -651,41 +678,47 @@ export function ConnectForum() {
             </li>
           ) : (
             filtered.map((t) => {
-              const active = selected?.id === t.id;
+              const active = widePreview && selected?.id === t.id;
               const replyCount = countComments(t.comments);
               return (
                 <li key={t.id}>
                   <div
-                    className={`flex flex-col gap-1 py-4 transition-colors ${
-                      active ? "opacity-100" : "opacity-80 hover:opacity-100"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => selectFromList(t.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        selectFromList(t.id);
+                      }
+                    }}
+                    className={`flex cursor-pointer flex-col gap-1 px-3 py-4 transition-colors -mx-3 ${
+                      active
+                        ? "bg-accent-soft/40"
+                        : "hover:bg-accent-soft/25"
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(t.id)}
-                      className="flex w-full flex-col gap-1 text-left"
-                    >
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-accent-link">
-                        {CATEGORY_LABEL[t.category]}
-                      </span>
-                      <span className="font-display text-lg font-medium tracking-tight text-foreground">
-                        {t.title}
-                      </span>
-                      <span className="line-clamp-2 text-sm leading-relaxed text-muted">
-                        {t.excerpt}
-                      </span>
-                    </button>
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-accent-link">
+                      {CATEGORY_LABEL[t.category]}
+                    </span>
+                    <span className="font-display text-lg font-medium tracking-tight text-foreground">
+                      {t.title}
+                    </span>
+                    <span className="line-clamp-2 text-sm leading-relaxed text-muted">
+                      {t.excerpt}
+                    </span>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <ConnectUserAvatar name={t.author} size="sm" showName />
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(t.id)}
-                        className="text-left hover:text-foreground"
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                       >
+                        <ConnectUserAvatar name={t.author} size="sm" showName />
+                      </span>
+                      <span>
                         · {replyCount}{" "}
                         {replyCount === 1 ? "comment" : "comments"} · ♡{" "}
                         {t.likes} · {t.bumpedAt}
-                      </button>
+                      </span>
                     </div>
                   </div>
                 </li>
@@ -694,41 +727,45 @@ export function ConnectForum() {
           )}
         </ul>
 
-        <section
-          className="min-h-[16rem] border-t border-border pt-6 lg:border-t-0 lg:pt-0"
-          aria-live="polite"
-        >
-          {selected ? (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-link">
-                {CATEGORY_LABEL[selected.category]}
-              </p>
-              <h2 className="mt-2 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-                {selected.title}
-              </h2>
-              <div className="mt-2 flex items-center gap-2">
-                <ConnectUserAvatar name={selected.author} size="sm" showName />
-                <span className="text-xs text-muted">· {selected.bumpedAt}</span>
+        {widePreview ? (
+          <section
+            className="min-h-[16rem]"
+            aria-live="polite"
+          >
+            {selected ? (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-link">
+                  {CATEGORY_LABEL[selected.category]}
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+                  {selected.title}
+                </h2>
+                <div className="mt-2 flex items-center gap-2">
+                  <ConnectUserAvatar name={selected.author} size="sm" showName />
+                  <span className="text-xs text-muted">
+                    · {selected.bumpedAt}
+                  </span>
+                </div>
+                <p className="mt-5 text-[15px] leading-relaxed text-foreground">
+                  {selected.body}
+                </p>
+                <StatsRow
+                  comments={countComments(selected.comments)}
+                  likes={selected.likes}
+                />
+                <button
+                  type="button"
+                  onClick={() => openDetail(selected.id)}
+                  className="mt-6 inline-flex items-center justify-center rounded-full accent-fill-gradient px-6 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+                >
+                  Open post
+                </button>
               </div>
-              <p className="mt-5 text-[15px] leading-relaxed text-foreground">
-                {selected.body}
-              </p>
-              <StatsRow
-                comments={countComments(selected.comments)}
-                likes={selected.likes}
-              />
-              <button
-                type="button"
-                onClick={() => openDetail(selected.id)}
-                className="mt-6 inline-flex items-center justify-center rounded-full accent-fill-gradient px-6 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
-              >
-                Open post
-              </button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted">Select a post to preview.</p>
-          )}
-        </section>
+            ) : (
+              <p className="text-sm text-muted">Select a post to preview.</p>
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
   );
