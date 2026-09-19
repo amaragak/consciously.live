@@ -37,6 +37,7 @@ export async function handler(
     // Index payload omits full body for bandwidth.
     return json(200, {
       indexSummary: settings.indexSummary,
+      authorPhotoUrl: settings.authorPhotoUrl,
       posts: posts.map((p) => ({
         id: p.id,
         slug: p.slug,

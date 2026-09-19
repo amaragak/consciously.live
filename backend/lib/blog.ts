@@ -38,6 +38,8 @@ export type BlogPost = {
 /** Site-level Read index copy (not per-post). */
 export type BlogSettings = {
   indexSummary: string;
+  /** CloudFront URL for the author photo on /read (null if unset). */
+  authorPhotoUrl: string | null;
   updatedAt: string;
 };
 
@@ -270,15 +272,22 @@ export async function getBlogSettings(): Promise<BlogSettings> {
     typeof item?.indexSummary === "string" && item.indexSummary.trim()
       ? item.indexSummary.trim().slice(0, 500)
       : DEFAULT_BLOG_INDEX_SUMMARY;
+  const photoRaw =
+    typeof item?.authorPhotoUrl === "string" ? item.authorPhotoUrl.trim() : "";
   const updatedAt =
     typeof item?.updatedAt === "string" && item.updatedAt.trim()
       ? item.updatedAt.trim()
       : new Date(0).toISOString();
-  return { indexSummary: summary, updatedAt };
+  return {
+    indexSummary: summary,
+    authorPhotoUrl: photoRaw || null,
+    updatedAt,
+  };
 }
 
 export async function putBlogSettings(input: {
   indexSummary?: unknown;
+  authorPhotoUrl?: unknown;
 }): Promise<BlogSettings> {
   const now = new Date().toISOString();
   const existing = await getBlogSettings();
@@ -286,14 +295,34 @@ export async function putBlogSettings(input: {
     typeof input.indexSummary === "string"
       ? input.indexSummary.trim().slice(0, 500) || DEFAULT_BLOG_INDEX_SUMMARY
       : existing.indexSummary;
-  const settings: BlogSettings = { indexSummary, updatedAt: now };
+  let authorPhotoUrl = existing.authorPhotoUrl;
+  if (Object.prototype.hasOwnProperty.call(input, "authorPhotoUrl")) {
+    if (
+      input.authorPhotoUrl === null ||
+      input.authorPhotoUrl === "" ||
+      (typeof input.authorPhotoUrl === "string" && !input.authorPhotoUrl.trim())
+    ) {
+      authorPhotoUrl = null;
+    } else if (typeof input.authorPhotoUrl === "string") {
+      authorPhotoUrl = input.authorPhotoUrl.trim().slice(0, 2048);
+    }
+  }
+  const settings: BlogSettings = {
+    indexSummary,
+    authorPhotoUrl,
+    updatedAt: now,
+  };
   await ddb.send(
     new PutCommand({
       TableName: tableName(),
       Item: {
         pk: BLOG_PK,
         sk: BLOG_SETTINGS_SK,
-        ...settings,
+        indexSummary: settings.indexSummary,
+        updatedAt: settings.updatedAt,
+        ...(settings.authorPhotoUrl
+          ? { authorPhotoUrl: settings.authorPhotoUrl }
+          : {}),
       },
     }),
   );

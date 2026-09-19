@@ -18,6 +18,7 @@ export type PublicBlogPost = PublicBlogPostSummary & {
 
 export type PublicBlogIndex = {
   indexSummary: string;
+  authorPhotoUrl: string | null;
   posts: PublicBlogPostSummary[];
 };
 
@@ -55,31 +56,49 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
 export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
   const base = apiBase();
   if (!base) {
-    return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
+    return {
+      indexSummary: DEFAULT_INDEX_SUMMARY,
+      authorPhotoUrl: null,
+      posts: [],
+    };
   }
   try {
     const res = await fetch(`${base}/public/blog`, {
       cache: "no-store",
     });
     if (!res.ok) {
-      return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
+      return {
+        indexSummary: DEFAULT_INDEX_SUMMARY,
+        authorPhotoUrl: null,
+        posts: [],
+      };
     }
     const data = (await res.json()) as {
       posts?: unknown[];
       indexSummary?: unknown;
+      authorPhotoUrl?: unknown;
     };
     const indexSummary =
       typeof data.indexSummary === "string" && data.indexSummary.trim()
         ? data.indexSummary.trim()
         : DEFAULT_INDEX_SUMMARY;
+    const authorPhotoUrl =
+      typeof data.authorPhotoUrl === "string" && data.authorPhotoUrl.trim()
+        ? data.authorPhotoUrl.trim()
+        : null;
     return {
       indexSummary,
+      authorPhotoUrl,
       posts: (data.posts ?? [])
         .map(coerceSummary)
         .filter((p): p is PublicBlogPostSummary => Boolean(p)),
     };
   } catch {
-    return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
+    return {
+      indexSummary: DEFAULT_INDEX_SUMMARY,
+      authorPhotoUrl: null,
+      posts: [],
+    };
   }
 }
 

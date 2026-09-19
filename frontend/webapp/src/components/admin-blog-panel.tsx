@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  clearAdminBlogAuthorPhoto,
   deleteAdminBlogPost,
   fetchAdminBlog,
   saveAdminBlogPost,
   saveAdminBlogSettings,
+  uploadAdminBlogAuthorPhoto,
   type AdminBlogPost,
 } from "@/lib/medimade-api";
 import {
@@ -12,6 +14,26 @@ import {
 } from "@/components/read-rich-editor";
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
+
+async function fileToCompressedJpegDataUrl(file: File): Promise<{
+  dataUrl: string;
+  mimeType: string;
+}> {
+  const bitmap = await createImageBitmap(file);
+  const maxSide = 1200;
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process image");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+  return { dataUrl, mimeType: "image/jpeg" };
+}
 
 function slugify(title: string): string {
   return (
@@ -54,10 +76,14 @@ function formatWhen(iso: string | null | undefined): string {
 export function AdminReadPanel() {
   const [posts, setPosts] = useState<AdminBlogPost[]>([]);
   const [indexSummary, setIndexSummary] = useState(DEFAULT_INDEX_SUMMARY);
+  const [authorPhotoUrl, setAuthorPhotoUrl] = useState<string | null>(null);
   const [indexSummaryBusy, setIndexSummaryBusy] = useState(false);
   const [indexSummaryStatus, setIndexSummaryStatus] = useState<string | null>(
     null,
   );
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoStatus, setPhotoStatus] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
@@ -73,6 +99,7 @@ export function AdminReadPanel() {
       const { posts: list, settings } = await fetchAdminBlog();
       setPosts(list);
       setIndexSummary(settings.indexSummary || DEFAULT_INDEX_SUMMARY);
+      setAuthorPhotoUrl(settings.authorPhotoUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load posts");
     } finally {
@@ -135,6 +162,7 @@ export function AdminReadPanel() {
         indexSummary: indexSummary.trim() || DEFAULT_INDEX_SUMMARY,
       });
       setIndexSummary(saved.indexSummary);
+      setAuthorPhotoUrl(saved.authorPhotoUrl);
       setIndexSummaryStatus("Page intro saved.");
     } catch (e) {
       setIndexSummaryStatus(
@@ -142,6 +170,46 @@ export function AdminReadPanel() {
       );
     } finally {
       setIndexSummaryBusy(false);
+    }
+  }
+
+  async function onPhotoSelected(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPhotoStatus("Choose an image file (JPEG, PNG, or WebP).");
+      return;
+    }
+    setPhotoBusy(true);
+    setPhotoStatus(null);
+    try {
+      const { dataUrl, mimeType } = await fileToCompressedJpegDataUrl(file);
+      const saved = await uploadAdminBlogAuthorPhoto({
+        imageBase64: dataUrl,
+        mimeType,
+      });
+      setAuthorPhotoUrl(saved.authorPhotoUrl);
+      setPhotoStatus("Photo uploaded.");
+    } catch (e) {
+      setPhotoStatus(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setPhotoBusy(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
+  async function onClearPhoto() {
+    if (!authorPhotoUrl) return;
+    if (!window.confirm("Remove the author photo from /read?")) return;
+    setPhotoBusy(true);
+    setPhotoStatus(null);
+    try {
+      const saved = await clearAdminBlogAuthorPhoto();
+      setAuthorPhotoUrl(saved.authorPhotoUrl);
+      setPhotoStatus("Photo removed.");
+    } catch (e) {
+      setPhotoStatus(e instanceof Error ? e.message : "Could not remove photo");
+    } finally {
+      setPhotoBusy(false);
     }
   }
 
@@ -201,7 +269,7 @@ export function AdminReadPanel() {
           Read page intro
         </h2>
         <p className="mt-1 text-xs text-muted">
-          Shown under “Writing” on{" "}
+          Shown under the title on{" "}
           <a
             href="https://consciously.live/read"
             className="text-accent-link underline underline-offset-2"
@@ -231,6 +299,64 @@ export function AdminReadPanel() {
           {indexSummaryStatus ? (
             <p className="text-sm text-muted" role="status">
               {indexSummaryStatus}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-6 border-t border-border pt-5">
+          <h3 className="text-sm font-medium text-foreground">Author photo</h3>
+          <p className="mt-1 text-xs text-muted">
+            Optional portrait on the Read index, next to the intro.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+            {authorPhotoUrl ? (
+              <img
+                src={authorPhotoUrl}
+                alt="Author"
+                className="size-24 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex size-24 items-center justify-center rounded-full border border-dashed border-border bg-background text-[11px] text-muted">
+                No photo
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) =>
+                  void onPhotoSelected(e.target.files?.[0] ?? null)
+                }
+              />
+              <button
+                type="button"
+                disabled={photoBusy || loading}
+                onClick={() => photoInputRef.current?.click()}
+                className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-50"
+              >
+                {photoBusy
+                  ? "Uploading…"
+                  : authorPhotoUrl
+                    ? "Replace photo"
+                    : "Upload photo"}
+              </button>
+              {authorPhotoUrl ? (
+                <button
+                  type="button"
+                  disabled={photoBusy || loading}
+                  onClick={() => void onClearPhoto()}
+                  className="rounded-lg border border-danger/40 px-3 py-2 text-sm font-medium text-danger disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {photoStatus ? (
+            <p className="mt-2 text-sm text-muted" role="status">
+              {photoStatus}
             </p>
           ) : null}
         </div>

@@ -1319,17 +1319,21 @@ export class MedimadeStack extends cdk.Stack {
         entry: path.join(__dirname, "../lambdas/admin-blog.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(15),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
         },
       },
     );
     voiceAdminTable.grantReadWriteData(adminBlog);
     authJwtSecret.grantRead(adminBlog);
+    mediaBucket.grantPut(adminBlog);
+    mediaBucket.grantRead(adminBlog);
 
     httpApi.addRoutes({
       path: "/admin/blog",

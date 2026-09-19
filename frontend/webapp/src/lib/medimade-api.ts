@@ -3549,6 +3549,7 @@ export type AdminBlogPost = {
 
 export type AdminBlogSettings = {
   indexSummary: string;
+  authorPhotoUrl: string | null;
   updatedAt: string;
 };
 
@@ -3582,15 +3583,21 @@ function normalizeAdminBlogSettings(raw: unknown): AdminBlogSettings {
   if (!raw || typeof raw !== "object") {
     return {
       indexSummary: DEFAULT_ADMIN_INDEX_SUMMARY,
+      authorPhotoUrl: null,
       updatedAt: "",
     };
   }
   const o = raw as Record<string, unknown>;
+  const photo =
+    typeof o.authorPhotoUrl === "string" && o.authorPhotoUrl.trim()
+      ? o.authorPhotoUrl.trim()
+      : null;
   return {
     indexSummary:
       typeof o.indexSummary === "string" && o.indexSummary.trim()
         ? o.indexSummary.trim()
         : DEFAULT_ADMIN_INDEX_SUMMARY,
+    authorPhotoUrl: photo,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
   };
 }
@@ -3650,6 +3657,62 @@ export async function saveAdminBlogSettings(
   if (!data.settings || typeof data.settings !== "object") {
     throw new Error(
       "Server did not save page intro — redeploy backend, then try again",
+    );
+  }
+  return normalizeAdminBlogSettings(data.settings);
+}
+
+/** Upload author photo for the Read index (JPEG/PNG/WebP, compressed client-side). */
+export async function uploadAdminBlogAuthorPhoto(params: {
+  imageBase64: string;
+  mimeType: string;
+}): Promise<AdminBlogSettings> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "uploadAuthorPhoto",
+      imageBase64: params.imageBase64,
+      mimeType: params.mimeType,
+    }),
+  });
+  const data = (await res.json()) as {
+    settings?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  if (!data.settings || typeof data.settings !== "object") {
+    throw new Error(
+      "Server did not save author photo — redeploy backend, then try again",
+    );
+  }
+  return normalizeAdminBlogSettings(data.settings);
+}
+
+export async function clearAdminBlogAuthorPhoto(): Promise<AdminBlogSettings> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "clearAuthorPhoto" }),
+  });
+  const data = (await res.json()) as {
+    settings?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  if (!data.settings || typeof data.settings !== "object") {
+    throw new Error(
+      "Server did not clear author photo — redeploy backend, then try again",
     );
   }
   return normalizeAdminBlogSettings(data.settings);
