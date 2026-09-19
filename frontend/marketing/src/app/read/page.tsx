@@ -10,7 +10,7 @@ export const metadata = {
     "Notes on living consciously — practice, product, and the craft of attention.",
 };
 
-export const revalidate = 60;
+export const revalidate = 0;
 
 export default async function ReadIndexPage() {
   const { posts, indexSummary } = await fetchPublishedBlogIndex();

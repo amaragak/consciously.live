@@ -59,7 +59,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
   }
   try {
     const res = await fetch(`${base}/public/blog`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (!res.ok) {
       return { indexSummary: DEFAULT_INDEX_SUMMARY, posts: [] };
