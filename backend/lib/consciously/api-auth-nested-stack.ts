@@ -235,6 +235,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
         environment: {
           COGNITO_USER_POOL_ID: userPool.userPoolId,
           COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+          COGNITO_REGION: cdk.Stack.of(this).region,
         },
       },
     );

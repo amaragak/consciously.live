@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { CognitoAuthConfig } from "@/lib/medimade-api";
 import {
   CognitoIdpError,
@@ -11,11 +11,15 @@ import {
   cognitoPasswordSignIn,
   cognitoResendSignUpCode,
   cognitoSignUp,
+  isMaskedUnconfirmedSignInError,
   isUnconfirmedUserError,
   isUsernameExistsError,
+  type CognitoAuthTokens,
 } from "@/lib/cognito-direct-auth";
 
 export type CognitoAuthMode = "signin" | "signup" | "confirm" | "forgot" | "reset";
+
+const RESEND_COOLDOWN_MS = 8000;
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-marketing-card-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-[border-color,box-shadow] focus:border-gold/70 focus:ring-1 focus:ring-gold/40";
@@ -78,11 +82,12 @@ export function CognitoAuthForm({
   afterForm,
   submitVariant = "primary",
   onModeChange,
+  onEmailChange,
 }: {
   config: CognitoAuthConfig;
   disabled?: boolean;
   onAuthenticated: (
-    idToken: string,
+    tokens: CognitoAuthTokens,
     meta?: { justCreated?: boolean },
   ) => Promise<void>;
   /** Parent already shows brand / welcome copy. */
@@ -90,6 +95,7 @@ export function CognitoAuthForm({
   afterForm?: ReactNode;
   submitVariant?: "primary" | "secondary";
   onModeChange?: (mode: CognitoAuthMode) => void;
+  onEmailChange?: (email: string) => void;
 }) {
   const [mode, setMode] = useState<CognitoAuthMode>("signin");
   const [email, setEmail] = useState("");
@@ -98,8 +104,15 @@ export function CognitoAuthForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [unverifiedExisting, setUnverifiedExisting] = useState(false);
+  const [lastSentAt, setLastSentAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   const locked = disabled || busy;
+  const resendWaitSec = Math.max(
+    0,
+    Math.ceil((lastSentAt + RESEND_COOLDOWN_MS - now) / 1000),
+  );
 
   function go(next: CognitoAuthMode) {
     setMode(next);
@@ -107,14 +120,59 @@ export function CognitoAuthForm({
     setError(null);
     setNotice(null);
     setCode("");
+    if (next !== "confirm") setUnverifiedExisting(false);
     if (next === "confirm" || next === "reset") {
       setEmail((value) => value.trim().toLowerCase());
     }
   }
 
+  useEffect(() => {
+    onEmailChange?.(email);
+  }, [email, onEmailChange]);
+
+  useEffect(() => {
+    if ((mode !== "confirm" && mode !== "reset") || resendWaitSec <= 0) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [mode, resendWaitSec]);
+
+  async function sendVerifyEmail(kind: "confirm" | "reset", address = email) {
+    if (Date.now() - lastSentAt < RESEND_COOLDOWN_MS) return;
+    const username = address.trim().toLowerCase();
+    setLastSentAt(Date.now());
+    setNow(Date.now());
+    if (kind === "reset") {
+      await cognitoForgotPassword(config, username);
+      return;
+    }
+    const result = await cognitoResendSignUpCode(config, username);
+    if (!result.pendingVerification) {
+      throw new Error("Could not send a verification email for this account.");
+    }
+  }
+
   async function finishSignIn(pwd: string, justCreated = false) {
-    const tokens = await cognitoPasswordSignIn(config, email.trim().toLowerCase(), pwd);
-    await onAuthenticated(tokens.idToken, { justCreated });
+    const tokens = await cognitoPasswordSignIn(
+      config,
+      (email ?? "").trim().toLowerCase(),
+      pwd,
+    );
+    await onAuthenticated(tokens, { justCreated });
+  }
+
+  /** Same verify + later account-setup path as first-time signup. */
+  async function enterVerifyFlow(address: string) {
+    go("confirm");
+    setUnverifiedExisting(true);
+    try {
+      await sendVerifyEmail("confirm", address);
+    } catch (sendErr) {
+      setError(
+        sendErr instanceof Error
+          ? sendErr.message
+          : "Could not send the verification email.",
+      );
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -126,8 +184,28 @@ export function CognitoAuthForm({
     setBusy(true);
     try {
       if (mode === "signin") {
-        await finishSignIn(password);
-        return;
+        try {
+          await finishSignIn(password);
+          return;
+        } catch (signInErr) {
+          if (isUnconfirmedUserError(signInErr)) {
+            await enterVerifyFlow(username);
+            return;
+          }
+          if (isMaskedUnconfirmedSignInError(signInErr)) {
+            const result = await cognitoResendSignUpCode(config, username).catch(
+              () => null,
+            );
+            if (result?.pendingVerification) {
+              setLastSentAt(Date.now());
+              setNow(Date.now());
+              go("confirm");
+              setUnverifiedExisting(true);
+              return;
+            }
+          }
+          throw signInErr;
+        }
       }
       if (mode === "signup") {
         const { confirmed } = await cognitoSignUp(config, username, password);
@@ -136,6 +214,16 @@ export function CognitoAuthForm({
           return;
         }
         go("confirm");
+        setUnverifiedExisting(false);
+        try {
+          await sendVerifyEmail("confirm", username);
+        } catch (sendErr) {
+          setError(
+            sendErr instanceof Error
+              ? sendErr.message
+              : "Could not send the verification email.",
+          );
+        }
         return;
       }
       if (mode === "confirm") {
@@ -151,18 +239,29 @@ export function CognitoAuthForm({
       await cognitoConfirmForgotPassword(config, username, code, password);
       await finishSignIn(password);
     } catch (err) {
-      if (mode === "signin" && isUnconfirmedUserError(err)) {
-        go("confirm");
-        setNotice("Confirm your email to finish creating this account.");
-        try {
-          await cognitoResendSignUpCode(config, username);
-        } catch {
-          /* code may already be valid */
-        }
-        return;
-      }
       if (mode === "signup" && isUsernameExistsError(err)) {
-        setError(err instanceof Error ? err.message : "Account already exists.");
+        try {
+          await finishSignIn(password, true);
+          return;
+        } catch (signInErr) {
+          if (isUnconfirmedUserError(signInErr)) {
+            await enterVerifyFlow(username);
+            return;
+          }
+          if (isMaskedUnconfirmedSignInError(signInErr)) {
+            const result = await cognitoResendSignUpCode(config, username).catch(
+              () => null,
+            );
+            if (result?.pendingVerification) {
+              setLastSentAt(Date.now());
+              setNow(Date.now());
+              go("confirm");
+              setUnverifiedExisting(true);
+              return;
+            }
+          }
+        }
+        setError("An account with this email already exists. Sign in instead.");
         return;
       }
       setError(
@@ -176,16 +275,14 @@ export function CognitoAuthForm({
   }
 
   async function resendCode() {
+    if (resendWaitSec > 0) return;
     setError(null);
     setBusy(true);
     try {
-      if (mode === "reset") {
-        await cognitoForgotPassword(config, email.trim().toLowerCase());
-      } else {
-        await cognitoResendSignUpCode(config, email.trim().toLowerCase());
-      }
+      await sendVerifyEmail(mode === "reset" ? "reset" : "confirm");
       setNotice("New code sent.");
     } catch (err) {
+      setLastSentAt(0);
       setError(err instanceof Error ? err.message : "Could not resend the code.");
     } finally {
       setBusy(false);
@@ -207,7 +304,9 @@ export function CognitoAuthForm({
     mode === "signup"
       ? "Create an account"
       : mode === "confirm"
-        ? "Check your email"
+        ? unverifiedExisting
+          ? "Verify your email"
+          : "Check your email"
         : mode === "forgot" || mode === "reset"
           ? "Reset your password"
           : "Welcome in.";
@@ -217,9 +316,11 @@ export function CognitoAuthForm({
     mode === "signup"
       ? "Your library and journal stay with this email."
       : mode === "confirm"
-        ? emailLabel
-          ? `We sent a code to ${emailLabel}. It is valid for 24 hours.`
-          : "Enter the code we sent you."
+        ? unverifiedExisting
+          ? `This email is already registered, but it isn’t verified yet. Enter the code we sent to ${emailLabel || "you"} to finish creating your account.`
+          : emailLabel
+            ? `We sent a code to ${emailLabel}. It is valid for 24 hours.`
+            : "Enter the code we sent you."
         : mode === "forgot"
           ? "We’ll email a code to reset it."
           : mode === "reset"
@@ -343,11 +444,11 @@ export function CognitoAuthForm({
       {mode === "confirm" || mode === "reset" ? (
         <button
           type="button"
-          disabled={locked}
+          disabled={locked || resendWaitSec > 0}
           onClick={() => void resendCode()}
-          className="mt-4 w-full text-center text-xs font-medium text-accent-link underline-offset-2 hover:underline"
+          className="mt-4 w-full text-center text-xs font-medium text-accent-link underline-offset-2 hover:underline disabled:no-underline disabled:opacity-50"
         >
-          Resend code
+          {resendWaitSec > 0 ? `Resend code in ${resendWaitSec}s` : "Resend code"}
         </button>
       ) : null}
 

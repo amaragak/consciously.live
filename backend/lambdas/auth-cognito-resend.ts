@@ -1,9 +1,9 @@
 /**
- * Case-insensitive confirmation resend. Looks up the Cognito user by email
- * and calls AdminResendConfirmationCode with their real username.
+ * Case-insensitive confirmation resend.
+ * Looks up the user by email, then calls Cognito ResendConfirmationCode with
+ * the stored address (avoids a broken Admin SDK export in the bundle).
  */
 import {
-  AdminResendConfirmationCodeCommand,
   CognitoIdentityProviderClient,
   ListUsersCommand,
   type UserType,
@@ -32,14 +32,15 @@ function json(
   };
 }
 
-function ok(event: APIGatewayProxyEventV2) {
-  return json(event, 200, { ok: true });
+function ok(
+  event: APIGatewayProxyEventV2,
+  extra?: { pendingVerification?: boolean },
+) {
+  return json(event, 200, { ok: true, ...extra });
 }
 
 function attr(user: UserType, name: string): string {
-  return (
-    user.Attributes?.find((a) => a.Name === name)?.Value?.trim() ?? ""
-  );
+  return user.Attributes?.find((a) => a.Name === name)?.Value?.trim() ?? "";
 }
 
 async function findUserByEmail(
@@ -59,6 +60,30 @@ async function findUserByEmail(
   );
 }
 
+async function resendConfirmationCode(
+  region: string,
+  clientId: string,
+  username: string,
+): Promise<void> {
+  const res = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-amz-json-1.1",
+      "X-Amz-Target": "AWSCognitoIdentityProviderService.ResendConfirmationCode",
+    },
+    body: JSON.stringify({
+      ClientId: clientId,
+      Username: username,
+    }),
+  });
+  if (res.ok) return;
+  const body = (await res.json().catch(() => ({}))) as {
+    __type?: string;
+    message?: string;
+  };
+  throw new Error(body.message || body.__type || `Resend failed (${res.status})`);
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -68,6 +93,7 @@ export async function handler(
 
   const userPoolId = process.env.COGNITO_USER_POOL_ID?.trim();
   const clientId = process.env.COGNITO_CLIENT_ID?.trim();
+  const region = process.env.COGNITO_REGION?.trim() || "eu-west-2";
   if (!userPoolId || !clientId) {
     return json(event, 500, { error: "Cognito is not configured" });
   }
@@ -86,21 +112,17 @@ export async function handler(
 
   try {
     const user = await findUserByEmail(userPoolId, email);
-    const username = user?.Username?.trim();
-    if (username && user?.UserStatus === "UNCONFIRMED") {
-      await cognito.send(
-        new AdminResendConfirmationCodeCommand({
-          UserPoolId: userPoolId,
-          ClientId: clientId,
-          Username: username,
-        }),
-      );
+    const pendingVerification = user?.UserStatus === "UNCONFIRMED";
+    const username = user
+      ? (attr(user, "email") || user.Username || "").trim()
+      : "";
+    if (username && pendingVerification) {
+      await resendConfirmationCode(region, clientId, username);
     }
+    return ok(event, { pendingVerification: Boolean(pendingVerification) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Could not resend";
     console.error("cognito resend", msg);
     return json(event, 502, { error: "Could not resend the code." });
   }
-
-  return ok(event);
 }

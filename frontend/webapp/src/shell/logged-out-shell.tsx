@@ -1,11 +1,15 @@
 import { brand } from "@consciously/common";
+import { getLiveColorScheme, withAuthColorSchemeQuery } from "@/lib/color-scheme";
 import { getMarketingOrigin, marketingHref } from "@/lib/origins";
 
 /** Shown when the SPA has no session — send people to marketing magic-link login. */
 export function LoggedOutShell() {
   const marketingHost = getMarketingOrigin().replace(/^https?:\/\//, "");
   const loginHref = marketingHref(
-    `/login?next=${encodeURIComponent("/focus")}`,
+    withAuthColorSchemeQuery(
+      `/login?next=${encodeURIComponent("/focus")}`,
+      getLiveColorScheme(),
+    ),
   );
 
   return (

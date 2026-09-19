@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { spaPathForAppPath } from "@/lib/app-origins";
+import { useAuthLoginHref } from "@/lib/auth-login-href";
 import { navigateToSpa } from "@/lib/spa-handoff";
 
 /** Soft-redirect authenticated marketing routes to the Vite SPA (path + query preserved). */
 export function SpaRedirect({ children }: { children?: React.ReactNode }) {
+  const loginHref = useAuthLoginHref();
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export function SpaRedirect({ children }: { children?: React.ReactNode }) {
           <>
             Couldn’t open the app from this origin (session handoff unavailable).{" "}
             <a
-              href="/login"
+              href={loginHref}
               className="text-accent-link underline-offset-2 hover:underline"
             >
               Sign in again

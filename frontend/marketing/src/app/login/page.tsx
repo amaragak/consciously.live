@@ -2,21 +2,16 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import {
   CognitoAuthForm,
   type CognitoAuthMode,
 } from "@/components/cognito-auth-form";
 import { LogoMark } from "@/components/logo-mark";
-import { ChevronDown, Fingerprint } from "lucide-react";
+import { Fingerprint } from "lucide-react";
 import {
-  ensureMedimadeSession,
   fetchCognitoAuthConfig,
   getMedimadeApiBase,
-  getMedimadeSessionDisplayName,
-  getMedimadeSessionEmail,
-  getMedimadeSessionJwt,
-  loginAsMedimadeGuest,
   requestMedimadeMagicLink,
   type CognitoAuthConfig,
 } from "@/lib/medimade-api";
@@ -24,12 +19,19 @@ import {
   beginCognitoHostedLogin,
   establishCognitoSession,
 } from "@/lib/cognito-auth";
+import { asCognitoAuthTokens } from "@/lib/cognito-direct-auth";
 import { rememberAuthNext, safeAuthNext, postAuthDestination } from "@/lib/app-routes";
-import {
-  exitMarketingPreviewMode,
-  preservedSessionLabel,
-} from "@/lib/marketing-preview";
+import { applyColorScheme, resolveAuthColorScheme } from "@/lib/color-scheme";
+import { exitMarketingPreviewMode } from "@/lib/marketing-preview";
 import { navigateAuthDestination } from "@/lib/spa-handoff";
+import {
+  cognitoHasPasskey,
+  cognitoPasskeySignIn,
+  cognitoRegisterPasskey,
+  passkeyOfferSkippedThisSession,
+  rememberCognitoAccessToken,
+  skipPasskeyOfferThisSession,
+} from "@/lib/cognito-passkey";
 
 function GoogleMark() {
   return (
@@ -104,25 +106,25 @@ function LoginInner() {
   const next = safeAuthNext(searchParams.get("next"), "/");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [guestBusy, setGuestBusy] = useState(false);
-  const [resumeBusy, setResumeBusy] = useState(false);
   const [cognitoBusy, setCognitoBusy] = useState(false);
-  const [showMagic, setShowMagic] = useState(false);
-  const [showMore, setShowMore] = useState(false);
   const [authMode, setAuthMode] = useState<CognitoAuthMode>("signin");
   const [passkeyOffer, setPasskeyOffer] = useState<{
     needsProfileName: boolean;
+    accessToken: string;
   } | null>(null);
   const [cognitoConfig, setCognitoConfig] = useState<
     CognitoAuthConfig | null | undefined
   >(undefined);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [resumeLabel, setResumeLabel] = useState<string | null>(null);
 
   const base = getMedimadeApiBase();
   const cognitoEnabled = cognitoConfig?.enabled === true;
-  const anyBusy = busy || guestBusy || resumeBusy || cognitoBusy;
+  const anyBusy = busy || cognitoBusy;
+
+  useLayoutEffect(() => {
+    applyColorScheme(resolveAuthColorScheme(searchParams));
+  }, [searchParams]);
 
   useEffect(() => {
     rememberAuthNext(next);
@@ -141,24 +143,6 @@ function LoginInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    const sync = () => {
-      if (!getMedimadeSessionJwt()) {
-        setResumeLabel(null);
-        return;
-      }
-      setResumeLabel(
-        preservedSessionLabel(
-          getMedimadeSessionDisplayName(),
-          getMedimadeSessionEmail(),
-        ),
-      );
-    };
-    sync();
-    window.addEventListener("medimade-session-changed", sync);
-    return () => window.removeEventListener("medimade-session-changed", sync);
   }, []);
 
   async function goAfterAuth(sessionNeedsName: boolean) {
@@ -195,25 +179,35 @@ function LoginInner() {
     }
   }
 
-  async function continueAsGuest() {
+  async function setupPasskey() {
+    if (!cognitoConfig || !passkeyOffer) return;
+    if (!passkeyOffer.accessToken) {
+      setError("Sign in again, then set up a passkey.");
+      return;
+    }
     setError(null);
-    setGuestBusy(true);
+    setCognitoBusy(true);
     try {
-      await loginAsMedimadeGuest();
-      exitMarketingPreviewMode();
-      rememberAuthNext(next);
-      const ok = await navigateAuthDestination(postAuthDestination(next));
-      if (!ok) {
-        setError(
-          "Guest session started, but the app handoff isn’t available yet.",
-        );
-        setGuestBusy(false);
-      }
+      await cognitoRegisterPasskey(cognitoConfig, passkeyOffer.accessToken);
+      await goAfterAuth(passkeyOffer.needsProfileName);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not start guest session",
-      );
-      setGuestBusy(false);
+      setError(err instanceof Error ? err.message : "Could not set up a passkey");
+      setCognitoBusy(false);
+    }
+  }
+
+  async function continueWithPasskey() {
+    if (!cognitoConfig) return;
+    setError(null);
+    setCognitoBusy(true);
+    try {
+      rememberAuthNext(next);
+      const tokens = await cognitoPasskeySignIn(cognitoConfig, email);
+      const session = await establishCognitoSession(tokens.idToken);
+      await goAfterAuth(session.needsProfileName);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not sign in with a passkey");
+      setCognitoBusy(false);
     }
   }
 
@@ -228,33 +222,6 @@ function LoginInner() {
         err instanceof Error ? err.message : "Could not start Google sign-in",
       );
       setCognitoBusy(false);
-    }
-  }
-
-  async function resumeSession() {
-    setError(null);
-    setResumeBusy(true);
-    try {
-      exitMarketingPreviewMode();
-      await ensureMedimadeSession();
-      if (!getMedimadeSessionJwt()) {
-        throw new Error("Session expired — sign in again");
-      }
-      rememberAuthNext(next);
-      const dest = postAuthDestination(next);
-      if (/^https?:\/\//i.test(dest)) {
-        const ok = await navigateAuthDestination(dest);
-        if (!ok) {
-          setError("Could not open the app. Try again in a moment.");
-          setResumeBusy(false);
-          return;
-        }
-        return;
-      }
-      router.replace(dest);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not resume session");
-      setResumeBusy(false);
     }
   }
 
@@ -276,18 +243,19 @@ function LoginInner() {
             <button
               type="button"
               disabled={anyBusy}
-              onClick={() =>
-                setError("Passkey setup isn’t available yet.")
-              }
+              onClick={() => void setupPasskey()}
               className="mt-8 w-full cursor-pointer rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              Set up a passkey
+              {cognitoBusy ? "Setting up…" : "Set up a passkey"}
             </button>
             {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
             <button
               type="button"
               disabled={anyBusy}
-              onClick={() => void goAfterAuth(passkeyOffer.needsProfileName)}
+              onClick={() => {
+                skipPasskeyOfferThisSession();
+                void goAfterAuth(passkeyOffer.needsProfileName);
+              }}
               className="mt-4 text-sm text-muted transition-colors hover:text-foreground"
             >
               Maybe later
@@ -346,6 +314,7 @@ function LoginInner() {
                     hideIntro
                     disabled={anyBusy}
                     onModeChange={setAuthMode}
+                    onEmailChange={setEmail}
                     afterForm={
                       <div className="mt-5 space-y-3">
                         <div className="relative py-1">
@@ -363,9 +332,7 @@ function LoginInner() {
                           <PasskeySignInButton
                             disabled={anyBusy}
                             label="Sign in with a passkey"
-                            onClick={() =>
-                              setError("Passkey sign-in isn’t available yet.")
-                            }
+                            onClick={() => void continueWithPasskey()}
                           />
                         ) : null}
                         <GoogleSignInButton
@@ -381,15 +348,31 @@ function LoginInner() {
                         />
                       </div>
                     }
-                    onAuthenticated={async (idToken, meta) => {
+                    onAuthenticated={async (rawTokens, meta) => {
                       setCognitoBusy(true);
                       setError(null);
                       try {
                         rememberAuthNext(next);
-                        const session = await establishCognitoSession(idToken);
-                        if (meta?.justCreated) {
+                        const tokens = asCognitoAuthTokens(rawTokens);
+                        if (!tokens.idToken) {
+                          throw new Error("Cognito did not return a session. Try again.");
+                        }
+                        const session = await establishCognitoSession(tokens.idToken);
+                        if (tokens.accessToken) {
+                          rememberCognitoAccessToken(tokens.accessToken);
+                        }
+                        const shouldOfferPasskey =
+                          Boolean(tokens.accessToken) &&
+                          (meta?.justCreated ||
+                            (!passkeyOfferSkippedThisSession() &&
+                              !(await cognitoHasPasskey(
+                                cognitoConfig,
+                                tokens.accessToken,
+                              ).catch(() => false))));
+                        if (shouldOfferPasskey) {
                           setPasskeyOffer({
                             needsProfileName: session.needsProfileName,
+                            accessToken: tokens.accessToken,
                           });
                           setCognitoBusy(false);
                           return;
@@ -438,80 +421,6 @@ function LoginInner() {
                 ) : null}
 
                 {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-
-                {cognitoEnabled && !sent && authMode === "signin" ? (
-                  <div className="mt-5 text-center">
-                    <button
-                      type="button"
-                      disabled={anyBusy}
-                      onClick={() => setShowMore((open) => !open)}
-                      className="inline-flex items-center gap-1 text-xs text-muted underline-offset-2 hover:text-foreground hover:underline"
-                    >
-                      More ways to sign in
-                      <ChevronDown
-                        aria-hidden
-                        className={`size-3.5 transition-transform ${showMore ? "rotate-180" : ""}`}
-                        strokeWidth={2}
-                      />
-                    </button>
-                    {showMore ? (
-                      <div className="mt-3 space-y-2 text-xs text-muted">
-                        {showMagic ? (
-                          <form
-                            onSubmit={(e) => void onMagicLink(e)}
-                            className="space-y-2"
-                          >
-                            <input
-                              type="email"
-                              autoComplete="email"
-                              required
-                              value={email}
-                              onChange={(ev) => setEmail(ev.target.value)}
-                              className="w-full rounded-xl border border-marketing-card-border bg-background px-3 py-2 text-sm outline-none focus:border-gold/70"
-                              placeholder="you@example.com"
-                            />
-                            <button
-                              type="submit"
-                              disabled={anyBusy}
-                              className="font-medium text-accent-link underline-offset-2 hover:underline"
-                            >
-                              {busy ? "Sending…" : "Send link"}
-                            </button>
-                          </form>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={anyBusy}
-                            onClick={() => setShowMagic(true)}
-                            className="hover:text-foreground"
-                          >
-                            Email me a link
-                          </button>
-                        )}
-                        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-                          <button
-                            type="button"
-                            disabled={anyBusy}
-                            onClick={() => void continueAsGuest()}
-                            className="hover:text-foreground"
-                          >
-                            {guestBusy ? "Starting…" : "Continue as guest"}
-                          </button>
-                          {resumeLabel ? (
-                            <button
-                              type="button"
-                              disabled={anyBusy}
-                              onClick={() => void resumeSession()}
-                              className="hover:text-foreground"
-                            >
-                              {resumeBusy ? "Opening…" : `Resume as ${resumeLabel}`}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
               </>
             )}
           </div>

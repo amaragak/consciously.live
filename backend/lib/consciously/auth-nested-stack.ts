@@ -13,8 +13,9 @@ import { BREVO_SECRET_NAME } from "./secret-names";
  * Cognito User Pool + Hosted UI domain only.
  * Auth HTTP routes / exchange Lambdas live in the API nested stack (avoids Auth ↔ API cycles).
  *
- * Domain prefix defaults to `consciously-v2-{account}` so this can synth/deploy alongside
- * the live MedimadeBackend pool (`consciously-{account}`) until cutover.
+ * Pool name is `consciously-users`. MedimadeBackend keeps a separate `medimade-users`
+ * pool. Domain prefix stays `consciously-v2-{account}` so it does not collide with
+ * the Medimade Hosted UI domain.
  */
 export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
   readonly userPool: cognito.UserPool;
@@ -67,7 +68,7 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
     });
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
-      userPoolName: "consciously-users-v2",
+      userPoolName: "consciously-users",
       selfSignUpEnabled: true,
       signInAliases: { email: true },
       autoVerify: { email: true },

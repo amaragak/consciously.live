@@ -6,6 +6,8 @@
  */
 
 import {
+  AUTH_HERO_PATTERN_DARK,
+  AUTH_HERO_PATTERN_LIGHT,
   HOME_HERO_PATTERN_DARK,
   HOME_HERO_PATTERN_LIGHT,
 } from "./color-scheme";
@@ -644,6 +646,8 @@ export const themeRootCss = [
 export const homeHeroPatternCriticalCss = [
   `.home-hero::before{background-image:url("${HOME_HERO_PATTERN_LIGHT}")}`,
   `:root.dark .home-hero::before{background-image:url("${HOME_HERO_PATTERN_DARK}")}`,
+  `.home-hero.home-hero--auth::before{background-image:url("${AUTH_HERO_PATTERN_LIGHT}");background-size:480px 480px}`,
+  `:root.dark .home-hero.home-hero--auth::before{background-image:url("${AUTH_HERO_PATTERN_DARK}");background-size:480px 480px}`,
   `.page-pattern-tile{background-image:url("${HOME_HERO_PATTERN_LIGHT}")}`,
   `:root.dark .page-pattern-tile{background-image:url("${HOME_HERO_PATTERN_DARK}")}`,
   `.journal-editor-pattern-gutter::before{background-image:url("${HOME_HERO_PATTERN_LIGHT}")}`,

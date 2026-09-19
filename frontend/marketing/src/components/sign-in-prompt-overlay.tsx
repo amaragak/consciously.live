@@ -22,6 +22,7 @@ import {
   preservedSessionLabel,
 } from "@/lib/marketing-preview";
 import { navigateAuthDestination } from "@/lib/spa-handoff";
+import { useAuthLoginHref } from "@/lib/auth-login-href";
 
 type Props = {
   /** Called when the overlay should close without signing in. */
@@ -42,6 +43,9 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
 
   const base = getMedimadeApiBase();
   const next = safeAuthNext(nextPath, "/");
+  const loginHref = useAuthLoginHref(
+    `/login?next=${encodeURIComponent(next)}`,
+  );
   const anyBusy = busy || guestBusy || resumeBusy;
 
   useEffect(() => {
@@ -252,7 +256,7 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
             Stay on this page
           </button>
           <Link
-            href={`/login?next=${encodeURIComponent(next)}`}
+            href={loginHref}
             className="text-accent-link underline-offset-2 hover:underline"
             onClick={() => rememberAuthNext(next)}
           >

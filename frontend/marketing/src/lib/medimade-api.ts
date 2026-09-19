@@ -428,7 +428,7 @@ export async function exchangeCognitoIdToken(
 ): Promise<MedimadeMagicLinkVerifyResult> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
-  const t = idToken.trim();
+  const t = typeof idToken === "string" ? idToken.trim() : "";
   if (!t) throw new Error("idToken is required");
   const res = await medimadeFetch(`${base}/auth/cognito/exchange`, {
     method: "POST",

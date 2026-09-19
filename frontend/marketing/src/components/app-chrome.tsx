@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, Suspense, useEffect, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppPrimaryTabsProvider } from "@/components/app-primary-tabs";
 import { MainShell } from "@/components/main-shell";
@@ -16,6 +16,11 @@ import {
   marketingSignInUrl,
   rememberAuthNext,
 } from "@/lib/app-routes";
+import {
+  applyColorScheme,
+  getStoredColorScheme,
+  resolveAuthColorScheme,
+} from "@/lib/color-scheme";
 import {
   clearHasSessionHintCookieIfPresent,
   ensureHasSessionHintCookie,
@@ -123,6 +128,13 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
   );
 
   const hideChrome = isPublicAuthPath(pathname);
+
+  useLayoutEffect(() => {
+    const scheme = hideChrome
+      ? resolveAuthColorScheme(searchParams)
+      : getStoredColorScheme();
+    applyColorScheme(scheme);
+  }, [hideChrome, pathname, searchParams]);
 
   return (
     <AppPrimaryTabsProvider>

@@ -38,7 +38,7 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
     super(scope, id, props);
 
     this.userPool = new cognito.UserPool(this, "ConsciouslyUserPool", {
-      userPoolName: "consciously-users",
+      userPoolName: "medimade-users",
       selfSignUpEnabled: true,
       signInAliases: { email: true },
       autoVerify: { email: true },

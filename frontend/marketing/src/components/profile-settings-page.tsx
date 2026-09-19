@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
+  fetchCognitoAuthConfig,
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
   getMedimadeSessionJwt,
@@ -11,6 +12,11 @@ import {
   setMedimadeSession,
 } from "@/lib/medimade-api";
 import { connectUserHref } from "@/lib/connect-users";
+import { useAuthLoginHref } from "@/lib/auth-login-href";
+import {
+  cognitoRegisterPasskey,
+  peekCognitoAccessToken,
+} from "@/lib/cognito-passkey";
 import {
   AVATAR_HUE_PRESETS,
   loadProfilePrefs,
@@ -58,11 +64,15 @@ function AvatarSwatch({
  * Account profile editor at `/profile` (Next marketing).
  */
 export function ProfileSettingsPage() {
+  const loginHref = useAuthLoginHref("/login?next=%2Fprofile");
   const [ready, setReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [prefs, setPrefs] = useState<ProfilePrefs>(() => loadProfilePrefs());
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyMessage, setPasskeyMessage] = useState<string | null>(null);
+  const [canAddPasskeyNow, setCanAddPasskeyNow] = useState(false);
 
   useEffect(() => {
     const sync = () => {
@@ -91,9 +101,28 @@ export function ProfileSettingsPage() {
       setReady(true);
     };
     sync();
+    setCanAddPasskeyNow(Boolean(peekCognitoAccessToken()));
     window.addEventListener("medimade-session-changed", sync);
     return () => window.removeEventListener("medimade-session-changed", sync);
   }, []);
+
+  async function addPasskeyFromProfile() {
+    const accessToken = peekCognitoAccessToken();
+    if (!accessToken) return;
+    setPasskeyBusy(true);
+    setPasskeyMessage(null);
+    try {
+      const config = await fetchCognitoAuthConfig();
+      await cognitoRegisterPasskey(config, accessToken);
+      setPasskeyMessage("Passkey saved. You can use it next time you sign in.");
+    } catch (err) {
+      setPasskeyMessage(
+        err instanceof Error ? err.message : "Could not set up a passkey",
+      );
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
 
   const onSave = useCallback(async () => {
     setBusy(true);
@@ -135,7 +164,7 @@ export function ProfileSettingsPage() {
         </h1>
         <p className="mt-3 text-muted">Sign in to edit your profile.</p>
         <Link
-          href="/login?next=%2Fprofile"
+          href={loginHref}
           className="mt-6 inline-flex rounded-full accent-fill-gradient px-6 py-2.5 text-sm font-semibold text-on-accent"
         >
           Sign in
@@ -275,6 +304,34 @@ export function ProfileSettingsPage() {
               Account
             </h2>
             <ul className="mt-3 divide-y divide-border border-t border-border">
+              <li>
+                {canAddPasskeyNow ? (
+                  <button
+                    type="button"
+                    disabled={passkeyBusy}
+                    onClick={() => void addPasskeyFromProfile()}
+                    className="flex w-full items-center justify-between py-3 text-left text-sm text-foreground hover:text-accent-link disabled:opacity-50"
+                  >
+                    <span>{passkeyBusy ? "Setting up…" : "Add a passkey"}</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={loginHref}
+                    className="flex w-full items-center justify-between py-3 text-left text-sm text-foreground hover:text-accent-link"
+                  >
+                    <span>Add a passkey</span>
+                    <span className="text-xs text-muted">Sign in again</span>
+                  </Link>
+                )}
+                {passkeyMessage ? (
+                  <p className="pb-3 text-xs text-muted">{passkeyMessage}</p>
+                ) : (
+                  <p className="pb-3 text-xs text-muted">
+                    Sign in with email and password, then you can add a passkey
+                    for this device.
+                  </p>
+                )}
+              </li>
               <li>
                 <button
                   type="button"

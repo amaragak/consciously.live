@@ -21,6 +21,7 @@ import {
   toggleColorScheme,
   type ColorScheme,
 } from "@/lib/color-scheme";
+import { useAuthLoginHref } from "@/lib/auth-login-href";
 import {
   exitMarketingPreviewMode,
   isMarketingPreviewMode,
@@ -165,6 +166,7 @@ function AccountMenu({
 
 export function SiteHeader() {
   const pathname = usePathname() || "/";
+  const loginHref = useAuthLoginHref();
   const prevPathnameRef = useRef(pathname);
   const mobileMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [hasSession, setHasSession] = useState(false);
@@ -315,7 +317,7 @@ export function SiteHeader() {
               </div>
             ) : (
               <Link
-                href="/login"
+                href={loginHref}
                 className="ml-1 rounded-lg border border-marketing-nav-chrome px-3 py-2 text-sm font-medium text-nav-foreground transition-[background-color,color,border-color] duration-150 ease-out hover:bg-nav-active"
               >
                 Sign in
@@ -435,7 +437,7 @@ export function SiteHeader() {
                   </>
                 ) : (
                   <Link
-                    href="/login"
+                    href={loginHref}
                     onClick={closeMobile}
                     className="block px-4 py-2 text-sm font-medium text-foreground hover:bg-accent-soft/50"
                   >

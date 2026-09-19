@@ -103,6 +103,25 @@ export type CognitoAuthTokens = {
   refreshToken?: string;
 };
 
+/** Accept the tokens object or a bare ID token (stale HMR / older callers). */
+export function asCognitoAuthTokens(
+  value: CognitoAuthTokens | string | null | undefined,
+): CognitoAuthTokens {
+  if (typeof value === "string") {
+    const idToken = value.trim();
+    return { idToken, accessToken: "" };
+  }
+  const idToken =
+    typeof value?.idToken === "string" ? value.idToken.trim() : "";
+  const accessToken =
+    typeof value?.accessToken === "string" ? value.accessToken.trim() : "";
+  const refreshToken =
+    typeof value?.refreshToken === "string" && value.refreshToken.trim()
+      ? value.refreshToken.trim()
+      : undefined;
+  return { idToken, accessToken, refreshToken };
+}
+
 type AuthResult = {
   AuthenticationResult?: {
     IdToken?: string;
@@ -194,7 +213,7 @@ export async function cognitoConfirmSignUp(
 export async function cognitoResendSignUpCode(
   config: CognitoAuthConfig,
   email: string,
-): Promise<void> {
+): Promise<{ pendingVerification: boolean }> {
   const username = normalizeEmail(email);
   const base = getMedimadeApiBase();
   if (base) {
@@ -203,17 +222,30 @@ export async function cognitoResendSignUpCode(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: username }),
     });
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      pendingVerification?: boolean;
+    };
+    if (res.ok && typeof data.pendingVerification === "boolean") {
+      return { pendingVerification: data.pendingVerification };
+    }
+    if (!res.ok && res.status !== 404) {
       throw new Error(data.error || "Could not resend the code.");
     }
-    return;
   }
   const { clientId, region } = requireClient(config);
-  await cognitoCall(region, "ResendConfirmationCode", {
-    ClientId: clientId,
-    Username: username,
-  });
+  try {
+    await cognitoCall(region, "ResendConfirmationCode", {
+      ClientId: clientId,
+      Username: username,
+    });
+    return { pendingVerification: true };
+  } catch (err) {
+    if (isAlreadyConfirmedError(err)) {
+      return { pendingVerification: false };
+    }
+    throw err;
+  }
 }
 
 export async function cognitoForgotPassword(
@@ -246,6 +278,24 @@ export function isUnconfirmedUserError(err: unknown): boolean {
   return err instanceof CognitoIdpError && err.type === "UserNotConfirmedException";
 }
 
+/** Sign-in can hide an UNCONFIRMED user as a generic auth failure. */
+export function isMaskedUnconfirmedSignInError(err: unknown): boolean {
+  return (
+    err instanceof CognitoIdpError &&
+    (err.type === "NotAuthorizedException" ||
+      err.type === "UserNotFoundException")
+  );
+}
+
 export function isUsernameExistsError(err: unknown): boolean {
   return err instanceof CognitoIdpError && err.type === "UsernameExistsException";
+}
+
+export function isAlreadyConfirmedError(err: unknown): boolean {
+  if (!(err instanceof CognitoIdpError)) return false;
+  return (
+    err.type === "NotAuthorizedException" ||
+    err.type === "InvalidParameterException" ||
+    /already confirmed/i.test(err.message)
+  );
 }

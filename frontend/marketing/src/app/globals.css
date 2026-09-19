@@ -612,7 +612,8 @@ body {
   mask-image: none;
 }
 
-/* Auth screen: amber duotone tile, no clear-band / white fade. */
+/* Auth screen: amber duotone (light) / navy duotone (dark). Beats
+ * `:root.dark .home-hero::before` so the classic hero tile cannot leak in. */
 .home-hero.home-hero--auth {
   --home-hero-bg: #f3eee6;
   --home-hero-pattern-opacity: 0.5;
@@ -622,12 +623,12 @@ body {
   background-image: url("/patterns/paisley-amber-duotone.webp");
   background-size: 480px 480px;
 }
-.dark .home-hero.home-hero--auth {
+:root.dark .home-hero.home-hero--auth {
   --home-hero-bg: #1a1820;
-  --home-hero-pattern-opacity: 0.82;
+  --home-hero-pattern-opacity: 0.5;
   background-color: #1a1820;
 }
-.dark .home-hero.home-hero--auth::before {
+:root.dark .home-hero.home-hero--auth::before {
   background-image: url("/patterns/paisley-dark-duotone.webp");
   background-size: 480px 480px;
 }
