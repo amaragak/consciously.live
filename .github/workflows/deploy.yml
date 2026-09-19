@@ -158,6 +158,7 @@ jobs:
         env:
           MEDIMADE_AUTH_EMAIL_FROM: ${{ secrets.MEDIMADE_AUTH_EMAIL_FROM }}
           MEDIMADE_AUTH_WEBAPP_ORIGIN: ${{ secrets.MEDIMADE_AUTH_WEBAPP_ORIGIN }}
+        # ConsciouslyBackend is opt-in (CONSCIOUSLY_STACK=1); do not deploy it here yet.
         run: |
           ./scripts/deploy-back MedimadeBackend --require-approval never
 

@@ -16,11 +16,22 @@ new MedimadeStack(app, "MedimadeBackend", {
   description: "medimade.io backend — HTTP API + Fish Audio TTS Lambda",
 });
 
-/** Parallel greenfield stack — nested Config → Auth → Database → Media → Api. */
-new ConsciouslyStack(app, "ConsciouslyBackend", {
-  env,
-  description:
-    "consciously.live backend (nested Config/Auth/Database/Media/Api)",
-});
+/**
+ * Greenfield ConsciouslyBackend — opt-in until cutover.
+ * Enable with CONSCIOUSLY_STACK=1 or `-c consciouslyStack=true`.
+ * GitHub deploy must not set this yet.
+ */
+const enableConsciously =
+  process.env.CONSCIOUSLY_STACK === "1" ||
+  app.node.tryGetContext("consciouslyStack") === true ||
+  app.node.tryGetContext("consciouslyStack") === "true";
+
+if (enableConsciously) {
+  new ConsciouslyStack(app, "ConsciouslyBackend", {
+    env,
+    description:
+      "consciously.live backend (nested Config/Auth/Database/Media/Api)",
+  });
+}
 
 app.synth();
