@@ -10,6 +10,7 @@ import {
   loadFocusPattern,
   type FocusPatternId,
 } from "@/lib/focus-pattern";
+import { isPublicAuthPath } from "@/lib/app-routes";
 import { isMarketingHeroRoute } from "@/lib/marketing-hero-routes";
 
 function usePatternTileHeight(
@@ -62,6 +63,7 @@ export function MainShell({
   layout?: "default" | "app";
 }) {
   const pathname = usePathname() || "/";
+  const isAuthPage = isPublicAuthPath(pathname);
   const isHeroPage =
     layout !== "app" && isMarketingHeroRoute(pathname);
   const isFocusApp =
@@ -69,7 +71,7 @@ export function MainShell({
     (pathname === "/focus/my" || pathname.startsWith("/focus/my/"));
   const showFooter = shouldShowAppFooter(pathname, layout);
   const contentRef = useRef<HTMLDivElement>(null);
-  const patternTileActive = !isHeroPage;
+  const patternTileActive = !isHeroPage && !isAuthPage;
   const tileHeightPx = usePatternTileHeight(contentRef, patternTileActive);
   const [focusPattern, setFocusPattern] = useState<FocusPatternId>("default");
   const { nowPlaying, playerStripHeightPx } = useLibraryPlayer();
@@ -93,7 +95,11 @@ export function MainShell({
 
   return (
     <main
-      className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-background"
+      className={`relative flex min-h-0 flex-1 flex-col bg-background ${
+        isAuthPage
+          ? "overflow-hidden"
+          : "overflow-y-auto overscroll-y-contain"
+      }`}
       data-page-kind={isHeroPage ? "hero" : "standard"}
       data-app-layout={
         layout === "app" ? (isFocusApp ? "focus" : "signed-in") : undefined
@@ -110,7 +116,9 @@ export function MainShell({
       ) : null}
       <div
         ref={contentRef}
-        className="relative z-[1] flex min-h-0 w-full flex-1 flex-col"
+        className={`relative z-[1] flex min-h-0 w-full flex-1 flex-col ${
+          isAuthPage ? "h-full overflow-hidden" : ""
+        }`}
       >
         {children}
         {showFooter ? <AppFooter /> : null}

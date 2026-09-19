@@ -122,10 +122,12 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
     children
   );
 
+  const hideChrome = isPublicAuthPath(pathname);
+
   return (
     <AppPrimaryTabsProvider>
       <ScrollToTopOnNavigate />
-      <SiteHeader />
+      {hideChrome ? null : <SiteHeader />}
       <MainShell>{body}</MainShell>
       <Suspense fallback={null}>
         <SignInOverlayHost />

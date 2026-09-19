@@ -612,6 +612,26 @@ body {
   mask-image: none;
 }
 
+/* Auth screen: amber duotone tile, no clear-band / white fade. */
+.home-hero.home-hero--auth {
+  --home-hero-bg: #f3eee6;
+  --home-hero-pattern-opacity: 0.5;
+  background-color: #f3eee6;
+}
+.home-hero.home-hero--auth::before {
+  background-image: url("/patterns/paisley-amber-duotone.webp");
+  background-size: 480px 480px;
+}
+.dark .home-hero.home-hero--auth {
+  --home-hero-bg: #1a1820;
+  --home-hero-pattern-opacity: 0.82;
+  background-color: #1a1820;
+}
+.dark .home-hero.home-hero--auth::before {
+  background-image: url("/patterns/paisley-dark-duotone.webp");
+  background-size: 480px 480px;
+}
+
 /*
  * Mobile journal page field: same paisley tile as .home-hero, without the
  * clear-band / white fade — fills tab strip + empty space below the list panel.

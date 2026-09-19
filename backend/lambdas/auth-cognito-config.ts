@@ -5,6 +5,14 @@ import type {
 import { optionsAuth } from "./_shared/consciously-auth-http";
 import { corsHeadersForEvent } from "./_shared/consciously-auth-tokens";
 
+/** CDK `domainName` is a prefix; Hosted UI is `{prefix}.auth.{region}.amazoncognito.com`. */
+function hostedUiHost(domain: string, region: string): string {
+  const host = domain.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  if (!host || host.includes(".")) return host;
+  if (!region) return host;
+  return `${host}.auth.${region}.amazoncognito.com`;
+}
+
 /**
  * Public Cognito client config for SPA / marketing (no secrets).
  * Cognito-first destination: password / passkey / social via Cognito, then
@@ -29,7 +37,10 @@ export async function handler(
   const userPoolId = process.env.COGNITO_USER_POOL_ID?.trim() || "";
   const clientId = process.env.COGNITO_CLIENT_ID?.trim() || "";
   const region = process.env.COGNITO_REGION?.trim() || "";
-  const domain = process.env.COGNITO_DOMAIN?.trim() || "";
+  const domain = hostedUiHost(
+    process.env.COGNITO_DOMAIN?.trim() || "",
+    region,
+  );
   const enabled = Boolean(userPoolId && clientId);
 
   return {
@@ -44,7 +55,7 @@ export async function handler(
       userPoolId: enabled ? userPoolId : null,
       clientId: enabled ? clientId : null,
       region: enabled ? region : null,
-      /** Cognito Hosted UI / Managed Login prefix domain (no https). */
+      /** Cognito Hosted UI host (no https), e.g. prefix.auth.eu-west-2.amazoncognito.com */
       domain: enabled && domain ? domain : null,
       /** Issuer for ID token verification (informational). */
       issuer:

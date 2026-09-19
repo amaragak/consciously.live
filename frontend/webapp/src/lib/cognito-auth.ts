@@ -42,6 +42,26 @@ function callbackUrl(): string {
   return `${window.location.origin}/auth/cognito/callback`;
 }
 
+/**
+ * CDK `UserPoolDomain.domainName` is only the prefix (e.g. `consciously-v2-…`).
+ * Hosted UI lives at `{prefix}.auth.{region}.amazoncognito.com`.
+ */
+function cognitoHostedUiHost(config: CognitoAuthConfig): string {
+  const host = (config.domain ?? "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  if (!host) {
+    throw new Error("Cognito sign-in is not configured yet");
+  }
+  if (host.includes(".")) return host;
+  const region = config.region?.trim();
+  if (!region) {
+    throw new Error("Cognito sign-in is not configured yet");
+  }
+  return `${host}.auth.${region}.amazoncognito.com`;
+}
+
 function readPkce(): PkceState | null {
   try {
     const raw = sessionStorage.getItem(PKCE_STORAGE_KEY);
@@ -90,7 +110,7 @@ export async function beginCognitoHostedLogin(
     JSON.stringify({ verifier, state, next } satisfies PkceState),
   );
 
-  const url = new URL(`https://${config.domain}/oauth2/authorize`);
+  const url = new URL(`https://${cognitoHostedUiHost(config)}/oauth2/authorize`);
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
@@ -138,7 +158,7 @@ export async function completeCognitoHostedLogin(
     redirect_uri: callbackUrl(),
     code_verifier: pkce.verifier,
   });
-  const tokenRes = await fetch(`https://${config.domain}/oauth2/token`, {
+  const tokenRes = await fetch(`https://${cognitoHostedUiHost(config)}/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,

@@ -131,6 +131,8 @@ Public function URLs now require **both** `lambda:InvokeFunctionUrl` and `lambda
 
 Passwordless email sign-in (Brevo) + short-lived access JWT (1h, memory / cookie) + HttpOnly refresh cookie (30d, hashed in Dynamo).
 
+Cognito confirmation / reset codes use the same Brevo sender (`authEmailFrom`) via a Custom Email Sender Lambda. Codes are valid for 24 hours. Until this Lambda is deployed, Cognito sends from its own address and delivery can be slow enough that a resend invalidates the first code.
+
 Security notes:
 - Magic-link tokens are stored as **sha256** in Dynamo (raw token only in email).
 - `/auth/magic-link` is rate-limited per email (1/min) and per IP (10/hour).

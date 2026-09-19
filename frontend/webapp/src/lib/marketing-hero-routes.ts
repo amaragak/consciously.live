@@ -11,6 +11,7 @@ const MARKETING_HERO_ROUTES = new Set([
   "/chat",
   "/connect",
   "/pricing",
+  "/login",
 ]);
 
 export function isMarketingHeroRoute(pathname: string): boolean {

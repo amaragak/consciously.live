@@ -1,6 +1,13 @@
+import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as kms from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambda_nodejs from "aws-cdk-lib/aws-lambda-nodejs";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import type { Construct } from "constructs";
+import { resolveAuthEmailFrom } from "./api-http";
+import { BREVO_SECRET_NAME } from "./secret-names";
 
 /**
  * Cognito User Pool + Hosted UI domain only.
@@ -18,6 +25,38 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
 
   constructor(scope: Construct, id: string, props?: cdk.NestedStackProps) {
     super(scope, id, props);
+
+    const brevoApiKey = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "BrevoApiKey",
+      BREVO_SECRET_NAME,
+    );
+    const emailKmsKey = new kms.Key(this, "CustomEmailSenderKey", {
+      description: "Cognito custom email sender (Brevo)",
+      enableKeyRotation: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const customEmailSender = new lambda_nodejs.NodejsFunction(
+      this,
+      "CustomEmailSenderFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/auth-cognito-email.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        bundling: {
+          nodeModules: ["@aws-crypto/client-node"],
+        },
+        environment: {
+          AUTH_EMAIL_FROM: resolveAuthEmailFrom(this),
+          BREVO_SECRET_NAME: BREVO_SECRET_NAME,
+          COGNITO_EMAIL_KMS_KEY_ARN: emailKmsKey.keyArn,
+        },
+      },
+    );
+    brevoApiKey.grantRead(customEmailSender);
+    emailKmsKey.grantDecrypt(customEmailSender);
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: "consciously-users-v2",
@@ -48,6 +87,10 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
       passkeyUserVerification: cognito.PasskeyUserVerification.PREFERRED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       deletionProtection: true,
+      customSenderKmsKey: emailKmsKey,
+      lambdaTriggers: {
+        customEmailSender,
+      },
     });
 
     this.userPoolClient = this.userPool.addClient("WebClient", {

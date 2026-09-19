@@ -162,7 +162,10 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
           COGNITO_USER_POOL_ID: this.userPool.userPoolId,
           COGNITO_CLIENT_ID: this.userPoolClient.userPoolClientId,
           COGNITO_REGION: cdk.Stack.of(this).region,
-          COGNITO_DOMAIN: this.userPoolDomain.domainName,
+          COGNITO_DOMAIN: cdk.Fn.select(
+            2,
+            cdk.Fn.split("/", this.userPoolDomain.baseUrl()),
+          ),
         },
       },
     );

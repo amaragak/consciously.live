@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
+  CognitoAuthForm,
+  type CognitoAuthMode,
+} from "@/components/cognito-auth-form";
+import { LogoMark } from "@/components/logo-mark";
+import { ChevronDown, Fingerprint } from "lucide-react";
+import {
   ensureMedimadeSession,
   fetchCognitoAuthConfig,
   getMedimadeApiBase,
@@ -12,14 +18,85 @@ import {
   getMedimadeSessionJwt,
   loginAsMedimadeGuest,
   requestMedimadeMagicLink,
+  type CognitoAuthConfig,
 } from "@/lib/medimade-api";
-import { beginCognitoHostedLogin } from "@/lib/cognito-auth";
+import {
+  beginCognitoHostedLogin,
+  establishCognitoSession,
+} from "@/lib/cognito-auth";
 import { rememberAuthNext, safeAuthNext, postAuthDestination } from "@/lib/app-routes";
 import {
   exitMarketingPreviewMode,
   preservedSessionLabel,
 } from "@/lib/marketing-preview";
 import { navigateAuthDestination } from "@/lib/spa-handoff";
+
+function GoogleMark() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="size-4" xmlns="http://www.w3.org/2000/svg">
+      <path
+        fill="#4285F4"
+        d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.46a5.52 5.52 0 0 1-2.4 3.62v3h3.88c2.27-2.09 3.55-5.17 3.55-8.65Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.96-1.07 7.95-2.91l-3.88-3c-1.08.72-2.47 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.09C3.25 21.3 7.31 24 12 24Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.27 14.28A7.2 7.2 0 0 1 4.89 12c0-.79.14-1.56.38-2.28V6.63H1.27A12 12 0 0 0 0 12c0 1.94.46 3.78 1.27 5.37l4-3.09Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.76 0 3.34.6 4.59 1.79l3.44-3.44C17.95 1.14 15.23 0 12 0 7.31 0 3.25 2.7 1.27 6.63l4 3.09C6.22 6.86 8.87 4.75 12 4.75Z"
+      />
+    </svg>
+  );
+}
+
+function GoogleSignInButton({
+  busy,
+  disabled,
+  onClick,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-marketing-card-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
+    >
+      <GoogleMark />
+      {busy ? "Opening…" : "Continue with Google"}
+    </button>
+  );
+}
+
+function PasskeySignInButton({
+  disabled,
+  onClick,
+  label,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-marketing-card-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
+    >
+      <Fingerprint aria-hidden className="size-4" strokeWidth={2} />
+      {label}
+    </button>
+  );
+}
 
 function LoginInner() {
   const router = useRouter();
@@ -30,12 +107,21 @@ function LoginInner() {
   const [guestBusy, setGuestBusy] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
   const [cognitoBusy, setCognitoBusy] = useState(false);
-  const [cognitoEnabled, setCognitoEnabled] = useState(false);
+  const [showMagic, setShowMagic] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [authMode, setAuthMode] = useState<CognitoAuthMode>("signin");
+  const [passkeyOffer, setPasskeyOffer] = useState<{
+    needsProfileName: boolean;
+  } | null>(null);
+  const [cognitoConfig, setCognitoConfig] = useState<
+    CognitoAuthConfig | null | undefined
+  >(undefined);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [resumeLabel, setResumeLabel] = useState<string | null>(null);
 
   const base = getMedimadeApiBase();
+  const cognitoEnabled = cognitoConfig?.enabled === true;
   const anyBusy = busy || guestBusy || resumeBusy || cognitoBusy;
 
   useEffect(() => {
@@ -47,9 +133,9 @@ function LoginInner() {
     void (async () => {
       try {
         const cfg = await fetchCognitoAuthConfig();
-        if (!cancelled) setCognitoEnabled(cfg.enabled);
+        if (!cancelled) setCognitoConfig(cfg);
       } catch {
-        if (!cancelled) setCognitoEnabled(false);
+        if (!cancelled) setCognitoConfig(null);
       }
     })();
     return () => {
@@ -75,7 +161,25 @@ function LoginInner() {
     return () => window.removeEventListener("medimade-session-changed", sync);
   }, []);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function goAfterAuth(sessionNeedsName: boolean) {
+    exitMarketingPreviewMode();
+    rememberAuthNext(next);
+    if (sessionNeedsName) {
+      router.replace(
+        `/auth/complete-profile?next=${encodeURIComponent(next || "/")}`,
+      );
+      return;
+    }
+    const dest = postAuthDestination(next);
+    if (/^https?:\/\//i.test(dest)) {
+      const ok = await navigateAuthDestination(dest);
+      if (!ok) router.replace("/");
+      return;
+    }
+    router.replace(dest);
+  }
+
+  async function onMagicLink(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSent(false);
@@ -101,7 +205,7 @@ function LoginInner() {
       const ok = await navigateAuthDestination(postAuthDestination(next));
       if (!ok) {
         setError(
-          "Guest session started, but the app handoff isn’t available yet. Stay on marketing or retry after deploy.",
+          "Guest session started, but the app handoff isn’t available yet.",
         );
         setGuestBusy(false);
       }
@@ -110,20 +214,6 @@ function LoginInner() {
         err instanceof Error ? err.message : "Could not start guest session",
       );
       setGuestBusy(false);
-    }
-  }
-
-  async function continueWithCognito() {
-    setError(null);
-    setCognitoBusy(true);
-    try {
-      rememberAuthNext(next);
-      await beginCognitoHostedLogin(next);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not start Cognito sign-in",
-      );
-      setCognitoBusy(false);
     }
   }
 
@@ -155,9 +245,7 @@ function LoginInner() {
       if (/^https?:\/\//i.test(dest)) {
         const ok = await navigateAuthDestination(dest);
         if (!ok) {
-          setError(
-            "Could not open the app (session handoff unavailable). Try again after a backend deploy, or use Open app once handoff is live.",
-          );
+          setError("Could not open the app. Try again in a moment.");
           setResumeBusy(false);
           return;
         }
@@ -171,152 +259,265 @@ function LoginInner() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
-      <h1 className="font-display text-3xl font-medium tracking-tight">Sign in</h1>
-      <p className="mt-2 text-sm text-muted">
-        {cognitoEnabled
-          ? "Sign in with password, passkey, or Google when enabled — same Consciously account either way."
-          : "We email you a one-time link. No password. Your library and cloud journal are tied to this account."}
-      </p>
-
-      {!base ? (
-        <p className="mt-8 rounded-xl border border-border bg-card p-4 text-sm text-muted">
-          Set <code className="rounded bg-background px-1 py-0.5">NEXT_PUBLIC_MEDIMADE_API_URL</code>{" "}
-          to enable sign-in.
-        </p>
-      ) : sent ? (
-        <p className="mt-8 rounded-xl border border-border bg-card p-4 text-sm text-foreground">
-          Check your email for a sign-in link. You can close this tab.
-        </p>
-      ) : (
-        <>
-          {cognitoEnabled ? (
-            <div className="mt-8 space-y-3">
-              <button
-                type="button"
-                disabled={anyBusy}
-                onClick={() => void continueWithCognito()}
-                className="w-full cursor-pointer rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {cognitoBusy ? "Opening…" : "Continue with Consciously"}
-              </button>
-              <button
-                type="button"
-                disabled={anyBusy}
-                onClick={() => void continueWithGoogle()}
-                className="w-full cursor-pointer rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
-              >
-                {cognitoBusy ? "Opening…" : "Continue with Google"}
-              </button>
-              <p className="text-center text-xs text-muted">
-                Password, passkey, or Google via Cognito. Google needs the IdP enabled on the user pool.
-              </p>
-              {error ? <p className="text-sm text-danger">{error}</p> : null}
+    <div className="home-hero home-hero--full-pattern home-hero--auth relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden px-5 py-6 sm:px-8">
+      <div className="relative z-[1] w-full max-w-[28rem] rounded-2xl border border-marketing-card-border bg-background py-6 px-10 shadow-[var(--marketing-card-shadow)] sm:py-8 sm:px-12">
+        {passkeyOffer ? (
+          <div className="flex flex-col items-center py-4 text-center sm:py-6">
+            <div className="flex size-14 items-center justify-center rounded-full bg-[var(--marketing-icon-bg)] text-[var(--marketing-icon-fg)]">
+              <Fingerprint aria-hidden className="size-6" strokeWidth={1.75} />
             </div>
-          ) : null}
-
-          <div className={cognitoEnabled ? "relative my-8" : "mt-8"}>
-            {cognitoEnabled ? (
-              <>
-                <div className="absolute inset-0 flex items-center" aria-hidden>
-                  <div className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase tracking-wide">
-                  <span className="bg-background px-3 text-muted">or email a link</span>
-                </div>
-              </>
-            ) : null}
-          </div>
-
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-foreground">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(ev) => setEmail(ev.target.value)}
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                placeholder="you@example.com"
-              />
-            </div>
-            {!cognitoEnabled && error ? (
-              <p className="text-sm text-danger">{error}</p>
-            ) : null}
+            <h1 className="mt-6 font-display text-[1.75rem] font-medium leading-tight tracking-tight text-marketing-ink sm:text-3xl">
+              Skip the password next time
+            </h1>
+            <p className="mt-2 max-w-[20rem] text-sm leading-relaxed text-marketing-body">
+              Set up a passkey and sign in with just your face, fingerprint, or
+              device PIN.
+            </p>
             <button
-              type="submit"
+              type="button"
               disabled={anyBusy}
-              className={
-                cognitoEnabled
-                  ? "w-full rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
-                  : "w-full rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+              onClick={() =>
+                setError("Passkey setup isn’t available yet.")
               }
+              className="mt-8 w-full cursor-pointer rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {busy ? "Sending…" : "Email me a link"}
+              Set up a passkey
             </button>
-          </form>
-        </>
-      )}
-
-      {base && !sent ? (
-        <>
-          <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center" aria-hidden>
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-wide">
-              <span className="bg-background px-3 text-muted">or</span>
-            </div>
+            {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+            <button
+              type="button"
+              disabled={anyBusy}
+              onClick={() => void goAfterAuth(passkeyOffer.needsProfileName)}
+              className="mt-4 text-sm text-muted transition-colors hover:text-foreground"
+            >
+              Maybe later
+            </button>
           </div>
-
-          <button
-            type="button"
-            disabled={anyBusy}
-            onClick={() => void continueAsGuest()}
-            className="w-full cursor-pointer rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
-          >
-            {guestBusy ? "Starting…" : "Continue as guest"}
-          </button>
-          <p className="mt-2 text-center text-xs text-muted">
-            Opens the shared guest account — no email required.
-          </p>
-
-          {resumeLabel ? (
-            <>
-              <div className="relative my-8">
-                <div className="absolute inset-0 flex items-center" aria-hidden>
-                  <div className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase tracking-wide">
-                  <span className="bg-background px-3 text-muted">or</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={anyBusy}
-                onClick={() => void resumeSession()}
-                className="w-full cursor-pointer rounded-xl border border-accent/50 bg-accent-soft/30 px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent-soft/50 disabled:opacity-50"
-              >
-                {resumeBusy ? "Opening…" : `Open app as ${resumeLabel}`}
-              </button>
-              <p className="mt-2 text-center text-xs text-muted">
-                Resume the session you left when viewing the marketing page.
-              </p>
-            </>
-          ) : null}
-        </>
-      ) : null}
-
-      <p className="mt-8 text-center text-sm text-muted">
-        <Link href="/" className="text-accent-link underline-offset-2 hover:underline">
-          Back to home
+        ) : (
+          <>
+        <Link href="/" className="inline-flex items-center">
+          <LogoMark
+            size={30}
+            className="relative top-px mr-2.5 shrink-0 text-accent-button"
+          />
+          <span className="brand-wordmark relative -top-px font-display text-xl font-medium tracking-tight lowercase sm:text-2xl">
+            consciously
+          </span>
         </Link>
-      </p>
+        {authMode === "signin" ? (
+          <>
+            <h1 className="mt-5 font-display text-[1.75rem] font-medium leading-tight tracking-tight text-marketing-ink sm:text-3xl">
+              Come back to yourself.
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-marketing-body">
+              Meditation, journal, and the life you’re shaping — waiting where you
+              left them.
+            </p>
+          </>
+        ) : null}
+
+        <div className={authMode === "signin" ? "mt-6" : "mt-5"}>
+            {!base ? (
+              <p className="text-sm text-muted">
+                Set{" "}
+                <code className="rounded bg-background px-1 py-0.5">
+                  NEXT_PUBLIC_MEDIMADE_API_URL
+                </code>{" "}
+                to enable sign-in.
+              </p>
+            ) : sent ? (
+              <div>
+                <h2 className="font-display text-3xl font-medium tracking-tight text-marketing-ink">
+                  Check your email
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-marketing-body">
+                  We sent a sign-in link. You can close this tab.
+                </p>
+              </div>
+            ) : (
+              <>
+                {cognitoConfig === undefined ? (
+                  <p className="text-sm text-muted">Loading sign-in…</p>
+                ) : null}
+                {cognitoEnabled && cognitoConfig ? (
+                  <>
+                  <CognitoAuthForm
+                    config={cognitoConfig}
+                    hideIntro
+                    disabled={anyBusy}
+                    onModeChange={setAuthMode}
+                    afterForm={
+                      <div className="mt-5 space-y-3">
+                        <div className="relative py-1">
+                          <div
+                            className="absolute inset-0 flex items-center"
+                            aria-hidden
+                          >
+                            <div className="w-full border-t border-border" />
+                          </div>
+                          <div className="relative flex justify-center text-xs tracking-wide text-muted">
+                            <span className="bg-background px-3">or</span>
+                          </div>
+                        </div>
+                        {authMode === "signin" ? (
+                          <PasskeySignInButton
+                            disabled={anyBusy}
+                            label="Sign in with a passkey"
+                            onClick={() =>
+                              setError("Passkey sign-in isn’t available yet.")
+                            }
+                          />
+                        ) : null}
+                        <GoogleSignInButton
+                          busy={cognitoBusy}
+                          disabled={anyBusy}
+                          onClick={() => {
+                            if (!cognitoConfig.methods.social) {
+                              setError("Google sign-in isn’t available yet.");
+                              return;
+                            }
+                            void continueWithGoogle();
+                          }}
+                        />
+                      </div>
+                    }
+                    onAuthenticated={async (idToken, meta) => {
+                      setCognitoBusy(true);
+                      setError(null);
+                      try {
+                        rememberAuthNext(next);
+                        const session = await establishCognitoSession(idToken);
+                        if (meta?.justCreated) {
+                          setPasskeyOffer({
+                            needsProfileName: session.needsProfileName,
+                          });
+                          setCognitoBusy(false);
+                          return;
+                        }
+                        await goAfterAuth(session.needsProfileName);
+                      } catch (err) {
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : "Could not finish sign-in",
+                        );
+                        setCognitoBusy(false);
+                      }
+                    }}
+                  />
+                  </>
+                ) : cognitoConfig !== undefined ? (
+                  <form onSubmit={(e) => void onMagicLink(e)} className="space-y-3.5">
+                    <div>
+                      <label
+                        htmlFor="email"
+                        className="block text-sm font-medium text-foreground"
+                      >
+                        Email
+                      </label>
+                      <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        value={email}
+                        onChange={(ev) => setEmail(ev.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-marketing-card-border bg-background px-3 py-2.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-gold/70 focus:ring-1 focus:ring-gold/40"
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={anyBusy}
+                      className="w-full rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busy ? "Sending…" : "Email me a link"}
+                    </button>
+                  </form>
+                ) : null}
+
+                {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+
+                {cognitoEnabled && !sent && authMode === "signin" ? (
+                  <div className="mt-5 text-center">
+                    <button
+                      type="button"
+                      disabled={anyBusy}
+                      onClick={() => setShowMore((open) => !open)}
+                      className="inline-flex items-center gap-1 text-xs text-muted underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      More ways to sign in
+                      <ChevronDown
+                        aria-hidden
+                        className={`size-3.5 transition-transform ${showMore ? "rotate-180" : ""}`}
+                        strokeWidth={2}
+                      />
+                    </button>
+                    {showMore ? (
+                      <div className="mt-3 space-y-2 text-xs text-muted">
+                        {showMagic ? (
+                          <form
+                            onSubmit={(e) => void onMagicLink(e)}
+                            className="space-y-2"
+                          >
+                            <input
+                              type="email"
+                              autoComplete="email"
+                              required
+                              value={email}
+                              onChange={(ev) => setEmail(ev.target.value)}
+                              className="w-full rounded-xl border border-marketing-card-border bg-background px-3 py-2 text-sm outline-none focus:border-gold/70"
+                              placeholder="you@example.com"
+                            />
+                            <button
+                              type="submit"
+                              disabled={anyBusy}
+                              className="font-medium text-accent-link underline-offset-2 hover:underline"
+                            >
+                              {busy ? "Sending…" : "Send link"}
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={anyBusy}
+                            onClick={() => setShowMagic(true)}
+                            className="hover:text-foreground"
+                          >
+                            Email me a link
+                          </button>
+                        )}
+                        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                          <button
+                            type="button"
+                            disabled={anyBusy}
+                            onClick={() => void continueAsGuest()}
+                            className="hover:text-foreground"
+                          >
+                            {guestBusy ? "Starting…" : "Continue as guest"}
+                          </button>
+                          {resumeLabel ? (
+                            <button
+                              type="button"
+                              disabled={anyBusy}
+                              onClick={() => void resumeSession()}
+                              className="hover:text-foreground"
+                            >
+                              {resumeBusy ? "Opening…" : `Resume as ${resumeLabel}`}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+          </>
+        )}
+        </div>
     </div>
   );
 }
@@ -325,7 +526,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
+        <div className="flex h-full items-center justify-center">
           <p className="text-sm text-muted">Loading…</p>
         </div>
       }
