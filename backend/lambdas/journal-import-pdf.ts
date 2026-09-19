@@ -6,8 +6,8 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "../lib/anthropic-pricing";
-import { optionalUserJson } from "../lib/medimade-auth-http";
+import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const secrets = new SecretsManagerClient({});

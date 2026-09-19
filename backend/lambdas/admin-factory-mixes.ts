@@ -2,13 +2,13 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { requireAdminJson } from "../lib/admin-auth";
-import { jsonAuth } from "../lib/medimade-auth-http";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   deleteFactoryMix,
   listFactoryMixes,
   putFactoryMix,
-} from "../lib/factory-mixes";
+} from "./_shared/factory-mixes";
 
 function json(
   statusCode: number,

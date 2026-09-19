@@ -16,8 +16,8 @@ import {
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
   parseAnthropicMessageUsage,
-} from "../lib/anthropic-pricing";
-import { requireUserJson } from "../lib/medimade-auth-http";
+} from "./_shared/anthropic-pricing";
+import { requireUserJson } from "./_shared/consciously-auth-http";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 

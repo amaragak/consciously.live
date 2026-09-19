@@ -17,7 +17,7 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { requireUserJson } from "../lib/medimade-auth-http";
+import { requireUserJson } from "./_shared/consciously-auth-http";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },

@@ -4,17 +4,17 @@ import type {
 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { optionalUserJson } from "../lib/medimade-auth-http";
-import { updateMeditationRowFirstMatchingPartition } from "../lib/meditation-library-update";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
+import { updateMeditationRowFirstMatchingPartition } from "./_shared/meditation-library-update";
 import {
   mixListenerPk,
   mixOverrideSk,
-} from "../lib/meditation-listener-mix";
+} from "./_shared/meditation-listener-mix";
 import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
-} from "../lib/meditation-user-pk";
+} from "./_shared/meditation-user-pk";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

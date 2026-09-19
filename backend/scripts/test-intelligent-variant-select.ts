@@ -9,10 +9,10 @@ import {
   buildEligibleOptionsByTagBeat,
   coerceScriptLabBeats,
   selectSegmentVariantsIntelligently,
-} from "../lib/script-segment-variant-select-intelligent";
-import type { SegmentVariantCandidate } from "../lib/script-segment-variant-select";
-import { createSegmentVariantPickerForBeats } from "../lib/script-segment-variant-select";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-segment-variant-select-intelligent";
+import type { SegmentVariantCandidate } from "../lambdas/_shared/script-segment-variant-select";
+import { createSegmentVariantPickerForBeats } from "../lambdas/_shared/script-segment-variant-select";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);

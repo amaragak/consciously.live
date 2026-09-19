@@ -2,13 +2,13 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { requireAdminJson } from "../lib/admin-auth";
+import { requireAdminJson } from "./_shared/admin-auth";
 import {
   defaultDevUiSettings,
   loadDevUiSettings,
   saveDevUiSettings,
   type DevUiSettings,
-} from "../lib/dev-ui-settings";
+} from "./_shared/dev-ui-settings";
 
 function json(
   statusCode: number,

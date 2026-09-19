@@ -18,9 +18,9 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { FISH_SPEAKERS } from "../lib/fish-speakers";
-import { loudnormMp3Buffer } from "../lib/ffmpeg-loudnorm";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
+import { FISH_SPEAKERS } from "../lambdas/_shared/fish-speakers";
+import { loudnormMp3Buffer } from "../lambdas/_shared/ffmpeg-loudnorm";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "../lambdas/_shared/speaker-sample-speed";
 
 const execFileAsync = promisify(execFile);
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";

@@ -5,17 +5,17 @@
  *   npx tsx scripts/test-segment-tag-metrics.ts
  *   AWS_PROFILE=mm VOICE_ADMIN_TABLE_NAME=... npx tsx scripts/test-segment-tag-metrics.ts --live
  */
-import { buildMeditationScriptGenerationPrompt } from "../lib/meditation-script-generate-prompt";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
+import { buildMeditationScriptGenerationPrompt } from "../lambdas/_shared/meditation-script-generate-prompt";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
 import {
   buildSegmentTagsForGenerationPrompt,
   budgetMetricsForTagAtTarget,
   buildSegmentTagMetricsIndex,
-} from "../lib/script-segment-tag-metrics";
-import { scriptSegmentLibraryPromptBlock } from "../lib/script-segment-tags";
-import { estimateSyllableCount, countWords, speechSecondsFromWordCount } from "../lib/script-text-metrics";
-import { SCRIPT_PAUSE_BAND_SECONDS } from "../lib/script-pause-bands";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-segment-tag-metrics";
+import { scriptSegmentLibraryPromptBlock } from "../lambdas/_shared/script-segment-tags";
+import { estimateSyllableCount, countWords, speechSecondsFromWordCount } from "../lambdas/_shared/script-text-metrics";
+import { SCRIPT_PAUSE_BAND_SECONDS } from "../lambdas/_shared/script-pause-bands";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 const MOCK_VARIANTS = {
   BODY_SCAN_LOWER_BODY: [

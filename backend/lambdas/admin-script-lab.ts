@@ -4,26 +4,26 @@ import type {
 } from "aws-lambda";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { S3Client } from "@aws-sdk/client-s3";
-import { requireAdminJson } from "../lib/admin-auth";
-import { coerceClaudeModel, CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { coerceClaudeModel, CLAUDE_SONNET_45_MODEL_ID } from "./_shared/anthropic-pricing";
 import {
   SCRIPT_LAB_HAIKU_MODEL,
   type ScriptLabUsageBreakdownEntry,
-} from "../lib/script-lab-models";
-import { coerceMeditationTargetMinutes } from "../lib/meditation-target-minutes";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
+} from "./_shared/script-lab-models";
+import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "./_shared/speaker-sample-speed";
 import {
   generateScriptLabScript,
-} from "../lib/script-lab-generate";
-import { generateScriptLabScriptV2 } from "../lib/script-lab-generate-v2";
-import { generateScriptLabScriptV3 } from "../lib/script-lab-generate-v3";
+} from "./_shared/script-lab-generate";
+import { generateScriptLabScriptV2 } from "./_shared/script-lab-generate-v2";
+import { generateScriptLabScriptV3 } from "./_shared/script-lab-generate-v3";
 import {
   listScriptLabV3NoMatchLogs,
   noMatchLogsToCsv,
-} from "../lib/script-lab-v3-no-match-log";
-import { buildScriptLabContextTags } from "../lib/script-constraint-tags";
-import { invokeEmbedLambdaDiagnostic } from "../lib/script-embed-client";
-import { backfillPendingPromotionNeighbors } from "../lib/script-lab-backfill-pending-neighbors";
+} from "./_shared/script-lab-v3-no-match-log";
+import { buildScriptLabContextTags } from "./_shared/script-constraint-tags";
+import { invokeEmbedLambdaDiagnostic } from "./_shared/script-embed-client";
+import { backfillPendingPromotionNeighbors } from "./_shared/script-lab-backfill-pending-neighbors";
 import {
   deleteScriptSegmentTag,
   deleteScriptSegmentVariant,
@@ -40,36 +40,36 @@ import {
   variantEligibleForV1V2Selection,
   type ScriptSegmentTagRow,
   type ScriptSegmentVariantRow,
-} from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
-import { runScriptSegmentImport } from "../lib/script-segment-import";
-import { runSegmentMetadataImport } from "../lib/script-segment-metadata-import";
+} from "./_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "./_shared/script-segment-tag-metrics";
+import { runScriptSegmentImport } from "./_shared/script-segment-import";
+import { runSegmentMetadataImport } from "./_shared/script-segment-metadata-import";
 import {
   deleteConstraintVocabularyTag,
   listConstraintVocabulary,
   putConstraintVocabularyTag,
-} from "../lib/script-constraint-vocabulary";
+} from "./_shared/script-constraint-vocabulary";
 import {
   generateScriptSegmentVariantAudio,
   mapWithConcurrency,
   SCRIPT_LAB_TTS_CONCURRENCY,
-} from "../lib/script-segment-audio";
-import { seedVoiceSpeakersIfEmpty } from "../lib/voice-admin";
+} from "./_shared/script-segment-audio";
+import { seedVoiceSpeakersIfEmpty } from "./_shared/voice-admin";
 import {
   appendScriptLabRecentVariantIds,
   collectVariantIdsFromBeatPicks,
   collectVariantIdsFromScriptBeats,
   loadScriptLabRecentVariantIds,
-} from "../lib/script-lab-recent-variants";
-import { getScriptLabEmbeddingStats } from "../lib/script-lab-embed-queue";
+} from "./_shared/script-lab-recent-variants";
+import { getScriptLabEmbeddingStats } from "./_shared/script-lab-embed-queue";
 import {
   coerceScriptLabBeats,
   selectSegmentVariantsIntelligently,
-} from "../lib/script-segment-variant-select-intelligent";
+} from "./_shared/script-segment-variant-select-intelligent";
 import {
   normalizeScriptSegmentTag,
   type ScriptLengthTier,
-} from "../lib/script-segment-tags";
+} from "./_shared/script-segment-tags";
 
 const s3 = new S3Client({});
 const secrets = new SecretsManagerClient({});

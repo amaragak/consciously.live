@@ -17,18 +17,18 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { signMedimadeJwt } from "../lib/medimade-jwt";
+import { signConsciouslyJwt } from "./_shared/consciously-jwt";
 import {
   optionsAuth,
   requireUserJson,
-} from "../lib/medimade-auth-http";
+} from "./_shared/consciously-auth-http";
 import {
   corsHeadersForEvent,
   newOpaqueToken,
   REFRESH_TOKEN_TTL_SEC,
   sessionSetCookieHeaders,
   sha256Hex,
-} from "../lib/medimade-auth-tokens";
+} from "./_shared/consciously-auth-tokens";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -78,7 +78,7 @@ async function issueSession(params: {
     return json(params.event, 500, { error: "REFRESH_TABLE_NAME is not set" });
   }
 
-  const accessToken = await signMedimadeJwt({
+  const accessToken = await signConsciouslyJwt({
     sub: params.userId,
     email: params.email,
     name: params.displayName ?? undefined,

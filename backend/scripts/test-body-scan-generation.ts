@@ -4,15 +4,15 @@
  *   AWS_PROFILE=mm VOICE_ADMIN_TABLE_NAME=... ANTHROPIC_API_KEY=... tsx scripts/test-body-scan-generation.ts
  */
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { generateScriptLabScript } from "../lib/script-lab-generate";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
+import { generateScriptLabScript } from "../lambdas/_shared/script-lab-generate";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "../lambdas/_shared/script-segment-tag-metrics";
 import {
   scriptSegmentLibraryPromptBlock,
   typesMatchMeditationType,
-} from "../lib/script-segment-tags";
-import { CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-segment-tags";
+import { CLAUDE_SONNET_45_MODEL_ID } from "../lambdas/_shared/anthropic-pricing";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 const TRANSCRIPT = [
   "User: I've been feeling scattered and disconnected from my body lately.",

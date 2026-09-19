@@ -9,8 +9,8 @@ import {
   restoreRenderedVariantText,
   validateSkeleton,
   type SkeletonBeat,
-} from "../lib/script-lab-generate-v2";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-lab-generate-v2";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);

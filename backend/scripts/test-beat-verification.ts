@@ -5,7 +5,7 @@
  *   tsx scripts/test-beat-verification.ts --dry-run
  *   VOICE_ADMIN_TABLE_NAME=... AWS_PROFILE=mm tsx scripts/test-beat-verification.ts --live-library
  */
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
 import {
   buildVerificationPrompt,
   buildVerificationSentenceList,
@@ -14,8 +14,8 @@ import {
   verifyScriptLabBeats,
   type GeneralTagVariantCatalog,
   type SentenceVerdict,
-} from "../lib/script-lab-beat-verification";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-lab-beat-verification";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 const TRANSCRIPT = [
   "User: I've been dealing with a lot of tension in my lower back lately.",

@@ -270,7 +270,7 @@ Speaker preview **`*-fx.wav`** / **`*-loud-fx.wav`** files (Pedalboard preset `m
 
   Output example: `.local/orpheus-speaker-samples/tara-0.9.mp3`, `…-loud.mp3`, `…-loud-fx.wav`
 
-when `MEDIIMADE_API_URL` (or stack `ApiUrl`) is resolvable.
+when `CONSCIOUSLY_API_URL` (or stack `ApiUrl`) is resolvable.
 
 ### Journal (HTTP API on `{ApiUrl}`)
 

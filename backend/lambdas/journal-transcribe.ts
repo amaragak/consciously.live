@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/client-secrets-manager";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
-import { optionalUserJson } from "../lib/medimade-auth-http";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
 
 const OPENAI_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";

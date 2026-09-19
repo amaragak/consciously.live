@@ -39,7 +39,7 @@ function decodeBase64urlJson<T>(raw: string): T | null {
 
 const EXP_SECONDS = 60 * 60; // 1 hour access token
 
-export async function signMedimadeJwt(params: {
+export async function signConsciouslyJwt(params: {
   sub: string;
   email: string;
   /** Optional display name (only included when non-empty). */
@@ -64,7 +64,7 @@ export async function signMedimadeJwt(params: {
   return `${data}.${sig}`;
 }
 
-export async function verifyMedimadeJwt(
+export async function verifyConsciouslyJwt(
   token: string,
 ): Promise<{ sub: string; email?: string; name?: string } | null> {
   const parts = token.trim().split(".");

@@ -8,7 +8,7 @@ import {
   DynamoDBDocumentClient,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { optionalUserJson, requireUserJson } from "../lib/medimade-auth-http";
+import { optionalUserJson, requireUserJson } from "./_shared/consciously-auth-http";
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient, {

@@ -2,13 +2,13 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { optionsAuth } from "../lib/medimade-auth-http";
-import { corsHeadersForEvent } from "../lib/medimade-auth-tokens";
+import { optionsAuth } from "./_shared/consciously-auth-http";
+import { corsHeadersForEvent } from "./_shared/consciously-auth-tokens";
 
 /**
  * Public Cognito client config for SPA / marketing (no secrets).
  * Cognito-first destination: password / passkey / social via Cognito, then
- * POST /auth/cognito/exchange → Medimade JWT. Magic-link remains during migration.
+ * POST /auth/cognito/exchange → Consciously JWT. Magic-link remains during migration.
  */
 export async function handler(
   event: APIGatewayProxyEventV2,

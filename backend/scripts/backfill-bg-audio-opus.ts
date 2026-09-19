@@ -26,8 +26,8 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { BG_AUDIO_PREFIX } from "../lib/background-audio-keys";
-import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "../lib/bg-audio-opus";
+import { BG_AUDIO_PREFIX } from "../lambdas/_shared/background-audio-keys";
+import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "../lambdas/_shared/bg-audio-opus";
 
 const execFileAsync = promisify(execFile);
 const s3 = new S3Client({});

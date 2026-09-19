@@ -9,12 +9,12 @@ import {
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { randomBytes } from "crypto";
-import { sendEmailBrevo } from "../lib/medimade-email";
+import { sendEmailBrevo } from "./_shared/consciously-email";
 import {
   corsHeadersForEvent,
   sha256Hex,
-} from "../lib/medimade-auth-tokens";
-import { optionsAuth } from "../lib/medimade-auth-http";
+} from "./_shared/consciously-auth-tokens";
+import { optionsAuth } from "./_shared/consciously-auth-http";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

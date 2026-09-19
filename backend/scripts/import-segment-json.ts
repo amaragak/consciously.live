@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { runScriptSegmentImport } from "../lib/script-segment-import";
+import { runScriptSegmentImport } from "../lambdas/_shared/script-segment-import";
 
 async function main() {
   const args = process.argv.slice(2);

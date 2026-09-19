@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { jsonAuth, requireUserJson, type MedimadeAuthUser } from "./medimade-auth-http";
+import { jsonAuth, requireUserJson, type ConsciouslyAuthUser } from "./consciously-auth-http";
 
 export function parseAdminEmails(raw: string | undefined): string[] {
   return (raw ?? "")
@@ -10,14 +10,14 @@ export function parseAdminEmails(raw: string | undefined): string[] {
 
 export async function requireAdminJson(
   event: APIGatewayProxyEventV2,
-): Promise<MedimadeAuthUser | APIGatewayProxyStructuredResultV2> {
+): Promise<ConsciouslyAuthUser | APIGatewayProxyStructuredResultV2> {
   /** Temporary: admin UI/API is open until ADMIN_REQUIRE_AUTH=1 is set. */
   if (process.env.ADMIN_REQUIRE_AUTH !== "1") {
     return { sub: "admin-open" };
   }
   const auth = await requireUserJson(event);
   if ("statusCode" in auth) return auth;
-  const user = auth as MedimadeAuthUser;
+  const user = auth as ConsciouslyAuthUser;
   const allowed = parseAdminEmails(process.env.ADMIN_EMAILS);
   if (allowed.length === 0) {
     return jsonAuth(403, { error: "Admin access is not configured" });

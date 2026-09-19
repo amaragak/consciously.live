@@ -8,14 +8,14 @@ import type {
 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, DeleteCommand } from "@aws-sdk/lib-dynamodb";
-import { optionsAuth } from "../lib/medimade-auth-http";
+import { optionsAuth } from "./_shared/consciously-auth-http";
 import {
   corsHeadersForEvent,
   parseCookieHeader,
   REFRESH_COOKIE,
   sessionClearCookieHeaders,
   sha256Hex,
-} from "../lib/medimade-auth-tokens";
+} from "./_shared/consciously-auth-tokens";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

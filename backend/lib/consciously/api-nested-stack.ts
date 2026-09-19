@@ -6,255 +6,113 @@ import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambda_nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
-import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
-import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import type { Construct } from "constructs";
-import { ConsciouslyCognitoAuthNestedStack } from "./consciously/cognito-auth-nested-stack";
+import type { ConsciouslyAuthNestedStack } from "./auth-nested-stack";
+import type { ConsciouslyConfigNestedStack } from "./config-nested-stack";
+import type { ConsciouslyDatabaseNestedStack } from "./database-nested-stack";
+import type { ConsciouslyMediaNestedStack } from "./media-nested-stack";
+import { BREVO_SECRET_NAME } from "./secret-names";
 
-/** Create this secret in AWS Secrets Manager before calling the API (see DEPLOY.md). */
-export const FISH_AUDIO_SECRET_NAME = "medimade/FISH_AUDIO_API_KEY";
-/** Anthropic API key for Claude (Haiku) chat in the create flow. */
-export const CLAUDE_SECRET_NAME = "medimade/CLAUDE_API_KEY";
-/** OpenAI API key for Whisper journal transcription (`POST /journal/transcribe`). */
-export const OPENAI_SECRET_NAME = "medimade/OPENAI_API_KEY";
-/** Google AI (Gemini) API key for vision-board Nano Banana image generation. */
-export const GOOGLE_AI_SECRET_NAME = "medimade/GOOGLE_AI_API_KEY";
-/** Brevo API key for transactional email (magic-link auth, future notifications). */
-export const BREVO_SECRET_NAME = "medimade/BREVO_API_KEY";
-/** RunPod API key for Orpheus TTS serverless (`nexslerdev/orpheus-fastapi-tts`, `POST /orpheus/tts`). */
-export const RUNPODS_SECRET_NAME = "medimade/RUNPODS_API_KEY";
-/** RunPod upstream URL (runsync or `/v1/audio/speech` on the Orpheus FastAPI worker). */
-export const RUNPODS_URL_SECRET_NAME = "medimade/RUNPODS_URL";
-/** Algolia credentials JSON: { appId, adminApiKey, searchApiKey, indexName? }. */
-export const ALGOLIA_SECRET_NAME = "medimade/ALGOLIA";
+export type ConsciouslyApiNestedStackProps = cdk.NestedStackProps & {
+  config: ConsciouslyConfigNestedStack;
+  auth: ConsciouslyAuthNestedStack;
+  database: ConsciouslyDatabaseNestedStack;
+  media: ConsciouslyMediaNestedStack;
+};
 
-export class MedimadeStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+/**
+ * HTTP API + all Lambdas, routes, layers, and S3 notifications.
+ * Resources (tables, bucket, secrets, Cognito pool) come from sibling nests via props.
+ */
+export class ConsciouslyApiNestedStack extends cdk.NestedStack {
+  readonly httpApi: apigwv2.HttpApi;
+  readonly ffmpegLayer: lambda.ILayerVersion;
+  readonly fastembedLayer: lambda.LayerVersion;
+  readonly pedalboardLayer: lambda.LayerVersion;
+  /** Meditation coach streaming Function URL. */
+  readonly medimadeChatUrl: lambda.FunctionUrl;
+  /** App-control Chat streaming Function URL. */
+  readonly assistantChatUrl: lambda.FunctionUrl;
+  /** Script Lab Function URL (long-running POSTs). */
+  readonly adminScriptLabUrl: lambda.FunctionUrl;
+
+  constructor(
+    scope: Construct,
+    id: string,
+    props: ConsciouslyApiNestedStackProps,
+  ) {
     super(scope, id, props);
 
-    const fishApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "FishAudioApiKey",
-      FISH_AUDIO_SECRET_NAME,
-    );
+    const fishApiKeySecret = props.config.fishApiKey;
+    const claudeApiKeySecret = props.config.claudeApiKey;
+    const openAiApiKeySecret = props.config.openAiApiKey;
+    const googleAiApiKeySecret = props.config.googleAiApiKey;
+    const brevoApiKeySecret = props.config.brevoApiKey;
+    const runpodsApiKeySecret = props.config.runpodsApiKey;
+    const runpodsUrlSecret = props.config.runpodsUrl;
+    const algoliaSecret = props.config.algolia;
+    const authJwtSecret = props.config.authJwtSecret;
+    const blogRevalidateSecret = props.config.blogRevalidateSecret;
 
-    const claudeApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "ClaudeApiKey",
-      CLAUDE_SECRET_NAME,
-    );
+    const mediaBucket = props.media.bucket;
+    const mediaDistribution = props.media.distribution;
 
-    const openAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "OpenAiApiKey",
-      OPENAI_SECRET_NAME,
-    );
+    const meditationAnalyticsTable = props.database.meditationAnalytics;
+    const journalTable = props.database.journal;
+    const assistantChatTable = props.database.assistantChat;
+    const ideateTable = props.database.ideate;
+    const habitsTable = props.database.habits;
+    const famousQuotesTable = props.database.famousQuotes;
+    const journalInsightsTable = props.database.journalInsights;
+    const soundCatalogTable = props.database.soundCatalog;
+    const voiceAdminTable = props.database.voiceAdmin;
+    const meditationListenerMixTable = props.database.meditationListenerMix;
+    const usersTable = props.database.users;
+    const magicLinkTable = props.database.magicLink;
+    const refreshTable = props.database.refresh;
+    const meditationJobsTable = props.database.meditationJobs;
 
-    const googleAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "GoogleAiApiKey",
-      GOOGLE_AI_SECRET_NAME,
-    );
+    const userPool = props.auth.userPool;
+    const userPoolClient = props.auth.userPoolClient;
+    const userPoolDomain = props.auth.userPoolDomain;
 
-    const brevoApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "BrevoApiKey",
-      BREVO_SECRET_NAME,
-    );
-
-    const runpodsApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "RunpodsApiKey",
-      RUNPODS_SECRET_NAME,
-    );
-
-    const runpodsUrlSecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "RunpodsUrl",
-      RUNPODS_URL_SECRET_NAME,
-    );
-
-    const algoliaSecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "AlgoliaCreds",
-      ALGOLIA_SECRET_NAME,
-    );
-
-    // Storage for generated MP3s, served via CloudFront (streaming-friendly).
-    const mediaBucket = new s3.Bucket(this, "MediaBucket", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-      cors: [
-        {
-          allowedMethods: [
-            s3.HttpMethods.PUT,
-            s3.HttpMethods.GET,
-            s3.HttpMethods.HEAD,
-          ],
-          allowedOrigins: ["*"],
-          allowedHeaders: ["*"],
-          exposedHeaders: ["ETag", "etag"],
-          maxAge: 3600,
-        },
-      ],
-      // Browser uploads that die mid-flight leave multipart parts behind and
-      // keep billing; drop them rather than accumulating invisible garbage.
-      lifecycleRules: [{ abortIncompleteMultipartUploadAfter: cdk.Duration.days(2) }],
-    });
-
-    const mediaOai = new cloudfront.OriginAccessIdentity(this, "MediaOAI");
-    // Grant CloudFront permission to read from the private bucket.
-    mediaBucket.grantRead(mediaOai);
-
-    const mediaDistribution = new cloudfront.Distribution(
-      this,
-      "MediaDistribution",
-      {
-        defaultBehavior: {
-          origin: new origins.S3Origin(mediaBucket, {
-            originAccessIdentity: mediaOai,
-          }),
-          viewerProtocolPolicy:
-            cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          // Browser Web Audio (waveform trim) fetches MP3s with CORS.
-          responseHeadersPolicy:
-            cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
-        },
-      },
-    );
-
-    const meditationAnalyticsTable = new dynamodb.Table(
-      this,
-      "MeditationAnalyticsTable",
-      {
-        partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-        sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
-      },
-    );
-    // Sparse GSI for unlisted share links (only rows with shareToken).
-    meditationAnalyticsTable.addGlobalSecondaryIndex({
-      indexName: "shareTokenIndex",
-      partitionKey: { name: "shareToken", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    /** Journal entries + META row per `ownerId` (opaque client id). Voice binaries stay in S3 via `/journal/voice`. */
-    const journalTable = new dynamodb.Table(this, "JournalTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Consciously Chat threads + META per signed-in user (`sub`). */
-    const assistantChatTable = new dynamodb.Table(this, "AssistantChatTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Ideate life areas + vision board metadata + reflection questions per signed-in user. */
-    const ideateTable = new dynamodb.Table(this, "IdeateTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Daily habit tracker: play events + manual checks per user/day. */
-    const habitsTable = new dynamodb.Table(this, "HabitsTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Shared famous-author quote libraries (Haiku-fetched, aliased by spelling variants). */
-    const famousQuotesTable = new dynamodb.Table(this, "IdeateFamousQuotesTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Rolling Claude-derived journal insights (per topic + meta watermark) keyed by `ownerId`. */
-    const journalInsightsTable = new dynamodb.Table(this, "JournalInsightsTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Background-sound catalog: tags, in-use flag, trim window (S3 files stay under background-audio/). */
-    const soundCatalogTable = new dynamodb.Table(this, "SoundCatalogTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Fish speakers, hidden flags, and script pause band seconds. */
-    const voiceAdminTable = new dynamodb.Table(this, "VoiceAdminTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** Per-listener mix overrides for public/community meditations (creator mix stays on the catalog row). */
-    const meditationListenerMixTable = new dynamodb.Table(
-      this,
-      "MeditationListenerMixTable",
-      {
-        partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-        sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
-      },
-    );
-
-    /** HS256 secret for session JWTs (magic-link auth). */
-    const authJwtSecret = new secretsmanager.Secret(this, "MedimadeAuthJwtSecret", {
-      description: "Medimade user session JWT signing secret",
-      generateSecretString: {
-        passwordLength: 64,
-        excludePunctuation: true,
+    this.httpApi = new apigwv2.HttpApi(this, "HttpApi", {
+      apiName: "consciously-api",
+      corsPreflight: {
+        allowHeaders: [
+          "Content-Type",
+          "Authorization",
+          "X-Medimade-Authorization",
+        ],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.PUT,
+          apigwv2.CorsHttpMethod.PATCH,
+          apigwv2.CorsHttpMethod.OPTIONS,
+        ],
+        allowOrigins: [
+          "https://consciously.live",
+          "https://www.consciously.live",
+          "https://app.consciously.live",
+          "https://dyaxvhlmage80.cloudfront.net",
+          "https://d2nu9q5wynnhfv.cloudfront.net",
+          "http://localhost:3000",
+          "http://127.0.0.1:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3001",
+          "http://localhost:5173",
+          "http://127.0.0.1:5173",
+        ],
+        allowCredentials: true,
+        maxAge: cdk.Duration.days(1),
       },
     });
-
-    /** Maps verified email → stable `userId` (JWT `sub`). */
-    const usersTable = new dynamodb.Table(this, "MedimadeUsersTable", {
-      partitionKey: { name: "email", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    /** One-time magic-link tokens (TTL on `ttl`). PK value is sha256(token) or rate-limit key. */
-    const magicLinkTable = new dynamodb.Table(this, "MedimadeMagicLinkTable", {
-      partitionKey: { name: "token", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      timeToLiveAttribute: "ttl",
-    });
-
-    /** Opaque refresh sessions (TTL on `ttl`). PK is sha256(refreshToken). */
-    const refreshTable = new dynamodb.Table(this, "MedimadeRefreshTable", {
-      partitionKey: { name: "tokenHash", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      timeToLiveAttribute: "ttl",
-    });
+    const httpApi = this.httpApi;
 
     const authWebappOrigin =
       (this.node.tryGetContext("authWebappOrigin") as string | undefined)?.trim() ||
@@ -271,7 +129,7 @@ export class MedimadeStack extends cdk.Stack {
       authEmailFrom;
 
     const authMagicRequest = new lambda_nodejs.NodejsFunction(this, "AuthMagicRequestFunction", {
-      entry: path.join(__dirname, "../lambdas/auth-magic-request.ts"),
+      entry: path.join(__dirname, "../../lambdas/auth-magic-request.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15),
@@ -287,7 +145,7 @@ export class MedimadeStack extends cdk.Stack {
     brevoApiKeySecret.grantRead(authMagicRequest);
 
     const authMagicVerify = new lambda_nodejs.NodejsFunction(this, "AuthMagicVerifyFunction", {
-      entry: path.join(__dirname, "../lambdas/auth-magic-verify.ts"),
+      entry: path.join(__dirname, "../../lambdas/auth-magic-verify.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15),
@@ -306,7 +164,7 @@ export class MedimadeStack extends cdk.Stack {
     authJwtSecret.grantRead(authMagicVerify);
 
     const authGuest = new lambda_nodejs.NodejsFunction(this, "AuthGuestFunction", {
-      entry: path.join(__dirname, "../lambdas/auth-guest.ts"),
+      entry: path.join(__dirname, "../../lambdas/auth-guest.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15),
@@ -323,7 +181,7 @@ export class MedimadeStack extends cdk.Stack {
     authJwtSecret.grantRead(authGuest);
 
     const authRefresh = new lambda_nodejs.NodejsFunction(this, "AuthRefreshFunction", {
-      entry: path.join(__dirname, "../lambdas/auth-refresh.ts"),
+      entry: path.join(__dirname, "../../lambdas/auth-refresh.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15),
@@ -338,7 +196,7 @@ export class MedimadeStack extends cdk.Stack {
     authJwtSecret.grantRead(authRefresh);
 
     const authHandoff = new lambda_nodejs.NodejsFunction(this, "AuthHandoffFunction", {
-      entry: path.join(__dirname, "../lambdas/auth-handoff.ts"),
+      entry: path.join(__dirname, "../../lambdas/auth-handoff.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15),
@@ -357,7 +215,7 @@ export class MedimadeStack extends cdk.Stack {
     authJwtSecret.grantRead(authHandoff);
 
     const authLogout = new lambda_nodejs.NodejsFunction(this, "AuthLogoutFunction", {
-      entry: path.join(__dirname, "../lambdas/auth-logout.ts"),
+      entry: path.join(__dirname, "../../lambdas/auth-logout.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10),
@@ -373,7 +231,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AuthProfileDisplayNameFunction",
       {
-        entry: path.join(__dirname, "../lambdas/auth-profile-display-name.ts"),
+        entry: path.join(__dirname, "../../lambdas/auth-profile-display-name.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -394,11 +252,12 @@ export class MedimadeStack extends cdk.Stack {
     const ffmpegLayerArn =
       process.env.CONSCIOUSLY_FFMPEG_LAYER_ARN?.trim() ||
       "arn:aws:lambda:eu-west-2:382309212161:layer:consciously-ffmpeg-audio-tools:1";
-    const ffmpegLayer = LayerVersion.fromLayerVersionArn(
+    this.ffmpegLayer = LayerVersion.fromLayerVersionArn(
       this,
       "FfmpegLayer",
       ffmpegLayerArn,
     );
+    const ffmpegLayer = this.ffmpegLayer;
 
     // Background-audio ingest: S3 trigger normalizes uploads from background-audio-raw/ into background-audio/
     /** Normalize failures land here after retries so nothing disappears silently. */
@@ -409,7 +268,7 @@ export class MedimadeStack extends cdk.Stack {
     // Hour-long compositions decode to multi-GB intermediates, so this function
     // is sized for the worst case rather than the median sample.
     const bgAudioNormalize = new lambda_nodejs.NodejsFunction(this, "BgAudioNormalizeFunction", {
-      entry: path.join(__dirname, "../lambdas/bg-audio-normalize.ts"),
+      entry: path.join(__dirname, "../../lambdas/bg-audio-normalize.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.minutes(15),
@@ -432,7 +291,7 @@ export class MedimadeStack extends cdk.Stack {
     );
 
     const fishTts = new lambda_nodejs.NodejsFunction(this, "FishTtsFunction", {
-      entry: path.join(__dirname, "../lambdas/fish-tts.ts"),
+      entry: path.join(__dirname, "../../lambdas/fish-tts.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(60),
@@ -446,7 +305,7 @@ export class MedimadeStack extends cdk.Stack {
     fishApiKeySecret.grantRead(fishTts);
 
     const orpheusTts = new lambda_nodejs.NodejsFunction(this, "OrpheusTtsFunction", {
-      entry: path.join(__dirname, "../lambdas/orpheus-tts.ts"),
+      entry: path.join(__dirname, "../../lambdas/orpheus-tts.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(120),
@@ -460,7 +319,7 @@ export class MedimadeStack extends cdk.Stack {
     runpodsUrlSecret.grantRead(orpheusTts);
 
     const claudeChat = new lambda_nodejs.NodejsFunction(this, "ClaudeChatFunction", {
-      entry: path.join(__dirname, "../lambdas/claude-chat.ts"),
+      entry: path.join(__dirname, "../../lambdas/claude-chat.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(120),
@@ -471,7 +330,7 @@ export class MedimadeStack extends cdk.Stack {
     });
     claudeApiKeySecret.grantRead(claudeChat);
 
-    const claudeChatUrl = claudeChat.addFunctionUrl({
+    this.medimadeChatUrl = claudeChat.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
       cors: {
@@ -501,7 +360,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AssistantChatFunction",
       {
-        entry: path.join(__dirname, "../lambdas/assistant-chat.ts"),
+        entry: path.join(__dirname, "../../lambdas/assistant-chat.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(120),
@@ -513,7 +372,7 @@ export class MedimadeStack extends cdk.Stack {
     );
     claudeApiKeySecret.grantRead(assistantChat);
 
-    const assistantChatUrl = assistantChat.addFunctionUrl({
+    this.assistantChatUrl = assistantChat.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
       cors: {
@@ -534,39 +393,6 @@ export class MedimadeStack extends cdk.Stack {
     );
     assistantChatUrlInvokeFn.addPropertyOverride("InvokedViaFunctionUrl", true);
 
-    const httpApi = new apigwv2.HttpApi(this, "HttpApi", {
-      apiName: "consciously-api",
-      corsPreflight: {
-        allowHeaders: [
-          "Content-Type",
-          "Authorization",
-          "X-Medimade-Authorization",
-        ],
-        allowMethods: [
-          apigwv2.CorsHttpMethod.GET,
-          apigwv2.CorsHttpMethod.POST,
-          apigwv2.CorsHttpMethod.PUT,
-          apigwv2.CorsHttpMethod.PATCH,
-          apigwv2.CorsHttpMethod.OPTIONS,
-        ],
-        // Credentials require explicit origins (no *).
-        allowOrigins: [
-          "https://consciously.live",
-          "https://www.consciously.live",
-          "https://app.consciously.live",
-          "https://dyaxvhlmage80.cloudfront.net",
-          "https://d2nu9q5wynnhfv.cloudfront.net",
-          "http://localhost:3000",
-          "http://127.0.0.1:3000",
-          "http://localhost:3001",
-          "http://127.0.0.1:3001",
-          "http://localhost:5173",
-          "http://127.0.0.1:5173",
-        ],
-        allowCredentials: true,
-        maxAge: cdk.Duration.days(1),
-      },
-    });
 
     httpApi.addRoutes({
       path: "/fish/tts",
@@ -660,29 +486,71 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
-    const cognitoAuth = new ConsciouslyCognitoAuthNestedStack(
+    // Cognito config + ID-token exchange (pool lives in Auth nest).
+    const authCognitoConfig = new lambda_nodejs.NodejsFunction(
       this,
-      "ConsciouslyCognitoAuth",
+      "AuthCognitoConfigFunction",
       {
-        httpApi,
-        usersTable,
-        refreshTable,
-        authJwtSecret,
-        authWebappOrigin,
+        entry: path.join(__dirname, "../../lambdas/auth-cognito-config.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        environment: {
+          COGNITO_USER_POOL_ID: userPool.userPoolId,
+          COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+          COGNITO_REGION: cdk.Stack.of(this).region,
+          COGNITO_DOMAIN: userPoolDomain.domainName,
+        },
       },
     );
 
-    const meditationJobsTable = new dynamodb.Table(this, "MeditationJobsTable", {
-      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    const authCognitoExchange = new lambda_nodejs.NodejsFunction(
+      this,
+      "AuthCognitoExchangeFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/auth-cognito-exchange.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        environment: {
+          USERS_TABLE_NAME: usersTable.tableName,
+          REFRESH_TABLE_NAME: refreshTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          AUTH_WEBAPP_ORIGIN: authWebappOrigin,
+          COGNITO_USER_POOL_ID: userPool.userPoolId,
+          COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        },
+      },
+    );
+    usersTable.grantReadWriteData(authCognitoExchange);
+    refreshTable.grantReadWriteData(authCognitoExchange);
+    authJwtSecret.grantRead(authCognitoExchange);
+
+    httpApi.addRoutes({
+      path: "/auth/cognito/config",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthCognitoConfigIntegration",
+        authCognitoConfig,
+      ),
     });
+    httpApi.addRoutes({
+      path: "/auth/cognito/exchange",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthCognitoExchangeIntegration",
+        authCognitoExchange,
+      ),
+    });
+
 
     const meditationAudioWorker = new lambda_nodejs.NodejsFunction(
       this,
       "MeditationAudioWorkerFunction",
       {
-        entry: path.join(__dirname, "../lambdas/generate-meditation-audio.ts"),
+        entry: path.join(__dirname, "../../lambdas/generate-meditation-audio.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(900),
@@ -719,7 +587,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "CreateMeditationJobFunction",
       {
-        entry: path.join(__dirname, "../lambdas/create-meditation-job.ts"),
+        entry: path.join(__dirname, "../../lambdas/create-meditation-job.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -739,7 +607,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "GetMeditationJobFunction",
       {
-        entry: path.join(__dirname, "../lambdas/get-meditation-job.ts"),
+        entry: path.join(__dirname, "../../lambdas/get-meditation-job.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -775,7 +643,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AnalyticsListFunction",
       {
-        entry: path.join(__dirname, "../lambdas/analytics-list.ts"),
+        entry: path.join(__dirname, "../../lambdas/analytics-list.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -802,7 +670,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "LibraryListFunction",
       {
-        entry: path.join(__dirname, "../lambdas/library-list.ts"),
+        entry: path.join(__dirname, "../../lambdas/library-list.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -844,7 +712,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "LibraryProgramsFunction",
       {
-        entry: path.join(__dirname, "../lambdas/library-programs.ts"),
+        entry: path.join(__dirname, "../../lambdas/library-programs.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -869,7 +737,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "LibraryDraftFunction",
       {
-        entry: path.join(__dirname, "../lambdas/library-draft.ts"),
+        entry: path.join(__dirname, "../../lambdas/library-draft.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -900,7 +768,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "FishSpeakersListFunction",
       {
-        entry: path.join(__dirname, "../lambdas/fish-speakers.ts"),
+        entry: path.join(__dirname, "../../lambdas/fish-speakers.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -925,7 +793,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "OrpheusSpeakersListFunction",
       {
-        entry: path.join(__dirname, "../lambdas/orpheus-speakers.ts"),
+        entry: path.join(__dirname, "../../lambdas/orpheus-speakers.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -946,7 +814,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationRatingFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-rating.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-rating.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -973,7 +841,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationFavouriteFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-favourite.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-favourite.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1000,7 +868,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationArchiveFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-archive.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-archive.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1027,7 +895,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationPublicFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-public.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-public.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1054,7 +922,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationShareFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-share.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-share.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1081,7 +949,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationByShareTokenFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-by-share-token.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-by-share-token.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1107,7 +975,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationByPublicIdFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-by-public-id.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-by-public-id.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(20),
@@ -1133,7 +1001,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "MeditationMixFunction",
       {
-        entry: path.join(__dirname, "../lambdas/meditation-mix.ts"),
+        entry: path.join(__dirname, "../../lambdas/meditation-mix.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1162,7 +1030,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "ListBackgroundAudioFunction",
       {
-        entry: path.join(__dirname, "../lambdas/list-background-audio.ts"),
+        entry: path.join(__dirname, "../../lambdas/list-background-audio.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -1178,7 +1046,7 @@ export class MedimadeStack extends cdk.Stack {
     soundCatalogTable.grantReadData(listBackgroundAudio);
 
     const adminSounds = new lambda_nodejs.NodejsFunction(this, "AdminSoundsFunction", {
-      entry: path.join(__dirname, "../lambdas/admin-sounds.ts"),
+      entry: path.join(__dirname, "../../lambdas/admin-sounds.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(120),
@@ -1216,7 +1084,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AdminSoundsTrimFunction",
       {
-        entry: path.join(__dirname, "../lambdas/admin-sounds-trim.ts"),
+        entry: path.join(__dirname, "../../lambdas/admin-sounds-trim.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(180),
@@ -1248,7 +1116,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AdminFactoryMixesFunction",
       {
-        entry: path.join(__dirname, "../lambdas/admin-factory-mixes.ts"),
+        entry: path.join(__dirname, "../../lambdas/admin-factory-mixes.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -1281,7 +1149,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AdminProgramsFunction",
       {
-        entry: path.join(__dirname, "../lambdas/admin-programs.ts"),
+        entry: path.join(__dirname, "../../lambdas/admin-programs.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(60),
@@ -1312,25 +1180,12 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
-    /** Shared secret: admin-blog Lambda → marketing `POST /api/revalidate-blog`. */
-    const blogRevalidateSecret = new secretsmanager.Secret(
-      this,
-      "BlogRevalidateSecret",
-      {
-        description:
-          "On-demand revalidation secret for consciously.live /read cache",
-        generateSecretString: {
-          passwordLength: 48,
-          excludePunctuation: true,
-        },
-      },
-    );
 
     const adminBlog = new lambda_nodejs.NodejsFunction(
       this,
       "AdminBlogFunction",
       {
-        entry: path.join(__dirname, "../lambdas/admin-blog.ts"),
+        entry: path.join(__dirname, "../../lambdas/admin-blog.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -1370,7 +1225,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "PublicBlogFunction",
       {
-        entry: path.join(__dirname, "../lambdas/public-blog.ts"),
+        entry: path.join(__dirname, "../../lambdas/public-blog.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -1398,7 +1253,7 @@ export class MedimadeStack extends cdk.Stack {
     });
 
     const adminVoice = new lambda_nodejs.NodejsFunction(this, "AdminVoiceFunction", {
-      entry: path.join(__dirname, "../lambdas/admin-voice.ts"),
+      entry: path.join(__dirname, "../../lambdas/admin-voice.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(180),
@@ -1439,7 +1294,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "DevUiSettingsFunction",
       {
-        entry: path.join(__dirname, "../lambdas/dev-ui-settings.ts"),
+        entry: path.join(__dirname, "../../lambdas/dev-ui-settings.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),
@@ -1476,7 +1331,7 @@ export class MedimadeStack extends cdk.Stack {
     });
 
     // --- Python: script embeddings (fastembed + BGE-small ONNX) — shared layer
-    const fastembedLayerRoot = path.join(__dirname, "../layers/fastembed");
+    const fastembedLayerRoot = path.join(__dirname, "../../layers/fastembed");
     const fastembedPackageInit = path.join(
       fastembedLayerRoot,
       "python/lib/python3.12/site-packages/fastembed/__init__.py",
@@ -1489,18 +1344,19 @@ export class MedimadeStack extends cdk.Stack {
       );
     }
 
-    const fastembedLayer = new lambda.LayerVersion(this, "FastembedLayer", {
+    this.fastembedLayer = new lambda.LayerVersion(this, "FastembedLayer", {
       code: lambda.Code.fromAsset(fastembedLayerRoot),
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
       description:
         "fastembed + BGE-small-en-v1.5 ONNX (rebuild: scripts/build-fastembed-layer)",
     });
+    const fastembedLayer = this.fastembedLayer;
 
     const scriptEmbed = new lambda.Function(this, "ScriptEmbedFunction", {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "handler.handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../lambdas-python/script-embed"),
+        path.join(__dirname, "../../lambdas-python/script-embed"),
       ),
       layers: [fastembedLayer],
       timeout: cdk.Duration.minutes(5),
@@ -1518,7 +1374,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AdminScriptLabFunction",
       {
-        entry: path.join(__dirname, "../lambdas/admin-script-lab.ts"),
+        entry: path.join(__dirname, "../../lambdas/admin-script-lab.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(300),
@@ -1545,7 +1401,7 @@ export class MedimadeStack extends cdk.Stack {
     claudeApiKeySecret.grantRead(adminScriptLab);
     scriptEmbed.grantInvoke(adminScriptLab);
 
-    const adminScriptLabUrl = adminScriptLab.addFunctionUrl({
+    this.adminScriptLabUrl = adminScriptLab.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
       cors: {
         allowedOrigins: ["*"],
@@ -1595,7 +1451,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "JournalTranscribeFunction",
       {
-        entry: path.join(__dirname, "../lambdas/journal-transcribe.ts"),
+        entry: path.join(__dirname, "../../lambdas/journal-transcribe.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(120),
@@ -1621,7 +1477,7 @@ export class MedimadeStack extends cdk.Stack {
     });
 
     const journalStore = new lambda_nodejs.NodejsFunction(this, "JournalStoreFunction", {
-      entry: path.join(__dirname, "../lambdas/journal-store.ts"),
+      entry: path.join(__dirname, "../../lambdas/journal-store.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(30),
@@ -1654,7 +1510,7 @@ export class MedimadeStack extends cdk.Stack {
     });
 
     const searchFn = new lambda_nodejs.NodejsFunction(this, "SearchFunction", {
-      entry: path.join(__dirname, "../lambdas/search.ts"),
+      entry: path.join(__dirname, "../../lambdas/search.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(60),
@@ -1693,7 +1549,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "AssistantChatStoreFunction",
       {
-        entry: path.join(__dirname, "../lambdas/assistant-chat-store.ts"),
+        entry: path.join(__dirname, "../../lambdas/assistant-chat-store.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -1724,7 +1580,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "JournalVoiceUploadFunction",
       {
-        entry: path.join(__dirname, "../lambdas/journal-voice-upload.ts"),
+        entry: path.join(__dirname, "../../lambdas/journal-voice-upload.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -1752,7 +1608,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "VisionGenerateFunction",
       {
-        entry: path.join(__dirname, "../lambdas/vision-generate.ts"),
+        entry: path.join(__dirname, "../../lambdas/vision-generate.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(180),
@@ -1785,7 +1641,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "VisionMediaUploadFunction",
       {
-        entry: path.join(__dirname, "../lambdas/vision-media-upload.ts"),
+        entry: path.join(__dirname, "../../lambdas/vision-media-upload.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -1813,7 +1669,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "IdeateStoreFunction",
       {
-        entry: path.join(__dirname, "../lambdas/ideate-store.ts"),
+        entry: path.join(__dirname, "../../lambdas/ideate-store.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -1846,7 +1702,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "DashboardDailyStatusFunction",
       {
-        entry: path.join(__dirname, "../lambdas/dashboard-daily-status.ts"),
+        entry: path.join(__dirname, "../../lambdas/dashboard-daily-status.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -1903,7 +1759,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "IdeateFamousQuotesFunction",
       {
-        entry: path.join(__dirname, "../lambdas/ideate-famous-quotes.ts"),
+        entry: path.join(__dirname, "../../lambdas/ideate-famous-quotes.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(60),
@@ -1930,7 +1786,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "JournalInsightsFunction",
       {
-        entry: path.join(__dirname, "../lambdas/journal-insights.ts"),
+        entry: path.join(__dirname, "../../lambdas/journal-insights.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(60),
@@ -1965,7 +1821,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "JournalWeeklyReflectionFunction",
       {
-        entry: path.join(__dirname, "../lambdas/journal-weekly-reflection.ts"),
+        entry: path.join(__dirname, "../../lambdas/journal-weekly-reflection.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(60),
@@ -2004,7 +1860,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "JournalImportPdfFunction",
       {
-        entry: path.join(__dirname, "../lambdas/journal-import-pdf.ts"),
+        entry: path.join(__dirname, "../../lambdas/journal-import-pdf.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(90),
@@ -2031,7 +1887,7 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "JournalImportOcrFunction",
       {
-        entry: path.join(__dirname, "../lambdas/journal-import-ocr.ts"),
+        entry: path.join(__dirname, "../../lambdas/journal-import-ocr.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
@@ -2059,7 +1915,7 @@ export class MedimadeStack extends cdk.Stack {
     });
 
     // --- Python: voice FX (Pedalboard) — layer is pre-built with Docker, committed under layers/pedalboard/
-    const pedalboardLayerRoot = path.join(__dirname, "../layers/pedalboard");
+    const pedalboardLayerRoot = path.join(__dirname, "../../layers/pedalboard");
     const pedalboardPackageInit = path.join(
       pedalboardLayerRoot,
       "python/lib/python3.12/site-packages/pedalboard/__init__.py",
@@ -2071,12 +1927,13 @@ export class MedimadeStack extends cdk.Stack {
       );
     }
 
-    const pedalboardLayer = new lambda.LayerVersion(this, "PedalboardLayer", {
+    this.pedalboardLayer = new lambda.LayerVersion(this, "PedalboardLayer", {
       code: lambda.Code.fromAsset(pedalboardLayerRoot),
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
       description:
         "Spotify Pedalboard (rebuild: scripts/build-pedalboard-layer, commit layers/pedalboard/python)",
     });
+    const pedalboardLayer = this.pedalboardLayer;
 
     // Worker fans out one concurrent VoiceFx execution per speech section
     // (direct IAM invoke). HTTP route stays for short admin/preview clips.
@@ -2084,7 +1941,7 @@ export class MedimadeStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "handler.handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../lambdas-python/voice-fx"),
+        path.join(__dirname, "../../lambdas-python/voice-fx"),
       ),
       layers: [pedalboardLayer],
       timeout: cdk.Duration.minutes(5),
@@ -2110,99 +1967,6 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
-    new cdk.CfnOutput(this, "ApiUrl", {
-      value: httpApi.apiEndpoint,
-    });
-    new cdk.CfnOutput(this, "CognitoUserPoolId", {
-      value: cognitoAuth.userPool.userPoolId,
-      description: "Consciously Cognito User Pool (password/passkey/social migration)",
-    });
-    new cdk.CfnOutput(this, "CognitoClientId", {
-      value: cognitoAuth.userPoolClient.userPoolClientId,
-    });
-    new cdk.CfnOutput(this, "CognitoDomain", {
-      value: cognitoAuth.userPoolDomain.domainName,
-      description: "Cognito Hosted UI / Managed Login domain prefix host",
-    });
-    new cdk.CfnOutput(this, "CognitoIssuer", {
-      value: cognitoAuth.issuer,
-    });
-    new cdk.CfnOutput(this, "FishTtsUrl", {
-      value: `${httpApi.apiEndpoint}/fish/tts`,
-    });
-    new cdk.CfnOutput(this, "OrpheusTtsUrl", {
-      description:
-        "OpenAI-compatible speech: POST JSON { model, input, voice, response_format, speed }",
-      value: `${httpApi.apiEndpoint}/v1/audio/speech`,
-    });
-    new cdk.CfnOutput(this, "VoiceFxUrl", {
-      description: "POST JSON { audioBase64, preset? } WAV → effected WAV",
-      value: `${httpApi.apiEndpoint}/audio/voice-fx`,
-    });
-    new cdk.CfnOutput(this, "MedimadeChatUrl", {
-      description:
-        "Lambda Function URL (response streaming) for POST chat — set NEXT_PUBLIC_CONSCIOUSLY_CHAT_URL",
-      value: claudeChatUrl.url,
-    });
-    new cdk.CfnOutput(this, "AssistantChatUrl", {
-      description:
-        "Lambda Function URL (streaming + prompt cache) for app-control Chat — set NEXT_PUBLIC_ASSISTANT_CHAT_URL",
-      value: assistantChatUrl.url,
-    });
-    new cdk.CfnOutput(this, "AdminScriptLabUrl", {
-      description:
-        "Lambda Function URL for Script Lab generate-script — set NEXT_PUBLIC_CONSCIOUSLY_SCRIPT_LAB_URL",
-      value: adminScriptLabUrl.url,
-    });
-    new cdk.CfnOutput(this, "FishAudioSecretName", {
-      description: "Put your Fish Audio API key as the secret string value",
-      value: FISH_AUDIO_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "RunpodsSecretName", {
-      description: "Put your RunPod API key as the secret string value",
-      value: RUNPODS_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "RunpodsUrlSecretName", {
-      description:
-        "Put your RunPod runsync URL as the secret string value (e.g. https://api.runpod.ai/v2/{id}/runsync)",
-      value: RUNPODS_URL_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "ClaudeSecretName", {
-      description: "Put your Anthropic API key as the secret string value",
-      value: CLAUDE_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "OpenAiSecretName", {
-      description:
-        "Put your OpenAI API key (Whisper) as the secret string value — used for journal voice transcription",
-      value: OPENAI_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "GoogleAiSecretName", {
-      description:
-        "Put your Google AI (Gemini) API key as the secret string — Nano Banana vision-board scenes",
-      value: GOOGLE_AI_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "BrevoSecretName", {
-      description: "Put your Brevo API key as the secret string value (transactional email)",
-      value: BREVO_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "AlgoliaSecretName", {
-      description:
-        'JSON secret: {"appId","adminApiKey","searchApiKey","indexName?"} for GET /search',
-      value: ALGOLIA_SECRET_NAME,
-    });
-    new cdk.CfnOutput(this, "MediaCloudFrontDomain", {
-      value: mediaDistribution.domainName,
-    });
-    new cdk.CfnOutput(this, "MediaBucketName", {
-      description:
-        "S3 bucket that stores generated meditations and background audio",
-      value: mediaBucket.bucketName,
-      exportName: "MediaBucketName",
-    });
-    new cdk.CfnOutput(this, "BlogRevalidateSecretArn", {
-      description:
-        "Secrets Manager ARN for BLOG_REVALIDATE_SECRET (marketing /read on-demand purge)",
-      value: blogRevalidateSecret.secretArn,
-    });
+
   }
 }

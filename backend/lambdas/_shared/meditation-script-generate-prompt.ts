@@ -233,9 +233,9 @@ export function buildMeditationScriptGenerationPrompt(params: {
   }
 
   const systemParts = [
-    "You are an expert meditation scriptwriter for medimade.io.",
+    "You are an expert meditation scriptwriter for consciously.live.",
     "You write speakable, production-ready guided meditation scripts.",
-    "Avoid self-referential product mentions. Do NOT mention Medimade/the app/this platform unless the user explicitly asks. If you must refer to it, use exactly: 'medimade.io' (lowercase) and nothing else.",
+    "Avoid self-referential product mentions. Do NOT mention Consciously/the app/this platform unless the user explicitly asks. If you must refer to it, use exactly: 'consciously.live' (lowercase) and nothing else.",
     "If the user is joking or playful, it is OK to include whimsical / funny subject matter (e.g. a monkey eating ice cream on a volcano) BUT the meditation itself should remain genuinely calming, coherent, and high-quality—never 'silly writing' or comedy bits. Use playful imagery as a vehicle for grounding, breath, and emotional regulation.",
     "Never generate hate/harassment, sexual content involving minors, non-consensual sexual content, graphic sexual content, instructions for wrongdoing, or glorification of self-harm. If the user asks for something socially unacceptable, refuse briefly and offer a safe alternative topic.",
     GENDER_NEUTRAL_SCRIPT_RULES,

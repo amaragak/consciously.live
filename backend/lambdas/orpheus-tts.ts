@@ -6,8 +6,8 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { orpheusTtsWav } from "../lib/orpheus-tts-client";
-import { DEFAULT_ORPHEUS_VOICE_ID } from "../lib/orpheus-voices";
+import { orpheusTtsWav } from "./_shared/orpheus-tts-client";
+import { DEFAULT_ORPHEUS_VOICE_ID } from "./_shared/orpheus-voices";
 
 const secrets = new SecretsManagerClient({});
 let cachedApiKey: string | undefined;

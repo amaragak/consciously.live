@@ -4,13 +4,13 @@ import type {
 } from "aws-lambda";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { S3Client } from "@aws-sdk/client-s3";
-import { requireAdminJson } from "../lib/admin-auth";
-import { SCRIPT_PAUSE_BANDS, type ScriptPauseBand } from "../lib/script-pause-bands";
-import { FIXED_SPEECH_PREVIEW_SPEED, speakerPreviewLoudSampleKey } from "../lib/speaker-sample-speed";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { SCRIPT_PAUSE_BANDS, type ScriptPauseBand } from "./_shared/script-pause-bands";
+import { FIXED_SPEECH_PREVIEW_SPEED, speakerPreviewLoudSampleKey } from "./_shared/speaker-sample-speed";
 import {
   generateFishSpeakerPreview,
   speakerPreviewExists,
-} from "../lib/fish-speaker-preview";
+} from "./_shared/fish-speaker-preview";
 import {
   deleteVoiceSpeaker,
   loadPauseBandSeconds,
@@ -20,7 +20,7 @@ import {
   seedVoiceSpeakersIfEmpty,
   type PauseBandSeconds,
   type VoiceSpeakerRow,
-} from "../lib/voice-admin";
+} from "./_shared/voice-admin";
 
 const s3 = new S3Client({});
 const secrets = new SecretsManagerClient({});
@@ -154,7 +154,7 @@ async function handlePost(event: APIGatewayProxyEventV2) {
       bucket,
       apiKey,
       modelId,
-      apiBase: process.env.MEDIMADE_API_URL?.trim() || null,
+      apiBase: process.env.CONSCIOUSLY_API_URL?.trim() || null,
     });
     const existing = (await listVoiceSpeakers()).find((s) => s.modelId === modelId);
     if (existing && !keys.skipped) {

@@ -10,15 +10,15 @@ import {
   listEligibleSegmentVariants,
   selectSegmentVariant,
   type SegmentVariantCandidate,
-} from "../lib/script-segment-variant-select";
+} from "../lambdas/_shared/script-segment-variant-select";
 import {
   appendScriptLabRecentVariantIds,
   loadScriptLabRecentVariantIds,
   mergeRecentVariantIds,
   SCRIPT_LAB_RECENT_VARIANTS_CAP,
-} from "../lib/script-lab-recent-variants";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import { buildScriptLabContextTags } from "../lib/script-constraint-tags";
+} from "../lambdas/_shared/script-lab-recent-variants";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import { buildScriptLabContextTags } from "../lambdas/_shared/script-constraint-tags";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);

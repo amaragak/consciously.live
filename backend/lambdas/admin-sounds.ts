@@ -16,8 +16,8 @@ import {
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { requireAdminJson } from "../lib/admin-auth";
-import { jsonAuth } from "../lib/medimade-auth-http";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   BG_AUDIO_CATEGORIES,
   BG_AUDIO_PREFIX,
@@ -32,10 +32,10 @@ import {
   stemKeysFromRelativePath,
   spliceFilenameId,
   type BgAudioCategory,
-} from "../lib/background-audio-keys";
-import { coerceSoundSubcategory } from "../lib/sound-taxonomy";
-import { listAllS3Objects } from "../lib/s3-list-all";
-import { suggestSoundCategories } from "../lib/sound-category-suggest";
+} from "./_shared/background-audio-keys";
+import { coerceSoundSubcategory } from "./_shared/sound-taxonomy";
+import { listAllS3Objects } from "./_shared/s3-list-all";
+import { suggestSoundCategories } from "./_shared/sound-category-suggest";
 import {
   deleteSoundRow,
   listAllSoundRows,
@@ -46,7 +46,7 @@ import {
   updateSoundProcessing,
   type SoundCatalogRow,
   type SoundReviewStatus,
-} from "../lib/sound-catalog";
+} from "./_shared/sound-catalog";
 
 const s3 = new S3Client({
   requestChecksumCalculation: "WHEN_REQUIRED",

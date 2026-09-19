@@ -12,7 +12,7 @@ import {
   DynamoDBDocumentClient,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { meditationPlaybackS3Key } from "../lib/playback-keys";
+import { meditationPlaybackS3Key } from "./_shared/playback-keys";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

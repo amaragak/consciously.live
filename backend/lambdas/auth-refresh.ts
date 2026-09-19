@@ -13,8 +13,8 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { signMedimadeJwt } from "../lib/medimade-jwt";
-import { optionsAuth } from "../lib/medimade-auth-http";
+import { signConsciouslyJwt } from "./_shared/consciously-jwt";
+import { optionsAuth } from "./_shared/consciously-auth-http";
 import {
   corsHeadersForEvent,
   newOpaqueToken,
@@ -23,7 +23,7 @@ import {
   REFRESH_TOKEN_TTL_SEC,
   sessionSetCookieHeaders,
   sha256Hex,
-} from "../lib/medimade-auth-tokens";
+} from "./_shared/consciously-auth-tokens";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -133,7 +133,7 @@ export async function handler(
       : null;
 
   try {
-    const accessToken = await signMedimadeJwt({
+    const accessToken = await signConsciouslyJwt({
       sub: row.userId!,
       email: row.email!,
       name: displayName ?? undefined,

@@ -17,11 +17,11 @@
 import {
   listAllScriptSegmentLibrary,
   putScriptSegmentTag,
-} from "../lib/script-segment-library";
+} from "../lambdas/_shared/script-segment-library";
 import {
   effectiveSegmentRepeatability,
   type ScriptSegmentRepeatability,
-} from "../lib/script-segment-tags";
+} from "../lambdas/_shared/script-segment-tags";
 
 const APPLY = process.argv.includes("--apply");
 

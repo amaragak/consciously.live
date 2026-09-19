@@ -13,17 +13,17 @@ import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { requireAdminJson } from "../lib/admin-auth";
-import { jsonAuth } from "../lib/medimade-auth-http";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   BG_AUDIO_PREFIX,
   originalKeyForPublicKey,
   parseBgAudioKey,
   siblingOpusKey,
   siblingWavKey,
-} from "../lib/background-audio-keys";
-import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "../lib/bg-audio-opus";
-import { listAllSoundRows, putSoundRow, soundEnabledFromStatus, type SoundCatalogRow } from "../lib/sound-catalog";
+} from "./_shared/background-audio-keys";
+import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "./_shared/bg-audio-opus";
+import { listAllSoundRows, putSoundRow, soundEnabledFromStatus, type SoundCatalogRow } from "./_shared/sound-catalog";
 
 const s3 = new S3Client({});
 const execFileAsync = promisify(execFile);

@@ -12,12 +12,12 @@ import {
   proximityBlocksTagConversion,
   prepareGeneralTagsForVerification,
   type VerificationTagCard,
-} from "../lib/script-lab-beat-verification";
+} from "../lambdas/_shared/script-lab-beat-verification";
 import {
   findDuplicateBeatTypeWarnings,
   dropDuplicateSingularTagBeats,
   type ScriptLabBeat,
-} from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-lab-beats";
 
 const CATALOG: VerificationTagCard[] = prepareGeneralTagsForVerification([
   {

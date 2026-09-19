@@ -6,13 +6,13 @@
  *     npx tsx scripts/test-script-lab-v2-compare.ts
  */
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
-import { generateScriptLabScript } from "../lib/script-lab-generate";
-import { generateScriptLabScriptV2 } from "../lib/script-lab-generate-v2";
-import { buildScriptLabContextTags } from "../lib/script-constraint-tags";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
+import { CLAUDE_SONNET_45_MODEL_ID } from "../lambdas/_shared/anthropic-pricing";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
+import { generateScriptLabScript } from "../lambdas/_shared/script-lab-generate";
+import { generateScriptLabScriptV2 } from "../lambdas/_shared/script-lab-generate-v2";
+import { buildScriptLabContextTags } from "../lambdas/_shared/script-constraint-tags";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "../lambdas/_shared/script-segment-tag-metrics";
 
 function customUtf8Ratio(beats: ScriptLabBeat[]): number | null {
   let custom = 0;

@@ -3,10 +3,10 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
-import { optionsAuth } from "../lib/medimade-auth-http";
-import { corsHeadersForEvent } from "../lib/medimade-auth-tokens";
-import { issueMedimadeSession } from "../lib/medimade-session";
-import { getOrCreateUserByEmail } from "../lib/medimade-users";
+import { optionsAuth } from "./_shared/consciously-auth-http";
+import { corsHeadersForEvent } from "./_shared/consciously-auth-tokens";
+import { issueConsciouslySession } from "./_shared/consciously-session";
+import { getOrCreateUserByEmail } from "./_shared/consciously-users";
 
 function json(
   event: APIGatewayProxyEventV2,
@@ -42,7 +42,7 @@ function getVerifier(): Verifier {
 }
 
 /**
- * Exchange a Cognito ID token for a Medimade session (same JWT as magic-link).
+ * Exchange a Cognito ID token for a Consciously session (same JWT as magic-link).
  * Body: `{ idToken: string }`
  */
 export async function handler(
@@ -97,7 +97,7 @@ export async function handler(
     const displayName = user.displayName || nameFromToken;
     const needsProfileName = !Boolean(displayName?.trim());
 
-    return issueMedimadeSession({
+    return issueConsciouslySession({
       event,
       userId: user.userId,
       email: user.email,

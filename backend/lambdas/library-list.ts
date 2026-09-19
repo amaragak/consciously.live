@@ -5,17 +5,17 @@ import type {
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { listVoiceSpeakers } from "../lib/voice-admin";
-import { meditationPlaybackS3Key } from "../lib/playback-keys";
-import { optionalUserJson } from "../lib/medimade-auth-http";
-import { mixListenerPk } from "../lib/meditation-listener-mix";
+import { listVoiceSpeakers } from "./_shared/voice-admin";
+import { meditationPlaybackS3Key } from "./_shared/playback-keys";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
+import { mixListenerPk } from "./_shared/meditation-listener-mix";
 import {
   GLOBAL_MEDITATION_USER_ID,
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
-} from "../lib/meditation-user-pk";
-import { listProgramOwnedAudioKeys } from "../lib/programs";
+} from "./_shared/meditation-user-pk";
+import { listProgramOwnedAudioKeys } from "./_shared/programs";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});

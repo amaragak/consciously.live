@@ -8,14 +8,14 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { requireUserJson } from "../lib/medimade-auth-http";
+import { requireUserJson } from "./_shared/consciously-auth-http";
 import {
   algoliaUserIdFromEmail,
   getAlgoliaCreds,
   searchUserContent,
   type AlgoliaRecordType,
-} from "../lib/algolia";
-import { backfillAlgoliaForUser } from "../lib/algolia-backfill";
+} from "./_shared/algolia";
+import { backfillAlgoliaForUser } from "./_shared/algolia-backfill";
 
 function json(
   statusCode: number,

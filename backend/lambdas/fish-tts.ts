@@ -6,7 +6,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { loudnormMp3Buffer } from "../lib/ffmpeg-loudnorm";
+import { loudnormMp3Buffer } from "./_shared/ffmpeg-loudnorm";
 
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 const FISH_TTS_MODEL =

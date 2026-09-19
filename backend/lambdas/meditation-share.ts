@@ -13,13 +13,13 @@ import {
   GetCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { randomBytes } from "crypto";
-import { optionalUserJson } from "../lib/medimade-auth-http";
-import { updateMeditationRowFirstMatchingPartition } from "../lib/meditation-library-update";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
+import { updateMeditationRowFirstMatchingPartition } from "./_shared/meditation-library-update";
 import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
-} from "../lib/meditation-user-pk";
+} from "./_shared/meditation-user-pk";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

@@ -22,7 +22,7 @@ export type ConsciouslyCognitoAuthNestedStackProps = cdk.NestedStackProps & {
  * Nested so the parent MedimadeBackend stack stays under the CFN 500-resource limit.
  *
  * Destination is Cognito-first (password / passkey / social). Magic-link stays
- * available during migration; clients exchange a Cognito ID token for a Medimade JWT.
+ * available during migration; clients exchange a Cognito ID token for a Consciously JWT.
  */
 export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
   readonly userPool: cognito.UserPool;
@@ -119,7 +119,7 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
       : "consciously-auth";
     const rawCognitoPrefix =
       (this.node.tryGetContext("cognitoDomainPrefix") as string | undefined)?.trim() ||
-      process.env.MEDIMADE_COGNITO_DOMAIN_PREFIX?.trim() ||
+      process.env.CONSCIOUSLY_COGNITO_DOMAIN_PREFIX?.trim() ||
       defaultCognitoPrefix;
     const cognitoDomainPrefix = rawCognitoPrefix
       .toLowerCase()
@@ -129,7 +129,7 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
       .slice(0, 63);
     if (!cognitoDomainPrefix) {
       throw new Error(
-        "Cognito domain prefix is empty after sanitization (set cognitoDomainPrefix or MEDIMADE_COGNITO_DOMAIN_PREFIX)",
+        "Cognito domain prefix is empty after sanitization (set cognitoDomainPrefix or CONSCIOUSLY_COGNITO_DOMAIN_PREFIX)",
       );
     }
     this.userPoolDomain = this.userPool.addDomain("ConsciouslyAuthDomain", {
@@ -153,7 +153,7 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
       this,
       "AuthCognitoConfigFunction",
       {
-        entry: path.join(__dirname, "../lambdas/auth-cognito-config.ts"),
+        entry: path.join(__dirname, "../../lambdas/auth-cognito-config.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(10),
@@ -171,7 +171,7 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
       this,
       "AuthCognitoExchangeFunction",
       {
-        entry: path.join(__dirname, "../lambdas/auth-cognito-exchange.ts"),
+        entry: path.join(__dirname, "../../lambdas/auth-cognito-exchange.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(15),

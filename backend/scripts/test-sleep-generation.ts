@@ -6,14 +6,14 @@
  *     npx tsx scripts/test-sleep-generation.ts
  */
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
-import { generateScriptLabScript } from "../lib/script-lab-generate";
-import { WAKING_CLOSE_TAGS } from "../lib/script-lab-shared-prompt-rules";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
-import { buildTagRepeatabilityMap } from "../lib/script-lab-beats";
+import { CLAUDE_SONNET_45_MODEL_ID } from "../lambdas/_shared/anthropic-pricing";
+import { generateScriptLabScript } from "../lambdas/_shared/script-lab-generate";
+import { WAKING_CLOSE_TAGS } from "../lambdas/_shared/script-lab-shared-prompt-rules";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "../lambdas/_shared/speaker-sample-speed";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "../lambdas/_shared/script-segment-tag-metrics";
+import { buildTagRepeatabilityMap } from "../lambdas/_shared/script-lab-beats";
 
 const TRANSCRIPT = [
   "User: I've been having trouble falling asleep — my mind keeps replaying the day.",

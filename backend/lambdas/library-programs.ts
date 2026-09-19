@@ -2,8 +2,8 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { jsonAuth } from "../lib/medimade-auth-http";
-import { listPublishedLibraryPrograms } from "../lib/programs";
+import { jsonAuth } from "./_shared/consciously-auth-http";
+import { listPublishedLibraryPrograms } from "./_shared/programs";
 
 function json(
   statusCode: number,

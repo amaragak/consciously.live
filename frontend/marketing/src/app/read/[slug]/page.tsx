@@ -9,9 +9,7 @@ import {
   formatBlogDate,
 } from "@/lib/public-blog";
 
-/** Always fetch in `next dev` — local never receives the production cache purge. */
-export const dynamic =
-  process.env.NODE_ENV === "development" ? "force-dynamic" : "auto";
+/** Cached until admin purge (`POST /api/revalidate-blog`). Dev uses `no-store` in `public-blog`. */
 export const revalidate = false;
 
 type Props = {

@@ -3,9 +3,9 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { buildAssistantChatSystemPrompt } from "../lib/assistant-chat-system-prompt";
-import { buildCachedMessagesRequestBody } from "../lib/anthropic-prompt-cache";
-import { coerceClaudeModel } from "../lib/anthropic-pricing";
+import { buildAssistantChatSystemPrompt } from "./_shared/assistant-chat-system-prompt";
+import { buildCachedMessagesRequestBody } from "./_shared/anthropic-prompt-cache";
+import { coerceClaudeModel } from "./_shared/anthropic-pricing";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const TITLE_MODEL = "claude-haiku-4-5";

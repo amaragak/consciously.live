@@ -21,7 +21,7 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "../lib/anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
 
 const secrets = new SecretsManagerClient({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {

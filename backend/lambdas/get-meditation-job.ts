@@ -7,9 +7,9 @@ import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import {
   meditationPlaybackAudioUrl,
   meditationPlaybackS3Key,
-} from "../lib/playback-keys";
-import { GLOBAL_MEDITATION_USER_ID } from "../lib/meditation-user-pk";
-import { optionalUserJson } from "../lib/medimade-auth-http";
+} from "./_shared/playback-keys";
+import { GLOBAL_MEDITATION_USER_ID } from "./_shared/meditation-user-pk";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

@@ -382,7 +382,7 @@ export function buildVerificationPrompt(params: {
 
   return {
     system: [
-      "You are a conservative sentence-level coverage reviewer for medimade.io Script Lab.",
+      "You are a conservative sentence-level coverage reviewer for consciously.live Script Lab.",
       "You judge pre-split numbered sentences only — you do NOT rewrite or assemble beats.",
       "Personalization always wins: if a sentence references this user's specific situation, words, or journal details, verdict MUST be keep_custom.",
       "Personalization test: does this sentence reference anything specific to this user's actual input? If yes → keep_custom. If no — it would read identically for any user — it may be convert_tag when it serves the same semantic function as a library tag.",

@@ -6,7 +6,7 @@ import {
   splitScriptOnPauseMarkers,
   V3_PROMOTION_THRESHOLD,
   V3_SUBSTITUTION_THRESHOLD,
-} from "../lib/script-lab-generate-v3";
+} from "../lambdas/_shared/script-lab-generate-v3";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);

@@ -2,7 +2,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { ORPHEUS_VOICES, type OrpheusVoice } from "../lib/orpheus-voices";
+import { ORPHEUS_VOICES, type OrpheusVoice } from "./_shared/orpheus-voices";
 
 function json(
   statusCode: number,

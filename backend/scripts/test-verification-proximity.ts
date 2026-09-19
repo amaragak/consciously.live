@@ -6,7 +6,7 @@
  *   ANTHROPIC_API_KEY=... tsx scripts/test-verification-proximity.ts --live
  *   VOICE_ADMIN_TABLE_NAME=... AWS_PROFILE=mm tsx scripts/test-verification-proximity.ts --live
  */
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
 import {
   assembleBeatsFromSentenceVerdicts,
   buildVerificationSentenceList,
@@ -16,8 +16,8 @@ import {
   type SentenceVerdict,
   type VerificationSentence,
   type VerificationTagCard,
-} from "../lib/script-lab-beat-verification";
-import { tagNameToBeatType, type ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-lab-beat-verification";
+import { tagNameToBeatType, type ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 const TRANSCRIPT = [
   "User: I've been dealing with a lot of tension in my lower back lately.",

@@ -6,16 +6,16 @@
  *     npx tsx scripts/test-connective-stacking-live.ts
  */
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
-import { generateScriptLabScript } from "../lib/script-lab-generate";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
+import { CLAUDE_SONNET_45_MODEL_ID } from "../lambdas/_shared/anthropic-pricing";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
+import { generateScriptLabScript } from "../lambdas/_shared/script-lab-generate";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "../lambdas/_shared/speaker-sample-speed";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "../lambdas/_shared/script-segment-tag-metrics";
 import {
   effectiveSegmentRepeatability,
   type ScriptSegmentRepeatability,
-} from "../lib/script-segment-tags";
+} from "../lambdas/_shared/script-segment-tags";
 
 const TRANSCRIPT = [
   "User: I want a manifestation visualization meditation — I'm imagining my future home with rich sensory detail, colours, textures, sounds. Help me expand into that scene.",

@@ -3,10 +3,10 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { buildClaudeCoachSystemPrompt } from "../lib/claude-coach-system-prompt";
-import { buildMeditationScriptGenerationPrompt } from "../lib/meditation-script-generate-prompt";
-import { coerceClaudeModel } from "../lib/anthropic-pricing";
-import { coerceMeditationTargetMinutes } from "../lib/meditation-target-minutes";
+import { buildClaudeCoachSystemPrompt } from "./_shared/claude-coach-system-prompt";
+import { buildMeditationScriptGenerationPrompt } from "./_shared/meditation-script-generate-prompt";
+import { coerceClaudeModel } from "./_shared/anthropic-pricing";
+import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 

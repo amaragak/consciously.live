@@ -9,7 +9,7 @@ import {
   inferBodyTourDirectionFromBeats,
   selectSegmentVariant,
   type SegmentVariantCandidate,
-} from "../lib/script-segment-variant-select";
+} from "../lambdas/_shared/script-segment-variant-select";
 
 const TAG_META = {
   lengthTiered: false,

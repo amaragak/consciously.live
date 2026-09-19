@@ -15,7 +15,7 @@ function usersTableName(): string {
   return n;
 }
 
-export type MedimadeUserRecord = {
+export type ConsciouslyUserRecord = {
   email: string;
   userId: string;
   displayName: string | null;
@@ -24,13 +24,13 @@ export type MedimadeUserRecord = {
 };
 
 /**
- * Stable Medimade identity is email → userId (JWT `sub`).
+ * Stable Consciously identity is email → userId (JWT `sub`).
  * Cognito `sub` is stored as `cognitoSub` for linking; never used as JWT sub.
  */
 export async function getOrCreateUserByEmail(
   emailRaw: string,
   opts?: { cognitoSub?: string | null },
-): Promise<MedimadeUserRecord> {
+): Promise<ConsciouslyUserRecord> {
   const email = emailRaw.trim().toLowerCase();
   if (!email || !email.includes("@")) {
     throw new Error("Valid email is required");

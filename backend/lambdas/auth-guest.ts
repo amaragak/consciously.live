@@ -14,15 +14,15 @@ import {
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "crypto";
-import { signMedimadeJwt } from "../lib/medimade-jwt";
-import { optionsAuth } from "../lib/medimade-auth-http";
+import { signConsciouslyJwt } from "./_shared/consciously-jwt";
+import { optionsAuth } from "./_shared/consciously-auth-http";
 import {
   corsHeadersForEvent,
   newOpaqueToken,
   REFRESH_TOKEN_TTL_SEC,
   sessionSetCookieHeaders,
   sha256Hex,
-} from "../lib/medimade-auth-tokens";
+} from "./_shared/consciously-auth-tokens";
 
 /** Shared guest account — Continue-as-guest logs into this user. */
 export const GUEST_ACCOUNT_EMAIL = "alexmaragakis@hotmail.co.uk";
@@ -127,7 +127,7 @@ export async function handler(
 
   try {
     const guest = await getOrCreateGuestUser(usersTable);
-    const accessToken = await signMedimadeJwt({
+    const accessToken = await signConsciouslyJwt({
       sub: guest.userId,
       email: guest.email,
       name: guest.displayName,

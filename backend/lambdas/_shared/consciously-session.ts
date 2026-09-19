@@ -4,14 +4,14 @@ import type {
 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { signMedimadeJwt } from "./medimade-jwt";
+import { signConsciouslyJwt } from "./consciously-jwt";
 import {
   corsHeadersForEvent,
   newOpaqueToken,
   REFRESH_TOKEN_TTL_SEC,
   sessionSetCookieHeaders,
   sha256Hex,
-} from "./medimade-auth-tokens";
+} from "./consciously-auth-tokens";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -25,10 +25,10 @@ export type IssuedSessionPayload = {
 };
 
 /**
- * Mint Medimade access + refresh tokens (same shape as magic-link verify).
+ * Mint Consciously access + refresh tokens (same shape as magic-link verify).
  * Cognito / magic-link / guest all converge here so APIs stay JWT-based.
  */
-export async function issueMedimadeSession(params: {
+export async function issueConsciouslySession(params: {
   event: APIGatewayProxyEventV2;
   userId: string;
   email: string;
@@ -47,7 +47,7 @@ export async function issueMedimadeSession(params: {
     };
   }
 
-  const accessToken = await signMedimadeJwt({
+  const accessToken = await signConsciouslyJwt({
     sub: params.userId,
     email: params.email,
     name: params.displayName ?? undefined,

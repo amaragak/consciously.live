@@ -6,17 +6,17 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { randomUUID } from "crypto";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
-import { optionalUserJson } from "../lib/medimade-auth-http";
-import { GLOBAL_MEDITATION_USER_ID } from "../lib/meditation-user-pk";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "./_shared/speaker-sample-speed";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
+import { GLOBAL_MEDITATION_USER_ID } from "./_shared/meditation-user-pk";
 import {
   normalizeOrpheusVoiceId,
   normalizeTtsProvider,
   type TtsProvider,
-} from "../lib/orpheus-voices";
-import { coerceClaudeModel } from "../lib/anthropic-pricing";
-import { coerceMeditationTargetMinutes } from "../lib/meditation-target-minutes";
-import { sanitizeMeditationCreationProvenance } from "../lib/meditation-creation-provenance";
+} from "./_shared/orpheus-voices";
+import { coerceClaudeModel } from "./_shared/anthropic-pricing";
+import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
+import { sanitizeMeditationCreationProvenance } from "./_shared/meditation-creation-provenance";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const lambdaClient = new LambdaClient({});

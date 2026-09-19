@@ -9,13 +9,13 @@ import {
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
-import { requireUserJson } from "../lib/medimade-auth-http";
+import { requireUserJson } from "./_shared/consciously-auth-http";
 import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
-} from "../lib/meditation-user-pk";
-import { scheduleIndexMeditation } from "../lib/algolia-index-meditation";
+} from "./_shared/meditation-user-pk";
+import { scheduleIndexMeditation } from "./_shared/algolia-index-meditation";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

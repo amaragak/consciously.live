@@ -26,7 +26,7 @@ import {
   GLOBAL_MEDITATION_USER_ID,
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
-} from "../lib/meditation-user-pk";
+} from "../lambdas/_shared/meditation-user-pk";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 

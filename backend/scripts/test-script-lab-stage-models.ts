@@ -5,19 +5,19 @@
  *   npx tsx scripts/test-script-lab-stage-models.ts
  *   ANTHROPIC_API_KEY=... VOICE_ADMIN_TABLE_NAME=... AWS_PROFILE=mm npx tsx scripts/test-script-lab-stage-models.ts --live
  */
-import { claudeUsdFromTokens } from "../lib/anthropic-pricing";
-import { generateScriptLabScript } from "../lib/script-lab-generate";
+import { claudeUsdFromTokens } from "../lambdas/_shared/anthropic-pricing";
+import { generateScriptLabScript } from "../lambdas/_shared/script-lab-generate";
 import {
   SCRIPT_LAB_HAIKU_MODEL,
   SCRIPT_LAB_SONNET_MODEL,
   scriptLabModelForStage,
-} from "../lib/script-lab-models";
-import { buildScriptLabContextTags } from "../lib/script-constraint-tags";
+} from "../lambdas/_shared/script-lab-models";
+import { buildScriptLabContextTags } from "../lambdas/_shared/script-constraint-tags";
 import {
   listAllScriptSegmentLibrary,
   variantEligibleForV1V2Selection,
-} from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
+} from "../lambdas/_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "../lambdas/_shared/script-segment-tag-metrics";
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);

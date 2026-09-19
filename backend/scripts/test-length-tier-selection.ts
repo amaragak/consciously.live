@@ -5,15 +5,15 @@
  *   npx tsx scripts/test-length-tier-selection.ts
  *   AWS_PROFILE=mm VOICE_ADMIN_TABLE_NAME=... npx tsx scripts/test-length-tier-selection.ts --live
  */
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 import {
   createSegmentVariantPickerForBeats,
   selectSegmentVariant,
   type SegmentTagMeta,
   type SegmentVariantCandidate,
-} from "../lib/script-segment-variant-select";
-import type { ScriptLengthTier } from "../lib/script-segment-tags";
+} from "../lambdas/_shared/script-segment-variant-select";
+import type { ScriptLengthTier } from "../lambdas/_shared/script-segment-tags";
 
 const BODY_SCAN_BEATS: ScriptLabBeat[] = [
   { beatType: "body_scan_lower_body", custom: false, tag: "BODY_SCAN_LOWER_BODY" },

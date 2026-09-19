@@ -2,12 +2,12 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { jsonAuth } from "../lib/medimade-auth-http";
+import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   getBlogPostBySlug,
   getBlogSettings,
   listPublishedBlogPosts,
-} from "../lib/blog";
+} from "./_shared/blog";
 
 function json(
   statusCode: number,

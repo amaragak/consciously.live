@@ -35,7 +35,7 @@ function assertOpsGuestOnly(email: string): void {
 
 const USERS =
   process.env.USERS_TABLE_NAME?.trim() ||
-  "MedimadeBackend-MedimadeUsersTable56DCE6C2-1AXT1LLLN1H4S";
+  "MedimadeBackend-ConsciouslyUsersTable56DCE6C2-1AXT1LLLN1H4S";
 const IDEATE =
   process.env.IDEATE_TABLE_NAME?.trim() ||
   "MedimadeBackend-IdeateTable6FC78D26-M84L0GZB3VFS";

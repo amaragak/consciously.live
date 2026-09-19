@@ -17,8 +17,8 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
-import { optionalUserJson } from "../lib/medimade-auth-http";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "../lib/anthropic-pricing";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
+import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
 
 const secrets = new SecretsManagerClient({});
 const s3 = new S3Client({});

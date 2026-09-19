@@ -36,9 +36,9 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { ORPHEUS_VOICES, normalizeOrpheusVoiceId } from "../lib/orpheus-voices";
-import { orpheusTtsWav } from "../lib/orpheus-tts-client";
-import { loudnormMp3Buffer } from "../lib/ffmpeg-loudnorm";
+import { ORPHEUS_VOICES, normalizeOrpheusVoiceId } from "../lambdas/_shared/orpheus-voices";
+import { orpheusTtsWav } from "../lambdas/_shared/orpheus-tts-client";
+import { loudnormMp3Buffer } from "../lambdas/_shared/ffmpeg-loudnorm";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   SPEAKER_PREVIEW_SPEEDS,
@@ -47,7 +47,7 @@ import {
   orpheusSpeakerPreviewLoudSampleKey,
   orpheusSpeakerPreviewSampleKey,
   speechSpeedToSampleStem,
-} from "../lib/speaker-sample-speed";
+} from "../lambdas/_shared/speaker-sample-speed";
 
 const SAMPLE_TEXT = "Welcome to your personalised meditation";
 const DEFAULT_LOCAL_SAMPLES_DIR = path.join(
@@ -279,12 +279,12 @@ function applyAwsProfileFromCliArgs(args: string[]): void {
   process.env.AWS_PROFILE = "mm";
 }
 
-function resolveMedimadeApiBase(awsArgs: string[]): string | null {
+function resolveConsciouslyApiBase(awsArgs: string[]): string | null {
   const fromEnv =
-    process.env.MEDIIMADE_API_URL?.trim() ||
-    process.env.NEXT_PUBLIC_MEDIMADE_API_URL?.trim();
+    process.env.CONSCIOUSLY_API_URL?.trim() ||
+    process.env.NEXT_PUBLIC_CONSCIOUSLY_API_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
-  const stack = process.env.MEDIIMADE_STACK_NAME?.trim() || "MedimadeBackend";
+  const stack = process.env.CONSCIOUSLY_STACK_NAME?.trim() || "MedimadeBackend";
   try {
     const out = execFileSync(
       "aws",
@@ -544,7 +544,7 @@ async function generateLocalSample(params: {
 
     if (!params.apiBase) {
       console.warn(
-        "No API base — skipping voice-fx (3/3). Set MEDIIMADE_API_URL to test FX.",
+        "No API base — skipping voice-fx (3/3). Set CONSCIOUSLY_API_URL to test FX.",
       );
       return;
     }
@@ -599,7 +599,7 @@ async function main(): Promise<void> {
 
   if (resolvedLocalOutBase) {
     const runpod = await getRunpodCredentials(secrets);
-    const apiBase = resolveMedimadeApiBase(awsArgs);
+    const apiBase = resolveConsciouslyApiBase(awsArgs);
     const runStarted = Date.now();
     await generateLocalSample({
       runpod,
@@ -615,7 +615,7 @@ async function main(): Promise<void> {
 
   const s3 = new S3Client({});
   const bucket = resolveMediaBucket(awsArgs);
-  const apiBase = resolveMedimadeApiBase(awsArgs);
+  const apiBase = resolveConsciouslyApiBase(awsArgs);
 
   const voices = voiceId
     ? ORPHEUS_VOICES.filter((v) => v.id === testVoiceId)
@@ -642,7 +642,7 @@ async function main(): Promise<void> {
   }
   if (!apiBase) {
     console.warn(
-      "No HTTP API base for voice-fx (set MEDIIMADE_API_URL or deploy stack with ApiUrl). Skipping *-loud-fx.wav uploads.",
+      "No HTTP API base for voice-fx (set CONSCIOUSLY_API_URL or deploy stack with ApiUrl). Skipping *-loud-fx.wav uploads.",
     );
   }
 

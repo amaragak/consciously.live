@@ -6,7 +6,7 @@ import {
   DetectDocumentTextCommand,
   TextractClient,
 } from "@aws-sdk/client-textract";
-import { optionalUserJson } from "../lib/medimade-auth-http";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
 
 const textract = new TextractClient({});
 const MAX_BYTES = 4_500_000;

@@ -14,8 +14,8 @@ import {
   type SentenceVerdict,
   type VerificationSentence,
   type VerificationTagCard,
-} from "../lib/script-lab-beat-verification";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-lab-beat-verification";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
 
 const TRANSCRIPT = [
   "User: I've been dealing with a lot of tension in my lower back lately.",

@@ -2,16 +2,16 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { requireAdminJson } from "../lib/admin-auth";
-import { jsonAuth } from "../lib/medimade-auth-http";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   generateProgramDayDescription,
-} from "../lib/program-day-description";
+} from "./_shared/program-day-description";
 import {
   deleteProgram,
   listPrograms,
   putProgram,
-} from "../lib/programs";
+} from "./_shared/programs";
 
 function json(
   statusCode: number,

@@ -1,7 +1,7 @@
 import {
   runSegmentMetadataImport,
   validateSegmentMetadataImportJson,
-} from "../lib/script-segment-metadata-import";
+} from "../lambdas/_shared/script-segment-metadata-import";
 
 const FIXTURE = [
   {

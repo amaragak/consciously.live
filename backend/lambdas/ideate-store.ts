@@ -13,8 +13,8 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { optionalUserJson, parseBearer, requireUserJson } from "../lib/medimade-auth-http";
-import { scheduleIndexIdeateBundle } from "../lib/algolia-index-ideate";
+import { optionalUserJson, parseBearer, requireUserJson } from "./_shared/consciously-auth-http";
+import { scheduleIndexIdeateBundle } from "./_shared/algolia-index-ideate";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },

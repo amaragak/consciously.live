@@ -5,7 +5,7 @@
 import {
   collapseSameConnectiveSeparatedOnlyByPauses,
   type ScriptLabBeat,
-} from "../lib/script-lab-beats";
+} from "../lambdas/_shared/script-lab-beats";
 import {
   CONNECTIVE_SEGMENT_TAGS,
   inferDefaultSegmentRepeatability,
@@ -13,8 +13,8 @@ import {
   repeatabilityPromptLine,
   scriptSegmentLibraryPromptBlock,
   scriptSegmentSelectionRulesBlock,
-} from "../lib/script-segment-tags";
-import { scriptLabConnectiveTagSpacingRules } from "../lib/script-lab-shared-prompt-rules";
+} from "../lambdas/_shared/script-segment-tags";
+import { scriptLabConnectiveTagSpacingRules } from "../lambdas/_shared/script-lab-shared-prompt-rules";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);

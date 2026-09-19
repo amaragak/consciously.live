@@ -9,7 +9,7 @@
 import {
   anthropicCountMessageInputTokens,
   CLAUDE_SONNET_45_MODEL_ID,
-} from "../lib/anthropic-pricing";
+} from "../lambdas/_shared/anthropic-pricing";
 import {
   buildVerificationPrompt,
   buildVerificationSentenceList,
@@ -18,9 +18,9 @@ import {
   type GeneralTagVariantCatalog,
   type VerificationTagCard,
   type VerificationSentence,
-} from "../lib/script-lab-beat-verification";
-import { tagNameToBeatType, type ScriptLabBeat } from "../lib/script-lab-beats";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
+} from "../lambdas/_shared/script-lab-beat-verification";
+import { tagNameToBeatType, type ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
 
 const TRANSCRIPT = [
   "User: linger on lower back",

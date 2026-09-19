@@ -7,8 +7,8 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { requireAdminJson } from "../lib/admin-auth";
-import { jsonAuth } from "../lib/medimade-auth-http";
+import { requireAdminJson } from "./_shared/admin-auth";
+import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   deleteBlogPost,
   getBlogPostById,
@@ -16,8 +16,8 @@ import {
   listBlogPosts,
   putBlogPost,
   putBlogSettings,
-} from "../lib/blog";
-import { invalidateBlogCache } from "../lib/blog-revalidate";
+} from "./_shared/blog";
+import { invalidateBlogCache } from "./_shared/blog-revalidate";
 
 const s3 = new S3Client({});
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;

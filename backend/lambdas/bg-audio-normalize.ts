@@ -7,8 +7,8 @@ import type { Readable } from "stream";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "../lib/bg-audio-opus";
-import { updateSoundProcessing } from "../lib/sound-catalog";
+import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "./_shared/bg-audio-opus";
+import { updateSoundProcessing } from "./_shared/sound-catalog";
 
 const s3 = new S3Client({});
 const execFileAsync = promisify(execFile);

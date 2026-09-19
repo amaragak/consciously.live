@@ -2,8 +2,8 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import type { FishSpeaker } from "../lib/fish-speakers";
-import { listPickerFishSpeakers } from "../lib/voice-admin";
+import type { FishSpeaker } from "./_shared/fish-speakers";
+import { listPickerFishSpeakers } from "./_shared/voice-admin";
 
 function json(
   statusCode: number,

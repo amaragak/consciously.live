@@ -7,18 +7,18 @@
  *     npx tsx scripts/test-movement-constraint-context.ts --live
  */
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
+import { CLAUDE_SONNET_45_MODEL_ID } from "../lambdas/_shared/anthropic-pricing";
 import {
   buildScriptLabContextTags,
   DEFAULT_SEATED_CONSTRAINT,
   STANDING_CONSTRAINT,
   variantEligibleForContext,
-} from "../lib/script-constraint-tags";
-import { generateScriptLabScriptV2 } from "../lib/script-lab-generate-v2";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
-import { buildSegmentTagsForGenerationPrompt } from "../lib/script-segment-tag-metrics";
-import type { ScriptLengthTier } from "../lib/script-segment-tags";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
+} from "../lambdas/_shared/script-constraint-tags";
+import { generateScriptLabScriptV2 } from "../lambdas/_shared/script-lab-generate-v2";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
+import { buildSegmentTagsForGenerationPrompt } from "../lambdas/_shared/script-segment-tag-metrics";
+import type { ScriptLengthTier } from "../lambdas/_shared/script-segment-tags";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "../lambdas/_shared/speaker-sample-speed";
 
 const WALKING_TRANSCRIPT = [
   "User: I want a movement meditation while walking and running around the office.",

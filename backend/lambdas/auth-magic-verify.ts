@@ -8,10 +8,10 @@ import {
   DeleteCommand,
   GetCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { optionsAuth } from "../lib/medimade-auth-http";
-import { corsHeadersForEvent, sha256Hex } from "../lib/medimade-auth-tokens";
-import { issueMedimadeSession } from "../lib/medimade-session";
-import { getOrCreateUserByEmail } from "../lib/medimade-users";
+import { optionsAuth } from "./_shared/consciously-auth-http";
+import { corsHeadersForEvent, sha256Hex } from "./_shared/consciously-auth-tokens";
+import { issueConsciouslySession } from "./_shared/consciously-session";
+import { getOrCreateUserByEmail } from "./_shared/consciously-users";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -95,7 +95,7 @@ export async function handler(
 
   try {
     const user = await getOrCreateUserByEmail(email);
-    return await issueMedimadeSession({
+    return await issueConsciouslySession({
       event,
       userId: user.userId,
       email: user.email,

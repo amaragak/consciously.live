@@ -2,12 +2,12 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { verifyMedimadeJwt } from "./medimade-jwt";
+import { verifyConsciouslyJwt } from "./consciously-jwt";
 import {
   ACCESS_COOKIE,
   corsHeadersForEvent,
   parseCookieHeader,
-} from "./medimade-auth-tokens";
+} from "./consciously-auth-tokens";
 
 export function jsonAuth(
   statusCode: number,
@@ -69,7 +69,7 @@ export function parseBearer(
 ): string | null {
   const fromHeader =
     headerValueCaseInsensitive(event.headers, "authorization") ??
-    headerValueCaseInsensitive(event.headers, "x-medimade-authorization");
+    headerValueCaseInsensitive(event.headers, "x-consciously-authorization");
   if (fromHeader) {
     const t = stripBearerPrefix(fromHeader);
     if (t) return t;
@@ -95,16 +95,16 @@ export function parseBearer(
   return null;
 }
 
-export type MedimadeAuthUser = { sub: string; email?: string; name?: string };
+export type ConsciouslyAuthUser = { sub: string; email?: string; name?: string };
 
 export async function optionalUserJson(
   event: APIGatewayProxyEventV2,
   extraToken?: string | null,
-): Promise<MedimadeAuthUser | null> {
+): Promise<ConsciouslyAuthUser | null> {
   const token = parseBearer(event, extraToken);
   if (!token) return null;
   try {
-    const claims = await verifyMedimadeJwt(token);
+    const claims = await verifyConsciouslyJwt(token);
     if (!claims?.sub) return null;
     return {
       sub: claims.sub,
@@ -119,13 +119,13 @@ export async function optionalUserJson(
 export async function requireUserJson(
   event: APIGatewayProxyEventV2,
   extraToken?: string | null,
-): Promise<MedimadeAuthUser | APIGatewayProxyStructuredResultV2> {
+): Promise<ConsciouslyAuthUser | APIGatewayProxyStructuredResultV2> {
   const token = parseBearer(event, extraToken);
   if (!token) {
     return jsonAuth(401, { error: "Authorization Bearer token required" }, event);
   }
   try {
-    const claims = await verifyMedimadeJwt(token);
+    const claims = await verifyConsciouslyJwt(token);
     if (!claims?.sub) {
       return jsonAuth(401, { error: "Invalid or expired session" }, event);
     }

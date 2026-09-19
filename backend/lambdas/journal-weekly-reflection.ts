@@ -17,13 +17,13 @@ import {
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
   parseAnthropicMessageUsage,
-} from "../lib/anthropic-pricing";
-import { optionalUserJson } from "../lib/medimade-auth-http";
+} from "./_shared/anthropic-pricing";
+import { optionalUserJson } from "./_shared/consciously-auth-http";
 import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
-} from "../lib/meditation-user-pk";
+} from "./_shared/meditation-user-pk";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 

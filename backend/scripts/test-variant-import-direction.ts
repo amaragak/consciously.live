@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildVariantImportFieldsFromJson,
   importScriptSegments,
-} from "../lib/script-segment-library";
+} from "../lambdas/_shared/script-segment-library";
 
 async function testDirectionUpsertById() {
   const tag = `TEST_DIR_${randomUUID().slice(0, 8).toUpperCase()}`;

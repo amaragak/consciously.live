@@ -10,13 +10,13 @@ import {
   parseAnyBgAudioKey,
   type BgAudioCategory,
   type ListedBgItem,
-} from "../lib/background-audio-keys";
-import { listAllSoundRows, soundIsInCustomerPicker } from "../lib/sound-catalog";
-import { listFactoryMixes } from "../lib/factory-mixes";
+} from "./_shared/background-audio-keys";
+import { listAllSoundRows, soundIsInCustomerPicker } from "./_shared/sound-catalog";
+import { listFactoryMixes } from "./_shared/factory-mixes";
 import {
   coerceSoundSubcategory,
   inferSoundSubcategory,
-} from "../lib/sound-taxonomy";
+} from "./_shared/sound-taxonomy";
 
 const s3 = new S3Client({});
 

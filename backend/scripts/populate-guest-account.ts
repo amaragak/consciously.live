@@ -43,13 +43,13 @@ function assertOpsGuestOnly(email: string): void {
   }
 }
 
-const USERS = "MedimadeBackend-MedimadeUsersTable56DCE6C2-1AXT1LLLN1H4S";
+const USERS = "MedimadeBackend-ConsciouslyUsersTable56DCE6C2-1AXT1LLLN1H4S";
 const IDEATE = "MedimadeBackend-IdeateTable6FC78D26-M84L0GZB3VFS";
 const ANALYTICS =
   "MedimadeBackend-MeditationAnalyticsTableDBD22E65-INTB3IF3ZBC";
 const MEDIA_BUCKET =
   process.env.MEDIA_BUCKET_NAME?.trim() ||
-  "medimadebackend-mediabucketbcbb02ba-qbflcb6ucrj7";
+  "consciouslybackend-mediabucketbcbb02ba-qbflcb6ucrj7";
 const MEDIA_BASE =
   process.env.MEDIA_BASE_URL?.trim() ||
   "https://d30tgo2eshgnaf.cloudfront.net";

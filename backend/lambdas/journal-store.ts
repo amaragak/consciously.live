@@ -10,8 +10,8 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { optionalUserJson, requireUserJson } from "../lib/medimade-auth-http";
-import { scheduleIndexJournalStore } from "../lib/algolia-index-journal";
+import { optionalUserJson, requireUserJson } from "./_shared/consciously-auth-http";
+import { scheduleIndexJournalStore } from "./_shared/algolia-index-journal";
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient, {

@@ -7,7 +7,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import { siblingOpusKey } from "../lib/background-audio-keys";
+import { siblingOpusKey } from "./_shared/background-audio-keys";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -16,36 +16,36 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { parseBuffer } from "music-metadata";
-import { loudnormMp3Buffer } from "../lib/ffmpeg-loudnorm";
+import { loudnormMp3Buffer } from "./_shared/ffmpeg-loudnorm";
 import {
   type KnownMeditationType,
   inferPresetTypeFromScriptHeuristic,
   knownMeditationTypesJsonArrayBlock,
   normalizeMeditationType,
-} from "../lib/meditation-types";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
+} from "./_shared/meditation-types";
+import { FIXED_SPEECH_PREVIEW_SPEED } from "./_shared/speaker-sample-speed";
 import {
   GLOBAL_MEDITATION_USER_ID,
   meditationUserPk,
-} from "../lib/meditation-user-pk";
-import { coerceClaudeModel, parseAnthropicMessageUsage } from "../lib/anthropic-pricing";
-import { coerceMeditationTargetMinutes } from "../lib/meditation-target-minutes";
-import { sanitizeMeditationCreationProvenance } from "../lib/meditation-creation-provenance";
-import { estimateCoachChatTokensFromTranscript } from "../lib/claude-coach-chat-estimate";
-import { orpheusTtsWav } from "../lib/orpheus-tts-client";
+} from "./_shared/meditation-user-pk";
+import { coerceClaudeModel, parseAnthropicMessageUsage } from "./_shared/anthropic-pricing";
+import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
+import { sanitizeMeditationCreationProvenance } from "./_shared/meditation-creation-provenance";
+import { estimateCoachChatTokensFromTranscript } from "./_shared/claude-coach-chat-estimate";
+import { orpheusTtsWav } from "./_shared/orpheus-tts-client";
 import {
   normalizeTtsProvider,
   type TtsProvider,
-} from "../lib/orpheus-voices";
-import { buildMeditationScriptGenerationPrompt } from "../lib/meditation-script-generate-prompt";
+} from "./_shared/orpheus-voices";
+import { buildMeditationScriptGenerationPrompt } from "./_shared/meditation-script-generate-prompt";
 import {
   fishPauseTagStyleForModel,
   parseScriptIntoSegments,
   replacePauseMarkersWithFishNative,
   stripPauseMarkers as spokenPlainWithoutPauses,
   sumPauseMarkerSeconds,
-} from "../lib/script-pause-bands";
-import { loadPauseBandSeconds } from "../lib/voice-admin";
+} from "./_shared/script-pause-bands";
+import { loadPauseBandSeconds } from "./_shared/voice-admin";
 import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -152,12 +152,12 @@ async function voiceFxWavViaS3(params: {
   };
 }> {
   // Worker fans out one VoiceFx Lambda per section (IAM invoke). HTTP remains for
-  // short preview/sample scripts that only have MEDIMADE_API_URL.
+  // short preview/sample scripts that only have CONSCIOUSLY_API_URL.
   const functionName = process.env.VOICE_FX_FUNCTION_NAME?.trim();
-  const apiBase = process.env.MEDIMADE_API_URL?.trim().replace(/\/$/, "");
+  const apiBase = process.env.CONSCIOUSLY_API_URL?.trim().replace(/\/$/, "");
   if (!functionName && !apiBase) {
     throw new Error(
-      "VOICE_FX_FUNCTION_NAME or MEDIMADE_API_URL is required for voice-fx",
+      "VOICE_FX_FUNCTION_NAME or CONSCIOUSLY_API_URL is required for voice-fx",
     );
   }
 

@@ -4,7 +4,7 @@ import type {
 } from "aws-lambda";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
-import { requireUserJson } from "../lib/medimade-auth-http";
+import { requireUserJson } from "./_shared/consciously-auth-http";
 
 const s3 = new S3Client({});
 

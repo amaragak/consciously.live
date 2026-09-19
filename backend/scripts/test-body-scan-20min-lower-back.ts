@@ -6,22 +6,22 @@
  *     npx tsx scripts/test-body-scan-20min-lower-back.ts
  */
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { findDuplicateBeatTypeWarnings, tagNameToBeatType } from "../lib/script-lab-beats";
-import { generateScriptLabScript } from "../lib/script-lab-generate";
-import { listAllScriptSegmentLibrary } from "../lib/script-segment-library";
+import { findDuplicateBeatTypeWarnings, tagNameToBeatType } from "../lambdas/_shared/script-lab-beats";
+import { generateScriptLabScript } from "../lambdas/_shared/script-lab-generate";
+import { listAllScriptSegmentLibrary } from "../lambdas/_shared/script-segment-library";
 import {
   buildSegmentTagsForGenerationPrompt,
   buildSegmentTagMetricsIndex,
   budgetMetricsForTagAtTarget,
-} from "../lib/script-segment-tag-metrics";
-import { buildMeditationScriptGenerationPrompt } from "../lib/meditation-script-generate-prompt";
-import { customTextHasPersonalizationSignal } from "../lib/script-lab-beat-verification";
-import { countWords, speechSecondsFromWordCount } from "../lib/script-text-metrics";
-import { SCRIPT_PAUSE_BAND_SECONDS } from "../lib/script-pause-bands";
-import { CLAUDE_SONNET_45_MODEL_ID } from "../lib/anthropic-pricing";
-import type { ScriptLabBeat } from "../lib/script-lab-beats";
-import type { ScriptPauseBand } from "../lib/script-pause-bands";
-import { inferDefaultSegmentRepeatability, type ScriptSegmentRepeatability } from "../lib/script-segment-tags";
+} from "../lambdas/_shared/script-segment-tag-metrics";
+import { buildMeditationScriptGenerationPrompt } from "../lambdas/_shared/meditation-script-generate-prompt";
+import { customTextHasPersonalizationSignal } from "../lambdas/_shared/script-lab-beat-verification";
+import { countWords, speechSecondsFromWordCount } from "../lambdas/_shared/script-text-metrics";
+import { SCRIPT_PAUSE_BAND_SECONDS } from "../lambdas/_shared/script-pause-bands";
+import { CLAUDE_SONNET_45_MODEL_ID } from "../lambdas/_shared/anthropic-pricing";
+import type { ScriptLabBeat } from "../lambdas/_shared/script-lab-beats";
+import type { ScriptPauseBand } from "../lambdas/_shared/script-pause-bands";
+import { inferDefaultSegmentRepeatability, type ScriptSegmentRepeatability } from "../lambdas/_shared/script-segment-tags";
 
 const TRANSCRIPT = [
   "User: My lower back has been really tight — I'm sitting under my oak tree and want a long body scan from my toes to head and back, with real time in my lower back.",

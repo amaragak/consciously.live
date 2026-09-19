@@ -3,7 +3,7 @@
  *
  * Never calls Fish TTS for keys that already exist in S3 (saves credits). Uses HeadObject before each synthesize.
  * Also uploads `*-fx.wav` per speed (Pedalboard preset `mixer` via POST /audio/voice-fx) when missing.
- * API base: `MEDIIMADE_API_URL` / `NEXT_PUBLIC_MEDIMADE_API_URL`, or AWS CLI discovers `ApiUrl` from stack `MedimadeBackend` (override with `MEDIIMADE_STACK_NAME`).
+ * API base: `CONSCIOUSLY_API_URL` / `NEXT_PUBLIC_CONSCIOUSLY_API_URL`, or AWS CLI discovers `ApiUrl` from stack `MedimadeBackend` (override with `CONSCIOUSLY_STACK_NAME`).
  *
  * Usage (from repo root or anywhere):
  *   backend/scripts/generate-speaker-samples
@@ -37,15 +37,15 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { FISH_SPEAKERS } from "../lib/fish-speakers";
-import { loudnormMp3Buffer } from "../lib/ffmpeg-loudnorm";
+import { FISH_SPEAKERS } from "../lambdas/_shared/fish-speakers";
+import { loudnormMp3Buffer } from "../lambdas/_shared/ffmpeg-loudnorm";
 import {
   SPEAKER_PREVIEW_SPEEDS,
   speakerPreviewFxSampleKey,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
   speakerPreviewSampleKey,
-} from "../lib/speaker-sample-speed";
+} from "../lambdas/_shared/speaker-sample-speed";
 
 const SAMPLE_TEXT = "Welcome to your personalised meditation";
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
@@ -135,12 +135,12 @@ function applyAwsProfileFromCliArgs(args: string[]): void {
   process.env.AWS_PROFILE = "mm";
 }
 
-function resolveMedimadeApiBase(awsArgs: string[]): string | null {
+function resolveConsciouslyApiBase(awsArgs: string[]): string | null {
   const fromEnv =
-    process.env.MEDIIMADE_API_URL?.trim() ||
-    process.env.NEXT_PUBLIC_MEDIMADE_API_URL?.trim();
+    process.env.CONSCIOUSLY_API_URL?.trim() ||
+    process.env.NEXT_PUBLIC_CONSCIOUSLY_API_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
-  const stack = process.env.MEDIIMADE_STACK_NAME?.trim() || "MedimadeBackend";
+  const stack = process.env.CONSCIOUSLY_STACK_NAME?.trim() || "MedimadeBackend";
   try {
     const out = execFileSync(
       "aws",
@@ -335,10 +335,10 @@ async function main(): Promise<void> {
     );
   }
 
-  const apiBase = resolveMedimadeApiBase(awsArgs);
+  const apiBase = resolveConsciouslyApiBase(awsArgs);
   if (!apiBase) {
     console.warn(
-      "No HTTP API base for voice-fx (set MEDIIMADE_API_URL or deploy stack with ApiUrl). Skipping *-fx.wav uploads.",
+      "No HTTP API base for voice-fx (set CONSCIOUSLY_API_URL or deploy stack with ApiUrl). Skipping *-fx.wav uploads.",
     );
   }
 
