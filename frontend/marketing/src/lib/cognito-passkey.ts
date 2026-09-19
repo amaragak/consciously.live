@@ -93,13 +93,14 @@ function requireClient(config: CognitoAuthConfig): {
   return { clientId, region };
 }
 
-function b64urlToBytes(value: string): Uint8Array {
+function b64urlToBytes(value: string): ArrayBuffer {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
   const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
   const bin = atob(padded + pad);
-  const out = new Uint8Array(bin.length);
+  const buffer = new ArrayBuffer(bin.length);
+  const out = new Uint8Array(buffer);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  return buffer;
 }
 
 function bytesToB64url(bytes: ArrayBuffer | ArrayBufferView): string {
