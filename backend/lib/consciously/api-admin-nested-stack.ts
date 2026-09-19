@@ -325,7 +325,6 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         memorySize: 2048,
         ephemeralStorageSize: cdk.Size.mebibytes(1024),
         layers: [ffmpegLayer],
-        role,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
@@ -337,6 +336,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         },
       },
     );
+    voiceAdminTable.grantReadWriteData(adminBlogNarrate);
+    mediaBucket.grantReadWrite(adminBlogNarrate);
+    fishApiKeySecret.grantRead(adminBlogNarrate);
+    blogRevalidateSecret.grantRead(adminBlogNarrate);
     adminBlogNarrate.grantInvoke(role);
 
     const adminBlog = new lambda_nodejs.NodejsFunction(this, "AdminBlogFunction", {
