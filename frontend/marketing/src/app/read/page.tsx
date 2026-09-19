@@ -17,11 +17,9 @@ export default async function ReadIndexPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-marketing-eyebrow">
-        Read
-      </p>
-      <h1 className="mt-2 font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
-        Writing
+      <h1 className="font-display text-4xl font-medium tracking-tight sm:text-5xl">
+        <span className="text-foreground">consciously</span>{" "}
+        <span className="italic text-accent-link">Read</span>
       </h1>
       {indexSummary ? (
         <p className="mt-3 max-w-xl whitespace-pre-line text-base leading-relaxed text-muted">
