@@ -24,7 +24,7 @@ export default async function ReadIndexPage() {
         Writing
       </h1>
       {indexSummary ? (
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-muted">
+        <p className="mt-3 max-w-xl whitespace-pre-line text-base leading-relaxed text-muted">
           {indexSummary}
         </p>
       ) : null}
