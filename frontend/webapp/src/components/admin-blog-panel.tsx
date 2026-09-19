@@ -585,10 +585,11 @@ export function AdminReadPanel() {
                 }
                 rows={3}
                 className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder="Card text on the Read index (/read)"
+                placeholder="Shown under the subheader on the article and on the Read index"
               />
               <p className="mt-1 text-[11px] text-muted">
-                Shown under the title in the post list. Leave blank to hide.
+                Shown under the subheader on the published post and in the post
+                list. Leave blank to hide.
               </p>
             </div>
             <div>
@@ -637,6 +638,14 @@ export function AdminReadPanel() {
                 onHtmlChange={(html) =>
                   setDraft((d) => ({ ...d, body: html }))
                 }
+                linkPosts={posts
+                  .filter((p) => p.id !== draft.id)
+                  .map((p) => ({
+                    id: p.id,
+                    title: p.title,
+                    slug: p.slug,
+                    published: p.published,
+                  }))}
               />
             </div>
             <label className="inline-flex items-center gap-2 text-sm text-foreground">

@@ -29,6 +29,17 @@ function authorPhotoKeyFromUrl(url: string | null | undefined): string | null {
   return m?.[1] ?? null;
 }
 
+function parseImageMime(raw: unknown): "image/jpeg" | "image/png" | "image/webp" {
+  const mimeRaw = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (mimeRaw === "image/png") return "image/png";
+  if (mimeRaw === "image/webp") return "image/webp";
+  return "image/jpeg";
+}
+
+function imageExt(mime: "image/jpeg" | "image/png" | "image/webp"): string {
+  return mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+}
+
 async function deleteAuthorPhotoObject(
   bucket: string,
   key: string | null,
@@ -63,24 +74,30 @@ function decodeImageBase64(raw: string): Buffer {
   return Buffer.from(b64, "base64");
 }
 
-async function uploadAuthorPhoto(body: Record<string, unknown>) {
+async function putBlogMediaObject(params: {
+  key: string;
+  body: Buffer;
+  mime: "image/jpeg" | "image/png" | "image/webp";
+}): Promise<string> {
   const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
   const cfDomain = process.env.MEDIA_CLOUDFRONT_DOMAIN?.trim();
   if (!bucket || !cfDomain) {
     throw new Error("MEDIA_BUCKET_NAME or MEDIA_CLOUDFRONT_DOMAIN is not set");
   }
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.mime,
+      CacheControl: "public, max-age=31536000, immutable",
+    }),
+  );
+  return `https://${cfDomain}/${params.key}`;
+}
 
-  const mimeRaw =
-    typeof body.mimeType === "string" ? body.mimeType.trim().toLowerCase() : "";
-  const mime =
-    mimeRaw === "image/png" ||
-    mimeRaw === "image/webp" ||
-    mimeRaw === "image/jpeg" ||
-    mimeRaw === "image/jpg"
-      ? mimeRaw === "image/jpg"
-        ? "image/jpeg"
-        : mimeRaw
-      : "image/jpeg";
+async function uploadAuthorPhoto(body: Record<string, unknown>) {
+  const mime = parseImageMime(body.mimeType);
 
   const b64 =
     typeof body.imageBase64 === "string" ? body.imageBase64.trim() : "";
@@ -94,32 +111,39 @@ async function uploadAuthorPhoto(body: Record<string, unknown>) {
 
   // Unique key per upload — CloudFront’s default cache policy ignores
   // query strings, so overwriting blog/author-photo.jpg kept serving the old image.
-  const ext =
-    mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
-  const key = `blog/author-photo-${Date.now()}.${ext}`;
+  const key = `blog/author-photo-${Date.now()}.${imageExt(mime)}`;
 
   const existing = await getBlogSettings();
   const previousKey = authorPhotoKeyFromUrl(existing.authorPhotoUrl);
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: buf,
-      ContentType: mime,
-      CacheControl: "public, max-age=31536000, immutable",
-    }),
-  );
-
-  const url = `https://${cfDomain}/${key}`;
+  const url = await putBlogMediaObject({ key, body: buf, mime });
   const settings = await putBlogSettings({ authorPhotoUrl: url });
 
-  if (previousKey && previousKey !== key) {
+  const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
+  if (bucket && previousKey && previousKey !== key) {
     await deleteAuthorPhotoObject(bucket, previousKey);
   }
 
   await invalidateBlogCache({ index: true });
   return settings;
+}
+
+/** Upload an in-post image; returns CDN URL for TipTap insertion. */
+async function uploadPostImage(body: Record<string, unknown>): Promise<string> {
+  const mime = parseImageMime(body.mimeType);
+
+  const b64 =
+    typeof body.imageBase64 === "string" ? body.imageBase64.trim() : "";
+  if (!b64) throw new Error("`imageBase64` is required");
+
+  const buf = decodeImageBase64(b64);
+  if (!buf.byteLength) throw new Error("Image is empty");
+  if (buf.byteLength > MAX_PHOTO_BYTES) {
+    throw new Error("Image must be under 2 MB (compress before upload)");
+  }
+
+  const key = `blog/posts/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${imageExt(mime)}`;
+  return putBlogMediaObject({ key, body: buf, mime });
 }
 
 export async function handler(
@@ -191,6 +215,10 @@ export async function handler(
       if (action === "uploadAuthorPhoto") {
         const settings = await uploadAuthorPhoto(body);
         return json(200, { settings });
+      }
+      if (action === "uploadPostImage") {
+        const url = await uploadPostImage(body);
+        return json(200, { url });
       }
       if (action === "clearAuthorPhoto") {
         const existing = await getBlogSettings();

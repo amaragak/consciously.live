@@ -53,8 +53,13 @@ export default async function ReadPostPage({ params }: Props) {
           {post.subheader}
         </p>
       ) : null}
+      {post.excerpt ? (
+        <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-muted sm:text-base">
+          {post.excerpt}
+        </p>
+      ) : null}
       <ReadPostTags tags={post.tags} />
-      <div className="mt-10 border-t border-border pt-8">
+      <div className="mt-6">
         <ReadBody source={post.body} />
       </div>
     </article>

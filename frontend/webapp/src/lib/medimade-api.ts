@@ -3685,6 +3685,39 @@ export async function saveAdminBlogSettings(
   return normalizeAdminBlogSettings(data.settings);
 }
 
+/** Upload an in-post image; returns a CDN URL for TipTap insertion. */
+export async function uploadAdminBlogPostImage(params: {
+  imageBase64: string;
+  mimeType: string;
+}): Promise<{ url: string }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "uploadPostImage",
+      imageBase64: params.imageBase64,
+      mimeType: params.mimeType,
+    }),
+  });
+  const data = (await res.json()) as {
+    url?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const url = typeof data.url === "string" ? data.url.trim() : "";
+  if (!url) {
+    throw new Error(
+      "Server did not return an image URL — redeploy backend, then try again",
+    );
+  }
+  return { url };
+}
+
 /** Upload author photo for the Read index (JPEG/PNG/WebP, compressed client-side). */
 export async function uploadAdminBlogAuthorPhoto(params: {
   imageBase64: string;

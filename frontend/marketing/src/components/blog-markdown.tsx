@@ -16,6 +16,11 @@ export function sanitizeReadHtml(html: string): string {
     .replace(/<(?:script|style|iframe|object|embed|form|link|meta)\b[^>]*\/?>/gi, "");
   out = out.replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
   out = out.replace(/\s(href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, "");
+  // Prefer CDN URLs from the editor upload; drop data: / blob: payloads.
+  out = out.replace(
+    /\ssrc\s*=\s*(?:"\s*(?:data:|blob:)[^"]*"|'\s*(?:data:|blob:)[^']*'|(?:data:|blob:)[^\s>]+)/gi,
+    ' src=""',
+  );
   return out;
 }
 
@@ -172,7 +177,6 @@ const proseClass =
   "[&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-xl [&_h3]:font-medium [&_h3]:tracking-tight [&_h3]:text-foreground " +
   "[&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:text-[17px] [&_ul]:text-foreground " +
   "[&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ol]:text-[17px] [&_ol]:text-foreground " +
-  "[&_blockquote]:mt-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-foreground/80 " +
   "[&_strong]:font-semibold [&_em]:italic " +
   "[&_a]:text-accent-link [&_a]:underline [&_a]:underline-offset-2";
 

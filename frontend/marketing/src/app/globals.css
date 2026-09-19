@@ -166,6 +166,86 @@ body {
   font-family: var(--font-fraunces), Georgia, serif;
 }
 
+/* Pull quotes on published Read posts */
+.read-prose blockquote {
+  position: relative;
+  margin: 2.25rem 0;
+  border: none;
+  padding: 0.35rem 1.75rem 0.35rem 2.75rem;
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 1.35rem;
+  font-style: italic;
+  font-weight: 450;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.read-prose blockquote::before,
+.read-prose blockquote::after {
+  position: absolute;
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 3.75rem;
+  line-height: 1;
+  color: var(--accent-link);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.read-prose blockquote::before {
+  content: "\201C";
+  left: 0;
+  top: -0.2em;
+}
+
+.read-prose blockquote::after {
+  content: "\201D";
+  right: 0.15rem;
+  bottom: -0.55em;
+}
+
+.read-prose blockquote p {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+  font-size: inherit;
+  font-style: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.read-prose blockquote p:first-child {
+  margin-top: 0;
+}
+
+.read-prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* In-post images: natural aspect vs content-full-width */
+.read-prose img.read-img,
+.read-prose img[data-layout] {
+  display: block;
+  height: auto;
+  margin: 1.75rem 0;
+  border-radius: 0.375rem;
+}
+
+.read-prose img.read-img--inline,
+.read-prose img[data-layout="inline"] {
+  width: auto;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.read-prose img.read-img--full,
+.read-prose img[data-layout="full"] {
+  width: 100%;
+  max-width: 100%;
+}
+
 /* Readable casual script — not overly decorative */
 .font-hand {
   font-family: var(--font-hand), "Segoe Print", "Bradley Hand", cursive;
