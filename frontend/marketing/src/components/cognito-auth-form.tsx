@@ -261,7 +261,7 @@ export function CognitoAuthForm({
               spellCheck={false}
               required
               value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
+              onChange={(ev) => setEmail(ev.target.value.toLowerCase())}
               onBlur={() => setEmail((value) => value.trim().toLowerCase())}
               className={fieldClass}
               placeholder="you@example.com"

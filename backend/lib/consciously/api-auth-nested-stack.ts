@@ -62,6 +62,15 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
     refreshTable.grantReadWriteData(role);
     authJwtSecret.grantRead(role);
     brevoApiKeySecret.grantRead(role);
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cognito-idp:ListUsers",
+          "cognito-idp:AdminResendConfirmationCode",
+        ],
+        resources: [userPool.userPoolArn],
+      }),
+    );
 
     const authMagicRequest = new lambda_nodejs.NodejsFunction(
       this,
@@ -213,6 +222,23 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       },
     );
 
+    const authCognitoResend = new lambda_nodejs.NodejsFunction(
+      this,
+      "AuthCognitoResendFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/auth-cognito-resend.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        role,
+        environment: {
+          COGNITO_USER_POOL_ID: userPool.userPoolId,
+          COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        },
+      },
+    );
+
     const authCognitoExchange = new lambda_nodejs.NodejsFunction(
       this,
       "AuthCognitoExchangeFunction",
@@ -322,6 +348,15 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthCognitoExchangeIntegration",
         authCognitoExchange,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AuthCognitoResendRoute",
+      path: "/auth/cognito/resend",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthCognitoResendIntegration",
+        authCognitoResend,
       ),
     });
   }

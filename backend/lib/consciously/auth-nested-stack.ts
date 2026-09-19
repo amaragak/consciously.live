@@ -58,6 +58,14 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
     brevoApiKey.grantRead(customEmailSender);
     emailKmsKey.grantDecrypt(customEmailSender);
 
+    const preSignUp = new lambda_nodejs.NodejsFunction(this, "PreSignUpFunction", {
+      entry: path.join(__dirname, "../../lambdas/auth-cognito-presignup.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(5),
+      memorySize: 128,
+    });
+
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: "consciously-users-v2",
       selfSignUpEnabled: true,
@@ -90,6 +98,7 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
       customSenderKmsKey: emailKmsKey,
       lambdaTriggers: {
         customEmailSender,
+        preSignUp,
       },
     });
 

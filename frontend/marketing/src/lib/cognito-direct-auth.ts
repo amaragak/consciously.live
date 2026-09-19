@@ -3,7 +3,11 @@
  * Public app client — USER_PASSWORD_AUTH is enabled on the pool.
  */
 
-import type { CognitoAuthConfig } from "@/lib/medimade-api";
+import {
+  getMedimadeApiBase,
+  medimadeFetch,
+  type CognitoAuthConfig,
+} from "@/lib/medimade-api";
 
 type CognitoErrorBody = {
   __type?: string;
@@ -77,6 +81,10 @@ async function cognitoCall<T>(
   return json;
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 function requireClient(config: CognitoAuthConfig): {
   clientId: string;
   region: string;
@@ -135,7 +143,7 @@ export async function cognitoPasswordSignIn(
     AuthFlow: "USER_PASSWORD_AUTH",
     ClientId: clientId,
     AuthParameters: {
-      USERNAME: email.trim(),
+      USERNAME: normalizeEmail(email),
       PASSWORD: password,
     },
   });
@@ -149,7 +157,7 @@ export async function cognitoSignUp(
   name?: string,
 ): Promise<{ confirmed: boolean }> {
   const { clientId, region } = requireClient(config);
-  const username = email.trim();
+  const username = normalizeEmail(email);
   const attrs: { Name: string; Value: string }[] = [
     { Name: "email", Value: username },
   ];
@@ -178,7 +186,7 @@ export async function cognitoConfirmSignUp(
   const { clientId, region } = requireClient(config);
   await cognitoCall(region, "ConfirmSignUp", {
     ClientId: clientId,
-    Username: email.trim(),
+    Username: normalizeEmail(email),
     ConfirmationCode: code.trim(),
   });
 }
@@ -187,10 +195,24 @@ export async function cognitoResendSignUpCode(
   config: CognitoAuthConfig,
   email: string,
 ): Promise<void> {
+  const username = normalizeEmail(email);
+  const base = getMedimadeApiBase();
+  if (base) {
+    const res = await medimadeFetch(`${base}/auth/cognito/resend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: username }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      throw new Error(data.error || "Could not resend the code.");
+    }
+    return;
+  }
   const { clientId, region } = requireClient(config);
   await cognitoCall(region, "ResendConfirmationCode", {
     ClientId: clientId,
-    Username: email.trim(),
+    Username: username,
   });
 }
 
@@ -201,7 +223,7 @@ export async function cognitoForgotPassword(
   const { clientId, region } = requireClient(config);
   await cognitoCall(region, "ForgotPassword", {
     ClientId: clientId,
-    Username: email.trim(),
+    Username: normalizeEmail(email),
   });
 }
 
@@ -214,7 +236,7 @@ export async function cognitoConfirmForgotPassword(
   const { clientId, region } = requireClient(config);
   await cognitoCall(region, "ConfirmForgotPassword", {
     ClientId: clientId,
-    Username: email.trim(),
+    Username: normalizeEmail(email),
     ConfirmationCode: code.trim(),
     Password: newPassword,
   });

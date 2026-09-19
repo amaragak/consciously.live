@@ -72,10 +72,12 @@ export async function handler(event: CustomEmailSenderEvent): Promise<void> {
 
   const code = await decryptCode(encrypted);
   const { subject, text } = copyFor(event.triggerSource ?? "", code);
+  const toEmail = to.toLowerCase();
+  console.info("custom email sender", event.triggerSource, toEmail);
   await sendEmailBrevo({
     fromEmail: from,
     fromName: "Consciously",
-    toEmail: to.toLowerCase(),
+    toEmail,
     subject,
     text,
   });

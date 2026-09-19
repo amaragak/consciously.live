@@ -60,7 +60,8 @@ function isAuthSessionPath(url: string): boolean {
       path.endsWith("/auth/magic-link/verify") ||
       path.endsWith("/auth/guest") ||
       path.endsWith("/auth/cognito/config") ||
-      path.endsWith("/auth/cognito/exchange")
+      path.endsWith("/auth/cognito/exchange") ||
+      path.endsWith("/auth/cognito/resend")
     );
   } catch {
     return false;
