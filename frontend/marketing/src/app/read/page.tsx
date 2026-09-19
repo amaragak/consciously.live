@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { ReadNarrationButton } from "@/components/read-narration-button";
 import { ReadPostTags } from "@/components/read-post-tags";
+import { ReadSeriesLabel } from "@/components/read-series-label";
 import {
   fetchPublishedBlogIndex,
   formatBlogDate,
@@ -55,26 +57,32 @@ export default async function ReadIndexPage() {
         <ul className="mt-12 flex flex-col gap-8 border-t border-border pt-8">
           {posts.map((post) => (
             <li key={post.id}>
-              <Link
-                href={`/read/${encodeURIComponent(post.slug)}`}
-                className="group block"
-              >
-                <p className="text-xs text-muted">
-                  {formatBlogDate(post.publishedAt || post.updatedAt)}
-                </p>
-                <h2 className="mt-1 font-display text-2xl font-medium tracking-tight text-foreground transition-opacity group-hover:opacity-80">
-                  {post.title}
-                </h2>
-                {post.excerpt || post.subheader ? (
-                  <p className="mt-2 text-[15px] leading-relaxed text-muted">
-                    {post.excerpt || post.subheader}
+              <div className="flex items-start justify-between gap-4">
+                <Link
+                  href={`/read/${encodeURIComponent(post.slug)}`}
+                  className="group min-w-0 flex-1"
+                >
+                  <ReadSeriesLabel series={post.series} part={post.part} />
+                  <p className="mt-1 text-xs text-muted">
+                    {formatBlogDate(post.publishedAt || post.updatedAt)}
                   </p>
+                  <h2 className="mt-1 font-display text-2xl font-medium tracking-tight text-foreground transition-opacity group-hover:opacity-80">
+                    {post.title}
+                  </h2>
+                  {post.excerpt || post.subheader ? (
+                    <p className="mt-2 text-[15px] leading-relaxed text-muted">
+                      {post.excerpt || post.subheader}
+                    </p>
+                  ) : null}
+                  <ReadPostTags tags={post.tags} />
+                  <span className="mt-3 inline-block text-sm font-medium text-accent-link">
+                    {post.hasBody ? "Continue →" : "Coming soon →"}
+                  </span>
+                </Link>
+                {post.audioUrl ? (
+                  <ReadNarrationButton src={post.audioUrl} className="shrink-0 pt-1" />
                 ) : null}
-                <ReadPostTags tags={post.tags} />
-                <span className="mt-3 inline-block text-sm font-medium text-accent-link">
-                  Continue →
-                </span>
-              </Link>
+              </div>
             </li>
           ))}
         </ul>

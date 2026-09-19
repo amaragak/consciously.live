@@ -3,6 +3,7 @@ import {
   clearAdminBlogAuthorPhoto,
   deleteAdminBlogPost,
   fetchAdminBlog,
+  generateAdminBlogAudio,
   saveAdminBlogPost,
   saveAdminBlogSettings,
   uploadAdminBlogAuthorPhoto,
@@ -61,9 +62,15 @@ function blankDraft(): BlogDraft {
     subheader: "",
     excerpt: "",
     tags: [],
+    series: "",
+    part: null,
     body: "",
     published: false,
     publishedAt: null,
+    audioUrl: null,
+    audioStatus: "none",
+    audioError: null,
+    audioGeneratedAt: null,
   };
 }
 
@@ -75,9 +82,15 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
     subheader: post.subheader,
     excerpt: post.excerpt,
     tags: post.tags,
+    series: post.series,
+    part: post.part,
     body: post.body,
     published: post.published,
     publishedAt: post.publishedAt,
+    audioUrl: post.audioUrl,
+    audioStatus: post.audioStatus,
+    audioError: post.audioError,
+    audioGeneratedAt: post.audioGeneratedAt,
   };
 }
 
@@ -191,6 +204,7 @@ export function AdminReadPanel() {
   const liveEditorDocRef = useRef(editorDocKey(null, 0));
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [audioBusy, setAudioBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -329,6 +343,8 @@ export function AdminReadPanel() {
         subheader: draft.subheader,
         excerpt: draft.excerpt,
         tags: draft.tags,
+        series: draft.series,
+        part: draft.part,
         body: draft.body,
         published: draft.published,
       });
@@ -344,17 +360,7 @@ export function AdminReadPanel() {
       });
       liveEditorDocRef.current = editorDocKey(saved.id, editorNonce);
       setSelectedId(saved.id);
-      setDraft({
-        id: saved.id,
-        slug: saved.slug,
-        title: saved.title,
-        subheader: saved.subheader,
-        excerpt: saved.excerpt,
-        tags: saved.tags,
-        body: saved.body,
-        published: saved.published,
-        publishedAt: saved.publishedAt,
-      });
+      setDraft(draftFromPost(saved));
       setSlugTouched(true);
       setStatus(saved.published ? "Saved & published." : "Saved as draft.");
     } catch (e) {
@@ -363,6 +369,62 @@ export function AdminReadPanel() {
       setBusy(false);
     }
   }
+
+  async function onGenerateAudio() {
+    if (!draft.id) {
+      setStatus("Save the post first, then generate audio.");
+      return;
+    }
+    setAudioBusy(true);
+    setStatus(null);
+    try {
+      const started = await generateAdminBlogAudio(draft.id);
+      setDraft(draftFromPost(started));
+      setPosts((prev) => prev.map((p) => (p.id === started.id ? started : p)));
+      setStatus("Generating narration…");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Could not start audio");
+      setAudioBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (draft.audioStatus !== "generating" || !draft.id) {
+      if (draft.audioStatus !== "generating") setAudioBusy(false);
+      return;
+    }
+    setAudioBusy(true);
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { posts: list } = await fetchAdminBlog();
+        if (cancelled) return;
+        setPosts(list);
+        const latest = list.find((p) => p.id === draft.id);
+        if (!latest) return;
+        setDraft((d) =>
+          d.id === latest.id
+            ? { ...d, ...draftFromPost(latest), body: d.body, title: d.title }
+            : d,
+        );
+        if (latest.audioStatus === "ready") {
+          setStatus("Narration ready.");
+          setAudioBusy(false);
+        } else if (latest.audioStatus === "failed") {
+          setStatus(latest.audioError || "Audio generation failed");
+          setAudioBusy(false);
+        }
+      } catch {
+        /* keep polling */
+      }
+    };
+    const id = window.setInterval(() => void tick(), 2500);
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [draft.audioStatus, draft.id]);
 
   async function onDelete() {
     if (!draft.id) return;
@@ -533,6 +595,16 @@ export function AdminReadPanel() {
                     <span className="block truncate text-sm font-medium">
                       {p.title}
                     </span>
+                    {p.series || p.part != null ? (
+                      <span
+                        className={`mt-0.5 block truncate text-[11px] ${
+                          active ? "text-on-selected/70" : "text-muted"
+                        }`}
+                      >
+                        {p.series || "Series"}
+                        {p.part != null ? ` · Part ${p.part}` : ""}
+                      </span>
+                    ) : null}
                     <span
                       className={`mt-0.5 block text-[11px] ${
                         active ? "text-on-selected/70" : "text-muted"
@@ -622,6 +694,48 @@ export function AdminReadPanel() {
                 Press Enter to add. Shown as chips on /read and the article.
               </p>
             </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_7rem]">
+              <div>
+                <label className="block text-xs font-medium text-muted">
+                  Series{" "}
+                  <span className="font-normal text-muted/80">(optional)</span>
+                </label>
+                <input
+                  value={draft.series}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, series: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  placeholder="Chasing Mountains"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted">
+                  Part{" "}
+                  <span className="font-normal text-muted/80">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={draft.part ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      setDraft((d) => ({ ...d, part: null }));
+                      return;
+                    }
+                    const n = Number(raw);
+                    setDraft((d) => ({
+                      ...d,
+                      part: Number.isFinite(n) ? Math.round(n) : null,
+                    }));
+                  }}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  placeholder="1"
+                />
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-medium text-muted">
                 Slug
@@ -685,6 +799,11 @@ export function AdminReadPanel() {
                   : ""}
               </p>
             ) : null}
+            <p className="text-[11px] text-muted">
+              Generate audio reads the last saved title, subheader, and body
+              through Fish TTS — no voice FX, no music. It does not run on
+              save.
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -694,6 +813,28 @@ export function AdminReadPanel() {
               >
                 {busy ? "Saving…" : "Save"}
               </button>
+              <button
+                type="button"
+                disabled={busy || audioBusy || !draft.id}
+                onClick={() => void onGenerateAudio()}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent-soft/40 disabled:opacity-50"
+              >
+                {audioBusy || draft.audioStatus === "generating"
+                  ? "Generating audio…"
+                  : draft.audioUrl
+                    ? "Regenerate audio"
+                    : "Generate audio"}
+              </button>
+              {draft.audioUrl ? (
+                <a
+                  href={draft.audioUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-accent-link underline-offset-2 hover:underline"
+                >
+                  Preview audio
+                </a>
+              ) : null}
               {draft.id ? (
                 <button
                   type="button"

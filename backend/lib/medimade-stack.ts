@@ -1327,6 +1327,35 @@ export class MedimadeStack extends cdk.Stack {
       },
     );
 
+    const adminBlogNarrate = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminBlogNarrateFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/admin-blog-narrate.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 2048,
+        ephemeralStorageSize: cdk.Size.mebibytes(1024),
+        layers: [ffmpegLayer],
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          FISH_TTS_MODEL: "s2.1-pro-free",
+          BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
+          MARKETING_ORIGIN: authWebappOrigin,
+        },
+      },
+    );
+    voiceAdminTable.grantReadWriteData(adminBlogNarrate);
+    fishApiKeySecret.grantRead(adminBlogNarrate);
+    blogRevalidateSecret.grantRead(adminBlogNarrate);
+    mediaBucket.grantPut(adminBlogNarrate);
+    mediaBucket.grantRead(adminBlogNarrate);
+    mediaBucket.grantDelete(adminBlogNarrate);
+
     const adminBlog = new lambda_nodejs.NodejsFunction(
       this,
       "AdminBlogFunction",
@@ -1344,6 +1373,7 @@ export class MedimadeStack extends cdk.Stack {
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
           MARKETING_ORIGIN: authWebappOrigin,
+          BLOG_NARRATE_FUNCTION_NAME: adminBlogNarrate.functionName,
         },
       },
     );
@@ -1353,6 +1383,7 @@ export class MedimadeStack extends cdk.Stack {
     mediaBucket.grantPut(adminBlog);
     mediaBucket.grantRead(adminBlog);
     mediaBucket.grantDelete(adminBlog);
+    adminBlogNarrate.grantInvoke(adminBlog);
 
     httpApi.addRoutes({
       path: "/admin/blog",

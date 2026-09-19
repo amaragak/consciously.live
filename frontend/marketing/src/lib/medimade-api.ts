@@ -3568,6 +3568,8 @@ export async function deleteAdminProgram(id: string): Promise<void> {
   }
 }
 
+export type AdminBlogAudioStatus = "none" | "generating" | "ready" | "failed";
+
 export type AdminBlogPost = {
   id: string;
   slug: string;
@@ -3575,9 +3577,15 @@ export type AdminBlogPost = {
   subheader: string;
   excerpt: string;
   tags: string[];
+  series: string;
+  part: number | null;
   body: string;
   published: boolean;
   publishedAt: string | null;
+  audioUrl: string | null;
+  audioStatus: AdminBlogAudioStatus;
+  audioError: string | null;
+  audioGeneratedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -3622,11 +3630,35 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     subheader: typeof o.subheader === "string" ? o.subheader : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt : "",
     tags: normalizeAdminBlogTags(o.tags),
+    series: typeof o.series === "string" ? o.series : "",
+    part: (() => {
+      const n =
+        typeof o.part === "number" ? o.part : Number(String(o.part ?? "").trim());
+      return Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
+    })(),
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()
+        : null,
+    audioUrl:
+      typeof o.audioUrl === "string" && o.audioUrl.trim()
+        ? o.audioUrl.trim()
+        : null,
+    audioStatus:
+      o.audioStatus === "generating" ||
+      o.audioStatus === "ready" ||
+      o.audioStatus === "failed"
+        ? o.audioStatus
+        : "none",
+    audioError:
+      typeof o.audioError === "string" && o.audioError.trim()
+        ? o.audioError.trim()
+        : null,
+    audioGeneratedAt:
+      typeof o.audioGeneratedAt === "string" && o.audioGeneratedAt.trim()
+        ? o.audioGeneratedAt.trim()
         : null,
     createdAt: typeof o.createdAt === "string" ? o.createdAt : "",
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
@@ -3817,6 +3849,27 @@ export async function saveAdminBlogPost(
     method: "PATCH",
     headers: medimadeJsonHeaders(),
     body: JSON.stringify(post),
+  });
+  const data = (await res.json()) as {
+    post?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const saved = normalizeAdminBlogPost(data.post);
+  if (!saved) throw new Error("Invalid blog post response");
+  return saved;
+}
+
+export async function generateAdminBlogAudio(id: string): Promise<AdminBlogPost> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "generateAudio", id }),
   });
   const data = (await res.json()) as {
     post?: unknown;

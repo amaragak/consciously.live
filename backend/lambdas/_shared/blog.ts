@@ -18,6 +18,8 @@ const BLOG_SETTINGS_SK = "SETTINGS";
 export const DEFAULT_BLOG_INDEX_SUMMARY =
   "Essays and updates from Consciously.";
 
+export type BlogAudioStatus = "none" | "generating" | "ready" | "failed";
+
 export type BlogPost = {
   id: string;
   slug: string;
@@ -28,11 +30,20 @@ export type BlogPost = {
   excerpt: string;
   /** Topic chips shown on the index and article. */
   tags: string[];
+  /** Optional series name (e.g. “Chasing Mountains”). */
+  series: string;
+  /** Optional 1-based part within the series. */
+  part: number | null;
   /** HTML (TipTap) or legacy markdown body. */
   body: string;
   published: boolean;
   /** ISO timestamp when first published (sticky after unpublish). */
   publishedAt: string | null;
+  /** CloudFront URL for Fish TTS narration (no FX, no music). */
+  audioUrl: string | null;
+  audioStatus: BlogAudioStatus;
+  audioError: string | null;
+  audioGeneratedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -76,6 +87,47 @@ export function slugifyTitle(title: string): string {
 
 const MAX_BLOG_TAGS = 12;
 const MAX_BLOG_TAG_LEN = 40;
+const MAX_BLOG_SERIES_LEN = 80;
+
+/** Strip HTML/markdown to plain text for “has content” and TTS. */
+export function htmlToNarrationText(source: string): string {
+  let t = source.replace(/\r\n/g, "\n");
+  t = t.replace(/<br\s*\/?>/gi, "\n");
+  t = t.replace(/<\/(?:p|h[1-6]|li|blockquote|div)>/gi, "\n\n");
+  t = t.replace(/<[^>]+>/g, "");
+  t = t
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+  t = t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return t;
+}
+
+export function blogBodyHasContent(body: string): boolean {
+  return htmlToNarrationText(body).length > 0;
+}
+
+export function normalizeBlogSeries(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.trim().replace(/\s+/g, " ").slice(0, MAX_BLOG_SERIES_LEN);
+}
+
+export function normalizeBlogPart(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  const i = Math.round(n);
+  if (i < 1 || i > 999) return null;
+  return i;
+}
+
+function coerceAudioStatus(raw: unknown): BlogAudioStatus {
+  if (raw === "generating" || raw === "ready" || raw === "failed") return raw;
+  return "none";
+}
 
 /** Normalize tag chips: trim, drop empties, case-insensitive dedupe, cap count/length. */
 export function normalizeBlogTags(raw: unknown): string[] {
@@ -121,11 +173,26 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
     excerpt:
       typeof raw.excerpt === "string" ? raw.excerpt.trim().slice(0, 500) : "",
     tags: normalizeBlogTags(raw.tags),
+    series: normalizeBlogSeries(raw.series),
+    part: normalizeBlogPart(raw.part),
     body: typeof raw.body === "string" ? raw.body.slice(0, 100_000) : "",
     published: raw.published === true,
     publishedAt:
       typeof raw.publishedAt === "string" && raw.publishedAt.trim()
         ? raw.publishedAt.trim()
+        : null,
+    audioUrl:
+      typeof raw.audioUrl === "string" && raw.audioUrl.trim()
+        ? raw.audioUrl.trim().slice(0, 2048)
+        : null,
+    audioStatus: coerceAudioStatus(raw.audioStatus),
+    audioError:
+      typeof raw.audioError === "string" && raw.audioError.trim()
+        ? raw.audioError.trim().slice(0, 500)
+        : null,
+    audioGeneratedAt:
+      typeof raw.audioGeneratedAt === "string" && raw.audioGeneratedAt.trim()
+        ? raw.audioGeneratedAt.trim()
         : null,
     createdAt:
       typeof raw.createdAt === "string" && raw.createdAt.trim()
@@ -162,17 +229,40 @@ export async function listBlogPosts(): Promise<BlogPost[]> {
   const posts = (res.Items ?? [])
     .map((item) => coercePost(item as Record<string, unknown>))
     .filter((p): p is BlogPost => Boolean(p));
-  posts.sort((a, b) => {
-    const aT = a.publishedAt || a.updatedAt;
-    const bT = b.publishedAt || b.updatedAt;
-    return bT.localeCompare(aT);
-  });
+  posts.sort(compareAdminBlogPosts);
   return posts;
+}
+
+function compareAdminBlogPosts(a: BlogPost, b: BlogPost): number {
+  const aT = a.publishedAt || a.updatedAt;
+  const bT = b.publishedAt || b.updatedAt;
+  return bT.localeCompare(aT);
+}
+
+function comparePublishedBlogPosts(a: BlogPost, b: BlogPost): number {
+  const aHas = blogBodyHasContent(a.body) ? 0 : 1;
+  const bHas = blogBodyHasContent(b.body) ? 0 : 1;
+  if (aHas !== bHas) return aHas - bHas;
+  const aSeries = a.series.toLowerCase();
+  const bSeries = b.series.toLowerCase();
+  if (aSeries && bSeries && aSeries !== bSeries) {
+    return aSeries.localeCompare(bSeries);
+  }
+  if (aSeries && !bSeries) return -1;
+  if (!aSeries && bSeries) return 1;
+  if (aSeries && bSeries) {
+    const aPart = a.part ?? 9999;
+    const bPart = b.part ?? 9999;
+    if (aPart !== bPart) return aPart - bPart;
+  }
+  const aT = a.publishedAt || a.updatedAt;
+  const bT = b.publishedAt || b.updatedAt;
+  return bT.localeCompare(aT);
 }
 
 export async function listPublishedBlogPosts(): Promise<BlogPost[]> {
   const all = await listBlogPosts();
-  return all.filter((p) => p.published);
+  return all.filter((p) => p.published).sort(comparePublishedBlogPosts);
 }
 
 export async function getBlogPostById(id: string): Promise<BlogPost | null> {
@@ -260,16 +350,68 @@ export async function putBlogPost(
     tags: Object.prototype.hasOwnProperty.call(input, "tags")
       ? normalizeBlogTags(input.tags)
       : (existing?.tags ?? []),
+    series: Object.prototype.hasOwnProperty.call(input, "series")
+      ? normalizeBlogSeries(input.series)
+      : (existing?.series ?? ""),
+    part: Object.prototype.hasOwnProperty.call(input, "part")
+      ? normalizeBlogPart(input.part)
+      : (existing?.part ?? null),
     body:
       typeof input.body === "string"
         ? input.body.slice(0, 100_000)
         : (existing?.body ?? ""),
     published,
     publishedAt,
+    audioUrl: existing?.audioUrl ?? null,
+    audioStatus: existing?.audioStatus ?? "none",
+    audioError: existing?.audioError ?? null,
+    audioGeneratedAt: existing?.audioGeneratedAt ?? null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
 
+  const row: BlogRow = {
+    pk: BLOG_PK,
+    sk: skForId(post.id),
+    ...post,
+  };
+  await ddb.send(
+    new PutCommand({
+      TableName: tableName(),
+      Item: row,
+    }),
+  );
+  return post;
+}
+
+export async function patchBlogPostAudio(
+  id: string,
+  patch: {
+    audioUrl?: string | null;
+    audioStatus?: BlogAudioStatus;
+    audioError?: string | null;
+    audioGeneratedAt?: string | null;
+  },
+): Promise<BlogPost> {
+  const existing = await getBlogPostById(id);
+  if (!existing) throw new Error("Post not found");
+  const post: BlogPost = {
+    ...existing,
+    audioUrl:
+      Object.prototype.hasOwnProperty.call(patch, "audioUrl")
+        ? patch.audioUrl ?? null
+        : existing.audioUrl,
+    audioStatus: patch.audioStatus ?? existing.audioStatus,
+    audioError:
+      Object.prototype.hasOwnProperty.call(patch, "audioError")
+        ? patch.audioError ?? null
+        : existing.audioError,
+    audioGeneratedAt:
+      Object.prototype.hasOwnProperty.call(patch, "audioGeneratedAt")
+        ? patch.audioGeneratedAt ?? null
+        : existing.audioGeneratedAt,
+    updatedAt: new Date().toISOString(),
+  };
   const row: BlogRow = {
     pk: BLOG_PK,
     sk: skForId(post.id),

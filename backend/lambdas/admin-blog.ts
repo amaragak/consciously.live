@@ -9,17 +9,20 @@ import {
 } from "@aws-sdk/client-s3";
 import { requireAdminJson } from "./_shared/admin-auth";
 import { jsonAuth } from "./_shared/consciously-auth-http";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import {
   deleteBlogPost,
   getBlogPostById,
   getBlogSettings,
   listBlogPosts,
+  patchBlogPostAudio,
   putBlogPost,
   putBlogSettings,
 } from "./_shared/blog";
 import { invalidateBlogCache } from "./_shared/blog-revalidate";
 
 const s3 = new S3Client({});
+const lambda = new LambdaClient({});
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 
 /** Extract `blog/author-photo…` key from a media URL (ignores query string). */
@@ -232,6 +235,28 @@ export async function handler(
         }
         await invalidateBlogCache({ index: true });
         return json(200, { settings });
+      }
+      if (action === "generateAudio") {
+        const id = String(body.id ?? "").trim();
+        if (!id) return json(400, { error: "id is required" });
+        const existing = await getBlogPostById(id);
+        if (!existing) return json(404, { error: "Post not found" });
+        const fn = process.env.BLOG_NARRATE_FUNCTION_NAME?.trim();
+        if (!fn) {
+          return json(500, { error: "Audio generation is not configured" });
+        }
+        const post = await patchBlogPostAudio(id, {
+          audioStatus: "generating",
+          audioError: null,
+        });
+        await lambda.send(
+          new InvokeCommand({
+            FunctionName: fn,
+            InvocationType: "Event",
+            Payload: Buffer.from(JSON.stringify({ id })),
+          }),
+        );
+        return json(202, { post });
       }
       if (action === "delete") {
         const id = String(body.id ?? "").trim();

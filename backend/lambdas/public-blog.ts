@@ -4,6 +4,7 @@ import type {
 } from "aws-lambda";
 import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
+  blogBodyHasContent,
   getBlogPostBySlug,
   getBlogSettings,
   listPublishedBlogPosts,
@@ -46,6 +47,10 @@ export async function handler(
         subheader: p.subheader,
         excerpt: p.excerpt,
         tags: p.tags,
+        series: p.series,
+        part: p.part,
+        hasBody: blogBodyHasContent(p.body),
+        audioUrl: p.audioUrl,
         publishedAt: p.publishedAt,
         updatedAt: p.updatedAt,
       })),

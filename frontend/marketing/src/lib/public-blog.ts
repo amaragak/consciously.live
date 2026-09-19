@@ -14,6 +14,10 @@ export type PublicBlogPostSummary = {
   subheader: string;
   excerpt: string;
   tags: string[];
+  series: string;
+  part: number | null;
+  hasBody: boolean;
+  audioUrl: string | null;
   publishedAt: string | null;
   updatedAt: string;
 };
@@ -21,6 +25,14 @@ export type PublicBlogPostSummary = {
 export type PublicBlogPost = PublicBlogPostSummary & {
   body: string;
 };
+
+export function formatBlogSeries(series: string, part: number | null): string {
+  const s = series.trim();
+  if (s && part != null) return `${s} · Part ${part}`;
+  if (s) return s;
+  if (part != null) return `Part ${part}`;
+  return "";
+}
 
 export type PublicBlogIndex = {
   indexSummary: string;
@@ -83,6 +95,17 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
     subheader: typeof o.subheader === "string" ? o.subheader.trim() : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt.trim() : "",
     tags: coerceTags(o.tags),
+    series: typeof o.series === "string" ? o.series.trim() : "",
+    part: (() => {
+      const n =
+        typeof o.part === "number" ? o.part : Number(String(o.part ?? "").trim());
+      return Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
+    })(),
+    hasBody: o.hasBody === true,
+    audioUrl:
+      typeof o.audioUrl === "string" && o.audioUrl.trim()
+        ? o.audioUrl.trim()
+        : null,
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()
@@ -167,11 +190,18 @@ export async function fetchPublishedBlogPost(
     const data = (await res.json()) as { post?: unknown };
     const summary = coerceSummary(data.post);
     if (!summary || !data.post || typeof data.post !== "object") return null;
-    const body =
-      typeof (data.post as Record<string, unknown>).body === "string"
-        ? ((data.post as Record<string, unknown>).body as string)
-        : "";
-    return { ...summary, body };
+    const raw = data.post as Record<string, unknown>;
+    const body = typeof raw.body === "string" ? raw.body : "";
+    const hasBody =
+      raw.hasBody === true ||
+      Boolean(
+        body
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+      );
+    return { ...summary, body, hasBody };
   } catch {
     return null;
   }
