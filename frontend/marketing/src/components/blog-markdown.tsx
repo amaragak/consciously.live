@@ -125,7 +125,7 @@ function MarkdownBody({ source }: { source: string }) {
       blocks.push(
         <ul
           key={`ul-${b++}`}
-          className="mt-4 list-disc space-y-2 pl-5 text-[15px] text-muted"
+          className="mt-4 list-disc space-y-2 pl-5 text-[17px] text-foreground"
         >
           {items}
         </ul>,
@@ -145,7 +145,10 @@ function MarkdownBody({ source }: { source: string }) {
       i += 1;
     }
     blocks.push(
-      <p key={`p-${b++}`} className="mt-4 text-[15px] leading-relaxed text-muted">
+      <p
+        key={`p-${b++}`}
+        className="mt-4 text-[17px] leading-relaxed text-foreground"
+      >
         {inlineToNodes(para.join(" "), `p-${b}`)}
       </p>,
     );
@@ -153,7 +156,7 @@ function MarkdownBody({ source }: { source: string }) {
 
   if (blocks.length === 0 && source.trim()) {
     return (
-      <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-muted">
+      <p className="whitespace-pre-wrap text-[17px] leading-relaxed text-foreground">
         {source}
       </p>
     );
@@ -164,12 +167,12 @@ function MarkdownBody({ source }: { source: string }) {
 
 const proseClass =
   "read-prose max-w-none " +
-  "[&_p]:mt-4 [&_p]:text-[15px] [&_p]:leading-relaxed [&_p]:text-muted " +
+  "[&_p]:mt-4 [&_p]:text-[17px] [&_p]:leading-relaxed [&_p]:text-foreground " +
   "[&_h2]:mt-10 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-medium [&_h2]:tracking-tight [&_h2]:text-foreground " +
   "[&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-xl [&_h3]:font-medium [&_h3]:tracking-tight [&_h3]:text-foreground " +
-  "[&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:text-[15px] [&_ul]:text-muted " +
-  "[&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ol]:text-[15px] [&_ol]:text-muted " +
-  "[&_blockquote]:mt-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted " +
+  "[&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:text-[17px] [&_ul]:text-foreground " +
+  "[&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ol]:text-[17px] [&_ol]:text-foreground " +
+  "[&_blockquote]:mt-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-foreground/80 " +
   "[&_strong]:font-semibold [&_em]:italic " +
   "[&_a]:text-accent-link [&_a]:underline [&_a]:underline-offset-2";
 
