@@ -3550,6 +3550,7 @@ export type AdminBlogPost = {
 export type AdminBlogSettings = {
   indexSummary: string;
   authorPhotoUrl: string | null;
+  authorPhotoEnabled: boolean;
   updatedAt: string;
 };
 
@@ -3584,6 +3585,7 @@ function normalizeAdminBlogSettings(raw: unknown): AdminBlogSettings {
     return {
       indexSummary: DEFAULT_ADMIN_INDEX_SUMMARY,
       authorPhotoUrl: null,
+      authorPhotoEnabled: false,
       updatedAt: "",
     };
   }
@@ -3598,6 +3600,7 @@ function normalizeAdminBlogSettings(raw: unknown): AdminBlogSettings {
         ? o.indexSummary.trim()
         : DEFAULT_ADMIN_INDEX_SUMMARY,
     authorPhotoUrl: photo,
+    authorPhotoEnabled: o.authorPhotoEnabled === true,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
   };
 }
@@ -3634,7 +3637,7 @@ export async function fetchAdminBlog(): Promise<{
 }
 
 export async function saveAdminBlogSettings(
-  settings: Pick<AdminBlogSettings, "indexSummary">,
+  settings: Pick<AdminBlogSettings, "indexSummary" | "authorPhotoEnabled">,
 ): Promise<AdminBlogSettings> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
@@ -3644,6 +3647,7 @@ export async function saveAdminBlogSettings(
     body: JSON.stringify({
       action: "saveSettings",
       indexSummary: settings.indexSummary,
+      authorPhotoEnabled: settings.authorPhotoEnabled,
     }),
   });
   const data = (await res.json()) as {

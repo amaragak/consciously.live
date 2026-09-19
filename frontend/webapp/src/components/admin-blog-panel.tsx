@@ -77,6 +77,7 @@ export function AdminReadPanel() {
   const [posts, setPosts] = useState<AdminBlogPost[]>([]);
   const [indexSummary, setIndexSummary] = useState(DEFAULT_INDEX_SUMMARY);
   const [authorPhotoUrl, setAuthorPhotoUrl] = useState<string | null>(null);
+  const [authorPhotoEnabled, setAuthorPhotoEnabled] = useState(false);
   const [indexSummaryBusy, setIndexSummaryBusy] = useState(false);
   const [indexSummaryStatus, setIndexSummaryStatus] = useState<string | null>(
     null,
@@ -100,6 +101,7 @@ export function AdminReadPanel() {
       setPosts(list);
       setIndexSummary(settings.indexSummary || DEFAULT_INDEX_SUMMARY);
       setAuthorPhotoUrl(settings.authorPhotoUrl);
+      setAuthorPhotoEnabled(settings.authorPhotoEnabled);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load posts");
     } finally {
@@ -160,9 +162,11 @@ export function AdminReadPanel() {
     try {
       const saved = await saveAdminBlogSettings({
         indexSummary: indexSummary.trim() || DEFAULT_INDEX_SUMMARY,
+        authorPhotoEnabled,
       });
       setIndexSummary(saved.indexSummary);
       setAuthorPhotoUrl(saved.authorPhotoUrl);
+      setAuthorPhotoEnabled(saved.authorPhotoEnabled);
       setIndexSummaryStatus("Page intro saved.");
     } catch (e) {
       setIndexSummaryStatus(
@@ -188,6 +192,7 @@ export function AdminReadPanel() {
         mimeType,
       });
       setAuthorPhotoUrl(saved.authorPhotoUrl);
+      setAuthorPhotoEnabled(saved.authorPhotoEnabled);
       setPhotoStatus("Photo uploaded.");
     } catch (e) {
       setPhotoStatus(e instanceof Error ? e.message : "Upload failed");
@@ -205,6 +210,7 @@ export function AdminReadPanel() {
     try {
       const saved = await clearAdminBlogAuthorPhoto();
       setAuthorPhotoUrl(saved.authorPhotoUrl);
+      setAuthorPhotoEnabled(saved.authorPhotoEnabled);
       setPhotoStatus("Photo removed.");
     } catch (e) {
       setPhotoStatus(e instanceof Error ? e.message : "Could not remove photo");
@@ -280,13 +286,73 @@ export function AdminReadPanel() {
           </a>
           .
         </p>
-        <textarea
-          value={indexSummary}
-          onChange={(e) => setIndexSummary(e.target.value)}
-          rows={2}
-          className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-          placeholder={DEFAULT_INDEX_SUMMARY}
-        />
+        <div className="mt-3 flex items-stretch gap-4">
+          <textarea
+            value={indexSummary}
+            onChange={(e) => setIndexSummary(e.target.value)}
+            rows={4}
+            className="w-full min-w-0 max-w-xl shrink-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            placeholder={DEFAULT_INDEX_SUMMARY}
+          />
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-2">
+            {authorPhotoUrl ? (
+              <img
+                src={authorPhotoUrl}
+                alt="Author"
+                className={`size-24 rounded-full object-cover sm:size-28 ${
+                  authorPhotoEnabled ? "" : "opacity-40"
+                }`}
+              />
+            ) : (
+              <div className="flex size-24 items-center justify-center rounded-full border border-dashed border-border bg-background text-[11px] text-muted sm:size-28">
+                No photo
+              </div>
+            )}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) =>
+                void onPhotoSelected(e.target.files?.[0] ?? null)
+              }
+            />
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                disabled={photoBusy || loading}
+                onClick={() => photoInputRef.current?.click()}
+                className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2 disabled:opacity-50"
+              >
+                {photoBusy
+                  ? "Uploading…"
+                  : authorPhotoUrl
+                    ? "Replace"
+                    : "Upload"}
+              </button>
+              {authorPhotoUrl ? (
+                <button
+                  type="button"
+                  disabled={photoBusy || loading}
+                  onClick={() => void onClearPhoto()}
+                  className="rounded-lg border border-danger/40 px-2.5 py-1.5 text-xs font-medium text-danger disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <label className="inline-flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={authorPhotoEnabled}
+                onChange={(e) => setAuthorPhotoEnabled(e.target.checked)}
+                className="size-3.5 rounded border-border"
+                disabled={loading || !authorPhotoUrl}
+              />
+              Show on /read
+            </label>
+          </div>
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -301,61 +367,8 @@ export function AdminReadPanel() {
               {indexSummaryStatus}
             </p>
           ) : null}
-        </div>
-
-        <div className="mt-6 border-t border-border pt-5">
-          <h3 className="text-sm font-medium text-foreground">Author photo</h3>
-          <p className="mt-1 text-xs text-muted">
-            Optional portrait on the Read index, next to the intro.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            {authorPhotoUrl ? (
-              <img
-                src={authorPhotoUrl}
-                alt="Author"
-                className="size-24 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex size-24 items-center justify-center rounded-full border border-dashed border-border bg-background text-[11px] text-muted">
-                No photo
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(e) =>
-                  void onPhotoSelected(e.target.files?.[0] ?? null)
-                }
-              />
-              <button
-                type="button"
-                disabled={photoBusy || loading}
-                onClick={() => photoInputRef.current?.click()}
-                className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-50"
-              >
-                {photoBusy
-                  ? "Uploading…"
-                  : authorPhotoUrl
-                    ? "Replace photo"
-                    : "Upload photo"}
-              </button>
-              {authorPhotoUrl ? (
-                <button
-                  type="button"
-                  disabled={photoBusy || loading}
-                  onClick={() => void onClearPhoto()}
-                  className="rounded-lg border border-danger/40 px-3 py-2 text-sm font-medium text-danger disabled:opacity-50"
-                >
-                  Remove
-                </button>
-              ) : null}
-            </div>
-          </div>
           {photoStatus ? (
-            <p className="mt-2 text-sm text-muted" role="status">
+            <p className="text-sm text-muted" role="status">
               {photoStatus}
             </p>
           ) : null}

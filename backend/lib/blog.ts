@@ -40,6 +40,8 @@ export type BlogSettings = {
   indexSummary: string;
   /** CloudFront URL for the author photo on /read (null if unset). */
   authorPhotoUrl: string | null;
+  /** When true, public /read shows the author photo (if a URL is set). */
+  authorPhotoEnabled: boolean;
   updatedAt: string;
 };
 
@@ -281,6 +283,7 @@ export async function getBlogSettings(): Promise<BlogSettings> {
   return {
     indexSummary: summary,
     authorPhotoUrl: photoRaw || null,
+    authorPhotoEnabled: item?.authorPhotoEnabled === true,
     updatedAt,
   };
 }
@@ -288,6 +291,7 @@ export async function getBlogSettings(): Promise<BlogSettings> {
 export async function putBlogSettings(input: {
   indexSummary?: unknown;
   authorPhotoUrl?: unknown;
+  authorPhotoEnabled?: unknown;
 }): Promise<BlogSettings> {
   const now = new Date().toISOString();
   const existing = await getBlogSettings();
@@ -307,9 +311,16 @@ export async function putBlogSettings(input: {
       authorPhotoUrl = input.authorPhotoUrl.trim().slice(0, 2048);
     }
   }
+  const authorPhotoEnabled = Object.prototype.hasOwnProperty.call(
+    input,
+    "authorPhotoEnabled",
+  )
+    ? input.authorPhotoEnabled === true
+    : existing.authorPhotoEnabled;
   const settings: BlogSettings = {
     indexSummary,
     authorPhotoUrl,
+    authorPhotoEnabled,
     updatedAt: now,
   };
   await ddb.send(
@@ -319,6 +330,7 @@ export async function putBlogSettings(input: {
         pk: BLOG_PK,
         sk: BLOG_SETTINGS_SK,
         indexSummary: settings.indexSummary,
+        authorPhotoEnabled: settings.authorPhotoEnabled,
         updatedAt: settings.updatedAt,
         ...(settings.authorPhotoUrl
           ? { authorPhotoUrl: settings.authorPhotoUrl }

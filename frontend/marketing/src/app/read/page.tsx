@@ -13,31 +13,34 @@ export const metadata = {
 export const revalidate = 0;
 
 export default async function ReadIndexPage() {
-  const { posts, indexSummary, authorPhotoUrl } =
+  const { posts, indexSummary, authorPhotoUrl, authorPhotoEnabled } =
     await fetchPublishedBlogIndex();
+  const showPhoto = authorPhotoEnabled && Boolean(authorPhotoUrl);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between sm:gap-10">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-stretch">
+        <div className="w-full min-w-0 max-w-xl shrink-0">
           <h1 className="font-display text-4xl font-medium tracking-tight sm:text-5xl">
             <span className="text-foreground">consciously</span>{" "}
             <span className="italic text-accent-link">Read</span>
           </h1>
           {indexSummary ? (
-            <p className="mt-3 max-w-xl whitespace-pre-line text-base leading-relaxed text-muted">
+            <p className="mt-3 whitespace-pre-line text-base leading-relaxed text-muted">
               {indexSummary}
             </p>
           ) : null}
         </div>
-        {authorPhotoUrl ? (
-          <img
-            src={authorPhotoUrl}
-            alt="Alex"
-            width={160}
-            height={160}
-            className="size-28 shrink-0 rounded-full object-cover sm:size-36"
-          />
+        {showPhoto ? (
+          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+            <img
+              src={authorPhotoUrl!}
+              alt="Alex"
+              width={160}
+              height={160}
+              className="size-28 rounded-full object-cover sm:size-36"
+            />
+          </div>
         ) : null}
       </div>
 

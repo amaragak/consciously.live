@@ -132,6 +132,9 @@ export async function handler(
           ...(Object.prototype.hasOwnProperty.call(body, "authorPhotoUrl")
             ? { authorPhotoUrl: body.authorPhotoUrl }
             : {}),
+          ...(Object.prototype.hasOwnProperty.call(body, "authorPhotoEnabled")
+            ? { authorPhotoEnabled: body.authorPhotoEnabled }
+            : {}),
         });
         return json(200, { settings });
       }

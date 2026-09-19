@@ -19,6 +19,7 @@ export type PublicBlogPost = PublicBlogPostSummary & {
 export type PublicBlogIndex = {
   indexSummary: string;
   authorPhotoUrl: string | null;
+  authorPhotoEnabled: boolean;
   posts: PublicBlogPostSummary[];
 };
 
@@ -59,6 +60,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
     return {
       indexSummary: DEFAULT_INDEX_SUMMARY,
       authorPhotoUrl: null,
+      authorPhotoEnabled: false,
       posts: [],
     };
   }
@@ -70,6 +72,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
       return {
         indexSummary: DEFAULT_INDEX_SUMMARY,
         authorPhotoUrl: null,
+        authorPhotoEnabled: false,
         posts: [],
       };
     }
@@ -77,6 +80,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
       posts?: unknown[];
       indexSummary?: unknown;
       authorPhotoUrl?: unknown;
+      authorPhotoEnabled?: unknown;
     };
     const indexSummary =
       typeof data.indexSummary === "string" && data.indexSummary.trim()
@@ -89,6 +93,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
     return {
       indexSummary,
       authorPhotoUrl,
+      authorPhotoEnabled: data.authorPhotoEnabled === true,
       posts: (data.posts ?? [])
         .map(coerceSummary)
         .filter((p): p is PublicBlogPostSummary => Boolean(p)),
@@ -97,6 +102,7 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
     return {
       indexSummary: DEFAULT_INDEX_SUMMARY,
       authorPhotoUrl: null,
+      authorPhotoEnabled: false,
       posts: [],
     };
   }

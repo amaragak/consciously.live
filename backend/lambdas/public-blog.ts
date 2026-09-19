@@ -38,6 +38,7 @@ export async function handler(
     return json(200, {
       indexSummary: settings.indexSummary,
       authorPhotoUrl: settings.authorPhotoUrl,
+      authorPhotoEnabled: settings.authorPhotoEnabled,
       posts: posts.map((p) => ({
         id: p.id,
         slug: p.slug,
