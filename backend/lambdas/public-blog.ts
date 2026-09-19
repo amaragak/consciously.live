@@ -45,6 +45,7 @@ export async function handler(
         title: p.title,
         subheader: p.subheader,
         excerpt: p.excerpt,
+        tags: p.tags,
         publishedAt: p.publishedAt,
         updatedAt: p.updatedAt,
       })),

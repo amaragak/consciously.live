@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReadPostTags } from "@/components/read-post-tags";
 import {
   fetchPublishedBlogIndex,
   formatBlogDate,
@@ -68,6 +69,7 @@ export default async function ReadIndexPage() {
                     {post.excerpt || post.subheader}
                   </p>
                 ) : null}
+                <ReadPostTags tags={post.tags} />
                 <span className="mt-3 inline-block text-sm font-medium text-accent-link">
                   Continue →
                 </span>

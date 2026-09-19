@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ReadBody } from "@/components/blog-markdown";
+import { ReadPostTags } from "@/components/read-post-tags";
 import {
   fetchPublishedBlogPost,
   fetchPublishedBlogPosts,
@@ -52,6 +53,7 @@ export default async function ReadPostPage({ params }: Props) {
           {post.subheader}
         </p>
       ) : null}
+      <ReadPostTags tags={post.tags} />
       <div className="mt-10 border-t border-border pt-8">
         <ReadBody source={post.body} />
       </div>

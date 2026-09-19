@@ -54,10 +54,77 @@ function blankDraft(): Omit<AdminBlogPost, "id" | "createdAt" | "updatedAt"> & {
     title: "",
     subheader: "",
     excerpt: "",
+    tags: [],
     body: "",
     published: false,
     publishedAt: null,
   };
+}
+
+function BlogTagsInput({
+  tags,
+  onChange,
+  disabled,
+}: {
+  tags: string[];
+  onChange: (tags: string[]) => void;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function addTag() {
+    const t = draft.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (!t) return;
+    const key = t.toLowerCase();
+    if (tags.some((x) => x.toLowerCase() === key)) {
+      setDraft("");
+      return;
+    }
+    onChange([...tags, t].slice(0, 12));
+    setDraft("");
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      {tags.map((tag) => (
+        <span
+          key={tag.toLowerCase()}
+          className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background pl-2.5 pr-1 py-0.5 text-xs font-medium text-foreground"
+        >
+          {tag}
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label={`Remove ${tag}`}
+            onClick={() =>
+              onChange(tags.filter((x) => x.toLowerCase() !== tag.toLowerCase()))
+            }
+            className="cursor-pointer rounded px-1 text-muted hover:text-foreground disabled:opacity-50"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draft}
+        disabled={disabled || tags.length >= 12}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            addTag();
+          }
+          if (e.key === "Backspace" && !draft && tags.length) {
+            onChange(tags.slice(0, -1));
+          }
+        }}
+        aria-label="Add a tag"
+        placeholder={tags.length ? "Add another" : "Add a tag"}
+        className="min-w-[8rem] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 disabled:opacity-50"
+      />
+    </div>
+  );
 }
 
 function formatWhen(iso: string | null | undefined): string {
@@ -135,6 +202,7 @@ export function AdminReadPanel() {
         title: selected.title,
         subheader: selected.subheader,
         excerpt: selected.excerpt,
+        tags: selected.tags,
         body: selected.body,
         published: selected.published,
         publishedAt: selected.publishedAt,
@@ -233,6 +301,7 @@ export function AdminReadPanel() {
         slug: draft.slug || slugify(draft.title),
         subheader: draft.subheader,
         excerpt: draft.excerpt,
+        tags: draft.tags,
         body: draft.body,
         published: draft.published,
       });
@@ -253,6 +322,7 @@ export function AdminReadPanel() {
         title: saved.title,
         subheader: saved.subheader,
         excerpt: saved.excerpt,
+        tags: saved.tags,
         body: saved.body,
         published: saved.published,
         publishedAt: saved.publishedAt,
@@ -508,6 +578,20 @@ export function AdminReadPanel() {
               />
               <p className="mt-1 text-[11px] text-muted">
                 Shown under the title in the post list. Leave blank to hide.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Tags{" "}
+                <span className="font-normal text-muted/80">(optional)</span>
+              </label>
+              <BlogTagsInput
+                tags={draft.tags}
+                disabled={busy}
+                onChange={(tags) => setDraft((d) => ({ ...d, tags }))}
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                Press Enter to add. Shown as chips on /read and the article.
               </p>
             </div>
             <div>

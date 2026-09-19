@@ -11,6 +11,7 @@ export type PublicBlogPostSummary = {
   title: string;
   subheader: string;
   excerpt: string;
+  tags: string[];
   publishedAt: string | null;
   updatedAt: string;
 };
@@ -41,6 +42,23 @@ function apiBase(): string | null {
   return u || null;
 }
 
+function coerceTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const tag = item.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -54,6 +72,7 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
     title,
     subheader: typeof o.subheader === "string" ? o.subheader.trim() : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt.trim() : "",
+    tags: coerceTags(o.tags),
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()

@@ -3540,6 +3540,7 @@ export type AdminBlogPost = {
   title: string;
   subheader: string;
   excerpt: string;
+  tags: string[];
   body: string;
   published: boolean;
   publishedAt: string | null;
@@ -3556,6 +3557,23 @@ export type AdminBlogSettings = {
 
 const DEFAULT_ADMIN_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
+function normalizeAdminBlogTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const tag = item.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -3569,6 +3587,7 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     title,
     subheader: typeof o.subheader === "string" ? o.subheader : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt : "",
+    tags: normalizeAdminBlogTags(o.tags),
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
     publishedAt:

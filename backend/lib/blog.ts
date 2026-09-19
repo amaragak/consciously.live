@@ -26,6 +26,8 @@ export type BlogPost = {
   subheader: string;
   /** Optional summary on the Read index (/read). */
   excerpt: string;
+  /** Topic chips shown on the index and article. */
+  tags: string[];
   /** HTML (TipTap) or legacy markdown body. */
   body: string;
   published: boolean;
@@ -72,6 +74,27 @@ export function slugifyTitle(title: string): string {
   return base || `post-${randomUUID().slice(0, 8)}`;
 }
 
+const MAX_BLOG_TAGS = 12;
+const MAX_BLOG_TAG_LEN = 40;
+
+/** Normalize tag chips: trim, drop empties, case-insensitive dedupe, cap count/length. */
+export function normalizeBlogTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const tag = item.trim().replace(/\s+/g, " ").slice(0, MAX_BLOG_TAG_LEN);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= MAX_BLOG_TAGS) break;
+  }
+  return out;
+}
+
 function coercePost(raw: Record<string, unknown>): BlogPost | null {
   const id = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : "";
   if (!id) return null;
@@ -97,6 +120,7 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
         : "",
     excerpt:
       typeof raw.excerpt === "string" ? raw.excerpt.trim().slice(0, 500) : "",
+    tags: normalizeBlogTags(raw.tags),
     body: typeof raw.body === "string" ? raw.body.slice(0, 100_000) : "",
     published: raw.published === true,
     publishedAt:
@@ -233,6 +257,9 @@ export async function putBlogPost(
       typeof input.excerpt === "string"
         ? input.excerpt.trim().slice(0, 500)
         : (existing?.excerpt ?? ""),
+    tags: Object.prototype.hasOwnProperty.call(input, "tags")
+      ? normalizeBlogTags(input.tags)
+      : (existing?.tags ?? []),
     body:
       typeof input.body === "string"
         ? input.body.slice(0, 100_000)
