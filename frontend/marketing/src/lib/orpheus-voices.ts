@@ -12,7 +12,7 @@ export const ORPHEUS_VOICES = [
 
 export type OrpheusVoiceId = (typeof ORPHEUS_VOICES)[number]["id"];
 
-export type TtsProvider = "fish" | "orpheus";
+export type TtsProvider = "fish" | "orpheus" | "speechify";
 
 export const DEFAULT_ORPHEUS_VOICE_ID: OrpheusVoiceId = "tara";
 

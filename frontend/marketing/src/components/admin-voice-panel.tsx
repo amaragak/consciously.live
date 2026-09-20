@@ -58,6 +58,7 @@ export function AdminVoicePanel() {
   const [newName, setNewName] = useState("");
   const [newModelId, setNewModelId] = useState("");
   const [newBrand, setNewBrand] = useState<VoiceSpeakerBrand>("fish");
+  const [newRate, setNewRate] = useState("-7");
   const [addBusy, setAddBusy] = useState(false);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleProgress, setSampleProgress] = useState<string | null>(null);
@@ -89,6 +90,8 @@ export function AdminVoicePanel() {
           name,
           modelId,
           brand: newBrand,
+          speechifyRate:
+            newBrand === "speechify" ? parseSpeechifyRate(newRate) : null,
           hidden: false,
           sort: speakers.length,
         },
@@ -96,6 +99,7 @@ export function AdminVoicePanel() {
       setNewName("");
       setNewModelId("");
       setNewBrand("fish");
+      setNewRate("-7");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add speaker");
@@ -105,14 +109,13 @@ export function AdminVoicePanel() {
   }
 
   async function generateAllSamples() {
-    const fish = speakers.filter((s) => s.brand !== "speechify");
-    if (fish.length === 0) return;
+    if (speakers.length === 0) return;
     setSampleBusy(true);
     setError(null);
     try {
-      for (let i = 0; i < fish.length; i++) {
-        const s = fish[i];
-        setSampleProgress(`${i + 1}/${fish.length} ${s.name}`);
+      for (let i = 0; i < speakers.length; i++) {
+        const s = speakers[i];
+        setSampleProgress(`${i + 1}/${speakers.length} ${s.name}`);
         await generateAdminVoiceSample(s.modelId);
       }
       await load();
@@ -140,15 +143,14 @@ export function AdminVoicePanel() {
             <h2 className="text-sm font-semibold">Speakers</h2>
             <p className="mt-1 text-xs text-muted">
               Fish Audio or Speechify. Hidden speakers stay off the Create picker. Generate
-              samples builds Fish mixer preview clips (about 0.9×, loud + FX) and skips
-              voices that already have one.
+              all skips voices that already have dry + FX stems; missing FX-only wet files
+              are bounced without re-synthesizing. Use Generate sample on a speaker to
+              rebuild the clip.
             </p>
           </div>
           <button
             type="button"
-            disabled={
-              sampleBusy || speakers.every((s) => s.brand === "speechify")
-            }
+            disabled={sampleBusy || speakers.length === 0}
             onClick={() => void generateAllSamples()}
             className="shrink-0 rounded-xl accent-fill-gradient px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
           >
@@ -185,6 +187,20 @@ export function AdminVoicePanel() {
             value={newModelId}
             onChange={(e) => setNewModelId(e.target.value)}
           />
+          {newBrand === "speechify" ? (
+            <input
+              className="w-24 rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm"
+              type="number"
+              min={-50}
+              max={50}
+              step={1}
+              value={newRate}
+              onChange={(e) => setNewRate(e.target.value)}
+              aria-label="Speechify rate"
+              title="Rate percent vs Speechify default"
+              placeholder="-7"
+            />
+          ) : null}
           <button
             type="button"
             disabled={addBusy}
@@ -200,6 +216,7 @@ export function AdminVoicePanel() {
             <SpeakerRow
               key={s.modelId}
               speaker={s}
+              generateDisabled={sampleBusy}
               onError={setError}
               onChanged={() => void load()}
             />
@@ -208,6 +225,12 @@ export function AdminVoicePanel() {
       </section>
     </div>
   );
+}
+
+function parseSpeechifyRate(raw: string): number | null {
+  const n = Number(raw.trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.max(-50, Math.min(50, Math.round(n)));
 }
 
 function joinGoodFor(tags: string[] | undefined): string {
@@ -224,15 +247,18 @@ function splitGoodFor(raw: string): string[] {
 
 function SpeakerRow({
   speaker,
+  generateDisabled,
   onError,
   onChanged,
 }: {
   speaker: AdminVoiceSpeaker;
+  generateDisabled?: boolean;
   onError: (msg: string | null) => void;
   onChanged: () => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [name, setName] = useState(speaker.name);
+  const [modelId, setModelId] = useState(speaker.modelId);
   const [brand, setBrand] = useState<VoiceSpeakerBrand>(
     speaker.brand === "speechify" ? "speechify" : "fish",
   );
@@ -240,6 +266,9 @@ function SpeakerRow({
   /** Edited as free text; only split on commas when it is sent. */
   const [goodFor, setGoodFor] = useState(joinGoodFor(speaker.goodFor));
   const [gender, setGender] = useState<VoiceGender | null>(speaker.gender ?? null);
+  const [speechifyRate, setSpeechifyRate] = useState(
+    speaker.speechifyRate != null ? String(speaker.speechifyRate) : "-7",
+  );
   const [hidden, setHidden] = useState(speaker.hidden);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -248,10 +277,14 @@ function SpeakerRow({
 
   useEffect(() => {
     setName(speaker.name);
+    setModelId(speaker.modelId);
     setBrand(speaker.brand === "speechify" ? "speechify" : "fish");
     setDescription(speaker.description ?? "");
     setGoodFor(savedGoodFor);
     setGender(speaker.gender ?? null);
+    setSpeechifyRate(
+      speaker.speechifyRate != null ? String(speaker.speechifyRate) : "-7",
+    );
     setHidden(speaker.hidden);
   }, [
     speaker.modelId,
@@ -260,6 +293,7 @@ function SpeakerRow({
     speaker.description,
     savedGoodFor,
     speaker.gender,
+    speaker.speechifyRate,
     speaker.hidden,
   ]);
 
@@ -283,25 +317,46 @@ function SpeakerRow({
   async function save(next?: {
     gender?: VoiceGender | null;
     brand?: VoiceSpeakerBrand;
+    speechifyRate?: number | null;
+    modelId?: string;
+    name?: string;
   }) {
     setBusy("save");
     onError(null);
     try {
       await patchAdminVoice({
         speaker: {
-          modelId: speaker.modelId,
-          name,
+          previousModelId: speaker.modelId,
+          modelId: (next?.modelId ?? modelId).trim() || speaker.modelId,
+          name: (next?.name ?? name).trim() || speaker.name,
           brand: next?.brand ?? brand,
           hidden,
           sort: speaker.sort,
           description,
           goodFor: splitGoodFor(goodFor),
           gender: next?.gender !== undefined ? next.gender : gender,
+          speechifyRate:
+            next?.speechifyRate !== undefined
+              ? next.speechifyRate
+              : parseSpeechifyRate(speechifyRate),
         },
       });
       onChanged();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not save speaker");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateSample() {
+    setBusy("sample");
+    onError(null);
+    try {
+      await generateAdminVoiceSample(speaker.modelId, { force: true });
+      onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not generate sample");
     } finally {
       setBusy(null);
     }
@@ -332,12 +387,29 @@ function SpeakerRow({
             value={name}
             disabled={busy !== null}
             onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              if (name.trim() && name.trim() !== speaker.name) void save();
+            onBlur={(e) => {
+              const next = e.target.value.trim();
+              if (next && next !== speaker.name) void save({ name: next });
             }}
             aria-label="Speaker name"
           />
-          <div className="break-all font-mono text-[11px] text-muted">{speaker.modelId}</div>
+          <input
+            className="w-full break-all rounded-xl border border-border bg-card px-3 py-2 font-mono text-[11px] text-foreground"
+            value={modelId}
+            disabled={busy !== null}
+            onChange={(e) => setModelId(e.target.value)}
+            onBlur={(e) => {
+              const next = e.target.value.trim();
+              if (!next) {
+                setModelId(speaker.modelId);
+                return;
+              }
+              setModelId(next);
+              if (next !== speaker.modelId) void save({ modelId: next });
+            }}
+            aria-label="Model id"
+            spellCheck={false}
+          />
           <label className="block text-xs font-medium text-muted">
             Brand
             <select
@@ -356,6 +428,32 @@ function SpeakerRow({
               <option value="speechify">Speechify</option>
             </select>
           </label>
+          {brand === "speechify" ? (
+            <label className="block text-xs font-medium text-muted">
+              Rate
+              <input
+                className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-sm font-normal text-foreground"
+                type="number"
+                min={-50}
+                max={50}
+                step={1}
+                value={speechifyRate}
+                disabled={busy !== null}
+                onChange={(e) => setSpeechifyRate(e.target.value)}
+                onBlur={() => {
+                  const next = parseSpeechifyRate(speechifyRate);
+                  if (next !== (speaker.speechifyRate ?? null)) {
+                    void save({ speechifyRate: next });
+                  }
+                }}
+                aria-label="Speechify rate"
+              />
+              <span className="mt-1 block text-[11px] font-normal text-muted">
+                Percent vs Speechify default. Negative is slower (−7 is a light
+                slowdown). Save, then generate the sample.
+              </span>
+            </label>
+          ) : null}
           <label className="block text-xs font-medium text-muted">
             How this voice sounds
             <textarea
@@ -432,7 +530,8 @@ function SpeakerRow({
                 setHidden(next);
                 void patchAdminVoice({
                   speaker: {
-                    modelId: speaker.modelId,
+                    previousModelId: speaker.modelId,
+                    modelId: modelId.trim() || speaker.modelId,
                     name: name.trim() || speaker.name,
                     brand,
                     hidden: next,
@@ -440,6 +539,7 @@ function SpeakerRow({
                     description,
                     goodFor: splitGoodFor(goodFor),
                     gender,
+                    speechifyRate: parseSpeechifyRate(speechifyRate),
                   },
                 })
                   .then(() => onChanged())
@@ -451,34 +551,56 @@ function SpeakerRow({
             Hide from picker
           </label>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {speaker.sampleUrl ? (
-            <audio ref={audioRef} src={speaker.sampleUrl} className="hidden" preload="none" />
-          ) : null}
-          <button
-            type="button"
-            className={ICON_BTN}
-            disabled={!canPlay}
-            aria-label={playing ? "Pause sample" : "Play sample"}
-            title={canPlay ? (playing ? "Pause" : "Play") : "No sample yet"}
-            onClick={() => {
-              const el = audioRef.current;
-              if (!el) return;
-              if (el.paused) void el.play();
-              else el.pause();
-            }}
-          >
-            {playing ? <IconPause /> : <IconPlay />}
-          </button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            {speaker.sampleUrl ? (
+              <audio ref={audioRef} src={speaker.sampleUrl} className="hidden" preload="none" />
+            ) : null}
+            <button
+              type="button"
+              className={ICON_BTN}
+              disabled={!canPlay}
+              aria-label={playing ? "Pause sample" : "Play sample"}
+              title={canPlay ? (playing ? "Pause" : "Play") : "No sample yet"}
+              onClick={() => {
+                const el = audioRef.current;
+                if (!el) return;
+                if (el.paused) void el.play();
+                else el.pause();
+              }}
+            >
+              {playing ? <IconPause /> : <IconPlay />}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void remove()}
+              aria-label={`Remove ${speaker.name}`}
+              title="Remove"
+              className={`${ICON_BTN} border-danger/40 text-danger hover:bg-danger-soft dark:border-danger/40 dark:text-danger dark:hover:bg-danger-soft`}
+            >
+              <IconTrash />
+            </button>
+          </div>
           <button
             type="button"
             disabled={busy !== null}
-            onClick={() => void remove()}
-            aria-label={`Remove ${speaker.name}`}
-            title="Remove"
-            className={`${ICON_BTN} border-danger/40 text-danger hover:bg-danger-soft dark:border-danger/40 dark:text-danger dark:hover:bg-danger-soft`}
+            onClick={() => void save()}
+            className="rounded-lg accent-fill-gradient px-3 py-1.5 text-xs font-medium text-on-accent disabled:opacity-50"
           >
-            <IconTrash />
+            {busy === "save" ? "Saving…" : "Save"}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null || generateDisabled}
+            onClick={() => void generateSample()}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50"
+          >
+            {busy === "sample"
+              ? "Generating…"
+              : speaker.sampleUrl
+                ? "Regenerate sample"
+                : "Generate sample"}
           </button>
         </div>
       </div>

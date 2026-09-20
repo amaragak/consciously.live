@@ -1983,6 +1983,10 @@ export type FishSpeaker = {
   goodFor?: string[];
   /** Omitted when not specified. */
   gender?: VoiceGender;
+  /** TTS vendor. Live `/fish/speakers` includes this; hardcoded fallbacks are Fish. */
+  brand?: "fish" | "speechify";
+  /** Admin row timestamp — Create/mixer append this to bust cached samples. */
+  updatedAt?: string;
 };
 
 export type VoiceGender = "male" | "female";
@@ -1993,7 +1997,13 @@ export type OrpheusSpeaker = {
   description?: string;
 };
 
-export type TtsProvider = "fish" | "orpheus";
+export type TtsProvider = "fish" | "orpheus" | "speechify";
+
+export function ttsProviderForSpeaker(
+  speaker: Pick<FishSpeaker, "brand"> | null | undefined,
+): Exclude<TtsProvider, "orpheus"> {
+  return speaker?.brand === "speechify" ? "speechify" : "fish";
+}
 
 /** Fish pause render path. Default `segmented` (ffmpeg silence). */
 export type FishPauseMode = "native" | "segmented";
@@ -2116,6 +2126,7 @@ export async function generateMeditationAudio(params: {
   speed?: number;
   /** If set, applies voice FX (Pedalboard) after loudness normalization. */
   voiceFxPreset?: string | null;
+  voiceFxDial?: number;
   /** @deprecated use layered background keys + gains */
   backgroundSoundKey?: string | null;
   backgroundNatureKey?: string | null;
@@ -2155,6 +2166,7 @@ export async function generateMeditationAudio(params: {
     reference_id: params.reference_id,
     ...(params.ttsProvider ? { ttsProvider: params.ttsProvider } : {}),
     ...(params.voiceFxPreset ? { voiceFxPreset: params.voiceFxPreset } : {}),
+    ...(typeof params.voiceFxDial === "number" ? { voiceFxDial: params.voiceFxDial } : {}),
     ...(speed === undefined ? {} : { speed }),
     ...(backgroundSoundKey === undefined ? {} : { backgroundSoundKey }),
     ...(backgroundNatureKey ? { backgroundNatureKey } : {}),
@@ -2280,6 +2292,7 @@ export async function createMeditationAudioJob(params: {
   speed?: number;
   /** If set, applies voice FX (Pedalboard) after loudness normalization. */
   voiceFxPreset?: string | null;
+  voiceFxDial?: number;
   /** @deprecated use layered background keys + gains */
   backgroundSoundKey?: string | null;
   backgroundNatureKey?: string | null;
@@ -2338,6 +2351,7 @@ export async function createMeditationAudioJob(params: {
       ? { creationProvenance: params.creationProvenance }
       : {}),
     ...(params.voiceFxPreset ? { voiceFxPreset: params.voiceFxPreset } : {}),
+    ...(typeof params.voiceFxDial === "number" ? { voiceFxDial: params.voiceFxDial } : {}),
     ...(sessionTokenForBody() ? { sessionToken: sessionTokenForBody() } : {}),
     ...(speed === undefined ? {} : { speed }),
     ...(backgroundSoundKey === undefined ? {} : { backgroundSoundKey }),
@@ -2839,6 +2853,8 @@ export type AdminVoiceSpeaker = {
   description?: string;
   goodFor?: string[];
   gender?: VoiceGender | null;
+  /** Speechify rate offset in percent (e.g. -7). Unused for Fish. */
+  speechifyRate?: number | null;
   hasSample?: boolean;
   sampleUrl?: string | null;
 };
@@ -2871,6 +2887,10 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
     speakers: (data.speakers ?? []).map((s) => ({
       ...s,
       brand: s.brand === "speechify" ? "speechify" : "fish",
+      speechifyRate:
+        typeof s.speechifyRate === "number" && Number.isFinite(s.speechifyRate)
+          ? Math.round(s.speechifyRate)
+          : null,
     })),
     pauses: data.pauses,
   };
@@ -2939,12 +2959,14 @@ export async function patchAdminVoice(body: {
   speaker?: {
     name: string;
     modelId: string;
+    previousModelId?: string;
     brand?: VoiceSpeakerBrand;
     hidden?: boolean;
     sort?: number;
     description?: string;
     goodFor?: string[];
     gender?: VoiceGender | null;
+    speechifyRate?: number | null;
   };
 }): Promise<{ pauses?: AdminPauseBands; speaker?: AdminVoiceSpeaker }> {
   const base = getMedimadeApiBase();
@@ -2982,13 +3004,18 @@ export async function deleteAdminVoiceSpeaker(modelId: string): Promise<void> {
 
 export async function generateAdminVoiceSample(
   modelId: string,
+  opts?: { force?: boolean },
 ): Promise<{ sampleUrl?: string | null }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/voice`, {
     method: "POST",
     headers: medimadeJsonHeaders(),
-    body: JSON.stringify({ action: "sample", modelId }),
+    body: JSON.stringify({
+      action: "sample",
+      modelId,
+      force: opts?.force === true,
+    }),
   });
   const data = (await res.json()) as {
     sampleUrl?: string | null;
@@ -4051,6 +4078,12 @@ export type LibraryMeditationItem = {
   jobId?: string | null;
   /** Speech-only stem; backgrounds are mixed in the Library player. */
   liveMix?: boolean;
+  dryAudioKey?: string | null;
+  wetAudioKey?: string | null;
+  dryAudioUrl?: string | null;
+  wetAudioUrl?: string | null;
+  voiceFxDial?: number | null;
+  createdVoiceFxDial?: number | null;
   backgroundNatureKey?: string | null;
   backgroundMusicKey?: string | null;
   backgroundDrumsKey?: string | null;
@@ -4310,6 +4343,7 @@ export async function patchMeditationBackgroundMix(
     backgroundMusicGain: number;
     backgroundDrumsGain: number;
     backgroundNoiseGain: number;
+    voiceFxDial?: number;
   },
   opts?: { community?: boolean; s3Key?: string },
 ): Promise<void> {

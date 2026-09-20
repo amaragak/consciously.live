@@ -12,6 +12,7 @@ import {
   listAdminPrograms,
   listBackgroundAudio,
   listFishSpeakers,
+  ttsProviderForSpeaker,
   PROGRAM_DAY_DESCRIPTION_MIN_CHARS,
   saveAdminProgram,
   VOICE_FX_PRESET_MEDITATION_MIXER,
@@ -27,7 +28,8 @@ import { packageOneShotPrompt } from "@/lib/homepage-one-shot-handoff";
 import { SOUNDSCAPE_ELEMENT_VOLUME } from "@/lib/bed-volume";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
-  speakerPreviewLoudSampleKey,
+  speakerPreviewLoudFxSampleKey,
+  withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
 /** Mixer fader value persisted with the generate job (same as create soundscape). */
@@ -301,9 +303,17 @@ export function AdminProgramsPanel() {
       return;
     }
     stopCompositionPreview();
-    const next = mediaFileUrl(
-      mediaBaseUrl,
-      speakerPreviewLoudSampleKey(id, FIXED_SPEECH_PREVIEW_SPEED),
+    const speaker = speakers.find((s) => s.modelId === id);
+    const next = withSpeakerSampleCacheBust(
+      mediaFileUrl(
+        mediaBaseUrl,
+        speakerPreviewLoudFxSampleKey(
+          id,
+          FIXED_SPEECH_PREVIEW_SPEED,
+          speaker?.brand,
+        ),
+      ),
+      speaker?.updatedAt,
     );
     if (el.src !== next) {
       el.src = next;
@@ -746,7 +756,9 @@ export function AdminProgramsPanel() {
       transcript: `User: ${packageOneShotPrompt(day.prompt)}`,
       scriptText: "",
       reference_id: speakerId,
-      ttsProvider: "fish",
+      ttsProvider: ttsProviderForSpeaker(
+        speakers.find((s) => s.modelId === speakerId),
+      ),
       fishTtsModel: "s2.1-pro-free",
       fishPauseMode: "segmented",
       excludeFromLibrary: true,

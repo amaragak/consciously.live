@@ -1,10 +1,10 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { DualStemPlayer } from "@consciously/common";
 import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
-import { applySpeechElementVolume } from "@/lib/bed-volume";
 
 const LAST_VOICE_STORAGE_KEY = "mm_last_fish_voice_v1";
 /** Pause between preview sample repeats (matches create-flow speaker bed). */
@@ -23,7 +23,9 @@ type VoiceCardRowProps = {
   value: string;
   onChange: (modelId: string) => void;
   /** Null while the media base URL is unknown, which disables previews. */
-  previewUrl: (modelId: string) => string | null;
+  previewDryUrl: (modelId: string) => string | null;
+  previewWetUrl: (modelId: string) => string | null;
+  voiceFxDial: number;
   disabled?: boolean;
   /** Bump to stop a running preview from outside, e.g. when generation starts. */
   stopNonce?: number;
@@ -82,11 +84,14 @@ export function VoiceCardRow({
   voices,
   value,
   onChange,
-  previewUrl,
+  previewDryUrl,
+  previewWetUrl,
+  voiceFxDial,
   disabled,
   stopNonce = 0,
 }: VoiceCardRowProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<DualStemPlayer | null>(null);
+  if (!playerRef.current) playerRef.current = new DualStemPlayer();
   const gapTimeoutRef = useRef<number | null>(null);
   const repeatWantedRef = useRef(false);
   const previewingIdRef = useRef<string | null>(null);
@@ -105,11 +110,7 @@ export function VoiceCardRow({
     clearGapSchedule();
     repeatWantedRef.current = false;
     previewingIdRef.current = null;
-    const el = audioRef.current;
-    if (el) {
-      el.pause();
-      el.currentTime = 0;
-    }
+    playerRef.current?.stop();
     setPreviewingId(null);
   }
 
@@ -144,11 +145,8 @@ export function VoiceCardRow({
     () => () => {
       clearGapSchedule();
       repeatWantedRef.current = false;
-      const el = audioRef.current;
-      if (el) {
-        el.pause();
-        el.removeAttribute("src");
-      }
+      playerRef.current?.dispose();
+      playerRef.current = null;
     },
     [],
   );
@@ -158,50 +156,42 @@ export function VoiceCardRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stop on external nonce only
   }, [stopNonce]);
 
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onEnded = () => {
-      if (!repeatWantedRef.current || !previewingIdRef.current) return;
-      clearGapSchedule();
-      // Keep playing UI during the gap between sample repeats.
-      gapTimeoutRef.current = window.setTimeout(() => {
-        gapTimeoutRef.current = null;
-        if (!repeatWantedRef.current) return;
-        const a = audioRef.current;
-        if (!a?.src) return;
-        applySpeechElementVolume(a);
-        void a.play().catch(() => {
+  function armRepeat(player: DualStemPlayer) {
+    clearGapSchedule();
+    const waitMs = Math.max(player.duration, 0) * 1000 + PREVIEW_REPEAT_GAP_MS;
+    gapTimeoutRef.current = window.setTimeout(() => {
+      gapTimeoutRef.current = null;
+      if (!repeatWantedRef.current) return;
+      void playerRef.current
+        ?.play()
+        .then(() => {
+          if (!repeatWantedRef.current || !playerRef.current) return;
+          armRepeat(playerRef.current);
+        })
+        .catch(() => {
           stopPreview();
         });
-      }, PREVIEW_REPEAT_GAP_MS);
-    };
-    el.addEventListener("ended", onEnded);
-    return () => {
-      el.removeEventListener("ended", onEnded);
-      clearGapSchedule();
-    };
-  }, []);
+    }, waitMs);
+  }
+
+  useEffect(() => {
+    playerRef.current?.setDial(voiceFxDial);
+  }, [voiceFxDial]);
 
   async function startPreview(modelId: string) {
-    const el = audioRef.current;
-    const url = previewUrl(modelId);
-    if (!el || !url) return;
+    const dry = previewDryUrl(modelId);
+    if (!dry) return;
+    const player = playerRef.current;
+    if (!player) return;
     clearGapSchedule();
     repeatWantedRef.current = true;
     previewingIdRef.current = modelId;
     setPreviewingId(modelId);
-    if (el.src !== url) {
-      el.src = url;
-      el.load();
-    } else {
-      el.currentTime = 0;
-    }
-    // load() resets volume — keep narration at full scale.
-    applySpeechElementVolume(el);
     try {
-      await el.play();
-      applySpeechElementVolume(el);
+      await player.load(dry, previewWetUrl(modelId), voiceFxDial);
+      await player.play();
+      if (!repeatWantedRef.current || previewingIdRef.current !== modelId) return;
+      armRepeat(player);
     } catch {
       stopPreview();
     }
@@ -236,7 +226,7 @@ export function VoiceCardRow({
           {list.map((voice) => {
             const selected = voice.modelId === value;
             const playing = previewingId === voice.modelId;
-            const canPreview = Boolean(previewUrl(voice.modelId));
+            const canPreview = Boolean(previewDryUrl(voice.modelId));
             return (
               <button
                 key={voice.modelId}
@@ -278,7 +268,6 @@ export function VoiceCardRow({
           })}
         </div>
       </div>
-      <audio ref={audioRef} className="hidden" playsInline />
     </section>
   );
 }

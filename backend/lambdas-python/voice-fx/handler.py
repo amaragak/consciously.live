@@ -86,6 +86,15 @@ def _normalize_integrated_lufs(
     return out_cf
 
 
+def _encode_wav(audio_cf: np.ndarray, sr: int) -> bytes:
+    out = io.BytesIO()
+    ch = int(audio_cf.shape[0]) if audio_cf.ndim == 2 else 1
+    pcm = audio_cf if audio_cf.ndim == 2 else np.array([audio_cf], dtype=np.float32)
+    with AudioFile(out, "w", sr, ch, format="wav") as f:
+        f.write(pcm)
+    return out.getvalue()
+
+
 def _json_response(status_code: int, payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "statusCode": status_code,
@@ -96,6 +105,9 @@ def _json_response(status_code: int, payload: dict[str, Any]) -> dict[str, Any]:
 
 def _build_board(preset: str) -> Pedalboard:
     p = (preset or "neutral").strip().lower()
+    if p == "mixer-wet":
+        # Alias: dial blends dry ↔ this full mixer bounce (same as `mixer`).
+        return _build_board("mixer")
     if p == "mixer":
         # Aligned with local sound-panel tuning (delay → reverb, light wet).
         return Pedalboard(
@@ -259,6 +271,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # 2) S3 mode: s3KeyIn → s3KeyOut (for long meditations; avoids large responses)
     s3_key_in = data.get("s3KeyIn")
     s3_key_out = data.get("s3KeyOut")
+    s3_key_dry_out = data.get("s3KeyDryOut")
+    emit_dry = bool(data.get("emitDry"))
     bucket = data.get("bucket") or os.environ.get("MEDIA_BUCKET_NAME")
     use_s3 = (
         isinstance(bucket, str)
@@ -312,13 +326,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     except Exception as e:
         return _json_response(400, {"error": str(e)})
 
-    # Optional override for mixer reverb tail (default 2s). Sectioned FX passes 0
-    # on non-final segments so pause markers are not inflated by 2s each.
+    # Tail pad on the joined stem only (default 2s). Callers that still send
+    # a single phrase can pass tailPadSeconds=0.
     tail_pad_raw = data.get("tailPadSeconds", None)
     try:
         audio_cf = _ensure_channels_first(np.asarray(audio, dtype=np.float32))
         pnorm = (preset or "neutral").strip().lower()
-        if pnorm == "mixer":
+        if pnorm in ("mixer", "mixer-wet"):
             if tail_pad_raw is None:
                 pad_sec = 2.0
             else:
@@ -327,11 +341,21 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             if pad_n > 0:
                 pad = np.zeros((audio_cf.shape[0], pad_n), dtype=np.float32)
                 audio_cf = np.concatenate([audio_cf, pad], axis=1)
+        # Same PCM the mixer sees — live dial blends this with the FX bounce.
+        dry_pcm = np.ascontiguousarray(audio_cf, dtype=np.float32)
         board_started = time.monotonic()
         board = _build_board(preset)
         timings["boardInitMs"] = _ms_since(board_started)
         process_started = time.monotonic()
-        processed = board(audio_cf, sr)
+        # One buffer for the whole file so delay/reverb state is not flushed
+        # every ~185ms (Pedalboard's default 8192), which cuts tails mid-phrase.
+        n_samples = int(audio_cf.shape[1])
+        processed = board(
+            audio_cf,
+            sr,
+            reset=True,
+            buffer_size=max(n_samples, 1),
+        )
         timings["boardProcessMs"] = _ms_since(process_started)
         timings["audioSeconds"] = int(round(audio_cf.shape[1] / max(1, sr)))
         processed = np.asarray(processed, dtype=np.float32)
@@ -345,11 +369,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     try:
         encode_started = time.monotonic()
-        out = io.BytesIO()
         num_channels = int(processed.shape[0])
-        with AudioFile(out, "w", sr, num_channels, format="wav") as f:
-            f.write(processed)
-        out_wav = out.getvalue()
+        out_wav = _encode_wav(processed, sr)
+        dry_wav: bytes | None = None
+        if emit_dry or (
+            isinstance(s3_key_dry_out, str) and s3_key_dry_out.strip()
+        ):
+            dry_wav = _encode_wav(dry_pcm, sr)
         timings["encodeMs"] = _ms_since(encode_started)
     except Exception as e:
         return _json_response(500, {"error": f"Encode failed: {e!s}"})
@@ -365,6 +391,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 ContentType="audio/wav",
                 CacheControl="public, max-age=31536000, immutable",
             )
+            if dry_wav and isinstance(s3_key_dry_out, str) and s3_key_dry_out.strip():
+                s3.put_object(
+                    Bucket=bucket,
+                    Key=s3_key_dry_out.strip(),
+                    Body=dry_wav,
+                    ContentType="audio/wav",
+                    CacheControl="public, max-age=31536000, immutable",
+                )
         except Exception as e:
             return _json_response(500, {"error": f"Could not write S3 output {s3_key_out!r}: {e!s}"})
         timings["s3PutMs"] = _ms_since(put_started)
@@ -380,6 +414,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "inputFormat": ifmt,
                 "bucket": bucket,
                 "s3KeyOut": s3_key_out.strip(),
+                "s3KeyDryOut": s3_key_dry_out.strip()
+                if isinstance(s3_key_dry_out, str) and s3_key_dry_out.strip()
+                else None,
                 "coldStart": cold_start,
                 "timingsMs": timings,
             },
@@ -398,5 +435,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "coldStart": cold_start,
             "timingsMs": timings,
             "audioBase64": base64.b64encode(out_wav).decode("ascii"),
+            **(
+                {"dryAudioBase64": base64.b64encode(dry_wav).decode("ascii")}
+                if dry_wav
+                else {}
+            ),
         },
     )

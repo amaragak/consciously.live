@@ -1,6 +1,15 @@
 /**
  * Voice preview samples — keep in sync with `frontend/marketing/src/lib/speaker-sample-speed.ts`.
+ * Speechify keys omit the Fish speed stem (`loud.mp3` / `loud-fx.wav`).
  */
+
+export type SpeakerSampleBrand = "fish" | "speechify";
+
+function isSpeechifySampleBrand(
+  brand?: SpeakerSampleBrand | string | null,
+): boolean {
+  return brand === "speechify";
+}
 
 export const SPEAKER_SAMPLE_SPEED_MIN = 0.75;
 export const SPEAKER_SAMPLE_SPEED_MAX = 1;
@@ -33,7 +42,11 @@ export function speechSpeedToSampleStem(speed: number): string {
 export function speakerPreviewLoudSampleKey(
   modelId: string,
   speed: number,
+  brand?: SpeakerSampleBrand | string | null,
 ): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/loud.mp3`;
+  }
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud.mp3`;
 }
 
@@ -41,6 +54,10 @@ export function speakerPreviewLoudSampleKey(
 export function speakerPreviewLoudFxSampleKey(
   modelId: string,
   speed: number,
+  brand?: SpeakerSampleBrand | string | null,
 ): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/loud-fx.wav`;
+  }
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud-fx.wav`;
 }

@@ -35,6 +35,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
 
     const { httpApi, ffmpegLayer, voiceFxFunction } = props;
     const fishApiKeySecret = props.config.fishApiKey;
+    const speechifyApiKeySecret = props.config.speechifyApiKey;
     const claudeApiKeySecret = props.config.claudeApiKey;
     const runpodsApiKeySecret = props.config.runpodsApiKey;
     const runpodsUrlSecret = props.config.runpodsUrl;
@@ -82,6 +83,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     voiceAdminTable.grantReadData(workerRole);
     mediaBucket.grantReadWrite(workerRole);
     fishApiKeySecret.grantRead(workerRole);
+    speechifyApiKeySecret.grantRead(workerRole);
     claudeApiKeySecret.grantRead(workerRole);
     runpodsApiKeySecret.grantRead(workerRole);
     runpodsUrlSecret.grantRead(workerRole);
@@ -109,6 +111,8 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          SPEECHIFY_TTS_MODEL: "simba-3.2",
           RUNPODS_SECRET_ARN: runpodsApiKeySecret.secretArn,
           RUNPODS_URL_SECRET_ARN: runpodsUrlSecret.secretArn,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,

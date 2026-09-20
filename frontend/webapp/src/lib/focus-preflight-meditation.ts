@@ -7,6 +7,7 @@ import {
   backgroundAudioStreamingKey,
   createMeditationAudioJob,
   listBackgroundAudio,
+  ttsProviderForSpeaker,
   VOICE_FX_PRESET_MEDITATION_MIXER,
   type BackgroundAudioItem,
 } from "@/lib/medimade-api";
@@ -141,7 +142,7 @@ export async function startFocusPreflightMeditationGeneration(
     transcript,
     scriptText: "",
     reference_id: speakerModelId,
-    ttsProvider: "fish",
+    ttsProvider: ttsProviderForSpeaker(speaker),
     speed: FIXED_SPEECH_PREVIEW_SPEED,
     voiceFxPreset: VOICE_FX_PRESET_MEDITATION_MIXER,
     ...(input.lifeAreaId?.trim()

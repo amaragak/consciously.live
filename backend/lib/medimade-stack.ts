@@ -700,6 +700,8 @@ export class MedimadeStack extends cdk.Stack {
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          SPEECHIFY_TTS_MODEL: "simba-3.2",
           RUNPODS_SECRET_ARN: runpodsApiKeySecret.secretArn,
           RUNPODS_URL_SECRET_ARN: runpodsUrlSecret.secretArn,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
@@ -714,6 +716,7 @@ export class MedimadeStack extends cdk.Stack {
     );
     claudeApiKeySecret.grantRead(meditationAudioWorker);
     fishApiKeySecret.grantRead(meditationAudioWorker);
+    speechifyApiKeySecret.grantRead(meditationAudioWorker);
     runpodsApiKeySecret.grantRead(meditationAudioWorker);
     runpodsUrlSecret.grantRead(meditationAudioWorker);
     mediaBucket.grantPut(meditationAudioWorker);
@@ -1450,11 +1453,15 @@ export class MedimadeStack extends cdk.Stack {
       environment: {
         MEDIA_BUCKET_NAME: mediaBucket.bucketName,
         MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        MEDIA_CLOUDFRONT_DISTRIBUTION_ID: mediaDistribution.distributionId,
         VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         ADMIN_EMAILS: adminEmails,
         FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
         FISH_TTS_MODEL: "s2.1-pro-free",
+        SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+        SPEECHIFY_VOICE_ID: "geffen_32",
+        SPEECHIFY_TTS_MODEL: "simba-3.2",
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
       },
     });
@@ -1462,6 +1469,15 @@ export class MedimadeStack extends cdk.Stack {
     voiceAdminTable.grantReadWriteData(adminVoice);
     authJwtSecret.grantRead(adminVoice);
     fishApiKeySecret.grantRead(adminVoice);
+    speechifyApiKeySecret.grantRead(adminVoice);
+    adminVoice.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudfront:CreateInvalidation"],
+        resources: [
+          `arn:aws:cloudfront::${this.account}:distribution/${mediaDistribution.distributionId}`,
+        ],
+      }),
+    );
 
     httpApi.addRoutes({
       path: "/admin/voice",

@@ -85,9 +85,11 @@ export async function handler(
   const backgroundMusicGain = optGain(body.backgroundMusicGain, 50);
   const backgroundDrumsGain = optGain(body.backgroundDrumsGain, 40);
   const backgroundNoiseGain = optGain(body.backgroundNoiseGain, 10);
+  const voiceFxDial = optGain(body.voiceFxDial, 100);
 
   const mixFields = {
     liveMix: true,
+    voiceFxDial,
     backgroundNatureKey,
     backgroundMusicKey,
     backgroundDrumsKey,
@@ -150,9 +152,10 @@ export async function handler(
       sk,
       update: {
         UpdateExpression:
-          "SET liveMix = :lm, backgroundNatureKey = :nk, backgroundMusicKey = :mk, backgroundDrumsKey = :dk, backgroundNoiseKey = :zk, backgroundNatureGain = :ng, backgroundMusicGain = :mg, backgroundDrumsGain = :dg, backgroundNoiseGain = :zg, createdBackgroundNatureKey = if_not_exists(createdBackgroundNatureKey, backgroundNatureKey), createdBackgroundMusicKey = if_not_exists(createdBackgroundMusicKey, backgroundMusicKey), createdBackgroundDrumsKey = if_not_exists(createdBackgroundDrumsKey, backgroundDrumsKey), createdBackgroundNoiseKey = if_not_exists(createdBackgroundNoiseKey, backgroundNoiseKey), createdBackgroundNatureGain = if_not_exists(createdBackgroundNatureGain, backgroundNatureGain), createdBackgroundMusicGain = if_not_exists(createdBackgroundMusicGain, backgroundMusicGain), createdBackgroundDrumsGain = if_not_exists(createdBackgroundDrumsGain, backgroundDrumsGain), createdBackgroundNoiseGain = if_not_exists(createdBackgroundNoiseGain, backgroundNoiseGain)",
+          "SET liveMix = :lm, voiceFxDial = :fx, createdVoiceFxDial = if_not_exists(createdVoiceFxDial, :fx), backgroundNatureKey = :nk, backgroundMusicKey = :mk, backgroundDrumsKey = :dk, backgroundNoiseKey = :zk, backgroundNatureGain = :ng, backgroundMusicGain = :mg, backgroundDrumsGain = :dg, backgroundNoiseGain = :zg, createdBackgroundNatureKey = if_not_exists(createdBackgroundNatureKey, backgroundNatureKey), createdBackgroundMusicKey = if_not_exists(createdBackgroundMusicKey, backgroundMusicKey), createdBackgroundDrumsKey = if_not_exists(createdBackgroundDrumsKey, backgroundDrumsKey), createdBackgroundNoiseKey = if_not_exists(createdBackgroundNoiseKey, backgroundNoiseKey), createdBackgroundNatureGain = if_not_exists(createdBackgroundNatureGain, backgroundNatureGain), createdBackgroundMusicGain = if_not_exists(createdBackgroundMusicGain, backgroundMusicGain), createdBackgroundDrumsGain = if_not_exists(createdBackgroundDrumsGain, backgroundDrumsGain), createdBackgroundNoiseGain = if_not_exists(createdBackgroundNoiseGain, backgroundNoiseGain)",
         ExpressionAttributeValues: {
           ":lm": true,
+          ":fx": voiceFxDial,
           ":nk": backgroundNatureKey,
           ":mk": backgroundMusicKey,
           ":dk": backgroundDrumsKey,

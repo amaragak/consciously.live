@@ -14,6 +14,7 @@ import {
 } from "@/lib/medimade-api";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import type { BedVolumeChannel } from "@/components/library-player-provider";
+import { VoiceFxKnob } from "@consciously/common";
 
 /** Mixer gain persisted for a soundscape; live playback uses its own volume. */
 export const SOUNDSCAPE_MIX_GAIN = 100;
@@ -27,6 +28,7 @@ export type MixEditorValues = {
   musicGain: number;
   drumsGain: number;
   noiseGain: number;
+  voiceFxDial: number;
 };
 
 export const DEFAULT_MIX_EDITOR_VALUES: MixEditorValues = {
@@ -38,6 +40,7 @@ export const DEFAULT_MIX_EDITOR_VALUES: MixEditorValues = {
   musicGain: 50,
   drumsGain: 40,
   noiseGain: 10,
+  voiceFxDial: 100,
 };
 
 export function mixWithGain(
@@ -273,6 +276,9 @@ export function MixEditorPanel({
   const [musicGain, setMusicGain] = useState(() => initialMix.musicGain);
   const [drumsGain, setDrumsGain] = useState(() => initialMix.drumsGain);
   const [noiseGain, setNoiseGain] = useState(() => initialMix.noiseGain);
+  const [voiceFxDial, setVoiceFxDial] = useState(
+    () => initialMix.voiceFxDial ?? 100,
+  );
   const mixRef = useRef<MixEditorValues>({
     natureKey,
     musicKey,
@@ -282,6 +288,7 @@ export function MixEditorPanel({
     musicGain,
     drumsGain,
     noiseGain,
+    voiceFxDial,
   });
 
   mixRef.current = {
@@ -293,6 +300,7 @@ export function MixEditorPanel({
     musicGain,
     drumsGain,
     noiseGain,
+    voiceFxDial,
   };
 
   function previewNow(next: MixEditorValues) {
@@ -309,6 +317,7 @@ export function MixEditorPanel({
     setMusicGain(next.musicGain);
     setDrumsGain(next.drumsGain);
     setNoiseGain(next.noiseGain);
+    setVoiceFxDial(next.voiceFxDial ?? 100);
     mixRef.current = next;
     previewNow(next);
     void Promise.resolve(onPersist(next)).catch(() => {});
@@ -483,6 +492,7 @@ export function MixEditorPanel({
       musicGain: SOUNDSCAPE_MIX_GAIN,
       drumsGain,
       noiseGain,
+      voiceFxDial,
     };
     setNatureKey("");
     setMusicKey(key);
@@ -638,6 +648,24 @@ export function MixEditorPanel({
             { id: "mixer" as const, label: "Build your own" },
           ]}
         />
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+          FX
+        </span>
+        <VoiceFxKnob
+          value={voiceFxDial}
+          onChange={(n) => {
+            setVoiceFxDial(n);
+            const next = { ...mixRef.current, voiceFxDial: n };
+            mixRef.current = next;
+            previewNow(next);
+          }}
+          onCommit={() => {
+            void Promise.resolve(onPersist(mixRef.current)).catch(() => {});
+          }}
+        />
+        <span className="text-xs tabular-nums text-muted">{voiceFxDial}</span>
       </div>
       {bedTab === "soundscape" ? (
         <div className="mt-3 max-h-[min(18rem,42vh)] overflow-y-auto overflow-x-hidden pr-1 sm:max-h-72">

@@ -1,7 +1,17 @@
 /**
- * Voice preview samples: S3 keys `speaker-samples/<modelId>/<stem>.mp3` (Fish prosody speed).
- * Keep in sync with `backend/lib/speaker-sample-speed.ts`.
+ * Voice preview samples: S3 keys `speaker-samples/<modelId>/…`.
+ * Fish filenames include the prosody speed stem (`0.9-loud.mp3`).
+ * Speechify has no speed control — keys are `loud.mp3` / `loud-fx.wav`.
+ * Keep in sync with `backend/lambdas/_shared/speaker-sample-speed.ts`.
  */
+
+export type SpeakerSampleBrand = "fish" | "speechify";
+
+function isSpeechifySampleBrand(
+  brand?: SpeakerSampleBrand | string | null,
+): boolean {
+  return brand === "speechify";
+}
 
 export const SPEAKER_SAMPLE_SPEED_MIN = 0.75;
 export const SPEAKER_SAMPLE_SPEED_MAX = 1;
@@ -39,7 +49,11 @@ export function speechSpeedToSampleStem(speed: number): string {
 export function speakerPreviewSampleKey(
   modelId: string,
   speed: number,
+  brand?: SpeakerSampleBrand | string | null,
 ): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/sample.mp3`;
+  }
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}.mp3`;
 }
 
@@ -47,7 +61,11 @@ export function speakerPreviewSampleKey(
 export function speakerPreviewLoudSampleKey(
   modelId: string,
   speed: number,
+  brand?: SpeakerSampleBrand | string | null,
 ): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/loud.mp3`;
+  }
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud.mp3`;
 }
 
@@ -59,12 +77,51 @@ export function speakerPreviewFxSampleKey(
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-fx.wav`;
 }
 
+/** Pedalboard-decoded dry WAV (same PCM the mixer bounce was built from). */
+export function speakerPreviewLoudDrySampleKey(
+  modelId: string,
+  speed: number,
+  brand?: SpeakerSampleBrand | string | null,
+): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/loud-dry.wav`;
+  }
+  return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud-dry.wav`;
+}
+
 /** FX preview derived from the loudness-normalized MP3 input. */
 export function speakerPreviewLoudFxSampleKey(
   modelId: string,
   speed: number,
+  brand?: SpeakerSampleBrand | string | null,
 ): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/loud-fx.wav`;
+  }
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud-fx.wav`;
+}
+
+/** Full mixer bounce used as the effected stem (same as loud-fx). */
+export function speakerPreviewLoudWetSampleKey(
+  modelId: string,
+  speed: number,
+  brand?: SpeakerSampleBrand | string | null,
+): string {
+  if (isSpeechifySampleBrand(brand)) {
+    return `speaker-samples/${modelId}/loud-wet.wav`;
+  }
+  return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud-wet.wav`;
+}
+
+/** Admin sample URLs already do this; Create/mixer must too (CDN is immutable). */
+export function withSpeakerSampleCacheBust(
+  url: string | null,
+  updatedAt?: string | null,
+): string | null {
+  if (!url) return null;
+  const v = typeof updatedAt === "string" ? updatedAt.trim() : "";
+  if (!v) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(v)}`;
 }
 
 /** Orpheus preview samples — keep in sync with `backend/lib/speaker-sample-speed.ts`. */

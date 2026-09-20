@@ -58,6 +58,7 @@ export type CreateSessionV1 = {
   ttsProvider: TtsProvider;
   orpheusVoiceId: string;
   speakerFxPreviewOn: boolean;
+  voiceFxDial: number;
   backgroundNatureKey: string;
   backgroundMusicKey: string;
   backgroundDrumsKey: string;
@@ -170,7 +171,13 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
   }
   if (typeof o.input !== "string") return null;
   if (typeof o.speakerModelId !== "string") return null;
-  if (o.ttsProvider !== "fish" && o.ttsProvider !== "orpheus") return null;
+  if (
+    o.ttsProvider !== "fish" &&
+    o.ttsProvider !== "orpheus" &&
+    o.ttsProvider !== "speechify"
+  ) {
+    return null;
+  }
   if (typeof o.orpheusVoiceId !== "string") return null;
   if (typeof o.speakerFxPreviewOn !== "boolean") return null;
   if (typeof o.backgroundNatureKey !== "string") return null;
@@ -236,6 +243,9 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
     ttsProvider: o.ttsProvider,
     orpheusVoiceId: o.orpheusVoiceId,
     speakerFxPreviewOn: o.speakerFxPreviewOn,
+    voiceFxDial: isFiniteNumber(o.voiceFxDial)
+      ? Math.min(100, Math.max(0, Math.round(o.voiceFxDial)))
+      : 100,
     backgroundNatureKey: o.backgroundNatureKey,
     backgroundMusicKey: o.backgroundMusicKey,
     backgroundDrumsKey: o.backgroundDrumsKey,
@@ -352,7 +362,10 @@ export function createSessionSatisfiesRoute(
     return Boolean(session.meditationStyle?.trim());
   }
   if (mix && path === "style") {
-    return Boolean(session.meditationStyle?.trim());
+    // Random skips type pick — style is chosen only at generate.
+    return (
+      session.randomScript === true || Boolean(session.meditationStyle?.trim())
+    );
   }
   return true;
 }

@@ -24,6 +24,7 @@ import {
   SOUNDSCAPE_ELEMENT_VOLUME,
 } from "../audio/bed-volume";
 import type { BackgroundAudioItem, LibraryMeditationFields } from "./types";
+import { DualStemPlayer } from "../audio/dual-stem-player";
 
 export type LibraryActiveTrack = {
   url: string;
@@ -45,12 +46,16 @@ export type LibraryActiveTrack = {
    */
   ambientOnly?: boolean;
   ambientKind?: "soundscape" | "mix";
+  dryUrl?: string;
+  wetUrl?: string;
+  voiceFxDial?: number;
 };
 
 export type BedVolumeChannel = "nature" | "music" | "drums" | "noise";
 
 export type LibraryBedVolumeApi = {
   setBedVolume: (channel: BedVolumeChannel, gain: number) => void;
+  setVoiceFxDial: (dial: number) => void;
 };
 
 export function mediaFileUrl(base: string, key: string): string {
@@ -84,11 +89,17 @@ export function trackFromLibraryItem(
     musicGain: m.backgroundMusicGain ?? 50,
     drumsGain: m.backgroundDrumsGain ?? 40,
     noiseGain: m.backgroundNoiseGain ?? 10,
+    dryUrl: m.dryAudioUrl ?? undefined,
+    wetUrl: m.wetAudioUrl ?? undefined,
+    voiceFxDial: m.voiceFxDial ?? 100,
   };
 }
 
 export function liveMixTrack(
-  m: Pick<LibraryMeditationFields, "audioUrl" | "title" | "s3Key">,
+  m: Pick<
+    LibraryMeditationFields,
+    "audioUrl" | "title" | "s3Key" | "dryAudioUrl" | "wetAudioUrl" | "voiceFxDial"
+  >,
   mix: {
     natureKey: string;
     musicKey: string;
@@ -98,6 +109,7 @@ export function liveMixTrack(
     musicGain: number;
     drumsGain: number;
     noiseGain: number;
+    voiceFxDial?: number;
   },
 ): LibraryActiveTrack {
   return {
@@ -113,6 +125,9 @@ export function liveMixTrack(
     musicGain: mix.musicGain,
     drumsGain: mix.drumsGain,
     noiseGain: mix.noiseGain,
+    dryUrl: m.dryAudioUrl ?? undefined,
+    wetUrl: m.wetAudioUrl ?? undefined,
+    voiceFxDial: mix.voiceFxDial ?? m.voiceFxDial ?? 100,
   };
 }
 
@@ -239,6 +254,9 @@ export function LibraryAudioStrip({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const dualRef = useRef<DualStemPlayer | null>(null);
+  if (!dualRef.current) dualRef.current = new DualStemPlayer();
+  const useDual = Boolean(track?.dryUrl && track?.wetUrl);
   const natureRef = useRef<HTMLAudioElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
   const drumsRef = useRef<HTMLAudioElement>(null);
@@ -327,6 +345,28 @@ export function LibraryAudioStrip({
       onPlayingChange?.(track.s3Key, true);
       return;
     }
+    if (useDual) {
+      const dual = dualRef.current;
+      if (!dual) return;
+      clearVoiceIntro();
+      setPlaying(true);
+      onPlayingChange?.(track.s3Key, true);
+      if (shouldDelayVoice(dual.currentTime)) {
+        voiceIntroTimerRef.current = window.setTimeout(() => {
+          voiceIntroTimerRef.current = null;
+          void dual.play().catch(() => {
+            setPlaying(false);
+            onPlayingChange?.(track.s3Key, false);
+          });
+        }, BED_VOICE_INTRO_SECONDS * 1000);
+        return;
+      }
+      void dual.play().catch(() => {
+        setPlaying(false);
+        onPlayingChange?.(track.s3Key, false);
+      });
+      return;
+    }
     const el = audioRef.current;
     if (!el) return;
     if (ambientSoundscape) {
@@ -358,7 +398,10 @@ export function LibraryAudioStrip({
 
   function pausePlayback() {
     clearVoiceIntro();
-    if (!ambientMix) audioRef.current?.pause();
+    if (!ambientMix) {
+      audioRef.current?.pause();
+      dualRef.current?.pause();
+    }
     if (track) onPlayingChange?.(track.s3Key, false);
     setPlaying(false);
   }
@@ -366,6 +409,11 @@ export function LibraryAudioStrip({
   function togglePlayback() {
     if (ambientMix) {
       if (playing) pausePlayback();
+      else startOrResumePlayback();
+      return;
+    }
+    if (useDual) {
+      if (playing || voiceIntroTimerRef.current != null) pausePlayback();
       else startOrResumePlayback();
       return;
     }
@@ -404,6 +452,9 @@ export function LibraryAudioStrip({
             : bedElementVolume(gain),
         );
       },
+      setVoiceFxDial(dial) {
+        dualRef.current?.setDial(dial);
+      },
     };
     return () => {
       bedVolumeApiRef.current = null;
@@ -418,7 +469,11 @@ export function LibraryAudioStrip({
   }, []);
 
   useEffect(() => {
-    if (!track) return;
+    if (!track) {
+      clearVoiceIntro();
+      dualRef.current?.stop();
+      return;
+    }
     seekingRef.current = false;
     lastReportedTimeRef.current = -Infinity;
     if (ambientMix) {
@@ -429,6 +484,37 @@ export function LibraryAudioStrip({
         clearVoiceIntro();
       };
     }
+    if (useDual && track.dryUrl) {
+      let cancelled = false;
+      const dual = dualRef.current;
+      if (!dual) return;
+      dual.onEnded = () => {
+        if (cancelled) return;
+        setPlaying(false);
+        onPlayingChange?.(track.s3Key, false);
+        if (!ambientSoundscape) onDismiss();
+      };
+      void dual
+        .load(track.dryUrl, track.wetUrl ?? null, track.voiceFxDial ?? 100)
+        .then(() => {
+          if (cancelled) return;
+          setDuration(dual.duration);
+          setCurrent(dual.currentTime);
+          startOrResumePlayback();
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setPlaying(false);
+          onPlayingChange?.(track.s3Key, false);
+        });
+      return () => {
+        cancelled = true;
+        clearVoiceIntro();
+        dual.pause();
+        dual.onEnded = null;
+      };
+    }
+    dualRef.current?.stop();
     const el = audioRef.current;
     if (!el) return;
     if (ambientSoundscape) {
@@ -446,7 +532,19 @@ export function LibraryAudioStrip({
       clearVoiceIntro();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- restart when the stem changes
-  }, [track?.s3Key, track?.url, track?.ambientKind]);
+  }, [track?.s3Key, track?.url, track?.ambientKind, track?.dryUrl, track?.wetUrl, useDual]);
+
+  useEffect(() => {
+    if (!useDual) return;
+    dualRef.current?.setDial(track?.voiceFxDial ?? 100);
+  }, [track?.voiceFxDial, useDual]);
+
+  useEffect(() => {
+    return () => {
+      dualRef.current?.dispose();
+      dualRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const soundscape = soundscapeActive;
@@ -534,6 +632,7 @@ export function LibraryAudioStrip({
   }, [playbackToggleNonce, track]);
 
   useEffect(() => {
+    if (useDual) return;
     const el = audioRef.current;
     if (!el || !track || ambientMix) return;
 
@@ -585,7 +684,24 @@ export function LibraryAudioStrip({
     onPlayingChange,
     onDismiss,
     reportTime,
+    useDual,
   ]);
+
+  useEffect(() => {
+    if (!useDual || !track || ambientMix) return;
+    let raf = 0;
+    const tick = () => {
+      const dual = dualRef.current;
+      if (dual && !seekingRef.current) {
+        const t = dual.currentTime;
+        setCurrent(t);
+        reportTime(t);
+      }
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [useDual, track, ambientMix, reportTime]);
 
   useLayoutEffect(() => {
     if (!track) {
@@ -612,6 +728,29 @@ export function LibraryAudioStrip({
 
   function skipSeconds(delta: number) {
     if (ambientMix) return;
+    if (useDual) {
+      const dual = dualRef.current;
+      if (!dual) return;
+      const end =
+        Number.isFinite(dual.duration) && dual.duration > 0
+          ? dual.duration
+          : Number.isFinite(duration) && duration > 0
+            ? duration
+            : max;
+      const next = Math.min(end, Math.max(0, dual.currentTime + delta));
+      dual.seek(next);
+      setCurrent(next);
+      reportTime(next);
+      if (!playing && voiceIntroTimerRef.current == null) return;
+      clearVoiceIntro();
+      if (shouldDelayVoice(next)) {
+        dual.pause();
+        startOrResumePlayback();
+      } else if (!dual.isPlaying) {
+        void dual.play().catch(() => {});
+      }
+      return;
+    }
     const el = audioRef.current;
     if (!el) return;
     const end =
@@ -649,7 +788,7 @@ export function LibraryAudioStrip({
         paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
       }}
     >
-      {ambientMix ? null : (
+      {ambientMix || useDual ? null : (
         <audio
           key={track.s3Key}
           ref={audioRef}
@@ -795,9 +934,26 @@ export function LibraryAudioStrip({
                     seekingRef.current = false;
                   }}
                   onChange={(e) => {
-                    const el = audioRef.current;
                     const v = Number(e.target.value);
-                    if (!el || !Number.isFinite(v)) return;
+                    if (!Number.isFinite(v)) return;
+                    if (useDual) {
+                      const dual = dualRef.current;
+                      if (!dual) return;
+                      dual.seek(v);
+                      setCurrent(v);
+                      reportTime(v);
+                      if (!playing && voiceIntroTimerRef.current == null) return;
+                      clearVoiceIntro();
+                      if (shouldDelayVoice(v)) {
+                        dual.pause();
+                        startOrResumePlayback();
+                      } else if (!dual.isPlaying) {
+                        void dual.play().catch(() => {});
+                      }
+                      return;
+                    }
+                    const el = audioRef.current;
+                    if (!el) return;
                     el.currentTime = v;
                     setCurrent(v);
                     reportTime(v);

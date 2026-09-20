@@ -368,6 +368,7 @@ function mixValuesFromItem(
       musicGain: gain(m.createdBackgroundMusicGain, m.backgroundMusicGain, 50),
       drumsGain: gain(m.createdBackgroundDrumsGain, m.backgroundDrumsGain, 40),
       noiseGain: gain(m.createdBackgroundNoiseGain, m.backgroundNoiseGain, 10),
+      voiceFxDial: gain(m.createdVoiceFxDial, m.voiceFxDial, 100),
     };
   }
   if (source === "publisher") {
@@ -384,6 +385,7 @@ function mixValuesFromItem(
       musicGain: gain(m.publisherBackgroundMusicGain, m.backgroundMusicGain, 50),
       drumsGain: gain(m.publisherBackgroundDrumsGain, m.backgroundDrumsGain, 40),
       noiseGain: gain(m.publisherBackgroundNoiseGain, m.backgroundNoiseGain, 10),
+      voiceFxDial: gain(m.voiceFxDial, null, 100),
     };
   }
   return {
@@ -395,6 +397,7 @@ function mixValuesFromItem(
     musicGain: gain(m.backgroundMusicGain, null, 50),
     drumsGain: gain(m.backgroundDrumsGain, null, 40),
     noiseGain: gain(m.backgroundNoiseGain, null, 10),
+    voiceFxDial: gain(m.voiceFxDial, null, 100),
   };
 }
 
@@ -487,6 +490,7 @@ type LocalMixOverlay = {
   backgroundMusicGain: number;
   backgroundDrumsGain: number;
   backgroundNoiseGain: number;
+  voiceFxDial: number;
 };
 
 function localMixOverlayFromValues(mix: LibraryMixValues): LocalMixOverlay {
@@ -504,6 +508,7 @@ function localMixOverlayFromValues(mix: LibraryMixValues): LocalMixOverlay {
     backgroundMusicGain: mix.musicGain,
     backgroundDrumsGain: mix.drumsGain,
     backgroundNoiseGain: mix.noiseGain,
+    voiceFxDial: mix.voiceFxDial,
   };
 }
 
@@ -643,6 +648,7 @@ export default function LibraryView({
     bedVolumeApiRef,
     playItem,
     toggleCurrent,
+    dismiss,
     patchNowPlaying,
     setPlaybackTimeListener,
   } = useLibraryPlayer();
@@ -1617,6 +1623,9 @@ export default function LibraryView({
     const sk = item.sk;
     const prevArchived = item.archived;
     setArchiveBusySk(sk);
+    if (archived && nowPlaying?.s3Key && nowPlaying.s3Key === item.s3Key) {
+      dismiss();
+    }
     // Optimistic UI update; archived items drop out of the visible list.
     setItems((prev) => prev.map((x) => (x.sk === sk ? { ...x, archived } : x)));
     try {
@@ -1696,6 +1705,7 @@ export default function LibraryView({
         musicGain,
         drumsGain,
         noiseGain,
+        voiceFxDial: m.voiceFxDial ?? 100,
       });
     });
   }
@@ -1742,6 +1752,7 @@ export default function LibraryView({
             musicGain: overlay.backgroundMusicGain,
             drumsGain: overlay.backgroundDrumsGain,
             noiseGain: overlay.backgroundNoiseGain,
+            voiceFxDial: overlay.voiceFxDial,
           })
         : p,
     );
@@ -1758,6 +1769,7 @@ export default function LibraryView({
           backgroundMusicGain: overlay.backgroundMusicGain,
           backgroundDrumsGain: overlay.backgroundDrumsGain,
           backgroundNoiseGain: overlay.backgroundNoiseGain,
+          voiceFxDial: overlay.voiceFxDial,
         },
         libraryTab === "community"
           ? { community: true, s3Key: item.s3Key }

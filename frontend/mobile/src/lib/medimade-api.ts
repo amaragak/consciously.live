@@ -125,6 +125,7 @@ export type BackgroundAudioByCategory = {
 export type FishSpeaker = {
   name: string;
   modelId: string;
+  brand?: "fish" | "speechify";
 };
 
 export const VOICE_FX_PRESET_MEDITATION_MIXER = "mixer";

@@ -25,6 +25,7 @@ function mediaFileUrl(base: string, key: string): string {
 export type CreateAudioPreviewParams = {
   mediaBaseUrl: string | null;
   speakerModelId: string;
+  speakerBrand?: "fish" | "speechify";
   speechSpeed: number;
   speakerFxPreviewOn: boolean;
   backgroundNatureKey: string;
@@ -213,8 +214,16 @@ export function useCreateAudioPreview(p: CreateAudioPreviewParams) {
         return;
       }
       const sampleKey = p.speakerFxPreviewOn
-        ? speakerPreviewLoudFxSampleKey(p.speakerModelId, p.speechSpeed)
-        : speakerPreviewLoudSampleKey(p.speakerModelId, p.speechSpeed);
+        ? speakerPreviewLoudFxSampleKey(
+            p.speakerModelId,
+            p.speechSpeed,
+            p.speakerBrand,
+          )
+        : speakerPreviewLoudSampleKey(
+            p.speakerModelId,
+            p.speechSpeed,
+            p.speakerBrand,
+          );
       const uri = mediaFileUrl(p.mediaBaseUrl, sampleKey);
       const wantPlay = playingRef.current.speaker;
 
@@ -289,6 +298,7 @@ export function useCreateAudioPreview(p: CreateAudioPreviewParams) {
   }, [
     p.mediaBaseUrl,
     p.speakerModelId,
+    p.speakerBrand,
     p.speechSpeed,
     p.speakerFxPreviewOn,
     playing.speaker,

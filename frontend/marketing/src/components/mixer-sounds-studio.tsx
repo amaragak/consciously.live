@@ -51,6 +51,7 @@ import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
+  withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
 const SOUNDS_HREF = "/meditate/sounds";
@@ -654,16 +655,22 @@ export function MixerSoundsStudio({
     el.loop = true;
     el.volume = 1;
     if (mediaBaseUrl && speakerModelId) {
+      const speaker = fishSpeakers.find((s) => s.modelId === speakerModelId);
       const key = speakerFxPreviewOn
         ? speakerPreviewLoudFxSampleKey(
             speakerModelId,
             FIXED_SPEECH_PREVIEW_SPEED,
+            speaker?.brand,
           )
         : speakerPreviewLoudSampleKey(
             speakerModelId,
             FIXED_SPEECH_PREVIEW_SPEED,
+            speaker?.brand,
           );
-      const next = mediaFileUrl(mediaBaseUrl, key);
+      const next = withSpeakerSampleCacheBust(
+        mediaFileUrl(mediaBaseUrl, key),
+        speaker?.updatedAt,
+      );
       if (el.src !== next) {
         el.src = next;
         void el.load();

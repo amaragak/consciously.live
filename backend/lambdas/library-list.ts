@@ -72,6 +72,12 @@ type OutItem = {
   /** Create-job id when this library row was produced by Generate. */
   jobId: string | null;
   liveMix: boolean;
+  dryAudioKey: string | null;
+  wetAudioKey: string | null;
+  dryAudioUrl: string | null;
+  wetAudioUrl: string | null;
+  voiceFxDial: number | null;
+  createdVoiceFxDial: number | null;
   backgroundNatureKey: string | null;
   backgroundMusicKey: string | null;
   backgroundDrumsKey: string | null;
@@ -291,6 +297,10 @@ function applyListenerMixOverlay(
     return {
       ...item,
       liveMix: o.liveMix === true || item.liveMix,
+      voiceFxDial:
+        typeof o.voiceFxDial === "number" && Number.isFinite(o.voiceFxDial)
+          ? o.voiceFxDial
+          : item.voiceFxDial,
       backgroundNatureKey:
         optTrimKey(o.backgroundNatureKey) ?? item.backgroundNatureKey,
       backgroundMusicKey:
@@ -514,6 +524,17 @@ function buildLibraryItems(params: {
           ? row.jobId.trim()
           : null,
       liveMix: row.liveMix === true,
+      dryAudioKey: optTrimKey(row.dryAudioKey),
+      wetAudioKey: optTrimKey(row.wetAudioKey),
+      dryAudioUrl: optTrimKey(row.dryAudioKey)
+        ? `https://${cfDomain}/${optTrimKey(row.dryAudioKey)}`
+        : null,
+      wetAudioUrl: optTrimKey(row.wetAudioKey)
+        ? `https://${cfDomain}/${optTrimKey(row.wetAudioKey)}`
+        : null,
+      voiceFxDial: optGain(row.voiceFxDial),
+      createdVoiceFxDial:
+        optGain(row.createdVoiceFxDial) ?? optGain(row.voiceFxDial),
       backgroundNatureKey: optTrimKey(row.backgroundNatureKey),
       backgroundMusicKey: optTrimKey(row.backgroundMusicKey),
       backgroundDrumsKey: optTrimKey(row.backgroundDrumsKey),
@@ -611,6 +632,12 @@ function buildLibraryItems(params: {
       lifeAreaId: null,
       jobId: null,
       liveMix: false,
+      dryAudioKey: null,
+      wetAudioKey: null,
+      dryAudioUrl: null,
+      wetAudioUrl: null,
+      voiceFxDial: null,
+      createdVoiceFxDial: null,
       backgroundNatureKey: null,
       backgroundMusicKey: null,
       backgroundDrumsKey: null,

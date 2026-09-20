@@ -3,6 +3,11 @@ import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
+  CreateInvalidationCommand,
+  CloudFrontClient,
+} from "@aws-sdk/client-cloudfront";
+import {
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -10,16 +15,38 @@ import {
 import { loudnormMp3Buffer } from "./ffmpeg-loudnorm";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
+  speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
+  speakerPreviewLoudWetSampleKey,
   speakerPreviewSampleKey,
 } from "./speaker-sample-speed";
 
 const execFileAsync = promisify(execFile);
+const cloudfront = new CloudFrontClient({});
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
-const SAMPLE_TEXT = "Welcome to your personalised meditation";
+export const SPEAKER_PREVIEW_TEXT = "Welcome to your personalised meditation";
 const LOUD_PREVIEW_SECONDS = 6;
 const MIXER_VOICE_FX_PRESET = "mixer";
+/** Create plays these bare CDN URLs; immutable year-cache kept the old rate. */
+const SPEAKER_SAMPLE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+
+async function invalidateSpeakerPreviewKeys(keys: string[]): Promise<void> {
+  const distId = process.env.MEDIA_CLOUDFRONT_DISTRIBUTION_ID?.trim();
+  if (!distId || keys.length === 0) return;
+  await cloudfront.send(
+    new CreateInvalidationCommand({
+      DistributionId: distId,
+      InvalidationBatch: {
+        CallerReference: `speaker-preview-${Date.now()}`,
+        Paths: {
+          Quantity: keys.length,
+          Items: keys.map((k) => `/${k}`),
+        },
+      },
+    }),
+  );
+}
 
 function fishTtsModel(): string {
   return (process.env.FISH_TTS_MODEL || "s2.1-pro-free").trim() || "s2.1-pro-free";
@@ -36,12 +63,11 @@ function isS3ObjectMissing(e: unknown): boolean {
   return code === "NotFound" || code === "NoSuchKey";
 }
 
-export async function speakerPreviewExists(
+async function s3ObjectExists(
   s3: S3Client,
   bucket: string,
-  modelId: string,
+  key: string,
 ): Promise<boolean> {
-  const key = speakerPreviewLoudSampleKey(modelId, FIXED_SPEECH_PREVIEW_SPEED);
   try {
     await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
@@ -49,6 +75,37 @@ export async function speakerPreviewExists(
     if (isS3ObjectMissing(e)) return false;
     throw e;
   }
+}
+
+export async function speakerPreviewExists(
+  s3: S3Client,
+  bucket: string,
+  modelId: string,
+  brand?: "fish" | "speechify" | null,
+): Promise<boolean> {
+  const key = speakerPreviewLoudSampleKey(
+    modelId,
+    FIXED_SPEECH_PREVIEW_SPEED,
+    brand,
+  );
+  return s3ObjectExists(s3, bucket, key);
+}
+
+/** Create preview needs locked dry WAV + mixer bounce. */
+export async function speakerPreviewReady(
+  s3: S3Client,
+  bucket: string,
+  modelId: string,
+  brand?: "fish" | "speechify" | null,
+): Promise<boolean> {
+  const speed = FIXED_SPEECH_PREVIEW_SPEED;
+  const dryKey = speakerPreviewLoudDrySampleKey(modelId, speed, brand);
+  const fxKey = speakerPreviewLoudFxSampleKey(modelId, speed, brand);
+  const [dry, fx] = await Promise.all([
+    s3ObjectExists(s3, bucket, dryKey),
+    s3ObjectExists(s3, bucket, fxKey),
+  ]);
+  return dry && fx;
 }
 
 async function trimMp3ForPreview(buf: Buffer): Promise<Buffer> {
@@ -95,7 +152,7 @@ async function fishTtsMp3(
       model: fishTtsModel(),
     },
     body: JSON.stringify({
-      text: SAMPLE_TEXT,
+      text: SPEAKER_PREVIEW_TEXT,
       reference_id: referenceId,
       format: "mp3",
       latency: "normal",
@@ -110,20 +167,33 @@ async function fishTtsMp3(
   return Buffer.from(await upstream.arrayBuffer());
 }
 
-async function voiceFxMixerWav(apiBase: string, mp3: Buffer): Promise<Buffer> {
+async function voiceFxMixerPair(
+  apiBase: string,
+  mp3: Buffer,
+  preset = MIXER_VOICE_FX_PRESET,
+): Promise<{ fx: Buffer; dry: Buffer }> {
   const res = await fetch(`${apiBase.replace(/\/$/, "")}/audio/voice-fx`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       audioBase64: mp3.toString("base64"),
-      preset: MIXER_VOICE_FX_PRESET,
+      preset,
       inputFormat: "mp3",
+      emitDry: true,
+      ...(preset === "mixer-wet" || preset === MIXER_VOICE_FX_PRESET
+        ? { tailPadSeconds: 2 }
+        : {}),
     }),
   });
   const raw = await res.text();
-  let data: { audioBase64?: string; error?: string } | null = null;
+  let data: { audioBase64?: string; dryAudioBase64?: string; error?: string } | null =
+    null;
   try {
-    data = JSON.parse(raw) as { audioBase64?: string; error?: string };
+    data = JSON.parse(raw) as {
+      audioBase64?: string;
+      dryAudioBase64?: string;
+      error?: string;
+    };
   } catch {
     data = null;
   }
@@ -133,39 +203,129 @@ async function voiceFxMixerWav(apiBase: string, mp3: Buffer): Promise<Buffer> {
     );
   }
   if (!data?.audioBase64) throw new Error("voice-fx response missing audioBase64");
-  return Buffer.from(data.audioBase64, "base64");
+  if (!data.dryAudioBase64) throw new Error("voice-fx response missing dryAudioBase64");
+  return {
+    fx: Buffer.from(data.audioBase64, "base64"),
+    dry: Buffer.from(data.dryAudioBase64, "base64"),
+  };
 }
 
-/** Mixer preview at the fixed Create speech speed (loud MP3 + FX WAV). */
+async function bounceLockedPreviewStems(params: {
+  s3: S3Client;
+  bucket: string;
+  apiBase: string;
+  loudKey: string;
+  loudDryKey: string;
+  loudFxKey: string;
+}): Promise<void> {
+  const loudObj = await params.s3.send(
+    new GetObjectCommand({
+      Bucket: params.bucket,
+      Key: params.loudKey,
+    }),
+  );
+  const loudBytes = await loudObj.Body?.transformToByteArray();
+  if (!loudBytes || loudBytes.byteLength === 0) {
+    throw new Error(`empty loud stem ${params.loudKey}`);
+  }
+  const pair = await voiceFxMixerPair(
+    params.apiBase,
+    Buffer.from(loudBytes),
+    MIXER_VOICE_FX_PRESET,
+  );
+  await params.s3.send(
+    new PutObjectCommand({
+      Bucket: params.bucket,
+      Key: params.loudDryKey,
+      Body: pair.dry,
+      ContentType: "audio/wav",
+      CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+    }),
+  );
+  await params.s3.send(
+    new PutObjectCommand({
+      Bucket: params.bucket,
+      Key: params.loudFxKey,
+      Body: pair.fx,
+      ContentType: "audio/wav",
+      CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+    }),
+  );
+  await invalidateSpeakerPreviewKeys([params.loudDryKey, params.loudFxKey]);
+}
+
+/** Mixer preview (loud MP3 + FX WAV). Fish keys include the fixed speed stem. */
 export async function generateFishSpeakerPreview(params: {
   s3: S3Client;
   bucket: string;
-  apiKey: string;
+  apiKey?: string;
   modelId: string;
+  brand?: "fish" | "speechify" | null;
   apiBase?: string | null;
+  /** When true, replace an existing preview instead of skipping. */
+  force?: boolean;
+  synthesize?: (speed: number) => Promise<Buffer>;
 }): Promise<{
   mp3Key: string;
   loudKey: string;
   loudFxKey: string | null;
+  loudWetKey: string | null;
   skipped?: boolean;
 }> {
   const speed = FIXED_SPEECH_PREVIEW_SPEED;
-  const mp3Key = speakerPreviewSampleKey(params.modelId, speed);
-  const loudKey = speakerPreviewLoudSampleKey(params.modelId, speed);
-  const loudFxKey = speakerPreviewLoudFxSampleKey(params.modelId, speed);
+  const brand = params.brand === "speechify" ? "speechify" : "fish";
+  const mp3Key = speakerPreviewSampleKey(params.modelId, speed, brand);
+  const loudKey = speakerPreviewLoudSampleKey(params.modelId, speed, brand);
+  const loudFxKey = speakerPreviewLoudFxSampleKey(params.modelId, speed, brand);
+  const loudDryKey = speakerPreviewLoudDrySampleKey(params.modelId, speed, brand);
+  const loudWetKey = speakerPreviewLoudWetSampleKey(
+    params.modelId,
+    speed,
+    brand,
+  );
 
-  if (await speakerPreviewExists(params.s3, params.bucket, params.modelId)) {
-    return { mp3Key, loudKey, loudFxKey: null, skipped: true };
+  if (
+    !params.force &&
+    (await speakerPreviewExists(
+      params.s3,
+      params.bucket,
+      params.modelId,
+      brand,
+    ))
+  ) {
+    let fxKey: string | null = null;
+    if (params.apiBase) {
+      const ready = await speakerPreviewReady(
+        params.s3,
+        params.bucket,
+        params.modelId,
+        brand,
+      );
+      if (!ready) {
+        await bounceLockedPreviewStems({
+          s3: params.s3,
+          bucket: params.bucket,
+          apiBase: params.apiBase,
+          loudKey,
+          loudDryKey,
+          loudFxKey,
+        });
+      }
+      fxKey = loudFxKey;
+    }
+    return { mp3Key, loudKey, loudFxKey: fxKey, loudWetKey: fxKey, skipped: true };
   }
 
-  const buf = await fishTtsMp3(params.apiKey, params.modelId, speed);
+  const buf = params.synthesize
+    ? await params.synthesize(speed)
+    : await fishTtsMp3(params.apiKey ?? "", params.modelId, speed);
   await params.s3.send(
     new PutObjectCommand({
       Bucket: params.bucket,
       Key: mp3Key,
       Body: buf,
       ContentType: "audio/mpeg",
-      CacheControl: "public, max-age=31536000, immutable",
+      CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
     }),
   );
 
@@ -177,24 +337,53 @@ export async function generateFishSpeakerPreview(params: {
       Key: loudKey,
       Body: loudMp3,
       ContentType: "audio/mpeg",
-      CacheControl: "public, max-age=31536000, immutable",
+      CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
     }),
   );
 
   let uploadedFx: string | null = null;
+  const uploaded: string[] = [];
   if (params.apiBase) {
-    const wavBuf = await voiceFxMixerWav(params.apiBase, loudMp3);
+    const pair = await voiceFxMixerPair(params.apiBase, loudMp3);
+    await params.s3.send(
+      new PutObjectCommand({
+        Bucket: params.bucket,
+        Key: loudDryKey,
+        Body: pair.dry,
+        ContentType: "audio/wav",
+        CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      }),
+    );
     await params.s3.send(
       new PutObjectCommand({
         Bucket: params.bucket,
         Key: loudFxKey,
-        Body: wavBuf,
+        Body: pair.fx,
         ContentType: "audio/wav",
-        CacheControl: "public, max-age=31536000, immutable",
+        CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
       }),
     );
     uploadedFx = loudFxKey;
+    uploaded.push(loudDryKey, loudFxKey, loudWetKey);
+    await params.s3.send(
+      new PutObjectCommand({
+        Bucket: params.bucket,
+        Key: loudWetKey,
+        Body: pair.fx,
+        ContentType: "audio/wav",
+        CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      }),
+    );
   }
 
-  return { mp3Key, loudKey, loudFxKey: uploadedFx };
+  await invalidateSpeakerPreviewKeys(
+    [mp3Key, loudKey, ...uploaded].filter((k): k is string => Boolean(k)),
+  );
+
+  return {
+    mp3Key,
+    loudKey,
+    loudFxKey: uploadedFx,
+    loudWetKey: uploaded.includes(loudWetKey) ? loudWetKey : null,
+  };
 }

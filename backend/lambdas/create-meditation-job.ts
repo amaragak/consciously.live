@@ -49,6 +49,7 @@ export async function handler(
     fishTtsModel?: string;
     speed?: number;
     voiceFxPreset?: string;
+    voiceFxDial?: number;
     sessionToken?: string;
     /** True when the user used journal / “How I feel” flow (no real style label). */
     journalMode?: boolean;
@@ -110,7 +111,10 @@ export async function handler(
     referenceId = voice;
   } else if (!referenceId) {
     return json(400, {
-      error: "`reference_id` (Fish voice model id) is required",
+      error:
+        ttsProvider === "speechify"
+          ? "`reference_id` (Speechify voice id) is required"
+          : "`reference_id` (Fish voice model id) is required",
     });
   }
 
@@ -201,6 +205,10 @@ export async function handler(
           body.fishPauseMode === "native" ? "native" : "segmented",
         ...(body.longerBreaks === true ? { longerBreaks: true } : {}),
         ...(voiceFxPreset ? { voiceFxPreset } : {}),
+        voiceFxDial:
+          typeof body.voiceFxDial === "number" && Number.isFinite(body.voiceFxDial)
+            ? Math.min(100, Math.max(0, Math.round(body.voiceFxDial)))
+            : 100,
         backgroundSoundKey,
         ...(backgroundNatureKey ? { backgroundNatureKey } : {}),
         ...(backgroundMusicKey ? { backgroundMusicKey } : {}),

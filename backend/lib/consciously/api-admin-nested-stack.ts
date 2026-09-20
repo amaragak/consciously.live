@@ -78,11 +78,20 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
     mediaBucket.grantReadWrite(role);
     authJwtSecret.grantRead(role);
     fishApiKeySecret.grantRead(role);
+    speechifyApiKeySecret.grantRead(role);
     claudeApiKeySecret.grantRead(role);
     runpodsApiKeySecret.grantRead(role);
     runpodsUrlSecret.grantRead(role);
     algoliaSecret.grantRead(role);
     blogRevalidateSecret.grantRead(role);
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudfront:CreateInvalidation"],
+        resources: [
+          `arn:aws:cloudfront::${this.account}:distribution/${mediaDistribution.distributionId}`,
+        ],
+      }),
+    );
     journalTable.grantReadData(role);
     ideateTable.grantReadData(role);
     meditationAnalyticsTable.grantReadData(role);
@@ -419,11 +428,15 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       environment: {
         MEDIA_BUCKET_NAME: mediaBucket.bucketName,
         MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        MEDIA_CLOUDFRONT_DISTRIBUTION_ID: mediaDistribution.distributionId,
         VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         ADMIN_EMAILS: adminEmails,
         FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
         FISH_TTS_MODEL: "s2.1-pro-free",
+        SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+        SPEECHIFY_VOICE_ID: "geffen_32",
+        SPEECHIFY_TTS_MODEL: "simba-3.2",
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
       },
     });
@@ -608,8 +621,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       integration: searchIntegration,
     });
 
-    // Worker fans out one concurrent VoiceFx execution per speech section
-    // (direct IAM invoke). HTTP route stays for short admin/preview clips.
+    // Worker invokes once on the joined speech stem. HTTP stays for previews.
     const voiceFx = new lambda.Function(this, "VoiceFxFunction", {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "handler.handler",

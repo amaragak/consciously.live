@@ -27,6 +27,7 @@ import {
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudSampleKey,
+  withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
 function mediaFileUrl(base: string, key: string): string {
@@ -108,9 +109,17 @@ function HomeHeroSpeakerPicker({
       return;
     }
 
-    const next = mediaFileUrl(
-      mediaBaseUrl,
-      speakerPreviewLoudSampleKey(modelId, FIXED_SPEECH_PREVIEW_SPEED),
+    const speaker = speakers.find((s) => s.modelId === modelId);
+    const next = withSpeakerSampleCacheBust(
+      mediaFileUrl(
+        mediaBaseUrl,
+        speakerPreviewLoudSampleKey(
+          modelId,
+          FIXED_SPEECH_PREVIEW_SPEED,
+          speaker?.brand,
+        ),
+      ),
+      speaker?.updatedAt,
     );
     if (el.src !== next) {
       el.src = next;

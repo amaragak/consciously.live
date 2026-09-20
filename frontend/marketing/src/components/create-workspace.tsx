@@ -73,6 +73,7 @@ import {
   listBackgroundAudio,
   listFishSpeakers,
   listOrpheusSpeakers,
+  ttsProviderForSpeaker,
   saveMeditationDraft,
   backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
@@ -101,9 +102,12 @@ import {
 } from "@/lib/mixer-preset-storage";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
+  speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
+  withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
+import { VOICE_FX_DIAL_DEFAULT, VoiceFxKnob } from "@consciously/common";
 import {
   buildCreateFlowTranscript,
   createFlowTranscriptLine,
@@ -993,7 +997,8 @@ function isDraftStateV1(raw: unknown): raw is MeditationDraftStateV1 {
   if (
     o.ttsProvider !== undefined &&
     o.ttsProvider !== "fish" &&
-    o.ttsProvider !== "orpheus"
+    o.ttsProvider !== "orpheus" &&
+    o.ttsProvider !== "speechify"
   ) {
     return false;
   }
@@ -1207,6 +1212,7 @@ export function CreateWorkspace({
   /** When on, speaker row plays CDN `*-fx.wav` (Pedalboard preset mixer); when off, dry Fish `*.mp3`. Dev-only toggle; production always on. */
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
   const voiceFxOn = showCreateAudioDevControls ? speakerFxPreviewOn : true;
+  const [voiceFxDial, setVoiceFxDial] = useState(VOICE_FX_DIAL_DEFAULT);
   const [backgroundNature, setBackgroundNature] = useState<
     BackgroundAudioItem[]
   >([]);
@@ -1526,6 +1532,7 @@ export function CreateWorkspace({
     setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "fish");
     setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
     setSpeakerFxPreviewOn(s.speakerFxPreviewOn);
+    setVoiceFxDial(s.voiceFxDial ?? VOICE_FX_DIAL_DEFAULT);
     setBackgroundNatureKey(backgroundAudioStreamingKey(s.backgroundNatureKey));
     setBackgroundMusicKey(backgroundAudioStreamingKey(s.backgroundMusicKey));
     setBackgroundDrumsKey(backgroundAudioStreamingKey(s.backgroundDrumsKey));
@@ -2025,12 +2032,14 @@ export function CreateWorkspace({
   /** Chooser cards stay aligned with the active path. */
   useEffect(() => {
     if (creationPath === "pending") return;
-    if (creationPath === "style") setPendingModeChoice("style");
+    if (creationPath === "style") {
+      setPendingModeChoice(randomScript ? "randomScript" : "style");
+    }
     else if (creationPath === "freeflow") setPendingModeChoice("freeflow");
     else if (creationPath === "journalReflect") setPendingModeChoice("journalReflect");
     else if (creationPath === "goal") setPendingModeChoice("goal");
     else if (creationPath === "oneShot") setPendingModeChoice("oneShot");
-  }, [creationPath]);
+  }, [creationPath, randomScript]);
 
   useEffect(() => {
     if (!seedJournalContext) return;
@@ -3031,7 +3040,7 @@ export function CreateWorkspace({
     setLastUsedScript(null);
     setScriptTargetMinutes(null);
     setAudioError(null);
-    setPendingModeChoice("style");
+    setPendingModeChoice("randomScript");
     setMobileCreateStep("audio");
     setCreateStripStep(2);
     initialChatAutofocusDoneRef.current = false;
@@ -3313,8 +3322,14 @@ export function CreateWorkspace({
       return;
     }
     if (parsed.path === "style") {
-      if (!initedCreatePathsRef.current.has("style")) beginStylePath();
-      else setCreationPath("style");
+      if (
+        !initedCreatePathsRef.current.has("style") &&
+        !(parsed.mix && randomScript)
+      ) {
+        beginStylePath();
+      } else {
+        setCreationPath("style");
+      }
       setJournalMode(false);
       if (parsed.mix) {
         setCreateStripStep(2);
@@ -3388,7 +3403,7 @@ export function CreateWorkspace({
         restoreOneShotPromptPicker();
       }
     }
-  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, router, seedJournalContext, seedPlanContext]);
+  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, router, seedJournalContext, seedPlanContext, randomScript]);
 
   useEffect(() => {
     if (!sessionHydrated) return;
@@ -3414,6 +3429,7 @@ export function CreateWorkspace({
         ttsProvider,
         orpheusVoiceId,
         speakerFxPreviewOn,
+        voiceFxDial,
         backgroundNatureKey,
         backgroundMusicKey,
         backgroundDrumsKey,
@@ -3460,6 +3476,7 @@ export function CreateWorkspace({
     ttsProvider,
     orpheusVoiceId,
     speakerFxPreviewOn,
+    voiceFxDial,
     backgroundNatureKey,
     backgroundMusicKey,
     backgroundDrumsKey,
@@ -3808,7 +3825,12 @@ export function CreateWorkspace({
         transcript,
         scriptText: scriptTextForJob,
         reference_id: speakerModelId,
-        ttsProvider: "fish",
+        ttsProvider:
+          ttsProvider === "orpheus"
+            ? "orpheus"
+            : ttsProviderForSpeaker(
+                fishSpeakers.find((s) => s.modelId === speakerModelId),
+              ),
         fishTtsModel: "s2.1-pro-free",
         claudeModel: showCreateAudioDevControls
           ? claudeModelChoice
@@ -3816,6 +3838,7 @@ export function CreateWorkspace({
         fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
         speed: speechSpeed,
         voiceFxPreset: voiceFxOn ? "mixer" : null,
+        voiceFxDial,
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
         ...(creationProvenance ? { creationProvenance } : {}),
         // A soundscape replaces the whole bed: it rides the music slot alone,
@@ -4047,13 +4070,41 @@ export function CreateWorkspace({
     setPlaying((p) => ({ ...p, [track]: false }));
   }
 
-  /** Sample for any voice in the list, honouring the FX toggle and speed. */
+  function speakerPreviewDryUrl(modelId: string): string | null {
+    if (!mediaBaseUrl || !modelId) return null;
+    const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    return withSpeakerSampleCacheBust(
+      mediaFileUrl(
+        mediaBaseUrl,
+        speakerPreviewLoudDrySampleKey(modelId, speechSpeed, speaker?.brand),
+      ),
+      speaker?.updatedAt,
+    );
+  }
+
+  function speakerPreviewWetUrl(modelId: string): string | null {
+    if (!mediaBaseUrl || !modelId) return null;
+    const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    return withSpeakerSampleCacheBust(
+      mediaFileUrl(
+        mediaBaseUrl,
+        speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand),
+      ),
+      speaker?.updatedAt,
+    );
+  }
+
+  /** Mixer FX sample (same file admin plays). Speechify keys have no Fish speed stem. */
   function speakerPreviewUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
+    const speaker = fishSpeakers.find((s) => s.modelId === modelId);
     const key = voiceFxOn
-      ? speakerPreviewLoudFxSampleKey(modelId, speechSpeed)
-      : speakerPreviewLoudSampleKey(modelId, speechSpeed);
-    return mediaFileUrl(mediaBaseUrl, key);
+      ? speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand)
+      : speakerPreviewLoudSampleKey(modelId, speechSpeed, speaker?.brand);
+    return withSpeakerSampleCacheBust(
+      mediaFileUrl(mediaBaseUrl, key),
+      speaker?.updatedAt,
+    );
   }
 
   function soundscapePreviewUrl(key: string): string | null {
@@ -4067,6 +4118,21 @@ export function CreateWorkspace({
     setCompositionPlaying(false);
   }
 
+  function stopMixerBedPreviews() {
+    setPlayAllActive(false);
+    pauseGaplessBed(previewNatureRef.current);
+    pauseGaplessBed(previewMusicRef.current);
+    pauseGaplessBed(previewDrumsRef.current);
+    pauseGaplessBed(previewNoiseRef.current);
+    setPlaying((p) => ({
+      ...p,
+      nature: false,
+      music: false,
+      drums: false,
+      noise: false,
+    }));
+  }
+
   function toggleCompositionPreview(key: string) {
     const el = compositionAudioRef.current;
     const url = soundscapePreviewUrl(key);
@@ -4075,7 +4141,8 @@ export function CreateWorkspace({
       stopCompositionPreview();
       return;
     }
-    stopAllAudioPreview();
+    // Soundscape preview must not stop a looping speaker sample (or vice versa).
+    stopMixerBedPreviews();
     if (el.src !== url) {
       el.src = url;
       el.load();
@@ -4122,10 +4189,7 @@ export function CreateWorkspace({
 
     const voiceId = speakerModelId;
     if (mediaBaseUrl && voiceId) {
-      const key = voiceFxOn
-        ? speakerPreviewLoudFxSampleKey(voiceId, speechSpeed)
-        : speakerPreviewLoudSampleKey(voiceId, speechSpeed);
-      const next = mediaFileUrl(mediaBaseUrl, key);
+      const next = speakerPreviewUrl(voiceId);
       if (el.src !== next) {
         el.src = next;
         void el.load();
@@ -4300,10 +4364,7 @@ export function CreateWorkspace({
 
     if (track === "speaker" && mediaBaseUrl) {
       if (!speakerModelId) return;
-      const key = voiceFxOn
-        ? speakerPreviewLoudFxSampleKey(speakerModelId, speechSpeed)
-        : speakerPreviewLoudSampleKey(speakerModelId, speechSpeed);
-      const next = mediaFileUrl(mediaBaseUrl, key);
+      const next = speakerPreviewUrl(speakerModelId);
       if (el.src !== next) {
         el.src = next;
         el.load();
@@ -5434,9 +5495,22 @@ export function CreateWorkspace({
               value={speakerModelId}
               onChange={setSpeakerModelId}
               disabled={soundControlsDisabled}
-              previewUrl={speakerPreviewUrl}
+              previewDryUrl={speakerPreviewDryUrl}
+              previewWetUrl={speakerPreviewWetUrl}
+              voiceFxDial={voiceFxDial}
               stopNonce={voiceCardStopNonce}
             />
+            <div className="flex items-center gap-3 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                FX
+              </span>
+              <VoiceFxKnob
+                value={voiceFxDial}
+                disabled={soundControlsDisabled}
+                onChange={setVoiceFxDial}
+              />
+              <span className="text-xs tabular-nums text-muted">{voiceFxDial}</span>
+            </div>
             <div className="flex flex-col gap-1.5 py-3">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
                 Pacing

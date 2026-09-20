@@ -56,4 +56,16 @@ export {
 
 export { isMelodicMusicKey } from "./audio/sound-taxonomy";
 
+export {
+  DualStemPlayer,
+} from "./audio/dual-stem-player";
+
+export {
+  VOICE_FX_DIAL_DEFAULT,
+  clampVoiceFxDial,
+  voiceFxDialGains,
+} from "./audio/voice-fx-dial";
+
+export { VoiceFxKnob } from "./ui/voice-fx-knob";
+
 export * from "./theme";

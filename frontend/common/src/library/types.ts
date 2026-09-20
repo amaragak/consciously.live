@@ -15,6 +15,9 @@ export type LibraryMeditationFields = {
   title: string;
   s3Key: string;
   liveMix?: boolean;
+  dryAudioUrl?: string | null;
+  wetAudioUrl?: string | null;
+  voiceFxDial?: number | null;
   backgroundNatureKey?: string | null;
   backgroundMusicKey?: string | null;
   backgroundDrumsKey?: string | null;

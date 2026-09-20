@@ -6,6 +6,10 @@ export type FishSpeaker = {
   goodFor?: string[];
   /** Omitted when not specified. */
   gender?: VoiceGender;
+  /** TTS vendor. Omitted on the hardcoded Fish fallback list. */
+  brand?: "fish" | "speechify";
+  /** When the admin last saved this row — used to bust CDN sample URLs. */
+  updatedAt?: string;
 };
 
 export type VoiceGender = "male" | "female";

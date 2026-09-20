@@ -25,7 +25,6 @@ import {
 import { invalidateBlogCache } from "./_shared/blog-revalidate";
 import { fishSpeakersForPicker } from "./_shared/fish-speakers";
 import {
-  chunkSpeechifyScript,
   coerceBlogTtsProvider,
   getSpeechifyApiKey,
   speechifyTtsMp3,
@@ -232,10 +231,7 @@ export async function handler(
     const provider = coerceBlogTtsProvider(
       event.ttsProvider ?? post.audioTtsProvider,
     );
-    const chunks =
-      provider === "speechify"
-        ? chunkSpeechifyScript(script)
-        : chunkNarration(script);
+    const chunks = chunkNarration(script);
     if (!chunks.length) throw new Error("Nothing to narrate");
     console.info(
       "admin-blog-narrate: start",

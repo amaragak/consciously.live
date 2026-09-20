@@ -71,6 +71,7 @@ import {
   listBackgroundAudio,
   listFishSpeakers,
   listOrpheusSpeakers,
+  ttsProviderForSpeaker,
   saveMeditationDraft,
   backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
@@ -99,9 +100,15 @@ import {
 } from "@/lib/mixer-preset-storage";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
+  speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
-  speakerPreviewLoudSampleKey,
+  withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
+import {
+  DualStemPlayer,
+  VOICE_FX_DIAL_DEFAULT,
+  VoiceFxKnob,
+} from "@consciously/common";
 import {
   buildCreateFlowTranscript,
   createFlowTranscriptLine,
@@ -991,7 +998,8 @@ function isDraftStateV1(raw: unknown): raw is MeditationDraftStateV1 {
   if (
     o.ttsProvider !== undefined &&
     o.ttsProvider !== "fish" &&
-    o.ttsProvider !== "orpheus"
+    o.ttsProvider !== "orpheus" &&
+    o.ttsProvider !== "speechify"
   ) {
     return false;
   }
@@ -1202,6 +1210,7 @@ export function CreateWorkspace({
   /** When on, speaker row plays CDN `*-fx.wav` (Pedalboard preset mixer); when off, dry Fish `*.mp3`. Dev-only toggle; production always on. */
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
   const voiceFxOn = showCreateAudioDevControls ? speakerFxPreviewOn : true;
+  const [voiceFxDial, setVoiceFxDial] = useState(VOICE_FX_DIAL_DEFAULT);
   const [backgroundNature, setBackgroundNature] = useState<
     BackgroundAudioItem[]
   >([]);
@@ -1255,6 +1264,8 @@ export function CreateWorkspace({
   const previewDrumsRef = useRef<HTMLAudioElement | null>(null);
   const previewNoiseRef = useRef<HTMLAudioElement | null>(null);
   const speakerSampleRef = useRef<HTMLAudioElement | null>(null);
+  const playAllVoiceRef = useRef<DualStemPlayer | null>(null);
+  if (!playAllVoiceRef.current) playAllVoiceRef.current = new DualStemPlayer();
   const speakerGapTimeoutRef = useRef<number | null>(null);
   const playAllVoiceDelayRef = useRef<number | null>(null);
   const speakerRepeatWantedRef = useRef(false);
@@ -1521,6 +1532,7 @@ export function CreateWorkspace({
     setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "fish");
     setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
     setSpeakerFxPreviewOn(s.speakerFxPreviewOn);
+    setVoiceFxDial(s.voiceFxDial ?? VOICE_FX_DIAL_DEFAULT);
     setBackgroundNatureKey(backgroundAudioStreamingKey(s.backgroundNatureKey));
     setBackgroundMusicKey(backgroundAudioStreamingKey(s.backgroundMusicKey));
     setBackgroundDrumsKey(backgroundAudioStreamingKey(s.backgroundDrumsKey));
@@ -2020,12 +2032,13 @@ export function CreateWorkspace({
   /** Chooser cards stay aligned with the active path. */
   useEffect(() => {
     if (creationPath === "pending") return;
-    if (creationPath === "style") setPendingModeChoice("style");
-    else if (creationPath === "freeflow") setPendingModeChoice("freeflow");
+    if (creationPath === "style") {
+      setPendingModeChoice(randomScript ? "randomScript" : "style");
+    } else if (creationPath === "freeflow") setPendingModeChoice("freeflow");
     else if (creationPath === "journalReflect") setPendingModeChoice("journalReflect");
     else if (creationPath === "goal") setPendingModeChoice("goal");
     else if (creationPath === "oneShot") setPendingModeChoice("oneShot");
-  }, [creationPath]);
+  }, [creationPath, randomScript]);
 
   useEffect(() => {
     if (!seedJournalContext) return;
@@ -3026,7 +3039,7 @@ export function CreateWorkspace({
     setLastUsedScript(null);
     setScriptTargetMinutes(null);
     setAudioError(null);
-    setPendingModeChoice("style");
+    setPendingModeChoice("randomScript");
     setMobileCreateStep("audio");
     setCreateStripStep(2);
     initialChatAutofocusDoneRef.current = false;
@@ -3308,8 +3321,14 @@ export function CreateWorkspace({
       return;
     }
     if (parsed.path === "style") {
-      if (!initedCreatePathsRef.current.has("style")) beginStylePath();
-      else setCreationPath("style");
+      if (
+        !initedCreatePathsRef.current.has("style") &&
+        !(parsed.mix && randomScript)
+      ) {
+        beginStylePath();
+      } else {
+        setCreationPath("style");
+      }
       setJournalMode(false);
       if (parsed.mix) {
         setCreateStripStep(2);
@@ -3383,7 +3402,7 @@ export function CreateWorkspace({
         restoreOneShotPromptPicker();
       }
     }
-  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, navigate, seedJournalContext, seedPlanContext]);
+  }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, navigate, seedJournalContext, seedPlanContext, randomScript]);
 
   useEffect(() => {
     if (!sessionHydrated) return;
@@ -3409,6 +3428,7 @@ export function CreateWorkspace({
         ttsProvider,
         orpheusVoiceId,
         speakerFxPreviewOn,
+        voiceFxDial,
         backgroundNatureKey,
         backgroundMusicKey,
         backgroundDrumsKey,
@@ -3455,6 +3475,7 @@ export function CreateWorkspace({
     ttsProvider,
     orpheusVoiceId,
     speakerFxPreviewOn,
+    voiceFxDial,
     backgroundNatureKey,
     backgroundMusicKey,
     backgroundDrumsKey,
@@ -3803,7 +3824,12 @@ export function CreateWorkspace({
         transcript,
         scriptText: scriptTextForJob,
         reference_id: speakerModelId,
-        ttsProvider: "fish",
+        ttsProvider:
+          ttsProvider === "orpheus"
+            ? "orpheus"
+            : ttsProviderForSpeaker(
+                fishSpeakers.find((s) => s.modelId === speakerModelId),
+              ),
         fishTtsModel: "s2.1-pro-free",
         claudeModel: showCreateAudioDevControls
           ? claudeModelChoice
@@ -3811,6 +3837,7 @@ export function CreateWorkspace({
         fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
         speed: speechSpeed,
         voiceFxPreset: voiceFxOn ? "mixer" : null,
+        voiceFxDial,
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
         ...(creationProvenance ? { creationProvenance } : {}),
         // A soundscape replaces the whole bed: it rides the music slot alone,
@@ -4030,6 +4057,7 @@ export function CreateWorkspace({
       clearSpeakerGapSchedule();
       speakerRepeatWantedRef.current = false;
       speakerSampleRef.current?.pause();
+      playAllVoiceRef.current?.pause();
     } else if (track === "nature") {
       pauseGaplessBed(previewNatureRef.current);
     } else if (track === "music") {
@@ -4042,13 +4070,36 @@ export function CreateWorkspace({
     setPlaying((p) => ({ ...p, [track]: false }));
   }
 
-  /** Sample for any voice in the list, honouring the FX toggle and speed. */
-  function speakerPreviewUrl(modelId: string): string | null {
+  function speakerPreviewDryUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
-    const key = voiceFxOn
-      ? speakerPreviewLoudFxSampleKey(modelId, speechSpeed)
-      : speakerPreviewLoudSampleKey(modelId, speechSpeed);
-    return mediaFileUrl(mediaBaseUrl, key);
+    const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    return withSpeakerSampleCacheBust(
+      mediaFileUrl(
+        mediaBaseUrl,
+        speakerPreviewLoudDrySampleKey(modelId, speechSpeed, speaker?.brand),
+      ),
+      speaker?.updatedAt,
+    );
+  }
+
+  function speakerPreviewWetUrl(modelId: string): string | null {
+    if (!mediaBaseUrl || !modelId) return null;
+    const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    return withSpeakerSampleCacheBust(
+      mediaFileUrl(
+        mediaBaseUrl,
+        speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand),
+      ),
+      speaker?.updatedAt,
+    );
+  }
+
+  async function loadPlayAllVoice(): Promise<boolean> {
+    const player = playAllVoiceRef.current;
+    const dry = speakerPreviewDryUrl(speakerModelId);
+    if (!player || !dry) return false;
+    await player.load(dry, speakerPreviewWetUrl(speakerModelId), voiceFxDial);
+    return true;
   }
 
   function soundscapePreviewUrl(key: string): string | null {
@@ -4062,6 +4113,21 @@ export function CreateWorkspace({
     setCompositionPlaying(false);
   }
 
+  function stopMixerBedPreviews() {
+    setPlayAllActive(false);
+    pauseGaplessBed(previewNatureRef.current);
+    pauseGaplessBed(previewMusicRef.current);
+    pauseGaplessBed(previewDrumsRef.current);
+    pauseGaplessBed(previewNoiseRef.current);
+    setPlaying((p) => ({
+      ...p,
+      nature: false,
+      music: false,
+      drums: false,
+      noise: false,
+    }));
+  }
+
   function toggleCompositionPreview(key: string) {
     const el = compositionAudioRef.current;
     const url = soundscapePreviewUrl(key);
@@ -4070,7 +4136,8 @@ export function CreateWorkspace({
       stopCompositionPreview();
       return;
     }
-    stopAllAudioPreview();
+    // Soundscape preview must not stop a looping speaker sample (or vice versa).
+    stopMixerBedPreviews();
     if (el.src !== url) {
       el.src = url;
       el.load();
@@ -4092,6 +4159,7 @@ export function CreateWorkspace({
     pauseGaplessBed(previewDrumsRef.current);
     pauseGaplessBed(previewNoiseRef.current);
     speakerSampleRef.current?.pause();
+    playAllVoiceRef.current?.stop();
     setVoiceCardStopNonce((n) => n + 1);
     setPlayAllActive(false);
     setPlaying({ speaker: false, nature: false, music: false, drums: false, noise: false });
@@ -4108,66 +4176,42 @@ export function CreateWorkspace({
         sp.pause();
         sp.removeAttribute("src");
       }
+      playAllVoiceRef.current?.dispose();
+      playAllVoiceRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    const el = speakerSampleRef.current;
-    if (!el) return;
-
-    const voiceId = speakerModelId;
-    if (mediaBaseUrl && voiceId) {
-      const key = voiceFxOn
-        ? speakerPreviewLoudFxSampleKey(voiceId, speechSpeed)
-        : speakerPreviewLoudSampleKey(voiceId, speechSpeed);
-      const next = mediaFileUrl(mediaBaseUrl, key);
-      if (el.src !== next) {
-        el.src = next;
-        void el.load();
-      }
-      applySpeechElementVolume(el);
-      if (playing.speaker) {
-        speakerRepeatWantedRef.current = true;
-        void el.play().catch(() => {
-          stopTrack("speaker");
-        });
-      }
-    } else {
-      el.removeAttribute("src");
-      el.load();
-      if (playing.speaker) {
-        stopTrack("speaker");
-      }
-    }
-  }, [
-    mediaBaseUrl,
-    speakerModelId,
-    speechSpeed,
-    voiceFxOn,
-    playing.speaker,
-  ]);
+    playAllVoiceRef.current?.setDial(voiceFxDial);
+  }, [voiceFxDial]);
 
   useEffect(() => {
-    const el = speakerSampleRef.current;
-    if (!el) return;
-    const onEnded = () => {
+    const player = playAllVoiceRef.current;
+    if (!player) return;
+    if (!mediaBaseUrl || !speakerModelId) {
+      player.stop();
+      return;
+    }
+    const dry = speakerPreviewDryUrl(speakerModelId);
+    if (!dry) return;
+    void player.load(dry, speakerPreviewWetUrl(speakerModelId), voiceFxDial);
+  }, [mediaBaseUrl, speakerModelId, speechSpeed, voiceFxOn]);
+
+  useEffect(() => {
+    const player = playAllVoiceRef.current;
+    if (!player) return;
+    player.onEnded = () => {
       if (!speakerRepeatWantedRef.current) return;
       clearSpeakerGapSchedule();
-      // Keep UI in "playing" state while we schedule the next repeat.
       setPlaying((p) => ({ ...p, speaker: true }));
       speakerGapTimeoutRef.current = window.setTimeout(() => {
         speakerGapTimeoutRef.current = null;
         if (!speakerRepeatWantedRef.current) return;
-        const a = speakerSampleRef.current;
-        if (a?.src) {
-          applySpeechElementVolume(a);
-          void a.play().catch(() => {});
-        }
+        void playAllVoiceRef.current?.play().catch(() => {});
       }, SPEAKER_SAMPLE_GAP_MS);
     };
-    el.addEventListener("ended", onEnded);
     return () => {
-      el.removeEventListener("ended", onEnded);
+      player.onEnded = null;
       clearSpeakerGapSchedule();
     };
   }, []);
@@ -4183,17 +4227,17 @@ export function CreateWorkspace({
 
     // In soundscape mode there is one bed, so "play all" is that piece plus the
     // voice sample coming in over it.
+    const hasVoice = Boolean(speakerPreviewDryUrl(speakerModelId));
     if (soundMode === "soundscape") {
       if (!compositionKey) return;
       toggleCompositionPreview(compositionKey);
-      const voice = speakerSampleRef.current;
-      if (voice?.src) {
+      if (hasVoice) {
         speakerRepeatWantedRef.current = true;
-        applySpeechElementVolume(voice);
         playAllVoiceDelayRef.current = window.setTimeout(() => {
           playAllVoiceDelayRef.current = null;
-          applySpeechElementVolume(voice);
-          void voice.play().catch(() => {});
+          void loadPlayAllVoice()
+            .then((ok) => (ok ? playAllVoiceRef.current?.play() : undefined))
+            .catch(() => {});
         }, BED_VOICE_INTRO_SECONDS * 1000);
         setPlaying((p) => ({ ...p, speaker: true }));
       }
@@ -4202,24 +4246,27 @@ export function CreateWorkspace({
     }
 
     const parts: Promise<void>[] = [];
-    const sp = speakerSampleRef.current;
     const hasBed = Boolean(
       (backgroundNatureKey && previewNatureRef.current?.src) ||
         (backgroundMusicKey && previewMusicRef.current?.src) ||
         (drumsPreviewKey && previewDrumsRef.current?.src) ||
         (backgroundNoiseKey && previewNoiseRef.current?.src),
     );
-    if (sp?.src) {
+    if (hasVoice) {
       speakerRepeatWantedRef.current = true;
-      applySpeechElementVolume(sp);
       if (hasBed) {
         playAllVoiceDelayRef.current = window.setTimeout(() => {
           playAllVoiceDelayRef.current = null;
-          applySpeechElementVolume(sp);
-          void sp.play().catch(() => {});
+          void loadPlayAllVoice()
+            .then((ok) => (ok ? playAllVoiceRef.current?.play() : undefined))
+            .catch(() => {});
         }, BED_VOICE_INTRO_SECONDS * 1000);
       } else {
-      parts.push(sp.play());
+        parts.push(
+          loadPlayAllVoice().then((ok) => {
+            if (ok) return playAllVoiceRef.current?.play();
+          }),
+        );
       }
     } else {
       speakerRepeatWantedRef.current = false;
@@ -4253,11 +4300,11 @@ export function CreateWorkspace({
       parts.push(resumeGaplessBed(previewNoiseRef.current));
     }
 
-    if (parts.length === 0) return;
+    if (parts.length === 0 && !hasVoice) return;
 
     setPlayAllActive(true);
     setPlaying({
-      speaker: Boolean(sp?.src),
+      speaker: hasVoice,
       nature: Boolean(backgroundNatureKey && previewNatureRef.current?.src),
       music: Boolean(backgroundMusicKey && previewMusicRef.current?.src),
       drums: Boolean(drumsPreviewKey && previewDrumsRef.current?.src),
@@ -4274,6 +4321,25 @@ export function CreateWorkspace({
   async function toggleRowPreview(track: SoloTrack) {
     if (track === "speaker") {
       if (!mediaBaseUrl || !speakerModelId) return;
+      const player = playAllVoiceRef.current;
+      if (!player) return;
+      setPlayAllActive(false);
+      clearSpeakerGapSchedule();
+      if (player.isPlaying || playing.speaker) {
+        player.pause();
+        speakerRepeatWantedRef.current = false;
+        setPlaying((p) => ({ ...p, speaker: false }));
+        return;
+      }
+      speakerRepeatWantedRef.current = true;
+      setPlaying((p) => ({ ...p, speaker: true }));
+      try {
+        const ok = await loadPlayAllVoice();
+        if (ok) await player.play();
+      } catch {
+        stopTrack("speaker");
+      }
+      return;
     }
     if (track === "nature" && !backgroundNatureKey) return;
     if (track === "music" && !backgroundMusicKey) return;
@@ -4281,30 +4347,15 @@ export function CreateWorkspace({
     if (track === "noise" && !backgroundNoiseKey) return;
 
     const el =
-      track === "speaker"
-        ? speakerSampleRef.current
-        : track === "nature"
-          ? previewNatureRef.current
-          : track === "music"
-            ? previewMusicRef.current
-            : track === "drums"
-              ? previewDrumsRef.current
+      track === "nature"
+        ? previewNatureRef.current
+        : track === "music"
+          ? previewMusicRef.current
+          : track === "drums"
+            ? previewDrumsRef.current
             : previewNoiseRef.current;
 
     if (!el) return;
-
-    if (track === "speaker" && mediaBaseUrl) {
-      if (!speakerModelId) return;
-      const key = voiceFxOn
-        ? speakerPreviewLoudFxSampleKey(speakerModelId, speechSpeed)
-        : speakerPreviewLoudSampleKey(speakerModelId, speechSpeed);
-      const next = mediaFileUrl(mediaBaseUrl, key);
-      if (el.src !== next) {
-        el.src = next;
-        el.load();
-      }
-      applySpeechElementVolume(el);
-    }
 
     if (!el.src) {
       return;
@@ -4315,37 +4366,17 @@ export function CreateWorkspace({
       // If "Play all" was active, this is now a manual mix.
       setPlayAllActive(false);
 
-      if (track === "speaker") {
-        clearSpeakerGapSchedule();
-      }
-
       if (!el.paused) {
-        if (track === "speaker") {
-          el.pause();
-          speakerRepeatWantedRef.current = false;
-          clearSpeakerGapSchedule();
-        } else {
-          pauseGaplessBed(el);
-        }
+        pauseGaplessBed(el);
         setPlaying((p) => ({ ...p, [track]: false }));
         return;
       }
 
-      if (track === "speaker") {
-        speakerRepeatWantedRef.current = true;
-        applySpeechElementVolume(el);
-      await el.play();
-      } else {
-        setGaplessBedVolume(el, bedElementVolume(bedGainRef.current[track]));
-        await resumeGaplessBed(el);
-      }
+      setGaplessBedVolume(el, bedElementVolume(bedGainRef.current[track]));
+      await resumeGaplessBed(el);
       setPlaying((p) => ({ ...p, [track]: true }));
     } catch {
       // Don't stop other tracks; just mark this one as not playing.
-      if (track === "speaker") {
-        speakerRepeatWantedRef.current = false;
-        clearSpeakerGapSchedule();
-      }
       setPlaying((p) => ({ ...p, [track]: false }));
     }
   }
@@ -5429,9 +5460,22 @@ export function CreateWorkspace({
                     value={speakerModelId}
               onChange={setSpeakerModelId}
                     disabled={soundControlsDisabled}
-              previewUrl={speakerPreviewUrl}
+              previewDryUrl={speakerPreviewDryUrl}
+              previewWetUrl={speakerPreviewWetUrl}
+              voiceFxDial={voiceFxDial}
               stopNonce={voiceCardStopNonce}
             />
+            <div className="flex items-center gap-3 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                FX
+              </span>
+              <VoiceFxKnob
+                value={voiceFxDial}
+                disabled={soundControlsDisabled}
+                onChange={setVoiceFxDial}
+              />
+              <span className="text-xs tabular-nums text-muted">{voiceFxDial}</span>
+            </div>
             <div className="flex flex-col gap-1.5 py-3">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
                 Pacing

@@ -5,6 +5,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
   FISH_SPEAKERS,
@@ -41,6 +42,8 @@ export type VoiceSpeakerRow = Omit<FishSpeaker, "gender"> & {
   goodFor: string[];
   /** Null when the admin has not specified one. */
   gender: VoiceGender | null;
+  /** Speechify SSML rate offset in percent (e.g. -7 → rate="-7%"). Unused for Fish. */
+  speechifyRate: number | null;
 };
 
 export type PauseBandSeconds = Record<ScriptPauseBand, number>;
@@ -71,6 +74,7 @@ export function defaultVoiceSpeakers(): VoiceSpeakerRow[] {
     description: "",
     goodFor: [],
     gender: null,
+    speechifyRate: null,
     updatedAt: now,
   }));
 }
@@ -103,6 +107,16 @@ export function coerceVoiceSpeakerBrand(raw: unknown): VoiceSpeakerBrand {
 
 function brandWasStored(raw: unknown): boolean {
   return raw === "fish" || raw === "speechify";
+}
+
+export function coerceSpeechifyRate(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n =
+    typeof raw === "string"
+      ? Number(raw.trim().replace(/%/g, ""))
+      : Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(-50, Math.min(50, Math.round(n)));
 }
 
 /** Accepts an array or a comma-separated string; entries stay free text. */
@@ -171,6 +185,7 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
         description: stored.length > 0 ? coerceDescription(it.description) : legacy.description,
         goodFor: stored.length > 0 ? stored : legacy.goodFor,
         gender: coerceGender(it.gender),
+        speechifyRate: coerceSpeechifyRate(it.speechifyRate),
         updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
       };
       items.push(row);
@@ -222,6 +237,7 @@ async function persistVoiceSpeaker(
         description: row.description,
         goodFor: row.goodFor,
         gender: row.gender,
+        speechifyRate: row.speechifyRate,
         updatedAt: row.updatedAt,
       },
     }),
@@ -237,6 +253,7 @@ export async function putVoiceSpeaker(row: {
   description?: string;
   goodFor?: string[] | string;
   gender?: VoiceGender | null;
+  speechifyRate?: number | null;
 }): Promise<VoiceSpeakerRow> {
   const table = requireTable();
   const modelId = row.modelId.trim();
@@ -265,9 +282,97 @@ export async function putVoiceSpeaker(row: {
       row.goodFor !== undefined ? coerceGoodFor(row.goodFor) : coerceGoodFor(prev?.goodFor),
     gender:
       row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev?.gender),
+    speechifyRate:
+      row.speechifyRate !== undefined
+        ? coerceSpeechifyRate(row.speechifyRate)
+        : coerceSpeechifyRate(prev?.speechifyRate),
     updatedAt: new Date().toISOString(),
   };
   await persistVoiceSpeaker(table, next);
+  return next;
+}
+
+export async function renameVoiceSpeaker(
+  fromModelId: string,
+  row: Parameters<typeof putVoiceSpeaker>[0],
+): Promise<VoiceSpeakerRow> {
+  const from = fromModelId.trim();
+  const to = row.modelId.trim();
+  if (!from || !to) throw new Error("modelId is required");
+  if (from === to) return putVoiceSpeaker(row);
+  const table = requireTable();
+  const [fromItem, clash] = await Promise.all([
+    ddb.send(
+      new GetCommand({
+        TableName: table,
+        Key: { pk: VOICE_SPEAKER_PK, sk: from },
+      }),
+    ),
+    ddb.send(
+      new GetCommand({
+        TableName: table,
+        Key: { pk: VOICE_SPEAKER_PK, sk: to },
+      }),
+    ),
+  ]);
+  if (!fromItem.Item) throw new Error(`Speaker ${from} not found`);
+  if (clash.Item) throw new Error(`Speaker ${to} already exists`);
+  const prev = fromItem.Item;
+  const next: VoiceSpeakerRow = {
+    modelId: to,
+    name: row.name.trim() || to,
+    brand:
+      row.brand !== undefined
+        ? coerceVoiceSpeakerBrand(row.brand)
+        : coerceVoiceSpeakerBrand(prev.brand),
+    hidden: row.hidden === true,
+    sort: typeof row.sort === "number" && Number.isFinite(row.sort) ? row.sort : 0,
+    description:
+      row.description !== undefined
+        ? coerceDescription(row.description)
+        : coerceDescription(prev.description),
+    goodFor:
+      row.goodFor !== undefined ? coerceGoodFor(row.goodFor) : coerceGoodFor(prev.goodFor),
+    gender:
+      row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev.gender),
+    speechifyRate:
+      row.speechifyRate !== undefined
+        ? coerceSpeechifyRate(row.speechifyRate)
+        : coerceSpeechifyRate(prev.speechifyRate),
+    updatedAt: new Date().toISOString(),
+  };
+  await ddb.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: table,
+            Item: {
+              pk: VOICE_SPEAKER_PK,
+              sk: next.modelId,
+              name: next.name,
+              brand: next.brand,
+              hidden: next.hidden,
+              sort: next.sort,
+              description: next.description,
+              goodFor: next.goodFor,
+              gender: next.gender,
+              speechifyRate: next.speechifyRate,
+              updatedAt: next.updatedAt,
+            },
+            ConditionExpression: "attribute_not_exists(sk)",
+          },
+        },
+        {
+          Delete: {
+            TableName: table,
+            Key: { pk: VOICE_SPEAKER_PK, sk: from },
+            ConditionExpression: "attribute_exists(sk)",
+          },
+        },
+      ],
+    }),
+  );
   return next;
 }
 
@@ -312,13 +417,23 @@ export async function savePauseBandSeconds(
   return next;
 }
 
+export async function getVoiceSpeaker(
+  modelId: string | null | undefined,
+): Promise<VoiceSpeakerRow | null> {
+  if (!modelId) return null;
+  const rows = await listVoiceSpeakers();
+  return rows.find((s) => s.modelId === modelId) ?? null;
+}
+
 export async function listPickerFishSpeakers(): Promise<FishSpeaker[]> {
   const rows = await listVoiceSpeakers();
   return rows
-    .filter((s) => !s.hidden && s.brand === "fish")
+    .filter((s) => !s.hidden)
     .map((s) => ({
       name: s.name,
       modelId: s.modelId,
+      brand: s.brand,
+      ...(s.updatedAt ? { updatedAt: s.updatedAt } : {}),
       ...(s.description ? { description: s.description } : {}),
       ...(s.goodFor.length > 0 ? { goodFor: s.goodFor } : {}),
       ...(s.gender ? { gender: s.gender } : {}),

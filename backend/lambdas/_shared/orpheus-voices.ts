@@ -36,8 +36,10 @@ export function orpheusVoiceNameForId(
   return ORPHEUS_VOICES.find((v) => v.id === id)?.name ?? null;
 }
 
-export type TtsProvider = "fish" | "orpheus";
+export type TtsProvider = "fish" | "orpheus" | "speechify";
 
 export function normalizeTtsProvider(raw: unknown): TtsProvider {
-  return raw === "orpheus" ? "orpheus" : "fish";
+  if (raw === "orpheus") return "orpheus";
+  if (raw === "speechify") return "speechify";
+  return "fish";
 }

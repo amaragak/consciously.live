@@ -473,6 +473,7 @@ export default function CreateScreen() {
   } = useCreateAudioPreview({
     mediaBaseUrl,
     speakerModelId,
+    speakerBrand: fishSpeakers.find((s) => s.modelId === speakerModelId)?.brand,
     speechSpeed,
     speakerFxPreviewOn,
     backgroundNatureKey,

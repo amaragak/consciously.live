@@ -2,11 +2,10 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
+import { getVoiceSpeaker } from "./voice-admin";
 
 const secrets = new SecretsManagerClient({});
 const SPEECHIFY_STREAM_URL = "https://api.speechify.ai/v1/audio/stream";
-/** Speechify stream input cap. Split on paragraph pauses only if over this. */
-const SPEECHIFY_PACK_CHARS = 20_000;
 
 export type BlogTtsProvider = "fish" | "speechify";
 
@@ -42,80 +41,104 @@ function escapeSsmlText(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-/** Turn Fish-style pause tags into Speechify SSML breaks. */
-export function scriptToSpeechifySsml(script: string): string {
-  const parts = script.split(/(\[(?:short|long) pause\])/i);
-  const body = parts
-    .map((part) => {
-      if (/^\[short pause\]$/i.test(part)) return `<break time="700ms"/>`;
-      if (/^\[long pause\]$/i.test(part)) return `<break time="1.2s"/>`;
-      return escapeSsmlText(part);
-    })
-    .join("");
-  return `<speak>${body}</speak>`;
+/** Drop pause markers — silence is our ffmpeg chunks, not Speechify `<break>`. */
+function stripPauseMarkersForSpeechify(script: string): string {
+  return script
+    .replace(/\[\[PAUSE\s+[^\]]+\]\]/gi, " ")
+    .replace(/\[(?:short pause|long pause|long-break|break)\]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function paragraphUnits(script: string): string[] {
-  const tokens = script.split(/\s*(\[(?:short|long) pause\])\s*/i);
-  const paragraphs: string[] = [];
-  for (let i = 0; i < tokens.length; i += 1) {
-    const tok = (tokens[i] ?? "").trim();
-    if (!tok) continue;
-    if (/^\[(?:short|long) pause\]$/i.test(tok)) {
-      const next = (tokens[i + 1] ?? "").trim();
-      paragraphs.push(next ? `${tok} ${next}` : tok);
-      i += 1;
-      continue;
-    }
-    paragraphs.push(tok);
-  }
-  return paragraphs;
+/** Wrap spoken text + admin rate. Pause tags are stripped, not turned into SSML breaks. */
+export function scriptToSpeechifySsml(
+  script: string,
+  opts?: { rate?: string },
+): string {
+  const body = escapeSsmlText(stripPauseMarkersForSpeechify(script));
+  const rate = opts?.rate?.trim();
+  const inner = rate
+    ? `<prosody rate="${escapeSsmlText(rate)}">${body}</prosody>`
+    : body;
+  return `<speak>${inner}</speak>`;
 }
 
-export function chunkSpeechifyScript(script: string): string[] {
-  const trimmed = script.trim();
-  if (!trimmed) return [];
-  if (trimmed.length <= SPEECHIFY_PACK_CHARS) return [trimmed];
-  const paragraphs = paragraphUnits(trimmed);
-  const chunks: string[] = [];
-  let buf = "";
-  for (const para of paragraphs) {
-    const next = buf ? `${buf} ${para}` : para;
-    if (buf && next.length > SPEECHIFY_PACK_CHARS) {
-      chunks.push(buf.trim());
-      buf = para;
-      continue;
-    }
-    buf = next;
-  }
-  if (buf.trim()) chunks.push(buf.trim());
-  return chunks.length ? chunks : [trimmed];
+/** Admin percent like -7 → SSML `rate="-7%"`. Unset means Speechify default (no wrap). */
+export function speechifyRateToSsml(
+  rate: number | null | undefined,
+): string | undefined {
+  if (rate == null || !Number.isFinite(rate)) return undefined;
+  const n = Math.round(rate);
+  return n > 0 ? `+${n}%` : `${n}%`;
+}
+
+export async function speechifyRateSsmlForVoice(
+  voiceId: string | null | undefined,
+): Promise<string | undefined> {
+  const id = (voiceId || "").trim() || speechifyVoiceId();
+  const speaker = await getVoiceSpeaker(id);
+  return speechifyRateToSsml(speaker?.speechifyRate);
+}
+
+function isSpeechifyRateLimited(status: number, body: string): boolean {
+  if (status === 429) return true;
+  return /rate_limited|rate limit/i.test(body);
+}
+
+function speechifyRetryDelayMs(res: Response, attempt: number): number {
+  const seconds = Number(res.headers.get("retry-after"));
+  const headerMs =
+    Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : NaN;
+  const base = Number.isFinite(headerMs) ? headerMs : 400 + attempt * 250;
+  return Math.min(3_000, Math.max(250, base)) + Math.floor(Math.random() * 150);
 }
 
 export async function speechifyTtsMp3(params: {
   apiKey: string;
   text: string;
   voiceId?: string;
+  /** Fallback only when this voice has no admin rate stored. */
+  rate?: string;
 }): Promise<Buffer> {
-  const ssml = scriptToSpeechifySsml(params.text);
-  const upstream = await fetch(SPEECHIFY_STREAM_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "audio/mpeg",
-    },
-    body: JSON.stringify({
-      input: ssml,
-      voice_id: params.voiceId || speechifyVoiceId(),
-      model: speechifyTtsModel(),
-      output_format: "mp3_24000_128",
-      text_normalization: true,
-    }),
+  const voiceId = params.voiceId || speechifyVoiceId();
+  const storedRate = await speechifyRateSsmlForVoice(voiceId);
+  const rate = storedRate ?? params.rate?.trim();
+  const ssml = scriptToSpeechifySsml(params.text, { rate });
+  const body = JSON.stringify({
+    input: ssml,
+    voice_id: voiceId,
+    model: speechifyTtsModel(),
+    output_format: "mp3_24000_128",
+    text_normalization: true,
   });
-  if (!upstream.ok) {
+  const maxAttempts = 5;
+  let lastErr = "Speechify TTS failed";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const upstream = await fetch(SPEECHIFY_STREAM_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg",
+      },
+      body,
+    });
+    if (upstream.ok) {
+      return Buffer.from(await upstream.arrayBuffer());
+    }
     const err = await upstream.text();
-    throw new Error(`Speechify TTS failed: ${err.slice(0, 500)}`);
+    lastErr = `Speechify TTS failed: ${err.slice(0, 500)}`;
+    const retryable =
+      isSpeechifyRateLimited(upstream.status, err) ||
+      [502, 503, 504].includes(upstream.status);
+    if (!retryable || attempt >= maxAttempts) break;
+    const backoffMs = speechifyRetryDelayMs(upstream, attempt);
+    console.warn("Speechify transient failure, retrying", {
+      attempt,
+      status: upstream.status,
+      backoffMs,
+    });
+    await new Promise((r) => setTimeout(r, backoffMs));
   }
-  return Buffer.from(await upstream.arrayBuffer());
+  throw new Error(lastErr);
 }
