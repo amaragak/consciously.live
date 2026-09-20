@@ -2,6 +2,7 @@
  * Async Fish TTS for a Read post: title + subheader + body.
  * No voice FX, no backing music. Loudnorm only.
  */
+import type { Context } from "aws-lambda";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import fs from "fs";
@@ -30,6 +31,18 @@ const s3 = new S3Client({});
 const secrets = new SecretsManagerClient({});
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 const CHUNK_CHARS = 3200;
+const FISH_REQUEST_TIMEOUT_MS = 90_000;
+const TIME_RESERVE_MS = 45_000;
+
+function assertTimeLeft(context: Context | undefined, label: string) {
+  if (!context) return;
+  const left = context.getRemainingTimeInMillis();
+  if (left < TIME_RESERVE_MS) {
+    throw new Error(
+      `Ran out of time during ${label} (${Math.round(left / 1000)}s left). Try again, or shorten the post.`,
+    );
+  }
+}
 
 function fishTtsModel(): string {
   return (process.env.FISH_TTS_MODEL || "s2.1-pro-free").trim() || "s2.1-pro-free";
@@ -121,25 +134,31 @@ async function fishTtsMp3(
 ): Promise<Buffer> {
   let lastErr = "";
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const upstream = await fetch(FISH_TTS_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        model: fishTtsModel(),
-      },
-      body: JSON.stringify({
-        text,
-        reference_id: referenceId,
-        format: "mp3",
-        latency: "normal",
-        normalize: true,
-        prosody: { speed: 0.95, normalize_loudness: true },
-      }),
-    });
-    if (upstream.ok) return Buffer.from(await upstream.arrayBuffer());
-    lastErr = await upstream.text();
-    if (![429, 502, 503, 504].includes(upstream.status) || attempt >= 3) break;
+    try {
+      const upstream = await fetch(FISH_TTS_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          model: fishTtsModel(),
+        },
+        body: JSON.stringify({
+          text,
+          reference_id: referenceId,
+          format: "mp3",
+          latency: "normal",
+          normalize: true,
+          prosody: { speed: 0.95, normalize_loudness: true },
+        }),
+        signal: AbortSignal.timeout(FISH_REQUEST_TIMEOUT_MS),
+      });
+      if (upstream.ok) return Buffer.from(await upstream.arrayBuffer());
+      lastErr = await upstream.text();
+      if (![429, 502, 503, 504].includes(upstream.status) || attempt >= 3) break;
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+      if (attempt >= 3) break;
+    }
     await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
   }
   throw new Error(`Fish TTS failed: ${lastErr.slice(0, 500)}`);
@@ -191,7 +210,10 @@ function audioKeyFromUrl(url: string | null | undefined): string | null {
   return m?.[1] ?? null;
 }
 
-export async function handler(event: { id?: string }): Promise<void> {
+export async function handler(
+  event: { id?: string },
+  context?: Context,
+): Promise<void> {
   const id = typeof event?.id === "string" ? event.id.trim() : "";
   if (!id) {
     console.error("admin-blog-narrate: missing id");
@@ -210,14 +232,17 @@ export async function handler(event: { id?: string }): Promise<void> {
     }
     const chunks = chunkNarration(script);
     if (!chunks.length) throw new Error("Nothing to narrate");
+    console.info("admin-blog-narrate: start", id, "chunks", chunks.length, "chars", script.length);
 
     const [apiKey, modelId] = await Promise.all([
       getFishApiKey(),
       resolveSpeakerModelId(),
     ]);
     const rawParts: Buffer[] = [];
-    for (const chunk of chunks) {
-      rawParts.push(await fishTtsMp3(apiKey, modelId, chunk));
+    for (let i = 0; i < chunks.length; i += 1) {
+      assertTimeLeft(context, `TTS chunk ${i + 1}/${chunks.length}`);
+      console.info("admin-blog-narrate: tts", i + 1, "/", chunks.length);
+      rawParts.push(await fishTtsMp3(apiKey, modelId, chunks[i]!));
     }
     const joined = await concatMp3(rawParts);
     const mp3 = await loudnormMp3Buffer(joined);

@@ -1334,7 +1334,7 @@ export class MedimadeStack extends cdk.Stack {
         entry: path.join(__dirname, "../lambdas/admin-blog-narrate.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.minutes(5),
+        timeout: cdk.Duration.minutes(15),
         memorySize: 2048,
         ephemeralStorageSize: cdk.Size.mebibytes(1024),
         layers: [ffmpegLayer],
