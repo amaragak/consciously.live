@@ -24,7 +24,7 @@ export default async function ReadIndexPage() {
             <span className="italic text-accent-link">Read</span>
           </h1>
           {indexSummary ? (
-            <p className="mt-3 whitespace-pre-line text-base leading-relaxed text-muted">
+            <p className="mt-3 whitespace-pre-line text-lg leading-relaxed text-muted">
               {indexSummary}
             </p>
           ) : null}
@@ -37,7 +37,7 @@ export default async function ReadIndexPage() {
               alt="Alex"
               width={192}
               height={192}
-              className="size-36 rounded-full object-cover sm:size-48"
+              className="size-36 rounded-full object-cover shadow-[0_0_0_4px_color-mix(in_srgb,var(--muted)_55%,var(--border)),0_8px_16px_rgba(0,0,0,0.14),0_22px_48px_rgba(0,0,0,0.2)] dark:shadow-[0_0_0_4px_color-mix(in_srgb,var(--muted)_55%,var(--border)),0_8px_16px_rgba(0,0,0,0.35),0_22px_48px_rgba(0,0,0,0.55)] sm:size-48"
             />
           </div>
         ) : null}
