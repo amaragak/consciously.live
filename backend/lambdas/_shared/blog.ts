@@ -110,6 +110,140 @@ export function blogBodyHasContent(body: string): boolean {
   return htmlToNarrationText(body).length > 0;
 }
 
+const BLOG_PARA_PAUSE = "[short pause]";
+const BLOG_HEADER_PAUSE = "[long pause]";
+
+function decodeHtmlEntities(raw: string): string {
+  return raw
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function innerTextFromHtml(html: string): string {
+  let t = html.replace(/<br\s*\/?>/gi, " ");
+  t = t.replace(/<[^>]+>/g, " ");
+  t = decodeHtmlEntities(t);
+  return t.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Spoken blog body for Fish TTS: skip pulled-out quotes and H2s.
+ * Paragraphs get a short pause; header splits get a slightly longer one.
+ */
+export function htmlToBlogNarrationScript(source: string): string {
+  const raw = source.replace(/\r\n/g, "\n").trim();
+  if (!raw) return "";
+
+  if (!/^\s*</.test(raw)) {
+    return markdownToBlogNarrationScript(raw);
+  }
+
+  const html = raw.replace(/<blockquote\b[^>]*>[\s\S]*?<\/blockquote>/gi, "");
+  type Piece = { kind: "para" | "header"; text?: string };
+  const pieces: Piece[] = [];
+  const re = /<(h[23]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const tag = (m[1] ?? "").toLowerCase();
+    const text = innerTextFromHtml(m[2] ?? "");
+    if (tag === "h2") {
+      pieces.push({ kind: "header" });
+      continue;
+    }
+    if (tag === "h3") {
+      if (text) pieces.push({ kind: "para", text });
+      pieces.push({ kind: "header" });
+      continue;
+    }
+    if (text) pieces.push({ kind: "para", text });
+  }
+
+  if (!pieces.length) {
+    return innerTextFromHtml(html);
+  }
+
+  const out: string[] = [];
+  for (let i = 0; i < pieces.length; i += 1) {
+    const piece = pieces[i]!;
+    if (piece.kind === "header") {
+      if (out.length && out[out.length - 1] !== BLOG_HEADER_PAUSE) {
+        if (out[out.length - 1] === BLOG_PARA_PAUSE) out.pop();
+        out.push(BLOG_HEADER_PAUSE);
+      }
+      continue;
+    }
+    if (piece.text) out.push(piece.text);
+    const next = pieces[i + 1];
+    if (next?.kind === "header") continue;
+    if (next) out.push(BLOG_PARA_PAUSE);
+  }
+  return out.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function markdownToBlogNarrationScript(source: string): string {
+  const lines = source.split("\n");
+  const out: string[] = [];
+  let para: string[] = [];
+  let inQuote = false;
+
+  const flushPara = () => {
+    const text = para.join(" ").replace(/\s+/g, " ").trim();
+    para = [];
+    if (text) {
+      if (out.length && out[out.length - 1] !== BLOG_HEADER_PAUSE) {
+        out.push(BLOG_PARA_PAUSE);
+      }
+      out.push(text);
+    }
+  };
+
+  for (const line of lines) {
+    if (/^>\s?/.test(line)) {
+      flushPara();
+      inQuote = true;
+      continue;
+    }
+    if (inQuote && !line.trim()) {
+      inQuote = false;
+      continue;
+    }
+    if (inQuote) continue;
+    if (/^##\s+/.test(line)) {
+      flushPara();
+      if (out.length && out[out.length - 1] !== BLOG_HEADER_PAUSE) {
+        if (out[out.length - 1] === BLOG_PARA_PAUSE) out.pop();
+        out.push(BLOG_HEADER_PAUSE);
+      }
+      continue;
+    }
+    if (/^###\s+/.test(line)) {
+      flushPara();
+      const heading = line.replace(/^###\s+/, "").trim();
+      if (heading) {
+        if (out.length && out[out.length - 1] !== BLOG_HEADER_PAUSE) {
+          out.push(BLOG_PARA_PAUSE);
+        }
+        out.push(heading);
+      }
+      if (out.length && out[out.length - 1] !== BLOG_HEADER_PAUSE) {
+        out.push(BLOG_HEADER_PAUSE);
+      }
+      continue;
+    }
+    if (!line.trim()) {
+      flushPara();
+      continue;
+    }
+    para.push(line.trim());
+  }
+  flushPara();
+  return out.join(" ").replace(/\s+/g, " ").trim();
+}
+
 export function normalizeBlogSeries(raw: unknown): string {
   if (typeof raw !== "string") return "";
   return raw.trim().replace(/\s+/g, " ").slice(0, MAX_BLOG_SERIES_LEN);

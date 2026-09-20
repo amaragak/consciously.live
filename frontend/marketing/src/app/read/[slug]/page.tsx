@@ -48,12 +48,9 @@ export default async function ReadPostPage({ params }: Props) {
         ← Read
       </Link>
       <div className="mt-8">
-        <ReadSeriesLabel series={post.series} part={post.part} />
-        <p className={`${post.series || post.part != null ? "mt-2" : ""} text-xs text-muted`}>
-          {formatBlogDate(post.publishedAt || post.updatedAt)}
-        </p>
+        <ReadSeriesLabel series={post.series} part={post.part} size="lg" />
       </div>
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+      <div className={`${post.series || post.part != null ? "mt-2" : "mt-8"} flex flex-wrap items-start justify-between gap-3`}>
         <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
           {post.title}
         </h1>
@@ -70,6 +67,9 @@ export default async function ReadPostPage({ params }: Props) {
         </p>
       ) : null}
       <ReadPostTags tags={post.tags} />
+      <p className="mt-3 text-xs text-muted">
+        {formatBlogDate(post.publishedAt || post.updatedAt)}
+      </p>
       <div id="read-article-body" className="mt-6">
         {post.hasBody ? (
           <ReadBody source={post.body} />

@@ -18,7 +18,7 @@ import {
 import { loudnormMp3Buffer } from "./_shared/ffmpeg-loudnorm";
 import {
   getBlogPostById,
-  htmlToNarrationText,
+  htmlToBlogNarrationScript,
   patchBlogPostAudio,
 } from "./_shared/blog";
 import { invalidateBlogCache } from "./_shared/blog-revalidate";
@@ -66,36 +66,41 @@ function buildNarrationScript(post: {
   subheader: string;
   body: string;
 }): string {
-  const parts = [post.title.trim()];
-  if (post.subheader.trim()) parts.push(post.subheader.trim());
-  const body = htmlToNarrationText(post.body);
-  if (body) parts.push(body);
-  return parts.filter(Boolean).join("\n\n");
+  const intro: string[] = [];
+  if (post.title.trim()) intro.push(post.title.trim());
+  if (post.subheader.trim()) intro.push("[short pause]", post.subheader.trim());
+  const body = htmlToBlogNarrationScript(post.body);
+  if (body) {
+    if (intro.length) intro.push("[long pause]");
+    intro.push(body);
+  }
+  return intro.join(" ").replace(/\s+/g, " ").trim();
 }
 
 function chunkNarration(text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
   if (trimmed.length <= CHUNK_CHARS) return [trimmed];
-  const paras = trimmed.split(/\n{2,}/);
+  const parts = trimmed.split(/(\[(?:short|long) pause\])/i);
   const chunks: string[] = [];
   let buf = "";
   const flush = () => {
     if (buf.trim()) chunks.push(buf.trim());
     buf = "";
   };
-  for (const para of paras) {
-    const next = buf ? `${buf}\n\n${para}` : para;
+  for (const part of parts) {
+    if (!part) continue;
+    const next = buf ? `${buf} ${part}` : part;
     if (next.length <= CHUNK_CHARS) {
       buf = next;
       continue;
     }
     flush();
-    if (para.length <= CHUNK_CHARS) {
-      buf = para;
+    if (part.length <= CHUNK_CHARS) {
+      buf = part;
       continue;
     }
-    let rest = para;
+    let rest = part;
     while (rest.length > CHUNK_CHARS) {
       let cut = rest.lastIndexOf(". ", CHUNK_CHARS);
       if (cut < CHUNK_CHARS * 0.4) cut = CHUNK_CHARS;

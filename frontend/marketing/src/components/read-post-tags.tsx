@@ -4,10 +4,16 @@ import {
 } from "@/lib/meditation-type-pill";
 
 /** Topic chips for public Read — same pill language as library meditation categories. */
-export function ReadPostTags({ tags }: { tags: string[] }) {
+export function ReadPostTags({
+  tags,
+  className = "mt-3",
+}: {
+  tags: string[];
+  className?: string;
+}) {
   if (!tags.length) return null;
   return (
-    <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Tags">
+    <ul className={`flex flex-wrap gap-1.5 ${className}`} aria-label="Tags">
       {tags.map((tag) => {
         const colors = meditationTypePillColors(tag);
         return (
