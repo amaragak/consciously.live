@@ -2828,9 +2828,12 @@ export async function trimAdminSound(body: {
   }
 }
 
+export type VoiceSpeakerBrand = "fish" | "speechify";
+
 export type AdminVoiceSpeaker = {
   name: string;
   modelId: string;
+  brand: VoiceSpeakerBrand;
   hidden: boolean;
   sort: number;
   description?: string;
@@ -2865,7 +2868,10 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
   }
   return {
     baseUrl: data.baseUrl,
-    speakers: data.speakers ?? [],
+    speakers: (data.speakers ?? []).map((s) => ({
+      ...s,
+      brand: s.brand === "speechify" ? "speechify" : "fish",
+    })),
     pauses: data.pauses,
   };
 }
@@ -2933,6 +2939,7 @@ export async function patchAdminVoice(body: {
   speaker?: {
     name: string;
     modelId: string;
+    brand?: VoiceSpeakerBrand;
     hidden?: boolean;
     sort?: number;
     description?: string;
@@ -3586,6 +3593,9 @@ export type AdminBlogPost = {
   audioStatus: AdminBlogAudioStatus;
   audioError: string | null;
   audioGeneratedAt: string | null;
+  audioProgress: string | null;
+  audioStartedAt: string | null;
+  audioTtsProvider: "fish" | "speechify" | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -3659,6 +3669,18 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     audioGeneratedAt:
       typeof o.audioGeneratedAt === "string" && o.audioGeneratedAt.trim()
         ? o.audioGeneratedAt.trim()
+        : null,
+    audioProgress:
+      typeof o.audioProgress === "string" && o.audioProgress.trim()
+        ? o.audioProgress.trim()
+        : null,
+    audioStartedAt:
+      typeof o.audioStartedAt === "string" && o.audioStartedAt.trim()
+        ? o.audioStartedAt.trim()
+        : null,
+    audioTtsProvider:
+      o.audioTtsProvider === "fish" || o.audioTtsProvider === "speechify"
+        ? o.audioTtsProvider
         : null,
     createdAt: typeof o.createdAt === "string" ? o.createdAt : "",
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
@@ -3863,13 +3885,16 @@ export async function saveAdminBlogPost(
   return saved;
 }
 
-export async function generateAdminBlogAudio(id: string): Promise<AdminBlogPost> {
+export async function generateAdminBlogAudio(
+  id: string,
+  ttsProvider: "fish" | "speechify" = "speechify",
+): Promise<AdminBlogPost> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/blog`, {
     method: "POST",
     headers: medimadeJsonHeaders(),
-    body: JSON.stringify({ action: "generateAudio", id }),
+    body: JSON.stringify({ action: "generateAudio", id, ttsProvider }),
   });
   const data = (await res.json()) as {
     post?: unknown;

@@ -1,6 +1,6 @@
 /**
- * Async Fish TTS for a Read post: title + subheader + body.
- * No voice FX, no backing music. Loudnorm only.
+ * Async TTS for a Read post: title + subheader + body.
+ * Speechify (default) or Fish. No voice FX, no backing music. Loudnorm only.
  */
 import type { Context } from "aws-lambda";
 import { randomUUID } from "crypto";
@@ -24,14 +24,22 @@ import {
 } from "./_shared/blog";
 import { invalidateBlogCache } from "./_shared/blog-revalidate";
 import { fishSpeakersForPicker } from "./_shared/fish-speakers";
+import {
+  chunkSpeechifyScript,
+  coerceBlogTtsProvider,
+  getSpeechifyApiKey,
+  speechifyTtsMp3,
+  speechifyVoiceId,
+  type BlogTtsProvider,
+} from "./_shared/speechify-tts";
 import { listVoiceSpeakers } from "./_shared/voice-admin";
 
 const execFileAsync = promisify(execFile);
 const s3 = new S3Client({});
 const secrets = new SecretsManagerClient({});
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
-const CHUNK_CHARS = 3200;
-const FISH_REQUEST_TIMEOUT_MS = 90_000;
+/** Only pack multiple paragraphs if the whole script is longer than this. Never cut mid-paragraph. */
+const FISH_PACK_CHARS = 12_000;
 const TIME_RESERVE_MS = 45_000;
 
 function assertTimeLeft(context: Context | undefined, label: string) {
@@ -64,7 +72,7 @@ async function getFishApiKey(): Promise<string> {
 async function resolveSpeakerModelId(): Promise<string> {
   try {
     const speakers = await listVoiceSpeakers();
-    const visible = speakers.filter((s) => !s.hidden);
+    const visible = speakers.filter((s) => !s.hidden && s.brand === "fish");
     if (visible[0]?.modelId) return visible[0].modelId;
   } catch {
     /* fall through */
@@ -93,38 +101,35 @@ function buildNarrationScript(post: {
 function chunkNarration(text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
-  if (trimmed.length <= CHUNK_CHARS) return [trimmed];
-  const parts = trimmed.split(/(\[(?:short|long) pause\])/i);
+  if (trimmed.length <= FISH_PACK_CHARS) return [trimmed];
+
+  const tokens = trimmed.split(/\s*(\[(?:short|long) pause\])\s*/i);
+  const paragraphs: string[] = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = (tokens[i] ?? "").trim();
+    if (!tok) continue;
+    if (/^\[(?:short|long) pause\]$/i.test(tok)) {
+      const next = (tokens[i + 1] ?? "").trim();
+      paragraphs.push(next ? `${tok} ${next}` : tok);
+      i += 1;
+      continue;
+    }
+    paragraphs.push(tok);
+  }
+
   const chunks: string[] = [];
   let buf = "";
-  const flush = () => {
-    if (buf.trim()) chunks.push(buf.trim());
-    buf = "";
-  };
-  for (const part of parts) {
-    if (!part) continue;
-    const next = buf ? `${buf} ${part}` : part;
-    if (next.length <= CHUNK_CHARS) {
-      buf = next;
+  for (const para of paragraphs) {
+    const next = buf ? `${buf} ${para}` : para;
+    if (buf && next.length > FISH_PACK_CHARS) {
+      chunks.push(buf.trim());
+      buf = para;
       continue;
     }
-    flush();
-    if (part.length <= CHUNK_CHARS) {
-      buf = part;
-      continue;
-    }
-    let rest = part;
-    while (rest.length > CHUNK_CHARS) {
-      let cut = rest.lastIndexOf(". ", CHUNK_CHARS);
-      if (cut < CHUNK_CHARS * 0.4) cut = CHUNK_CHARS;
-      else cut += 1;
-      chunks.push(rest.slice(0, cut).trim());
-      rest = rest.slice(cut).trim();
-    }
-    buf = rest;
+    buf = next;
   }
-  flush();
-  return chunks;
+  if (buf.trim()) chunks.push(buf.trim());
+  return chunks.length ? chunks : [trimmed];
 }
 
 async function fishTtsMp3(
@@ -134,31 +139,25 @@ async function fishTtsMp3(
 ): Promise<Buffer> {
   let lastErr = "";
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      const upstream = await fetch(FISH_TTS_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          model: fishTtsModel(),
-        },
-        body: JSON.stringify({
-          text,
-          reference_id: referenceId,
-          format: "mp3",
-          latency: "normal",
-          normalize: true,
-          prosody: { speed: 0.95, normalize_loudness: true },
-        }),
-        signal: AbortSignal.timeout(FISH_REQUEST_TIMEOUT_MS),
-      });
-      if (upstream.ok) return Buffer.from(await upstream.arrayBuffer());
-      lastErr = await upstream.text();
-      if (![429, 502, 503, 504].includes(upstream.status) || attempt >= 3) break;
-    } catch (e) {
-      lastErr = e instanceof Error ? e.message : String(e);
-      if (attempt >= 3) break;
-    }
+    const upstream = await fetch(FISH_TTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        model: fishTtsModel(),
+      },
+      body: JSON.stringify({
+        text,
+        reference_id: referenceId,
+        format: "mp3",
+        latency: "normal",
+        normalize: true,
+        prosody: { speed: 0.95, normalize_loudness: true },
+      }),
+    });
+    if (upstream.ok) return Buffer.from(await upstream.arrayBuffer());
+    lastErr = await upstream.text();
+    if (![429, 502, 503, 504].includes(upstream.status) || attempt >= 3) break;
     await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
   }
   throw new Error(`Fish TTS failed: ${lastErr.slice(0, 500)}`);
@@ -211,7 +210,7 @@ function audioKeyFromUrl(url: string | null | undefined): string | null {
 }
 
 export async function handler(
-  event: { id?: string },
+  event: { id?: string; ttsProvider?: BlogTtsProvider },
   context?: Context,
 ): Promise<void> {
   const id = typeof event?.id === "string" ? event.id.trim() : "";
@@ -230,20 +229,61 @@ export async function handler(
     if (!script.trim()) {
       throw new Error("Nothing to narrate — add a title or body, then save.");
     }
-    const chunks = chunkNarration(script);
+    const provider = coerceBlogTtsProvider(
+      event.ttsProvider ?? post.audioTtsProvider,
+    );
+    const chunks =
+      provider === "speechify"
+        ? chunkSpeechifyScript(script)
+        : chunkNarration(script);
     if (!chunks.length) throw new Error("Nothing to narrate");
-    console.info("admin-blog-narrate: start", id, "chunks", chunks.length, "chars", script.length);
+    console.info(
+      "admin-blog-narrate: start",
+      id,
+      provider,
+      "chunks",
+      chunks.length,
+      "chars",
+      script.length,
+    );
+    await patchBlogPostAudio(id, {
+      audioStatus: "generating",
+      audioTtsProvider: provider,
+      audioProgress: `Preparing ${provider === "speechify" ? "Speechify" : "Fish"}… ${chunks.length} part${chunks.length === 1 ? "" : "s"}`,
+    });
 
-    const [apiKey, modelId] = await Promise.all([
-      getFishApiKey(),
-      resolveSpeakerModelId(),
-    ]);
     const rawParts: Buffer[] = [];
-    for (let i = 0; i < chunks.length; i += 1) {
-      assertTimeLeft(context, `TTS chunk ${i + 1}/${chunks.length}`);
-      console.info("admin-blog-narrate: tts", i + 1, "/", chunks.length);
-      rawParts.push(await fishTtsMp3(apiKey, modelId, chunks[i]!));
+    if (provider === "speechify") {
+      const apiKey = await getSpeechifyApiKey();
+      const voiceId = speechifyVoiceId();
+      for (let i = 0; i < chunks.length; i += 1) {
+        assertTimeLeft(context, `Speechify ${i + 1}/${chunks.length}`);
+        await patchBlogPostAudio(id, {
+          audioStatus: "generating",
+          audioProgress: `Speechify: synthesizing ${i + 1} of ${chunks.length}…`,
+        });
+        rawParts.push(
+          await speechifyTtsMp3({ apiKey, text: chunks[i]!, voiceId }),
+        );
+      }
+    } else {
+      const [apiKey, modelId] = await Promise.all([
+        getFishApiKey(),
+        resolveSpeakerModelId(),
+      ]);
+      for (let i = 0; i < chunks.length; i += 1) {
+        assertTimeLeft(context, `TTS chunk ${i + 1}/${chunks.length}`);
+        await patchBlogPostAudio(id, {
+          audioStatus: "generating",
+          audioProgress: `Fish: synthesizing ${i + 1} of ${chunks.length}…`,
+        });
+        rawParts.push(await fishTtsMp3(apiKey, modelId, chunks[i]!));
+      }
     }
+    await patchBlogPostAudio(id, {
+      audioStatus: "generating",
+      audioProgress: "Mixing and uploading…",
+    });
     const joined = await concatMp3(rawParts);
     const mp3 = await loudnormMp3Buffer(joined);
 
@@ -275,6 +315,8 @@ export async function handler(
       audioUrl: `https://${cfDomain}/${key}`,
       audioStatus: "ready",
       audioError: null,
+      audioProgress: null,
+      audioStartedAt: null,
       audioGeneratedAt: new Date().toISOString(),
     });
     await invalidateBlogCache({ index: true, slugs: saved.slug ? [saved.slug] : [] });
@@ -285,6 +327,7 @@ export async function handler(
       await patchBlogPostAudio(id, {
         audioStatus: "failed",
         audioError: msg,
+        audioProgress: null,
       });
     } catch (patchErr) {
       console.error("admin-blog-narrate: failed to record error", patchErr);

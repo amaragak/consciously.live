@@ -19,6 +19,7 @@ import { ConsciouslyCognitoAuthNestedStack } from "./consciously/cognito-auth-ne
 
 /** Create this secret in AWS Secrets Manager before calling the API (see DEPLOY.md). */
 export const FISH_AUDIO_SECRET_NAME = "medimade/FISH_AUDIO_API_KEY";
+export const SPEECHIFY_SECRET_NAME = "medimade/SPEECHIFY_API_KEY";
 /** Anthropic API key for Claude (Haiku) chat in the create flow. */
 export const CLAUDE_SECRET_NAME = "medimade/CLAUDE_API_KEY";
 /** OpenAI API key for Whisper journal transcription (`POST /journal/transcribe`). */
@@ -42,6 +43,11 @@ export class MedimadeStack extends cdk.Stack {
       this,
       "FishAudioApiKey",
       FISH_AUDIO_SECRET_NAME,
+    );
+    const speechifyApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "SpeechifyApiKey",
+      SPEECHIFY_SECRET_NAME,
     );
 
     const claudeApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
@@ -1344,6 +1350,9 @@ export class MedimadeStack extends cdk.Stack {
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
           FISH_TTS_MODEL: "s2.1-pro-free",
+          SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          SPEECHIFY_VOICE_ID: "geffen_32",
+          SPEECHIFY_TTS_MODEL: "simba-3.2",
           BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
           MARKETING_ORIGIN: authWebappOrigin,
         },
@@ -1351,6 +1360,7 @@ export class MedimadeStack extends cdk.Stack {
     );
     voiceAdminTable.grantReadWriteData(adminBlogNarrate);
     fishApiKeySecret.grantRead(adminBlogNarrate);
+    speechifyApiKeySecret.grantRead(adminBlogNarrate);
     blogRevalidateSecret.grantRead(adminBlogNarrate);
     mediaBucket.grantPut(adminBlogNarrate);
     mediaBucket.grantRead(adminBlogNarrate);

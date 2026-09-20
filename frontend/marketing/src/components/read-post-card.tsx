@@ -24,7 +24,7 @@ export function ReadPostCard({ post }: { post: PublicBlogPostSummary }) {
           <ReadSeriesLabel series={post.series} part={post.part} />
           {post.audioUrl ? (
             <span className="pointer-events-auto shrink-0">
-              <ReadNarrationButton src={post.audioUrl} />
+              <ReadNarrationButton src={post.audioUrl} title={post.title} />
             </span>
           ) : null}
         </div>

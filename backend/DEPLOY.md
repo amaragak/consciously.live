@@ -9,6 +9,7 @@ Create a secret with this **exact name** (full path string):
 | Secret name | Value |
 |-------------|--------|
 | **`medimade/FISH_AUDIO_API_KEY`** | Your Fish Audio API key (plain text as the secret string) |
+| **`medimade/SPEECHIFY_API_KEY`** | Your Speechify TTS API key (plain text as the secret string) |
 | **`medimade/CLAUDE_API_KEY`** | Your Anthropic API key for Claude (plain text as the secret string) |
 | **`medimade/OPENAI_API_KEY`** | Your OpenAI API key (plain text; used for **Whisper** journal transcription via `POST /journal/transcribe`) |
 | **`medimade/RUNPODS_API_KEY`** | Your RunPod API key (plain text; used for **Orpheus TTS** via `POST /orpheus/tts`) |
@@ -21,6 +22,13 @@ Create or update them **before** you exercise the API (stack deploy can succeed 
 aws secretsmanager create-secret \
   --name medimade/FISH_AUDIO_API_KEY \
   --secret-string "YOUR_FISH_AUDIO_KEY" \
+  --profile mm
+```
+
+```bash
+aws secretsmanager create-secret \
+  --name medimade/SPEECHIFY_API_KEY \
+  --secret-string "YOUR_SPEECHIFY_KEY" \
   --profile mm
 ```
 

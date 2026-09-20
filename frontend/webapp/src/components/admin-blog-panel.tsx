@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { trackFromBlogNarration } from "@consciously/common";
 import {
   clearAdminBlogAuthorPhoto,
   deleteAdminBlogPost,
@@ -9,6 +10,7 @@ import {
   uploadAdminBlogAuthorPhoto,
   type AdminBlogPost,
 } from "@/lib/medimade-api";
+import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
   ReadRichEditor,
   bodyToEditorHtml,
@@ -71,6 +73,9 @@ function blankDraft(): BlogDraft {
     audioStatus: "none",
     audioError: null,
     audioGeneratedAt: null,
+    audioProgress: null,
+    audioStartedAt: null,
+    audioTtsProvider: "speechify",
   };
 }
 
@@ -91,7 +96,17 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
     audioStatus: post.audioStatus,
     audioError: post.audioError,
     audioGeneratedAt: post.audioGeneratedAt,
+    audioProgress: post.audioProgress,
+    audioStartedAt: post.audioStartedAt,
+    audioTtsProvider: post.audioTtsProvider ?? "speechify",
   };
+}
+
+function formatElapsedSeconds(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m <= 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
 function editorDocKey(id: string | "new" | null, nonce: number): string {
@@ -185,6 +200,8 @@ function formatWhen(iso: string | null | undefined): string {
 }
 
 export function AdminReadPanel() {
+  const { playTrack, toggleCurrent, nowPlaying, playingS3Key } =
+    useLibraryPlayer();
   const [posts, setPosts] = useState<AdminBlogPost[]>([]);
   const [indexSummary, setIndexSummary] = useState(DEFAULT_INDEX_SUMMARY);
   const [authorPhotoUrl, setAuthorPhotoUrl] = useState<string | null>(null);
@@ -205,6 +222,7 @@ export function AdminReadPanel() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [audioBusy, setAudioBusy] = useState(false);
+  const [audioTick, setAudioTick] = useState(Date.now());
   const [status, setStatus] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -378,10 +396,12 @@ export function AdminReadPanel() {
     setAudioBusy(true);
     setStatus(null);
     try {
-      const started = await generateAdminBlogAudio(draft.id);
+      const started = await generateAdminBlogAudio(
+        draft.id,
+        draft.audioTtsProvider === "fish" ? "fish" : "speechify",
+      );
       setDraft(draftFromPost(started));
       setPosts((prev) => prev.map((p) => (p.id === started.id ? started : p)));
-      setStatus("Generating narration…");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Could not start audio");
       setAudioBusy(false);
@@ -408,10 +428,8 @@ export function AdminReadPanel() {
             : d,
         );
         if (latest.audioStatus === "ready") {
-          setStatus("Narration ready.");
           setAudioBusy(false);
         } else if (latest.audioStatus === "failed") {
-          setStatus(latest.audioError || "Audio generation failed");
           setAudioBusy(false);
         }
       } catch {
@@ -425,6 +443,12 @@ export function AdminReadPanel() {
       window.clearInterval(id);
     };
   }, [draft.audioStatus, draft.id]);
+
+  useEffect(() => {
+    if (draft.audioStatus !== "generating" && !audioBusy) return;
+    const id = window.setInterval(() => setAudioTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [draft.audioStatus, audioBusy]);
 
   async function onDelete() {
     if (!draft.id) return;
@@ -611,6 +635,13 @@ export function AdminReadPanel() {
                       }`}
                     >
                       {p.published ? "Published" : "Draft"} · /{p.slug}
+                      {p.audioStatus === "generating"
+                        ? " · generating audio"
+                        : p.audioStatus === "failed"
+                          ? " · audio failed"
+                          : p.audioUrl
+                            ? " · has audio"
+                            : ""}
                     </span>
                   </button>
                 </li>
@@ -758,6 +789,135 @@ export function AdminReadPanel() {
                 Public URL: /read/{draft.slug || "…"}
               </p>
             </div>
+            {(() => {
+              const generating =
+                audioBusy || draft.audioStatus === "generating";
+              const failed = draft.audioStatus === "failed";
+              const ready = Boolean(draft.audioUrl);
+              const startedMs = draft.audioStartedAt
+                ? Date.parse(draft.audioStartedAt)
+                : Number.NaN;
+              const elapsedSec = Number.isFinite(startedMs)
+                ? Math.max(0, Math.floor((audioTick - startedMs) / 1000))
+                : 0;
+              const stale = generating && elapsedSec > 16 * 60;
+              const listenTrack = draft.audioUrl
+                ? trackFromBlogNarration(draft.audioUrl, draft.title)
+                : null;
+              const listening =
+                listenTrack != null &&
+                nowPlaying?.s3Key === listenTrack.s3Key &&
+                playingS3Key === listenTrack.s3Key;
+              return (
+                <div
+                  className={`rounded-xl border px-3 py-3 sm:px-4 ${
+                    failed
+                      ? "border-danger/40 bg-danger/5"
+                      : generating
+                        ? "border-accent/35 bg-accent-soft/20"
+                        : "border-border bg-background/60"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Narration
+                    </p>
+                    <span className="text-[11px] uppercase tracking-wide text-muted">
+                      {generating
+                        ? "Generating"
+                        : failed
+                          ? "Failed"
+                          : ready
+                            ? "Ready"
+                            : "Not generated"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    Reads the last saved title, subheader, and body. No voice
+                    FX or music. Does not run on save. Long posts can take
+                    several minutes.
+                  </p>
+                  <label className="mt-3 block text-xs font-medium text-muted">
+                    Voice engine
+                  </label>
+                  <select
+                    value={
+                      draft.audioTtsProvider === "fish" ? "fish" : "speechify"
+                    }
+                    disabled={generating}
+                    onChange={(e) => {
+                      const next =
+                        e.target.value === "fish" ? "fish" : "speechify";
+                      setDraft((d) => ({ ...d, audioTtsProvider: next }));
+                    }}
+                    className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
+                  >
+                    <option value="speechify">Speechify</option>
+                    <option value="fish">Fish Audio</option>
+                  </select>
+                  {generating ? (
+                    <div className="mt-3">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                        <div className="h-full w-1/3 animate-pulse rounded-full bg-accent" />
+                      </div>
+                      <p className="mt-2 text-sm text-foreground" role="status">
+                        {draft.audioProgress ||
+                          "Generating audio — calling the narrator…"}
+                      </p>
+                      <p className="mt-0.5 text-xs tabular-nums text-muted">
+                        Elapsed {formatElapsedSeconds(elapsedSec)}
+                        {stale
+                          ? " · this is longer than usual; if it stays here, generate again after a deploy."
+                          : ""}
+                      </p>
+                    </div>
+                  ) : null}
+                  {failed ? (
+                    <p className="mt-3 text-sm text-danger" role="alert">
+                      {draft.audioError ||
+                        "Audio generation failed. Generate again to retry."}
+                    </p>
+                  ) : null}
+                  {ready && !generating ? (
+                    <p className="mt-2 text-xs text-muted">
+                      Last generated{" "}
+                      {formatWhen(draft.audioGeneratedAt)}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || generating || !draft.id}
+                      onClick={() => void onGenerateAudio()}
+                      className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent-soft/40 disabled:opacity-50"
+                    >
+                      {generating
+                        ? "Generating…"
+                        : ready
+                          ? "Regenerate audio"
+                          : "Generate audio"}
+                    </button>
+                    {listenTrack ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            nowPlaying?.s3Key === listenTrack.s3Key
+                          ) {
+                            toggleCurrent();
+                          } else {
+                            playTrack(listenTrack);
+                          }
+                        }}
+                        className="rounded-lg accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent"
+                      >
+                        {listening ? "Pause" : "Listen"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })()}
             <div>
               <label className="block text-xs font-medium text-muted">
                 Body
@@ -799,11 +959,6 @@ export function AdminReadPanel() {
                   : ""}
               </p>
             ) : null}
-            <p className="text-[11px] text-muted">
-              Generate audio reads the last saved title, subheader, and body
-              through Fish TTS — no voice FX, no music. It does not run on
-              save.
-            </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -813,28 +968,6 @@ export function AdminReadPanel() {
               >
                 {busy ? "Saving…" : "Save"}
               </button>
-              <button
-                type="button"
-                disabled={busy || audioBusy || !draft.id}
-                onClick={() => void onGenerateAudio()}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent-soft/40 disabled:opacity-50"
-              >
-                {audioBusy || draft.audioStatus === "generating"
-                  ? "Generating audio…"
-                  : draft.audioUrl
-                    ? "Regenerate audio"
-                    : "Generate audio"}
-              </button>
-              {draft.audioUrl ? (
-                <a
-                  href={draft.audioUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-accent-link underline-offset-2 hover:underline"
-                >
-                  Preview audio
-                </a>
-              ) : null}
               {draft.id ? (
                 <button
                   type="button"

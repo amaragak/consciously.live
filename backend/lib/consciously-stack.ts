@@ -18,6 +18,7 @@ import {
   BREVO_SECRET_NAME,
   CLAUDE_SECRET_NAME,
   FISH_AUDIO_SECRET_NAME,
+  SPEECHIFY_SECRET_NAME,
   GOOGLE_AI_SECRET_NAME,
   OPENAI_SECRET_NAME,
   RUNPODS_SECRET_NAME,
@@ -172,6 +173,9 @@ export class ConsciouslyStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "FishAudioSecretName", {
       value: FISH_AUDIO_SECRET_NAME,
+    });
+    new cdk.CfnOutput(this, "SpeechifySecretName", {
+      value: SPEECHIFY_SECRET_NAME,
     });
     new cdk.CfnOutput(this, "RunpodsSecretName", {
       value: RUNPODS_SECRET_NAME,

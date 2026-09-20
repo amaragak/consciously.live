@@ -3,6 +3,7 @@
  * Create these before deploy — see backend/DEPLOY.md.
  */
 export const FISH_AUDIO_SECRET_NAME = "medimade/FISH_AUDIO_API_KEY";
+export const SPEECHIFY_SECRET_NAME = "medimade/SPEECHIFY_API_KEY";
 export const CLAUDE_SECRET_NAME = "medimade/CLAUDE_API_KEY";
 export const OPENAI_SECRET_NAME = "medimade/OPENAI_API_KEY";
 export const GOOGLE_AI_SECRET_NAME = "medimade/GOOGLE_AI_API_KEY";

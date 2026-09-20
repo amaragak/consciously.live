@@ -245,15 +245,20 @@ export async function handler(
         if (!fn) {
           return json(500, { error: "Audio generation is not configured" });
         }
+        const ttsProvider =
+          body.ttsProvider === "fish" ? "fish" : "speechify";
         const post = await patchBlogPostAudio(id, {
           audioStatus: "generating",
           audioError: null,
+          audioProgress: `Queued — starting ${ttsProvider === "speechify" ? "Speechify" : "Fish"}…`,
+          audioStartedAt: new Date().toISOString(),
+          audioTtsProvider: ttsProvider,
         });
         await lambda.send(
           new InvokeCommand({
             FunctionName: fn,
             InvocationType: "Event",
-            Payload: Buffer.from(JSON.stringify({ id })),
+            Payload: Buffer.from(JSON.stringify({ id, ttsProvider })),
           }),
         );
         return json(202, { post });

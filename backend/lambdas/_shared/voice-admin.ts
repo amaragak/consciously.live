@@ -26,8 +26,12 @@ export const VOICE_SPEAKER_PK = "VOICE_SPEAKER";
 export const VOICE_SETTINGS_PK = "VOICE_SETTINGS";
 export const VOICE_PAUSES_SK = "pauses";
 
+export type VoiceSpeakerBrand = "fish" | "speechify";
+
 /** `gender` widens to null here: the row always states it, even when unset. */
 export type VoiceSpeakerRow = Omit<FishSpeaker, "gender"> & {
+  /** TTS vendor. Existing rows without this field are Fish. */
+  brand: VoiceSpeakerBrand;
   hidden: boolean;
   sort: number;
   updatedAt: string;
@@ -61,6 +65,7 @@ export function defaultVoiceSpeakers(): VoiceSpeakerRow[] {
   return FISH_SPEAKERS.map((s, i) => ({
     name: s.name,
     modelId: s.modelId,
+    brand: "fish" as const,
     hidden: HIDDEN_FISH_SPEAKER_MODEL_IDS.has(s.modelId),
     sort: i,
     description: "",
@@ -90,6 +95,14 @@ function coerceDescription(raw: unknown): string {
 
 function coerceGender(raw: unknown): VoiceGender | null {
   return raw === "male" || raw === "female" ? raw : null;
+}
+
+export function coerceVoiceSpeakerBrand(raw: unknown): VoiceSpeakerBrand {
+  return raw === "speechify" ? "speechify" : "fish";
+}
+
+function brandWasStored(raw: unknown): boolean {
+  return raw === "fish" || raw === "speechify";
 }
 
 /** Accepts an array or a comma-separated string; entries stay free text. */
@@ -134,6 +147,7 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
   const table = tableName();
   if (!table) return defaultVoiceSpeakers();
   const items: VoiceSpeakerRow[] = [];
+  const missingBrand: VoiceSpeakerRow[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const out = await ddb.send(
@@ -148,20 +162,26 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
       if (typeof it.sk !== "string" || !it.sk) continue;
       const stored = coerceGoodFor(it.goodFor);
       const legacy = splitLegacyDescription(coerceDescription(it.description));
-      items.push({
+      const row: VoiceSpeakerRow = {
         modelId: it.sk,
         name: typeof it.name === "string" && it.name.trim() ? it.name.trim() : it.sk,
+        brand: coerceVoiceSpeakerBrand(it.brand),
         hidden: it.hidden === true,
         sort: typeof it.sort === "number" && Number.isFinite(it.sort) ? it.sort : 0,
         description: stored.length > 0 ? coerceDescription(it.description) : legacy.description,
         goodFor: stored.length > 0 ? stored : legacy.goodFor,
         gender: coerceGender(it.gender),
         updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
-      });
+      };
+      items.push(row);
+      if (!brandWasStored(it.brand)) missingBrand.push(row);
     }
     startKey = out.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey);
   if (items.length === 0) return defaultVoiceSpeakers();
+  if (missingBrand.length > 0) {
+    await Promise.all(missingBrand.map((row) => persistVoiceSpeaker(table, row)));
+  }
   items.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
   return items;
 }
@@ -185,9 +205,33 @@ export async function seedVoiceSpeakersIfEmpty(): Promise<VoiceSpeakerRow[]> {
   return seeded;
 }
 
+async function persistVoiceSpeaker(
+  table: string,
+  row: VoiceSpeakerRow,
+): Promise<void> {
+  await ddb.send(
+    new PutCommand({
+      TableName: table,
+      Item: {
+        pk: VOICE_SPEAKER_PK,
+        sk: row.modelId,
+        name: row.name,
+        brand: row.brand,
+        hidden: row.hidden,
+        sort: row.sort,
+        description: row.description,
+        goodFor: row.goodFor,
+        gender: row.gender,
+        updatedAt: row.updatedAt,
+      },
+    }),
+  );
+}
+
 export async function putVoiceSpeaker(row: {
   modelId: string;
   name: string;
+  brand?: VoiceSpeakerBrand;
   hidden?: boolean;
   sort?: number;
   description?: string;
@@ -207,6 +251,10 @@ export async function putVoiceSpeaker(row: {
   const next: VoiceSpeakerRow = {
     modelId,
     name: row.name.trim() || modelId,
+    brand:
+      row.brand !== undefined
+        ? coerceVoiceSpeakerBrand(row.brand)
+        : coerceVoiceSpeakerBrand(prev?.brand),
     hidden: row.hidden === true,
     sort: typeof row.sort === "number" && Number.isFinite(row.sort) ? row.sort : 0,
     description:
@@ -219,22 +267,7 @@ export async function putVoiceSpeaker(row: {
       row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev?.gender),
     updatedAt: new Date().toISOString(),
   };
-  await ddb.send(
-    new PutCommand({
-      TableName: table,
-      Item: {
-        pk: VOICE_SPEAKER_PK,
-        sk: next.modelId,
-        name: next.name,
-        hidden: next.hidden,
-        sort: next.sort,
-        description: next.description,
-        goodFor: next.goodFor,
-        gender: next.gender,
-        updatedAt: next.updatedAt,
-      },
-    }),
-  );
+  await persistVoiceSpeaker(table, next);
   return next;
 }
 
@@ -282,7 +315,7 @@ export async function savePauseBandSeconds(
 export async function listPickerFishSpeakers(): Promise<FishSpeaker[]> {
   const rows = await listVoiceSpeakers();
   return rows
-    .filter((s) => !s.hidden)
+    .filter((s) => !s.hidden && s.brand === "fish")
     .map((s) => ({
       name: s.name,
       modelId: s.modelId,

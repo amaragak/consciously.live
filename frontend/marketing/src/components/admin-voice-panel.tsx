@@ -8,6 +8,7 @@ import {
   listAdminVoice,
   patchAdminVoice,
   type VoiceGender,
+  type VoiceSpeakerBrand,
 } from "@/lib/medimade-api";
 
 const ICON_BTN =
@@ -56,6 +57,7 @@ export function AdminVoicePanel() {
   const [speakers, setSpeakers] = useState<AdminVoiceSpeaker[]>([]);
   const [newName, setNewName] = useState("");
   const [newModelId, setNewModelId] = useState("");
+  const [newBrand, setNewBrand] = useState<VoiceSpeakerBrand>("fish");
   const [addBusy, setAddBusy] = useState(false);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleProgress, setSampleProgress] = useState<string | null>(null);
@@ -76,17 +78,24 @@ export function AdminVoicePanel() {
     const name = newName.trim();
     const modelId = newModelId.trim();
     if (!name || !modelId) {
-      setError("Name and Fish model id are required");
+      setError("Name and model id are required");
       return;
     }
     setAddBusy(true);
     setError(null);
     try {
       await patchAdminVoice({
-        speaker: { name, modelId, hidden: false, sort: speakers.length },
+        speaker: {
+          name,
+          modelId,
+          brand: newBrand,
+          hidden: false,
+          sort: speakers.length,
+        },
       });
       setNewName("");
       setNewModelId("");
+      setNewBrand("fish");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add speaker");
@@ -96,13 +105,14 @@ export function AdminVoicePanel() {
   }
 
   async function generateAllSamples() {
-    if (speakers.length === 0) return;
+    const fish = speakers.filter((s) => s.brand !== "speechify");
+    if (fish.length === 0) return;
     setSampleBusy(true);
     setError(null);
     try {
-      for (let i = 0; i < speakers.length; i++) {
-        const s = speakers[i];
-        setSampleProgress(`${i + 1}/${speakers.length} ${s.name}`);
+      for (let i = 0; i < fish.length; i++) {
+        const s = fish[i];
+        setSampleProgress(`${i + 1}/${fish.length} ${s.name}`);
         await generateAdminVoiceSample(s.modelId);
       }
       await load();
@@ -127,16 +137,18 @@ export function AdminVoicePanel() {
       <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-sm font-semibold">Fish speakers</h2>
+            <h2 className="text-sm font-semibold">Speakers</h2>
             <p className="mt-1 text-xs text-muted">
-              Model ids from Fish Audio. Hidden speakers stay off the Create picker. Generate
-              samples builds mixer preview clips (about 0.9×, loud + FX) and skips voices that
-              already have one.
+              Fish Audio or Speechify. Hidden speakers stay off the Create picker. Generate
+              samples builds Fish mixer preview clips (about 0.9×, loud + FX) and skips
+              voices that already have one.
             </p>
           </div>
           <button
             type="button"
-            disabled={sampleBusy || speakers.length === 0}
+            disabled={
+              sampleBusy || speakers.every((s) => s.brand === "speechify")
+            }
             onClick={() => void generateAllSamples()}
             className="shrink-0 rounded-xl accent-fill-gradient px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
           >
@@ -148,6 +160,17 @@ export function AdminVoicePanel() {
           </button>
         </div>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <select
+            className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            value={newBrand}
+            onChange={(e) =>
+              setNewBrand(e.target.value === "speechify" ? "speechify" : "fish")
+            }
+            aria-label="Brand"
+          >
+            <option value="fish">Fish</option>
+            <option value="speechify">Speechify</option>
+          </select>
           <input
             className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
             placeholder="Speaker name"
@@ -156,7 +179,9 @@ export function AdminVoicePanel() {
           />
           <input
             className="min-w-0 flex-[1.4] rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm"
-            placeholder="Fish model id"
+            placeholder={
+              newBrand === "speechify" ? "Speechify voice id" : "Fish model id"
+            }
             value={newModelId}
             onChange={(e) => setNewModelId(e.target.value)}
           />
@@ -208,6 +233,9 @@ function SpeakerRow({
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [name, setName] = useState(speaker.name);
+  const [brand, setBrand] = useState<VoiceSpeakerBrand>(
+    speaker.brand === "speechify" ? "speechify" : "fish",
+  );
   const [description, setDescription] = useState(speaker.description ?? "");
   /** Edited as free text; only split on commas when it is sent. */
   const [goodFor, setGoodFor] = useState(joinGoodFor(speaker.goodFor));
@@ -220,6 +248,7 @@ function SpeakerRow({
 
   useEffect(() => {
     setName(speaker.name);
+    setBrand(speaker.brand === "speechify" ? "speechify" : "fish");
     setDescription(speaker.description ?? "");
     setGoodFor(savedGoodFor);
     setGender(speaker.gender ?? null);
@@ -227,6 +256,7 @@ function SpeakerRow({
   }, [
     speaker.modelId,
     speaker.name,
+    speaker.brand,
     speaker.description,
     savedGoodFor,
     speaker.gender,
@@ -250,7 +280,10 @@ function SpeakerRow({
   }, [speaker.sampleUrl]);
 
   /** `next` lets a control save the value it just set, ahead of the re-render. */
-  async function save(next?: { gender?: VoiceGender | null }) {
+  async function save(next?: {
+    gender?: VoiceGender | null;
+    brand?: VoiceSpeakerBrand;
+  }) {
     setBusy("save");
     onError(null);
     try {
@@ -258,6 +291,7 @@ function SpeakerRow({
         speaker: {
           modelId: speaker.modelId,
           name,
+          brand: next?.brand ?? brand,
           hidden,
           sort: speaker.sort,
           description,
@@ -304,6 +338,24 @@ function SpeakerRow({
             aria-label="Speaker name"
           />
           <div className="break-all font-mono text-[11px] text-muted">{speaker.modelId}</div>
+          <label className="block text-xs font-medium text-muted">
+            Brand
+            <select
+              className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+              value={brand}
+              disabled={busy !== null}
+              onChange={(e) => {
+                const next =
+                  e.target.value === "speechify" ? "speechify" : "fish";
+                setBrand(next);
+                void save({ brand: next });
+              }}
+              aria-label="Brand"
+            >
+              <option value="fish">Fish</option>
+              <option value="speechify">Speechify</option>
+            </select>
+          </label>
           <label className="block text-xs font-medium text-muted">
             How this voice sounds
             <textarea
@@ -382,6 +434,7 @@ function SpeakerRow({
                   speaker: {
                     modelId: speaker.modelId,
                     name: name.trim() || speaker.name,
+                    brand,
                     hidden: next,
                     sort: speaker.sort,
                     description,

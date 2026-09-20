@@ -39,11 +39,16 @@ export type BlogPost = {
   published: boolean;
   /** ISO timestamp when first published (sticky after unpublish). */
   publishedAt: string | null;
-  /** CloudFront URL for Fish TTS narration (no FX, no music). */
+  /** CloudFront URL for TTS narration (no FX, no music). */
   audioUrl: string | null;
   audioStatus: BlogAudioStatus;
   audioError: string | null;
   audioGeneratedAt: string | null;
+  /** Live stage line while `generating` (admin poll). */
+  audioProgress: string | null;
+  /** When the current generate job started. */
+  audioStartedAt: string | null;
+  audioTtsProvider: "fish" | "speechify" | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -328,6 +333,18 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
       typeof raw.audioGeneratedAt === "string" && raw.audioGeneratedAt.trim()
         ? raw.audioGeneratedAt.trim()
         : null,
+    audioProgress:
+      typeof raw.audioProgress === "string" && raw.audioProgress.trim()
+        ? raw.audioProgress.trim().slice(0, 200)
+        : null,
+    audioStartedAt:
+      typeof raw.audioStartedAt === "string" && raw.audioStartedAt.trim()
+        ? raw.audioStartedAt.trim()
+        : null,
+    audioTtsProvider:
+      raw.audioTtsProvider === "fish" || raw.audioTtsProvider === "speechify"
+        ? raw.audioTtsProvider
+        : null,
     createdAt:
       typeof raw.createdAt === "string" && raw.createdAt.trim()
         ? raw.createdAt.trim()
@@ -500,6 +517,9 @@ export async function putBlogPost(
     audioStatus: existing?.audioStatus ?? "none",
     audioError: existing?.audioError ?? null,
     audioGeneratedAt: existing?.audioGeneratedAt ?? null,
+    audioProgress: existing?.audioProgress ?? null,
+    audioStartedAt: existing?.audioStartedAt ?? null,
+    audioTtsProvider: existing?.audioTtsProvider ?? null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -525,6 +545,9 @@ export async function patchBlogPostAudio(
     audioStatus?: BlogAudioStatus;
     audioError?: string | null;
     audioGeneratedAt?: string | null;
+    audioProgress?: string | null;
+    audioStartedAt?: string | null;
+    audioTtsProvider?: "fish" | "speechify" | null;
   },
 ): Promise<BlogPost> {
   const existing = await getBlogPostById(id);
@@ -544,6 +567,18 @@ export async function patchBlogPostAudio(
       Object.prototype.hasOwnProperty.call(patch, "audioGeneratedAt")
         ? patch.audioGeneratedAt ?? null
         : existing.audioGeneratedAt,
+    audioProgress:
+      Object.prototype.hasOwnProperty.call(patch, "audioProgress")
+        ? patch.audioProgress ?? null
+        : existing.audioProgress,
+    audioStartedAt:
+      Object.prototype.hasOwnProperty.call(patch, "audioStartedAt")
+        ? patch.audioStartedAt ?? null
+        : existing.audioStartedAt,
+    audioTtsProvider:
+      Object.prototype.hasOwnProperty.call(patch, "audioTtsProvider")
+        ? patch.audioTtsProvider ?? null
+        : existing.audioTtsProvider,
     updatedAt: new Date().toISOString(),
   };
   const row: BlogRow = {

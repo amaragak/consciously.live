@@ -54,7 +54,9 @@ export default async function ReadPostPage({ params }: Props) {
         <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
           {post.title}
         </h1>
-        {post.audioUrl ? <ReadNarrationButton src={post.audioUrl} /> : null}
+        {post.audioUrl ? (
+          <ReadNarrationButton src={post.audioUrl} title={post.title} />
+        ) : null}
       </div>
       {post.subheader ? (
         <p className="mt-3 max-w-3xl text-base leading-relaxed text-muted sm:text-lg">

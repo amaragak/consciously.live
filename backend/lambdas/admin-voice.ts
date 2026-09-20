@@ -106,6 +106,8 @@ async function handlePatch(event: APIGatewayProxyEventV2) {
     speaker = await putVoiceSpeaker({
       modelId: String(s.modelId ?? ""),
       name: String(s.name ?? ""),
+      brand:
+        s.brand === "fish" || s.brand === "speechify" ? s.brand : undefined,
       hidden: s.hidden === true,
       sort: typeof s.sort === "number" ? s.sort : undefined,
       description: typeof s.description === "string" ? s.description : undefined,
@@ -142,6 +144,10 @@ async function handlePost(event: APIGatewayProxyEventV2) {
   if (action === "sample") {
     const modelId = String(body.modelId ?? "").trim();
     if (!modelId) return json(400, { error: "modelId is required" });
+    const existing = (await listVoiceSpeakers()).find((s) => s.modelId === modelId);
+    if (existing?.brand === "speechify") {
+      return json(400, { error: "Samples are only generated for Fish speakers" });
+    }
     const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
     if (!bucket) return json(500, { error: "MEDIA_BUCKET_NAME is not set" });
     const arn = process.env.FISH_AUDIO_SECRET_ARN;
@@ -156,11 +162,11 @@ async function handlePost(event: APIGatewayProxyEventV2) {
       modelId,
       apiBase: process.env.CONSCIOUSLY_API_URL?.trim() || null,
     });
-    const existing = (await listVoiceSpeakers()).find((s) => s.modelId === modelId);
     if (existing && !keys.skipped) {
       await putVoiceSpeaker({
         modelId,
         name: existing.name,
+        brand: existing.brand,
         hidden: existing.hidden,
         sort: existing.sort,
         description: existing.description,

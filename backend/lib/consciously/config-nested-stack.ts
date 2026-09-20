@@ -10,6 +10,7 @@ import {
   OPENAI_SECRET_NAME,
   RUNPODS_SECRET_NAME,
   RUNPODS_URL_SECRET_NAME,
+  SPEECHIFY_SECRET_NAME,
 } from "./secret-names";
 
 /**
@@ -18,6 +19,7 @@ import {
  */
 export class ConsciouslyConfigNestedStack extends cdk.NestedStack {
   readonly fishApiKey: secretsmanager.ISecret;
+  readonly speechifyApiKey: secretsmanager.ISecret;
   readonly claudeApiKey: secretsmanager.ISecret;
   readonly openAiApiKey: secretsmanager.ISecret;
   readonly googleAiApiKey: secretsmanager.ISecret;
@@ -37,6 +39,11 @@ export class ConsciouslyConfigNestedStack extends cdk.NestedStack {
       this,
       "FishAudioApiKey",
       FISH_AUDIO_SECRET_NAME,
+    );
+    this.speechifyApiKey = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "SpeechifyApiKey",
+      SPEECHIFY_SECRET_NAME,
     );
     this.claudeApiKey = secretsmanager.Secret.fromSecretNameV2(
       this,

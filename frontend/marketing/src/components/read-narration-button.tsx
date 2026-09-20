@@ -1,62 +1,49 @@
 "use client";
 
 import { Pause, Play } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { trackFromBlogNarration } from "@consciously/common";
+import { type MouseEvent } from "react";
+import { useLibraryPlayer } from "@/components/library-player-provider";
 
 export function ReadNarrationButton({
   src,
+  title,
   label = "Listen",
   className = "",
 }: {
   src: string;
+  title: string;
   label?: string;
   className?: string;
 }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      audioRef.current?.pause();
-    };
-  }, [src]);
+  const { playTrack, toggleCurrent, nowPlaying, playingS3Key } =
+    useLibraryPlayer();
+  const track = trackFromBlogNarration(src, title);
+  const isThis = nowPlaying?.s3Key === track.s3Key;
+  const isPlaying = isThis && playingS3Key === track.s3Key;
 
   function toggle(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const el = audioRef.current;
-    if (!el) return;
-    if (el.paused) {
-      void el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    } else {
-      el.pause();
-      setPlaying(false);
-    }
+    if (isThis) toggleCurrent();
+    else playTrack(track);
   }
 
   return (
     <span className={`inline-flex ${className}`}>
-      <audio
-        ref={audioRef}
-        src={src}
-        preload="none"
-        onEnded={() => setPlaying(false)}
-        onPause={() => setPlaying(false)}
-        onPlay={() => setPlaying(true)}
-      />
       <button
         type="button"
         onClick={toggle}
-        aria-label={playing ? "Pause narration" : "Play narration"}
-        title={playing ? "Pause" : label}
+        aria-label={isPlaying ? "Pause narration" : "Play narration"}
+        title={isPlaying ? "Pause" : label}
         className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent-soft/50"
       >
-        {playing ? (
+        {isPlaying ? (
           <Pause className="size-3.5" aria-hidden />
         ) : (
           <Play className="size-3.5" aria-hidden />
         )}
-        {playing ? "Pause" : label}
+        {isPlaying ? "Pause" : label}
       </button>
     </span>
   );

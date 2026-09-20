@@ -36,6 +36,7 @@ export type {
 export {
   LibraryAudioStrip,
   liveMixTrack,
+  trackFromBlogNarration,
   trackFromLibraryItem,
   trackFromFocusMix,
   isSoundscapeKey,

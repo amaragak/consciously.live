@@ -59,6 +59,15 @@ export function mediaFileUrl(base: string, key: string): string {
   return `${b}/${path}`;
 }
 
+export function trackFromBlogNarration(url: string, title: string): LibraryActiveTrack {
+  const src = url.trim();
+  return {
+    url: src,
+    title: title.trim() || "Narration",
+    s3Key: `blog:audio:${src}`,
+  };
+}
+
 export function trackFromLibraryItem(
   m: LibraryMeditationFields,
 ): LibraryActiveTrack {

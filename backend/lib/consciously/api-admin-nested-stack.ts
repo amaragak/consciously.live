@@ -46,6 +46,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
 
     const { httpApi, ffmpegLayer, fastembedLayer, pedalboardLayer } = props;
     const fishApiKeySecret = props.config.fishApiKey;
+    const speechifyApiKeySecret = props.config.speechifyApiKey;
     const claudeApiKeySecret = props.config.claudeApiKey;
     const runpodsApiKeySecret = props.config.runpodsApiKey;
     const runpodsUrlSecret = props.config.runpodsUrl;
@@ -331,6 +332,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
           FISH_TTS_MODEL: "s2.1-pro-free",
+          SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          SPEECHIFY_VOICE_ID: "geffen_32",
+          SPEECHIFY_TTS_MODEL: "simba-3.2",
           BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
           MARKETING_ORIGIN: authWebappOrigin,
         },
@@ -339,6 +343,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
     voiceAdminTable.grantReadWriteData(adminBlogNarrate);
     mediaBucket.grantReadWrite(adminBlogNarrate);
     fishApiKeySecret.grantRead(adminBlogNarrate);
+    speechifyApiKeySecret.grantRead(adminBlogNarrate);
     blogRevalidateSecret.grantRead(adminBlogNarrate);
     adminBlogNarrate.grantInvoke(role);
 
