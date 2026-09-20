@@ -4094,12 +4094,11 @@ export function CreateWorkspace({
     );
   }
 
-  async function loadPlayAllVoice(): Promise<boolean> {
+  function startPlayAllVoice(): Promise<void> | null {
     const player = playAllVoiceRef.current;
     const dry = speakerPreviewDryUrl(speakerModelId);
-    if (!player || !dry) return false;
-    await player.load(dry, speakerPreviewWetUrl(speakerModelId), voiceFxDial);
-    return true;
+    if (!player || !dry) return null;
+    return player.start(dry, speakerPreviewWetUrl(speakerModelId), voiceFxDial);
   }
 
   function soundscapePreviewUrl(key: string): string | null {
@@ -4235,9 +4234,7 @@ export function CreateWorkspace({
         speakerRepeatWantedRef.current = true;
         playAllVoiceDelayRef.current = window.setTimeout(() => {
           playAllVoiceDelayRef.current = null;
-          void loadPlayAllVoice()
-            .then((ok) => (ok ? playAllVoiceRef.current?.play() : undefined))
-            .catch(() => {});
+          void startPlayAllVoice()?.catch(() => {});
         }, BED_VOICE_INTRO_SECONDS * 1000);
         setPlaying((p) => ({ ...p, speaker: true }));
       }
@@ -4257,16 +4254,11 @@ export function CreateWorkspace({
       if (hasBed) {
         playAllVoiceDelayRef.current = window.setTimeout(() => {
           playAllVoiceDelayRef.current = null;
-          void loadPlayAllVoice()
-            .then((ok) => (ok ? playAllVoiceRef.current?.play() : undefined))
-            .catch(() => {});
+          void startPlayAllVoice()?.catch(() => {});
         }, BED_VOICE_INTRO_SECONDS * 1000);
       } else {
-        parts.push(
-          loadPlayAllVoice().then((ok) => {
-            if (ok) return playAllVoiceRef.current?.play();
-          }),
-        );
+        const voice = startPlayAllVoice();
+        if (voice) parts.push(voice);
       }
     } else {
       speakerRepeatWantedRef.current = false;
@@ -4334,8 +4326,7 @@ export function CreateWorkspace({
       speakerRepeatWantedRef.current = true;
       setPlaying((p) => ({ ...p, speaker: true }));
       try {
-        const ok = await loadPlayAllVoice();
-        if (ok) await player.play();
+        await startPlayAllVoice();
       } catch {
         stopTrack("speaker");
       }

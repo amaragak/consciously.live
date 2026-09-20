@@ -39,6 +39,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { FISH_SPEAKERS } from "../lambdas/_shared/fish-speakers";
 import { loudnormMp3Buffer } from "../lambdas/_shared/ffmpeg-loudnorm";
+import { putVoiceStemStreams } from "../lambdas/_shared/voice-stem-stream";
 import {
   SPEAKER_PREVIEW_SPEEDS,
   speakerPreviewFxSampleKey,
@@ -47,7 +48,7 @@ import {
   speakerPreviewSampleKey,
 } from "../lambdas/_shared/speaker-sample-speed";
 
-const SAMPLE_TEXT = "Welcome to your personalised meditation";
+const SAMPLE_TEXT = "Welcome to your personalised meditation.";
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 const FISH_TTS_MODEL =
   (process.env.FISH_TTS_MODEL || "s2.1-pro-free").trim() || "s2.1-pro-free";
@@ -428,7 +429,16 @@ async function main(): Promise<void> {
           CacheControl: "public, max-age=31536000, immutable",
         }),
       );
-      console.log(`uploaded ${loudFxKey} (${wavBuf.byteLength} bytes)`);
+      const streamKeys = await putVoiceStemStreams({
+        s3,
+        bucket,
+        wavKey: loudFxKey,
+        wavBuf,
+        cacheControl: "public, max-age=0, must-revalidate",
+      });
+      console.log(
+        `uploaded ${loudFxKey} (${wavBuf.byteLength} bytes)${streamKeys.length ? ` + ${streamKeys.join(" ")}` : ""}`,
+      );
       await new Promise((r) => setTimeout(r, 400));
     }
   }

@@ -49,7 +49,7 @@ import {
   speechSpeedToSampleStem,
 } from "../lambdas/_shared/speaker-sample-speed";
 
-const SAMPLE_TEXT = "Welcome to your personalised meditation";
+const SAMPLE_TEXT = "Welcome to your personalised meditation.";
 const DEFAULT_LOCAL_SAMPLES_DIR = path.join(
   process.cwd(),
   ".local/orpheus-speaker-samples",

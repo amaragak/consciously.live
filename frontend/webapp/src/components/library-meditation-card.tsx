@@ -310,12 +310,7 @@ export function LibraryMeditationCard({
               aria-hidden
               className="pointer-events-none absolute left-0 top-0 h-1 w-full bg-accent/10"
             >
-              <div
-                className="h-full w-1/3 bg-accent/60"
-                style={{
-                  animation: "mmIndeterminateBar 1.4s ease-in-out infinite",
-                }}
-              />
+              <div className="mm-indeterminate-bar h-full w-1/3 bg-accent/60" />
             </div>
             <div
               aria-hidden

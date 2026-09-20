@@ -58,7 +58,15 @@ export { isMelodicMusicKey } from "./audio/sound-taxonomy";
 
 export {
   DualStemPlayer,
+  getLibraryVoicePlayer,
+  startLibraryVoicePlayback,
+  stopLibraryVoicePlayback,
 } from "./audio/dual-stem-player";
+
+export {
+  voiceStemPlaybackCandidates,
+  voiceStemPlaybackUrl,
+} from "./audio/voice-stem-keys";
 
 export {
   VOICE_FX_DIAL_DEFAULT,

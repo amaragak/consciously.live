@@ -18,6 +18,7 @@ export type LibraryMeditationFields = {
   dryAudioUrl?: string | null;
   wetAudioUrl?: string | null;
   voiceFxDial?: number | null;
+  durationSeconds?: number | null;
   backgroundNatureKey?: string | null;
   backgroundMusicKey?: string | null;
   backgroundDrumsKey?: string | null;

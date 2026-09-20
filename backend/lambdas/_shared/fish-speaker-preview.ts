@@ -13,6 +13,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { loudnormMp3Buffer } from "./ffmpeg-loudnorm";
+import { putVoiceStemStreams, voiceStemStreamKeys } from "./voice-stem-stream";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudDrySampleKey,
@@ -25,7 +26,7 @@ import {
 const execFileAsync = promisify(execFile);
 const cloudfront = new CloudFrontClient({});
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
-export const SPEAKER_PREVIEW_TEXT = "Welcome to your personalised meditation";
+export const SPEAKER_PREVIEW_TEXT = "Welcome to your personalised meditation.";
 const LOUD_PREVIEW_SECONDS = 6;
 const MIXER_VOICE_FX_PRESET = "mixer";
 /** Create plays these bare CDN URLs; immutable year-cache kept the old rate. */
@@ -91,7 +92,22 @@ export async function speakerPreviewExists(
   return s3ObjectExists(s3, bucket, key);
 }
 
-/** Create preview needs locked dry WAV + mixer bounce. */
+async function speakerStemStreamsReady(
+  s3: S3Client,
+  bucket: string,
+  wavKey: string,
+): Promise<boolean> {
+  const streams = voiceStemStreamKeys(wavKey);
+  if (!streams) return false;
+  const [wav, mp3, opus] = await Promise.all([
+    s3ObjectExists(s3, bucket, wavKey),
+    s3ObjectExists(s3, bucket, streams.mp3Key),
+    s3ObjectExists(s3, bucket, streams.opusKey),
+  ]);
+  return wav && mp3 && opus;
+}
+
+/** Create preview needs locked dry + mixer bounce as WAV, MP3, and Opus. */
 export async function speakerPreviewReady(
   s3: S3Client,
   bucket: string,
@@ -102,8 +118,8 @@ export async function speakerPreviewReady(
   const dryKey = speakerPreviewLoudDrySampleKey(modelId, speed, brand);
   const fxKey = speakerPreviewLoudFxSampleKey(modelId, speed, brand);
   const [dry, fx] = await Promise.all([
-    s3ObjectExists(s3, bucket, dryKey),
-    s3ObjectExists(s3, bucket, fxKey),
+    speakerStemStreamsReady(s3, bucket, dryKey),
+    speakerStemStreamsReady(s3, bucket, fxKey),
   ]);
   return dry && fx;
 }
@@ -251,7 +267,29 @@ async function bounceLockedPreviewStems(params: {
       CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
     }),
   );
-  await invalidateSpeakerPreviewKeys([params.loudDryKey, params.loudFxKey]);
+  const streamKeys = (
+    await Promise.all([
+      putVoiceStemStreams({
+        s3: params.s3,
+        bucket: params.bucket,
+        wavKey: params.loudDryKey,
+        wavBuf: pair.dry,
+        cacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      }),
+      putVoiceStemStreams({
+        s3: params.s3,
+        bucket: params.bucket,
+        wavKey: params.loudFxKey,
+        wavBuf: pair.fx,
+        cacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      }),
+    ])
+  ).flat();
+  await invalidateSpeakerPreviewKeys([
+    params.loudDryKey,
+    params.loudFxKey,
+    ...streamKeys,
+  ]);
 }
 
 /** Mixer preview (loud MP3 + FX WAV). Fish keys include the fixed speed stem. */
@@ -365,6 +403,22 @@ export async function generateFishSpeakerPreview(params: {
     );
     uploadedFx = loudFxKey;
     uploaded.push(loudDryKey, loudFxKey, loudWetKey);
+    uploaded.push(
+      ...(await putVoiceStemStreams({
+        s3: params.s3,
+        bucket: params.bucket,
+        wavKey: loudDryKey,
+        wavBuf: pair.dry,
+        cacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      })),
+      ...(await putVoiceStemStreams({
+        s3: params.s3,
+        bucket: params.bucket,
+        wavKey: loudFxKey,
+        wavBuf: pair.fx,
+        cacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      })),
+    );
     await params.s3.send(
       new PutObjectCommand({
         Bucket: params.bucket,

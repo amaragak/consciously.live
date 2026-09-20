@@ -12,6 +12,8 @@ import {
   isSoundscapeKey,
   mediaFileUrl,
   FOCUS_AMBIENT_S3_PREFIX,
+  startLibraryVoicePlayback,
+  stopLibraryVoicePlayback,
   type LibraryActiveTrack,
   type LibraryBedVolumeApi,
   type BedVolumeChannel,
@@ -30,6 +32,8 @@ export {
   isSoundscapeKey,
   mediaFileUrl,
   FOCUS_AMBIENT_S3_PREFIX,
+  startLibraryVoicePlayback,
+  stopLibraryVoicePlayback,
 };
 
 export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 80;

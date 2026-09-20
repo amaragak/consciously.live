@@ -222,6 +222,7 @@ export function MixEditorPanel({
   initialMix,
   resetMix,
   onLiveVolume,
+  onLiveVoiceFx,
   onPreview,
   onPersist,
   onClose,
@@ -248,6 +249,7 @@ export function MixEditorPanel({
   initialMix: MixEditorValues;
   resetMix: MixEditorValues;
   onLiveVolume: (channel: BedVolumeChannel, gain: number) => void;
+  onLiveVoiceFx?: (dial: number) => void;
   onPreview: (mix: MixEditorValues) => void;
   onPersist: (mix: MixEditorValues) => void | Promise<void>;
   onClose: () => void;
@@ -657,11 +659,11 @@ export function MixEditorPanel({
           value={voiceFxDial}
           onChange={(n) => {
             setVoiceFxDial(n);
-            const next = { ...mixRef.current, voiceFxDial: n };
-            mixRef.current = next;
-            previewNow(next);
+            mixRef.current = { ...mixRef.current, voiceFxDial: n };
+            onLiveVoiceFx?.(n);
           }}
           onCommit={() => {
+            previewNow(mixRef.current);
             void Promise.resolve(onPersist(mixRef.current)).catch(() => {});
           }}
         />

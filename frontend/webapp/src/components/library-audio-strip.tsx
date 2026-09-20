@@ -9,6 +9,8 @@ import {
   isSoundscapeKey,
   mediaFileUrl,
   FOCUS_AMBIENT_S3_PREFIX,
+  startLibraryVoicePlayback,
+  stopLibraryVoicePlayback,
   type LibraryActiveTrack,
   type LibraryBedVolumeApi,
   type BedVolumeChannel,
@@ -25,6 +27,8 @@ export {
   isSoundscapeKey,
   mediaFileUrl,
   FOCUS_AMBIENT_S3_PREFIX,
+  startLibraryVoicePlayback,
+  stopLibraryVoicePlayback,
 };
 
 /** Used until the strip measures itself — keeps Focus chrome lifting in the same frame as play. */

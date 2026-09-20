@@ -106,6 +106,22 @@ body {
   }
 }
 
+@keyframes mmIndeterminateBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.mm-indeterminate-bar {
+  animation: mmIndeterminateBar 1.4s ease-in-out infinite;
+}
+
 .ideate-scroll-hint {
   animation: ideate-scroll-hint-bounce 1.5s ease infinite;
 }

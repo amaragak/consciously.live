@@ -24,6 +24,8 @@ import {
 import {
   LibraryAudioStrip,
   liveMixTrack,
+  startLibraryVoicePlayback,
+  stopLibraryVoicePlayback,
   trackFromLibraryItem,
   type LibraryActiveTrack,
   type LibraryBedVolumeApi,
@@ -156,6 +158,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   }, [playingS3Key]);
 
   const dismiss = useCallback(() => {
+    stopLibraryVoicePlayback();
     setNowPlaying(null);
     setPlayingS3Key(null);
     setPlayerStripHeightPx(0);
@@ -166,6 +169,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     setPlayerStripHeightPx((h) =>
       h > 0 ? h : PLAYER_STRIP_HEIGHT_ESTIMATE_PX,
     );
+    startLibraryVoicePlayback(track);
     setNowPlaying(track);
   }, []);
 
@@ -173,7 +177,9 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     setPlayerStripHeightPx((h) =>
       h > 0 ? h : PLAYER_STRIP_HEIGHT_ESTIMATE_PX,
     );
-    setNowPlaying(trackFromLibraryItem(item));
+    const track = trackFromLibraryItem(item);
+    startLibraryVoicePlayback(track);
+    setNowPlaying(track);
   }, []);
 
   const toggleCurrent = useCallback(() => {

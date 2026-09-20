@@ -8,6 +8,7 @@ import {
 } from "@/lib/medimade-api";
 import { notifyMeditationGenerationComplete, notifyMeditationGenerationFailed } from "@/lib/meditation-generation-notifications";
 import {
+  libraryItemSatisfiesPending,
   loadPendingGenerations,
   savePendingGenerations,
   type PendingLibraryGeneration,
@@ -52,8 +53,9 @@ async function tickPendingJobs(): Promise<void> {
 
         if (st.status === "completed") {
           const audioKey = (st.audioKey ?? "").trim();
+          const withKey = audioKey ? { ...nextP, audioKey } : nextP;
           if (!audioKey) {
-            next.push({ ...nextP, status: "running" });
+            next.push({ ...withKey, status: "running" });
             changed = true;
             patchFocusPreflightLinkByJobId(p.jobId, {
               status: "running",
@@ -61,14 +63,14 @@ async function tickPendingJobs(): Promise<void> {
             });
             continue;
           }
-          // Confirm catalog presence when possible; still notify either way.
+          // Keep the generating card until the catalogued library row exists.
           try {
             const list = await listLibraryMeditations();
-            const found = list.some(
-              (it) => (it.s3Key ?? "").trim() === audioKey,
+            const found = list.some((it) =>
+              libraryItemSatisfiesPending(it, withKey),
             );
             if (!found) {
-              next.push({ ...nextP, status: "running" });
+              next.push({ ...withKey, status: "running" });
               changed = true;
               patchFocusPreflightLinkByJobId(p.jobId, {
                 status: "running",
@@ -77,7 +79,9 @@ async function tickPendingJobs(): Promise<void> {
               continue;
             }
           } catch {
-            /* notify anyway if status says completed + audioKey present */
+            next.push({ ...withKey, status: "running" });
+            changed = true;
+            continue;
           }
           changed = true;
           const audioUrl =

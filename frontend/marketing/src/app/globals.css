@@ -515,6 +515,10 @@ body {
   }
 }
 
+.mm-indeterminate-bar {
+  animation: mmIndeterminateBar 1.4s ease-in-out infinite;
+}
+
   .mesh-hero {
   background-color: var(--background);
   background-image:

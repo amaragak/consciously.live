@@ -54,6 +54,8 @@ import {
 import { communityLibraryAsItems, itemMatchesLibraryCategory } from "@/lib/community-library";
 import {
   loadPendingGenerations,
+  pendingHasCataloguedItem,
+  retainUncataloguedPending,
   savePendingGenerations,
   PENDING_LIBRARY_GENERATIONS_CHANGED_EVENT,
   PENDING_LIBRARY_GENERATIONS_LS_KEY,
@@ -655,6 +657,8 @@ export default function LibraryView({
   const [items, setItems] = useState<LibraryMeditationItem[]>(
     Array.isArray(initialItems) ? initialItems : [],
   );
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const [communityRemote, setCommunityRemote] = useState<
     LibraryMeditationItem[]
   >([]);
@@ -1038,9 +1042,11 @@ export default function LibraryView({
       }
       return libraryRowMatchesSearch(x, tokens);
     });
-    const pendingMatched = pendingRows.filter((x) =>
-      libraryRowMatchesSearch(x, tokens),
-    );
+    const pendingMatched = pendingRows.filter((x) => {
+      if (!libraryRowMatchesSearch(x, tokens)) return false;
+      const src = pending.find((p) => p.jobId === x.jobId);
+      return !src || !pendingHasCataloguedItem(catalogued, src);
+    });
     const merged = [...pendingMatched, ...catalogued];
     return sortByAlgoliaOrder(
       merged,
@@ -1054,6 +1060,7 @@ export default function LibraryView({
     categoryFilter,
     libraryTab,
     pendingRows,
+    pending,
     searchQuery,
     algoliaMeditationIds,
     algoliaMeditationOrderedIds,
@@ -1268,20 +1275,31 @@ export default function LibraryView({
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [sortDropdownOpen]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const [list, community] = await Promise.all([
         listLibraryMeditations(),
         listLibraryMeditations({ community: true }),
       ]);
-      setItems(applyLocalMixOverlay(list, localMixByKeyRef.current));
+      const merged = applyLocalMixOverlay(list, localMixByKeyRef.current);
+      setItems(merged);
       setCommunityRemote(applyLocalMixOverlay(community, localMixByKeyRef.current));
+      setPending((prev) => {
+        const stored = loadPendingGenerations();
+        const storedIds = new Set(stored.map((p) => p.jobId));
+        return prev.filter(
+          (p) =>
+            storedIds.has(p.jobId) ||
+            p.status === "failed" ||
+            !pendingHasCataloguedItem(merged, p),
+        );
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load library");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -1300,7 +1318,14 @@ export default function LibraryView({
 
   useEffect(() => {
     const syncPendingFromStorage = () => {
-      setPending(loadPendingGenerations());
+      const stored = loadPendingGenerations();
+      setPending((prev) => {
+        const next = retainUncataloguedPending(stored, prev, itemsRef.current);
+        if (next.length > stored.length) {
+          void load({ silent: true });
+        }
+        return next;
+      });
     };
     syncPendingFromStorage();
     const onStorage = (e: StorageEvent) => {
@@ -1323,7 +1348,21 @@ export default function LibraryView({
       );
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    setPending((prev) => {
+      const stored = loadPendingGenerations();
+      const storedIds = new Set(stored.map((p) => p.jobId));
+      const next = prev.filter(
+        (p) =>
+          storedIds.has(p.jobId) ||
+          p.status === "failed" ||
+          !pendingHasCataloguedItem(items, p),
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [items]);
 
   function removePendingJob(jobId: string) {
     const id = jobId.trim();
@@ -1344,7 +1383,13 @@ export default function LibraryView({
       if (cancelled) return;
       const current = loadPendingGenerations();
       if (current.length === 0) {
-        setPending([]);
+        setPending((prev) => {
+          const held = retainUncataloguedPending([], prev, itemsRef.current);
+          if (held.length > 0) {
+            void load({ silent: true });
+          }
+          return held;
+        });
         return;
       }
       let changed = false;
@@ -1354,8 +1399,7 @@ export default function LibraryView({
           const st = await getMeditationAudioJobStatus(p.jobId);
           const nextTitle = (st.title ?? "").trim();
           const nextDesc = (st.description ?? "").trim();
-          const nextP: PendingLibraryGeneration =
-            nextTitle || nextDesc ? { ...p } : p;
+          const nextP: PendingLibraryGeneration = { ...p };
           if (nextTitle && nextTitle !== p.title) {
             changed = true;
             nextP.title = nextTitle;
@@ -1367,10 +1411,17 @@ export default function LibraryView({
           if (st.status === "completed") {
             changed = true;
             const audioKey = (st.audioKey ?? "").trim();
+            if (audioKey && audioKey !== (p.audioKey ?? "")) {
+              nextP.audioKey = audioKey;
+            }
             if (!audioKey) {
+              next.push({ ...nextP, status: "running" });
               continue;
             }
-            let catalogued = findCataloguedLibraryItem(items, audioKey);
+            let catalogued = pendingHasCataloguedItem(itemsRef.current, nextP)
+              ? findCataloguedLibraryItem(itemsRef.current, audioKey) ??
+                itemsRef.current.find((x) => x.jobId === p.jobId)
+              : undefined;
             if (!catalogued) {
               try {
                 const list = await listLibraryMeditations();
@@ -1379,7 +1430,10 @@ export default function LibraryView({
                   localMixByKeyRef.current,
                 );
                 setItems(merged);
-                catalogued = findCataloguedLibraryItem(merged, audioKey);
+                catalogued = pendingHasCataloguedItem(merged, nextP)
+                  ? findCataloguedLibraryItem(merged, audioKey) ??
+                    merged.find((x) => x.jobId === p.jobId)
+                  : undefined;
               } catch {
                 // keep pending; slow poll will retry
               }
@@ -1430,12 +1484,16 @@ export default function LibraryView({
       if (!cancelled) {
         if (changed) {
           savePendingGenerations(next);
-          setPending(next);
+          setPending((prev) =>
+            retainUncataloguedPending(next, prev, itemsRef.current),
+          );
           if (opts.refreshLibraryOnChange) {
-            void load();
+            void load({ silent: true });
           }
         } else {
-          setPending(next);
+          setPending((prev) =>
+            retainUncataloguedPending(next, prev, itemsRef.current),
+          );
         }
       }
     };
@@ -2624,6 +2682,10 @@ export default function LibraryView({
         onLiveVolume={(channel, gain) => {
           if (nowPlaying?.s3Key !== mixEditor.s3Key) return;
           bedVolumeApiRef.current?.setBedVolume(channel, gain);
+        }}
+        onLiveVoiceFx={(dial) => {
+          if (nowPlaying?.s3Key !== mixEditor.s3Key) return;
+          bedVolumeApiRef.current?.setVoiceFxDial(dial);
         }}
         onPreview={applyMixPreview}
         onPersist={persistMix}

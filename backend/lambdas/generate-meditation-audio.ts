@@ -56,6 +56,7 @@ import {
   clampVoiceFxDial,
   voiceFxDialGains,
 } from "./_shared/voice-fx-dial";
+import { putVoiceStemStreams } from "./_shared/voice-stem-stream";
 import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -2050,6 +2051,20 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         CacheControl: "no-store",
       }),
     );
+    await putVoiceStemStreams({
+      s3,
+      bucket: mediaBucketName,
+      wavKey: dryKey,
+      wavBuf: fx.dryWav,
+      cacheControl: "no-store",
+    });
+    await putVoiceStemStreams({
+      s3,
+      bucket: mediaBucketName,
+      wavKey: wetKey,
+      wavBuf: fx.wav,
+      cacheControl: "no-store",
+    });
     console.log("locked stems uploaded", {
       dryKey,
       wetKey,

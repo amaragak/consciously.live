@@ -189,8 +189,8 @@ export function VoiceCardRow({
     previewingIdRef.current = modelId;
     setPreviewingId(modelId);
     try {
-      await player.load(dry, previewWetUrl(modelId), voiceFxDial);
-      await player.play();
+      await player.start(dry, previewWetUrl(modelId), voiceFxDial);
+      await player.whenDuration();
       if (!repeatWantedRef.current || previewingIdRef.current !== modelId) return;
       armRepeat(player);
     } catch {

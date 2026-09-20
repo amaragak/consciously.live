@@ -24,7 +24,11 @@ import {
   SOUNDSCAPE_ELEMENT_VOLUME,
 } from "../audio/bed-volume";
 import type { BackgroundAudioItem, LibraryMeditationFields } from "./types";
-import { DualStemPlayer } from "../audio/dual-stem-player";
+import {
+  DualStemPlayer,
+  getLibraryVoicePlayer,
+} from "../audio/dual-stem-player";
+import { clampVoiceFxDial } from "../audio/voice-fx-dial";
 
 export type LibraryActiveTrack = {
   url: string;
@@ -49,6 +53,7 @@ export type LibraryActiveTrack = {
   dryUrl?: string;
   wetUrl?: string;
   voiceFxDial?: number;
+  durationSeconds?: number;
 };
 
 export type BedVolumeChannel = "nature" | "music" | "drums" | "noise";
@@ -73,6 +78,22 @@ export function trackFromBlogNarration(url: string, title: string): LibraryActiv
   };
 }
 
+function siblingStemUrl(
+  audioUrl: string,
+  kind: "dry" | "wet",
+): string | undefined {
+  const src = audioUrl.trim();
+  if (!src) return undefined;
+  try {
+    const u = new URL(src);
+    if (!/\.(mp3|wav|opus)$/i.test(u.pathname)) return undefined;
+    u.pathname = u.pathname.replace(/\.(mp3|wav|opus)$/i, `-${kind}.opus`);
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function trackFromLibraryItem(
   m: LibraryMeditationFields,
 ): LibraryActiveTrack {
@@ -89,16 +110,26 @@ export function trackFromLibraryItem(
     musicGain: m.backgroundMusicGain ?? 50,
     drumsGain: m.backgroundDrumsGain ?? 40,
     noiseGain: m.backgroundNoiseGain ?? 10,
-    dryUrl: m.dryAudioUrl ?? undefined,
-    wetUrl: m.wetAudioUrl ?? undefined,
+    dryUrl: m.dryAudioUrl || siblingStemUrl(m.audioUrl, "dry"),
+    wetUrl: m.wetAudioUrl || siblingStemUrl(m.audioUrl, "wet"),
     voiceFxDial: m.voiceFxDial ?? 100,
+    durationSeconds:
+      typeof m.durationSeconds === "number" && m.durationSeconds > 0
+        ? m.durationSeconds
+        : undefined,
   };
 }
 
 export function liveMixTrack(
   m: Pick<
     LibraryMeditationFields,
-    "audioUrl" | "title" | "s3Key" | "dryAudioUrl" | "wetAudioUrl" | "voiceFxDial"
+    | "audioUrl"
+    | "title"
+    | "s3Key"
+    | "dryAudioUrl"
+    | "wetAudioUrl"
+    | "voiceFxDial"
+    | "durationSeconds"
   >,
   mix: {
     natureKey: string;
@@ -125,9 +156,13 @@ export function liveMixTrack(
     musicGain: mix.musicGain,
     drumsGain: mix.drumsGain,
     noiseGain: mix.noiseGain,
-    dryUrl: m.dryAudioUrl ?? undefined,
-    wetUrl: m.wetAudioUrl ?? undefined,
+    dryUrl: m.dryAudioUrl || siblingStemUrl(m.audioUrl, "dry"),
+    wetUrl: m.wetAudioUrl || siblingStemUrl(m.audioUrl, "wet"),
     voiceFxDial: mix.voiceFxDial ?? m.voiceFxDial ?? 100,
+    durationSeconds:
+      typeof m.durationSeconds === "number" && m.durationSeconds > 0
+        ? m.durationSeconds
+        : undefined,
   };
 }
 
@@ -254,9 +289,13 @@ export function LibraryAudioStrip({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const dualRef = useRef<DualStemPlayer | null>(null);
-  if (!dualRef.current) dualRef.current = new DualStemPlayer();
-  const useDual = Boolean(track?.dryUrl && track?.wetUrl);
+  const dualRef = useRef<DualStemPlayer>(getLibraryVoicePlayer());
+  dualRef.current = getLibraryVoicePlayer();
+  const [dualFailed, setDualFailed] = useState(false);
+  const voiceFxDial = clampVoiceFxDial(track?.voiceFxDial ?? 100);
+  // Dry + FX stems for the whole play. Knob only setDial()s. No mixed file.
+  const useDual = Boolean(track?.dryUrl && track?.wetUrl) && !dualFailed;
+  const voiceUrl = track?.url ?? "";
   const natureRef = useRef<HTMLAudioElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
   const drumsRef = useRef<HTMLAudioElement>(null);
@@ -264,7 +303,7 @@ export function LibraryAudioStrip({
   const seekingRef = useRef(false);
   const [playing, setPlaying] = useState(() => Boolean(track?.ambientOnly));
   const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(() => track?.durationSeconds ?? 0);
   const lastToggleNonceRef = useRef(playbackToggleNonce);
   const lastReportedTimeRef = useRef<number>(-Infinity);
   const voiceIntroTimerRef = useRef<number | null>(null);
@@ -351,16 +390,6 @@ export function LibraryAudioStrip({
       clearVoiceIntro();
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
-      if (shouldDelayVoice(dual.currentTime)) {
-        voiceIntroTimerRef.current = window.setTimeout(() => {
-          voiceIntroTimerRef.current = null;
-          void dual.play().catch(() => {
-            setPlaying(false);
-            onPlayingChange?.(track.s3Key, false);
-          });
-        }, BED_VOICE_INTRO_SECONDS * 1000);
-        return;
-      }
       void dual.play().catch(() => {
         setPlaying(false);
         onPlayingChange?.(track.s3Key, false);
@@ -469,6 +498,10 @@ export function LibraryAudioStrip({
   }, []);
 
   useEffect(() => {
+    setDualFailed(false);
+  }, [track?.s3Key]);
+
+  useEffect(() => {
     if (!track) {
       clearVoiceIntro();
       dualRef.current?.stop();
@@ -487,30 +520,41 @@ export function LibraryAudioStrip({
     if (useDual && track.dryUrl) {
       let cancelled = false;
       const dual = dualRef.current;
-      if (!dual) return;
       dual.onEnded = () => {
         if (cancelled) return;
         setPlaying(false);
         onPlayingChange?.(track.s3Key, false);
         if (!ambientSoundscape) onDismiss();
       };
+      if (track.durationSeconds) setDuration(track.durationSeconds);
+      if (dual.isPlaying) {
+        setPlaying(true);
+        onPlayingChange?.(track.s3Key, true);
+        void dual.whenDuration().then((d) => {
+          if (!cancelled && d > 0) setDuration(d);
+        });
+        return () => {
+          cancelled = true;
+          dual.onEnded = null;
+        };
+      }
       void dual
-        .load(track.dryUrl, track.wetUrl ?? null, track.voiceFxDial ?? 100)
+        .load(track.dryUrl, track.wetUrl ?? null, voiceFxDial, track.url)
         .then(() => {
           if (cancelled) return;
-          setDuration(dual.duration);
-          setCurrent(dual.currentTime);
           startOrResumePlayback();
+          void dual.whenDuration().then((d) => {
+            if (!cancelled && d > 0) setDuration(d);
+          });
         })
         .catch(() => {
           if (cancelled) return;
+          setDualFailed(true);
           setPlaying(false);
           onPlayingChange?.(track.s3Key, false);
         });
       return () => {
         cancelled = true;
-        clearVoiceIntro();
-        dual.pause();
         dual.onEnded = null;
       };
     }
@@ -541,8 +585,7 @@ export function LibraryAudioStrip({
 
   useEffect(() => {
     return () => {
-      dualRef.current?.dispose();
-      dualRef.current = null;
+      dualRef.current.onEnded = null;
     };
   }, []);
 
@@ -790,9 +833,9 @@ export function LibraryAudioStrip({
     >
       {ambientMix || useDual ? null : (
         <audio
-          key={track.s3Key}
+          key={`${track.s3Key}:${voiceUrl}`}
           ref={audioRef}
-          src={track.url}
+          src={voiceUrl}
           preload="metadata"
           className="hidden"
         />

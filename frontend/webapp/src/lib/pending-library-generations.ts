@@ -15,6 +15,8 @@ export type PendingLibraryGeneration = {
   speakerModelId: string | null;
   status?: "pending" | "running" | "failed";
   error?: string | null;
+  /** Set once the job reports an audio key (used to swap pending → catalogued). */
+  audioKey?: string | null;
   /** Ideate life-area this generation was started from. */
   lifeAreaId?: string | null;
   /** Ideate task (subtask) for Focus preflight tone-setting meditations. */
@@ -59,6 +61,51 @@ export function savePendingGenerations(next: PendingLibraryGeneration[]) {
   } catch {
     // ignore
   }
+}
+
+type CataloguedLibraryHit = {
+  jobId?: string | null;
+  s3Key?: string | null;
+  catalogued?: boolean;
+  isDraft?: boolean;
+  archived?: boolean;
+};
+
+/** True when the library list already has the finished row for this job. */
+export function libraryItemSatisfiesPending(
+  item: CataloguedLibraryHit,
+  pending: PendingLibraryGeneration,
+): boolean {
+  if (item.catalogued !== true || item.isDraft === true || item.archived === true) {
+    return false;
+  }
+  const jobId = (item.jobId ?? "").trim();
+  if (jobId && jobId === pending.jobId) return true;
+  const audioKey = (pending.audioKey ?? "").trim();
+  return Boolean(audioKey && (item.s3Key ?? "").trim() === audioKey);
+}
+
+export function pendingHasCataloguedItem(
+  items: CataloguedLibraryHit[],
+  pending: PendingLibraryGeneration,
+): boolean {
+  return items.some((x) => libraryItemSatisfiesPending(x, pending));
+}
+
+/** Keep generating cards on screen until the catalogued row is in `items`. */
+export function retainUncataloguedPending(
+  stored: PendingLibraryGeneration[],
+  prev: PendingLibraryGeneration[],
+  items: CataloguedLibraryHit[],
+): PendingLibraryGeneration[] {
+  const storedIds = new Set(stored.map((p) => p.jobId));
+  const held = prev.filter(
+    (p) =>
+      !storedIds.has(p.jobId) &&
+      p.status !== "failed" &&
+      !pendingHasCataloguedItem(items, p),
+  );
+  return held.length === 0 ? stored : [...stored, ...held];
 }
 
 /** Prepend one pending job (deduped by jobId) — used by Create and homepage one-shot. */

@@ -3,10 +3,9 @@ export const BED_GAIN_PEAK_VOLUME = 0.5;
 
 /**
  * Ready-made soundscapes are a whole produced bed rather than one mixer
- * channel. Preview volume matches mixer peak (`BED_GAIN_PEAK_VOLUME` / gain 100)
- * so speech at 1.0 stays louder — same ceiling as the baked mix path.
+ * channel. Create audio preview and library play them at 0.75; speech stays at 1.0.
  */
-export const SOUNDSCAPE_ELEMENT_VOLUME = 0.5;
+export const SOUNDSCAPE_ELEMENT_VOLUME = 0.75;
 
 /** Narration / voice sample level — always full scale in preview and bake. */
 export const SPEECH_ELEMENT_VOLUME = 1;
