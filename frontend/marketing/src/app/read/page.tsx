@@ -35,9 +35,9 @@ export default async function ReadIndexPage() {
               key={authorPhotoUrl!}
               src={authorPhotoUrl!}
               alt="Alex"
-              width={160}
-              height={160}
-              className="size-28 rounded-full object-cover sm:size-36"
+              width={192}
+              height={192}
+              className="size-36 rounded-full object-cover sm:size-48"
             />
           </div>
         ) : null}
