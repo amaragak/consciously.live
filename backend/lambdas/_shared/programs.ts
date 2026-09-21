@@ -42,6 +42,10 @@ export type ProgramDay = {
   generatedPrompt: string | null;
   generatedSpeakerModelId: string | null;
   generatedTargetMinutes: number | null;
+  /** Cover art S3 key (under media bucket). */
+  coverImageKey: string | null;
+  /** CloudFront URL for cover art. */
+  coverImageUrl: string | null;
 };
 
 export type ProgramPublic = {
@@ -56,6 +60,8 @@ export type ProgramPublic = {
   days: ProgramDay[];
   createdAt: string;
   updatedAt: string;
+  coverImageKey: string | null;
+  coverImageUrl: string | null;
 };
 
 type ProgramRow = ProgramPublic & {
@@ -74,6 +80,17 @@ function coerceStatus(raw: unknown): ProgramDayStatus {
   return "draft";
 }
 
+function coerceCoverKey(raw: unknown): string | null {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function coerceCoverUrl(raw: unknown, key: string | null): string | null {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (!key) return null;
+  const cf = process.env.MEDIA_CLOUDFRONT_DOMAIN?.trim();
+  return cf ? `https://${cf}/${key}` : null;
+}
+
 function coerceDay(raw: unknown, fallbackIndex: number): ProgramDay | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -84,6 +101,7 @@ function coerceDay(raw: unknown, fallbackIndex: number): ProgramDay | null {
     typeof o.dayNumber === "number" && Number.isFinite(o.dayNumber)
       ? Math.max(1, Math.floor(o.dayNumber))
       : fallbackIndex + 1;
+  const coverImageKey = coerceCoverKey(o.coverImageKey);
   return {
     id,
     dayNumber,
@@ -137,6 +155,8 @@ function coerceDay(raw: unknown, fallbackIndex: number): ProgramDay | null {
       Number.isFinite(o.generatedTargetMinutes)
         ? coerceMeditationTargetMinutes(o.generatedTargetMinutes)
         : null,
+    coverImageKey,
+    coverImageUrl: coerceCoverUrl(o.coverImageUrl, coverImageKey),
   };
 }
 
@@ -171,6 +191,7 @@ export function normalizeProgram(raw: unknown): ProgramPublic | null {
       }
     }
   }
+  const coverImageKey = coerceCoverKey(o.coverImageKey);
   return {
     id,
     title:
@@ -189,6 +210,8 @@ export function normalizeProgram(raw: unknown): ProgramPublic | null {
     ),
     createdAt,
     updatedAt,
+    coverImageKey,
+    coverImageUrl: coerceCoverUrl(o.coverImageUrl, coverImageKey),
   };
 }
 
@@ -227,6 +250,7 @@ export type LibraryProgramDay = {
   audioKey: string;
   /** Music / composition bed mixed live under the voice stem. */
   backgroundMusicKey: string;
+  coverImageUrl: string | null;
 };
 
 export type LibraryProgram = {
@@ -235,6 +259,7 @@ export type LibraryProgram = {
   description: string;
   sort: number;
   days: LibraryProgramDay[];
+  coverImageUrl: string | null;
 };
 
 export function toLibraryProgram(p: ProgramPublic): LibraryProgram | null {
@@ -258,13 +283,23 @@ export function toLibraryProgram(p: ProgramPublic): LibraryProgram | null {
       audioUrl: d.audioUrl!.trim(),
       audioKey: d.audioKey!.trim(),
       backgroundMusicKey: d.compositionKey.trim(),
-    }));
+      coverImageUrl: d.coverImageUrl,
+    }))
+    .sort((a, b) => a.dayNumber - b.dayNumber);
+
+  // First lesson titled "Introduction" reuses the program cover.
+  const programCover = p.coverImageUrl?.trim() || null;
+  if (programCover && days[0]?.title.trim().toLowerCase() === "introduction") {
+    days[0] = { ...days[0], coverImageUrl: programCover };
+  }
+
   return {
     id: p.id,
     title: p.title,
     description: p.description,
     sort: p.sort,
     days,
+    coverImageUrl: p.coverImageUrl,
   };
 }
 
@@ -307,9 +342,37 @@ export async function putProgram(input: unknown): Promise<ProgramPublic> {
       : "";
   const existing = existingId ? await getProgram(existingId) : null;
   const now = new Date().toISOString();
+  const mergedInput =
+    typeof input === "object" && input
+      ? { ...(input as Record<string, unknown>) }
+      : {};
+  // Preserve day covers when the client omits cover fields on save.
+  if (existing && Array.isArray(mergedInput.days)) {
+    const byId = new Map(existing.days.map((d) => [d.id, d]));
+    mergedInput.days = (mergedInput.days as unknown[]).map((raw) => {
+      if (!raw || typeof raw !== "object") return raw;
+      const o = raw as Record<string, unknown>;
+      const prev = typeof o.id === "string" ? byId.get(o.id.trim()) : undefined;
+      if (!prev) return raw;
+      const hasKey = Object.prototype.hasOwnProperty.call(o, "coverImageKey");
+      const hasUrl = Object.prototype.hasOwnProperty.call(o, "coverImageUrl");
+      return {
+        ...o,
+        coverImageKey: hasKey ? o.coverImageKey : prev.coverImageKey,
+        coverImageUrl: hasUrl ? o.coverImageUrl : prev.coverImageUrl,
+      };
+    });
+  }
+  if (
+    existing &&
+    !Object.prototype.hasOwnProperty.call(mergedInput, "coverImageKey")
+  ) {
+    mergedInput.coverImageKey = existing.coverImageKey;
+    mergedInput.coverImageUrl = existing.coverImageUrl;
+  }
   const next = normalizeProgram({
     ...(existing ?? {}),
-    ...(typeof input === "object" && input ? input : {}),
+    ...mergedInput,
     id: existingId || randomUUID(),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,

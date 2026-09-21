@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AdminAnalyticsPanel } from "./components/admin-analytics-panel";
 import { AdminReadPanel } from "./components/admin-blog-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
+import { AdminLibraryCategoriesPanel } from "./components/admin-library-categories-panel";
 import { AdminProgramsPanel } from "./components/admin-programs-panel";
 import { AdminScriptLabPanel } from "./components/admin-script-lab-panel";
 import { AdminSoundsPanel } from "./components/admin-sounds-panel";
@@ -73,6 +74,10 @@ export function App() {
           <Route path="script-lab" element={<AdminScriptLabPanel />} />
           <Route path="stress-test" element={<AdminStressTestPanel />} />
           <Route path="dev-ui" element={<AdminDevUiPanel />} />
+          <Route
+            path="category-images"
+            element={<AdminLibraryCategoriesPanel />}
+          />
         </Route>
       </Route>
       <Route path="login" element={<LoggedOutShell />} />

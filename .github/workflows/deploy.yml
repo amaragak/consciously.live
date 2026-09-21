@@ -181,7 +181,8 @@ jobs:
             --region "${{ vars.AWS_REGION || 'eu-west-2' }}" \
             frontend/marketing/.env \
             frontend/mobile/.env \
-            frontend/extension/.env
+            frontend/extension/.env \
+            frontend/webapp/.env
           if [ -f frontend/marketing/.env ]; then
             set -a
             # shellcheck disable=SC1091

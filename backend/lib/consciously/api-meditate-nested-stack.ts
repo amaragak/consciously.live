@@ -257,6 +257,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         role,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
         },
       },
     );

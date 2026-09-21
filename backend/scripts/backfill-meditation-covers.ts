@@ -4,10 +4,12 @@
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --email=you@example.com
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --all --dry-run
+ *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --public --force
  *   AWS_PROFILE=mm OPENAI_API_KEY=sk-… npx tsx scripts/backfill-meditation-covers.ts --limit=3
  *
  * Default email: Continue-as-guest account (alexmaragakis@hotmail.co.uk).
  * Uses OPENAI_API_KEY env, else Secrets Manager medimade/OPENAI_API_KEY.
+ * `--public` / `--community`: only meditations with isPublic=true (Community tab).
  */
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -50,6 +52,8 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const all = args.includes("--all");
 const force = args.includes("--force");
+const publicOnly =
+  args.includes("--public") || args.includes("--community");
 
 function argValue(flag: string): string | null {
   const i = args.indexOf(flag);
@@ -99,6 +103,7 @@ type LibRow = {
   meditationStyle: string | null;
   meditationType: string | null;
   coverImageKey: string | null;
+  isPublic: boolean;
   raw: Record<string, unknown>;
 };
 
@@ -156,6 +161,7 @@ function parseRow(
       typeof item.coverImageKey === "string" && item.coverImageKey.trim()
         ? item.coverImageKey.trim()
         : null,
+    isPublic: item.isPublic === true,
     raw: item,
   };
 }
@@ -199,21 +205,34 @@ async function main(): Promise<void> {
   const bucket = await resolveBucket();
 
   let rows: LibRow[];
-  if (all) {
-    console.log("scanning all library rows…");
+  if (all || publicOnly) {
+    console.log(
+      publicOnly
+        ? "scanning public (community) library rows…"
+        : "scanning all library rows…",
+    );
     rows = await scanAllMeditations();
+    if (publicOnly) {
+      rows = rows.filter((r) => r.isPublic);
+    }
   } else {
     const email =
       emailArg || "alexmaragakis@hotmail.co.uk";
     const userId = await userIdForEmail(email);
     console.log(`user ${email} → ${userId}`);
     rows = await queryUserMeditations(userId);
+    if (publicOnly) {
+      rows = rows.filter((r) => r.isPublic);
+    }
   }
 
   const targets = rows.filter((r) => force || !r.coverImageKey);
   console.log(
-    `found ${rows.length} catalogued meditations, ${targets.length} need covers` +
-      (limit ? ` (limit ${limit})` : ""),
+    `found ${rows.length} catalogued meditations` +
+      (publicOnly ? " (public)" : "") +
+      `, ${targets.length} need covers` +
+      (limit ? ` (limit ${limit})` : "") +
+      (force ? " [--force]" : ""),
   );
 
   let done = 0;

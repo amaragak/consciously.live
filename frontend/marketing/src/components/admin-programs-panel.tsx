@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ADMIN_IMAGE_MODELS,
   backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
+  clearAdminProgramCover,
   createMeditationAudioJob,
   deleteAdminProgram,
+  generateAdminProgramCover,
   generateAdminProgramDayDescription,
   getMeditationAudioJobStatus,
   getMedimadeMediaBaseUrl,
@@ -15,7 +18,9 @@ import {
   ttsProviderForSpeaker,
   PROGRAM_DAY_DESCRIPTION_MIN_CHARS,
   saveAdminProgram,
+  uploadAdminProgramCover,
   VOICE_FX_PRESET_MEDITATION_MIXER,
+  type AdminImageModel,
   type AdminProgram,
   type AdminProgramDay,
   type BackgroundAudioItem,
@@ -34,6 +39,26 @@ import {
 
 /** Mixer fader value persisted with the generate job (same as create soundscape). */
 const SOUNDSCAPE_GAIN = 100;
+
+async function fileToCompressedJpegDataUrl(file: File): Promise<{
+  dataUrl: string;
+  mimeType: string;
+}> {
+  const bitmap = await createImageBitmap(file);
+  const maxSide = 1200;
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process image");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+  return { dataUrl, mimeType: "image/jpeg" };
+}
 
 function mediaFileUrl(base: string, key: string): string {
   const b = base.replace(/\/$/, "");
@@ -96,6 +121,8 @@ function blankDay(dayNumber: number): AdminProgramDay {
     generatedPrompt: null,
     generatedSpeakerModelId: null,
     generatedTargetMinutes: null,
+    coverImageKey: null,
+    coverImageUrl: null,
   };
 }
 
@@ -265,6 +292,16 @@ export function AdminProgramsPanel() {
   const [describeBatchProgress, setDescribeBatchProgress] = useState<
     string | null
   >(null);
+  const [programCoverPrompt, setProgramCoverPrompt] = useState("");
+  const [dayCoverPrompts, setDayCoverPrompts] = useState<
+    Record<string, string>
+  >({});
+  const [coverBusyKey, setCoverBusyKey] = useState<string | null>(null);
+  const [coverStatus, setCoverStatus] = useState<string | null>(null);
+  const [coverImageModel, setCoverImageModel] =
+    useState<AdminImageModel>("gpt-image-1-mini");
+  const programCoverFileRef = useRef<HTMLInputElement | null>(null);
+  const dayCoverFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [speakers, setSpeakers] = useState<FishSpeaker[]>([]);
   /** Music channel list — compositions already folded in as a subcategory. */
   const [musicItems, setMusicItems] = useState<BackgroundAudioItem[]>([]);
@@ -523,6 +560,94 @@ export function AdminProgramsPanel() {
       setError(e instanceof Error ? e.message : "Could not delete program");
     } finally {
       setSaveBusy(false);
+    }
+  }
+
+  function applyCoverProgram(saved: AdminProgram) {
+    setPrograms((prev) => {
+      const idx = prev.findIndex((p) => p.id === saved.id);
+      if (idx < 0) return [...prev, saved];
+      const next = [...prev];
+      next[idx] = saved;
+      return next;
+    });
+    setDraft({ ...saved, days: saved.days.map((d) => ({ ...d })) });
+  }
+
+  async function generateCover(dayId: string | null) {
+    if (!draft) return;
+    const key = dayId ?? "program";
+    setError(null);
+    setCoverBusyKey(key);
+    setCoverStatus("Generating cover…");
+    try {
+      const prompt = dayId
+        ? (dayCoverPrompts[dayId] ?? "").trim()
+        : programCoverPrompt.trim();
+      const saved = await generateAdminProgramCover({
+        programId: draft.id,
+        dayId,
+        prompt: prompt || undefined,
+        model: coverImageModel,
+      });
+      applyCoverProgram(saved);
+      setCoverStatus("Cover generated.");
+    } catch (e) {
+      setCoverStatus(null);
+      setError(e instanceof Error ? e.message : "Could not generate cover");
+    } finally {
+      setCoverBusyKey(null);
+    }
+  }
+
+  async function uploadCover(dayId: string | null, file: File | null) {
+    if (!draft || !file) return;
+    const key = dayId ?? "program";
+    setError(null);
+    setCoverBusyKey(key);
+    setCoverStatus("Uploading cover…");
+    try {
+      const { dataUrl, mimeType } = await fileToCompressedJpegDataUrl(file);
+      const saved = await uploadAdminProgramCover({
+        programId: draft.id,
+        dayId,
+        imageBase64: dataUrl,
+        mimeType,
+      });
+      applyCoverProgram(saved);
+      setCoverStatus("Cover uploaded.");
+    } catch (e) {
+      setCoverStatus(null);
+      setError(e instanceof Error ? e.message : "Could not upload cover");
+    } finally {
+      setCoverBusyKey(null);
+      if (dayId) {
+        const input = dayCoverFileRefs.current[dayId];
+        if (input) input.value = "";
+      } else if (programCoverFileRef.current) {
+        programCoverFileRef.current.value = "";
+      }
+    }
+  }
+
+  async function clearCover(dayId: string | null) {
+    if (!draft) return;
+    const key = dayId ?? "program";
+    setError(null);
+    setCoverBusyKey(key);
+    setCoverStatus("Clearing cover…");
+    try {
+      const saved = await clearAdminProgramCover({
+        programId: draft.id,
+        dayId,
+      });
+      applyCoverProgram(saved);
+      setCoverStatus("Cover cleared.");
+    } catch (e) {
+      setCoverStatus(null);
+      setError(e instanceof Error ? e.message : "Could not clear cover");
+    } finally {
+      setCoverBusyKey(null);
     }
   }
 
@@ -1138,6 +1263,108 @@ export function AdminProgramsPanel() {
                 </label>
                 <div className="block text-sm sm:col-span-2">
                   <span className="mb-1 block text-muted">
+                    Program cover
+                  </span>
+                  <label className="mb-2 flex max-w-xs flex-col gap-1 text-xs text-muted">
+                    Image model
+                    <select
+                      value={coverImageModel}
+                      onChange={(e) =>
+                        setCoverImageModel(e.target.value as AdminImageModel)
+                      }
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+                    >
+                      {ADMIN_IMAGE_MODELS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-border/40">
+                      {draft.coverImageUrl ? (
+                        <img
+                          src={draft.coverImageUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-[10px] text-muted">
+                          No image
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <textarea
+                        value={programCoverPrompt}
+                        onChange={(e) => setProgramCoverPrompt(e.target.value)}
+                        rows={2}
+                        placeholder="Optional image prompt — leave blank to auto-build from title & description"
+                        className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          ref={programCoverFileRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) =>
+                            void uploadCover(
+                              null,
+                              e.target.files?.[0] ?? null,
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            coverBusyKey !== null ||
+                            saveBusy ||
+                            generateBatchBusy
+                          }
+                          onClick={() => void generateCover(null)}
+                          className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
+                        >
+                          {coverBusyKey === "program"
+                            ? "Working…"
+                            : "Generate"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            coverBusyKey !== null ||
+                            saveBusy ||
+                            generateBatchBusy
+                          }
+                          onClick={() => programCoverFileRef.current?.click()}
+                          className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
+                        >
+                          Upload
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            !draft.coverImageUrl ||
+                            coverBusyKey !== null ||
+                            saveBusy
+                          }
+                          onClick={() => void clearCover(null)}
+                          className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-danger disabled:opacity-40"
+                        >
+                          Clear
+                        </button>
+                        {coverStatus && coverBusyKey === null ? (
+                          <span className="text-[11px] text-muted">
+                            {coverStatus}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block text-muted">
                     Speaker (all lessons)
                   </span>
                   <div className="flex items-center gap-2">
@@ -1438,6 +1665,116 @@ export function AdminProgramsPanel() {
                           {PROGRAM_DAY_DESCRIPTION_MIN_CHARS}+ chars preferred
                           before generate
                         </p>
+                      </div>
+                      <div className="block text-sm sm:col-span-2">
+                        <span className="mb-1 block text-muted">
+                          Lesson cover
+                        </span>
+                        <label className="mb-2 flex max-w-xs flex-col gap-1 text-xs text-muted">
+                          Image model
+                          <select
+                            value={coverImageModel}
+                            onChange={(e) =>
+                              setCoverImageModel(
+                                e.target.value as AdminImageModel,
+                              )
+                            }
+                            className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+                          >
+                            {ADMIN_IMAGE_MODELS.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-border/40">
+                            {day.coverImageUrl ? (
+                              <img
+                                src={day.coverImageUrl}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-[10px] text-muted">
+                                No image
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <textarea
+                              value={dayCoverPrompts[day.id] ?? ""}
+                              onChange={(e) =>
+                                setDayCoverPrompts((prev) => ({
+                                  ...prev,
+                                  [day.id]: e.target.value,
+                                }))
+                              }
+                              rows={2}
+                              placeholder="Optional image prompt — blank uses title, description & lesson prompt"
+                              className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                ref={(el) => {
+                                  dayCoverFileRefs.current[day.id] = el;
+                                }}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="hidden"
+                                onChange={(e) =>
+                                  void uploadCover(
+                                    day.id,
+                                    e.target.files?.[0] ?? null,
+                                  )
+                                }
+                              />
+                              <button
+                                type="button"
+                                disabled={
+                                  coverBusyKey !== null ||
+                                  generating ||
+                                  generateBatchBusy ||
+                                  saveBusy
+                                }
+                                onClick={() => void generateCover(day.id)}
+                                className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
+                              >
+                                {coverBusyKey === day.id
+                                  ? "Working…"
+                                  : "Generate"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  coverBusyKey !== null ||
+                                  generating ||
+                                  generateBatchBusy ||
+                                  saveBusy
+                                }
+                                onClick={() =>
+                                  dayCoverFileRefs.current[day.id]?.click()
+                                }
+                                className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
+                              >
+                                Upload
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  !day.coverImageUrl ||
+                                  coverBusyKey !== null ||
+                                  saveBusy
+                                }
+                                onClick={() => void clearCover(day.id)}
+                                className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-danger disabled:opacity-40"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                       <div className="block text-sm">
                         <span className="mb-1 block text-muted">Music</span>

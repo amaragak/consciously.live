@@ -861,6 +861,7 @@ export class MedimadeStack extends cdk.Stack {
         memorySize: 256,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
         },
       },
     );
@@ -1294,19 +1295,28 @@ export class MedimadeStack extends cdk.Stack {
         entry: path.join(__dirname, "../lambdas/admin-programs.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(60),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(180),
+        memorySize: 512,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
         },
       },
     );
     voiceAdminTable.grantReadWriteData(adminPrograms);
     authJwtSecret.grantRead(adminPrograms);
     claudeApiKeySecret.grantRead(adminPrograms);
+    openAiApiKeySecret.grantRead(adminPrograms);
+    googleAiApiKeySecret.grantRead(adminPrograms);
+    mediaBucket.grantPut(adminPrograms);
+    mediaBucket.grantRead(adminPrograms);
+    mediaBucket.grantDelete(adminPrograms);
 
     httpApi.addRoutes({
       path: "/admin/programs",
@@ -1493,31 +1503,40 @@ export class MedimadeStack extends cdk.Stack {
       ),
     });
 
-    const devUiSettingsFn = new lambda_nodejs.NodejsFunction(
+    const adminAppSettingsFn = new lambda_nodejs.NodejsFunction(
       this,
       "DevUiSettingsFunction",
       {
-        entry: path.join(__dirname, "../lambdas/dev-ui-settings.ts"),
+        entry: path.join(__dirname, "../lambdas/admin-app-settings.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(15),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(180),
+        memorySize: 512,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
         },
       },
     );
-    voiceAdminTable.grantReadWriteData(devUiSettingsFn);
-    authJwtSecret.grantRead(devUiSettingsFn);
+    voiceAdminTable.grantReadWriteData(adminAppSettingsFn);
+    authJwtSecret.grantRead(adminAppSettingsFn);
+    openAiApiKeySecret.grantRead(adminAppSettingsFn);
+    googleAiApiKeySecret.grantRead(adminAppSettingsFn);
+    mediaBucket.grantPut(adminAppSettingsFn);
+    mediaBucket.grantRead(adminAppSettingsFn);
+    mediaBucket.grantDelete(adminAppSettingsFn);
 
     httpApi.addRoutes({
       path: "/dev-ui-settings",
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
       integration: new integrations.HttpLambdaIntegration(
         "DevUiSettingsPublicGetIntegration",
-        devUiSettingsFn,
+        adminAppSettingsFn,
       ),
     });
     httpApi.addRoutes({
@@ -1529,7 +1548,7 @@ export class MedimadeStack extends cdk.Stack {
       ],
       integration: new integrations.HttpLambdaIntegration(
         "DevUiSettingsAdminIntegration",
-        devUiSettingsFn,
+        adminAppSettingsFn,
       ),
     });
 

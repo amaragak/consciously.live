@@ -13,13 +13,13 @@ const env = {
 
 new MedimadeStack(app, "MedimadeBackend", {
   env,
-  description: "medimade.io backend — HTTP API + Fish Audio TTS Lambda",
+  description: "Legacy medimade.io backend (kept until fully retired)",
 });
 
 /**
- * Greenfield ConsciouslyBackend — opt-in until cutover.
- * Enable with CONSCIOUSLY_STACK=1 or `-c consciouslyStack=true`.
- * GitHub deploy must not set this yet.
+ * Live ConsciouslyBackend — default stack for deploy-back / CI.
+ * Also enabled with CONSCIOUSLY_STACK=1 or `-c consciouslyStack=true`.
+ * MedimadeBackend remains defined so legacy deploys still synth.
  */
 const enableConsciously =
   process.env.CONSCIOUSLY_STACK === "1" ||

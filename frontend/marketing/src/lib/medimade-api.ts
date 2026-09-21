@@ -2954,6 +2954,224 @@ export async function patchDevUiSettings(
   };
 }
 
+/** Library → Community category card images. */
+export type LibraryCategoryImagePublic = {
+  category: string;
+  imageUrl: string;
+  updatedAt: string;
+};
+
+export type AdminLibraryCategoryImageVersion = {
+  id: string;
+  imageUrl: string;
+  imageKey: string;
+  lastPrompt: string | null;
+  createdAt: string;
+};
+
+/** Admin image gen model (category / program covers). Meditations always use mini. */
+export type AdminImageModel = "gpt-image-1-mini" | "nano-banana-pro";
+
+export const ADMIN_IMAGE_MODELS: ReadonlyArray<{
+  id: AdminImageModel;
+  label: string;
+}> = [
+  { id: "gpt-image-1-mini", label: "GPT Image 1 Mini" },
+  { id: "nano-banana-pro", label: "Nano Banana Pro" },
+];
+
+export type AdminLibraryCategoryImage = LibraryCategoryImagePublic & {
+  imageKey: string;
+  lastPrompt: string | null;
+  versions: AdminLibraryCategoryImageVersion[];
+};
+
+function normalizeLibraryCategoryImagePublic(
+  raw: unknown,
+): LibraryCategoryImagePublic | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const category = typeof o.category === "string" ? o.category.trim() : "";
+  const imageUrl = typeof o.imageUrl === "string" ? o.imageUrl.trim() : "";
+  if (!category || !imageUrl) return null;
+  return {
+    category,
+    imageUrl,
+    updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
+  };
+}
+
+function normalizeAdminLibraryCategoryVersion(
+  raw: unknown,
+): AdminLibraryCategoryImageVersion | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const imageUrl = typeof o.imageUrl === "string" ? o.imageUrl.trim() : "";
+  const imageKey = typeof o.imageKey === "string" ? o.imageKey.trim() : "";
+  if (!id || !imageUrl || !imageKey) return null;
+  return {
+    id,
+    imageUrl,
+    imageKey,
+    lastPrompt:
+      typeof o.lastPrompt === "string" && o.lastPrompt.trim()
+        ? o.lastPrompt.trim()
+        : null,
+    createdAt: typeof o.createdAt === "string" ? o.createdAt : "",
+  };
+}
+
+function normalizeAdminLibraryCategoryImage(
+  raw: unknown,
+): AdminLibraryCategoryImage | null {
+  const base = normalizeLibraryCategoryImagePublic(raw);
+  if (!base) return null;
+  const o = raw as Record<string, unknown>;
+  const versions = Array.isArray(o.versions)
+    ? o.versions
+        .map(normalizeAdminLibraryCategoryVersion)
+        .filter((x): x is AdminLibraryCategoryImageVersion => Boolean(x))
+    : [];
+  return {
+    ...base,
+    imageKey: typeof o.imageKey === "string" ? o.imageKey : "",
+    lastPrompt:
+      typeof o.lastPrompt === "string" && o.lastPrompt.trim()
+        ? o.lastPrompt.trim()
+        : null,
+    versions,
+  };
+}
+
+/** Public map for Community category cards. */
+export async function fetchLibraryCategoryImages(): Promise<
+  LibraryCategoryImagePublic[]
+> {
+  const base = getMedimadeApiBase();
+  if (!base) return [];
+  try {
+    const res = await medimadeFetch(
+      `${base}/dev-ui-settings?categoryImages=1`,
+      { headers: { Accept: "application/json" } },
+    );
+    const data = (await res.json()) as { images?: unknown; error?: string };
+    if (!res.ok || !Array.isArray(data.images)) return [];
+    return data.images
+      .map(normalizeLibraryCategoryImagePublic)
+      .filter((x): x is LibraryCategoryImagePublic => Boolean(x));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAdminLibraryCategories(): Promise<{
+  categories: string[];
+  images: AdminLibraryCategoryImage[];
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(
+    `${base}/admin/dev-ui-settings?categoryImages=1`,
+    { headers: medimadeApiAuthHeaders() },
+  );
+  const data = (await res.json()) as {
+    categories?: unknown;
+    images?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    categories: Array.isArray(data.categories)
+      ? data.categories.filter((x): x is string => typeof x === "string")
+      : [],
+    images: Array.isArray(data.images)
+      ? data.images
+          .map(normalizeAdminLibraryCategoryImage)
+          .filter((x): x is AdminLibraryCategoryImage => Boolean(x))
+      : [],
+  };
+}
+
+async function postAdminLibraryCategoryAction(
+  body: Record<string, unknown>,
+): Promise<{ images: AdminLibraryCategoryImage[] }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(
+    `${base}/admin/dev-ui-settings?categoryImages=1`,
+    {
+      method: "PATCH",
+      headers: medimadeJsonHeaders(),
+      body: JSON.stringify(body),
+    },
+  );
+  const data = (await res.json()) as {
+    images?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    images: Array.isArray(data.images)
+      ? data.images
+          .map(normalizeAdminLibraryCategoryImage)
+          .filter((x): x is AdminLibraryCategoryImage => Boolean(x))
+      : [],
+  };
+}
+
+export async function uploadAdminLibraryCategoryImage(params: {
+  category: string;
+  imageBase64: string;
+  mimeType: string;
+}): Promise<{ images: AdminLibraryCategoryImage[] }> {
+  return postAdminLibraryCategoryAction({
+    action: "upload",
+    category: params.category,
+    imageBase64: params.imageBase64,
+    mimeType: params.mimeType,
+  });
+}
+
+export async function generateAdminLibraryCategoryImage(params: {
+  category: string;
+  prompt: string;
+  model?: AdminImageModel;
+}): Promise<{ images: AdminLibraryCategoryImage[] }> {
+  return postAdminLibraryCategoryAction({
+    action: "generate",
+    category: params.category,
+    prompt: params.prompt,
+    model: params.model ?? "gpt-image-1-mini",
+  });
+}
+
+export async function clearAdminLibraryCategoryImage(
+  category: string,
+): Promise<{ images: AdminLibraryCategoryImage[] }> {
+  return postAdminLibraryCategoryAction({
+    action: "clear",
+    category,
+  });
+}
+
+export async function restoreAdminLibraryCategoryImage(params: {
+  category: string;
+  versionId: string;
+}): Promise<{ images: AdminLibraryCategoryImage[] }> {
+  return postAdminLibraryCategoryAction({
+    action: "restore",
+    category: params.category,
+    versionId: params.versionId,
+  });
+}
+
 export async function patchAdminVoice(body: {
   pauses?: Partial<AdminPauseBands>;
   speaker?: {
@@ -3357,6 +3575,8 @@ export type AdminProgramDay = {
   generatedPrompt: string | null;
   generatedSpeakerModelId: string | null;
   generatedTargetMinutes: MeditationTargetMinutes | null;
+  coverImageKey: string | null;
+  coverImageUrl: string | null;
 };
 
 export type AdminProgram = {
@@ -3370,6 +3590,8 @@ export type AdminProgram = {
   days: AdminProgramDay[];
   createdAt: string;
   updatedAt: string;
+  coverImageKey: string | null;
+  coverImageUrl: string | null;
 };
 
 function normalizeAdminProgramDay(raw: unknown): AdminProgramDay | null {
@@ -3416,6 +3638,14 @@ function normalizeAdminProgramDay(raw: unknown): AdminProgramDay | null {
       Number.isFinite(o.generatedTargetMinutes)
         ? coerceMeditationTargetMinutes(o.generatedTargetMinutes)
         : null,
+    coverImageKey:
+      typeof o.coverImageKey === "string" && o.coverImageKey.trim()
+        ? o.coverImageKey.trim()
+        : null,
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
   };
 }
 
@@ -3451,6 +3681,14 @@ function normalizeAdminProgram(raw: unknown): AdminProgram | null {
     ),
     createdAt: typeof o.createdAt === "string" ? o.createdAt : "",
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
+    coverImageKey:
+      typeof o.coverImageKey === "string" && o.coverImageKey.trim()
+        ? o.coverImageKey.trim()
+        : null,
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
   };
 }
 
@@ -3486,6 +3724,7 @@ export type LibraryProgramDay = {
   audioKey: string;
   /** Music / composition bed mixed live under the voice stem. */
   backgroundMusicKey: string;
+  coverImageUrl: string | null;
 };
 
 export type LibraryProgram = {
@@ -3494,6 +3733,7 @@ export type LibraryProgram = {
   description: string;
   sort: number;
   days: LibraryProgramDay[];
+  coverImageUrl: string | null;
 };
 
 function normalizeLibraryProgramDay(raw: unknown): LibraryProgramDay | null {
@@ -3526,6 +3766,10 @@ function normalizeLibraryProgramDay(raw: unknown): LibraryProgramDay | null {
         : typeof o.compositionKey === "string"
           ? o.compositionKey.trim()
           : "",
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
   };
 }
 
@@ -3545,6 +3789,10 @@ function normalizeLibraryProgram(raw: unknown): LibraryProgram | null {
     description: typeof o.description === "string" ? o.description : "",
     sort: typeof o.sort === "number" && Number.isFinite(o.sort) ? o.sort : 0,
     days,
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
   };
 }
 
@@ -3600,6 +3848,68 @@ export async function deleteAdminProgram(id: string): Promise<void> {
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+}
+
+async function postAdminProgramCoverAction(body: Record<string, unknown>): Promise<AdminProgram> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/programs`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as {
+    program?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const saved = normalizeAdminProgram(data.program);
+  if (!saved) throw new Error("Invalid program response");
+  return saved;
+}
+
+export async function generateAdminProgramCover(params: {
+  programId: string;
+  dayId?: string | null;
+  prompt?: string;
+  model?: AdminImageModel;
+}): Promise<AdminProgram> {
+  return postAdminProgramCoverAction({
+    action: "generate-cover",
+    programId: params.programId,
+    dayId: params.dayId ?? null,
+    prompt: params.prompt ?? "",
+    model: params.model ?? "gpt-image-1-mini",
+  });
+}
+
+export async function uploadAdminProgramCover(params: {
+  programId: string;
+  dayId?: string | null;
+  imageBase64: string;
+  mimeType: string;
+}): Promise<AdminProgram> {
+  return postAdminProgramCoverAction({
+    action: "upload-cover",
+    programId: params.programId,
+    dayId: params.dayId ?? null,
+    imageBase64: params.imageBase64,
+    mimeType: params.mimeType,
+  });
+}
+
+export async function clearAdminProgramCover(params: {
+  programId: string;
+  dayId?: string | null;
+}): Promise<AdminProgram> {
+  return postAdminProgramCoverAction({
+    action: "clear-cover",
+    programId: params.programId,
+    dayId: params.dayId ?? null,
+  });
 }
 
 export type AdminBlogAudioStatus = "none" | "generating" | "ready" | "failed";

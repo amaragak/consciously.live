@@ -48,6 +48,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
     const fishApiKeySecret = props.config.fishApiKey;
     const speechifyApiKeySecret = props.config.speechifyApiKey;
     const claudeApiKeySecret = props.config.claudeApiKey;
+    const openAiApiKeySecret = props.config.openAiApiKey;
+    const googleAiApiKeySecret = props.config.googleAiApiKey;
     const runpodsApiKeySecret = props.config.runpodsApiKey;
     const runpodsUrlSecret = props.config.runpodsUrl;
     const authJwtSecret = props.config.authJwtSecret;
@@ -80,6 +82,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
     fishApiKeySecret.grantRead(role);
     speechifyApiKeySecret.grantRead(role);
     claudeApiKeySecret.grantRead(role);
+    openAiApiKeySecret.grantRead(role);
+    googleAiApiKeySecret.grantRead(role);
     runpodsApiKeySecret.grantRead(role);
     runpodsUrlSecret.grantRead(role);
     algoliaSecret.grantRead(role);
@@ -298,14 +302,18 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/admin-programs.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(60),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(180),
+        memorySize: 512,
         role,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
         },
       },
     );
@@ -455,20 +463,24 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
-    const devUiSettingsFn = new lambda_nodejs.NodejsFunction(
+    const adminAppSettingsFn = new lambda_nodejs.NodejsFunction(
       this,
       "DevUiSettingsFunction",
       {
-        entry: path.join(__dirname, "../../lambdas/dev-ui-settings.ts"),
+        entry: path.join(__dirname, "../../lambdas/admin-app-settings.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(15),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(180),
+        memorySize: 512,
         role,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
         },
       },
     );
@@ -478,7 +490,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
       integration: new integrations.HttpLambdaIntegration(
         "DevUiSettingsPublicGetIntegration",
-        devUiSettingsFn,
+        adminAppSettingsFn,
       ),
     });
     addNestHttpRoutes(this, httpApi, {
@@ -491,7 +503,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ],
       integration: new integrations.HttpLambdaIntegration(
         "DevUiSettingsAdminIntegration",
-        devUiSettingsFn,
+        adminAppSettingsFn,
       ),
     });
 

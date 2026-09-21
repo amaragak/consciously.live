@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Deploy CDK stack and sync stack outputs into:
-#   frontend/marketing/.env   — NEXT_PUBLIC_MEDIMADE_* (Next.js)
-#   frontend/mobile/.env  — EXPO_PUBLIC_MEDIMADE_* (Expo)
+#   frontend/marketing/.env — NEXT_PUBLIC_MEDIMADE_* (Next.js)
+#   frontend/webapp/.env    — VITE_MEDIMADE_* (Vite SPA)
+#   frontend/mobile/.env    — EXPO_PUBLIC_MEDIMADE_* (Expo)
 #   frontend/extension/.env — VITE_MEDIMADE_* (Chrome extension)
 # Usage (from anywhere):
 #   backend/scripts/deploy-back
 #   backend/scripts/deploy-back --profile mm
-#   backend/scripts/deploy-back MedimadeBackend --require-approval never --profile mm
+#   backend/scripts/deploy-back ConsciouslyBackend --require-approval never --profile mm
+#   backend/scripts/deploy-back MedimadeBackend --require-approval never   # legacy only
 #
-# Primary region is London (eu-west-2). The mm AWS profile must also default to eu-west-2.
-# Do not deploy other regions unless explicitly required for emergency ops.
+# Defaults to ConsciouslyBackend (live). Primary region is London (eu-west-2).
 # AWS profile: defaults to AWS_PROFILE=mm when unset and no --profile in arguments.
 set -euo pipefail
 
@@ -25,7 +26,8 @@ export AWS_REGION="${AWS_REGION:-$CDK_DEFAULT_REGION}"
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-$CDK_DEFAULT_REGION}"
 
 REPO_ROOT="$(cd "$BACKEND_ROOT/.." && pwd)"
-WEBAPP_ENV="$REPO_ROOT/frontend/marketing/.env"
+MARKETING_ENV="$REPO_ROOT/frontend/marketing/.env"
+WEBAPP_ENV="$REPO_ROOT/frontend/webapp/.env"
 MOBILE_ENV="$REPO_ROOT/frontend/mobile/.env"
 EXT_ENV="$REPO_ROOT/frontend/extension/.env"
 OUTPUTS="$(mktemp)"
@@ -70,33 +72,67 @@ if [[ -n "${auth_origin:-}" ]] && ! has_context "authWebappOrigin" "$@"; then
   extra_args+=(-c "authWebappOrigin=$auth_origin")
 fi
 
-echo "Deploying to region ${CDK_DEFAULT_REGION} (profile ${AWS_PROFILE:-default})"
+DEFAULT_STACK="ConsciouslyBackend"
 
-# Default to live legacy stack — never deploy ConsciouslyBackend unless named explicitly
-# (and ConsciouslyBackend is only in the CDK app when CONSCIOUSLY_STACK=1).
 stack_named=0
+target_stack=""
+skip_next=0
 for a in "$@"; do
+  if [[ "$skip_next" -eq 1 ]]; then
+    skip_next=0
+    continue
+  fi
   case "$a" in
+    --profile | --outputs-file | --require-approval | --app | --context | -c | -o )
+      skip_next=1
+      ;;
+    --profile=* | --outputs-file=* | --require-approval=* | --app=* | --context=* | -c* | -o* )
+      ;;
     -* ) ;;
+    ConsciouslyBackend | MedimadeBackend )
+      stack_named=1
+      target_stack="$a"
+      break
+      ;;
     * )
       stack_named=1
+      target_stack="$a"
       break
       ;;
   esac
 done
 
+if [[ "$stack_named" -eq 0 ]]; then
+  target_stack="$DEFAULT_STACK"
+fi
+
+# ConsciouslyBackend is only in the CDK app when enabled via env or context.
+if [[ "$target_stack" == "ConsciouslyBackend" ]]; then
+  export CONSCIOUSLY_STACK=1
+  if ! has_context "consciouslyStack" "$@"; then
+    extra_args+=(-c "consciouslyStack=true")
+  fi
+fi
+
+echo "Deploying ${target_stack} to region ${CDK_DEFAULT_REGION} (profile ${AWS_PROFILE:-default})"
+
 if ((${#extra_args[@]})); then
   if [[ "$stack_named" -eq 0 ]]; then
-    npx cdk deploy MedimadeBackend "${extra_args[@]}" "$@" --outputs-file "$OUTPUTS"
+    npx cdk deploy "$DEFAULT_STACK" "${extra_args[@]}" "$@" --outputs-file "$OUTPUTS"
   else
     npx cdk deploy "${extra_args[@]}" "$@" --outputs-file "$OUTPUTS"
   fi
 else
   if [[ "$stack_named" -eq 0 ]]; then
-    npx cdk deploy MedimadeBackend "$@" --outputs-file "$OUTPUTS"
+    npx cdk deploy "$DEFAULT_STACK" "$@" --outputs-file "$OUTPUTS"
   else
     npx cdk deploy "$@" --outputs-file "$OUTPUTS"
   fi
 fi
 
-node "$BACKEND_ROOT/scripts/write-webapp-env-from-outputs.mjs" "$OUTPUTS" "$WEBAPP_ENV" "$MOBILE_ENV" "$EXT_ENV"
+node "$BACKEND_ROOT/scripts/write-webapp-env-from-outputs.mjs" \
+  "$OUTPUTS" \
+  "$MARKETING_ENV" \
+  "$MOBILE_ENV" \
+  "$EXT_ENV" \
+  "$WEBAPP_ENV"

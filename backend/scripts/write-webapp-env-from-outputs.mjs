@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Write frontend/marketing/.env (and optional mobile/extension) from either:
+ * Write frontend env files from either:
  *   - a CDK `--outputs-file` JSON, or
  *   - the live CloudFormation stack (always fresh — preferred in CI)
  *
  * Usage:
- *   node write-webapp-env-from-outputs.mjs <cdk-outputs.json> <frontend/marketing/.env> [mobile/.env] [extension/.env]
- *   node write-webapp-env-from-outputs.mjs --stack MedimadeBackend <frontend/marketing/.env> [mobile/.env] [extension/.env]
+ *   node write-webapp-env-from-outputs.mjs <cdk-outputs.json> <marketing/.env> [mobile/.env] [extension/.env] [webapp/.env]
+ *   node write-webapp-env-from-outputs.mjs --stack ConsciouslyBackend <marketing/.env> [mobile/.env] [extension/.env] [webapp/.env]
  */
 import { execFileSync } from "child_process";
 import fs from "fs";
@@ -45,14 +45,24 @@ function outputsFromCloudFormation(stackName, region) {
   return { [stackName]: map };
 }
 
+/** Prefer live ConsciouslyBackend outputs when both stacks are present. */
+function pickStackOutputs(o) {
+  if (o.ConsciouslyBackend) return o.ConsciouslyBackend;
+  if (o.MedimadeBackend) return o.MedimadeBackend;
+  const keys = Object.keys(o);
+  return keys.length ? o[keys[0]] : undefined;
+}
+
 /** @type {Record<string, Record<string, string>>} */
 let o;
 /** @type {string} */
-let webappEnv;
+let marketingEnv;
 /** @type {string | undefined} */
 let mobileEnv;
 /** @type {string | undefined} */
 let extensionEnv;
+/** @type {string | undefined} */
+let viteWebappEnv;
 
 if (args[0] === "--stack") {
   /** @type {string | undefined} */
@@ -73,34 +83,36 @@ if (args[0] === "--stack") {
     i += 1;
   }
   const stackName = rest[0]?.trim();
-  webappEnv = rest[1];
+  marketingEnv = rest[1];
   mobileEnv = rest[2];
   extensionEnv = rest[3];
-  if (!stackName || !webappEnv || webappEnv.startsWith("--")) {
+  viteWebappEnv = rest[4];
+  if (!stackName || !marketingEnv || marketingEnv.startsWith("--")) {
     console.error(
-      "Usage: node write-webapp-env-from-outputs.mjs --stack <StackName> [--region <region>] <webapp/.env> [mobile/.env] [extension/.env]",
+      "Usage: node write-webapp-env-from-outputs.mjs --stack <StackName> [--region <region>] <marketing/.env> [mobile/.env] [extension/.env] [webapp/.env]",
     );
     process.exit(1);
   }
   o = outputsFromCloudFormation(stackName, region);
 } else {
   const outputsPath = args[0];
-  webappEnv = args[1];
+  marketingEnv = args[1];
   mobileEnv = args[2];
   extensionEnv = args[3];
-  if (!outputsPath || !webappEnv) {
+  viteWebappEnv = args[4];
+  if (!outputsPath || !marketingEnv) {
     console.error(
-      "Usage: node write-webapp-env-from-outputs.mjs <cdk-outputs.json> <webapp/.env> [mobile/.env] [extension/.env]",
+      "Usage: node write-webapp-env-from-outputs.mjs <cdk-outputs.json> <marketing/.env> [mobile/.env] [extension/.env] [webapp/.env]",
     );
     console.error(
-      "   or: node write-webapp-env-from-outputs.mjs --stack MedimadeBackend <webapp/.env> [mobile/.env] [extension/.env]",
+      "   or: node write-webapp-env-from-outputs.mjs --stack ConsciouslyBackend <marketing/.env> [mobile/.env] [extension/.env] [webapp/.env]",
     );
     process.exit(1);
   }
   o = JSON.parse(fs.readFileSync(outputsPath, "utf8"));
 }
 
-const stack = o.MedimadeBackend ?? o[Object.keys(o)[0]];
+const stack = pickStackOutputs(o);
 const apiUrl = stack?.ApiUrl;
 const chatUrl = stack?.MedimadeChatUrl;
 const assistantChatUrl = stack?.AssistantChatUrl;
@@ -229,7 +241,31 @@ const expoPairs = [
     : []),
 ];
 
-mergeEnvFile(webappEnv, nextPairs);
+const vitePairs = [
+  ["VITE_MEDIMADE_API_URL", apiUrl],
+  ["VITE_MEDIMADE_CHAT_URL", chatUrl],
+  ...(assistantChatUrl && typeof assistantChatUrl === "string"
+    ? [["VITE_ASSISTANT_CHAT_URL", assistantChatUrl]]
+    : []),
+  ...(scriptLabUrl && typeof scriptLabUrl === "string"
+    ? [["VITE_MEDIMADE_SCRIPT_LAB_URL", scriptLabUrl]]
+    : []),
+  ...(mediaBaseUrl ? [["VITE_MEDIMADE_MEDIA_BASE_URL", mediaBaseUrl]] : []),
+  ...(stack?.CognitoUserPoolId && typeof stack.CognitoUserPoolId === "string"
+    ? [["VITE_COGNITO_USER_POOL_ID", stack.CognitoUserPoolId]]
+    : []),
+  ...(stack?.CognitoClientId && typeof stack.CognitoClientId === "string"
+    ? [["VITE_COGNITO_CLIENT_ID", stack.CognitoClientId]]
+    : []),
+  ...(stack?.CognitoDomain && typeof stack.CognitoDomain === "string"
+    ? [["VITE_COGNITO_DOMAIN", stack.CognitoDomain]]
+    : []),
+  ...(stack?.CognitoIssuer && typeof stack.CognitoIssuer === "string"
+    ? [["VITE_COGNITO_ISSUER", stack.CognitoIssuer]]
+    : []),
+];
+
+mergeEnvFile(marketingEnv, nextPairs);
 console.log(
   `Wrote NEXT_PUBLIC_MEDIMADE_API_URL, NEXT_PUBLIC_MEDIMADE_CHAT_URL${
     assistantChatUrl ? ", NEXT_PUBLIC_ASSISTANT_CHAT_URL" : ""
@@ -237,7 +273,7 @@ console.log(
     scriptLabUrl ? ", NEXT_PUBLIC_MEDIMADE_SCRIPT_LAB_URL" : ""
   }${mediaBaseUrl ? ", NEXT_PUBLIC_MEDIMADE_MEDIA_BASE_URL" : ""}${
     blogRevalidateSecret ? ", BLOG_REVALIDATE_SECRET" : ""
-  } to ${webappEnv}`,
+  } to ${marketingEnv}`,
 );
 
 if (mobileEnv) {
@@ -253,4 +289,9 @@ if (extensionEnv) {
   const extPairs = [["VITE_MEDIMADE_API_URL", apiUrl]];
   mergeEnvFile(extensionEnv, extPairs);
   console.log(`Wrote VITE_MEDIMADE_API_URL to ${extensionEnv}`);
+}
+
+if (viteWebappEnv) {
+  mergeEnvFile(viteWebappEnv, vitePairs);
+  console.log(`Wrote VITE_MEDIMADE_* to ${viteWebappEnv}`);
 }

@@ -34,6 +34,8 @@ export class DualStemPlayer {
   private dryEnded = false;
   private wetEnded = false;
   private inFlight: Promise<void> | null = null;
+  /** Bumped on pause/stop so in-flight play()/start() cannot restart audio after pause. */
+  private playEpoch = 0;
   private durationWaiters: Array<(n: number) => void> = [];
   onEnded: (() => void) | null = null;
 
@@ -149,15 +151,21 @@ export class DualStemPlayer {
     bakedUrl: string | null = null,
   ): Promise<void> {
     void this.ensureCtx().resume();
-    return this.load(dryUrl, wetUrl, dial, bakedUrl).then(() => this.play());
+    const epoch = this.playEpoch;
+    return this.load(dryUrl, wetUrl, dial, bakedUrl).then(() => {
+      if (epoch !== this.playEpoch) return;
+      return this.play();
+    });
   }
 
   async play(): Promise<void> {
+    const epoch = this.playEpoch;
     const ctx = this.ensureCtx();
     void ctx.resume();
     if (this.mode === "none" && this.loadKey) {
       await this.load(this.dryUrl, this.wetUrl || null, this.dial, this.bakedUrl || null);
     }
+    if (epoch !== this.playEpoch) return;
     if (this.mode === "baked") {
       this.playBaked();
       return;
@@ -168,13 +176,18 @@ export class DualStemPlayer {
   }
 
   pause() {
-    if (!this.playing) return;
-    this.offset = this.currentTime;
+    if (this.playing) {
+      this.offset = this.currentTime;
+    }
+    // Always stop sources — `playing` can be false while BufferSources / baked
+    // audio are still audible (stale async play, or finishNatural without stop).
+    this.playEpoch += 1;
     this.stopSources();
     this.playing = false;
   }
 
   stop() {
+    this.playEpoch += 1;
     this.offset = 0;
     this.stopSources();
     this.playing = false;
@@ -288,7 +301,9 @@ export class DualStemPlayer {
 
   private playBaked() {
     const el = this.ensureBakedEl();
+    const epoch = this.playEpoch;
     this.stopSources();
+    if (epoch !== this.playEpoch) return;
     this.ignoreEnded = false;
     if (el.src !== this.bakedUrl) el.src = this.bakedUrl;
     try {
@@ -297,9 +312,17 @@ export class DualStemPlayer {
       /* */
     }
     this.playing = true;
-    void el.play().catch(() => {
-      this.playing = false;
-    });
+    void el
+      .play()
+      .then(() => {
+        if (epoch !== this.playEpoch) {
+          el.pause();
+          this.playing = false;
+        }
+      })
+      .catch(() => {
+        if (epoch === this.playEpoch) this.playing = false;
+      });
     this.armEndTimer();
   }
 
@@ -351,6 +374,7 @@ export class DualStemPlayer {
   private finishNatural() {
     if (this.ignoreEnded || !this.playing) return;
     this.clearEndTimer();
+    this.stopSources();
     this.playing = false;
     this.offset = 0;
     this.onEnded?.();

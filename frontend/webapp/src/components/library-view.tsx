@@ -4,7 +4,11 @@ import {
   useLibraryPlayer,
 } from "@/components/library-player-provider";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { IconAdjustmentsHorizontal, IconPlus } from "@tabler/icons-react";
+import {
+  IconAdjustmentsHorizontal,
+  IconPlus,
+  IconSparkles,
+} from "@tabler/icons-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
 import {
@@ -554,12 +558,36 @@ function programDayLibraryTitle(day: {
   );
 }
 
+/** Exactly 3 rows of text-sm / leading-5 (same as meditation list cards). */
+const PROGRAM_DESC_BLOCK_MIN_PX = 60;
+/** text-xl / sm:text-2xl display title — one line. */
+const PROGRAM_TITLE_LINE_PX = 32;
+/** pt-3 + Explore button row. */
+const PROGRAM_FOOTER_PX = 48;
+/**
+ * Program shelf cover edge: title + 3 desc rows + footer.
+ * Kept square; width matches reserved content height.
+ */
+const PROGRAM_COVER_EDGE_PX =
+  PROGRAM_TITLE_LINE_PX + 6 + PROGRAM_DESC_BLOCK_MIN_PX + PROGRAM_FOOTER_PX;
+
 /** Map a program class onto the shared library card shape so we reuse renderItem. */
 function libraryItemFromProgramDay(
   day: LibraryProgramDay,
   program: LibraryProgram,
 ): LibraryMeditationItem {
   const musicKey = day.backgroundMusicKey.trim();
+  const firstDay = program.days.reduce<LibraryProgramDay | null>((best, d) => {
+    if (!best || d.dayNumber < best.dayNumber) return d;
+    return best;
+  }, null);
+  const inheritsProgramCover =
+    Boolean(firstDay) &&
+    firstDay!.id === day.id &&
+    day.title.trim().toLowerCase() === "introduction";
+  const coverImageUrl = inheritsProgramCover
+    ? program.coverImageUrl ?? day.coverImageUrl
+    : day.coverImageUrl;
   return {
     id: `program-day:${program.id}:${day.id}`,
     sk: null,
@@ -595,6 +623,8 @@ function libraryItemFromProgramDay(
     backgroundNatureGain: 0,
     backgroundDrumsGain: 0,
     backgroundNoiseGain: 0,
+    coverImageUrl,
+    coverImageKey: null,
   };
 }
 
@@ -2190,6 +2220,18 @@ export default function LibraryView({
   const mobileFilterActive =
     sortBy !== "newest" || categoryFilter !== "all";
 
+  const exploringProgram =
+    libraryTab === "programs" && exploringProgramId
+      ? (programs.find((p) => p.id === exploringProgramId) ?? null)
+      : null;
+
+  const makeItYourOwnClassName =
+    "inline-flex cursor-pointer items-center gap-1.5 rounded-xl text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 hybrid:![background-image:linear-gradient(145deg,color-mix(in_srgb,var(--accent-button)_78%,white),var(--accent-button)_38%,#c9b4e8)]";
+  const makeItYourOwnStyle = {
+    backgroundImage:
+      "linear-gradient(145deg, color-mix(in srgb, var(--accent-button) 82%, white), var(--accent-button) 52%, color-mix(in srgb, var(--accent-button) 88%, black))",
+  } as const;
+
   const mobileSearchFilterRow = (
     <div className="flex items-center gap-2 md:hidden">
       <SearchInput
@@ -2278,9 +2320,56 @@ export default function LibraryView({
           </Link>
         </div>
         {libraryTab === "meditations" ? (
-          <h1 className="mt-5 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl md:mt-2">
-            A library for your inner life
-          </h1>
+          <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
+            <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+              A library for your inner life
+            </h1>
+            <Link
+              to="/meditate/create"
+              className="hidden shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 md:inline-flex"
+            >
+              + Create new
+            </Link>
+          </div>
+        ) : null}
+        {libraryTab === "community" ? (
+          <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
+            <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+              Quiet practices, openly shared
+            </h1>
+            <Link
+              to="/meditate/create"
+              className="hidden shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 md:inline-flex"
+            >
+              + Create new
+            </Link>
+          </div>
+        ) : null}
+        {libraryTab === "programs" ? (
+          <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
+            <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+              {exploringProgram
+                ? exploringProgram.title
+                : "Guided courses, one lesson at a time"}
+            </h1>
+            {exploringProgram ? (
+              <Link
+                to="/meditate/create/from-prompt"
+                className={`hidden shrink-0 px-3 py-2.5 md:inline-flex ${makeItYourOwnClassName}`}
+                style={makeItYourOwnStyle}
+              >
+                <IconSparkles size={16} stroke={2} aria-hidden />
+                Make it your own
+              </Link>
+            ) : (
+              <Link
+                to="/meditate/create"
+                className="hidden shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 md:inline-flex"
+              >
+                + Create new
+              </Link>
+            )}
+          </div>
         ) : null}
         {libraryTab === "meditations" ? (
           <>
@@ -2372,50 +2461,32 @@ export default function LibraryView({
               ) : null}
             </div>
             {searchInput}
-            <div className="shrink-0">{layoutToggle}</div>
-            <Link
-              to="/meditate/create"
-              className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
-            >
-              + Create new
-            </Link>
+            <div className="ml-auto shrink-0">{layoutToggle}</div>
           </div>
           </>
-        ) : null}
-        {libraryTab === "programs" ? (
-          <div className="mt-3 hidden justify-end md:flex">
-            <Link
-              to="/meditate/create"
-              className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
-            >
-              + Create new
-            </Link>
-          </div>
         ) : null}
       </header>
 
       {libraryTab === "community" ? (
         <>
+          <p className="mt-6 font-display text-lg font-medium tracking-tight text-foreground sm:text-xl">
+            Pick a category
+          </p>
           <CommunityCategoryGrid
             selected={categoryFilter}
             onSelect={setCategoryFilter}
+            className="mt-3 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
           />
           <div
             className="md:hidden"
-            style={{ height: 24, minHeight: 24, width: "100%" }}
+            style={{ height: 40, minHeight: 40, width: "100%" }}
             aria-hidden
           />
           {mobileSearchFilterRow}
-          <div className="mt-3 hidden w-full flex-wrap items-center gap-3 md:flex">
+          <div className="mt-8 hidden w-full flex-wrap items-center gap-3 md:flex">
             <div className="shrink-0">{sortDropdown}</div>
             {searchInput}
-            <div className="shrink-0">{layoutToggle}</div>
-            <Link
-              to="/meditate/create"
-              className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
-            >
-              + Create new
-            </Link>
+            <div className="ml-auto shrink-0">{layoutToggle}</div>
           </div>
         </>
       ) : null}
@@ -2480,20 +2551,21 @@ export default function LibraryView({
                 >
                   <span aria-hidden>←</span> All programs
                 </button>
-                <header className="mb-6">
-                  <h2 className="font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-                    {exploring.title}
-                  </h2>
-                  {exploring.description ? (
-                    <p className="mt-2 w-full text-sm leading-relaxed text-muted sm:text-base">
-                      {exploring.description}
+                {(exploring.description || exploring.days.length > 0) ? (
+                  <header className="mb-6">
+                    {exploring.description ? (
+                      <p className="w-full text-sm leading-relaxed text-muted sm:text-base">
+                        {exploring.description}
+                      </p>
+                    ) : null}
+                    <p
+                      className={`${exploring.description ? "mt-2" : ""} text-xs text-muted`}
+                    >
+                      {exploring.days.length} lesson
+                      {exploring.days.length === 1 ? "" : "s"}
                     </p>
-                  ) : null}
-                  <p className="mt-2 text-xs text-muted">
-                    {exploring.days.length} lesson
-                    {exploring.days.length === 1 ? "" : "s"}
-                  </p>
-                </header>
+                  </header>
+                ) : null}
                 {exploring.days.length === 0 ? (
                   <p className="text-sm text-muted">No lessons ready yet.</p>
                 ) : (
@@ -2513,34 +2585,58 @@ export default function LibraryView({
                 return (
                   <li
                     key={program.id}
-                    className="flex w-full min-w-0 gap-4 rounded-2xl border border-border bg-card p-4 sm:gap-5 sm:p-5"
+                    className="flex w-full min-w-0 items-start gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:gap-5 sm:p-5"
                   >
                     <div
-                      className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-background sm:h-28 sm:w-28"
+                      className="shrink-0 overflow-hidden rounded-xl bg-background"
+                      style={{
+                        width: PROGRAM_COVER_EDGE_PX,
+                        height: PROGRAM_COVER_EDGE_PX,
+                        minWidth: PROGRAM_COVER_EDGE_PX,
+                        minHeight: PROGRAM_COVER_EDGE_PX,
+                      }}
                       aria-hidden
                     >
-                      <svg
-                        viewBox="0 0 48 48"
-                        className="h-10 w-10 text-muted/50"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      >
-                        <rect x="8" y="12" width="32" height="24" rx="3" />
-                        <circle cx="18" cy="22" r="3" />
-                        <path d="M8 30l8-6 6 4 10-8 8 6" />
-                      </svg>
+                      {program.coverImageUrl ? (
+                        <img
+                          src={program.coverImageUrl}
+                          alt=""
+                          width={PROGRAM_COVER_EDGE_PX}
+                          height={PROGRAM_COVER_EDGE_PX}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <svg
+                            viewBox="0 0 48 48"
+                            className="h-10 w-10 text-muted/50"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                          >
+                            <rect x="8" y="12" width="32" height="24" rx="3" />
+                            <circle cx="18" cy="22" r="3" />
+                            <path d="M8 30l8-6 6 4 10-8 8 6" />
+                          </svg>
+                        </div>
+                      )}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col">
                       <h2 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
                         {program.title}
                       </h2>
                       {program.description ? (
-                        <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-muted">
+                        <p
+                          className="mt-1.5 line-clamp-3 text-sm leading-5 text-muted"
+                          style={{ minHeight: PROGRAM_DESC_BLOCK_MIN_PX }}
+                        >
                           {program.description}
                         </p>
                       ) : (
-                        <p className="mt-1.5 text-sm text-muted">
+                        <p
+                          className="mt-1.5 text-sm leading-5 text-muted"
+                          style={{ minHeight: PROGRAM_DESC_BLOCK_MIN_PX }}
+                        >
                           {lessonCount} lesson{lessonCount === 1 ? "" : "s"}
                           {lessonCount === 0 ? " · audio coming soon" : ""}
                         </p>
@@ -2555,10 +2651,18 @@ export default function LibraryView({
                         <button
                           type="button"
                           onClick={() => openProgram(program)}
-                          className="cursor-pointer rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+                          className="cursor-pointer rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 hybrid:!bg-surface-2 hybrid:!text-foreground"
                         >
-                          Explore course
+                          Explore course →
                         </button>
+                        <Link
+                          to="/meditate/create/from-prompt"
+                          className={`px-4 py-2 ${makeItYourOwnClassName}`}
+                          style={makeItYourOwnStyle}
+                        >
+                          <IconSparkles size={16} stroke={2} aria-hidden />
+                          Make it your own
+                        </Link>
                       </div>
                     </div>
                   </li>

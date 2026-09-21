@@ -1,5 +1,5 @@
-
 import type { CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import {
   LIBRARY_MEDITATION_CATEGORIES,
   type LibraryMeditationCategory,
@@ -9,6 +9,11 @@ import {
   MEDITATION_TYPE_PILL_CLASS,
   meditationTypePillColors,
 } from "@/lib/meditation-type-pill";
+import { fetchLibraryCategoryImages } from "@/lib/medimade-api";
+
+/** Soft elevation for borderless Community cover tiles (shadow-sm is nearly invisible without a border). */
+const CATEGORY_COVER_SHADOW =
+  "shadow-[0_4px_14px_rgb(30_37_48_/_0.12),0_1px_4px_rgb(30_37_48_/_0.08)]";
 
 /** Lucide (ISC) paths, 24×24. */
 function iconProps(className: string) {
@@ -163,6 +168,8 @@ export function MeditationTypeCardGrid({
   className = "",
   titles,
   variant = "default",
+  imageUrls,
+  imagesLoading = false,
 }: {
   selected: string;
   onSelect: (value: string) => void;
@@ -171,6 +178,10 @@ export function MeditationTypeCardGrid({
   titles?: Partial<Record<string, string>>;
   /** `picker` = Create › By type tiles; `default` keeps community / legacy chrome. */
   variant?: "default" | "picker";
+  /** Optional cover images keyed by category label (Community cards). */
+  imageUrls?: Partial<Record<string, string>>;
+  /** While true, Community cover slots show grey squares instead of icon cards. */
+  imagesLoading?: boolean;
 }) {
   const cards: Array<{
     value: string;
@@ -188,6 +199,40 @@ export function MeditationTypeCardGrid({
   ];
 
   const isPicker = variant === "picker";
+  const [coversReady, setCoversReady] = useState(false);
+
+  const coverUrlsKey = cards
+    .map((c) => imageUrls?.[c.value]?.trim() || "")
+    .filter(Boolean)
+    .join("\n");
+
+  useEffect(() => {
+    if (isPicker) return;
+    if (imagesLoading) {
+      setCoversReady(false);
+      return;
+    }
+    const urls = coverUrlsKey ? coverUrlsKey.split("\n") : [];
+    if (urls.length === 0) {
+      setCoversReady(true);
+      return;
+    }
+    let cancelled = false;
+    let remaining = urls.length;
+    const mark = () => {
+      remaining -= 1;
+      if (remaining <= 0 && !cancelled) setCoversReady(true);
+    };
+    for (const url of urls) {
+      const img = new Image();
+      img.onload = mark;
+      img.onerror = mark;
+      img.src = url;
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isPicker, imagesLoading, coverUrlsKey]);
 
   return (
     <div
@@ -204,6 +249,25 @@ export function MeditationTypeCardGrid({
         const [light] =
           CATEGORY_CARD_FILLS[fillIndex % CATEGORY_CARD_FILLS.length]!;
         const title = titles?.[card.value];
+        const imageUrl = imageUrls?.[card.value]?.trim() || "";
+        const showCoverSlot = !isPicker && (imagesLoading || Boolean(imageUrl));
+
+        if (showCoverSlot) {
+          return (
+            <CategoryCoverCard
+              key={card.value}
+              imageUrl={imageUrl}
+              label={card.label}
+              active={active}
+              title={title}
+              onSelect={() => onSelect(card.value)}
+              reveal={coversReady && Boolean(imageUrl)}
+              staggerIndex={i}
+              busy={imagesLoading || !coversReady}
+            />
+          );
+        }
+
         return (
           <button
             key={card.value}
@@ -226,10 +290,10 @@ export function MeditationTypeCardGrid({
                       ? "border-[1.5px] border-solid border-accent"
                       : "border-[0.5px] border-solid border-transparent hover:border-card-warm-border hover:brightness-[0.96] dark:hover:brightness-[0.96]"
                   }`
-                : `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-xl border px-2.5 py-2 text-left text-[#1E2530] shadow-sm transition-[box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-2xl sm:px-2 sm:py-2.5 sm:text-center ${
+                : `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-md border-0 px-2.5 py-2 text-left text-[#1E2530] ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-lg sm:px-2 sm:py-2.5 sm:text-center ${
                     active
-                      ? "border-accent ring-2 ring-accent ring-offset-2 ring-offset-background"
-                      : "border-transparent"
+                      ? "ring-2 ring-accent ring-offset-2 ring-offset-background"
+                      : ""
                   }`
             }
           >
@@ -243,7 +307,7 @@ export function MeditationTypeCardGrid({
               </span>
             ) : (
               <span className="flex min-w-0 flex-1 items-center sm:h-[2.5rem] sm:w-full sm:flex-none sm:shrink-0 sm:justify-center md:h-[2.75rem]">
-                <span className="truncate text-sm font-semibold leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-center sm:text-base">
+                <span className="truncate font-display text-sm font-medium leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-center sm:text-base">
                   {card.label}
                 </span>
               </span>
@@ -252,6 +316,84 @@ export function MeditationTypeCardGrid({
         );
       })}
     </div>
+  );
+}
+
+/** Stagger between cards once every cover is decoded — short flush. */
+const COVER_STAGGER_MS = 28;
+const COVER_FADE_MS = 180;
+
+function CategoryCoverCard({
+  imageUrl,
+  label,
+  active,
+  title,
+  onSelect,
+  reveal,
+  staggerIndex,
+  busy,
+}: {
+  imageUrl: string;
+  label: string;
+  active: boolean;
+  title?: string;
+  onSelect: () => void;
+  /** Fade the cover layer in (after all images are ready). */
+  reveal: boolean;
+  staggerIndex: number;
+  busy: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={active}
+      aria-busy={busy}
+      title={title}
+      onClick={onSelect}
+      className={`relative aspect-square w-full min-w-0 cursor-pointer overflow-hidden rounded-md border-0 bg-border/50 ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] hover:brightness-[0.97] sm:rounded-lg ${
+        active
+          ? "ring-2 ring-accent ring-offset-2 ring-offset-background"
+          : ""
+      }`}
+    >
+      {/* Grey placeholder + label while decoding / waiting to flush. */}
+      <span
+        className={`absolute inset-x-0 bottom-0 z-[1] flex min-h-[2.5rem] items-center justify-center bg-black/40 px-2 py-1 transition-opacity duration-150 sm:min-h-[2.75rem] sm:px-2.5 sm:py-1.5 ${
+          reveal ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        <span className="line-clamp-2 text-center font-display text-sm font-medium leading-tight text-white/90 sm:text-base">
+          {label}
+        </span>
+      </span>
+      <div
+        className={`absolute inset-0 transition-opacity ease-out ${
+          reveal ? "opacity-100" : "opacity-0"
+        }`}
+        style={{
+          transitionDuration: `${COVER_FADE_MS}ms`,
+          transitionDelay: reveal ? `${staggerIndex * COVER_STAGGER_MS}ms` : "0ms",
+        }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              filter:
+                "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
+            }}
+          />
+        ) : null}
+        <span className="absolute inset-x-0 bottom-0 flex min-h-[2.5rem] items-center justify-center bg-black/55 px-2 py-1 sm:min-h-[2.75rem] sm:px-2.5 sm:py-1.5">
+          <span className="line-clamp-2 text-center font-display text-sm font-medium leading-tight text-white sm:text-base">
+            {label}
+          </span>
+        </span>
+      </div>
+    </button>
   );
 }
 
@@ -287,11 +429,45 @@ export function CommunityCategoryGrid({
   onSelect: (value: string) => void;
   className?: string;
 }) {
+  const [imageUrls, setImageUrls] = useState<Partial<Record<string, string>>>(
+    {},
+  );
+  const [imagesLoading, setImagesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setImagesLoading(true);
+    void fetchLibraryCategoryImages()
+      .then((images) => {
+        if (cancelled) return;
+        const map: Partial<Record<string, string>> = {};
+        for (const img of images) {
+          if (img.category && img.imageUrl) {
+            map[img.category] = img.imageUrl;
+            /* Admin stores "All"; Community grid card value is "all". */
+            if (img.category === "All") map.all = img.imageUrl;
+          }
+        }
+        setImageUrls(map);
+      })
+      .catch(() => {
+        /* fall back to icon cards */
+      })
+      .finally(() => {
+        if (!cancelled) setImagesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <MeditationTypeCardGrid
       selected={selected}
       onSelect={onSelect}
       includeAll
+      imageUrls={imageUrls}
+      imagesLoading={imagesLoading}
       className={
         className ??
         "mt-8 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"

@@ -433,10 +433,10 @@ export function LibraryAudioStrip({
 
   function pausePlayback() {
     clearVoiceIntro();
-    if (!ambientMix) {
-      audioRef.current?.pause();
-      dualRef.current?.pause();
-    }
+    // Always pause voice — beds follow `playing` via syncGaplessBed. Skipping
+    // dual/audio when ambientMix left live-mix voice running after pause.
+    audioRef.current?.pause();
+    dualRef.current?.pause();
     if (track) onPlayingChange?.(track.s3Key, false);
     setPlaying(false);
   }
