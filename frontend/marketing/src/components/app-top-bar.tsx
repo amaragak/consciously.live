@@ -166,7 +166,7 @@ function BreadcrumbCrumb({
     return (
       <span
         className={`${textClass} ${
-          last ? "text-foreground" : "italic text-muted"
+          last ? "text-foreground" : "app-breadcrumb-plain italic text-muted"
         }`}
       >
         {crumb.label}
@@ -176,7 +176,7 @@ function BreadcrumbCrumb({
   return (
     <Link
       href={crumb.href}
-      className={`${textClass} italic text-accent-link underline-offset-2 hover:underline`}
+      className={`${textClass} app-breadcrumb-parent underline-offset-2 hover:underline`}
     >
       {crumb.label}
     </Link>
@@ -270,14 +270,14 @@ function MobileBreadcrumbEllipsis({
                     role="menuitem"
                     href={c.href}
                     onClick={() => setOpen(false)}
-                    className="block truncate italic text-accent-link underline-offset-2 hover:underline"
+                    className="app-breadcrumb-parent block truncate underline-offset-2 hover:underline"
                   >
                     {c.label}
                   </Link>
                 ) : (
                   <span
                     role="menuitem"
-                    className="block truncate italic text-muted"
+                    className="app-breadcrumb-plain block truncate italic text-muted"
                   >
                     {c.label}
                   </span>
@@ -367,7 +367,7 @@ export function AppTopBar({
       : [crumbs[0]!, crumbs[crumbs.length - 1]!];
 
   return (
-    <header className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-border bg-background">
+    <header className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-border bg-nav shadow-[var(--header-shadow)]">
       {/* Desktop: brand aligned with sidebar. Mobile: brand + breadcrumbs left. */}
       <div
         className="relative z-10 hidden h-full shrink-0 items-center px-2 transition-[width] duration-200 ease-out md:flex"

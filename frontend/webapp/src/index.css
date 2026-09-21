@@ -43,6 +43,19 @@
   color-scheme: light;
 }
 
+/** Ancestor crumbs: accent + italic in light/dark; muted upright in hybrid. */
+.app-breadcrumb-parent {
+  color: var(--accent-link);
+  font-style: italic;
+}
+:root.hybrid .app-breadcrumb-parent {
+  color: var(--muted);
+  font-style: normal;
+}
+:root.hybrid .app-breadcrumb-plain {
+  font-style: normal;
+}
+
 html,
 body,
 #root {
@@ -336,7 +349,11 @@ body {
   --color-success: var(--success);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-2-edge: var(--surface-2-edge);
   --color-surface-rail: var(--surface-rail);
+  --color-nav: var(--nav);
+  --color-nav-foreground: var(--nav-foreground);
+  --color-nav-muted: var(--nav-muted);
   --color-nav-active: var(--nav-active);
   --color-gold: var(--gold);
   --color-marketing-ink: var(--marketing-ink);

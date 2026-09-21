@@ -23,6 +23,7 @@ import {
   patchMeditationPublic,
   patchMeditationBackgroundMix,
   patchMeditationRating,
+  patchMeditationDevRefresh,
   backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
   type BackgroundAudioItem,
@@ -784,7 +785,12 @@ export default function LibraryView({
     audioKey: string;
   } | null>(null);
   const [showFishCostTooltip, setShowFishCostTooltip] = useState(false);
+  const [devRefreshBusySk, setDevRefreshBusySk] = useState<string | null>(null);
+  const [devRefreshBusyAction, setDevRefreshBusyAction] = useState<
+    "cover" | "metadata" | null
+  >(null);
   const devUi = useDevUiSettings();
+  const showLibraryDevActions = shouldRenderDevUi(devUi.libraryDevFlyout);
 
   const itemElsRef = useRef<Map<string, HTMLLIElement>>(new Map());
   const focusHandledRef = useRef(false);
@@ -1948,6 +1954,82 @@ export default function LibraryView({
           if (el) itemElsRef.current.set(m.s3Key, el);
           else itemElsRef.current.delete(m.s3Key);
         }}
+        onDevRegenCover={
+          showLibraryDevActions && m.sk && !hideOwnerActions
+            ? () => {
+                const sk = m.sk!;
+                setDevRefreshBusySk(sk);
+                setDevRefreshBusyAction("cover");
+                void patchMeditationDevRefresh(sk, "cover")
+                  .then((out) => {
+                    setItems((prev) =>
+                      prev.map((x) =>
+                        x.sk === sk
+                          ? {
+                              ...x,
+                              coverImageKey: out.coverImageKey ?? x.coverImageKey,
+                              coverImageUrl: out.coverImageUrl ?? x.coverImageUrl,
+                            }
+                          : x,
+                      ),
+                    );
+                  })
+                  .catch((e) => {
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Could not regenerate cover",
+                    );
+                  })
+                  .finally(() => {
+                    setDevRefreshBusySk(null);
+                    setDevRefreshBusyAction(null);
+                  });
+              }
+            : undefined
+        }
+        onDevRederiveTitle={
+          showLibraryDevActions && m.sk && !hideOwnerActions
+            ? () => {
+                const sk = m.sk!;
+                setDevRefreshBusySk(sk);
+                setDevRefreshBusyAction("metadata");
+                void patchMeditationDevRefresh(sk, "metadata")
+                  .then((out) => {
+                    setItems((prev) =>
+                      prev.map((x) =>
+                        x.sk === sk
+                          ? {
+                              ...x,
+                              title: out.title?.trim() || x.title,
+                              description:
+                                out.description?.trim() || x.description,
+                              meditationType:
+                                out.meditationType?.trim() || x.meditationType,
+                            }
+                          : x,
+                      ),
+                    );
+                  })
+                  .catch((e) => {
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Could not re-derive title",
+                    );
+                  })
+                  .finally(() => {
+                    setDevRefreshBusySk(null);
+                    setDevRefreshBusyAction(null);
+                  });
+              }
+            : undefined
+        }
+        devRefreshBusy={
+          m.sk != null && devRefreshBusySk === m.sk
+            ? devRefreshBusyAction
+            : null
+        }
         devOverlay={
           fishCostText ? <FishCostDevTooltip text={fishCostText} /> : null
         }
@@ -1963,7 +2045,7 @@ export default function LibraryView({
                   aria-haspopup="listbox"
                   aria-expanded={sortDropdownOpen}
                   onClick={() => setSortDropdownOpen((v) => !v)}
-                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground/80 hover:border-accent/40"
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground/80 shadow-sm hover:border-accent/40"
                   style={
                     sortButtonWidthPx
                       ? { width: `${sortButtonWidthPx}px` }
@@ -2025,7 +2107,7 @@ export default function LibraryView({
 
   const layoutToggle = (
             <div
-              className="hidden rounded-xl border border-border bg-card p-1 sm:inline-flex"
+              className="hidden rounded-xl border border-border bg-card p-1 shadow-sm sm:inline-flex"
               role="group"
               aria-label="Library layout"
             >
@@ -2035,7 +2117,7 @@ export default function LibraryView({
                 aria-pressed={viewMode === "list"}
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium ${
                   viewMode === "list"
-                    ? "bg-nav-active text-nav-foreground"
+                    ? "bg-surface-2 text-foreground"
                     : "text-muted hover:text-foreground"
                 }`}
               >
@@ -2047,7 +2129,7 @@ export default function LibraryView({
                 aria-pressed={viewMode === "grid"}
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium ${
                   viewMode === "grid"
-                    ? "bg-nav-active text-nav-foreground"
+                    ? "bg-surface-2 text-foreground"
                     : "text-muted hover:text-foreground"
                 }`}
               >
@@ -2059,7 +2141,7 @@ export default function LibraryView({
   const searchInput = (
             <SearchInput
               className="min-w-[10rem] flex-1"
-              inputClassName="bg-card py-2 placeholder:text-muted"
+              inputClassName="bg-card py-2 shadow-sm placeholder:text-muted"
               value={searchQuery}
               onChange={setSearchQuery}
               placeholder="Search title, description, type"
@@ -2068,7 +2150,7 @@ export default function LibraryView({
   );
 
   const mobileToolbarChrome =
-    "h-[38px] rounded-[9px] border border-border bg-card";
+    "h-[38px] rounded-[9px] border border-border bg-card shadow-sm";
   const mobileFilterActive =
     sortBy !== "newest" || categoryFilter !== "all";
 
@@ -2130,6 +2212,7 @@ export default function LibraryView({
             aria-label="Library section"
             value={libraryTab}
             onChange={(id) => goToLibraryTab(id)}
+            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
             options={LIBRARY_MAIN_TABS.map((tab) => ({
               id: tab.id,
               label: tab.label,
@@ -2144,6 +2227,7 @@ export default function LibraryView({
             aria-label="Library section"
             value={libraryTab}
             onChange={(id) => goToLibraryTab(id)}
+            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
             options={LIBRARY_MAIN_TABS.map((tab) => ({
               id: tab.id,
               label: tab.shortLabel,
@@ -2152,22 +2236,27 @@ export default function LibraryView({
           <Link
             href="/meditate/create"
             aria-label="Create new meditation"
-            className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent transition-opacity hover:opacity-90"
+            className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent shadow-sm transition-opacity hover:opacity-90"
           >
             <IconPlus size={22} stroke={2.25} aria-hidden />
           </Link>
         </div>
         {libraryTab === "meditations" ? (
+          <h1 className="mt-5 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl md:mt-2">
+            A library for your inner life
+          </h1>
+        ) : null}
+        {libraryTab === "meditations" ? (
           <>
-            <div className="mt-3 md:hidden">{mobileSearchFilterRow}</div>
-            <div className="mt-3 hidden w-full flex-wrap items-center gap-3 md:flex">
+            <div className="mt-6 md:hidden">{mobileSearchFilterRow}</div>
+            <div className="mt-6 hidden w-full flex-wrap items-center gap-3 md:flex">
             <div className="flex shrink-0 items-center gap-3">
               {libraryTab === "meditations" ? (
               <button
                 type="button"
                 onClick={() => setFavouritesOnly((v) => !v)}
                 aria-pressed={favouritesOnly}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm ${
                   favouritesOnly
                     ? "border-selected/60 bg-selected text-on-selected"
                     : "border-border bg-card text-foreground hover:border-accent/40"
@@ -2186,7 +2275,7 @@ export default function LibraryView({
                   aria-haspopup="listbox"
                   aria-expanded={categoryDropdownOpen}
                   onClick={() => setCategoryDropdownOpen((v) => !v)}
-                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:border-accent/40"
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground shadow-sm hover:border-accent/40"
                   style={
                     categoryButtonWidthPx
                       ? { width: `${categoryButtonWidthPx}px` }
@@ -2250,7 +2339,7 @@ export default function LibraryView({
             <div className="shrink-0">{layoutToggle}</div>
             <Link
               href="/meditate/create"
-              className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+              className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
             >
               + Create new
             </Link>
@@ -2261,7 +2350,7 @@ export default function LibraryView({
           <div className="mt-3 hidden justify-end md:flex">
             <Link
               href="/meditate/create"
-              className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+              className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
             >
               + Create new
             </Link>
@@ -2287,7 +2376,7 @@ export default function LibraryView({
             <div className="shrink-0">{layoutToggle}</div>
             <Link
               href="/meditate/create"
-              className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+              className="ml-auto shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
             >
               + Create new
             </Link>
@@ -2452,9 +2541,9 @@ export default function LibraryView({
       libraryTab === "meditations" &&
       loading &&
       pagedVisibleItems.length === 0 ? (
-        <p className="mt-10 text-sm text-muted">Loading…</p>
+        <p className="mt-6 text-sm text-muted">Loading…</p>
       ) : libraryTab !== "programs" && pagedVisibleItems.length === 0 ? (
-        <p className={`${libraryTab === "community" ? "mt-4" : "mt-10"} w-full min-w-0 text-sm text-muted`}>
+        <p className={`${libraryTab === "community" ? "mt-4" : "mt-6"} w-full min-w-0 text-sm text-muted`}>
           {searchQuery.trim() ? (
             "No meditations match your search."
           ) : libraryTab === "community" ? (
@@ -2471,8 +2560,8 @@ export default function LibraryView({
         <ul
           className={
             viewMode === "grid"
-              ? `${libraryTab === "community" ? "mt-4" : "mt-10"} flex w-full min-w-0 max-w-full flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-4 lg:grid-cols-3`
-              : `${libraryTab === "community" ? "mt-4" : "mt-10"} flex w-full min-w-0 max-w-full flex-col gap-3`
+              ? `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-4 lg:grid-cols-3`
+              : `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col gap-3`
           }
         >
           {pagedVisibleItems.map((m, i) => {

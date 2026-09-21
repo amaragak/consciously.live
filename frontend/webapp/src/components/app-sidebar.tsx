@@ -304,8 +304,9 @@ export function AppSidebar({
         railCollapsed ? "w-14" : "w-[200px]",
         "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out",
         // Mobile: off-canvas until hamburger opens. Desktop: always visible.
-        mobileOpen ? "translate-x-0 shadow-xl" : "-translate-x-full",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
         "md:translate-x-0",
+        "shadow-[var(--sidebar-shadow)]",
       ].join(" "),
     [mobileOpen, railCollapsed],
   );

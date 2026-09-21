@@ -85,7 +85,7 @@ const PAPER_LIGHT = {
 
 /** Independent clone of light — edit these hexes without changing `PAPER_LIGHT`. */
 const PAPER_HYBRID = {
-  background: APP_CANVAS_LIGHT,
+  background: "#f8f4ee",
   foreground: "#1E2530",
   muted: "#7A7566",
   faint: "#A39C8C",
@@ -114,6 +114,10 @@ const PAPER_DARK = {
  */
 const SURFACE_2_LIGHT = "#f1ebe0";
 const SURFACE_2_DARK = "#243041";
+/** Cool panel for hybrid sidebar (`bg-surface-2`). */
+const SURFACE_2_HYBRID = "#ecf0ec";
+/** Slightly deeper hybrid edge — card hover / selected ring. */
+const SURFACE_2_HYBRID_EDGE = mixHex(SURFACE_2_HYBRID, "#1E2530", 0.16);
 
 /**
  * Light-mode cream mixes shared by journal + create “warm card” tokens so both
@@ -274,6 +278,8 @@ type Semantic = {
   surface: string;
   /** Secondary raised surface — see SURFACE_2_* (not `--card`). */
   surface2: string;
+  /** Stronger edge of surface-2 (hybrid card rings / focus). */
+  surface2Edge: string;
   /** List rails — midpoint of main sidebar (`surface2`) and header/canvas. */
   surfaceRail: string;
   onAccent: string;
@@ -345,6 +351,8 @@ type Semantic = {
   createHairlineBorder: string;
   headerBorder: string;
   headerShadow: string;
+  /** Cast to the right of the app sidebar. */
+  sidebarShadow: string;
   headerGlowSun: string;
   headerGlowRight: string;
   proHeaderCtaBg: string;
@@ -400,6 +408,9 @@ function assemble(
     accentButton,
     gold,
     surface2,
+    surface2Edge: dark
+      ? mixHex(SURFACE_2_DARK, WHITE, 0.18)
+      : mixHex(SURFACE_2_LIGHT, "#1E2530", 0.14),
     surfaceRail: mixHex(surface2, headerCanvas, 0.5),
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
@@ -484,6 +495,9 @@ function assemble(
     headerShadow: dark
       ? "0 4px 18px rgb(20 28 38 / 0.28)"
       : "0 4px 18px rgb(80 60 30 / 0.06)",
+    sidebarShadow: dark
+      ? "4px 0 18px rgb(20 28 38 / 0.28)"
+      : "4px 0 18px rgb(80 60 30 / 0.06)",
     headerGlowSun: dark
       ? "radial-gradient(circle, rgb(148 176 200 / 0.22) 0%, rgb(108 138 165 / 0.12) 42%, rgb(51 70 92 / 0) 78%)"
       : "radial-gradient(circle, rgb(255 255 255 / 1) 0%, rgb(255 255 255 / 0.65) 42%, rgb(250 248 243 / 0) 78%)",
@@ -503,6 +517,11 @@ export const dark = assemble(PAPER_DARK, DARK_PRIMARY, true);
 /** Light recipe + navy duotone hero/footer field (Next marketing). */
 export const hybrid = {
   ...assemble(PAPER_HYBRID, ACCENT_BUTTON_FILL, false),
+  /** Header stays on light canvas; only `--background` uses hybrid paper. */
+  nav: NAV_LIGHT,
+  surface2: SURFACE_2_HYBRID,
+  surface2Edge: SURFACE_2_HYBRID_EDGE,
+  surfaceRail: mixHex(SURFACE_2_HYBRID, PAPER_HYBRID.background, 0.5),
   homeHeroBg: "#1A1820",
   homeHeroPattern: `url(${JSON.stringify(AUTH_HERO_PATTERN_DARK)})`,
   homeHeroPatternOpacity: "0.88",
@@ -558,8 +577,8 @@ export function chartSeriesColor(seed: string): string {
 
 function varsFor(s: Semantic, dark: boolean): Record<string, string> {
   return {
-    /** Light: app canvas always matches header base (--nav). */
-    "--background": dark ? s.background : s.nav,
+    /** App canvas. Light keeps paper === nav; hybrid can diverge (header stays `--nav`). */
+    "--background": s.background,
     "--foreground": s.foreground,
     "--muted": s.muted,
     "--faint": s.faint,
@@ -574,6 +593,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--deep": s.deep,
     "--surface": s.surface,
     "--surface-2": s.surface2,
+    "--surface-2-edge": s.surface2Edge,
     "--surface-rail": s.surfaceRail,
     "--on-accent": s.onAccent,
     "--overlay": s.overlay,
@@ -635,6 +655,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--create-hairline-border": s.createHairlineBorder,
     "--header-border": s.headerBorder,
     "--header-shadow": s.headerShadow,
+    "--sidebar-shadow": s.sidebarShadow,
     "--header-glow-sun": s.headerGlowSun,
     "--header-glow-right": s.headerGlowRight,
     "--pro-header-cta-bg": s.proHeaderCtaBg,

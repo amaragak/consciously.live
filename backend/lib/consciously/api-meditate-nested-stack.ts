@@ -67,6 +67,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     authJwtSecret.grantRead(role);
     fishApiKeySecret.grantRead(role);
     claudeApiKeySecret.grantRead(role);
+    openAiApiKeySecret.grantRead(role);
     runpodsApiKeySecret.grantRead(role);
     runpodsUrlSecret.grantRead(role);
     algoliaSecret.grantRead(role);
@@ -505,6 +506,39 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "MeditationMixIntegration",
         meditationMix,
+      ),
+    });
+
+    const libraryMeditationDevRefresh = new lambda_nodejs.NodejsFunction(
+      this,
+      "LibraryMeditationDevRefreshFunction",
+      {
+        entry: path.join(
+          __dirname,
+          "../../lambdas/library-meditation-dev-refresh.ts",
+        ),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(60),
+        memorySize: 512,
+        role,
+        environment: {
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "LibraryMeditationDevRefreshRoute",
+      path: "/library/meditations/dev-refresh",
+      methods: [apigwv2.HttpMethod.PATCH],
+      integration: new integrations.HttpLambdaIntegration(
+        "LibraryMeditationDevRefreshIntegration",
+        libraryMeditationDevRefresh,
       ),
     });
 

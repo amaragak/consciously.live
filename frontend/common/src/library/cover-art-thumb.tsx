@@ -6,6 +6,8 @@ type CoverArtThumbProps = {
   className?: string;
   /** Fixed square sizes in px (inline — not dependent on Tailwind scanning common). */
   size?: "sm" | "md" | "lg" | "card" | "player";
+  /** Overrides `size` when set (e.g. list cards matched to content height). */
+  edgePx?: number;
 };
 
 /** Pixel edge length per size token. */
@@ -13,8 +15,8 @@ const SIZE_PX = {
   sm: 40,
   md: 56,
   lg: 64,
-  /** List card — roughly title + description + meta. */
-  card: 96,
+  /** List card — one title line + 3 desc lines + meta. */
+  card: 113,
   /** Now-playing strip. */
   player: 48,
 } as const;
@@ -47,9 +49,10 @@ export function CoverArtThumb({
   alt = "",
   className = "",
   size = "md",
+  edgePx,
 }: CoverArtThumbProps) {
   const url = typeof src === "string" ? src.trim() : "";
-  const px = SIZE_PX[size];
+  const px = edgePx != null && edgePx > 0 ? Math.round(edgePx) : SIZE_PX[size];
   const dim = { width: px, height: px, minWidth: px, minHeight: px };
   const box = `shrink-0 overflow-hidden rounded-xl ${className}`;
 

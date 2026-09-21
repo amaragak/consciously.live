@@ -4438,3 +4438,38 @@ export async function patchMeditationArchived(
     throw new Error(msg);
   }
 }
+
+
+/** Localhost + libraryDevFlyout — regenerate cover or re-derive title/description. */
+export async function patchMeditationDevRefresh(
+  sk: string,
+  action: "cover" | "metadata",
+): Promise<{
+  coverImageKey?: string | null;
+  coverImageUrl?: string | null;
+  title?: string;
+  description?: string;
+  meditationType?: string;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/library/meditations/dev-refresh`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ sk, action }),
+  });
+  const data = (await res.json()) as {
+    error?: string;
+    detail?: string;
+    coverImageKey?: string | null;
+    coverImageUrl?: string | null;
+    title?: string;
+    description?: string;
+    meditationType?: string;
+  };
+  if (!res.ok) {
+    const msg = data.detail ?? data.error ?? res.statusText;
+    throw new Error(msg);
+  }
+  return data;
+}

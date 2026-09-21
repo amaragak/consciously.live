@@ -31,6 +31,19 @@
   color-scheme: light;
 }
 
+/** Ancestor crumbs: accent + italic in light/dark; muted upright in hybrid. */
+.app-breadcrumb-parent {
+  color: var(--accent-link);
+  font-style: italic;
+}
+:root.hybrid .app-breadcrumb-parent {
+  color: var(--muted);
+  font-style: normal;
+}
+:root.hybrid .app-breadcrumb-plain {
+  font-style: normal;
+}
+
 /* Frosted glass for text-over-image on Ideate vision board surfaces */
 .ideate-frosted-overlay {
   -webkit-backdrop-filter: blur(16px) saturate(140%);
@@ -98,6 +111,7 @@
   --color-deep: var(--deep);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-2-edge: var(--surface-2-edge);
   --color-surface-rail: var(--surface-rail);
   --color-on-accent: var(--on-accent);
   --color-overlay: var(--overlay);

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import * as Switch from "@radix-ui/react-switch";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -20,6 +21,82 @@ import {
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
 import { CoverArtThumb } from "@consciously/common";
+
+/** Exactly 3 rows of text-sm / leading-5 (line-height 1.25rem × 3). */
+const DESC_BLOCK_MIN_PX = 60;
+/** text-lg / leading-snug — one title line (covers never grow with wrapped titles). */
+const TITLE_LINE_PX = 25;
+/** text-xs meta row. */
+const META_LINE_PX = 16;
+/**
+ * List cover edge: 1 title row + 3 desc rows + meta (desktop; pill sits on title row).
+ * Title wrap / show-more must not change this.
+ */
+const LIST_COVER_EDGE_DESKTOP_PX =
+  TITLE_LINE_PX + 4 + DESC_BLOCK_MIN_PX + 8 + META_LINE_PX;
+/** Mobile adds type pill under title + play control in the text column. */
+const LIST_COVER_EDGE_MOBILE_PX =
+  TITLE_LINE_PX +
+  8 +
+  18 + // pill mt-2 + pill
+  4 +
+  DESC_BLOCK_MIN_PX +
+  12 +
+  38 + // play mt-3 + button
+  8 +
+  META_LINE_PX;
+
+function LibraryCardDescription({
+  text,
+  expanded,
+  onExpandedChange,
+}: {
+  text: string;
+  expanded: boolean;
+  onExpandedChange: (next: boolean) => void;
+}) {
+  const ref = useRef<HTMLParagraphElement | null>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      if (expanded) return;
+      setOverflows(el.scrollHeight > el.clientHeight + 1);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, expanded]);
+
+  return (
+    <div className="mt-1">
+      <p
+        ref={ref}
+        className={`text-sm leading-5 text-muted ${
+          expanded ? "" : "line-clamp-3"
+        }`}
+        style={{ minHeight: DESC_BLOCK_MIN_PX }}
+      >
+        {text}
+      </p>
+      {overflows || expanded ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onExpandedChange(!expanded);
+          }}
+          className="mt-0.5 cursor-pointer text-xs font-semibold text-muted underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 function MeditationTypePill({
   label,
@@ -210,6 +287,10 @@ export type LibraryMeditationCardProps = {
   onRemovePending?: (jobId: string) => void;
   itemRef?: (el: HTMLLIElement | null) => void;
   devOverlay?: ReactNode;
+  /** Localhost libraryDevFlyout — regenerate cover / re-derive metadata. */
+  onDevRegenCover?: () => void;
+  onDevRederiveTitle?: () => void;
+  devRefreshBusy?: "cover" | "metadata" | null;
 };
 
 export function LibraryMeditationCard({
@@ -244,9 +325,13 @@ export function LibraryMeditationCard({
   onRemovePending,
   itemRef,
   devOverlay,
+  onDevRegenCover,
+  onDevRederiveTitle,
+  devRefreshBusy = null,
 }: LibraryMeditationCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [howMadeOpen, setHowMadeOpen] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -472,6 +557,11 @@ export function LibraryMeditationCard({
     !hideOwnerActions && Boolean(m.sk) && !m.isDraft && Boolean(onPublicChange);
   const canScript = Boolean(m.scriptText && m.sk != null && onToggleScript);
   const canHowMade = !isPendingRow(item) && !hideOwnerActions;
+  const canDevRefresh =
+    !hideOwnerActions &&
+    !isPendingRow(item) &&
+    Boolean(m.sk) &&
+    (Boolean(onDevRegenCover) || Boolean(onDevRederiveTitle));
   const howMadeProvenance = !isPendingRow(item)
     ? parseMeditationCreationProvenance(item.creationProvenance) ??
       item.creationProvenance ??
@@ -484,7 +574,8 @@ export function LibraryMeditationCard({
     canArchive ||
     canShare ||
     canScript ||
-    canHowMade;
+    canHowMade ||
+    canDevRefresh;
 
   const playControl = isPlaying ? (
     <div className="flex items-center gap-2">
@@ -627,6 +718,36 @@ export function LibraryMeditationCard({
               How this was made
             </button>
           ) : null}
+          {onDevRegenCover ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={devRefreshBusy != null}
+              onClick={() => {
+                onDevRegenCover();
+                setMenuOpen(false);
+              }}
+              className={menuItemClass}
+            >
+              {devRefreshBusy === "cover" ? "Regenerating image…" : "Regen image"}
+            </button>
+          ) : null}
+          {onDevRederiveTitle ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={devRefreshBusy != null}
+              onClick={() => {
+                onDevRederiveTitle();
+                setMenuOpen(false);
+              }}
+              className={menuItemClass}
+            >
+              {devRefreshBusy === "metadata"
+                ? "Re-deriving title…"
+                : "Re-derive title"}
+            </button>
+          ) : null}
           {canShare ? (
             <button
               type="button"
@@ -718,7 +839,12 @@ export function LibraryMeditationCard({
   const mobileCardBody = (
     <div className="sm:hidden">
       <div className="flex items-start gap-3">
-        <CoverArtThumb src={m.coverImageUrl} alt="" size="card" />
+        <CoverArtThumb
+          src={m.coverImageUrl}
+          alt=""
+          edgePx={LIST_COVER_EDGE_MOBILE_PX}
+          className="self-start"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2 pr-9">
             <h2 className="min-w-0 flex-1 font-display text-lg font-medium leading-snug">
@@ -729,9 +855,11 @@ export function LibraryMeditationCard({
             </span>
           </div>
           <MeditationTypePill label={styleLine} className="mt-2" />
-          <p className="mt-2 line-clamp-2 text-sm text-muted">
-            {m.description ?? "—"}
-          </p>
+          <LibraryCardDescription
+            text={m.description ?? "—"}
+            expanded={descExpanded}
+            onExpandedChange={setDescExpanded}
+          />
           <div className="mt-3 flex items-center gap-2">{playControl}</div>
           {metaRow}
         </div>
@@ -749,15 +877,15 @@ export function LibraryMeditationCard({
           menuOpen ? "z-50" : "z-0"
         } ${
           isPlaying
-            ? "border-accent"
-            : "border-border hover:border-accent/80 transition-colors"
+            ? "border-accent hybrid:!border-surface-2-edge"
+            : "border-border hover:border-accent/80 hybrid:hover:!border-surface-2-edge transition-colors"
         }`}
       >
         {devOverlay}
         {isPlaying ? (
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-accent border-accent-pulse"
+            className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-accent border-accent-pulse hybrid:!border-surface-2-edge"
           />
         ) : null}
         {cardMenu ? (
@@ -807,19 +935,19 @@ export function LibraryMeditationCard({
     <>
     <li
       ref={itemRef}
-      className={`group relative min-w-0 overflow-visible rounded-[6px] border bg-card p-4 ${
+      className={`group relative min-w-0 overflow-visible rounded-[6px] border bg-card p-4 shadow-sm ${
         menuOpen ? "z-50" : "z-0"
       } ${
         isPlaying
-          ? "border-accent"
-          : "border-border hover:border-accent/80 transition-colors"
+          ? "border-accent hybrid:!border-surface-2-edge"
+          : "border-border hover:border-accent/80 hybrid:hover:!border-surface-2-edge transition-colors"
       }`}
     >
       {devOverlay}
       {isPlaying ? (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-accent border-accent-pulse"
+          className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-accent border-accent-pulse hybrid:!border-surface-2-edge"
         />
       ) : null}
       {cardMenu ? (
@@ -839,10 +967,15 @@ export function LibraryMeditationCard({
       </div>
       <div className="relative hidden min-w-0 pr-[8.5rem] sm:block">
         <div className="flex min-w-0 items-start gap-3.5">
-          <CoverArtThumb src={m.coverImageUrl} alt="" size="card" />
+          <CoverArtThumb
+            src={m.coverImageUrl}
+            alt=""
+            edgePx={LIST_COVER_EDGE_DESKTOP_PX}
+            className="self-start"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
-              <div className="flex items-start gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
                   {m.title}
                 </h2>
@@ -852,7 +985,11 @@ export function LibraryMeditationCard({
               </div>
               <MeditationTypePill label={styleLine} />
             </div>
-            <div className="mt-1 text-sm text-muted">{m.description ?? "—"}</div>
+            <LibraryCardDescription
+              text={m.description ?? "—"}
+              expanded={descExpanded}
+              onExpandedChange={setDescExpanded}
+            />
             {metaRow}
           </div>
         </div>

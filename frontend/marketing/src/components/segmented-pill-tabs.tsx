@@ -13,6 +13,8 @@ type SegmentedPillTabsProps<T extends string> = {
   onChange: (id: T) => void;
   "aria-label": string;
   className?: string;
+  /** Override active-tab chrome (default: accent fill). */
+  selectedClassName?: string;
   /** Stretch each tab equally across the control (e.g. mobile library). */
   equalWidth?: boolean;
   disabled?: boolean;
@@ -28,6 +30,7 @@ export function SegmentedPillTabs<T extends string>({
   onChange,
   "aria-label": ariaLabel,
   className = "",
+  selectedClassName = "accent-fill-gradient text-on-accent",
   equalWidth = false,
   disabled = false,
 }: SegmentedPillTabsProps<T>) {
@@ -56,7 +59,7 @@ export function SegmentedPillTabs<T extends string>({
               equalWidth ? "min-w-0 flex-1" : "shrink-0"
             } ${
               selected
-                ? "accent-fill-gradient text-on-accent"
+                ? selectedClassName
                 : "text-muted hover:text-foreground"
             }`}
           >
