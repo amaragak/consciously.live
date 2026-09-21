@@ -17,6 +17,8 @@ export type LibraryMeditationFields = {
   liveMix?: boolean;
   dryAudioUrl?: string | null;
   wetAudioUrl?: string | null;
+  /** CDN URL for square cover art (gpt-image), when generated. */
+  coverImageUrl?: string | null;
   voiceFxDial?: number | null;
   durationSeconds?: number | null;
   backgroundNatureKey?: string | null;

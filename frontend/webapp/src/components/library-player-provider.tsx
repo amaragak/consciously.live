@@ -69,6 +69,8 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   const [playingS3Key, setPlayingS3Key] = useState<string | null>(null);
   const [playbackToggleNonce, setPlaybackToggleNonce] = useState(0);
   const [playerStripHeightPx, setPlayerStripHeightPx] = useState(0);
+  /** Strip remounts (HMR) must not restart audio unless we still intend to play. */
+  const [autoplay, setAutoplay] = useState(false);
   const [mixMusic, setMixMusic] = useState<BackgroundAudioItem[]>([]);
   const [mixCompositions, setMixCompositions] = useState<BackgroundAudioItem[]>(
     [],
@@ -160,6 +162,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     stopLibraryVoicePlayback();
     setNowPlaying(null);
     setPlayingS3Key(null);
+    setAutoplay(false);
     setPlayerStripHeightPx(0);
   }, []);
 
@@ -168,6 +171,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     setPlayerStripHeightPx((h) =>
       h > 0 ? h : PLAYER_STRIP_HEIGHT_ESTIMATE_PX,
     );
+    setAutoplay(true);
     startLibraryVoicePlayback(track);
     setNowPlaying(track);
   }, []);
@@ -177,6 +181,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       h > 0 ? h : PLAYER_STRIP_HEIGHT_ESTIMATE_PX,
     );
     const track = trackFromLibraryItem(item);
+    setAutoplay(true);
     startLibraryVoicePlayback(track);
     setNowPlaying(track);
   }, []);
@@ -237,9 +242,11 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
         playbackToggleNonce={playbackToggleNonce}
         bedVolumeApiRef={bedVolumeApiRef}
         onHeightChange={setPlayerStripHeightPx}
-        onPlayingChange={(s3Key, playing) =>
-          setPlayingS3Key(playing ? s3Key : null)
-        }
+        autoplay={autoplay}
+        onPlayingChange={(s3Key, playing) => {
+          setPlayingS3Key(playing ? s3Key : null);
+          setAutoplay(playing);
+        }}
         onPlaybackTimeChange={(s3Key, timeSeconds) => {
           if (playingS3KeyRef.current !== s3Key) return;
           timeListenerRef.current?.(s3Key, timeSeconds);

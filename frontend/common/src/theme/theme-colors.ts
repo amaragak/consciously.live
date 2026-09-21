@@ -83,6 +83,19 @@ const PAPER_LIGHT = {
   surface: WHITE,
 } as const;
 
+/** Independent clone of light — edit these hexes without changing `PAPER_LIGHT`. */
+const PAPER_HYBRID = {
+  background: APP_CANVAS_LIGHT,
+  foreground: "#1E2530",
+  muted: "#7A7566",
+  faint: "#A39C8C",
+  card: "#FFFFFF",
+  border: "#E5E0D2",
+  borderSubtle: "#EEE9DB",
+  deep: "#1E2530",
+  surface: WHITE,
+} as const;
+
 const PAPER_DARK = {
   background: "#1E2530",
   foreground: "#FAF8F3",
@@ -343,7 +356,7 @@ type Semantic = {
 /** Brand tints/shades from PRIMARY, mixed onto the given paper (not replacing it). */
 function brandFromPrimary(
   rawPrimary: string,
-  paper: typeof PAPER_LIGHT | typeof PAPER_DARK,
+  paper: typeof PAPER_LIGHT | typeof PAPER_DARK | typeof PAPER_HYBRID,
   dark: boolean,
 ): Pick<
   Semantic,
@@ -370,7 +383,7 @@ function brandFromPrimary(
 }
 
 function assemble(
-  paper: typeof PAPER_LIGHT | typeof PAPER_DARK,
+  paper: typeof PAPER_LIGHT | typeof PAPER_DARK | typeof PAPER_HYBRID,
   gold: string,
   dark: boolean,
 ): Semantic {
@@ -487,6 +500,13 @@ function assemble(
 /** Filled CTA / `--gold` token — light uses Pro gold; dark uses breadcrumb copper. */
 export const light = assemble(PAPER_LIGHT, ACCENT_BUTTON_FILL, false);
 export const dark = assemble(PAPER_DARK, DARK_PRIMARY, true);
+/** Light recipe + navy duotone hero/footer field (Next marketing). */
+export const hybrid = {
+  ...assemble(PAPER_HYBRID, ACCENT_BUTTON_FILL, false),
+  homeHeroBg: "#1A1820",
+  homeHeroPattern: `url(${JSON.stringify(AUTH_HERO_PATTERN_DARK)})`,
+  homeHeroPatternOpacity: "0.88",
+};
 
 export function accentGradientCss(s: Semantic): string {
   // Flat brand fill (legacy name kept for `--accent-gradient` consumers).
@@ -635,8 +655,10 @@ function cssBlock(selector: string, vars: Record<string, string>, indent = ""): 
 /** Injected in root layout. The only place brand hexes become CSS variables. */
 export const themeRootCss = [
   cssBlock(":root", varsFor(light, false)),
-  /** Class-driven dark theme (header toggle). Default is light. */
+  /** Class-driven dark theme (header dropdown). Default is light. */
   cssBlock(":root.dark", varsFor(dark, true)),
+  /** Hybrid is the light recipe on its own paper — change `PAPER_HYBRID` to restyle it. */
+  cssBlock(":root.hybrid", varsFor(hybrid, false)),
 ].join("\n\n");
 
 /**
@@ -646,8 +668,10 @@ export const themeRootCss = [
 export const homeHeroPatternCriticalCss = [
   `.home-hero::before{background-image:url("${HOME_HERO_PATTERN_LIGHT}")}`,
   `:root.dark .home-hero::before{background-image:url("${HOME_HERO_PATTERN_DARK}")}`,
+  `:root.hybrid .home-hero::before{background-image:url("${AUTH_HERO_PATTERN_DARK}");background-size:640px 640px;-webkit-mask-image:none;mask-image:none}`,
   `.home-hero.home-hero--auth::before{background-image:url("${AUTH_HERO_PATTERN_LIGHT}");background-size:480px 480px}`,
   `:root.dark .home-hero.home-hero--auth::before{background-image:url("${AUTH_HERO_PATTERN_DARK}");background-size:480px 480px}`,
+  `:root.hybrid .home-hero.home-hero--auth::before{background-image:url("${AUTH_HERO_PATTERN_DARK}");background-size:640px 640px}`,
   `.page-pattern-tile{background-image:url("${HOME_HERO_PATTERN_LIGHT}")}`,
   `:root.dark .page-pattern-tile{background-image:url("${HOME_HERO_PATTERN_DARK}")}`,
   `.journal-editor-pattern-gutter::before{background-image:url("${HOME_HERO_PATTERN_LIGHT}")}`,

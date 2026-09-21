@@ -1527,6 +1527,7 @@ export default function LibraryView({
   }, [pending.length, load]);
 
   // If navigated from Create → "View in Library", auto-scroll and start playing.
+  // Document reload must not autoplay — only an in-session navigation (or play click).
   useEffect(() => {
     if (loading) return;
     if (focusHandledRef.current) return;
@@ -1550,16 +1551,30 @@ export default function LibraryView({
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
-    // Start playing in the strip (autoplay is already attempted in LibraryAudioStrip).
     const play = searchParams.get("play");
+    const isReload =
+      typeof performance !== "undefined" &&
+      (
+        performance.getEntriesByType("navigation")[0] as
+          | PerformanceNavigationTiming
+          | undefined
+      )?.type === "reload";
+    if (play === "1" && !isPendingRow(found) && !isReload) {
+      playItem(found);
+    }
+    // Drop play= so a later refresh never starts audio.
     if (play === "1") {
-      if (!isPendingRow(found)) {
-        playItem(found);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("play");
+        window.history.replaceState({}, "", url.toString());
+      } catch {
+        /* ignore */
       }
     }
   }, [loading, visibleItems, searchParams]);
 
-  // Deep link: /meditate/library?id=<id> → Community tab, scroll to item, autoplay.
+  // Deep link: /meditate/library?id=<id> → Community tab, scroll to item (play only on click).
   useEffect(() => {
     if (loading) return;
     const id = searchParams.get("id")?.trim() || "";
@@ -1583,14 +1598,11 @@ export default function LibraryView({
     if (!found) return;
 
     shareIdHandledRef.current = true;
-    const scrollAndPlay = () => {
-      const el = itemElsRef.current.get(found.s3Key);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      playItem(found);
-    };
-    // Allow the community list to paint after filter/tab switches.
     requestAnimationFrame(() => {
-      requestAnimationFrame(scrollAndPlay);
+      requestAnimationFrame(() => {
+        const el = itemElsRef.current.get(found.s3Key);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     });
   }, [
     loading,
@@ -1608,17 +1620,17 @@ export default function LibraryView({
     const found = findCataloguedLibraryItem(items, pendingAutoplay.audioKey);
     if (!found) return;
 
-    // Update URL so refresh/share lands on the actual item.
+    // Focus for scroll/share; omit play= so refresh stays silent.
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("focus", found.s3Key);
-      url.searchParams.set("play", "1");
+      url.searchParams.delete("play");
       window.history.replaceState({}, "", url.toString());
     } catch {
       // ignore
     }
 
-    // Scroll + autoplay.
+    // Scroll + play (in-session after generate — user already asked to listen).
     const el = itemElsRef.current.get(found.s3Key);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     playItem(found);

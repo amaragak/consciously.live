@@ -21,6 +21,7 @@ import {
 } from "@/lib/meditation-type-pill";
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
+import { CoverArtThumb } from "@consciously/common";
 
 function MeditationTypePill({
   label,
@@ -714,20 +715,25 @@ export function LibraryMeditationCard({
 
   const mobileCardBody = (
     <div className="sm:hidden">
-      <div className="flex items-start justify-between gap-2 pr-9">
-        <h2 className="min-w-0 flex-1 font-display text-lg font-medium leading-snug">
-          {m.title}
-        </h2>
-        <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
-          {lengthLine}
-        </span>
+      <div className="flex items-start gap-3">
+        <CoverArtThumb src={m.coverImageUrl} alt="" size="card" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2 pr-9">
+            <h2 className="min-w-0 flex-1 font-display text-lg font-medium leading-snug">
+              {m.title}
+            </h2>
+            <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
+              {lengthLine}
+            </span>
+          </div>
+          <MeditationTypePill label={styleLine} className="mt-2" />
+          <p className="mt-2 line-clamp-2 text-sm text-muted">
+            {m.description ?? "—"}
+          </p>
+          <div className="mt-3 flex items-center gap-2">{playControl}</div>
+          {metaRow}
+        </div>
       </div>
-      <MeditationTypePill label={styleLine} className="mt-2" />
-      <p className="mt-2 line-clamp-2 text-sm text-muted">
-        {m.description ?? "—"}
-      </p>
-      <div className="mt-3 flex items-center gap-2">{playControl}</div>
-      {metaRow}
       {scriptBlock ? <div className="mt-3">{scriptBlock}</div> : null}
     </div>
   );
@@ -757,6 +763,12 @@ export function LibraryMeditationCard({
         ) : null}
         {mobileCardBody}
         <div className="hidden min-w-0 flex-1 flex-col sm:flex">
+          <CoverArtThumb
+            src={m.coverImageUrl}
+            alt=""
+            size="card"
+            className="mb-3"
+          />
           <div className="flex items-start justify-between gap-3 pr-8">
             <p className="text-xs font-medium uppercase tracking-wide text-accent-link">
               {styleLine}
@@ -824,19 +836,24 @@ export function LibraryMeditationCard({
         </div>
       </div>
       <div className="relative hidden min-w-0 pr-[8.5rem] sm:block">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
-          <div className="flex items-start gap-3">
-            <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
-              {m.title}
-            </h2>
-            <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
-              {lengthLine}
-            </span>
+        <div className="flex min-w-0 items-start gap-3.5">
+          <CoverArtThumb src={m.coverImageUrl} alt="" size="card" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
+              <div className="flex items-start gap-3">
+                <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
+                  {m.title}
+                </h2>
+                <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
+                  {lengthLine}
+                </span>
+              </div>
+              <MeditationTypePill label={styleLine} />
+            </div>
+            <div className="mt-1 text-sm text-muted">{m.description ?? "—"}</div>
+            {metaRow}
           </div>
-          <MeditationTypePill label={styleLine} />
         </div>
-        <div className="mt-1 text-sm text-muted">{m.description ?? "—"}</div>
-        {metaRow}
       </div>
       {scriptBlock ? (
         <div className="mt-4 hidden border-t border-border pt-4 sm:block">

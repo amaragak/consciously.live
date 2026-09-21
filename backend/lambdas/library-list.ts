@@ -76,6 +76,8 @@ type OutItem = {
   wetAudioKey: string | null;
   dryAudioUrl: string | null;
   wetAudioUrl: string | null;
+  coverImageKey: string | null;
+  coverImageUrl: string | null;
   voiceFxDial: number | null;
   createdVoiceFxDial: number | null;
   backgroundNatureKey: string | null;
@@ -532,6 +534,10 @@ function buildLibraryItems(params: {
       wetAudioUrl: optTrimKey(row.wetAudioKey)
         ? `https://${cfDomain}/${optTrimKey(row.wetAudioKey)}`
         : null,
+      coverImageKey: optTrimKey(row.coverImageKey),
+      coverImageUrl: optTrimKey(row.coverImageKey)
+        ? `https://${cfDomain}/${optTrimKey(row.coverImageKey)}`
+        : null,
       voiceFxDial: optGain(row.voiceFxDial),
       createdVoiceFxDial:
         optGain(row.createdVoiceFxDial) ?? optGain(row.voiceFxDial),
@@ -636,6 +642,8 @@ function buildLibraryItems(params: {
       wetAudioKey: null,
       dryAudioUrl: null,
       wetAudioUrl: null,
+      coverImageKey: null,
+      coverImageUrl: null,
       voiceFxDial: null,
       createdVoiceFxDial: null,
       backgroundNatureKey: null,

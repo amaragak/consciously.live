@@ -7,10 +7,8 @@ import {
   Code2,
   Focus,
   MessageSquare,
-  Moon,
   Shield,
   Sparkles,
-  Sun,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -25,13 +23,7 @@ import {
   type AppNavSubItem,
 } from "@/lib/app-nav";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
-import {
-  COLOR_SCHEME_CHANGED_EVENT,
-  applyColorScheme,
-  getStoredColorScheme,
-  toggleColorScheme,
-  type ColorScheme,
-} from "@/lib/color-scheme";
+import { ColorSchemePicker } from "@consciously/common";
 import { clearMedimadeSession, isMedimadeSessionActive } from "@/lib/auth-session";
 import { enterMarketingPreviewMode } from "@/lib/marketing-preview";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
@@ -41,36 +33,6 @@ import {
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { MeditateMark } from "@/components/meditate-mark";
-
-function ColorSchemeToggle() {
-  const [scheme, setScheme] = useState<ColorScheme>("light");
-
-  useEffect(() => {
-    applyColorScheme(getStoredColorScheme());
-    const sync = () => setScheme(getStoredColorScheme());
-    sync();
-    window.addEventListener(COLOR_SCHEME_CHANGED_EVENT, sync);
-    return () => window.removeEventListener(COLOR_SCHEME_CHANGED_EVENT, sync);
-  }, []);
-
-  const isDark = scheme === "dark";
-
-  return (
-    <button
-      type="button"
-      onClick={() => setScheme(toggleColorScheme())}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Light mode" : "Dark mode"}
-      className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-    >
-      {isDark ? (
-        <Sun aria-hidden className="size-4" strokeWidth={2} />
-      ) : (
-        <Moon aria-hidden className="size-4" strokeWidth={2} />
-      )}
-    </button>
-  );
-}
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -394,7 +356,7 @@ export function AppSidebar({
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </button>
-              <ColorSchemeToggle />
+              <ColorSchemePicker compact menu="end" variant="sidebar" />
               <Link
                 href="/settings"
                 onClick={onNavigate}
@@ -471,7 +433,7 @@ export function AppSidebar({
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
-            <ColorSchemeToggle />
+            <ColorSchemePicker variant="sidebar" menu="up" />
           </div>
           <Link
             href="/settings"

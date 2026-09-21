@@ -24,6 +24,7 @@ import {
   SOUNDSCAPE_ELEMENT_VOLUME,
 } from "../audio/bed-volume";
 import type { BackgroundAudioItem, LibraryMeditationFields } from "./types";
+import { CoverArtThumb } from "./cover-art-thumb";
 import {
   DualStemPlayer,
   getLibraryVoicePlayer,
@@ -54,6 +55,7 @@ export type LibraryActiveTrack = {
   wetUrl?: string;
   voiceFxDial?: number;
   durationSeconds?: number;
+  coverImageUrl?: string;
 };
 
 export type BedVolumeChannel = "nature" | "music" | "drums" | "noise";
@@ -97,6 +99,7 @@ function siblingStemUrl(
 export function trackFromLibraryItem(
   m: LibraryMeditationFields,
 ): LibraryActiveTrack {
+  const cover = m.coverImageUrl?.trim();
   return {
     url: m.audioUrl,
     title: m.title,
@@ -117,6 +120,7 @@ export function trackFromLibraryItem(
       typeof m.durationSeconds === "number" && m.durationSeconds > 0
         ? m.durationSeconds
         : undefined,
+    ...(cover ? { coverImageUrl: cover } : {}),
   };
 }
 
@@ -130,6 +134,7 @@ export function liveMixTrack(
     | "wetAudioUrl"
     | "voiceFxDial"
     | "durationSeconds"
+    | "coverImageUrl"
   >,
   mix: {
     natureKey: string;
@@ -143,6 +148,7 @@ export function liveMixTrack(
     voiceFxDial?: number;
   },
 ): LibraryActiveTrack {
+  const cover = m.coverImageUrl?.trim();
   return {
     url: m.audioUrl,
     title: m.title,
@@ -163,6 +169,7 @@ export function liveMixTrack(
       typeof m.durationSeconds === "number" && m.durationSeconds > 0
         ? m.durationSeconds
         : undefined,
+    ...(cover ? { coverImageUrl: cover } : {}),
   };
 }
 
@@ -272,6 +279,8 @@ export function LibraryAudioStrip({
   onHeightChange,
   mediaBase = null,
   besideSidebar = false,
+  /** When false, load/sync only — do not start (click / playItem starts playback). */
+  autoplay = false,
 }: {
   track: LibraryActiveTrack | null;
   musicItems: BackgroundAudioItem[];
@@ -286,6 +295,7 @@ export function LibraryAudioStrip({
   mediaBase?: string | null;
   /** When true, dock inset leaves room for the app sidebar. */
   besideSidebar?: boolean;
+  autoplay?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -305,6 +315,8 @@ export function LibraryAudioStrip({
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(() => track?.durationSeconds ?? 0);
   const lastToggleNonceRef = useRef(playbackToggleNonce);
+  const autoplayRef = useRef(autoplay);
+  autoplayRef.current = autoplay;
   const lastReportedTimeRef = useRef<number>(-Infinity);
   const voiceIntroTimerRef = useRef<number | null>(null);
   const liveBedGainsRef = useRef({
@@ -509,10 +521,15 @@ export function LibraryAudioStrip({
     }
     seekingRef.current = false;
     lastReportedTimeRef.current = -Infinity;
+    const shouldPlay = autoplayRef.current;
     if (ambientMix) {
       setCurrent(0);
       setDuration(0);
-      startOrResumePlayback();
+      if (shouldPlay) startOrResumePlayback();
+      else {
+        setPlaying(false);
+        onPlayingChange?.(track.s3Key, false);
+      }
       return () => {
         clearVoiceIntro();
       };
@@ -528,8 +545,14 @@ export function LibraryAudioStrip({
       };
       if (track.durationSeconds) setDuration(track.durationSeconds);
       if (dual.isPlaying) {
-        setPlaying(true);
-        onPlayingChange?.(track.s3Key, true);
+        if (!shouldPlay) {
+          dual.pause();
+          setPlaying(false);
+          onPlayingChange?.(track.s3Key, false);
+        } else {
+          setPlaying(true);
+          onPlayingChange?.(track.s3Key, true);
+        }
         void dual.whenDuration().then((d) => {
           if (!cancelled && d > 0) setDuration(d);
         });
@@ -542,7 +565,12 @@ export function LibraryAudioStrip({
         .load(track.dryUrl, track.wetUrl ?? null, voiceFxDial, track.url)
         .then(() => {
           if (cancelled) return;
-          startOrResumePlayback();
+          if (autoplayRef.current) {
+            startOrResumePlayback();
+          } else {
+            setPlaying(false);
+            onPlayingChange?.(track.s3Key, false);
+          }
           void dual.whenDuration().then((d) => {
             if (!cancelled && d > 0) setDuration(d);
           });
@@ -562,20 +590,29 @@ export function LibraryAudioStrip({
     const el = audioRef.current;
     if (!el) return;
     if (ambientSoundscape) {
-      // Src is already on the element; load() only delays first play.
       el.volume = SOUNDSCAPE_ELEMENT_VOLUME;
-      startOrResumePlayback();
+      if (shouldPlay) startOrResumePlayback();
+      else {
+        el.pause();
+        setPlaying(false);
+        onPlayingChange?.(track.s3Key, false);
+      }
       return () => {
         clearVoiceIntro();
       };
     }
     el.load();
     applySpeechElementVolume(el);
-    startOrResumePlayback();
+    if (shouldPlay) startOrResumePlayback();
+    else {
+      el.pause();
+      setPlaying(false);
+      onPlayingChange?.(track.s3Key, false);
+    }
     return () => {
       clearVoiceIntro();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- restart when the stem changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restart when the stem changes; autoplay via ref (HMR-safe)
   }, [track?.s3Key, track?.url, track?.ambientKind, track?.dryUrl, track?.wetUrl, useDual]);
 
   useEffect(() => {
@@ -853,6 +890,7 @@ export function LibraryAudioStrip({
       >
       <div className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
+          <CoverArtThumb src={track.coverImageUrl} alt="" size="player" />
           <div className="flex shrink-0 items-center gap-1">
             {hideTransportSeek ? null : (
               <button

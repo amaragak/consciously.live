@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
-/* Class-based dark mode (header toggle). Default is light. */
+/* Class-based dark / hybrid appearance (header dropdown). Default is light. */
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant hybrid (&:where(.hybrid, .hybrid *));
 
 :root {
   --background: #f6f3ee;
@@ -35,6 +36,10 @@
   --app-sidebar-w: 200px;
   --content-max-width: 72rem;
   --gold: #ffd700;
+  color-scheme: light;
+}
+
+:root.hybrid {
   color-scheme: light;
 }
 

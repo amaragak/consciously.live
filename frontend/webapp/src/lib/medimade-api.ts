@@ -4073,6 +4073,8 @@ export type LibraryMeditationItem = {
   wetAudioKey?: string | null;
   dryAudioUrl?: string | null;
   wetAudioUrl?: string | null;
+  coverImageKey?: string | null;
+  coverImageUrl?: string | null;
   voiceFxDial?: number | null;
   createdVoiceFxDial?: number | null;
   backgroundNatureKey?: string | null;

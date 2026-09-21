@@ -46,6 +46,7 @@ export function LibraryAudioStrip(
     onPlayingChange?: (s3Key: string, playing: boolean) => void;
     onPlaybackTimeChange?: (s3Key: string, timeSeconds: number) => void;
     onHeightChange?: (heightPx: number) => void;
+    autoplay?: boolean;
   },
 ) {
   return (

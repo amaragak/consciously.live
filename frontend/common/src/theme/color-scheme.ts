@@ -1,14 +1,24 @@
 /**
- * Light / dark appearance. Default is light; user choice is stored in localStorage
- * and applied as `class="dark"` on `<html>` (not `prefers-color-scheme`).
+ * Appearance. Default is light; user choice is stored in localStorage
+ * and applied as `class="dark"` / `class="hybrid"` on `<html>`
+ * (not `prefers-color-scheme`). Hybrid starts as a copy of light.
  */
 
-export type ColorScheme = "light" | "dark";
+export type ColorScheme = "light" | "dark" | "hybrid";
 
 export const COLOR_SCHEME_STORAGE_KEY = "mm_color_scheme";
 export const COLOR_SCHEME_CHANGED_EVENT = "mm-color-scheme-changed";
 /** Carries the live site mode onto `/login` when following Sign in / Sign up. */
 export const COLOR_SCHEME_QUERY_PARAM = "scheme";
+
+export const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
+  id: ColorScheme;
+  label: string;
+}> = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+  { id: "hybrid", label: "Hybrid" },
+];
 
 /** Hero paisley tiles — keep in sync with `--home-hero-pattern` in theme-colors. */
 export const HOME_HERO_PATTERN_LIGHT =
@@ -19,29 +29,35 @@ export const HOME_HERO_PATTERN_DARK =
 export const AUTH_HERO_PATTERN_LIGHT = "/patterns/paisley-amber-duotone.webp";
 export const AUTH_HERO_PATTERN_DARK = "/patterns/paisley-dark-duotone.webp";
 
+export function parseColorScheme(
+  value: string | null | undefined,
+): ColorScheme | null {
+  return value === "dark" || value === "light" || value === "hybrid"
+    ? value
+    : null;
+}
+
 export function getStoredColorScheme(): ColorScheme {
   if (typeof window === "undefined") return "light";
   try {
-    return localStorage.getItem(COLOR_SCHEME_STORAGE_KEY) === "dark"
-      ? "dark"
-      : "light";
+    return parseColorScheme(localStorage.getItem(COLOR_SCHEME_STORAGE_KEY)) ?? "light";
   } catch {
     return "light";
   }
 }
 
-export function parseColorScheme(
-  value: string | null | undefined,
-): ColorScheme | null {
-  return value === "dark" || value === "light" ? value : null;
-}
-
-/** Mode currently painted on the page (html.dark), else the stored preference. */
+/** Mode currently painted on the page, else the stored preference. */
 export function getLiveColorScheme(): ColorScheme {
-  if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
-    return "dark";
+  if (typeof document !== "undefined") {
+    const root = document.documentElement.classList;
+    if (root.contains("dark")) return "dark";
+    if (root.contains("hybrid")) return "hybrid";
   }
   return getStoredColorScheme();
+}
+
+export function isDarkColorScheme(scheme: ColorScheme): boolean {
+  return scheme === "dark";
 }
 
 /**
@@ -86,7 +102,8 @@ export function applyColorScheme(scheme: ColorScheme): void {
   /* Disable color transitions for one frame so the root token swap paints once. */
   root.classList.add("theme-switching");
   root.classList.toggle("dark", scheme === "dark");
-  root.style.colorScheme = scheme;
+  root.classList.toggle("hybrid", scheme === "hybrid");
+  root.style.colorScheme = scheme === "dark" ? "dark" : "light";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       root.classList.remove("theme-switching");
@@ -105,8 +122,9 @@ export function setColorScheme(scheme: ColorScheme): void {
 }
 
 export function toggleColorScheme(): ColorScheme {
+  const cur = getStoredColorScheme();
   const next: ColorScheme =
-    getStoredColorScheme() === "dark" ? "light" : "dark";
+    cur === "light" ? "dark" : cur === "dark" ? "hybrid" : "light";
   setColorScheme(next);
   return next;
 }
@@ -117,4 +135,4 @@ export function toggleColorScheme(): ColorScheme {
  * `/login` honors `?scheme=` from the page they clicked from; otherwise
  * localStorage; otherwise light.
  */
-export const colorSchemeBootScript = `(function(){var dark=false;try{var q=null;if(location.pathname==="/login"){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}if(q==="dark")dark=true;else if(q==="light")dark=false;else dark=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)})==="dark"}catch(e){}var root=document.documentElement;if(dark){root.classList.add("dark");root.style.colorScheme="dark"}else{root.classList.remove("dark");root.style.colorScheme="light"}var auth=location.pathname==="/login";var active=auth?(dark?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(dark?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
+export const colorSchemeBootScript = `(function(){var scheme="light";try{var q=null;if(location.pathname==="/login"){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"?q:null;if(parsed)scheme=parsed;else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="hybrid")scheme=s}}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var dark=scheme==="dark";var active=auth?(dark?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(dark?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;

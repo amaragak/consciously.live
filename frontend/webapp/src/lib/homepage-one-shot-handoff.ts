@@ -12,6 +12,7 @@ import {
 import { FISH_SPEAKERS, fishSpeakersForPicker } from "@/lib/fish-speakers";
 import { factoryPresetToMix } from "@/lib/mixer-factory-presets";
 import type { MixerPresetMix } from "@/lib/mixer-preset-storage";
+import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
   appendPendingLibraryGeneration,
   type PendingLibraryGeneration,
@@ -154,6 +155,10 @@ export async function startHomepageOneShotGeneration(opts: {
   const mix = await pickRandomSoundBed();
   const packaged = packageOneShotPrompt(trimmed);
   const transcript = `User: ${packaged}`;
+  const creationProvenance = buildMeditationCreationProvenance({
+    creationPath: "oneShot",
+    directPrompt: trimmed,
+  });
 
   const { jobId } = await createMeditationAudioJob({
     meditationStyle: "General",
@@ -165,6 +170,7 @@ export async function startHomepageOneShotGeneration(opts: {
     ttsProvider: ttsProviderForSpeaker(speaker),
     speed: FIXED_SPEECH_PREVIEW_SPEED,
     voiceFxPreset: VOICE_FX_PRESET_MEDITATION_MIXER,
+    creationProvenance,
     ...(mix.natureKey
       ? {
           backgroundNatureKey: backgroundAudioStreamingKey(mix.natureKey),

@@ -57,6 +57,11 @@ import {
   voiceFxDialGains,
 } from "./_shared/voice-fx-dial";
 import { putVoiceStemStreams } from "./_shared/voice-stem-stream";
+import {
+  createPromptFromProvenance,
+  generateAndStoreMeditationCover,
+} from "./_shared/meditation-cover";
+import type { MeditationCreationProvenance } from "./_shared/meditation-creation-provenance";
 import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -816,6 +821,8 @@ async function deriveLibraryMetadataFromClaude(params: {
   scriptPreview: string;
   /** Journal / free-form: no real style label — type must be inferred from chat + script only. */
   journalMode: boolean;
+  /** Raw creator intent when known (one-shot request, etc.). */
+  createIntent?: string | null;
 }): Promise<{
   title: string;
   meditationType: string;
@@ -824,20 +831,27 @@ async function deriveLibraryMetadataFromClaude(params: {
 }> {
   const scriptPreview = params.scriptPreview.slice(0, 1200);
   const allowedJson = knownMeditationTypesJsonArrayBlock();
+  const planningContext = transcriptForLibraryMetadata(
+    params.transcript,
+    params.createIntent,
+  );
 
   const system = [
     "You output exactly one JSON object and nothing else: keys title, meditationType, description.",
     'Field "meditationType" MUST be identical to one string in the ALLOWED_MEDITATION_TYPES JSON array from the user message — copy it character-for-character (including spaces and hyphens).',
     "Pick the **single best-matching** category for this meditation; if several fit, choose the strongest overall fit.",
     "Never invent labels: no synonyms or paraphrases (e.g. not Mindfulness, Zen, Guided meditation, Calm, General).",
+    "Title: ~10 words, evocative, listener-facing — same quality as a published meditation card. Description: what the listener will experience.",
+    "Never quote or paraphrase system/instructions (e.g. “Please write a complete guided meditation script”, “one-shot request”).",
     "No markdown code fences.",
   ].join(" ");
 
   const modeBlock = params.journalMode
     ? [
         "### Task",
-        "The creator used journal / free-form mode. Ignore placeholder style labels like “General”.",
+        "The creator used journal / free-form / prompt mode. Ignore placeholder style labels like “General”.",
         "Read the chat + script, then choose the **single best-matching** meditationType from ALLOWED_MEDITATION_TYPES only (verbatim copy).",
+        "Invent a proper library title from the practice itself (script + creator intent) — do not reuse the raw user prompt as the title.",
       ].join("\n")
     : [
         "### Task",
@@ -854,7 +868,7 @@ async function deriveLibraryMetadataFromClaude(params: {
     modeBlock,
     "",
     "### Planning / chat context",
-    params.transcript.trim().slice(0, 2500) || "(none)",
+    planningContext || "(none)",
     "",
     "### Beginning of the final spoken script",
     scriptPreview || "(empty)",
@@ -871,12 +885,17 @@ async function deriveLibraryMetadataFromClaude(params: {
 
   let { title, meditationType, description } =
     parseMetadataJsonFromAnthropicText(responseText);
+  title = scrubLibraryFacingCopy(title);
+  description = scrubLibraryFacingCopy(description);
 
   if (description.length < 200) {
     throw new Error("Missing or too-short description in metadata JSON");
   }
   if (!title || !meditationType) {
     throw new Error("Missing title or meditationType in metadata JSON");
+  }
+  if (looksLikeOneShotPackaging(title) || looksLikeOneShotPackaging(description)) {
+    throw new Error("Metadata still contains one-shot packaging copy");
   }
 
   const normalizedFromLlm = normalizeMeditationType(meditationType);
@@ -893,39 +912,102 @@ async function deriveLibraryMetadataFromClaude(params: {
   };
 }
 
+/** Prefer clean creator intent over `packageOneShotPrompt` wrapper text in the transcript. */
+function transcriptForLibraryMetadata(
+  transcript: string,
+  createIntent?: string | null,
+): string {
+  const intent = (createIntent ?? "").trim();
+  if (intent) {
+    return `User: ${intent}`.slice(0, 2500);
+  }
+  const t = transcript.trim();
+  if (!t) return "";
+  if (!/one-shot request/i.test(t)) return t.slice(0, 2500);
+  const unwrapped = unwrapOneShotPackaging(t.replace(/^User:\s*/i, ""));
+  return unwrapped ? `User: ${unwrapped}`.slice(0, 2500) : t.slice(0, 2500);
+}
+
+/** Unwrap `packageOneShotPrompt` packaging to the user's actual request. */
+function unwrapOneShotPackaging(text: string): string {
+  const t = text.trim();
+  if (!t) return "";
+  const req = t.match(/\bRequest:\s*\n?([\s\S]+)/i);
+  if (req?.[1]?.trim()) {
+    return req[1].replace(/\s+/g, " ").trim();
+  }
+  if (!/one-shot request/i.test(t)) return t.replace(/\s+/g, " ").trim();
+  return t
+    .replace(
+      /^Please write a complete guided meditation script from this one-shot request\.\s*/i,
+      "",
+    )
+    .replace(/^Use a calm, warm tone[^.]*\.\s*/i, "")
+    .replace(/^Interpret the request generously[^.]*\.\s*/i, "")
+    .replace(/^do not ask clarifying questions\.\s*/i, "")
+    .replace(/^Request:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeOneShotPackaging(text: string): boolean {
+  return /one-shot request|Please write a complete guided meditation script/i.test(
+    text,
+  );
+}
+
+function scrubLibraryFacingCopy(text: string): string {
+  return text
+    .replace(/Please write a complete guided meditation script from this one-shot request\.?/gi, "")
+    .replace(/Use a calm, warm tone suitable for spoken guidance\.?/gi, "")
+    .replace(/Interpret the request generously[^.]*\.?/gi, "")
+    .replace(/do not ask clarifying questions\.?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function fallbackLibraryMetadata(params: {
   meditationStyle: string;
   transcript: string;
   scriptPreview: string;
   journalMode: boolean;
+  createIntent?: string | null;
 }): { title: string; meditationType: KnownMeditationType; description: string } {
   const rawStyle = params.meditationStyle.trim();
   const style =
     rawStyle && rawStyle.toLowerCase() !== "general" ? rawStyle : "";
 
-  // Heuristic: pull the first "User:" line from the transcript to avoid generic titles in Journal mode.
-  const firstUserLine = (() => {
-    const t = params.transcript || "";
-    const m = t.match(/(^|\n)User:\s*([^\n]+)/i);
-    return (m?.[2] ?? "").trim();
+  // Same heuristic as style/journal flows: first User line — but unwrap one-shot packaging.
+  const firstUserBlock = (() => {
+    const cleaned = transcriptForLibraryMetadata(
+      params.transcript,
+      params.createIntent,
+    );
+    const m = cleaned.match(
+      /(?:^|\n)User:\s*([\s\S]*?)(?=\n(?:User|Guide|Assistant):|\s*$)/i,
+    );
+    return (m?.[1] ?? "").trim();
   })();
-  const moodSnippet = firstUserLine
+  const moodSnippet = firstUserBlock
     .replace(/\s+/g, " ")
     .replace(/[“”"]/g, "")
     .trim();
   const shortMood =
-    moodSnippet.length > 0 ? moodSnippet.slice(0, 80).replace(/\s+$/g, "") : "";
+    moodSnippet.length > 0 && !looksLikeOneShotPackaging(moodSnippet)
+      ? moodSnippet.slice(0, 80).replace(/\s+$/g, "")
+      : "";
 
   const fromScript =
     params.journalMode || !style
       ? inferPresetTypeFromScriptHeuristic(params.scriptPreview)
       : null;
 
-  // Pick a reasonable known type when metadata inference is unavailable.
   const meditationType: KnownMeditationType =
     style && normalizeMeditationType(style)
       ? (normalizeMeditationType(style) as KnownMeditationType)
       : fromScript ?? "Reflection";
+
+  // Match the shared fallback used by other flows (Claude is primary; this is last resort).
   const title = style
     ? `${style} · session`
     : shortMood
@@ -1756,6 +1838,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   try {
     const metadataStarted = Date.now();
     const claudeKey = await getClaudeApiKey();
+    const createIntent = createPromptFromProvenance(creationProvenance);
     const derived = await deriveLibraryMetadataFromClaude({
       apiKey: claudeKey,
       model: claudeModel,
@@ -1763,6 +1846,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       transcript,
       scriptPreview: scriptTextUsed,
       journalMode: isJournalCatalog,
+      createIntent,
     });
     generationTimings.phases.metadataMs = elapsedMs(metadataStarted);
     libraryTitle = derived.title;
@@ -1780,6 +1864,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       transcript,
       scriptPreview: scriptTextUsed,
       journalMode: isJournalCatalog,
+      createIntent: createPromptFromProvenance(creationProvenance),
     });
     libraryTitle = fb.title;
     libraryMeditationType = fb.meditationType;
@@ -2149,6 +2234,21 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       Number.isFinite(jobStartedMs) && jobStartedMs > 0
         ? Math.max(0, Date.parse(createdAt) - jobStartedMs)
         : null;
+    const coverImageKey = mediaBucketName
+      ? await generateAndStoreMeditationCover({
+          s3,
+          bucket: mediaBucketName,
+          userId: jobUserId,
+          meditationId: id,
+          input: {
+            title: libraryTitle,
+            description: libraryDescription,
+            meditationStyle: isJournalCatalog ? null : styleTrimmed || null,
+            meditationType: libraryMeditationType,
+            createPrompt: createPromptFromProvenance(creationProvenance),
+          },
+        })
+      : null;
     await ddb.send(
       new PutCommand({
         TableName: analyticsTableName,
@@ -2172,6 +2272,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           audioUrl,
           dryAudioKey,
           wetAudioKey,
+          ...(coverImageKey ? { coverImageKey } : {}),
           voiceFxDial,
           createdVoiceFxDial: voiceFxDial,
           mp3Bytes: mp3Buf.byteLength,

@@ -1,8 +1,8 @@
 "use client";
 
 import { Link, usePathname  } from "@/lib/spa-nav";
-import { Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ColorSchemePicker } from "@consciously/common";
 import { LogoMark } from "@/components/logo-mark";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
@@ -13,13 +13,6 @@ import {
   isMedimadeSessionActive,
   loginAsMedimadeGuest,
 } from "@/lib/medimade-api";
-import {
-  COLOR_SCHEME_CHANGED_EVENT,
-  applyColorScheme,
-  getStoredColorScheme,
-  toggleColorScheme,
-  type ColorScheme,
-} from "@/lib/color-scheme";
 import {
   exitMarketingPreviewMode,
   isMarketingPreviewMode,
@@ -45,36 +38,6 @@ function pricingNavLabel(signedIn: boolean): string {
 
 function sectionActive(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
-}
-
-function ColorSchemeToggle({ className = "" }: { className?: string }) {
-  const [scheme, setScheme] = useState<ColorScheme>("light");
-
-  useEffect(() => {
-    applyColorScheme(getStoredColorScheme());
-    const sync = () => setScheme(getStoredColorScheme());
-    sync();
-    window.addEventListener(COLOR_SCHEME_CHANGED_EVENT, sync);
-    return () => window.removeEventListener(COLOR_SCHEME_CHANGED_EVENT, sync);
-  }, []);
-
-  const isDark = scheme === "dark";
-
-  return (
-    <button
-      type="button"
-      onClick={() => setScheme(toggleColorScheme())}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Light mode" : "Dark mode"}
-      className={`inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-marketing-nav-chrome text-nav-muted transition-[background-color,color,border-color] duration-150 ease-out hover:bg-nav-active hover:text-nav-foreground ${className}`}
-    >
-      {isDark ? (
-        <Sun aria-hidden className="size-4" strokeWidth={2} />
-      ) : (
-        <Moon aria-hidden className="size-4" strokeWidth={2} />
-      )}
-    </button>
-  );
 }
 
 export function SiteHeader() {
@@ -186,7 +149,7 @@ export function SiteHeader() {
                 </Link>
               );
             })}
-            <ColorSchemeToggle className="ml-1" />
+            <ColorSchemePicker className="ml-1" />
             {showSignedInChrome ? (
               <div className="ml-1 flex items-center gap-2">
                 <span
@@ -228,7 +191,7 @@ export function SiteHeader() {
                 {guestBusy ? "…" : "Guest"}
               </AlphaChromeButton>
             ) : null}
-            <ColorSchemeToggle />
+            <ColorSchemePicker />
             <details ref={mobileMenuRef} className="relative">
               <summary
                 aria-label="Menu"

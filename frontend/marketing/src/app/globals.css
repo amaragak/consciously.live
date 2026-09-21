@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
-/* Class-based dark mode (header toggle). Default is light. */
+/* Class-based dark / hybrid appearance (header dropdown). Default is light. */
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant hybrid (&:where(.hybrid, .hybrid *));
 
 :root {
   /* Keep in sync with site header height (h-14) */
@@ -24,6 +25,10 @@
   /* Slightly heavier frosted tint on dark UI / brighter tile edges */
   --ideate-overlay-bg-opacity: 0.4;
   color-scheme: dark;
+}
+
+:root.hybrid {
+  color-scheme: light;
 }
 
 /* Frosted glass for text-over-image on Ideate vision board surfaces */
@@ -600,6 +605,34 @@ body {
   mask-image: none;
 }
 
+/* Hybrid: navy duotone paisley, full tile — no centre clear-band / white fade. */
+:root.hybrid .home-hero {
+  --home-hero-bg: #1a1820;
+  --home-hero-pattern-opacity: 0.88;
+  background-color: #1a1820;
+}
+:root.hybrid .home-hero::before,
+:root.hybrid .home-hero.home-hero--auth::before {
+  background-image: url("/patterns/paisley-dark-duotone.webp");
+  background-size: 640px 640px;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+:root.hybrid .home-hero.home-hero--auth {
+  --home-hero-bg: #1a1820;
+  --home-hero-pattern-opacity: 0.88;
+  background-color: #1a1820;
+}
+
+/* Hero headlines + lead copy on the navy field. Card titles stay ink. */
+:root.hybrid .home-hero h1,
+:root.hybrid .home-hero h2 {
+  color: #ffffff;
+}
+:root.hybrid .home-hero > div > p {
+  color: #ffffff;
+}
+
 /* Keep content above ::before without forcing position — absolute chrome must stay absolute. */
 .home-hero > *:not(.home-hero-chrome) {
   position: relative;
@@ -877,6 +910,13 @@ body {
   background-color: #1a1820;
 }
 :root.dark .app-footer::before {
+  background-image: url("/patterns/paisley-dark-duotone.webp");
+  opacity: 0.88;
+}
+:root.hybrid .app-footer {
+  background-color: #1a1820;
+}
+:root.hybrid .app-footer::before {
   background-image: url("/patterns/paisley-dark-duotone.webp");
   opacity: 0.88;
 }

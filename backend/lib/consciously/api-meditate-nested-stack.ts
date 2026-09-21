@@ -37,6 +37,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     const fishApiKeySecret = props.config.fishApiKey;
     const speechifyApiKeySecret = props.config.speechifyApiKey;
     const claudeApiKeySecret = props.config.claudeApiKey;
+    const openAiApiKeySecret = props.config.openAiApiKey;
     const runpodsApiKeySecret = props.config.runpodsApiKey;
     const runpodsUrlSecret = props.config.runpodsUrl;
     const authJwtSecret = props.config.authJwtSecret;
@@ -85,6 +86,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     fishApiKeySecret.grantRead(workerRole);
     speechifyApiKeySecret.grantRead(workerRole);
     claudeApiKeySecret.grantRead(workerRole);
+    openAiApiKeySecret.grantRead(workerRole);
     runpodsApiKeySecret.grantRead(workerRole);
     runpodsUrlSecret.grantRead(workerRole);
     algoliaSecret.grantRead(workerRole);
@@ -110,6 +112,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         role: workerRole,
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
           SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
           SPEECHIFY_TTS_MODEL: "simba-3.2",

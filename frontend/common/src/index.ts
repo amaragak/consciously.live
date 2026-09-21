@@ -47,6 +47,8 @@ export {
   type BedVolumeChannel,
 } from "./library/library-audio-strip";
 
+export { CoverArtThumb } from "./library/cover-art-thumb";
+
 export { PublicMeditationPlayer } from "./library/public-meditation-player";
 
 export {
@@ -75,5 +77,7 @@ export {
 } from "./audio/voice-fx-dial";
 
 export { VoiceFxKnob } from "./ui/voice-fx-knob";
+
+export { ColorSchemePicker } from "./ui/color-scheme-picker";
 
 export * from "./theme";
