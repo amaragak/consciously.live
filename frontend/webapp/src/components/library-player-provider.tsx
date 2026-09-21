@@ -35,7 +35,7 @@ export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
 export { trackFromLibraryItem, liveMixTrack };
 
 /** Used until the strip measures itself — keeps Focus chrome lifting in the same frame as play. */
-export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 80;
+export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 96;
 
 type LibraryPlayerContextValue = {
   nowPlaying: LibraryActiveTrack | null;

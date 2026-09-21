@@ -32,7 +32,7 @@ export {
 };
 
 /** Used until the strip measures itself — keeps Focus chrome lifting in the same frame as play. */
-export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 80;
+export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 96;
 
 /** SPA always sits in signed-in app chrome with a sidebar. */
 export function LibraryAudioStrip(

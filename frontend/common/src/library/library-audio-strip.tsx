@@ -261,12 +261,6 @@ export function trackFromFocusMix(
   };
 }
 
-function downloadBasename(title: string): string {
-  const t = title.trim() || "meditation";
-  const safe = t.replace(/[^\w\- .]+/g, "_").replace(/\s+/g, " ").trim();
-  return `${safe.slice(0, 80)}.mp3`;
-}
-
 export function LibraryAudioStrip({
   track,
   musicItems,
@@ -862,10 +856,6 @@ export function LibraryAudioStrip({
       }`}
       style={{
         right: focusTasksInsetPx > 0 ? focusTasksInsetPx : 0,
-        paddingLeft: "0.75rem",
-        paddingRight: "0.75rem",
-        paddingTop: "0.75rem",
-        paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
       }}
     >
       {ambientMix || useDual ? null : (
@@ -884,7 +874,12 @@ export function LibraryAudioStrip({
       <audio ref={noiseRef} className="hidden" playsInline />
 
       <div
-        className="pointer-events-auto mx-auto w-full max-w-6xl min-w-0 rounded-full border border-border bg-card/95 px-4 py-2 shadow-[0_8px_28px_color-mix(in_srgb,var(--overlay)_12%,transparent)] backdrop-blur-md dark:bg-card/98 dark:shadow-[0_8px_28px_color-mix(in_srgb,var(--overlay)_40%,transparent)] sm:px-5"
+        className="pointer-events-auto w-full min-w-0 border-t border-border bg-card py-2.5 pl-2.5 pr-4 sm:pr-6"
+        style={{
+          paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))",
+          boxShadow:
+            "0 -4px 16px color-mix(in srgb, var(--overlay) 12%, transparent), 0 -1px 4px color-mix(in srgb, var(--overlay) 8%, transparent)",
+        }}
         role="region"
         aria-label="Now playing"
       >
@@ -913,15 +908,15 @@ export function LibraryAudioStrip({
             <button
               type="button"
               onClick={() => togglePlayback()}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent sm:h-12 sm:w-12"
               aria-label={playing ? "Pause" : "Play"}
             >
               {playing ? (
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
                   <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
                   <path d="M8 5v14l11-7L8 5z" />
                 </svg>
               )}
@@ -947,7 +942,7 @@ export function LibraryAudioStrip({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="min-w-0 flex-1 truncate text-center font-display text-base font-semibold leading-tight text-foreground sm:text-lg">
+              <p className="relative -top-1.5 min-w-0 flex-1 truncate text-center font-display text-base font-semibold leading-tight text-foreground sm:text-lg">
                 {track.title}
               </p>
               <button
@@ -1060,30 +1055,6 @@ export function LibraryAudioStrip({
         </div>
 
         <div className="hidden shrink-0 items-center justify-end gap-2 sm:flex">
-          {ambientMix || ambientSoundscape ? null : (
-            <a
-              href={track.url}
-              download={downloadBasename(track.title)}
-              className="inline-flex rounded-xl border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground hover:border-accent/40"
-              aria-label="Download audio"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M12 3v12" />
-                <path d="M7 10l5 5 5-5" />
-                <path d="M21 21H3" />
-              </svg>
-            </a>
-          )}
           <button
             type="button"
             onClick={() => {

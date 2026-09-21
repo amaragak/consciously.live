@@ -971,6 +971,19 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
 }
 
 /*
+ * Preview: hybrid keeps the paisley at a flat low opacity across the content
+ * column (no gutter fade). Revert or tune after visual check.
+ */
+:root.hybrid main[data-page-kind="standard"] {
+  --page-pattern-opacity: 0.05;
+}
+:root.hybrid .page-pattern-tile,
+:root.hybrid main[data-app-layout="signed-in"] .page-pattern-tile {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/*
  * Tiled paisley in gutters on standard pages. Height is set in px on the element
  * (see MainShell) so repeat covers the full scrollable content — not one viewport strip.
  */

@@ -36,7 +36,7 @@ export {
   stopLibraryVoicePlayback,
 };
 
-export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 80;
+export const PLAYER_STRIP_HEIGHT_ESTIMATE_PX = 96;
 
 export function LibraryAudioStrip(
   props: {

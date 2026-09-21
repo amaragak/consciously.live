@@ -18,7 +18,7 @@ const SIZE_PX = {
   /** List card — one title line + 3 desc lines + meta. */
   card: 113,
   /** Now-playing strip. */
-  player: 48,
+  player: 64,
 } as const;
 
 function PlaceholderMark({ className }: { className?: string }) {

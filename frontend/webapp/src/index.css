@@ -394,6 +394,19 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
   --page-pattern-opacity: 0.18;
 }
 
+/*
+ * Preview: hybrid keeps the paisley at a flat low opacity across the content
+ * column (no gutter fade). Revert or tune after visual check.
+ */
+:root.hybrid main[data-page-kind="standard"] {
+  --page-pattern-opacity: 0.05;
+}
+:root.hybrid .page-pattern-tile,
+:root.hybrid main[data-app-layout="signed-in"] .page-pattern-tile {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 .page-pattern-tile {
   position: absolute;
   top: 0;
