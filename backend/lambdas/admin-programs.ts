@@ -20,6 +20,7 @@ import {
 import {
   deleteProgram,
   getProgram,
+  isOptimisticLockError,
   listPrograms,
   putProgram,
   type ProgramPublic,
@@ -125,6 +126,41 @@ function previousCoverKey(
   return program.days.find((d) => d.id === dayId)?.coverImageKey ?? null;
 }
 
+/**
+ * Re-read + optimistic put with retries so concurrent lesson cover gens don't
+ * clobber each other. Null covers never wipe siblings (putProgram merge).
+ */
+async function commitCover(
+  programId: string,
+  dayId: string | null,
+  cover: { key: string | null; url: string | null },
+): Promise<ProgramPublic> {
+  const clearKey = dayId ?? "";
+  const allowClear =
+    cover.key == null ? new Set<string>([clearKey]) : undefined;
+  let lastPrev: string | null = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const latest = await getProgram(programId);
+    if (!latest) throw new Error("Program not found");
+    lastPrev = previousCoverKey(latest, dayId);
+    try {
+      const saved = await putProgram(applyCover(latest, dayId, cover), {
+        expectedUpdatedAt: latest.updatedAt,
+        allowClearCoverKeys: allowClear,
+      });
+      const { bucket } = mediaConfig();
+      if (lastPrev && lastPrev !== cover.key) {
+        await deleteObjectBestEffort(bucket, lastPrev);
+      }
+      return saved;
+    } catch (e) {
+      if (isOptimisticLockError(e)) continue;
+      throw e;
+    }
+  }
+  throw new Error("Could not save cover (concurrent update)");
+}
+
 async function handleGenerateCover(
   body: Record<string, unknown>,
 ): Promise<ProgramPublic> {
@@ -171,11 +207,7 @@ async function handleGenerateCover(
     body: imageBody,
     mime,
   });
-  const prev = previousCoverKey(program, dayId);
-  const next = await putProgram(applyCover(program, dayId, { key, url }));
-  const { bucket } = mediaConfig();
-  if (prev && prev !== key) await deleteObjectBestEffort(bucket, prev);
-  return next;
+  return commitCover(programId, dayId, { key, url });
 }
 
 async function handleUploadCover(
@@ -210,11 +242,7 @@ async function handleUploadCover(
     body: buf,
     mime,
   });
-  const prev = previousCoverKey(program, dayId);
-  const next = await putProgram(applyCover(program, dayId, { key, url }));
-  const { bucket } = mediaConfig();
-  if (prev && prev !== key) await deleteObjectBestEffort(bucket, prev);
-  return next;
+  return commitCover(programId, dayId, { key, url });
 }
 
 async function handleClearCover(
@@ -233,13 +261,7 @@ async function handleClearCover(
     throw new Error("Lesson not found");
   }
 
-  const prev = previousCoverKey(program, dayId);
-  const next = await putProgram(
-    applyCover(program, dayId, { key: null, url: null }),
-  );
-  const { bucket } = mediaConfig();
-  await deleteObjectBestEffort(bucket, prev);
-  return next;
+  return commitCover(programId, dayId, { key: null, url: null });
 }
 
 export async function handler(

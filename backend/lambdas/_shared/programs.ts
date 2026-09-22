@@ -1,5 +1,8 @@
 import { randomUUID } from "crypto";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   DeleteCommand,
@@ -335,7 +338,19 @@ export async function getProgram(id: string): Promise<ProgramPublic | null> {
   return normalizeProgram(out.Item);
 }
 
-export async function putProgram(input: unknown): Promise<ProgramPublic> {
+export async function putProgram(
+  input: unknown,
+  opts?: {
+    /** Fail if the stored `updatedAt` does not match (optimistic lock). */
+    expectedUpdatedAt?: string;
+    /**
+     * Cover slots that may be written as null. Keys are day ids, or "" for the
+     * program-level cover. Without this, incoming null/empty never wipes an
+     * existing cover — required for concurrent lesson cover generation.
+     */
+    allowClearCoverKeys?: ReadonlySet<string>;
+  },
+): Promise<ProgramPublic> {
   const existingId =
     input && typeof input === "object" && typeof (input as { id?: unknown }).id === "string"
       ? (input as { id: string }).id.trim()
@@ -346,29 +361,85 @@ export async function putProgram(input: unknown): Promise<ProgramPublic> {
     typeof input === "object" && input
       ? { ...(input as Record<string, unknown>) }
       : {};
-  // Preserve day covers when the client omits cover fields on save.
+  const allowClear = opts?.allowClearCoverKeys;
+
+  const mergeCover = (
+    slotKey: string,
+    prevKey: string | null,
+    prevUrl: string | null,
+    hasKey: boolean,
+    hasUrl: boolean,
+    incomingKey: unknown,
+    incomingUrl: unknown,
+  ): { coverImageKey: string | null; coverImageUrl: string | null } => {
+    if (!hasKey && !hasUrl) {
+      return { coverImageKey: prevKey, coverImageUrl: prevUrl };
+    }
+    const nextKeyRaw = hasKey ? incomingKey : prevKey;
+    const nextUrlRaw = hasUrl ? incomingUrl : prevUrl;
+    const nextKey =
+      typeof nextKeyRaw === "string" && nextKeyRaw.trim()
+        ? nextKeyRaw.trim()
+        : null;
+    const nextUrl =
+      typeof nextUrlRaw === "string" && nextUrlRaw.trim()
+        ? nextUrlRaw.trim()
+        : null;
+    const clearing = nextKey == null;
+    if (clearing && prevKey && !allowClear?.has(slotKey)) {
+      // Stale concurrent puts often re-send null for other lessons — keep theirs.
+      return { coverImageKey: prevKey, coverImageUrl: prevUrl };
+    }
+    return {
+      coverImageKey: nextKey,
+      coverImageUrl: nextKey ? nextUrl : null,
+    };
+  };
+
+  // Preserve day covers when the client omits cover fields on save — and never
+  // let a null from a stale concurrent cover gen wipe another lesson's art.
   if (existing && Array.isArray(mergedInput.days)) {
     const byId = new Map(existing.days.map((d) => [d.id, d]));
     mergedInput.days = (mergedInput.days as unknown[]).map((raw) => {
       if (!raw || typeof raw !== "object") return raw;
       const o = raw as Record<string, unknown>;
-      const prev = typeof o.id === "string" ? byId.get(o.id.trim()) : undefined;
+      const id = typeof o.id === "string" ? o.id.trim() : "";
+      const prev = id ? byId.get(id) : undefined;
       if (!prev) return raw;
       const hasKey = Object.prototype.hasOwnProperty.call(o, "coverImageKey");
       const hasUrl = Object.prototype.hasOwnProperty.call(o, "coverImageUrl");
-      return {
-        ...o,
-        coverImageKey: hasKey ? o.coverImageKey : prev.coverImageKey,
-        coverImageUrl: hasUrl ? o.coverImageUrl : prev.coverImageUrl,
-      };
+      const merged = mergeCover(
+        id,
+        prev.coverImageKey,
+        prev.coverImageUrl,
+        hasKey,
+        hasUrl,
+        o.coverImageKey,
+        o.coverImageUrl,
+      );
+      return { ...o, ...merged };
     });
   }
-  if (
-    existing &&
-    !Object.prototype.hasOwnProperty.call(mergedInput, "coverImageKey")
-  ) {
-    mergedInput.coverImageKey = existing.coverImageKey;
-    mergedInput.coverImageUrl = existing.coverImageUrl;
+  if (existing) {
+    const hasKey = Object.prototype.hasOwnProperty.call(
+      mergedInput,
+      "coverImageKey",
+    );
+    const hasUrl = Object.prototype.hasOwnProperty.call(
+      mergedInput,
+      "coverImageUrl",
+    );
+    const merged = mergeCover(
+      "",
+      existing.coverImageKey,
+      existing.coverImageUrl,
+      hasKey,
+      hasUrl,
+      mergedInput.coverImageKey,
+      mergedInput.coverImageUrl,
+    );
+    mergedInput.coverImageKey = merged.coverImageKey;
+    mergedInput.coverImageUrl = merged.coverImageUrl;
   }
   const next = normalizeProgram({
     ...(existing ?? {}),
@@ -390,13 +461,33 @@ export async function putProgram(input: unknown): Promise<ProgramPublic> {
     pk: PROGRAM_PK,
     sk: next.id,
   };
-  await ddb.send(
-    new PutCommand({
-      TableName: tableName(),
-      Item: row,
-    }),
-  );
+  try {
+    await ddb.send(
+      new PutCommand({
+        TableName: tableName(),
+        Item: row,
+        ...(opts?.expectedUpdatedAt
+          ? {
+              ConditionExpression: "updatedAt = :u",
+              ExpressionAttributeValues: { ":u": opts.expectedUpdatedAt },
+            }
+          : {}),
+      }),
+    );
+  } catch (e) {
+    if (opts?.expectedUpdatedAt && isOptimisticLockError(e)) throw e;
+    throw e;
+  }
   return next;
+}
+
+export function isOptimisticLockError(e: unknown): boolean {
+  return (
+    e instanceof ConditionalCheckFailedException ||
+    (Boolean(e) &&
+      typeof e === "object" &&
+      (e as { name?: string }).name === "ConditionalCheckFailedException")
+  );
 }
 
 export async function deleteProgram(id: string): Promise<void> {

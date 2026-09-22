@@ -296,12 +296,25 @@ export function AdminProgramsPanel() {
   const [dayCoverPrompts, setDayCoverPrompts] = useState<
     Record<string, string>
   >({});
-  const [coverBusyKey, setCoverBusyKey] = useState<string | null>(null);
+  const [coverBusyKeys, setCoverBusyKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const coverBusyKeysRef = useRef<Set<string>>(new Set());
   const [coverStatus, setCoverStatus] = useState<string | null>(null);
   const [coverImageModel, setCoverImageModel] =
     useState<AdminImageModel>("gpt-image-1-mini");
   const programCoverFileRef = useRef<HTMLInputElement | null>(null);
   const dayCoverFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  function markCoverBusy(key: string, busy: boolean) {
+    if (busy) coverBusyKeysRef.current.add(key);
+    else coverBusyKeysRef.current.delete(key);
+    setCoverBusyKeys(new Set(coverBusyKeysRef.current));
+  }
+
+  function coverIsBusy(key: string): boolean {
+    return coverBusyKeysRef.current.has(key);
+  }
   const [speakers, setSpeakers] = useState<FishSpeaker[]>([]);
   /** Music channel list — compositions already folded in as a subcategory. */
   const [musicItems, setMusicItems] = useState<BackgroundAudioItem[]>([]);
@@ -563,22 +576,49 @@ export function AdminProgramsPanel() {
     }
   }
 
-  function applyCoverProgram(saved: AdminProgram) {
-    setPrograms((prev) => {
-      const idx = prev.findIndex((p) => p.id === saved.id);
-      if (idx < 0) return [...prev, saved];
-      const next = [...prev];
-      next[idx] = saved;
+  function applyCoverResult(saved: AdminProgram, dayId: string | null) {
+    const patchProgram = (prev: AdminProgram): AdminProgram => {
+      if (prev.id !== saved.id) return prev;
+      if (!dayId) {
+        return {
+          ...prev,
+          coverImageKey: saved.coverImageKey,
+          coverImageUrl: saved.coverImageUrl,
+          updatedAt: saved.updatedAt,
+        };
+      }
+      const savedDay = saved.days.find((d) => d.id === dayId);
+      if (!savedDay) return prev;
+      return {
+        ...prev,
+        updatedAt: saved.updatedAt,
+        days: prev.days.map((d) =>
+          d.id === dayId
+            ? {
+                ...d,
+                coverImageKey: savedDay.coverImageKey,
+                coverImageUrl: savedDay.coverImageUrl,
+              }
+            : d,
+        ),
+      };
+    };
+    setPrograms((list) => {
+      const idx = list.findIndex((p) => p.id === saved.id);
+      if (idx < 0) return [...list, patchProgram(saved)];
+      const next = [...list];
+      next[idx] = patchProgram(list[idx]!);
       return next;
     });
-    setDraft({ ...saved, days: saved.days.map((d) => ({ ...d })) });
+    setDraft((cur) => (cur && cur.id === saved.id ? patchProgram(cur) : cur));
   }
 
-  async function generateCover(dayId: string | null) {
-    if (!draft) return;
+  async function generateCover(dayId: string | null): Promise<boolean> {
+    if (!draft) return false;
     const key = dayId ?? "program";
+    if (coverIsBusy(key)) return false;
     setError(null);
-    setCoverBusyKey(key);
+    markCoverBusy(key, true);
     setCoverStatus("Generating cover…");
     try {
       const prompt = dayId
@@ -590,21 +630,44 @@ export function AdminProgramsPanel() {
         prompt: prompt || undefined,
         model: coverImageModel,
       });
-      applyCoverProgram(saved);
+      applyCoverResult(saved, dayId);
       setCoverStatus("Cover generated.");
+      return true;
     } catch (e) {
       setCoverStatus(null);
       setError(e instanceof Error ? e.message : "Could not generate cover");
+      return false;
     } finally {
-      setCoverBusyKey(null);
+      markCoverBusy(key, false);
+    }
+  }
+
+  async function generateAllLessonCovers() {
+    if (!draft || draft.days.length === 0) return;
+    setError(null);
+    setCoverStatus(
+      `Generating ${draft.days.length} lesson cover${draft.days.length === 1 ? "" : "s"}…`,
+    );
+    const results = await Promise.all(
+      draft.days.map((day) => generateCover(day.id)),
+    );
+    const failed = results.filter((ok) => !ok).length;
+    if (failed > 0) {
+      setError(
+        `${failed} lesson cover${failed === 1 ? "" : "s"} failed to generate`,
+      );
+      setCoverStatus(null);
+    } else {
+      setCoverStatus("All lesson covers generated.");
     }
   }
 
   async function uploadCover(dayId: string | null, file: File | null) {
     if (!draft || !file) return;
     const key = dayId ?? "program";
+    if (coverIsBusy(key)) return;
     setError(null);
-    setCoverBusyKey(key);
+    markCoverBusy(key, true);
     setCoverStatus("Uploading cover…");
     try {
       const { dataUrl, mimeType } = await fileToCompressedJpegDataUrl(file);
@@ -614,13 +677,13 @@ export function AdminProgramsPanel() {
         imageBase64: dataUrl,
         mimeType,
       });
-      applyCoverProgram(saved);
+      applyCoverResult(saved, dayId);
       setCoverStatus("Cover uploaded.");
     } catch (e) {
       setCoverStatus(null);
       setError(e instanceof Error ? e.message : "Could not upload cover");
     } finally {
-      setCoverBusyKey(null);
+      markCoverBusy(key, false);
       if (dayId) {
         const input = dayCoverFileRefs.current[dayId];
         if (input) input.value = "";
@@ -633,21 +696,22 @@ export function AdminProgramsPanel() {
   async function clearCover(dayId: string | null) {
     if (!draft) return;
     const key = dayId ?? "program";
+    if (coverIsBusy(key)) return;
     setError(null);
-    setCoverBusyKey(key);
+    markCoverBusy(key, true);
     setCoverStatus("Clearing cover…");
     try {
       const saved = await clearAdminProgramCover({
         programId: draft.id,
         dayId,
       });
-      applyCoverProgram(saved);
+      applyCoverResult(saved, dayId);
       setCoverStatus("Cover cleared.");
     } catch (e) {
       setCoverStatus(null);
       setError(e instanceof Error ? e.message : "Could not clear cover");
     } finally {
-      setCoverBusyKey(null);
+      markCoverBusy(key, false);
     }
   }
 
@@ -1319,21 +1383,21 @@ export function AdminProgramsPanel() {
                         <button
                           type="button"
                           disabled={
-                            coverBusyKey !== null ||
+                            coverBusyKeys.has("program") ||
                             saveBusy ||
                             generateBatchBusy
                           }
                           onClick={() => void generateCover(null)}
                           className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
                         >
-                          {coverBusyKey === "program"
+                          {coverBusyKeys.has("program")
                             ? "Working…"
                             : "Generate"}
                         </button>
                         <button
                           type="button"
                           disabled={
-                            coverBusyKey !== null ||
+                            coverBusyKeys.has("program") ||
                             saveBusy ||
                             generateBatchBusy
                           }
@@ -1346,7 +1410,7 @@ export function AdminProgramsPanel() {
                           type="button"
                           disabled={
                             !draft.coverImageUrl ||
-                            coverBusyKey !== null ||
+                            coverBusyKeys.has("program") ||
                             saveBusy
                           }
                           onClick={() => void clearCover(null)}
@@ -1354,9 +1418,14 @@ export function AdminProgramsPanel() {
                         >
                           Clear
                         </button>
-                        {coverStatus && coverBusyKey === null ? (
+                        {coverStatus && coverBusyKeys.size === 0 ? (
                           <span className="text-[11px] text-muted">
                             {coverStatus}
+                          </span>
+                        ) : coverBusyKeys.size > 0 ? (
+                          <span className="text-[11px] text-muted">
+                            Generating {coverBusyKeys.size} cover
+                            {coverBusyKeys.size === 1 ? "" : "s"}…
                           </span>
                         ) : null}
                       </div>
@@ -1491,6 +1560,22 @@ export function AdminProgramsPanel() {
                     {generateBatchBusy
                       ? generateBatchProgress || "Generating…"
                       : "Generate all audio"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      draft.days.length === 0 ||
+                      coverBusyKeys.size > 0 ||
+                      generateBatchBusy ||
+                      saveBusy
+                    }
+                    onClick={() => void generateAllLessonCovers()}
+                    className="cursor-pointer rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
+                  >
+                    {coverBusyKeys.size > 0 &&
+                    [...coverBusyKeys].some((k) => k !== "program")
+                      ? `Covers… (${coverBusyKeys.size})`
+                      : "Generate all covers"}
                   </button>
                   <button
                     type="button"
@@ -1733,7 +1818,7 @@ export function AdminProgramsPanel() {
                               <button
                                 type="button"
                                 disabled={
-                                  coverBusyKey !== null ||
+                                  coverBusyKeys.has(day.id) ||
                                   generating ||
                                   generateBatchBusy ||
                                   saveBusy
@@ -1741,14 +1826,14 @@ export function AdminProgramsPanel() {
                                 onClick={() => void generateCover(day.id)}
                                 className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
                               >
-                                {coverBusyKey === day.id
+                                {coverBusyKeys.has(day.id)
                                   ? "Working…"
                                   : "Generate"}
                               </button>
                               <button
                                 type="button"
                                 disabled={
-                                  coverBusyKey !== null ||
+                                  coverBusyKeys.has(day.id) ||
                                   generating ||
                                   generateBatchBusy ||
                                   saveBusy
@@ -1764,7 +1849,7 @@ export function AdminProgramsPanel() {
                                 type="button"
                                 disabled={
                                   !day.coverImageUrl ||
-                                  coverBusyKey !== null ||
+                                  coverBusyKeys.has(day.id) ||
                                   saveBusy
                                 }
                                 onClick={() => void clearCover(day.id)}

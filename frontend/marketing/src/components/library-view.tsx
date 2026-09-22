@@ -2328,7 +2328,8 @@ export default function LibraryView({
             ) : (
               <Link
                 href="/meditate/create"
-                className="hidden shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 md:inline-flex"
+                className={`hidden shrink-0 px-3 py-2.5 md:inline-flex ${makeItYourOwnClassName}`}
+                style={makeItYourOwnStyle}
               >
                 + Create new
               </Link>

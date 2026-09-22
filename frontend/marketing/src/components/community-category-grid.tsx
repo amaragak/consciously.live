@@ -182,7 +182,7 @@ export function MeditationTypeCardGrid({
   variant?: "default" | "picker";
   /** Optional cover images keyed by category label (Community cards). */
   imageUrls?: Partial<Record<string, string>>;
-  /** While true, Community cover slots show grey squares instead of icon cards. */
+  /** While true, Community cover slots reserve space but stay empty until images flush in. */
   imagesLoading?: boolean;
 }) {
   const cards: Array<{
@@ -353,22 +353,18 @@ function CategoryCoverCard({
       aria-busy={busy}
       title={title}
       onClick={onSelect}
-      className={`relative aspect-square w-full min-w-0 cursor-pointer overflow-hidden rounded-md border-0 bg-border/50 ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] hover:brightness-[0.97] sm:rounded-lg ${
-        active
-          ? "ring-2 ring-accent ring-offset-2 ring-offset-background"
-          : ""
+      tabIndex={reveal ? undefined : -1}
+      className={`relative aspect-square w-full min-w-0 overflow-hidden rounded-md border-0 bg-transparent sm:rounded-lg ${
+        reveal
+          ? `cursor-pointer ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] hover:brightness-[0.97] ${
+              active
+                ? "ring-2 ring-accent ring-offset-2 ring-offset-background"
+                : ""
+            }`
+          : "pointer-events-none"
       }`}
     >
-      {/* Grey placeholder + label while decoding / waiting to flush. */}
-      <span
-        className={`absolute inset-x-0 bottom-0 z-[1] flex min-h-[2.5rem] items-center justify-center bg-black/40 px-2 py-1 transition-opacity duration-150 sm:min-h-[2.75rem] sm:px-2.5 sm:py-1.5 ${
-          reveal ? "opacity-0" : "opacity-100"
-        }`}
-      >
-        <span className="line-clamp-2 text-center font-display text-sm font-medium leading-tight text-white/90 sm:text-base">
-          {label}
-        </span>
-      </span>
+      {/* Invisible until covers flush — reserve grid space only. */}
       <div
         className={`absolute inset-0 transition-opacity ease-out ${
           reveal ? "opacity-100" : "opacity-0"
