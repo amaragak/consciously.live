@@ -330,7 +330,6 @@ export class DualStemPlayer {
     if (this.bakedEl) return this.bakedEl;
     const el = document.createElement("audio");
     el.preload = "auto";
-    el.playsInline = true;
     el.setAttribute("playsinline", "");
     el.style.display = "none";
     el.addEventListener("ended", () => this.finishNatural());
