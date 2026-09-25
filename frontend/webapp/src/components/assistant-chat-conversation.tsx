@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import { AssistantChatActionResults } from "@/components/assistant-chat-action-results";
-import { ChatMarkdown } from "@/components/chat-markdown";
 import { DictationMicButton, appendSpokenText } from "@/components/dictation-mic-button";
-import { assistantChatBubbles } from "@/lib/assistant-chat-protocol";
+import {
+  ChatThreadMessage,
+  splitChatBubbles,
+} from "@/components/chat-thread-message";
 import { ASSISTANT_CHAT_PANEL_CLASSIC_STYLE } from "@/lib/assistant-chat-ui-flags";
 import type { AssistantChatUiMessage } from "@/lib/assistant-chat-storage";
 
@@ -97,8 +99,6 @@ export function AssistantChatConversation({
     (opening && messages.length === 0) ||
     (busy && messages[messages.length - 1]?.role === "user");
   const showEmptyChrome = !opening && messages.length === 0 && !error;
-  // 16px main chat (also iOS input no-zoom floor). FAB compact matches.
-  const textSize = "text-base";
 
   // FAB remounts this pane without changing messages — force bottom on mount.
   useLayoutEffect(() => {
@@ -153,102 +153,23 @@ export function AssistantChatConversation({
               const groupedWithNext = !!next && next.role === msg.role;
               const parts = isUser
                 ? [msg.text]
-                : assistantChatBubbles(msg.text).length
-                  ? assistantChatBubbles(msg.text)
+                : splitChatBubbles(msg.text).length
+                  ? splitChatBubbles(msg.text)
                   : [msg.text];
 
               return (
-                <div
+                <ChatThreadMessage
                   key={`${msg.role}-${i}`}
-                  className={`flex w-full min-w-0 flex-col ${
-                    isUser ? "items-end" : "items-start"
-                  } ${groupedWithNext ? "mb-1" : "mb-6"}`}
-                >
-                  {parts.map((part, pi) => {
-                    const lastPart = pi === parts.length - 1;
-                    const showTail = lastPart && !groupedWithNext;
-
-                    if (classicBubbles) {
-                      const radius = isUser
-                        ? showTail
-                          ? "rounded-xl rounded-br-sm"
-                          : "rounded-xl"
-                        : showTail
-                          ? "rounded-xl rounded-bl-sm"
-                          : "rounded-xl";
-                      const bubbleBase = `chat-bubble relative px-3 py-2 ${radius}`;
-                      const bubble = isUser
-                        ? `${bubbleBase} bg-accent-soft ${textSize} leading-[1.5] text-foreground ${
-                            showTail ? "chat-bubble-tail-right" : ""
-                          }`
-                        : `${bubbleBase} bg-card ${textSize} leading-[1.5] text-foreground ${
-                            showTail ? "chat-bubble-tail-left" : ""
-                          }`;
-                      return (
-                        <div
-                          key={pi}
-                          className={`flex w-full min-w-0 ${
-                            isUser ? "justify-end" : "justify-start"
-                          } ${lastPart ? "" : "mb-1"}`}
-                        >
-                          <div className="chat-bubble-shell">
-                            <div className={bubble}>
-                              <ChatMarkdown
-                                text={part}
-                                className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    /* Modern panel: user bubbles only; assistant is plain text. */
-                    if (isUser) {
-                      const radius = showTail
-                        ? "rounded-xl rounded-br-sm"
-                        : "rounded-xl";
-                      return (
-                        <div
-                          key={pi}
-                          className={`flex w-full min-w-0 justify-end ${
-                            lastPart ? "" : "mb-1"
-                          }`}
-                        >
-                          <div className="chat-bubble-shell">
-                            <div
-                              className={`chat-bubble relative px-3 py-2 ${radius} bg-black/[0.028] dark:bg-accent-soft ${textSize} leading-[1.5] text-foreground ${
-                                showTail ? "chat-bubble-tail-right" : ""
-                              }`}
-                            >
-                              <ChatMarkdown
-                                text={part}
-                                className={`relative z-[2] ${textSize} font-normal leading-[1.5]`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={pi}
-                        className={`flex w-full min-w-0 max-w-[min(100%,42rem)] justify-start ${
-                          lastPart ? "" : "mb-3"
-                        }`}
-                      >
-                        <ChatMarkdown
-                          text={part}
-                          className={`${textSize} font-normal leading-[1.5] text-foreground`}
-                        />
-                      </div>
-                    );
-                  })}
-                  {!isUser && msg.actionResults?.length ? (
-                    <AssistantChatActionResults results={msg.actionResults} />
-                  ) : null}
-                </div>
+                  role={msg.role}
+                  parts={parts}
+                  classic={classicBubbles}
+                  groupedWithNext={groupedWithNext}
+                  footer={
+                    !isUser && msg.actionResults?.length ? (
+                      <AssistantChatActionResults results={msg.actionResults} />
+                    ) : null
+                  }
+                />
               );
             })}
             {showTyping ? <ChatTypingIndicator /> : null}

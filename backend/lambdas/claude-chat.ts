@@ -132,6 +132,8 @@ async function streamHandler(
     /** Web journal flow uses placeholder style; do not lock technique to that label. */
     journalMode?: boolean;
     journalGuidance?: string;
+    /** Create › By Program — gather per-session customization intake in order. */
+    fromProgram?: boolean;
     /** Dev-only A/B from the create flow; unknown values fall back to Haiku. */
     claudeModel?: string;
   };
@@ -191,6 +193,7 @@ async function streamHandler(
     }
 
     const journalMode = body.journalMode === true;
+    const fromProgram = body.fromProgram === true;
     const journalGuidance =
       typeof body.journalGuidance === "string" ? body.journalGuidance.trim() : "";
 
@@ -231,12 +234,13 @@ async function streamHandler(
       meditationStyle,
       journalMode,
       targetMinutes: meditationTargetMinutes,
+      fromProgram,
     });
     if (journalGuidance) {
       system += `\n\nThe creator asked you to interpret the journal entry with this guidance (this is not a meditation-style override):\n${journalGuidance}`;
     }
 
-    maxTokens = 256;
+    maxTokens = fromProgram ? 512 : 256;
   }
 
   const upstream = await fetch(ANTHROPIC_URL, {

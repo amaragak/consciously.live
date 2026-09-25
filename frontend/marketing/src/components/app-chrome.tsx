@@ -31,6 +31,7 @@ import {
   exitMarketingPreviewMode,
   isMarketingPreviewMode,
 } from "@/lib/marketing-preview";
+import { isHomeV2Enabled } from "@/lib/home-v2-flag";
 
 /** Real access JWT required — not sticky ACTIVE_KEY alone. */
 function hasAppSession(): boolean {
@@ -128,6 +129,8 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
   );
 
   const hideChrome = isPublicAuthPath(pathname);
+  const hideSiteHeader =
+    hideChrome || (pathname === "/" && isHomeV2Enabled());
 
   useLayoutEffect(() => {
     const scheme = hideChrome
@@ -139,7 +142,7 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
   return (
     <AppPrimaryTabsProvider>
       <ScrollToTopOnNavigate />
-      {hideChrome ? null : <SiteHeader />}
+      {hideSiteHeader ? null : <SiteHeader />}
       <MainShell>{body}</MainShell>
       <Suspense fallback={null}>
         <SignInOverlayHost />

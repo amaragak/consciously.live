@@ -103,9 +103,45 @@ export function transcriptForLibraryMetadata(
   }
   const t = transcript.trim();
   if (!t) return "";
-  if (!/one-shot request/i.test(t)) return t.slice(0, 2500);
-  const unwrapped = unwrapOneShotPackaging(t.replace(/^User:\s*/i, ""));
-  return unwrapped ? `User: ${unwrapped}`.slice(0, 2500) : t.slice(0, 2500);
+  if (/one-shot request/i.test(t)) {
+    const unwrapped = unwrapOneShotPackaging(t.replace(/^User:\s*/i, ""));
+    return unwrapped ? `User: ${unwrapped}`.slice(0, 2500) : t.slice(0, 2500);
+  }
+
+  // By Program chats open on session 1 (e.g. Root). Prefer the script brief +
+  // recent answers so title/description are not stuck on the opening only.
+  const briefMatch = t.match(/### By Program — script brief[\s\S]*/i);
+  if (briefMatch && typeof briefMatch.index === "number") {
+    const brief = briefMatch[0].slice(0, 1400);
+    const before = t.slice(0, briefMatch.index).trim();
+    const recent = before.length > 1800 ? before.slice(-1800) : before;
+    return `${recent}\n\n${brief}`.slice(0, 4000);
+  }
+
+  // Long free-form chats: prefer the end (answers) over the opener.
+  if (t.length > 2800) return t.slice(-2800);
+  return t.slice(0, 2800);
+}
+
+/** Head + middle + tail so multi-part scripts are not judged by the opening alone. */
+export function scriptPreviewForLibraryMetadata(
+  script: string,
+  maxChars = 2800,
+): string {
+  const t = script.trim();
+  if (!t) return "";
+  if (t.length <= maxChars) return t;
+  const head = Math.floor(maxChars * 0.4);
+  const mid = Math.floor(maxChars * 0.2);
+  const tail = Math.max(200, maxChars - head - mid - 20);
+  const midStart = Math.max(0, Math.floor((t.length - mid) / 2));
+  return [
+    t.slice(0, head).trim(),
+    "…",
+    t.slice(midStart, midStart + mid).trim(),
+    "…",
+    t.slice(-tail).trim(),
+  ].join("\n");
 }
 
 /** Unwrap `packageOneShotPrompt` packaging to the user's actual request. */
@@ -165,7 +201,7 @@ export async function deriveLibraryMetadataFromClaude(params: {
   description: string;
   claudeUsage: { input_tokens: number; output_tokens: number } | null;
 }> {
-  const scriptPreview = params.scriptPreview.slice(0, 1200);
+  const scriptPreview = scriptPreviewForLibraryMetadata(params.scriptPreview);
   const allowedJson = knownMeditationTypesJsonArrayBlock();
   const planningContext = transcriptForLibraryMetadata(
     params.transcript,
@@ -177,7 +213,9 @@ export async function deriveLibraryMetadataFromClaude(params: {
     'Field "meditationType" MUST be identical to one string in the ALLOWED_MEDITATION_TYPES JSON array from the user message — copy it character-for-character (including spaces and hyphens).',
     "Pick the **single best-matching** category for this meditation; if several fit, choose the strongest overall fit.",
     "Never invent labels: no synonyms or paraphrases (e.g. not Mindfulness, Zen, Guided meditation, Calm, General).",
-    "Title: ~10 words, evocative, listener-facing — same quality as a published meditation card. Description: what the listener will experience.",
+    "Title: ~10 words, evocative, listener-facing — same quality as a published meditation card. Description: what the listener will experience across the whole practice.",
+    "If the practice weaves multiple themes, centers, sessions, or phases, title and description MUST reflect the full journey — never name only the opening section (e.g. do not title a full chakra journey as a Root-only piece).",
+    "Never invent themes (grief, heartbreak, etc.) that are not supported by the script or chat.",
     "Never quote or paraphrase system/instructions (e.g. “Please write a complete guided meditation script”, “one-shot request”).",
     "No markdown code fences.",
   ].join(" ");
@@ -206,7 +244,7 @@ export async function deriveLibraryMetadataFromClaude(params: {
     "### Planning / chat context",
     planningContext || "(none)",
     "",
-    "### Beginning of the final spoken script",
+    "### Spoken script (excerpts — beginning, middle, end; judge the WHOLE practice)",
     scriptPreview || "(empty)",
     "",
     'Return: {"title":"~10 words, evocative","meditationType":"<one allowed string exactly>","description":"200-300 characters, one line, what the listener will experience"}',

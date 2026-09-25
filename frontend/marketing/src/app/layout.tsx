@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Caveat, DM_Sans, Fraunces } from "next/font/google";
+import { Caveat, DM_Sans, Fraunces, Instrument_Sans } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
 import {
@@ -15,6 +15,12 @@ import { AppChromeHost } from "@/components/app-chrome-host";
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
   subsets: ["latin"],
+});
+
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 const fraunces = Fraunces({
@@ -62,7 +68,7 @@ export default function RootLayout({
       </head>
       <body
         suppressHydrationWarning
-        className={`${dmSans.variable} ${fraunces.variable} ${caveat.variable} flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground antialiased`}
+        className={`${dmSans.variable} ${instrumentSans.variable} ${fraunces.variable} ${caveat.variable} flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground antialiased`}
       >
         <ColorSchemeBoot />
         <LibraryPlayerProvider>

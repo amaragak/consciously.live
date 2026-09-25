@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { EnhancedPricingPage } from "@/components/enhanced-pricing-page";
 
 export const metadata = {
@@ -7,5 +8,15 @@ export const metadata = {
 };
 
 export default function PricingPage() {
-  return <EnhancedPricingPage />;
+  return (
+    <Suspense
+      fallback={
+        <div className="px-4 py-20 text-center text-marketing-muted">
+          Loading plans…
+        </div>
+      }
+    >
+      <EnhancedPricingPage />
+    </Suspense>
+  );
 }

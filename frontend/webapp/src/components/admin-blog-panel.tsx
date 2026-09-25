@@ -66,6 +66,7 @@ function blankDraft(): BlogDraft {
     tags: [],
     series: "",
     part: null,
+    notes: "",
     body: "",
     published: false,
     publishedAt: null,
@@ -89,6 +90,7 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
     tags: post.tags,
     series: post.series,
     part: post.part,
+    notes: post.notes ?? "",
     body: post.body,
     published: post.published,
     publishedAt: post.publishedAt,
@@ -363,6 +365,7 @@ export function AdminReadPanel() {
         tags: draft.tags,
         series: draft.series,
         part: draft.part,
+        notes: draft.notes,
         body: draft.body,
         published: draft.published,
       });
@@ -766,6 +769,24 @@ export function AdminReadPanel() {
                   placeholder="1"
                 />
               </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Notes{" "}
+                <span className="font-normal text-muted/80">
+                  (private — not published)
+                </span>
+              </label>
+              <textarea
+                value={draft.notes}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, notes: e.target.value }))
+                }
+                rows={5}
+                disabled={busy}
+                className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm leading-relaxed text-foreground"
+                placeholder="Working notes, outline, sources — only visible in admin."
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted">

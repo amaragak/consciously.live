@@ -265,6 +265,7 @@ export type AppBreadcrumbCrumb = {
  * Build breadcrumb crumbs for the logged-in top bar (no brand).
  * `lifeAreaTitle` is used when on `/manifest/goal/[id]`.
  * `createMeditationStyle` is used on By Type questions / mix steps.
+ * `createProgramTitle` is used on By Program chat / mix steps.
  */
 export function buildAppBreadcrumbs(
   pathname: string,
@@ -273,6 +274,8 @@ export function buildAppBreadcrumbs(
     createMeditationStyle?: string | null;
     /** Random Script create path — show “Random” instead of “By Type”. */
     createRandomScript?: boolean;
+    /** Selected program title on By Program chat / audio. */
+    createProgramTitle?: string | null;
     /** Title for `/journal/my/[entryId]` (mobile entry editor). */
     journalEntryTitle?: string | null;
     /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
@@ -313,8 +316,8 @@ export function buildAppBreadcrumbs(
     const parsed =
       pathname.startsWith("/meditate/create")
         ? parseCreateMeditationPathname(pathname)
-        : { path: "pending" as const, styleStep: "type" as const, mix: false, valid: true };
-    // Match create-path card eyebrows (By Type, Chat, Manifest, Journal, Direct, Random).
+        : { path: "pending" as const, styleStep: "type" as const, fromProgramStep: "pick" as const, mix: false, valid: true };
+    // Match create-path card eyebrows (By Type, Chat, Manifest, Journal, Direct, Random, By Program).
     const pathLabel =
       parsed.path === "style"
         ? opts?.createRandomScript
@@ -328,10 +331,13 @@ export function buildAppBreadcrumbs(
               ? "Journal"
               : parsed.path === "oneShot"
                 ? "Direct"
-                : null;
+                : parsed.path === "fromProgram"
+                  ? "By Program"
+                  : null;
     if (pathLabel) {
       crumbs.push({ label: "Create", href: CREATE_MEDITATE_ROOT });
       const styleName = opts?.createMeditationStyle?.trim() || null;
+      const programName = opts?.createProgramTitle?.trim() || null;
       if (parsed.path === "style") {
         const byTypeHref = createMeditationHref({ path: "style" });
         const questionsHref = createMeditationHref({
@@ -354,6 +360,37 @@ export function buildAppBreadcrumbs(
         } else {
           // Type picker
           crumbs.push({ label: stylePathLabel, href: null });
+        }
+      } else if (parsed.path === "fromProgram") {
+        const pickHref = createMeditationHref({
+          path: "fromProgram",
+          fromProgramStep: "pick",
+        });
+        const sessionsHref = createMeditationHref({
+          path: "fromProgram",
+          fromProgramStep: "sessions",
+        });
+        const chatHref = createMeditationHref({
+          path: "fromProgram",
+          fromProgramStep: "chat",
+        });
+        if (parsed.mix) {
+          crumbs.push({ label: "By Program", href: pickHref });
+          if (programName) {
+            crumbs.push({ label: programName, href: sessionsHref });
+          }
+          crumbs.push({ label: "Audio", href: null });
+        } else if (parsed.fromProgramStep === "chat") {
+          crumbs.push({ label: "By Program", href: pickHref });
+          if (programName) {
+            crumbs.push({ label: programName, href: sessionsHref });
+          }
+          crumbs.push({ label: "Chat", href: null });
+        } else if (parsed.fromProgramStep === "sessions") {
+          crumbs.push({ label: "By Program", href: pickHref });
+          crumbs.push({ label: programName || "Sessions", href: null });
+        } else {
+          crumbs.push({ label: "By Program", href: null });
         }
       } else if (parsed.mix) {
         crumbs.push({

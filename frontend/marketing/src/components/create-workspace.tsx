@@ -37,6 +37,7 @@ import {
   type CreateMeditationPath,
 } from "@/lib/create-meditation-path";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
+import { takeHomeV2OneShotPrompt } from "@/lib/home-v2-oneshot-prompt";
 import {
   clearCreateSession,
   createSessionSatisfiesRoute,
@@ -2992,7 +2993,8 @@ export function CreateWorkspace({
     setCoachAudioReady(false);
     setCreationPath("oneShot");
     setJournalMode(true);
-    setOneShotPrompt("");
+    // Homepage v2 may stash a prompt before sign-in.
+    setOneShotPrompt(takeHomeV2OneShotPrompt() ?? "");
     setPhase("promptPick");
     setChatBusy(false);
     setScriptLoading(false);

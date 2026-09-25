@@ -4,7 +4,8 @@
  */
 
 export type ConsciouslyRole = "user" | "admin";
-export type ConsciouslyPlan = "free" | "pro";
+/** Essentials = free; Create / Pro are paid Stripe products. */
+export type ConsciouslyPlan = "free" | "create" | "pro";
 
 export type ConsciouslyPrivileges = {
   role: ConsciouslyRole;
@@ -23,7 +24,9 @@ export function normalizeRole(raw: unknown): ConsciouslyRole {
 }
 
 export function normalizePlan(raw: unknown): ConsciouslyPlan {
-  return raw === "pro" ? "pro" : "free";
+  if (raw === "pro") return "pro";
+  if (raw === "create") return "create";
+  return "free";
 }
 
 /**
@@ -46,5 +49,18 @@ export function resolvePrivileges(params: {
 }
 
 export function isPaidPlan(plan: ConsciouslyPlan | undefined): boolean {
-  return plan === "pro";
+  return plan === "create" || plan === "pro";
+}
+
+/** Paid checkout products (Stripe price keys). */
+export const BILLING_PRICE_KEYS = ["create", "pro"] as const;
+export type BillingPriceKey = (typeof BILLING_PRICE_KEYS)[number];
+
+export function coerceBillingPriceKey(raw: unknown): BillingPriceKey | null {
+  return raw === "create" || raw === "pro" ? raw : null;
+}
+
+/** Map a Stripe product key onto the Users.plan claim. */
+export function planForBillingPriceKey(key: BillingPriceKey): ConsciouslyPlan {
+  return key;
 }

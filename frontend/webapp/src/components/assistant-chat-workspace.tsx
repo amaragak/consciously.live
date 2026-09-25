@@ -3,6 +3,10 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AssistantChatCapabilitiesFab } from "@/components/assistant-chat-capabilities-fab";
 import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
 import {
+  ChatPanelShell,
+  ChatRailPatternTile,
+} from "@/components/chat-panel-shell";
+import {
   clearAssistantChatRemoteSessionCache,
   markAssistantChatStorePulledThisSession,
   pullAssistantChatStoreFromCloud,
@@ -23,7 +27,6 @@ import {
   threadPreview,
   type AssistantChatThread,
 } from "@/lib/assistant-chat-storage";
-import { ASSISTANT_CHAT_PANEL_CLASSIC_STYLE } from "@/lib/assistant-chat-ui-flags";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -263,27 +266,7 @@ export function AssistantChatWorkspace() {
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
-      <div
-        className={`relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl overflow-hidden border-r-[0.5px] border-border ${
-          ASSISTANT_CHAT_PANEL_CLASSIC_STYLE
-            ? "bg-[color:var(--card-warm-bg)]"
-            : "bg-transparent"
-        }`}
-      >
-        {ASSISTANT_CHAT_PANEL_CLASSIC_STYLE ? (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-0 opacity-15"
-            style={{
-              backgroundImage:
-                'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
-              backgroundRepeat: "repeat",
-              backgroundSize: "286px 320px",
-              backgroundPosition: "center top",
-            }}
-          />
-        ) : null}
-
+      <ChatPanelShell>
         <AssistantChatCapabilitiesFab />
 
         <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-row">
@@ -294,17 +277,7 @@ export function AssistantChatWorkspace() {
                 mobileComposeChrome ? "" : ""
               }`}
             >
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
-                style={{
-                  backgroundImage:
-                    'url("/patterns/hero/adobestock-2162625652.webp")',
-                  backgroundRepeat: "repeat",
-                  backgroundSize: "220px auto",
-                  backgroundPosition: "center top",
-                }}
-              />
+              <ChatRailPatternTile />
               <button
                 type="button"
                 onClick={toggleCollapsed}
@@ -331,17 +304,7 @@ export function AssistantChatWorkspace() {
                   : "max-sm:h-fit max-sm:max-h-full max-sm:min-h-0 max-sm:flex-1 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
               }`}
             >
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
-                style={{
-                  backgroundImage:
-                    'url("/patterns/hero/adobestock-2162625652.webp")',
-                  backgroundRepeat: "repeat",
-                  backgroundSize: "220px auto",
-                  backgroundPosition: "center top",
-                }}
-              />
+              <ChatRailPatternTile />
               <div className="relative z-[1] flex items-center gap-2">
                 <button
                   type="button"
@@ -499,7 +462,7 @@ export function AssistantChatWorkspace() {
             />
           </section>
         </div>
-      </div>
+      </ChatPanelShell>
       <div
         className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"
         aria-hidden

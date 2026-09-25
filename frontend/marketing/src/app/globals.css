@@ -3,6 +3,7 @@
 /* Class-based dark / hybrid appearance (header dropdown). Default is light. */
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant hybrid (&:where(.hybrid, .hybrid *));
+@custom-variant v2 (&:where(.v2, .v2 *));
 
 :root {
   /* Keep in sync with site header height (h-14) */
@@ -28,6 +29,10 @@
 }
 
 :root.hybrid {
+  color-scheme: light;
+}
+
+:root.v2 {
   color-scheme: light;
 }
 

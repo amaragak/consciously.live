@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consciously sticky header prototype</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Instrument Sans',system-ui,sans-serif;background:#F6F1E7;color:#0F1B2D}
+a{color:inherit;text-decoration:none}a:hover{color:#C8A46A}
+@keyframes slideIn{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.sticky{animation:slideIn 260ms ease}
+@keyframes rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+@keyframes heroIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+/* Hero: eases in on load */
+.scroller #tool-home h1{animation:heroIn 900ms cubic-bezier(.2,.7,.2,1) both}
+.scroller #tool-home p{animation:heroIn 900ms 150ms cubic-bezier(.2,.7,.2,1) both}
+.scroller #tool-home form{animation:heroIn 900ms 300ms cubic-bezier(.2,.7,.2,1) both}
+.scroller #tool-home > div:last-child{animation:heroIn 900ms 450ms cubic-bezier(.2,.7,.2,1) both}
+/* Sections: fade up as they scroll into view; text first, then the mock-up */
+.scroller section[id^="tool-"]:not(#tool-home) > *{animation:rise linear both;animation-timeline:view();animation-range:entry 5% cover 30%}
+.scroller section[id^="tool-"]:not(#tool-home) > *:nth-child(2){animation-range:entry 15% cover 38%}
+/* Five-tools diagram: cards cascade left to right, then the Chat bar */
+.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *{animation:rise linear both;animation-timeline:view();animation-range:entry 10% cover 34%}
+.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *:nth-child(2),.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *:nth-child(3){animation-range:entry 16% cover 38%}
+.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *:nth-child(4),.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *:nth-child(5){animation-range:entry 22% cover 42%}
+.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *:nth-child(6),.scroller #tool-home-loop > div:nth-child(2) > div:first-child > *:nth-child(7){animation-range:entry 28% cover 46%}
+.scroller #tool-home-loop > div:nth-child(2) > div:nth-child(2){animation:rise linear both;animation-timeline:view();animation-range:entry 20% cover 50%}
+@media (prefers-reduced-motion: reduce){.sticky,.scroller *{animation:none !important}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #F6F1E7; font-family: 'Instrument Sans', system-ui, sans-serif">
+
+<div class="scroller" onScroll="{{onScroll}}" style="position: absolute; top: 0; left: 0; width: 1440px; height: 900px; overflow-y: auto; overflow-x: hidden">
+<dc-import name="Main" hint-size="1440px,6150px"></dc-import>
+</div>
+
+<sc-if value="{{stuck}}" hint-placeholder-val="{{false}}">
+<header class="sticky" style="position: absolute; top: 0; left: 0; width: 1440px; height: 72px; box-sizing: border-box; padding: 0 80px; display: flex; align-items: center; gap: 24px; background: rgba(15,27,45,0.94); border-bottom: 1px solid rgba(246,241,231,0.1)">
+<a href="https://consciously.live/" aria-label="Consciously home" style="font-family: 'Fraunces', serif; font-size: 26px; font-weight: 500; letter-spacing: -0.4px; color: #F6F1E7; display: flex; align-items: baseline; gap: 8px; width: 250px; flex-shrink: 0">
+<span>consciously</span>
+<sc-if value="{{hasVerb}}" hint-placeholder-val="{{false}}"><em style="font-weight: 400; color: #C8A46A">{{verb}}</em></sc-if>
+</a>
+<nav aria-label="Main" style="display: flex; gap: 4px; flex-grow: 1; align-items: center; font-size: 15px; white-space: nowrap">
+<sc-for list="{{links}}" as="l" hint-placeholder-count="5">
+<sc-if value="{{l.off}}" hint-placeholder-val="{{true}}"><a href="{{l.href}}" style="padding: 8px 12px; border-radius: 999px; color: rgba(246,241,231,0.7)">{{l.name}}</a></sc-if>
+</sc-for>
+<span style="width: 1px; height: 20px; background: rgba(246,241,231,0.2); margin: 0 12px"></span>
+<a href="https://consciously.live/listen" style="padding: 8px 9px; color: rgba(246,241,231,0.7)">Listen</a><a href="https://consciously.live/read" style="padding: 8px 9px; color: rgba(246,241,231,0.7)">Read</a><a href="https://consciously.live/connect" style="padding: 8px 9px; color: rgba(246,241,231,0.7)">Connect</a>
+</nav>
+<a href="https://app.consciously.live/login" style="font-size: 15px; white-space: nowrap; color: rgba(246,241,231,0.78)">Sign in</a>
+<a href="{{ctaHref}}" style="font-size: 15px; font-weight: 600; background: #C8A46A; color: #0F1B2D; padding: 11px 20px; border-radius: 999px; min-width: 180px; text-align: center; white-space: nowrap; flex-shrink: 0">{{ctaLabel}}</a>
+</header>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { tool: '', stuck: false };
+}
+renderVals() {
+var self = this;
+var app = 'https://app.consciously.live/';
+var names = ['Meditate', 'Journal', 'Manifest', 'Focus', 'Chat'];
+var actions = { Meditate: 'Create a meditation', Journal: 'Write an entry', Manifest: 'Build your vision board', Focus: 'Start a focus session', Chat: 'Talk to your coach' };
+var tool = this.state.tool;
+var verb = '';
+for (var i = 0; i < names.length; i++) { if (names[i].toLowerCase() === tool) verb = names[i]; }
+var links = names.map(function (n) {
+var on = n.toLowerCase() === tool;
+return { name: n, href: '#tool-' + n.toLowerCase(), off: !on };
+});
+var onScroll = function (e) {
+var c = e.currentTarget;
+var cr = c.getBoundingClientRect();
+var cur = '';
+var secs = c.querySelectorAll('[id^="tool-"]');
+for (var j = 0; j < secs.length; j++) {
+var r = secs[j].getBoundingClientRect();
+if ((r.top - cr.top) / cr.height < 0.4) cur = secs[j].id.slice(5);
+}
+if (cur.indexOf('home') === 0) cur = '';
+var stuck = c.scrollTop > 140;
+if (cur !== self.state.tool || stuck !== self.state.stuck) self.setState({ tool: cur, stuck: stuck });
+};
+return {
+links: links,
+onScroll: onScroll,
+verb: verb,
+hasVerb: verb !== '',
+stuck: this.state.stuck,
+ctaLabel: verb ? actions[verb] : 'Start free',
+ctaHref: verb ? app + verb.toLowerCase() : app
+};
+}
+}
+</script>
+</body>
+</html>

@@ -27,6 +27,7 @@ import {
   profileGreetingName,
   PROFILE_PREFS_CHANGED_EVENT,
 } from "@/lib/profile-prefs";
+import { PreviousVersionsMenu } from "@/components/previous-versions-menu";
 
 /** Marketing / logged-out top nav — section roots only (no app flyouts). */
 const marketingNav: { href: string; label: string }[] = [
@@ -123,6 +124,7 @@ function AccountMenu({
         >
           Sign out
         </button>
+        <PreviousVersionsMenu onNavigate={close} />
       </div>
     </details>
   );
@@ -398,6 +400,7 @@ export function SiteHeader() {
                     >
                       Sign out
                     </button>
+                    <PreviousVersionsMenu onNavigate={closeMobile} />
                   </>
                 ) : (
                   <Link

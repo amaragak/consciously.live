@@ -6,11 +6,16 @@ export type CreateMeditationPath =
   | "freeflow"
   | "journalReflect"
   | "goal"
-  | "oneShot";
+  | "oneShot"
+  | "fromProgram";
+
+export type FromProgramStep = "pick" | "sessions" | "chat";
 
 export type ParsedCreateMeditationRoute = {
   path: CreateMeditationPath;
   styleStep: "type" | "questions";
+  /** Only meaningful when `path === "fromProgram"`. */
+  fromProgramStep: FromProgramStep;
   mix: boolean;
   valid: boolean;
 };
@@ -27,44 +32,132 @@ export function parseCreateMeditationPathname(
 ): ParsedCreateMeditationRoute {
   const parts = partsAfterCreateRoot(pathname);
   if (parts == null) {
-    return { path: "pending", styleStep: "type", mix: false, valid: true };
+    return {
+      path: "pending",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix: false,
+      valid: true,
+    };
   }
   if (parts.length === 0) {
-    return { path: "pending", styleStep: "type", mix: false, valid: true };
+    return {
+      path: "pending",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix: false,
+      valid: true,
+    };
   }
 
   const mix = parts[parts.length - 1] === "mix";
   const segs = mix ? parts.slice(0, -1) : parts;
   if (mix && segs.length === 0) {
-    return { path: "pending", styleStep: "type", mix: false, valid: false };
+    return {
+      path: "pending",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix: false,
+      valid: false,
+    };
   }
 
   const a = segs[0];
   const b = segs[1];
   if (a === "by-type" && segs.length === 1) {
-    return { path: "style", styleStep: "type", mix, valid: true };
+    return {
+      path: "style",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
   }
   if (a === "by-type" && b === "questions" && segs.length === 2) {
-    return { path: "style", styleStep: "questions", mix, valid: true };
+    return {
+      path: "style",
+      styleStep: "questions",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
   }
   if (a === "from-chat" && segs.length === 1) {
-    return { path: "freeflow", styleStep: "type", mix, valid: true };
+    return {
+      path: "freeflow",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
   }
   if (a === "from-journal" && segs.length === 1) {
-    return { path: "journalReflect", styleStep: "type", mix, valid: true };
+    return {
+      path: "journalReflect",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
   }
   if (a === "from-idea" && segs.length === 1) {
-    return { path: "goal", styleStep: "type", mix, valid: true };
+    return {
+      path: "goal",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
   }
   if (a === "from-prompt" && segs.length === 1) {
-    return { path: "oneShot", styleStep: "type", mix, valid: true };
+    return {
+      path: "oneShot",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
   }
-  return { path: "pending", styleStep: "type", mix: false, valid: false };
+  if (a === "from-program" && segs.length === 1) {
+    return {
+      path: "fromProgram",
+      styleStep: "type",
+      fromProgramStep: "pick",
+      mix,
+      valid: true,
+    };
+  }
+  if (a === "from-program" && b === "sessions" && segs.length === 2) {
+    return {
+      path: "fromProgram",
+      styleStep: "type",
+      fromProgramStep: "sessions",
+      mix,
+      valid: true,
+    };
+  }
+  if (a === "from-program" && b === "chat" && segs.length === 2) {
+    return {
+      path: "fromProgram",
+      styleStep: "type",
+      fromProgramStep: "chat",
+      mix,
+      valid: true,
+    };
+  }
+  return {
+    path: "pending",
+    styleStep: "type",
+    fromProgramStep: "pick",
+    mix: false,
+    valid: false,
+  };
 }
 
 export function createMeditationHref(opts: {
   path: CreateMeditationPath;
   styleStep?: "type" | "questions";
+  fromProgramStep?: FromProgramStep;
   mix?: boolean;
 }): string {
   if (opts.path === "pending") return CREATE_MEDITATE_ROOT;
@@ -77,9 +170,22 @@ export function createMeditationHref(opts: {
           ? `${CREATE_MEDITATE_ROOT}/from-journal`
           : opts.path === "goal"
             ? `${CREATE_MEDITATE_ROOT}/from-idea`
-            : `${CREATE_MEDITATE_ROOT}/from-prompt`;
+            : opts.path === "fromProgram"
+              ? `${CREATE_MEDITATE_ROOT}/from-program`
+              : `${CREATE_MEDITATE_ROOT}/from-prompt`;
   if (opts.path === "style" && opts.styleStep === "questions") {
     return opts.mix ? `${base}/questions/mix` : `${base}/questions`;
+  }
+  if (opts.path === "fromProgram") {
+    const step = opts.fromProgramStep ?? "pick";
+    if (step === "chat") {
+      return opts.mix ? `${base}/chat/mix` : `${base}/chat`;
+    }
+    if (step === "sessions") {
+      // Mix without chat is invalid — send to chat/mix.
+      return opts.mix ? `${base}/chat/mix` : `${base}/sessions`;
+    }
+    return opts.mix ? `${base}/chat/mix` : base;
   }
   return opts.mix ? `${base}/mix` : base;
 }
@@ -89,6 +195,13 @@ export function createRouteNeedsPriorState(
 ): boolean {
   if (!parsed.valid) return false;
   if (parsed.mix) return true;
+  if (
+    parsed.path === "fromProgram" &&
+    (parsed.fromProgramStep === "chat" ||
+      parsed.fromProgramStep === "sessions")
+  ) {
+    return true;
+  }
   return parsed.path === "style" && parsed.styleStep === "questions";
 }
 
@@ -99,6 +212,7 @@ export function createMeditationPathStartHref(
   return createMeditationHref({
     path: parsed.path,
     styleStep: "type",
+    fromProgramStep: "pick",
     mix: false,
   });
 }

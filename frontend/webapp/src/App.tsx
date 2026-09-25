@@ -22,6 +22,8 @@ import { ManifestHomePage } from "./pages/manifest-home-page";
 import { ManifestVisionBoardPage } from "./pages/manifest-vision-board-page";
 import { SchedulePage } from "./pages/schedule-page";
 import { SettingsPage } from "./pages/settings-page";
+import { PricingPage } from "./pages/pricing-page";
+import { PricingSuccessPage } from "./pages/pricing-success-page";
 import { SoundsPage } from "./pages/sounds-page";
 import { LoggedOutShell } from "./shell/logged-out-shell";
 import { CognitoCallbackPage } from "./pages/cognito-callback-page";
@@ -58,6 +60,9 @@ export function App() {
           element={<Navigate to="/meditate/library/creations" replace />}
         />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="pricing" element={<PricingPage />} />
+        <Route path="pricing/success" element={<PricingSuccessPage />} />
+        <Route path="pro" element={<Navigate to="/pricing" replace />} />
         <Route path="schedule" element={<SchedulePage />} />
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<Navigate to="sounds" replace />} />

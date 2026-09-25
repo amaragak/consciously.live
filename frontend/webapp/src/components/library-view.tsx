@@ -2354,7 +2354,7 @@ export default function LibraryView({
             </h1>
             {exploringProgram ? (
               <Link
-                to="/meditate/create/from-prompt"
+                to="/meditate/create/from-program"
                 className={`hidden shrink-0 px-3 py-2.5 md:inline-flex ${makeItYourOwnClassName}`}
                 style={makeItYourOwnStyle}
               >
@@ -2605,6 +2605,8 @@ export default function LibraryView({
                           width={PROGRAM_COVER_EDGE_PX}
                           height={PROGRAM_COVER_EDGE_PX}
                           className="h-full w-full object-cover"
+                          loading="eager"
+                          decoding="async"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
@@ -2657,7 +2659,7 @@ export default function LibraryView({
                           Explore course →
                         </button>
                         <Link
-                          to="/meditate/create/from-prompt"
+                          to="/meditate/create/from-program"
                           className={`px-4 py-2 ${makeItYourOwnClassName}`}
                           style={makeItYourOwnStyle}
                         >

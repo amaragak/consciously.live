@@ -1,10 +1,11 @@
 /**
  * Appearance. Default is light; user choice is stored in localStorage
- * and applied as `class="dark"` / `class="hybrid"` on `<html>`
+ * and applied as `class="dark"` / `class="hybrid"` / `class="v2"` on `<html>`
  * (not `prefers-color-scheme`). Hybrid starts as a copy of light.
+ * `v2` is the Consciously homepage-v2 palette (navy / ivory / gold).
  */
 
-export type ColorScheme = "light" | "dark" | "hybrid";
+export type ColorScheme = "light" | "dark" | "hybrid" | "v2";
 
 export const COLOR_SCHEME_STORAGE_KEY = "mm_color_scheme";
 export const COLOR_SCHEME_CHANGED_EVENT = "mm-color-scheme-changed";
@@ -18,6 +19,17 @@ export const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
   { id: "hybrid", label: "Hybrid" },
+  { id: "v2", label: "V2" },
+];
+
+/** Homepage v2 header switcher — light/dark placeholders + v2 (palette defined). */
+export const COLOR_SCHEME_OPTIONS_HOME_V2: ReadonlyArray<{
+  id: ColorScheme;
+  label: string;
+}> = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+  { id: "v2", label: "V2" },
 ];
 
 /** Hero paisley tiles — keep in sync with `--home-hero-pattern` in theme-colors. */
@@ -32,7 +44,10 @@ export const AUTH_HERO_PATTERN_DARK = "/patterns/paisley-dark-duotone.webp";
 export function parseColorScheme(
   value: string | null | undefined,
 ): ColorScheme | null {
-  return value === "dark" || value === "light" || value === "hybrid"
+  return value === "dark" ||
+    value === "light" ||
+    value === "hybrid" ||
+    value === "v2"
     ? value
     : null;
 }
@@ -52,6 +67,7 @@ export function getLiveColorScheme(): ColorScheme {
     const root = document.documentElement.classList;
     if (root.contains("dark")) return "dark";
     if (root.contains("hybrid")) return "hybrid";
+    if (root.contains("v2")) return "v2";
   }
   return getStoredColorScheme();
 }
@@ -103,6 +119,7 @@ export function applyColorScheme(scheme: ColorScheme): void {
   root.classList.add("theme-switching");
   root.classList.toggle("dark", scheme === "dark");
   root.classList.toggle("hybrid", scheme === "hybrid");
+  root.classList.toggle("v2", scheme === "v2");
   root.style.colorScheme = scheme === "dark" ? "dark" : "light";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -124,7 +141,13 @@ export function setColorScheme(scheme: ColorScheme): void {
 export function toggleColorScheme(): ColorScheme {
   const cur = getStoredColorScheme();
   const next: ColorScheme =
-    cur === "light" ? "dark" : cur === "dark" ? "hybrid" : "light";
+    cur === "light"
+      ? "dark"
+      : cur === "dark"
+        ? "hybrid"
+        : cur === "hybrid"
+          ? "v2"
+          : "light";
   setColorScheme(next);
   return next;
 }
@@ -135,4 +158,4 @@ export function toggleColorScheme(): ColorScheme {
  * `/login` honors `?scheme=` from the page they clicked from; otherwise
  * localStorage; otherwise light.
  */
-export const colorSchemeBootScript = `(function(){var scheme="light";try{var q=null;if(location.pathname==="/login"){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"?q:null;if(parsed)scheme=parsed;else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="hybrid")scheme=s}}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var dark=scheme==="dark";var active=auth?(dark?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(dark?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
+export const colorSchemeBootScript = `(function(){var scheme="light";try{var q=null;if(location.pathname==="/login"){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="hybrid"||s==="v2")scheme=s}}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var dark=scheme==="dark";var active=auth?(dark?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(dark?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;

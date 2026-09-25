@@ -277,7 +277,7 @@ export async function loginAsMedimadeGuest(): Promise<MedimadeMagicLinkVerifyRes
 }
 
 export type ConsciouslyRole = "user" | "admin";
-export type ConsciouslyPlan = "free" | "pro";
+export type ConsciouslyPlan = "free" | "create" | "pro";
 
 export type MedimadeMagicLinkVerifyResult = {
   token: string;
@@ -294,9 +294,11 @@ function parseSessionPrivileges(data: {
   role?: unknown;
   plan?: unknown;
 }): { role: ConsciouslyRole; plan: ConsciouslyPlan } {
+  const plan =
+    data.plan === "pro" ? "pro" : data.plan === "create" ? "create" : "free";
   return {
     role: data.role === "admin" ? "admin" : "user",
-    plan: data.plan === "pro" ? "pro" : "free",
+    plan,
   };
 }
 
@@ -612,6 +614,72 @@ export async function logoutMedimadeSessionRemote(
   } catch {
     /* ignore */
   }
+}
+
+export type BillingPriceKey = "create" | "pro";
+
+export type BillingPriceInfo = {
+  key: BillingPriceKey;
+  plan: ConsciouslyPlan;
+  configured: boolean;
+  label: string;
+  blurb: string;
+};
+
+export async function fetchBillingPrices(): Promise<{
+  prices: BillingPriceInfo[];
+  checkoutReady: boolean;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/billing/prices`);
+  const data = (await res.json().catch(() => ({}))) as {
+    prices?: BillingPriceInfo[];
+    checkoutReady?: boolean;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    prices: Array.isArray(data.prices) ? data.prices : [],
+    checkoutReady: data.checkoutReady === true,
+  };
+}
+
+/** Start Stripe Checkout for Create or Pro. Returns the hosted Checkout URL. */
+export async function createBillingCheckoutSession(opts: {
+  priceKey: BillingPriceKey;
+  successUrl?: string;
+  cancelUrl?: string;
+}): Promise<{ url: string; sessionId: string; plan: ConsciouslyPlan }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/billing/checkout-session`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      priceKey: opts.priceKey,
+      ...(opts.successUrl ? { successUrl: opts.successUrl } : {}),
+      ...(opts.cancelUrl ? { cancelUrl: opts.cancelUrl } : {}),
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string;
+    sessionId?: string;
+    plan?: ConsciouslyPlan;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok || typeof data.url !== "string" || !data.url.trim()) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    url: data.url.trim(),
+    sessionId: typeof data.sessionId === "string" ? data.sessionId : "",
+    plan: data.plan === "create" || data.plan === "pro" ? data.plan : "pro",
+  };
 }
 
 /** Full URL of the streaming chat endpoint (same-origin proxy in the browser). */
@@ -3923,6 +3991,7 @@ export type AdminBlogPost = {
   tags: string[];
   series: string;
   part: number | null;
+  notes: string;
   body: string;
   published: boolean;
   publishedAt: string | null;
@@ -3983,6 +4052,7 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
         typeof o.part === "number" ? o.part : Number(String(o.part ?? "").trim());
       return Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
     })(),
+    notes: typeof o.notes === "string" ? o.notes : "",
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
     publishedAt:

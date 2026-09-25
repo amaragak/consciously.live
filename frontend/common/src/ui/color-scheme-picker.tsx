@@ -16,9 +16,11 @@ type ColorSchemePickerProps = {
   /** Narrow rail — icon trigger, menu opens to the right. */
   compact?: boolean;
   /** Sidebar chrome is quieter than the marketing header. */
-  variant?: "header" | "sidebar";
+  variant?: "header" | "sidebar" | "home-v2";
   /** Sidebar footers open upward so the menu is not clipped. */
   menu?: "down" | "up" | "end";
+  /** Override the option list (e.g. homepage v2: Light / Dark / V2). */
+  options?: ReadonlyArray<{ id: ColorScheme; label: string }>;
 };
 
 export function ColorSchemePicker({
@@ -26,6 +28,7 @@ export function ColorSchemePicker({
   compact = false,
   variant = "header",
   menu = "down",
+  options = COLOR_SCHEME_OPTIONS,
 }: ColorSchemePickerProps) {
   const [scheme, setScheme] = useState<ColorScheme>("light");
   const [open, setOpen] = useState(false);
@@ -56,7 +59,10 @@ export function ColorSchemePicker({
   }, [open]);
 
   const current =
-    COLOR_SCHEME_OPTIONS.find((o) => o.id === scheme) ?? COLOR_SCHEME_OPTIONS[0]!;
+    options.find((o) => o.id === scheme) ??
+    COLOR_SCHEME_OPTIONS.find((o) => o.id === scheme) ??
+    options[0] ??
+    COLOR_SCHEME_OPTIONS[0]!;
 
   function choose(next: ColorScheme) {
     setColorScheme(next);
@@ -71,6 +77,14 @@ export function ColorSchemePicker({
         ? "left-full bottom-0 ml-1"
         : "top-full right-0 mt-1";
 
+  const triggerClass = compact
+    ? "inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+    : variant === "sidebar"
+      ? "inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg px-2 text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+      : variant === "home-v2"
+        ? "inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-[var(--hv2-hero-divider)] px-2.5 text-sm text-[var(--hv2-hero-nav)] transition-colors hover:border-[rgb(var(--hv2-gold-rgb)/0.55)] hover:text-[var(--hv2-gold)]"
+        : "inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-marketing-nav-chrome px-2.5 text-sm text-nav-muted transition-[background-color,color,border-color] duration-150 ease-out hover:bg-nav-active hover:text-nav-foreground";
+
   return (
     <div ref={rootRef} className={`relative ${className}`}>
       <button
@@ -80,13 +94,7 @@ export function ColorSchemePicker({
         aria-label={`Appearance: ${current.label}`}
         title={current.label}
         onClick={() => setOpen((v) => !v)}
-        className={
-          compact
-            ? "inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-            : variant === "sidebar"
-              ? "inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg px-2 text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-              : "inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-marketing-nav-chrome px-2.5 text-sm text-nav-muted transition-[background-color,color,border-color] duration-150 ease-out hover:bg-nav-active hover:text-nav-foreground"
-        }
+        className={triggerClass}
       >
         {compact ? (
           <SchemeGlyph scheme={scheme} />
@@ -103,7 +111,7 @@ export function ColorSchemePicker({
           aria-label="Appearance"
           className={`absolute z-[120] min-w-[7.5rem] rounded-lg border border-border bg-card py-1 shadow-[0_8px_24px_color-mix(in_srgb,var(--overlay)_16%,transparent)] ${menuPos}`}
         >
-          {COLOR_SCHEME_OPTIONS.map((opt) => {
+          {options.map((opt) => {
             const selected = opt.id === scheme;
             return (
               <li key={opt.id} role="presentation">
@@ -138,7 +146,7 @@ function SchemeGlyph({ scheme }: { scheme: ColorScheme }) {
       </svg>
     );
   }
-  if (parsed === "hybrid") {
+  if (parsed === "hybrid" || parsed === "v2") {
     return (
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
         <circle cx="12" cy="12" r="9" />

@@ -29,6 +29,11 @@ export type ProgramDay = {
   prompt: string;
   /** Optional listener-facing blurb; LLM-filled when short/empty at generate time. */
   description: string;
+  /**
+   * Details the By Program create chat should gather to customise this session
+   * (admin-authored intake outline for the coach).
+   */
+  customizationIntake: string;
   speakerModelId: string;
   /** Composition / soundscape streaming key (music slot alone). */
   compositionKey: string;
@@ -116,6 +121,10 @@ function coerceDay(raw: unknown, fallbackIndex: number): ProgramDay | null {
     description:
       typeof o.description === "string"
         ? o.description.trim().slice(0, 600)
+        : "",
+    customizationIntake:
+      typeof o.customizationIntake === "string"
+        ? o.customizationIntake.trim().slice(0, 4000)
         : "",
     speakerModelId:
       typeof o.speakerModelId === "string" ? o.speakerModelId.trim() : "",
@@ -246,6 +255,8 @@ export type LibraryProgramDay = {
   dayNumber: number;
   title: string;
   description: string;
+  /** Details By Program chat should gather to customise this session. */
+  customizationIntake: string;
   targetMinutes: number;
   /** Measured voice-stem length; prefer over targetMinutes for display. */
   durationSeconds: number | null;
@@ -281,6 +292,7 @@ export function toLibraryProgram(p: ProgramPublic): LibraryProgram | null {
       dayNumber: d.dayNumber,
       title: d.title,
       description: d.description,
+      customizationIntake: d.customizationIntake,
       targetMinutes: d.targetMinutes,
       durationSeconds: d.durationSeconds,
       audioUrl: d.audioUrl!.trim(),

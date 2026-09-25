@@ -34,6 +34,10 @@ export type BlogPost = {
   series: string;
   /** Optional 1-based part within the series. */
   part: number | null;
+  /**
+   * Admin-only working notes — never returned on public blog APIs.
+   */
+  notes: string;
   /** HTML (TipTap) or legacy markdown body. */
   body: string;
   published: boolean;
@@ -93,6 +97,7 @@ export function slugifyTitle(title: string): string {
 const MAX_BLOG_TAGS = 12;
 const MAX_BLOG_TAG_LEN = 40;
 const MAX_BLOG_SERIES_LEN = 80;
+const MAX_BLOG_NOTES_LEN = 50_000;
 
 /** Strip HTML/markdown to plain text for “has content” and TTS. */
 export function htmlToNarrationText(source: string): string {
@@ -314,6 +319,10 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
     tags: normalizeBlogTags(raw.tags),
     series: normalizeBlogSeries(raw.series),
     part: normalizeBlogPart(raw.part),
+    notes:
+      typeof raw.notes === "string"
+        ? raw.notes.slice(0, MAX_BLOG_NOTES_LEN)
+        : "",
     body: typeof raw.body === "string" ? raw.body.slice(0, 100_000) : "",
     published: raw.published === true,
     publishedAt:
@@ -507,6 +516,11 @@ export async function putBlogPost(
     part: Object.prototype.hasOwnProperty.call(input, "part")
       ? normalizeBlogPart(input.part)
       : (existing?.part ?? null),
+    notes: Object.prototype.hasOwnProperty.call(input, "notes")
+      ? typeof input.notes === "string"
+        ? input.notes.slice(0, MAX_BLOG_NOTES_LEN)
+        : ""
+      : (existing?.notes ?? ""),
     body:
       typeof input.body === "string"
         ? input.body.slice(0, 100_000)

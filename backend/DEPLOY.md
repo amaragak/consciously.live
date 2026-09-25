@@ -15,6 +15,46 @@ Create a secret with this **exact name** (full path string):
 | **`medimade/RUNPODS_API_KEY`** | Your RunPod API key (plain text; used for **Orpheus TTS** via `POST /orpheus/tts`) |
 | **`medimade/RUNPODS_URL`** | RunPod endpoint URL (plain text), e.g. `https://api.runpod.ai/v2/<endpoint-id>` — suffix optional (`/runsync` or `/run` appended by client) |
 | **`medimade/ALGOLIA`** | JSON: `{"appId":"…","adminApiKey":"…","searchApiKey":"…","indexName":"consciously"}` — user-content search (`GET /search?q=`) |
+| **`medimade/STRIPE_SECRET_KEY`** | Stripe secret key (`sk_test_…` / `sk_live_…`) for Checkout |
+| **`medimade/STRIPE_WEBHOOK_SECRET`** | Stripe webhook signing secret (`whsec_…`) for `POST /billing/stripe/webhook` |
+| **`medimade/STRIPE_PRICES`** | JSON price IDs: `{"create":"price_…","pro":"price_…","essentials":"price_…"}` |
+
+### Stripe Checkout
+
+Create recurring Prices in Stripe (Create + Pro). Store IDs in Secrets Manager (not CDK context):
+
+```bash
+aws secretsmanager create-secret \
+  --name medimade/STRIPE_PRICES \
+  --secret-string '{"create":"price_1UJDf08T2SDIQnd8GtRYcxnT","pro":"price_1UJDfL8T2SDIQnd83DLwUxyq","essentials":"price_1UJDfd8T2SDIQnd88PzVOu8i"}' \
+  --profile mm --region eu-west-2
+```
+
+To rotate:
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id medimade/STRIPE_PRICES \
+  --secret-string '{"create":"price_…","pro":"price_…","essentials":"price_…"}' \
+  --profile mm --region eu-west-2
+```
+
+Webhook URL: `{ApiUrl}/billing/stripe/webhook`  
+Subscribe to: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`.
+
+```bash
+aws secretsmanager create-secret \
+  --name medimade/STRIPE_SECRET_KEY \
+  --secret-string "sk_test_…" \
+  --profile mm
+```
+
+```bash
+aws secretsmanager create-secret \
+  --name medimade/STRIPE_WEBHOOK_SECRET \
+  --secret-string "whsec_…" \
+  --profile mm
+```
 
 Create or update them **before** you exercise the API (stack deploy can succeed even if a secret does not exist yet; the Lambda that needs it will fail until the secret is present).
 

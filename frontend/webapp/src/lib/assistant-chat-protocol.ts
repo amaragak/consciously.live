@@ -962,12 +962,7 @@ export function encodeAssistantAction(action: AssistantAction): string {
   }
 }
 
-export function assistantChatBubbles(text: string): string[] {
-  return text
-    .split(/\n{2,}/g)
-    .map((s) => s.replace(/[ \t]*\n+[ \t]*/g, " ").trim())
-    .filter(Boolean);
-}
+export { splitChatBubbles as assistantChatBubbles } from "@/components/chat-thread-message";
 
 export {
   buildAssistantChatSystemPrompt,

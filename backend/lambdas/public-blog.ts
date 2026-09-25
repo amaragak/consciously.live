@@ -29,7 +29,25 @@ export async function handler(
     if (slug) {
       const post = await getBlogPostBySlug(slug, { publishedOnly: true });
       if (!post) return json(404, { error: "Not found" });
-      return json(200, { post });
+      // Allowlist — omit admin-only fields (notes, audio progress, etc.).
+      return json(200, {
+        post: {
+          id: post.id,
+          slug: post.slug,
+          title: post.title,
+          subheader: post.subheader,
+          excerpt: post.excerpt,
+          tags: post.tags,
+          series: post.series,
+          part: post.part,
+          body: post.body,
+          published: post.published,
+          publishedAt: post.publishedAt,
+          audioUrl: post.audioUrl,
+          audioStatus: post.audioStatus === "ready" ? "ready" : "none",
+          updatedAt: post.updatedAt,
+        },
+      });
     }
     const [posts, settings] = await Promise.all([
       listPublishedBlogPosts(),

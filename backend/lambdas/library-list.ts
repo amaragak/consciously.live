@@ -340,7 +340,7 @@ async function listMeditationMp3Keys(
       }),
     );
     for (const o of res.Contents ?? []) {
-      if (!o.Key || !o.Key.endsWith(".mp3")) continue;
+      if (!o.Key || !isLibraryCatalogMp3Key(o.Key)) continue;
       out.push({
         key: o.Key,
         lastModified: o.LastModified?.toISOString() ?? null,
@@ -350,6 +350,13 @@ async function listMeditationMp3Keys(
     token = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (token);
   return out;
+}
+
+/** Main library mp3 only — skip dry/wet voice stems (`…-dry.mp3` / `…-wet.mp3`). */
+function isLibraryCatalogMp3Key(key: string): boolean {
+  if (!key.endsWith(".mp3")) return false;
+  const base = key.slice(key.lastIndexOf("/") + 1);
+  return !base.endsWith("-dry.mp3") && !base.endsWith("-wet.mp3");
 }
 
 /** `meditations/<file>.mp3` (no extra path segment) — pre–per-user S3 layout. */
@@ -753,7 +760,7 @@ export async function handler(
         { key: string; lastModified: string | null; size: number | null }
       >();
       for (const o of [...globalS3, ...legacyS3]) {
-        if (!o.key.endsWith(".mp3")) continue;
+        if (!isLibraryCatalogMp3Key(o.key)) continue;
         s3ByKey.set(o.key, o);
       }
       return json(200, {
@@ -778,7 +785,7 @@ export async function handler(
     return json(200, {
       items: buildLibraryItems({
         ddbItems: userRows,
-        s3Objects: userS3.filter((o) => o.key.endsWith(".mp3")),
+        s3Objects: userS3.filter((o) => isLibraryCatalogMp3Key(o.key)),
         cfDomain,
         draftUserFallback: user.sub,
         speakerNames,

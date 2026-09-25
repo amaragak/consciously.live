@@ -3,6 +3,7 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import type { Construct } from "constructs";
 import { ConsciouslyApiAdminNestedStack } from "./consciously/api-admin-nested-stack";
 import { ConsciouslyApiAuthNestedStack } from "./consciously/api-auth-nested-stack";
+import { ConsciouslyApiBillingNestedStack } from "./consciously/api-billing-nested-stack";
 import { ConsciouslyApiChatNestedStack } from "./consciously/api-chat-nested-stack";
 import { ConsciouslyApiJournalNestedStack } from "./consciously/api-journal-nested-stack";
 import { ConsciouslyApiManifestNestedStack } from "./consciously/api-manifest-nested-stack";
@@ -23,6 +24,9 @@ import {
   OPENAI_SECRET_NAME,
   RUNPODS_SECRET_NAME,
   RUNPODS_URL_SECRET_NAME,
+  STRIPE_SECRET_NAME,
+  STRIPE_WEBHOOK_SECRET_NAME,
+  STRIPE_PRICES_SECRET_NAME,
 } from "./consciously/secret-names";
 
 /**
@@ -46,6 +50,7 @@ export class ConsciouslyStack extends cdk.Stack {
   readonly apiManifest: ConsciouslyApiManifestNestedStack;
   readonly apiJournal: ConsciouslyApiJournalNestedStack;
   readonly apiChat: ConsciouslyApiChatNestedStack;
+  readonly apiBilling: ConsciouslyApiBillingNestedStack;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -129,6 +134,12 @@ export class ConsciouslyStack extends cdk.Stack {
       database: this.database,
     });
 
+    this.apiBilling = new ConsciouslyApiBillingNestedStack(this, "ApiBilling", {
+      httpApi: this.httpApi,
+      config: this.config,
+      database: this.database,
+    });
+
     new cdk.CfnOutput(this, "ApiUrl", {
       value: this.httpApi.apiEndpoint,
     });
@@ -197,6 +208,19 @@ export class ConsciouslyStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "AlgoliaSecretName", {
       value: ALGOLIA_SECRET_NAME,
+    });
+    new cdk.CfnOutput(this, "StripeSecretName", {
+      value: STRIPE_SECRET_NAME,
+    });
+    new cdk.CfnOutput(this, "StripeWebhookSecretName", {
+      value: STRIPE_WEBHOOK_SECRET_NAME,
+    });
+    new cdk.CfnOutput(this, "StripePricesSecretName", {
+      value: STRIPE_PRICES_SECRET_NAME,
+    });
+    new cdk.CfnOutput(this, "StripeWebhookUrl", {
+      description: "Stripe Dashboard → Webhooks → endpoint URL",
+      value: `${this.httpApi.apiEndpoint}/billing/stripe/webhook`,
     });
     new cdk.CfnOutput(this, "MediaCloudFrontDomain", {
       value: this.media.distribution.domainName,

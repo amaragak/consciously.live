@@ -11,6 +11,9 @@ import {
   RUNPODS_SECRET_NAME,
   RUNPODS_URL_SECRET_NAME,
   SPEECHIFY_SECRET_NAME,
+  STRIPE_SECRET_NAME,
+  STRIPE_WEBHOOK_SECRET_NAME,
+  STRIPE_PRICES_SECRET_NAME,
 } from "./secret-names";
 
 /**
@@ -27,6 +30,9 @@ export class ConsciouslyConfigNestedStack extends cdk.NestedStack {
   readonly runpodsApiKey: secretsmanager.ISecret;
   readonly runpodsUrl: secretsmanager.ISecret;
   readonly algolia: secretsmanager.ISecret;
+  readonly stripeSecretKey: secretsmanager.ISecret;
+  readonly stripeWebhookSecret: secretsmanager.ISecret;
+  readonly stripePrices: secretsmanager.ISecret;
   /** HS256 secret for session JWTs. */
   readonly authJwtSecret: secretsmanager.ISecret;
   /** Shared secret: admin-blog → marketing `POST /api/revalidate-blog`. */
@@ -79,6 +85,21 @@ export class ConsciouslyConfigNestedStack extends cdk.NestedStack {
       this,
       "AlgoliaCreds",
       ALGOLIA_SECRET_NAME,
+    );
+    this.stripeSecretKey = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "StripeSecretKey",
+      STRIPE_SECRET_NAME,
+    );
+    this.stripeWebhookSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "StripeWebhookSecret",
+      STRIPE_WEBHOOK_SECRET_NAME,
+    );
+    this.stripePrices = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "StripePrices",
+      STRIPE_PRICES_SECRET_NAME,
     );
 
     this.authJwtSecret = new secretsmanager.Secret(this, "AuthJwtSecret", {

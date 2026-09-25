@@ -3,6 +3,7 @@
 import { Link, usePathname  } from "@/lib/spa-nav";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
+import { ChatPanelPatternTile } from "@/components/chat-panel-shell";
 import {
   clearAssistantChatRemoteSessionCache,
   markAssistantChatStorePulledThisSession,
@@ -249,7 +250,7 @@ export function AssistantChatFab() {
     <>
       {open ? (
         <div
-          className="pointer-events-auto fixed left-1 right-1 z-[60] flex h-[min(560px,70vh)] flex-col overflow-hidden rounded-2xl border border-border bg-[color:var(--card-warm-bg)] shadow-lg sm:left-auto sm:right-6 sm:w-[min(calc(100vw-3rem),380px)]"
+          className="pointer-events-auto fixed left-1 right-1 z-[60] flex h-[min(560px,70vh)] flex-col overflow-hidden rounded-2xl border border-border bg-[color:var(--card-warm-bg)] shadow-lg hybrid:bg-[color:var(--chat-panel-bg)] sm:left-auto sm:right-6 sm:w-[min(calc(100vw-3rem),380px)]"
           style={{
             // Sit above the FAB (3.5rem) with a 0.75rem gap, plus any nav footer.
             bottom: fabBottom + 56 + 12,
@@ -257,18 +258,8 @@ export function AssistantChatFab() {
           role="dialog"
           aria-label="Chat"
         >
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-0 opacity-15"
-            style={{
-              backgroundImage:
-                'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
-              backgroundRepeat: "repeat",
-              backgroundSize: "286px 320px",
-              backgroundPosition: "center top",
-            }}
-          />
-          <div className="relative z-[1] flex shrink-0 items-center justify-end gap-1 border-b border-border/60 bg-[color:var(--card-warm-bg)]/80 px-2 py-1.5 backdrop-blur-[2px]">
+          <ChatPanelPatternTile classic />
+          <div className="relative z-[1] flex shrink-0 items-center justify-end gap-1 border-b border-border/60 bg-[color:var(--card-warm-bg)]/80 px-2 py-1.5 backdrop-blur-[2px] hybrid:bg-[color:var(--chat-panel-bg)]/90">
             <Link
               href={fullHref}
               aria-label="Open full screen chat"

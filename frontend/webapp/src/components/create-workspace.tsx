@@ -33,6 +33,7 @@ import {
   createRouteNeedsPriorState,
   parseCreateMeditationPathname,
   type CreateMeditationPath,
+  type FromProgramStep,
 } from "@/lib/create-meditation-path";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
@@ -46,8 +47,25 @@ import {
   type CreateSessionV1,
 } from "@/lib/create-session-storage";
 import { setCreateMainChatVisible } from "@/lib/assistant-chat-fab-visibility";
+import {
+  ChatThreadMessage,
+  splitChatBubbles,
+} from "@/components/chat-thread-message";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
 import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
+import { CreateProgramPicker } from "@/components/create-program-picker";
+import {
+  advanceProgramIntakeCursor,
+  buildProgramIntakeAdvanceCue,
+  buildProgramMakeOwnApiContent,
+  buildProgramScriptTranscriptAppendix,
+  orderedProgramIntakeSessions,
+  ProgramSessionSelectPanel,
+  programHandoffFromLibrary,
+  type ProgramGenerateMode,
+  type ProgramHandoff,
+} from "@/components/create-program-handoff";
+import { ChatPanelShell } from "@/components/chat-panel-shell";
 import { MeditationTypeCardGrid } from "@/components/community-category-grid";
 import {
   DictationMicButton,
@@ -71,6 +89,7 @@ import {
   listBackgroundAudio,
   listFishSpeakers,
   listOrpheusSpeakers,
+  listLibraryPrograms,
   ttsProviderForSpeaker,
   saveMeditationDraft,
   backgroundAudioPlaybackKey,
@@ -80,6 +99,7 @@ import {
   type TtsProvider,
   type FishPauseMode,
   type BackgroundAudioItem,
+  type LibraryProgram,
 } from "@/lib/medimade-api";
 import {
   DEFAULT_ORPHEUS_VOICE_ID,
@@ -389,6 +409,8 @@ type ChatMessage = {
   kind?: "divider";
   /** When set on a user message, render expandable journal entry cards below `text`. */
   journalSegments?: JournalHandoffSegment[];
+  /** By Program path — selected course card + lesson checklist below `text`. */
+  programHandoff?: ProgramHandoff;
   /** Pin the proceed-to-audio control under this recap message. */
   audioReadyCta?: boolean;
 };
@@ -636,7 +658,9 @@ type Phase =
   | "claude"
   | "journalPick"
   | "goalPick"
-  | "promptPick";
+  | "promptPick"
+  | "programPick"
+  | "programSessions";
 
 /** Before chat: user picks style-first vs free-flow vs journal-reflect creation. */
 type CreationPath = CreateMeditationPath;
@@ -789,10 +813,7 @@ function pinAudioReadyCtaOnLastAssistant(messages: ChatMessage[]): ChatMessage[]
 }
 
 function coachChatBubbles(text: string): string[] {
-  return text
-    .split(/\n{2,}/g)
-    .map((s) => s.replace(/[ \t]*\n+[ \t]*/g, " ").trim())
-    .filter(Boolean);
+  return splitChatBubbles(text);
 }
 
 type PlanTask = {
@@ -971,6 +992,25 @@ function isChatMessageLike(
       if (q.createdAt != null && typeof q.createdAt !== "string") return false;
     }
   }
+  if (o.programHandoff != null) {
+    if (!o.programHandoff || typeof o.programHandoff !== "object") return false;
+    const p = o.programHandoff as Record<string, unknown>;
+    if (typeof p.id !== "string") return false;
+    if (typeof p.title !== "string") return false;
+    if (typeof p.description !== "string") return false;
+    if (p.coverImageUrl != null && typeof p.coverImageUrl !== "string") {
+      return false;
+    }
+    if (!Array.isArray(p.days)) return false;
+    for (const d of p.days) {
+      if (!d || typeof d !== "object") return false;
+      const q = d as Record<string, unknown>;
+      if (typeof q.id !== "string") return false;
+      if (typeof q.dayNumber !== "number") return false;
+      if (typeof q.title !== "string") return false;
+      if (typeof q.description !== "string") return false;
+    }
+  }
   return true;
 }
 
@@ -1138,6 +1178,10 @@ export function CreateWorkspace({
   const seedFromHandoff = seedJournalContext || seedPlanContext;
   const initedCreatePathsRef = useRef(new Set<CreationPath>());
   const pendingUrlSyncRef = useRef<string | null>(null);
+  /** Last By Program URL step — used so pick-URL sync doesn't wipe a fresh selection. */
+  const fromProgramUrlStepRef = useRef<
+    "pick" | "sessions" | "chat" | "mix" | null
+  >(null);
   const [mobileCreateStep, setMobileCreateStep] = useState<"chat" | "audio">(
     "chat",
   );
@@ -1166,6 +1210,13 @@ export function CreateWorkspace({
     if (parsedCreateRoute.path === "journalReflect") return "journalPick";
     if (parsedCreateRoute.path === "goal") return "goalPick";
     if (parsedCreateRoute.path === "oneShot") return "promptPick";
+    if (parsedCreateRoute.path === "fromProgram") {
+      if (parsedCreateRoute.fromProgramStep === "chat") return "claude";
+      if (parsedCreateRoute.fromProgramStep === "sessions") {
+        return "programSessions";
+      }
+      return "programPick";
+    }
     if (parsedCreateRoute.path === "freeflow") return "feeling";
     return "style";
   });
@@ -1360,7 +1411,8 @@ export function CreateWorkspace({
       Boolean(seedFromHandoff) ||
       parsedCreateRoute.path === "freeflow" ||
       parsedCreateRoute.path === "journalReflect" ||
-      parsedCreateRoute.path === "goal",
+      parsedCreateRoute.path === "goal" ||
+      parsedCreateRoute.path === "fromProgram",
   );
   const [creationPath, setCreationPath] = useState<CreationPath>(() =>
     seedFromHandoff ? "freeflow" : parsedCreateRoute.path,
@@ -1385,7 +1437,7 @@ export function CreateWorkspace({
 
   /** On the first screen: which path is selected before tapping “Script”. */
   const [pendingModeChoice, setPendingModeChoice] = useState<
-    null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript"
+    null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript" | "fromProgram"
   >(null);
   const [pendingStyleType, setPendingStyleType] = useState<string | null>(null);
   const [styleQuestionAnswers, setStyleQuestionAnswers] = useState<
@@ -1424,6 +1476,25 @@ export function CreateWorkspace({
   const [goalFocusId, setGoalFocusId] = useState<string | null>(null);
   const [lifeAreaId, setLifeAreaId] = useState<string | null>(null);
   const [oneShotPrompt, setOneShotPrompt] = useState("");
+  const [programSelectedId, setProgramSelectedId] = useState<string | null>(
+    null,
+  );
+  const programSelectedIdRef = useRef<string | null>(null);
+  programSelectedIdRef.current = programSelectedId;
+  const [programSelectedTitle, setProgramSelectedTitle] = useState("");
+  const [programSelectedDescription, setProgramSelectedDescription] =
+    useState("");
+  const [programDaySelectedIds, setProgramDaySelectedIds] = useState<
+    Set<string>
+  >(() => new Set());
+  const [programGenerateMode, setProgramGenerateMode] =
+    useState<ProgramGenerateMode>("single");
+  /** By Program intake cursor — which session / Ask-item is active. */
+  const [programIntakeSessionIndex, setProgramIntakeSessionIndex] = useState(0);
+  const [programIntakeAskIndex, setProgramIntakeAskIndex] = useState(0);
+  const [libraryPrograms, setLibraryPrograms] = useState<LibraryProgram[]>([]);
+  const [libraryProgramsListReady, setLibraryProgramsListReady] =
+    useState(false);
 
   /** Dev: skip chat → audio; Generate asks the worker for a random script. */
   const [randomScript, setRandomScript] = useState(false);
@@ -1452,6 +1523,7 @@ export function CreateWorkspace({
   function createHrefForNav(opts: {
     path: CreationPath;
     styleStep?: "type" | "questions";
+    fromProgramStep?: FromProgramStep;
     mix?: boolean;
   }): string {
     return createMeditationHrefWithDraft(
@@ -1467,6 +1539,7 @@ export function CreateWorkspace({
   function pushCreate(opts: {
     path: CreationPath;
     styleStep?: "type" | "questions";
+    fromProgramStep?: FromProgramStep;
     mix?: boolean;
   }) {
     const href = createHrefForNav(opts);
@@ -1565,6 +1638,23 @@ export function CreateWorkspace({
     setGoalFocusId(null);
     setLifeAreaId(s.lifeAreaId ?? null);
     setOneShotPrompt(s.oneShotPrompt ?? "");
+    setProgramSelectedId(s.programSelectedId);
+    setProgramSelectedTitle(s.programSelectedTitle ?? "");
+    setProgramSelectedDescription(s.programSelectedDescription ?? "");
+    {
+      const storedDayIds = s.programDaySelectedIds ?? [];
+      if (storedDayIds.length > 0) {
+        setProgramDaySelectedIds(new Set(storedDayIds));
+      } else {
+        const handoff = s.messages.find((m) => m.programHandoff)?.programHandoff;
+        setProgramDaySelectedIds(
+          new Set(handoff?.days.map((d) => d.id) ?? []),
+        );
+      }
+    }
+    setProgramGenerateMode(
+      s.programGenerateMode === "perSession" ? "perSession" : "single",
+    );
     if (s.draftSk) setDraftSk(s.draftSk);
     initedCreatePathsRef.current = new Set(s.initedPaths);
     if (s.creationPath !== "pending") {
@@ -1760,7 +1850,9 @@ export function CreateWorkspace({
         : phase === "styleQuestions" ||
             phase === "journalPick" ||
             phase === "goalPick" ||
-            phase === "promptPick"
+            phase === "promptPick" ||
+            phase === "programPick" ||
+            phase === "programSessions"
           ? "feeling"
           : phase;
     return {
@@ -2038,6 +2130,7 @@ export function CreateWorkspace({
     else if (creationPath === "journalReflect") setPendingModeChoice("journalReflect");
     else if (creationPath === "goal") setPendingModeChoice("goal");
     else if (creationPath === "oneShot") setPendingModeChoice("oneShot");
+    else if (creationPath === "fromProgram") setPendingModeChoice("fromProgram");
   }, [creationPath, randomScript]);
 
   useEffect(() => {
@@ -2310,7 +2403,10 @@ export function CreateWorkspace({
   async function generateScript() {
     if (scriptLoading) return;
     // Treat mode switches as a new chat: ignore any muted history + dividers + prior scripts.
-    const transcript = buildCreateFlowTranscript(messages);
+    const transcript =
+      creationPath === "fromProgram"
+        ? buildFromProgramCreateTranscript(messages)
+        : buildCreateFlowTranscript(messages);
     setScriptLoading(true);
     try {
       let acc = "";
@@ -2562,7 +2658,13 @@ export function CreateWorkspace({
   ): Promise<string> {
     beginCoachLetterStream();
     try {
-      const text = await streamMedimadeChat(params, onCoachStreamDelta);
+      const text = await streamMedimadeChat(
+        {
+          ...params,
+          ...(creationPath === "fromProgram" ? { fromProgram: true } : {}),
+        },
+        onCoachStreamDelta,
+      );
       await Promise.race([
         endCoachLetterStream(),
         new Promise<void>((resolve) => {
@@ -2776,6 +2878,14 @@ export function CreateWorkspace({
       setOneShotPrompt("");
       setPhase("promptPick");
       setMessages([]);
+    } else if (creationPath === "fromProgram") {
+      setProgramSelectedId(null);
+      setProgramSelectedTitle("");
+      setProgramSelectedDescription("");
+      setProgramDaySelectedIds(new Set());
+      setProgramGenerateMode("single");
+      setPhase("programPick");
+      setMessages([]);
     } else if (creationPath === "style") {
       setPendingStyleType(null);
       setStyleQuestionAnswers(emptyStyleQuestionAnswers());
@@ -2809,6 +2919,13 @@ export function CreateWorkspace({
       resetStyleIntakeFocus(1);
     }
     if (next !== "oneShot") setOneShotPrompt("");
+    if (next !== "fromProgram") {
+      setProgramSelectedId(null);
+      setProgramSelectedTitle("");
+      setProgramSelectedDescription("");
+      setProgramDaySelectedIds(new Set());
+      setProgramGenerateMode("single");
+    }
     if (next !== "journalReflect") {
       setJournalReflectSelectedIds(new Set());
       setJournalReflectGuidance("");
@@ -3006,6 +3123,269 @@ export function CreateWorkspace({
     isAtBottomRef.current = true;
   }
 
+  function loadLibraryProgramsIfNeeded() {
+    if (libraryProgramsListReady) return;
+    void (async () => {
+      try {
+        const programs = await listLibraryPrograms();
+        setLibraryPrograms(Array.isArray(programs) ? programs : []);
+      } catch {
+        setLibraryPrograms([]);
+      } finally {
+        setLibraryProgramsListReady(true);
+      }
+    })();
+  }
+
+  function beginFromProgramPath() {
+    startBranch("fromProgram");
+    setCoachAudioReady(false);
+    setCreationPath("fromProgram");
+    setJournalMode(true);
+    setProgramSelectedId(null);
+    setProgramSelectedTitle("");
+    setProgramSelectedDescription("");
+    setProgramDaySelectedIds(new Set());
+    setProgramGenerateMode("single");
+    setPhase("programPick");
+    setChatBusy(false);
+    setScriptLoading(false);
+    setClaudeThread([]);
+    setMeditationStyle(null);
+    setInput("");
+    inputDraftRef.current = "";
+    setIntroTypingDone(true);
+    setMessages([]);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    setCreateStripStep(1);
+    initialChatAutofocusDoneRef.current = false;
+    isAtBottomRef.current = true;
+    loadLibraryProgramsIfNeeded();
+  }
+
+  function restoreFromProgramPicker() {
+    setPhase("programPick");
+    setProgramSelectedId(null);
+    setProgramSelectedTitle("");
+    setProgramSelectedDescription("");
+    setProgramDaySelectedIds(new Set());
+    setProgramGenerateMode("single");
+    setMessages([]);
+    setClaudeThread([]);
+    setCoachAudioReady(false);
+    setIntroTypingDone(true);
+    setChatBusy(false);
+    setInput("");
+    inputDraftRef.current = "";
+    setMeditationStyle(null);
+    setCreateStripStep(1);
+    setMobileCreateStep("chat");
+    loadLibraryProgramsIfNeeded();
+  }
+
+  function toggleProgramDay(dayId: string) {
+    const next = new Set(programDaySelectedIds);
+    if (next.has(dayId)) next.delete(dayId);
+    else next.add(dayId);
+    setProgramDaySelectedIds(next);
+  }
+
+  function selectAllProgramDays(handoff: ProgramHandoff) {
+    setProgramDaySelectedIds(new Set(handoff.days.map((d) => d.id)));
+  }
+
+  function clearAllProgramDays() {
+    setProgramDaySelectedIds(new Set());
+  }
+
+  /** Chat + program brief + unified/per-session script appendix for By Program. */
+  function buildFromProgramCreateTranscript(
+    chatMessages: typeof messages,
+  ): string {
+    const lines = chatMessages
+      .filter((m) => !m.muted && m.kind !== "divider" && m.variant !== "script")
+      .map((m) => {
+        const line =
+          m.role === "user" && m.programHandoff
+            ? buildProgramMakeOwnApiContent({
+                program: m.programHandoff,
+                selectedDayIds: programDaySelectedIds,
+                generateMode: programGenerateMode,
+              })
+            : m.role === "user" && m.journalSegments?.length
+              ? buildJournalHandoffApiContent(
+                  m.journalSegments,
+                  journalReflectGuidance.trim() || undefined,
+                )
+              : createFlowTranscriptLine(m);
+        return `${m.role === "user" ? "User" : "Guide"}: ${line}`;
+      });
+
+    const id = programSelectedId?.trim();
+    const program = id
+      ? libraryPrograms.find((p) => p.id === id)
+      : null;
+    if (program && !chatMessages.some((m) => m.programHandoff)) {
+      const handoff = programHandoffFromLibrary(program);
+      lines.unshift(
+        `User: ${buildProgramMakeOwnApiContent({
+          program: handoff,
+          selectedDayIds: programDaySelectedIds,
+          generateMode: programGenerateMode,
+        })}`,
+      );
+      lines.push(
+        "",
+        buildProgramScriptTranscriptAppendix({
+          program: handoff,
+          selectedDayIds: programDaySelectedIds,
+          generateMode: programGenerateMode,
+        }),
+      );
+    } else if (program) {
+      const handoff = programHandoffFromLibrary(program);
+      lines.push(
+        "",
+        buildProgramScriptTranscriptAppendix({
+          program: handoff,
+          selectedDayIds: programDaySelectedIds,
+          generateMode: programGenerateMode,
+        }),
+      );
+    }
+    return lines.join("\n\n");
+  }
+
+  /** Program card → session picker (not chat yet). */
+  function confirmFromProgramSelection() {
+    const id = programSelectedId?.trim();
+    if (!id) return;
+    const program = libraryPrograms.find((p) => p.id === id);
+    if (!program) return;
+
+    const handoff = programHandoffFromLibrary(program);
+    const selectedIds = new Set(handoff.days.map((d) => d.id));
+
+    setProgramSelectedTitle(program.title);
+    setProgramSelectedDescription(program.description);
+    setProgramDaySelectedIds(selectedIds);
+    setProgramGenerateMode("single");
+    setJournalMode(true);
+    setIntroTypingDone(true);
+    setPhase("programSessions");
+    setMeditationStyle(null);
+    setClaudeThread([]);
+    setInput("");
+    inputDraftRef.current = "";
+    setMessages([]);
+    setChatBusy(false);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    setCreateStripStep(1);
+
+    const href = createHrefForNav({
+      path: "fromProgram",
+      fromProgramStep: "sessions",
+    });
+    patchCreateSession({
+      programSelectedId: id,
+      programSelectedTitle: program.title,
+      programSelectedDescription: program.description,
+      programDaySelectedIds: Array.from(selectedIds),
+      programGenerateMode: "single",
+      phase: "programSessions",
+      journalMode: true,
+      pathname: pathOnly(href),
+      creationPath: "fromProgram",
+      createStripStep: 1,
+      mobileCreateStep: "chat",
+    });
+    pendingUrlSyncRef.current = pathOnly(href);
+    navigate(href);
+  }
+
+  /** Session picker → chat with selected lessons in coach context. */
+  function confirmFromProgramSessions() {
+    const id = programSelectedId?.trim();
+    if (!id) return;
+    const program = libraryPrograms.find((p) => p.id === id);
+    if (!program) return;
+    if (programDaySelectedIds.size === 0) return;
+
+    const handoff = programHandoffFromLibrary(program);
+    const apiUserContent = buildProgramMakeOwnApiContent({
+      program: handoff,
+      selectedDayIds: programDaySelectedIds,
+      generateMode: programGenerateMode,
+    });
+
+    const styleHint = "General";
+    const history: MedimadeChatTurn[] = [
+      { role: "assistant", content: OPENING_JOURNAL },
+      { role: "user", content: apiUserContent },
+    ];
+
+    setJournalMode(true);
+    setIntroTypingDone(true);
+    setPhase("claude");
+    setMeditationStyle(styleHint);
+    setClaudeThread([]);
+    setInput("");
+    inputDraftRef.current = "";
+    setMessages([]);
+    setProgramIntakeSessionIndex(0);
+    setProgramIntakeAskIndex(0);
+    setChatBusy(true);
+    setScriptTargetMinutes(null);
+    setMobileCreateStep("chat");
+    setCreateStripStep(1);
+
+    const href = createHrefForNav({
+      path: "fromProgram",
+      fromProgramStep: "chat",
+    });
+    patchCreateSession({
+      programSelectedId: id,
+      programSelectedTitle: program.title,
+      programSelectedDescription: program.description,
+      programDaySelectedIds: Array.from(programDaySelectedIds),
+      programGenerateMode,
+      phase: "claude",
+      journalMode: true,
+      pathname: pathOnly(href),
+      creationPath: "fromProgram",
+      createStripStep: 1,
+      mobileCreateStep: "chat",
+    });
+    pendingUrlSyncRef.current = pathOnly(href);
+    navigate(href);
+
+    void (async () => {
+      try {
+        const text = await streamCoachChat({
+          meditationStyle: styleHint,
+          messages: history,
+          journalMode: true,
+          meditationTargetMinutes,
+        });
+        setClaudeThread([...history, { role: "assistant", content: text }]);
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not reach the guide.";
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", text: `Sorry — ${msg}` },
+        ]);
+      } finally {
+        setChatBusy(false);
+        requestAnimationFrame(() => {
+          chatInputRef.current?.focus();
+        });
+      }
+    })();
+  }
+
   function confirmOneShotPrompt() {
     const prompt = oneShotPrompt.trim();
     if (!prompt) return;
@@ -3192,7 +3572,7 @@ export function CreateWorkspace({
 
   function goBackToChatStyle() {
     const wasRandom = randomScript;
-    const modeFromPath: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" =
+    const modeFromPath: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "fromProgram" =
       creationPath === "style"
         ? "style"
         : creationPath === "freeflow"
@@ -3203,6 +3583,8 @@ export function CreateWorkspace({
               ? "goal"
               : creationPath === "oneShot"
                 ? "oneShot"
+                : creationPath === "fromProgram"
+                  ? "fromProgram"
             : null;
     setCreateStripStep(0);
     setCreationPath("pending");
@@ -3278,6 +3660,10 @@ export function CreateWorkspace({
       pushCreate({ path: "goal" });
       return;
     }
+    if (creationPath === "fromProgram") {
+      pushCreate({ path: "fromProgram", fromProgramStep: "chat" });
+      return;
+    }
     // Freeflow: audio was reached from the coach chat — return there.
     pushCreate({
       path: creationPath === "pending" ? "freeflow" : creationPath,
@@ -3294,6 +3680,8 @@ export function CreateWorkspace({
         creationPath === "style" && phase === "styleQuestions"
           ? "questions"
           : "type",
+      fromProgramStep:
+        creationPath === "fromProgram" ? "chat" : undefined,
       mix: true,
     });
   }
@@ -3401,6 +3789,60 @@ export function CreateWorkspace({
       } else {
         restoreOneShotPromptPicker();
       }
+      return;
+    }
+    if (parsed.path === "fromProgram") {
+      if (!initedCreatePathsRef.current.has("fromProgram")) {
+        beginFromProgramPath();
+      } else {
+        setCreationPath("fromProgram");
+        setJournalMode(true);
+      }
+      if (parsed.mix) {
+        setCreateStripStep(2);
+        setMobileCreateStep("audio");
+        fromProgramUrlStepRef.current = "mix";
+      } else if (parsed.fromProgramStep === "chat") {
+        if (!programSelectedIdRef.current?.trim()) {
+          restoreFromProgramPicker();
+          const href = createHrefForNav({
+            path: "fromProgram",
+            fromProgramStep: "pick",
+          });
+          pendingUrlSyncRef.current = pathOnly(href);
+          navigate(href, { replace: true });
+          fromProgramUrlStepRef.current = "pick";
+          return;
+        }
+        setCreateStripStep(1);
+        setMobileCreateStep("chat");
+        setPhase("claude");
+        fromProgramUrlStepRef.current = "chat";
+      } else if (parsed.fromProgramStep === "sessions") {
+        if (!programSelectedIdRef.current?.trim()) {
+          restoreFromProgramPicker();
+          const href = createHrefForNav({
+            path: "fromProgram",
+            fromProgramStep: "pick",
+          });
+          pendingUrlSyncRef.current = pathOnly(href);
+          navigate(href, { replace: true });
+          fromProgramUrlStepRef.current = "pick";
+          return;
+        }
+        setCreateStripStep(1);
+        setMobileCreateStep("chat");
+        setPhase("programSessions");
+        setMessages([]);
+        setClaudeThread([]);
+        setChatBusy(false);
+        loadLibraryProgramsIfNeeded();
+        fromProgramUrlStepRef.current = "sessions";
+      } else {
+        // Pick URL — always a fresh picker.
+        restoreFromProgramPicker();
+        fromProgramUrlStepRef.current = "pick";
+      }
     }
   }, [pathname, draftHydrated, sessionHydrated, initialDraftSk, navigate, seedJournalContext, seedPlanContext, randomScript]);
 
@@ -3449,6 +3891,11 @@ export function CreateWorkspace({
         goalSelectedId,
         lifeAreaId,
         oneShotPrompt,
+        programSelectedId,
+        programSelectedTitle,
+        programSelectedDescription,
+        programDaySelectedIds: Array.from(programDaySelectedIds),
+        programGenerateMode,
         draftSk,
         coachAudioReady: creationPath === "freeflow" ? false : coachAudioReady,
         randomScript,
@@ -3496,6 +3943,11 @@ export function CreateWorkspace({
     goalSelectedId,
     lifeAreaId,
     oneShotPrompt,
+    programSelectedId,
+    programSelectedTitle,
+    programSelectedDescription,
+    programDaySelectedIds,
+    programGenerateMode,
     draftSk,
     coachAudioReady,
     randomScript,
@@ -3541,7 +3993,8 @@ export function CreateWorkspace({
         creationPath === "freeflow" ||
         creationPath === "goal" ||
         creationPath === "journalReflect" ||
-        creationPath === "oneShot");
+        creationPath === "oneShot" ||
+        creationPath === "fromProgram");
 
     if (openChatWithoutStyle) {
       const styleHint = "General";
@@ -3664,7 +4117,40 @@ export function CreateWorkspace({
 
     const history: MedimadeChatTurn[] = [
       ...claudeThread,
-      { role: "user", content: trimmed },
+      {
+        role: "user",
+        content:
+          creationPath === "fromProgram"
+            ? (() => {
+                const id = programSelectedId?.trim();
+                const program = id
+                  ? libraryPrograms.find((p) => p.id === id)
+                  : null;
+                if (!program) return trimmed;
+                const handoff = programHandoffFromLibrary(program);
+                const sessions = orderedProgramIntakeSessions(
+                  handoff,
+                  programDaySelectedIds,
+                );
+                const advanced = advanceProgramIntakeCursor({
+                  sessions,
+                  sessionIndex: programIntakeSessionIndex,
+                  askIndex: programIntakeAskIndex,
+                });
+                setProgramIntakeSessionIndex(advanced.sessionIndex);
+                setProgramIntakeAskIndex(advanced.askIndex);
+                const cue =
+                  advanced.cue.kind === "ready"
+                    ? buildProgramIntakeAdvanceCue({
+                        ...advanced.cue,
+                        generateMode: programGenerateMode,
+                        programTitle: handoff.title,
+                      })
+                    : buildProgramIntakeAdvanceCue(advanced.cue);
+                return `${trimmed}\n\n${cue}`;
+              })()
+            : trimmed,
+      },
     ];
     setMessages((m) => [...m, { role: "user", text: trimmed }]);
     setComposerInput("");
@@ -3744,19 +4230,9 @@ export function CreateWorkspace({
       const transcript = randomScript
         ? (randomSeed?.transcript.trim() ||
           "User: I want a short random guided meditation.\n\nGuide: Let's begin.")
-        : messages
-        .filter((m) => !(m.role === "assistant" && m.variant === "script"))
-            .map((m) => {
-              const line =
-                m.role === "user" && m.journalSegments?.length
-                  ? buildJournalHandoffApiContent(
-                      m.journalSegments,
-                      journalReflectGuidance.trim() || undefined,
-                    )
-                  : createFlowTranscriptLine(m);
-              return `${m.role === "user" ? "User" : "Guide"}: ${line}`;
-            })
-        .join("\n\n");
+        : creationPath === "fromProgram"
+          ? buildFromProgramCreateTranscript(messages)
+          : buildCreateFlowTranscript(messages);
 
       const linkedLifeAreaId =
         lifeAreaId?.trim() || readLinkedLifeAreaId() || "";
@@ -3778,7 +4254,7 @@ export function CreateWorkspace({
         meditationStyle: styleForJob,
         styleQuestionAnswers,
         chatMessages:
-          creationPath === "freeflow"
+          creationPath === "freeflow" || creationPath === "fromProgram"
             ? messages.map((m) => ({
                 role: m.role,
                 text: m.text,
@@ -4393,6 +4869,14 @@ export function CreateWorkspace({
     creationPath === "oneShot" &&
     phase === "promptPick" &&
     workspaceSectionStep !== 2;
+  const showProgramPick =
+    creationPath === "fromProgram" &&
+    phase === "programPick" &&
+    workspaceSectionStep !== 2;
+  const showProgramSessions =
+    creationPath === "fromProgram" &&
+    phase === "programSessions" &&
+    workspaceSectionStep !== 2;
   const styleQuestionsReady =
     styleQuestionAnswers[0].trim().length > 0 &&
     styleQuestionAnswers[1].trim().length > 0 &&
@@ -4404,6 +4888,8 @@ export function CreateWorkspace({
     !showJournalPick &&
     !showGoalPick &&
     !showPromptPick &&
+    !showProgramPick &&
+    !showProgramSessions &&
     workspaceSectionStep === 1;
   const showAudioPlayAll = workspaceSectionStep === 2;
   const lastVisibleChat = [...messages]
@@ -4459,11 +4945,15 @@ export function CreateWorkspace({
     !showJournalPick &&
     !showGoalPick &&
     !showPromptPick &&
+    !showProgramPick &&
+    !showProgramSessions &&
     !chatHasAnyMessageRow &&
     !showChatTyping &&
     phase !== "style" &&
     phase !== "goalPick" &&
-    phase !== "journalPick";
+    phase !== "journalPick" &&
+    phase !== "programPick" &&
+    phase !== "programSessions";
 
   return (
     <div
@@ -4661,6 +5151,22 @@ export function CreateWorkspace({
             </button>
             <button
               type="button"
+              onClick={() => setPendingModeChoice("fromProgram")}
+              aria-pressed={pendingModeChoice === "fromProgram"}
+              className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
+            >
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+                By Program
+              </span>
+              <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
+                Make a program your own
+              </span>
+              <p className="mt-1 text-[13px] font-normal leading-snug text-muted sm:mt-2.5 sm:min-h-[calc(1.55em*3)] sm:text-[15px] sm:leading-[1.55]">
+                Pick a guided program, then shape a fresh meditation in chat.
+              </p>
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 if (!planGoalsReady || !hasPlanGoals) return;
                 setPendingModeChoice("goal");
@@ -4781,7 +5287,10 @@ export function CreateWorkspace({
                 }
                 // Coming back to the branch already in progress resumes it; the
                 // begin* reset only runs when the branch actually changes.
-                const resume = initedCreatePathsRef.current.has(mode);
+                // By Program always starts at a fresh picker — never resume mid-chat.
+                const resume =
+                  mode !== "fromProgram" &&
+                  initedCreatePathsRef.current.has(mode);
                 if (mode === "style") {
                   if (!resume) beginStylePath();
                   pushCreate({ path: "style" });
@@ -4796,9 +5305,15 @@ export function CreateWorkspace({
                     beginGoalPath();
                   } else if (mode === "oneShot") {
                     beginOneShotPath();
+                  } else if (mode === "fromProgram") {
+                    beginFromProgramPath();
                   }
                 }
                 setCreateStripStep(1);
+                if (mode === "fromProgram") {
+                  pushCreate({ path: "fromProgram", fromProgramStep: "pick" });
+                  return;
+                }
                 pushCreate({ path: mode });
               }}
               aria-label={
@@ -4810,6 +5325,8 @@ export function CreateWorkspace({
                       ? "Next: choose a goal"
                       : pendingModeChoice === "oneShot"
                         ? "Next: write your prompt"
+                        : pendingModeChoice === "fromProgram"
+                          ? "Next: choose a program"
                         : pendingModeChoice === "randomScript"
                           ? "Next: audio with a random script"
                           : "Next: chat"
@@ -4824,6 +5341,8 @@ export function CreateWorkspace({
                       ? "Goal"
                       : pendingModeChoice === "oneShot"
                         ? "Prompt"
+                        : pendingModeChoice === "fromProgram"
+                          ? "Program"
                         : pendingModeChoice === "randomScript"
                           ? "Audio"
                           : "Chat"}
@@ -5082,6 +5601,116 @@ export function CreateWorkspace({
             </CreateFlowFooterBar>
           </div>
         ) : null}
+        {showProgramPick ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 sm:px-6">
+              <CreateProgramPicker
+                programs={libraryPrograms}
+                listReady={libraryProgramsListReady}
+                selectedId={programSelectedId}
+                onSelect={setProgramSelectedId}
+              />
+            </div>
+            <CreateFlowFooterBar>
+              <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+                  onClick={goBackToChatStyle}
+                  disabled={chatControlsDisabled}
+                  aria-label="Back to chat style selection"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Chat style</span>
+                </CreateFlowNavPill>
+              </div>
+              <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+              <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+                  disabled={
+                    chatLoading ||
+                    chatControlsDisabled ||
+                    !programSelectedId
+                  }
+                  onClick={confirmFromProgramSelection}
+                  aria-label="Next: choose sessions"
+                >
+                  <span>Sessions</span>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+              </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
+        {showProgramSessions ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 sm:px-6">
+              {(() => {
+                const program = libraryPrograms.find(
+                  (p) => p.id === programSelectedId,
+                );
+                if (!libraryProgramsListReady) {
+                  return (
+                    <p className="py-8 text-center text-sm text-muted">
+                      Loading program…
+                    </p>
+                  );
+                }
+                if (!program) {
+                  return (
+                    <p className="py-8 text-center text-sm text-muted">
+                      Program not found. Go back and pick again.
+                    </p>
+                  );
+                }
+                const handoff = programHandoffFromLibrary(program);
+                return (
+                  <ProgramSessionSelectPanel
+                    program={handoff}
+                    selectedIds={programDaySelectedIds}
+                    onToggle={toggleProgramDay}
+                    onSelectAll={() => selectAllProgramDays(handoff)}
+                    onClearAll={clearAllProgramDays}
+                    generateMode={programGenerateMode}
+                    onGenerateModeChange={setProgramGenerateMode}
+                    disabled={chatLoading}
+                  />
+                );
+              })()}
+            </div>
+            <CreateFlowFooterBar>
+              <div className="flex min-w-0 flex-1 justify-start">
+                <CreateFlowNavPill
+                  onClick={() => {
+                    restoreFromProgramPicker();
+                    pushCreate({
+                      path: "fromProgram",
+                      fromProgramStep: "pick",
+                    });
+                  }}
+                  disabled={chatControlsDisabled}
+                  aria-label="Back to program selection"
+                >
+                  <IconChevronLeft className="shrink-0 text-accent-link" />
+                  <span>Program</span>
+                </CreateFlowNavPill>
+              </div>
+              <div className="flex shrink-0 justify-center">{lengthBarControl}</div>
+              <div className="flex min-w-0 flex-1 justify-end">
+                <CreateFlowNavPill
+                  disabled={
+                    chatLoading ||
+                    chatControlsDisabled ||
+                    programDaySelectedIds.size === 0
+                  }
+                  onClick={confirmFromProgramSessions}
+                  aria-label="Next: chat"
+                >
+                  <span>Chat</span>
+                  <IconChevronRight className="text-accent-link" />
+                </CreateFlowNavPill>
+              </div>
+            </CreateFlowFooterBar>
+          </div>
+        ) : null}
         {showPromptPick ? (
           <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
             <div className="mx-auto flex min-h-0 min-w-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
@@ -5127,21 +5756,9 @@ export function CreateWorkspace({
             </CreateFlowFooterBar>
           </div>
         ) : null}
-        {workspaceSectionStep === 1 && !showStyleTypePick && !showStyleQuestions && !showJournalPick && !showGoalPick && !showPromptPick ? (
+        {workspaceSectionStep === 1 && !showStyleTypePick && !showStyleQuestions && !showJournalPick && !showGoalPick && !showPromptPick && !showProgramPick && !showProgramSessions ? (
         <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
-        <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border bg-[color:var(--card-warm-bg)]">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-0 opacity-15"
-            style={{
-              backgroundImage:
-                'url("/patterns/hero/adobestock-2162625652-chat-tile.webp")',
-              backgroundRepeat: "repeat",
-              // Smaller tiles → denser repeat; aspect matches 1428×1600 crop.
-              backgroundSize: "286px 320px",
-              backgroundPosition: "center top",
-            }}
-          />
+        <ChatPanelShell className="flex-col">
         <section className="relative z-[1] flex w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
           {showChatReset ? (
             <div className="flex shrink-0 items-center justify-end px-4 py-2.5 sm:px-5">
@@ -5199,7 +5816,6 @@ export function CreateWorkspace({
                   next.role === msg.role &&
                   (msg.role !== "assistant" ||
                     (msg.variant === "script") === (next.variant === "script"));
-                const muted = msg.muted ? "opacity-50" : "";
                 const isUser = msg.role === "user";
                 const isLastVisible = i === visible.length - 1;
                 const moreCoachBubblesComing =
@@ -5216,87 +5832,56 @@ export function CreateWorkspace({
                     ? assistantParts
                     : [msg.text];
                 return (
-                  <div
+                  <ChatThreadMessage
                     key={`${msg.role}-${i}-${msg.variant ?? "u"}`}
-                    className={`flex w-full min-w-0 flex-col ${
-                      isUser ? "items-end" : "items-start"
-                    } ${groupedWithNext ? "mb-1" : "mb-6"}`}
-                  >
-                    {parts.map((part, pi) => {
-                      const lastPart = pi === parts.length - 1;
-                      const showTail =
-                        lastPart &&
-                        !groupedWithNext &&
-                        !isScript &&
-                        !moreCoachBubblesComing;
-                      const radius = isUser
-                        ? showTail
-                          ? "rounded-xl rounded-br-sm"
-                          : "rounded-xl"
-                        : showTail
-                          ? "rounded-xl rounded-bl-sm"
-                          : "rounded-xl";
-                      const bubbleBase = `chat-bubble relative px-3 py-2 ${radius}`;
-                      const bubble = isUser
-                        ? `${bubbleBase} bg-accent-soft text-lg leading-[1.5] text-foreground ${
-                            showTail ? "chat-bubble-tail-right" : ""
-                          } ${muted}`
-                        : isScript
-                          ? `${bubbleBase} border border-gold/45 bg-gold/5 text-lg leading-[1.5] text-foreground ${muted}`
-                          : `${bubbleBase} bg-card text-lg leading-[1.5] text-foreground ${
-                              showTail ? "chat-bubble-tail-left" : ""
-                            } ${muted}`;
-                      return (
-                        <div
-                          key={pi}
-                          className={`flex w-full min-w-0 ${
-                            isUser ? "justify-end" : "justify-start"
-                          } ${lastPart ? "" : "mb-1"}`}
-                        >
-                          <div className="chat-bubble-shell">
-                      <div className={bubble}>
-                        {isScript ? (
-                          <>
-                                  <div className="mb-2 inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-link">
-                              Meditation script · ~5 min
-                            </div>
-                            <ChatMarkdown
-                              text={msg.text}
-                                    className="font-serif text-lg leading-relaxed text-foreground/95"
-                            />
-                          </>
-                              ) : isUser &&
-                          msg.journalSegments &&
-                          msg.journalSegments.length > 0 ? (
-                                <div className="text-lg leading-[1.5]">
-                            <p className="whitespace-pre-wrap">{msg.text}</p>
-                            <JournalHandoffEntryCards
-                              segments={msg.journalSegments}
-                            />
-                          </div>
-                        ) : (
-                          <ChatMarkdown
-                                  text={part}
-                                  className="relative z-[2] text-lg font-normal leading-[1.5]"
-                          />
-                        )}
-                      </div>
-                          </div>
+                    role={msg.role}
+                    parts={parts}
+                    muted={Boolean(msg.muted)}
+                    groupedWithNext={groupedWithNext}
+                    suppressTail={moreCoachBubblesComing || isScript}
+                    alwaysBubble={isScript}
+                    assistantBubbleClassName={
+                      isScript
+                        ? "border border-gold/45 bg-gold/5"
+                        : undefined
+                    }
+                    renderPart={
+                      isScript
+                        ? () => (
+                            <>
+                              <div className="mb-2 inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-link">
+                                Meditation script · ~5 min
+                              </div>
+                              <ChatMarkdown
+                                text={msg.text}
+                                className="font-serif text-lg leading-relaxed text-foreground/95"
+                              />
+                            </>
+                          )
+                        : isUser &&
+                            msg.journalSegments &&
+                            msg.journalSegments.length > 0
+                          ? (part) => (
+                              <div className="text-base leading-[1.5]">
+                                <p className="whitespace-pre-wrap">{part}</p>
+                                <JournalHandoffEntryCards
+                                  segments={msg.journalSegments!}
+                                />
+                              </div>
+                            )
+                          : undefined
+                    }
+                    footer={
+                      msg.audioReadyCta ? (
+                        <div className="mt-2 flex w-full justify-start">
+                          <CreateFlowNavPill onClick={goToAudioSettings}>
+                            <span>Proceed to audio settings</span>
+                            <IconChevronRight className="text-accent-link" />
+                          </CreateFlowNavPill>
                         </div>
-                      );
-                    })}
-                    {msg.audioReadyCta ? (
-                      <div className="mt-2 flex w-full justify-start">
-                        <CreateFlowNavPill
-              onClick={goToAudioSettings}
-                          
-                        >
-                          <span>Proceed to audio settings</span>
-                          <IconChevronRight className="text-accent-link" />
-                        </CreateFlowNavPill>
-                      </div>
-                    ) : null}
-                  </div>
+                      ) : null
+                    }
+                  />
                 );
               })}
               {phase === "style" && !journalMode && introTypingDone && (
@@ -5434,7 +6019,7 @@ export function CreateWorkspace({
             </CreateFlowNavPill>
           </div>
           </CreateFlowFooterBar>
-        </div>
+        </ChatPanelShell>
         <div
           className="journal-editor-pattern-gutter pointer-events-none min-h-0 min-w-0 flex-1"
           aria-hidden

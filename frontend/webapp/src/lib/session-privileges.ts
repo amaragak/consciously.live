@@ -6,7 +6,7 @@
 import { getMedimadeSessionJwt } from "@/lib/auth-session";
 
 export type ConsciouslyRole = "user" | "admin";
-export type ConsciouslyPlan = "free" | "pro";
+export type ConsciouslyPlan = "free" | "create" | "pro";
 
 export type SessionPrivileges = {
   role: ConsciouslyRole;
@@ -26,6 +26,12 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   }
 }
 
+function normalizePlan(raw: unknown): ConsciouslyPlan {
+  if (raw === "pro") return "pro";
+  if (raw === "create") return "create";
+  return "free";
+}
+
 export function getSessionPrivileges(): SessionPrivileges {
   const jwt = getMedimadeSessionJwt();
   if (!jwt) return { role: "user", plan: "free" };
@@ -33,7 +39,7 @@ export function getSessionPrivileges(): SessionPrivileges {
   if (!payload) return { role: "user", plan: "free" };
   return {
     role: payload.role === "admin" ? "admin" : "user",
-    plan: payload.plan === "pro" ? "pro" : "free",
+    plan: normalizePlan(payload.plan),
   };
 }
 
@@ -43,5 +49,5 @@ export function isSessionAdmin(): boolean {
 
 export function isSessionPaid(): boolean {
   const p = getSessionPrivileges();
-  return p.role === "admin" || p.plan === "pro";
+  return p.role === "admin" || p.plan === "create" || p.plan === "pro";
 }

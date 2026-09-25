@@ -96,6 +96,19 @@ const PAPER_HYBRID = {
   surface: WHITE,
 } as const;
 
+/** Homepage v2 paper — ivory / navy / gold (see docs/design/homepage-v2). */
+const PAPER_V2 = {
+  background: "#F6F1E7",
+  foreground: "#0F1B2D",
+  muted: "#6B6457",
+  faint: "#8A6A34",
+  card: "#FFFFFF",
+  border: "#E6DDCB",
+  borderSubtle: "#EFE7D6",
+  deep: "#0F1B2D",
+  surface: WHITE,
+} as const;
+
 const PAPER_DARK = {
   background: "#1E2530",
   foreground: "#FAF8F3",
@@ -364,7 +377,7 @@ type Semantic = {
 /** Brand tints/shades from PRIMARY, mixed onto the given paper (not replacing it). */
 function brandFromPrimary(
   rawPrimary: string,
-  paper: typeof PAPER_LIGHT | typeof PAPER_DARK | typeof PAPER_HYBRID,
+  paper: typeof PAPER_LIGHT | typeof PAPER_DARK | typeof PAPER_HYBRID | typeof PAPER_V2,
   dark: boolean,
 ): Pick<
   Semantic,
@@ -391,7 +404,7 @@ function brandFromPrimary(
 }
 
 function assemble(
-  paper: typeof PAPER_LIGHT | typeof PAPER_DARK | typeof PAPER_HYBRID,
+  paper: typeof PAPER_LIGHT | typeof PAPER_DARK | typeof PAPER_HYBRID | typeof PAPER_V2,
   gold: string,
   dark: boolean,
 ): Semantic {
@@ -525,6 +538,18 @@ export const hybrid = {
   homeHeroBg: "#1A1820",
   homeHeroPattern: `url(${JSON.stringify(AUTH_HERO_PATTERN_DARK)})`,
   homeHeroPatternOpacity: "0.88",
+};
+
+/**
+ * Homepage v2 theme — navy / ivory / gold.
+ * Light & dark homepage variants are intentionally undefined for now.
+ */
+export const v2 = {
+  ...assemble(PAPER_V2, "#C8A46A", false),
+  nav: "#0F1B2D",
+  homeHeroBg: "#0F1B2D",
+  homeHeroPattern: "none",
+  homeHeroPatternOpacity: "0",
 };
 
 export function accentGradientCss(s: Semantic): string {
@@ -680,6 +705,8 @@ export const themeRootCss = [
   cssBlock(":root.dark", varsFor(dark, true)),
   /** Hybrid is the light recipe on its own paper — change `PAPER_HYBRID` to restyle it. */
   cssBlock(":root.hybrid", varsFor(hybrid, false)),
+  /** Homepage v2 — navy / ivory / gold. */
+  cssBlock(":root.v2", varsFor(v2, false)),
 ].join("\n\n");
 
 /**

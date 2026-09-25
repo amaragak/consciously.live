@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consciously homepage, desktop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Instrument Sans',system-ui,sans-serif;background:#F6F1E7;color:#0F1B2D}
+a{color:inherit;text-decoration:none}a:hover{color:#C8A46A}
+.wave{display:flex;align-items:center;gap:4px;height:36px}
+.wave i{display:block;width:5px;border-radius:3px;background:rgba(246,241,231,0.25)}
+.wave i.on{background:#C8A46A}
+</style>
+</helmet>
+<div style="width: 1440px; height: 6150px; display: flex; flex-direction: column; background: #F6F1E7; font-family: 'Instrument Sans', system-ui, sans-serif; color: #0F1B2D; overflow: hidden">
+
+<!-- HERO -->
+<section id="tool-home" style="background: #0F1B2D; color: #F6F1E7; display: flex; flex-direction: column; padding: 0 120px 140px">
+<nav aria-label="Main" style="height: 96px; display: flex; align-items: center; gap: 40px; border-bottom: 1px solid rgba(246,241,231,0.12)">
+<a href="https://consciously.live/" style="font-family: 'Fraunces', serif; font-size: 30px; font-weight: 500; letter-spacing: -0.5px; color: #F6F1E7">consciously</a>
+<div style="display: flex; gap: 28px; flex-grow: 1; font-size: 15px; color: rgba(246,241,231,0.78)">
+<a href="#tool-meditate">Meditate</a><a href="#tool-journal">Journal</a><a href="#tool-manifest">Manifest</a><a href="#tool-focus">Focus</a><a href="#tool-chat">Chat</a>
+<span style="width: 1px; background: rgba(246,241,231,0.2)"></span>
+<a href="https://consciously.live/listen">Listen</a><a href="https://consciously.live/read">Read</a><a href="https://consciously.live/connect">Connect</a>
+</div>
+<a href="https://app.consciously.live/login" style="font-size: 15px; color: rgba(246,241,231,0.78)">Sign in</a>
+<a href="https://app.consciously.live/" style="font-size: 15px; font-weight: 600; background: #C8A46A; color: #0F1B2D; padding: 12px 22px; border-radius: 999px">Start free</a>
+</nav>
+
+<div style="display: flex; flex-direction: column; gap: 36px; padding-top: 72px">
+<h1 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 350; font-size: 112px; line-height: 1.0; letter-spacing: -3px">Become who you <em style="font-style: italic; color: #C8A46A">said</em> you’d be.</h1>
+<p style="margin: 0; font-size: 22px; line-height: 1.5; color: rgba(246,241,231,0.78)">Personalised AI-guided meditations, vision boarding, a goal planner, your personal manifesto and focus sessions — everything you need to turn the dream into your daily life. <em style="font-family: 'Fraunces', serif; font-style: italic; color: #F6F1E7">Live consciously.</em></p>
+<div style="display: flex; flex-direction: column; gap: 14px; padding-top: 8px">
+<form style="width: 100%; display: flex; gap: 10px; align-items: center; background: rgba(246,241,231,0.06); border: 1px solid rgba(200,164,106,0.5); border-radius: 999px; padding: 8px 8px 8px 30px; box-sizing: border-box">
+<label for="hero-prompt" style="position: absolute; left: -9999px">What would you like a meditation for?</label>
+<input id="hero-prompt" type="text" placeholder="Calm before my big pitch, confidence for launch day, deeper sleep…" style="flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: #F6F1E7; font-family: inherit; font-size: 19px; height: 56px">
+<button type="submit" style="height: 60px; padding: 0 30px; border: none; border-radius: 999px; background: #C8A46A; color: #0F1B2D; font-family: inherit; font-size: 17px; font-weight: 600; white-space: nowrap">Create my meditation</button>
+</form>
+<div style="font-size: 15px; color: rgba(246,241,231,0.6); padding-left: 30px">Any intention, any moment: a guided meditation written and voiced just for you.</div>
+</div>
+</div>
+
+<div style="margin-top: 72px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,241,231,0.55)">Or start somewhere else</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<a href="https://app.consciously.live/manifest" style="background: rgba(246,241,231,0.05); border: 1px solid rgba(246,241,231,0.16); border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 10px; color: #F6F1E7">
+<span style="font-family: 'Fraunces', serif; font-size: 22px">Build your vision board</span>
+<span style="font-size: 15px; line-height: 1.5; color: rgba(246,241,231,0.68)">Picture the life you’re creating, write your manifesto and set your goals.</span>
+<span style="font-size: 14px; color: #C8A46A; margin-top: auto; padding-top: 6px">Manifest →</span>
+</a>
+<a href="https://app.consciously.live/journal" style="background: rgba(246,241,231,0.05); border: 1px solid rgba(246,241,231,0.16); border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 10px; color: #F6F1E7">
+<span style="font-family: 'Fraunces', serif; font-size: 22px">Write in your journal</span>
+<span style="font-size: 15px; line-height: 1.5; color: rgba(246,241,231,0.68)">Write or speak freely, and see the patterns in how you feel over time.</span>
+<span style="font-size: 14px; color: #C8A46A; margin-top: auto; padding-top: 6px">Journal →</span>
+</a>
+<a href="https://app.consciously.live/focus" style="background: rgba(246,241,231,0.05); border: 1px solid rgba(246,241,231,0.16); border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 10px; color: #F6F1E7">
+<span style="font-family: 'Fraunces', serif; font-size: 22px">Start a focus session</span>
+<span style="font-size: 15px; line-height: 1.5; color: rgba(246,241,231,0.68)">A timer for the steps towards your goals, with distracting sites blocked.</span>
+<span style="font-size: 14px; color: #C8A46A; margin-top: auto; padding-top: 6px">Focus →</span>
+</a>
+<a href="https://app.consciously.live/chat" style="background: rgba(246,241,231,0.05); border: 1px solid rgba(246,241,231,0.16); border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 10px; color: #F6F1E7">
+<span style="font-family: 'Fraunces', serif; font-size: 22px">Talk to your coach</span>
+<span style="font-size: 15px; line-height: 1.5; color: rgba(246,241,231,0.68)">Think out loud, and let it log, plan or start a meditation for you.</span>
+<span style="font-size: 14px; color: #C8A46A; margin-top: auto; padding-top: 6px">Chat →</span>
+</a>
+</div>
+</div>
+
+</section>
+
+<!-- LOOP -->
+<section id="tool-home-loop" style="background: #EFE6D3; padding: 128px 120px 136px; margin-bottom: 140px; display: flex; flex-direction: column; gap: 56px">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 80px">
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 60px; line-height: 1.05; letter-spacing: -1.2px">Five tools. One direction.</h2>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #4A4F5A; max-width: 460px">Every entry, session and conversation moves you towards the same place: the life you’ve chosen.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: stretch; gap: 14px">
+
+<div style="flex-grow: 1; flex-basis: 0; background: #FFFFFF; border: 1px solid #E0D4BC; border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-family: 'Fraunces', serif; font-size: 15px; color: #6B6457">consciously <em style="color: #8A6A34">Journal</em></div>
+<div style="font-family: 'Fraunces', serif; font-size: 18px; font-style: italic; line-height: 1.4">“I can see the business so clearly. Why do I keep waiting to begin?”</div>
+<div style="font-size: 13px; color: #6B6457; margin-top: auto">Tonight’s entry</div>
+</div>
+
+<div style="display: flex; align-items: center; color: #8A6A34; font-size: 26px; font-family: 'Fraunces', serif">+</div>
+
+<div style="flex-grow: 1; flex-basis: 0; background: #FFFFFF; border: 1px solid #E0D4BC; border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-family: 'Fraunces', serif; font-size: 15px; color: #6B6457">consciously <em style="color: #8A6A34">Manifest</em></div>
+<div style="font-family: 'Fraunces', serif; font-size: 18px; line-height: 1.4">Someone living the life they designed.</div>
+<div style="font-size: 13px; color: #6B6457; margin-top: auto">Goal · Open my own studio</div>
+</div>
+
+<div style="display: flex; align-items: center; color: #8A6A34">
+<svg width="30" height="18" viewBox="0 0 30 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9h24"></path><path d="M20 3l6 6-6 6"></path></svg>
+</div>
+
+<div style="flex-grow: 1.25; flex-basis: 0; background: #0F1B2D; color: #F6F1E7; border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="font-family: 'Fraunces', serif; font-size: 15px; color: rgba(246,241,231,0.7)">consciously <em style="color: #C8A46A">Meditate</em></div>
+<div style="display: flex; gap: 14px; align-items: center">
+<button aria-label="Play meditation" style="width: 48px; height: 48px; border-radius: 999px; border: none; background: #C8A46A; color: #0F1B2D; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+</button>
+<div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; line-height: 1.3">Manifesting your business: living as its successful owner, today</div>
+</div>
+<div class="wave" style="height: 28px"><i class="on" style="height: 10px"></i><i class="on" style="height: 18px"></i><i class="on" style="height: 24px"></i><i class="on" style="height: 14px"></i><i class="on" style="height: 28px"></i><i class="on" style="height: 20px"></i><i class="on" style="height: 26px"></i><i style="height: 16px"></i><i style="height: 22px"></i><i style="height: 12px"></i><i style="height: 26px"></i><i style="height: 18px"></i><i style="height: 28px"></i><i style="height: 14px"></i><i style="height: 22px"></i><i style="height: 10px"></i><i style="height: 20px"></i><i style="height: 26px"></i><i style="height: 16px"></i><i style="height: 24px"></i><i style="height: 12px"></i><i style="height: 18px"></i><i style="height: 22px"></i><i style="height: 14px"></i></div>
+<div style="font-size: 13px; color: rgba(246,241,231,0.55)">Written from both · Warm voice · Soft rain</div>
+</div>
+
+<div style="display: flex; align-items: center; color: #8A6A34">
+<svg width="30" height="18" viewBox="0 0 30 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9h24"></path><path d="M20 3l6 6-6 6"></path></svg>
+</div>
+
+<div style="flex-grow: 1; flex-basis: 0; background: #FFFFFF; border: 1px solid #E0D4BC; border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="font-family: 'Fraunces', serif; font-size: 15px; color: #6B6457">consciously <em style="color: #8A6A34">Focus</em></div>
+<div style="display: flex; gap: 14px; align-items: center">
+<div style="width: 64px; height: 64px; border-radius: 999px; border: 5px solid #EFE7D6; border-top-color: #C8A46A; border-right-color: #C8A46A; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0">25:00</div>
+<div style="font-family: 'Fraunces', serif; font-size: 18px; line-height: 1.3">Price the first collection</div>
+</div>
+<div style="font-size: 13px; color: #6B6457; margin-top: auto">Focus timer · from your Manifest goal</div>
+</div>
+
+</div>
+
+<div style="background: #0F1B2D; color: #F6F1E7; border-radius: 22px; padding: 20px 28px; display: flex; align-items: center; gap: 28px">
+<div style="font-family: 'Fraunces', serif; font-size: 20px; color: rgba(246,241,231,0.7); flex-shrink: 0">consciously <em style="color: #C8A46A">Chat</em></div>
+<div style="font-size: 16px; color: rgba(246,241,231,0.78); flex-grow: 1">Runs through all of it: ask, reflect, and it moves the app for you.</div>
+<div style="display: flex; gap: 8px; flex-shrink: 0">
+<span style="background: #C8A46A; color: #0F1B2D; border-radius: 16px 16px 4px 16px; padding: 10px 14px; font-size: 14px">I keep doubting myself.</span>
+<span style="background: rgba(246,241,231,0.1); border-radius: 16px 16px 16px 4px; padding: 10px 14px; font-size: 14px">Want a meditation for that?</span>
+</div>
+</div>
+</div>
+</section>
+
+<!-- MEDITATE -->
+<section id="tool-meditate" style="padding: 0 120px 160px; display: flex; gap: 120px; align-items: center">
+<div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 22px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px; color: #6B6457">consciously <em style="color: #8A6A34">Meditate</em></div>
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 56px; line-height: 1.05; letter-spacing: -1px">Feel it before it’s real.</h2>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #4A4F5A">Guided meditations written from your own words — your goals, your journal, today’s worries — so every session speaks to exactly where you are.</p>
+<a href="https://app.consciously.live/meditate" style="font-size: 17px; font-weight: 600; border-bottom: 2px solid #C8A46A; align-self: flex-start; padding-bottom: 4px">Create a meditation →</a>
+</div>
+<div style="width: 540px; display: flex; flex-direction: column; gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #E6DDCB; border-radius: 24px; padding: 28px 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 12px; color: #8A6A34; letter-spacing: 1.3px; text-transform: uppercase">You ask</div>
+<div style="font-family: 'Fraunces', serif; font-size: 20px; font-style: italic; line-height: 1.45">“I want to manifest opening my new studio.”</div>
+<div style="display: flex; gap: 8px">
+<span style="font-size: 14px; padding: 8px 14px; border-radius: 999px; background: #0F1B2D; color: #F6F1E7; font-weight: 600">Manifestation</span>
+<span style="font-size: 14px; padding: 8px 14px; border-radius: 999px; border: 1px solid #D9CCB2">Visualization</span>
+<span style="font-size: 14px; padding: 8px 14px; border-radius: 999px; border: 1px solid #D9CCB2">Sleep</span>
+</div>
+</div>
+<div style="display: flex; justify-content: center; color: #8A6A34"><svg width="20" height="24" viewBox="0 0 20 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v18"></path><path d="M3 14l7 7 7-7"></path></svg></div>
+<div style="background: #0F1B2D; color: #F6F1E7; border-radius: 24px; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px">
+<div style="font-size: 12px; color: #C8A46A; letter-spacing: 1.3px; text-transform: uppercase">You get</div>
+<div style="display: flex; gap: 16px; align-items: center">
+<button aria-label="Play meditation" style="width: 56px; height: 56px; border-radius: 999px; border: none; background: #C8A46A; color: #0F1B2D; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+</button>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500">Opening day at your new studio</div>
+<div style="font-size: 13px; color: rgba(246,241,231,0.6)">Manifestation · Warm voice · Soft rain</div>
+</div>
+</div>
+<div class="wave" style="height: 28px"><i class="on" style="height: 10px"></i><i class="on" style="height: 18px"></i><i class="on" style="height: 24px"></i><i class="on" style="height: 14px"></i><i class="on" style="height: 28px"></i><i class="on" style="height: 20px"></i><i class="on" style="height: 26px"></i><i class="on" style="height: 16px"></i><i style="height: 22px"></i><i style="height: 12px"></i><i style="height: 26px"></i><i style="height: 18px"></i><i style="height: 28px"></i><i style="height: 14px"></i><i style="height: 22px"></i><i style="height: 10px"></i><i style="height: 20px"></i><i style="height: 26px"></i><i style="height: 16px"></i><i style="height: 24px"></i><i style="height: 12px"></i><i style="height: 18px"></i><i style="height: 22px"></i><i style="height: 14px"></i><i style="height: 20px"></i><i style="height: 26px"></i><i style="height: 12px"></i><i style="height: 18px"></i><i style="height: 24px"></i><i style="height: 16px"></i><i style="height: 22px"></i><i style="height: 10px"></i><i style="height: 20px"></i><i style="height: 14px"></i><i style="height: 24px"></i><i style="height: 18px"></i></div>
+</div>
+</div>
+</section>
+
+<!-- JOURNAL -->
+<section id="tool-journal" style="padding: 0 120px 160px; display: flex; flex-direction: row-reverse; gap: 120px; align-items: center">
+<div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 22px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px; color: #6B6457">consciously <em style="color: #8A6A34">Journal</em></div>
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 56px; line-height: 1.05; letter-spacing: -1px">Hear what you’ve been telling yourself.</h2>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #4A4F5A">Write or speak freely. Consciously surfaces the patterns: the doubts that keep returning, and the dreams that won’t go away.</p>
+<a href="https://app.consciously.live/journal" style="font-size: 17px; font-weight: 600; border-bottom: 2px solid #C8A46A; align-self: flex-start; padding-bottom: 4px">Write your first entry →</a>
+</div>
+<div style="width: 540px; display: flex; flex-direction: column; gap: 12px">
+<div style="background: #0F1B2D; color: #F6F1E7; border-radius: 24px; padding: 28px 32px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; color: #C8A46A; letter-spacing: 1.3px; text-transform: uppercase">Today’s entry</div>
+<div style="font-family: 'Fraunces', serif; font-size: 19px; font-style: italic; line-height: 1.55">“<span style="border-bottom: 2px solid #C8A46A">I can picture the studio so clearly</span>. But <span style="border-bottom: 2px solid #C8A46A">who am I to charge for this?</span> <span style="border-bottom: 2px solid #C8A46A">Grateful for a quiet morning</span> to dream.”</div>
+</div>
+<div style="display: flex; justify-content: center; color: #8A6A34"><svg width="20" height="24" viewBox="0 0 20 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v18"></path><path d="M3 14l7 7 7-7"></path></svg></div>
+<div style="background: #FFFFFF; border: 1px solid #E6DDCB; border-radius: 24px; padding: 28px 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 12px; color: #8A6A34; letter-spacing: 1.3px; text-transform: uppercase">Patterns this month</div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 15px">Vision</span><div style="height: 8px; background: #F1EADB; border-radius: 999px"><div style="height: 8px; width: 78%; background: #0F1B2D; border-radius: 999px"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 15px">Self-doubt</span><div style="height: 8px; background: #F1EADB; border-radius: 999px"><div style="height: 8px; width: 52%; background: #0F1B2D; border-radius: 999px"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 15px">Gratitude</span><div style="height: 8px; background: #F1EADB; border-radius: 999px"><div style="height: 8px; width: 36%; background: #0F1B2D; border-radius: 999px"></div></div></div>
+<span style="font-size: 15px; font-weight: 600; color: #8A6A34; padding-top: 4px">Turn into a meditation →</span>
+</div>
+</div>
+</section>
+
+<!-- MANIFEST -->
+<section id="tool-manifest" style="padding: 0 120px 160px; display: flex; gap: 120px; align-items: center">
+<div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 22px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px; color: #6B6457">consciously <em style="color: #8A6A34">Manifest</em></div>
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 56px; line-height: 1.05; letter-spacing: -1px">Know exactly who you’re becoming.</h2>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #4A4F5A">Build your vision board, write your personal manifesto, and turn each goal into next steps you can actually take.</p>
+<a href="https://app.consciously.live/manifest" style="font-size: 17px; font-weight: 600; border-bottom: 2px solid #C8A46A; align-self: flex-start; padding-bottom: 4px">Build your vision board →</a>
+</div>
+<div style="width: 540px; background: #0F1B2D; color: #F6F1E7; border-radius: 24px; padding: 40px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 12px; color: #C8A46A; letter-spacing: 1.3px; text-transform: uppercase">Vision board</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+<div style="height: 72px; border-radius: 10px; background: #C8A46A"></div>
+<div style="height: 72px; border-radius: 10px; background: #3A4E6E"></div>
+<div style="height: 72px; border-radius: 10px; background: #EFE6D3"></div>
+<div style="height: 72px; border-radius: 10px; background: #8A6A34"></div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; color: #C8A46A; letter-spacing: 1.3px; text-transform: uppercase">Manifesto</div>
+<div style="font-family: 'Fraunces', serif; font-size: 20px; font-style: italic; line-height: 1.35">“I trust my vision and act on it every day.”</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; border-top: 1px solid rgba(246,241,231,0.14); padding-top: 20px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px">Open my own studio</div>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 15px">
+<span>● Price the first collection</span><span style="color: rgba(246,241,231,0.7)">○ Find a studio space</span><span style="color: rgba(246,241,231,0.7)">○ Open the online shop</span>
+</div>
+</div>
+</div>
+</section>
+
+<!-- FOCUS -->
+<section id="tool-focus" style="padding: 0 120px 160px; display: flex; flex-direction: row-reverse; gap: 120px; align-items: center">
+<div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 22px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px; color: #6B6457">consciously <em style="color: #8A6A34">Focus</em></div>
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 56px; line-height: 1.05; letter-spacing: -1px">Give your hours to your dream.</h2>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #4A4F5A">A focus timer built around the goals you set in Manifest. Pick a step, start the timer, and distracting sites stay blocked until the session ends.</p>
+<a href="https://app.consciously.live/focus" style="font-size: 17px; font-weight: 600; border-bottom: 2px solid #C8A46A; align-self: flex-start; padding-bottom: 4px">Start a focus session →</a>
+</div>
+<div style="width: 540px; background: #FFFFFF; border: 1px solid #E6DDCB; border-radius: 24px; padding: 48px 40px; display: flex; align-items: center; gap: 32px">
+<div style="width: 140px; height: 140px; border-radius: 999px; border: 7px solid #EFE7D6; border-top-color: #C8A46A; border-right-color: #C8A46A; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif; font-size: 34px; flex-shrink: 0">18:24</div>
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="font-family: 'Fraunces', serif; font-size: 24px; line-height: 1.25">Price the first collection</div><div style="font-size: 14px; color: #6B6457">From Manifest · Open my own studio · step 1 of 3</div><div style="font-size: 13px; color: #8A6A34; padding-top: 4px">Distracting sites blocked</div></div>
+</div>
+</section>
+
+<!-- CHAT -->
+<section id="tool-chat" style="padding: 0 120px 160px; display: flex; gap: 120px; align-items: center">
+<div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 22px">
+<div style="font-family: 'Fraunces', serif; font-size: 22px; color: #6B6457">consciously <em style="color: #8A6A34">Chat</em></div>
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 56px; line-height: 1.05; letter-spacing: -1px">Never stuck in your own head.</h2>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #4A4F5A">A coach that listens, reflects and acts: logging a win, adding a step, or starting a meditation the moment you need one.</p>
+<a href="https://app.consciously.live/chat" style="font-size: 17px; font-weight: 600; border-bottom: 2px solid #C8A46A; align-self: flex-start; padding-bottom: 4px">Talk to your coach →</a>
+</div>
+<div style="width: 540px; background: #0F1B2D; border-radius: 24px; padding: 40px; display: flex; flex-direction: column; gap: 14px">
+<div style="align-self: flex-end; background: #C8A46A; color: #0F1B2D; border-radius: 18px 18px 4px 18px; padding: 14px 18px; font-size: 16px">I keep doubting myself.</div>
+<div style="align-self: flex-start; background: rgba(246,241,231,0.08); color: #F6F1E7; border-radius: 18px 18px 18px 4px; padding: 14px 18px; font-size: 16px">Want a meditation for that?</div>
+<span style="align-self: flex-start; font-size: 14px; padding: 9px 14px; border-radius: 999px; border: 1px solid rgba(246,241,231,0.3); color: #F6F1E7">▸ Start meditation</span>
+</div>
+</section>
+
+<!-- CTA -->
+<section id="tool-home-cta" style="margin: 0 120px 120px; background: #0F1B2D; color: #F6F1E7; border-radius: 32px; padding: 96px; display: flex; flex-direction: column; align-items: center; gap: 36px">
+<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 350; font-size: 72px; letter-spacing: -1.6px; text-align: center">Who are you becoming?</h2>
+<p style="margin: -12px 0 0; font-size: 19px; color: rgba(246,241,231,0.7)">Start today. It’s free.</p>
+<a href="https://app.consciously.live/" style="font-size: 18px; font-weight: 600; background: #C8A46A; color: #0F1B2D; padding: 20px 36px; border-radius: 999px">Start free</a>
+</section>
+
+<!-- FOOTER -->
+<footer style="flex-grow: 1; border-top: 1px solid #E6DDCB; padding: 48px 120px; display: flex; justify-content: space-between; align-items: flex-start; font-size: 15px">
+<div style="font-family: 'Fraunces', serif; font-size: 26px; font-weight: 500">consciously</div>
+<div style="display: flex; gap: 28px">
+<a href="https://consciously.live/listen">Listen</a><a href="https://consciously.live/read">Read</a><a href="https://consciously.live/connect">Connect</a><a href="https://www.instagram.com/consciously.live/">Instagram</a>
+</div>
+<div style="color: #6B6457">© 2026 Consciously</div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":6150}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

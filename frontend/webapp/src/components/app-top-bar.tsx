@@ -74,6 +74,22 @@ function createMeditationStyleFromSession(pathname: string): string | null {
   return null;
 }
 
+function createProgramTitleFromSession(pathname: string): string | null {
+  const parsed = pathname.startsWith("/meditate/create")
+    ? parseCreateMeditationPathname(pathname)
+    : null;
+  if (parsed?.path !== "fromProgram") return null;
+  if (
+    parsed.fromProgramStep !== "chat" &&
+    parsed.fromProgramStep !== "sessions" &&
+    !parsed.mix
+  ) {
+    return null;
+  }
+  const title = readCreateSession()?.programSelectedTitle?.trim();
+  return title || null;
+}
+
 function journalEntryTitleFromPath(pathname: string): string | null {
   if (
     pathname === "/journal/my" ||
@@ -331,6 +347,7 @@ export function AppTopBar({
           buildAppBreadcrumbs(pathname, {
             lifeAreaTitle: lifeAreaTitleFromPath(pathname),
             createMeditationStyle: createMeditationStyleFromSession(pathname),
+            createProgramTitle: createProgramTitleFromSession(pathname),
             createRandomScript: Boolean(readCreateSession()?.randomScript),
             journalEntryTitle: journalEntryTitleFromPath(pathname),
             gratitudeEntryLabel: gratitudeEntryLabelFromPath(pathname),

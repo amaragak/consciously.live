@@ -459,7 +459,7 @@ export function AppSidebar({
               Sign out
             </button>
             <Link
-              href="/pro"
+              href="/pricing"
               onClick={onNavigate}
               className="rounded-lg border border-accent/70 bg-transparent px-2.5 py-1.5 text-sm font-medium text-accent-link transition-colors hover:bg-accent-soft/40"
             >

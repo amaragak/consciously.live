@@ -4,6 +4,7 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
+  ScanCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
@@ -173,4 +174,79 @@ export async function getUserPrivilegesByEmail(emailRaw: string): Promise<{
   } catch {
     return { role: "user", plan: "free", displayName: null };
   }
+}
+
+/** Elevate / demote plan after Stripe events. Optionally stash customer ids. */
+export async function updateUserPlan(
+  emailRaw: string,
+  plan: ConsciouslyPlan,
+  opts?: {
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+  },
+): Promise<void> {
+  const email = emailRaw.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    throw new Error("Valid email is required");
+  }
+  const nextPlan = normalizePlan(plan);
+  const names: Record<string, string> = { "#p": "plan" };
+  const values: Record<string, unknown> = { ":p": nextPlan };
+  const sets = ["#p = :p"];
+  const removes: string[] = [];
+
+  if (opts && "stripeCustomerId" in opts) {
+    names["#sc"] = "stripeCustomerId";
+    if (opts.stripeCustomerId && opts.stripeCustomerId.trim()) {
+      values[":sc"] = opts.stripeCustomerId.trim();
+      sets.push("#sc = :sc");
+    } else {
+      removes.push("#sc");
+    }
+  }
+  if (opts && "stripeSubscriptionId" in opts) {
+    names["#ss"] = "stripeSubscriptionId";
+    if (opts.stripeSubscriptionId && opts.stripeSubscriptionId.trim()) {
+      values[":ss"] = opts.stripeSubscriptionId.trim();
+      sets.push("#ss = :ss");
+    } else {
+      removes.push("#ss");
+    }
+  }
+
+  const parts = [`SET ${sets.join(", ")}`];
+  if (removes.length) parts.push(`REMOVE ${removes.join(", ")}`);
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: usersTableName(),
+      Key: { email },
+      UpdateExpression: parts.join(" "),
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+      ConditionExpression: "attribute_exists(email)",
+    }),
+  );
+}
+
+/** Look up email by Stripe customer id (webhook fallback). */
+export async function findUserEmailByStripeCustomerId(
+  customerIdRaw: string,
+): Promise<string | null> {
+  const customerId = customerIdRaw.trim();
+  if (!customerId) return null;
+  // Users table is keyed by email — scan is fine for low volume; add GSI later if needed.
+  const out = await ddb.send(
+    new ScanCommand({
+      TableName: usersTableName(),
+      FilterExpression: "stripeCustomerId = :c",
+      ExpressionAttributeValues: { ":c": customerId },
+      ProjectionExpression: "email",
+      Limit: 1,
+    }),
+  );
+  const item = out.Items?.[0] as { email?: unknown } | undefined;
+  return typeof item?.email === "string" && item.email.trim()
+    ? item.email.trim().toLowerCase()
+    : null;
 }

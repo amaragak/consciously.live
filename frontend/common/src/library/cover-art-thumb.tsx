@@ -1,5 +1,7 @@
 /** Square cover thumb for library cards + now-playing strip. */
 
+import { useState } from "react";
+
 type CoverArtThumbProps = {
   src?: string | null;
   alt?: string;
@@ -40,37 +42,15 @@ function PlaceholderMark({ className }: { className?: string }) {
   );
 }
 
-/**
- * Photoreal cover when available; soft gradient sparkle placeholder otherwise
- * (matches library mockup artwork slot).
- */
-export function CoverArtThumb({
-  src,
-  alt = "",
-  className = "",
-  size = "md",
-  edgePx,
-}: CoverArtThumbProps) {
-  const url = typeof src === "string" ? src.trim() : "";
-  const px = edgePx != null && edgePx > 0 ? Math.round(edgePx) : SIZE_PX[size];
-  const dim = { width: px, height: px, minWidth: px, minHeight: px };
-  const box = `shrink-0 overflow-hidden rounded-xl ${className}`;
-
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt={alt}
-        width={px}
-        height={px}
-        style={dim}
-        className={`${box} object-cover bg-surface-2`}
-        loading="lazy"
-        decoding="async"
-      />
-    );
-  }
-
+function CoverPlaceholder({
+  dim,
+  box,
+  alt,
+}: {
+  dim: { width: number; height: number; minWidth: number; minHeight: number };
+  box: string;
+  alt: string;
+}) {
   return (
     <div
       style={dim}
@@ -82,4 +62,51 @@ export function CoverArtThumb({
       <PlaceholderMark className="h-[45%] w-[45%] opacity-80" />
     </div>
   );
+}
+
+/**
+ * Photoreal cover when available; soft gradient sparkle placeholder otherwise
+ * (matches library mockup artwork slot).
+ *
+ * Eager load: the app scrolls inside `<main overflow-y-auto>`, and native
+ * `loading="lazy"` often never fetches images in that nested scrollport —
+ * leaving empty `bg-surface-2` squares in My Creations.
+ */
+export function CoverArtThumb({
+  src,
+  alt = "",
+  className = "",
+  size = "md",
+  edgePx,
+}: CoverArtThumbProps) {
+  const url = typeof src === "string" ? src.trim() : "";
+  const px = edgePx != null && edgePx > 0 ? Math.round(edgePx) : SIZE_PX[size];
+  const dim = {
+    width: px,
+    height: px,
+    minWidth: px,
+    minHeight: px,
+    flexShrink: 0,
+  };
+  const box = `shrink-0 overflow-hidden rounded-xl ${className}`;
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const broken = Boolean(url) && failedUrl === url;
+
+  if (url && !broken) {
+    return (
+      <img
+        src={url}
+        alt={alt}
+        width={px}
+        height={px}
+        style={dim}
+        className={`${box} object-cover bg-surface-2`}
+        loading="eager"
+        decoding="async"
+        onError={() => setFailedUrl(url)}
+      />
+    );
+  }
+
+  return <CoverPlaceholder dim={dim} box={box} alt={alt} />;
 }

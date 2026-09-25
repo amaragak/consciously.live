@@ -23,7 +23,9 @@ export type CreateSessionPhase =
   | "claude"
   | "journalPick"
   | "goalPick"
-  | "promptPick";
+  | "promptPick"
+  | "programPick"
+  | "programSessions";
 
 export type CreateSessionMessage = {
   role: "assistant" | "user";
@@ -37,6 +39,19 @@ export type CreateSessionMessage = {
     bodyPlain: string;
     createdAt?: string;
   }>;
+  programHandoff?: {
+    id: string;
+    title: string;
+    description: string;
+    coverImageUrl: string | null;
+    days: Array<{
+      id: string;
+      dayNumber: number;
+      title: string;
+      description: string;
+      customizationIntake: string;
+    }>;
+  };
   audioReadyCta?: boolean;
 };
 
@@ -74,13 +89,21 @@ export type CreateSessionV1 = {
   mobileCreateStep: "chat" | "audio";
   lastUsedScript: string | null;
   meditationTargetMinutes: MeditationTargetMinutes;
-  pendingModeChoice: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript";
+  pendingModeChoice: null | "style" | "freeflow" | "journalReflect" | "goal" | "oneShot" | "randomScript" | "fromProgram";
   journalReflectSelectedIds: string[];
   journalReflectGuidance: string;
   goalSelectedId: string | null;
   /** Ideate life-area id when creating from Generate meditation / goal pick. */
   lifeAreaId: string | null;
   oneShotPrompt: string;
+  /** By Program path — selected library program. */
+  programSelectedId: string | null;
+  programSelectedTitle: string;
+  programSelectedDescription: string;
+  /** Lesson ids checked in the By Program session picker. */
+  programDaySelectedIds: string[];
+  /** One combined meditation vs one meditation per selected session. */
+  programGenerateMode: "single" | "perSession";
   draftSk: string | null;
   coachAudioReady: boolean;
   /** True when the user chose Random Script (skip chat → audio with a seed). */
@@ -98,7 +121,8 @@ function isCreatePath(v: unknown): v is CreateMeditationPath {
     v === "freeflow" ||
     v === "journalReflect" ||
     v === "goal" ||
-    v === "oneShot"
+    v === "oneShot" ||
+    v === "fromProgram"
   );
 }
 
@@ -111,7 +135,9 @@ function isPhase(v: unknown): v is CreateSessionPhase {
     v === "claude" ||
     v === "journalPick" ||
     v === "goalPick" ||
-    v === "promptPick"
+    v === "promptPick" ||
+    v === "programPick" ||
+    v === "programSessions"
   );
 }
 
@@ -206,7 +232,8 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
     pending !== "journalReflect" &&
     pending !== "goal" &&
     pending !== "oneShot" &&
-    pending !== "randomScript"
+    pending !== "randomScript" &&
+    pending !== "fromProgram"
   ) {
     return null;
   }
@@ -270,6 +297,21 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
         ? o.lifeAreaId.trim()
         : null,
     oneShotPrompt: typeof o.oneShotPrompt === "string" ? o.oneShotPrompt : "",
+    programSelectedId:
+      typeof o.programSelectedId === "string" && o.programSelectedId.trim()
+        ? o.programSelectedId.trim()
+        : null,
+    programSelectedTitle:
+      typeof o.programSelectedTitle === "string" ? o.programSelectedTitle : "",
+    programSelectedDescription:
+      typeof o.programSelectedDescription === "string"
+        ? o.programSelectedDescription
+        : "",
+    programDaySelectedIds: Array.isArray(o.programDaySelectedIds)
+      ? o.programDaySelectedIds.filter((x): x is string => typeof x === "string")
+      : [],
+    programGenerateMode:
+      o.programGenerateMode === "perSession" ? "perSession" : "single",
     draftSk: typeof o.draftSk === "string" ? o.draftSk : null,
     coachAudioReady: o.coachAudioReady === true,
     randomScript: o.randomScript === true,

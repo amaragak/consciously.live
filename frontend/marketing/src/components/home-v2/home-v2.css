@@ -1,0 +1,339 @@
+/* Homepage v2 palette — owned by the `v2` color scheme (`:root.v2`).
+   Also scoped on `.home-v2` so the page stays correct before/without the class.
+   Defaults = design navy / ivory / gold. Light & dark override below. */
+:root.v2,
+.home-v2 {
+  --hv2-navy: #0f1b2d;
+  --hv2-navy-2: #1a2a44;
+  --hv2-ivory: #f6f1e7;
+  --hv2-sand: #efe6d3;
+  --hv2-line: #e6ddcb;
+  --hv2-line-soft: #efe7d6;
+  --hv2-gold: #c8a46a;
+  --hv2-gold-rgb: 200 164 106;
+  --hv2-tan-text: #8a6a34;
+  --hv2-ink: #0f1b2d;
+  --hv2-body: #4a4f5a;
+  --hv2-muted: #6b6457;
+  --hv2-on-navy: rgba(246, 241, 231, 0.78);
+  --hv2-on-navy-muted: rgba(246, 241, 231, 0.6);
+  --hv2-hairline: rgba(246, 241, 231, 0.12);
+  --hv2-page: #f6f1e7;
+  --hv2-card: #ffffff;
+  --hv2-card-border: #e0d4bc;
+  --hv2-card-track: #f1eadb;
+  --hv2-band-a: var(--hv2-sand);
+  --hv2-band-b: var(--hv2-page);
+  --hv2-band-c: #f6f1e7;
+  --hv2-band-d: #f8f4ee;
+  --hv2-band-ideate: #faf7f2;
+  --hv2-on-gold: var(--hv2-navy);
+  --hv2-font-body: var(--font-instrument), system-ui, sans-serif;
+  --hv2-font-display: var(--font-fraunces), Georgia, serif;
+  /* Hero — navy by default; light/dark swap bg + paisley + text. */
+  --hv2-hero-bg: var(--hv2-navy);
+  --hv2-hero-pattern: none;
+  --hv2-hero-pattern-opacity: 0;
+  --hv2-hero-pattern-size: 800px 800px;
+  --hv2-hero-pattern-mask: none;
+  --hv2-hero-fg: var(--hv2-ivory);
+  --hv2-hero-muted: var(--hv2-on-navy);
+  --hv2-hero-nav: var(--hv2-on-navy);
+  --hv2-hero-nav-muted: var(--hv2-on-navy-muted);
+  --hv2-hero-hairline: var(--hv2-hairline);
+  --hv2-hero-divider: rgba(246, 241, 231, 0.2);
+  --hv2-hero-input-bg: rgba(246, 241, 231, 0.06);
+  --hv2-hero-input-fg: var(--hv2-ivory);
+  --hv2-hero-placeholder: rgba(246, 241, 231, 0.45);
+  --hv2-hero-card-bg: rgba(246, 241, 231, 0.05);
+  --hv2-hero-card-border: rgba(246, 241, 231, 0.16);
+  --hv2-hero-card-fg: var(--hv2-ivory);
+  --hv2-hero-card-muted: rgba(246, 241, 231, 0.68);
+  --hv2-hero-card-label: rgba(246, 241, 231, 0.55);
+  --hv2-hero-menu-bg: var(--hv2-navy);
+  --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.22);
+}
+
+/*
+ * Light mode: off-white paisley + centre fade (clear band = full 1200px content
+ * column), light gold-peach primary, original marketing colour bands.
+ * Scoped away from `:root.v2` so the V2 scheme keeps the design navy hero.
+ */
+:root:not(.dark):not(.v2) .home-v2 {
+  --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 */
+  --hv2-gold-rgb: 250 202 152;
+  --hv2-tan-text: var(--accent-link);
+  --hv2-on-gold: var(--on-accent);
+  --hv2-page: var(--background);
+  --hv2-ink: var(--marketing-ink);
+  --hv2-body: var(--marketing-body);
+  --hv2-muted: var(--marketing-muted);
+  --hv2-line: var(--marketing-card-border);
+  --hv2-card: var(--marketing-card-bg);
+  --hv2-card-border: var(--marketing-card-border);
+  --hv2-card-track: #f1eadb;
+  --hv2-band-a: var(--marketing-band-a);
+  --hv2-band-b: var(--marketing-band-b);
+  --hv2-band-c: var(--marketing-band-c);
+  --hv2-band-d: var(--marketing-band-d);
+  --hv2-band-ideate: var(--marketing-band-ideate);
+  --hv2-sand: var(--marketing-band-a);
+  --hv2-hero-bg: var(--home-hero-bg);
+  --hv2-hero-pattern: url("/patterns/paisley-tile-800-offwhite.webp");
+  --hv2-hero-pattern-opacity: var(--home-hero-pattern-opacity);
+  --hv2-hero-pattern-size: 800px 800px;
+  /* Pattern fades across side gutters; centre keeps a whisper of the tile. */
+  --hv2-hero-pattern-mask: linear-gradient(
+    to right,
+    rgb(0 0 0 / 0.32) 0%,
+    rgb(0 0 0 / 0.24) max(0px, calc((50% - 600px) * 0.4)),
+    rgb(0 0 0 / 0.16) max(0px, calc((50% - 600px) * 0.75)),
+    rgb(0 0 0 / 0.12) max(0px, calc(50% - 600px)),
+    rgb(0 0 0 / 0.12) min(100%, calc(50% + 600px)),
+    rgb(0 0 0 / 0.16) min(100%, calc(100% - (50% - 600px) * 0.75)),
+    rgb(0 0 0 / 0.24) min(100%, calc(100% - (50% - 600px) * 0.4)),
+    rgb(0 0 0 / 0.32) 100%
+  );
+  --hv2-hero-fg: var(--marketing-ink);
+  --hv2-hero-muted: var(--marketing-body);
+  --hv2-hero-nav: var(--marketing-muted);
+  --hv2-hero-nav-muted: var(--marketing-muted);
+  --hv2-hero-hairline: rgba(30, 37, 48, 0.12);
+  --hv2-hero-divider: rgba(30, 37, 48, 0.16);
+  --hv2-hero-input-bg: rgba(255, 255, 255, 0.72);
+  --hv2-hero-input-fg: var(--marketing-ink);
+  --hv2-hero-placeholder: var(--marketing-muted);
+  --hv2-hero-card-bg: var(--marketing-card-bg);
+  --hv2-hero-card-border: var(--marketing-card-border);
+  --hv2-hero-card-fg: var(--marketing-ink);
+  --hv2-hero-card-muted: var(--marketing-body);
+  --hv2-hero-card-label: var(--marketing-muted);
+  --hv2-hero-menu-bg: var(--marketing-card-bg);
+  --hv2-hero-elev: var(--marketing-card-shadow);
+}
+
+/*
+ * Dark mode: gold-peach accents, tonal-navy paisley hero (no fade mask),
+ * marketing band / card palette. Keep ivory/navy for text-on-panel + vignettes.
+ */
+:root.dark .home-v2 {
+  --hv2-gold: var(--accent-button); /* DARK_PRIMARY #cc9871 */
+  --hv2-gold-rgb: 204 152 113;
+  --hv2-tan-text: var(--accent-button);
+  --hv2-on-gold: var(--hv2-navy);
+  --hv2-page: #1e2530;
+  --hv2-ink: var(--marketing-ink);
+  --hv2-body: var(--marketing-body);
+  --hv2-muted: var(--marketing-muted);
+  --hv2-line: var(--marketing-card-border);
+  --hv2-line-soft: #3d4a5c;
+  --hv2-card: var(--marketing-card-bg);
+  --hv2-card-border: var(--marketing-card-border);
+  --hv2-card-track: #243041;
+  --hv2-band-a: var(--marketing-band-a);
+  --hv2-band-b: var(--marketing-band-b);
+  --hv2-band-c: var(--marketing-band-c);
+  --hv2-band-d: var(--marketing-band-d);
+  --hv2-band-ideate: var(--marketing-band-ideate);
+  --hv2-sand: var(--marketing-band-a);
+  --hv2-hero-bg: #1a2330;
+  --hv2-hero-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
+  --hv2-hero-pattern-opacity: 0.18;
+  --hv2-hero-pattern-mask: none;
+  --hv2-hero-fg: var(--hv2-ivory);
+  --hv2-hero-muted: var(--hv2-on-navy);
+  --hv2-hero-nav: var(--hv2-on-navy);
+  --hv2-hero-nav-muted: var(--hv2-on-navy-muted);
+  --hv2-hero-hairline: var(--hv2-hairline);
+  --hv2-hero-divider: rgba(246, 241, 231, 0.2);
+  --hv2-hero-input-bg: rgba(246, 241, 231, 0.06);
+  --hv2-hero-input-fg: var(--hv2-ivory);
+  --hv2-hero-placeholder: rgba(246, 241, 231, 0.45);
+  --hv2-hero-card-bg: rgba(246, 241, 231, 0.05);
+  --hv2-hero-card-border: rgba(246, 241, 231, 0.16);
+  --hv2-hero-card-fg: var(--hv2-ivory);
+  --hv2-hero-card-muted: rgba(246, 241, 231, 0.68);
+  --hv2-hero-card-label: rgba(246, 241, 231, 0.55);
+  --hv2-hero-menu-bg: var(--hv2-navy);
+  --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
+}
+
+.home-v2 {
+  font-family: var(--hv2-font-body);
+  color: var(--hv2-ink);
+  background: var(--hv2-page);
+}
+
+.home-v2-band {
+  width: 100%;
+}
+
+.home-v2-band--a {
+  background: var(--hv2-band-a);
+}
+
+.home-v2-band--b {
+  background: var(--hv2-band-b);
+}
+
+.home-v2-band--c {
+  background: var(--hv2-band-c);
+}
+
+.home-v2-band--d {
+  background: var(--hv2-band-d);
+}
+
+.home-v2-band--ideate {
+  background: var(--hv2-band-ideate);
+}
+
+.home-v2-hero {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--hv2-hero-bg);
+  color: var(--hv2-hero-fg);
+  overflow: hidden;
+}
+
+.home-v2-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--hv2-hero-pattern-opacity);
+  background-image: var(--hv2-hero-pattern);
+  background-repeat: repeat;
+  background-size: var(--hv2-hero-pattern-size);
+  -webkit-mask-image: var(--hv2-hero-pattern-mask);
+  mask-image: var(--hv2-hero-pattern-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+.home-v2-hero > *:not(.home-v2-hero-chrome) {
+  position: relative;
+  z-index: 1;
+}
+
+.home-v2-hero > .home-v2-hero-chrome {
+  position: relative;
+  z-index: 5;
+}
+
+.home-v2 a:focus-visible,
+.home-v2 button:focus-visible,
+.home-v2 input:focus-visible {
+  outline: 2px solid var(--hv2-gold);
+  outline-offset: 3px;
+}
+
+/* Prompt pill: ring the whole shell, not the inner text field. */
+.home-v2 .home-v2-prompt-shell:focus-within {
+  outline: 2px solid var(--hv2-gold);
+  outline-offset: 0;
+}
+
+.home-v2 .home-v2-prompt-shell .home-v2-prompt-input:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 767px) {
+  .home-v2 .home-v2-prompt-shell:focus-within {
+    outline: none;
+  }
+
+  .home-v2 .home-v2-prompt-shell .home-v2-prompt-input:focus-visible {
+    outline: 2px solid var(--hv2-gold);
+    outline-offset: 3px;
+  }
+}
+
+.home-v2-display {
+  font-family: var(--hv2-font-display);
+}
+
+.home-v2-wave {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+}
+
+.home-v2-wave i {
+  display: block;
+  width: 5px;
+  border-radius: 3px;
+  background: rgba(246, 241, 231, 0.25);
+}
+
+.home-v2-wave i.on {
+  background: var(--hv2-gold);
+}
+
+@keyframes home-v2-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes home-v2-rise {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes home-v2-sticky-in {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.home-v2-hero-anim {
+  opacity: 0;
+}
+
+.home-v2-hero-anim.is-ready {
+  animation: home-v2-hero-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.home-v2-reveal {
+  opacity: 0;
+  transform: translateY(40px);
+}
+
+.home-v2-reveal.is-in {
+  animation: home-v2-rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.home-v2-sticky-enter {
+  animation: home-v2-sticky-in 260ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-v2-hero-anim,
+  .home-v2-hero-anim.is-ready,
+  .home-v2-reveal,
+  .home-v2-reveal.is-in,
+  .home-v2-sticky-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

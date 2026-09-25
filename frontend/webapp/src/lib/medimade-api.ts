@@ -274,7 +274,7 @@ export async function loginAsMedimadeGuest(): Promise<MedimadeMagicLinkVerifyRes
 }
 
 export type ConsciouslyRole = "user" | "admin";
-export type ConsciouslyPlan = "free" | "pro";
+export type ConsciouslyPlan = "free" | "create" | "pro";
 
 export type MedimadeMagicLinkVerifyResult = {
   token: string;
@@ -291,9 +291,11 @@ function parseSessionPrivileges(data: {
   role?: unknown;
   plan?: unknown;
 }): { role: ConsciouslyRole; plan: ConsciouslyPlan } {
+  const plan =
+    data.plan === "pro" ? "pro" : data.plan === "create" ? "create" : "free";
   return {
     role: data.role === "admin" ? "admin" : "user",
-    plan: data.plan === "pro" ? "pro" : "free",
+    plan,
   };
 }
 
@@ -605,6 +607,72 @@ export async function logoutMedimadeSessionRemote(
   } catch {
     /* ignore */
   }
+}
+
+export type BillingPriceKey = "create" | "pro";
+
+export type BillingPriceInfo = {
+  key: BillingPriceKey;
+  plan: ConsciouslyPlan;
+  configured: boolean;
+  label: string;
+  blurb: string;
+};
+
+export async function fetchBillingPrices(): Promise<{
+  prices: BillingPriceInfo[];
+  checkoutReady: boolean;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/billing/prices`);
+  const data = (await res.json().catch(() => ({}))) as {
+    prices?: BillingPriceInfo[];
+    checkoutReady?: boolean;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    prices: Array.isArray(data.prices) ? data.prices : [],
+    checkoutReady: data.checkoutReady === true,
+  };
+}
+
+/** Start Stripe Checkout for Create or Pro. Returns the hosted Checkout URL. */
+export async function createBillingCheckoutSession(opts: {
+  priceKey: BillingPriceKey;
+  successUrl?: string;
+  cancelUrl?: string;
+}): Promise<{ url: string; sessionId: string; plan: ConsciouslyPlan }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/billing/checkout-session`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      priceKey: opts.priceKey,
+      ...(opts.successUrl ? { successUrl: opts.successUrl } : {}),
+      ...(opts.cancelUrl ? { cancelUrl: opts.cancelUrl } : {}),
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string;
+    sessionId?: string;
+    plan?: ConsciouslyPlan;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok || typeof data.url !== "string" || !data.url.trim()) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    url: data.url.trim(),
+    sessionId: typeof data.sessionId === "string" ? data.sessionId : "",
+    plan: data.plan === "create" || data.plan === "pro" ? data.plan : "pro",
+  };
 }
 
 /** Full URL of the streaming chat endpoint (Lambda function URL). */
@@ -1859,6 +1927,8 @@ export async function streamMedimadeChat(
     messages: MedimadeChatTurn[];
     /** When true, style is a journal placeholder — do not lock coach/script to a preset technique. */
     journalMode?: boolean;
+    /** Create › By Program — coach gathers per-session customization intake in order. */
+    fromProgram?: boolean;
     meditationTargetMinutes?: MeditationTargetMinutes;
     /** How to interpret a reflected journal entry; omit when empty. */
     journalGuidance?: string;
@@ -1874,6 +1944,7 @@ export async function streamMedimadeChat(
       meditationStyle: params.meditationStyle,
       messages: params.messages,
       ...(params.journalMode === true ? { journalMode: true } : {}),
+      ...(params.fromProgram === true ? { fromProgram: true } : {}),
       ...(guidance ? { journalGuidance: guidance } : {}),
       ...(params.claudeModel ? { claudeModel: params.claudeModel } : {}),
       ...(isMeditationTargetMinutes(params.meditationTargetMinutes)
@@ -3551,6 +3622,8 @@ export type AdminProgramDay = {
   title: string;
   prompt: string;
   description: string;
+  /** Details By Program create chat should gather to customise this session. */
+  customizationIntake: string;
   speakerModelId: string;
   compositionKey: string;
   targetMinutes: MeditationTargetMinutes;
@@ -3603,6 +3676,8 @@ function normalizeAdminProgramDay(raw: unknown): AdminProgramDay | null {
     title: typeof o.title === "string" ? o.title : "",
     prompt: typeof o.prompt === "string" ? o.prompt : "",
     description: typeof o.description === "string" ? o.description : "",
+    customizationIntake:
+      typeof o.customizationIntake === "string" ? o.customizationIntake : "",
     speakerModelId: typeof o.speakerModelId === "string" ? o.speakerModelId : "",
     compositionKey: typeof o.compositionKey === "string" ? o.compositionKey : "",
     targetMinutes: coerceMeditationTargetMinutes(o.targetMinutes),
@@ -3708,6 +3783,8 @@ export type LibraryProgramDay = {
   dayNumber: number;
   title: string;
   description: string;
+  /** Details By Program create chat should gather to customise this session. */
+  customizationIntake: string;
   targetMinutes: MeditationTargetMinutes;
   /** Measured voice-stem length; prefer over targetMinutes for display. */
   durationSeconds: number | null;
@@ -3742,6 +3819,8 @@ function normalizeLibraryProgramDay(raw: unknown): LibraryProgramDay | null {
         : 1,
     title: typeof o.title === "string" ? o.title : "",
     description: typeof o.description === "string" ? o.description : "",
+    customizationIntake:
+      typeof o.customizationIntake === "string" ? o.customizationIntake : "",
     targetMinutes: coerceMeditationTargetMinutes(o.targetMinutes),
     durationSeconds:
       typeof o.durationSeconds === "number" &&
@@ -3914,6 +3993,8 @@ export type AdminBlogPost = {
   tags: string[];
   series: string;
   part: number | null;
+  /** Admin-only working notes — not returned on public blog APIs. */
+  notes: string;
   body: string;
   published: boolean;
   publishedAt: string | null;
@@ -3974,6 +4055,7 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
         typeof o.part === "number" ? o.part : Number(String(o.part ?? "").trim());
       return Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
     })(),
+    notes: typeof o.notes === "string" ? o.notes : "",
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
     publishedAt:

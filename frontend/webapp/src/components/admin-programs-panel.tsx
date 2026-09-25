@@ -106,6 +106,7 @@ function blankDay(dayNumber: number): AdminProgramDay {
     title: `Lesson ${dayNumber}`,
     prompt: "",
     description: "",
+    customizationIntake: "",
     speakerModelId: "",
     compositionKey: "",
     targetMinutes: 5,
@@ -1749,6 +1750,26 @@ export function AdminProgramsPanel() {
                           before generate
                         </p>
                       </div>
+                      <label className="block text-sm sm:col-span-2">
+                        <span className="mb-1 block text-muted">
+                          Customization intake (By Program chat)
+                        </span>
+                        <textarea
+                          value={day.customizationIntake}
+                          onChange={(e) =>
+                            updateDay(day.id, {
+                              customizationIntake: e.target.value,
+                            })
+                          }
+                          rows={3}
+                          placeholder="What details should Create › By Program gather to customise this session? e.g. current mood, time of day, what feels blocked…"
+                          className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                        />
+                        <p className="mt-1 text-[11px] text-muted">
+                          Shown to the coach when someone remakes this lesson —
+                          not shown to listeners on the library shelf.
+                        </p>
+                      </label>
                       <div className="block text-sm sm:col-span-2">
                         <span className="mb-1 block text-muted">
                           Lesson cover

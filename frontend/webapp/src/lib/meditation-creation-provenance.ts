@@ -58,6 +58,7 @@ const PATHS = new Set<string>([
   "journalReflect",
   "goal",
   "oneShot",
+  "fromProgram",
   "randomScript",
 ]);
 
@@ -75,6 +76,8 @@ export function creationPathDisplayLabel(
       return "Manifest";
     case "oneShot":
       return "Direct";
+    case "fromProgram":
+      return "By Program";
     case "randomScript":
       return "Random";
     default:
@@ -127,7 +130,10 @@ export function buildMeditationCreationProvenance(opts: {
     }
   }
 
-  if (path === "freeflow" && opts.chatMessages?.length) {
+  if (
+    (path === "freeflow" || path === "fromProgram") &&
+    opts.chatMessages?.length
+  ) {
     provenance.messages = opts.chatMessages
       .filter((m) => !(m.role === "assistant" && m.variant === "script"))
       .slice(-MAX_MESSAGES)
