@@ -4192,6 +4192,7 @@ export function CreateWorkspace({
     const voiceId = speakerModelId;
     if (mediaBaseUrl && voiceId) {
       const next = speakerPreviewUrl(voiceId);
+      if (!next) return;
       if (el.src !== next) {
         el.src = next;
         void el.load();
@@ -4367,6 +4368,7 @@ export function CreateWorkspace({
     if (track === "speaker" && mediaBaseUrl) {
       if (!speakerModelId) return;
       const next = speakerPreviewUrl(speakerModelId);
+      if (!next) return;
       if (el.src !== next) {
         el.src = next;
         el.load();

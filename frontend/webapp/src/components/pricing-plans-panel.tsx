@@ -122,8 +122,8 @@ export function PricingPlansPanel({
     setError(null);
     setBusyKey(priceKey);
     try {
-      const session = await ensureMedimadeSession();
-      if (!session?.token) {
+      const ok = await ensureMedimadeSession();
+      if (!ok || !getMedimadeSessionJwt()) {
         window.location.href = loginHrefBuilder(priceKey);
         return;
       }
@@ -267,7 +267,11 @@ export function PricingPlansPanel({
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => void startCheckout(tier.id)}
+                        onClick={() => {
+                          if (tier.id === "create" || tier.id === "pro") {
+                            void startCheckout(tier.id);
+                          }
+                        }}
                         className={
                           tier.popular
                             ? "inline-flex w-full cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-5 py-3 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"

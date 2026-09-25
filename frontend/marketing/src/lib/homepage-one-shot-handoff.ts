@@ -158,6 +158,7 @@ export async function startHomepageOneShotGeneration(opts: {
   const creationProvenance = buildMeditationCreationProvenance({
     creationPath: "oneShot",
     directPrompt: trimmed,
+    meditationStyle: "General",
   });
 
   const { jobId } = await createMeditationAudioJob({
