@@ -364,6 +364,7 @@ export function AdminProgramsPanel() {
       ),
       speaker?.updatedAt,
     );
+    if (!next) return;
     if (el.src !== next) {
       el.src = next;
       void el.load();
