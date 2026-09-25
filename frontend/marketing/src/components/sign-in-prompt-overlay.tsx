@@ -44,7 +44,7 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
   const base = getMedimadeApiBase();
   const next = safeAuthNext(nextPath, "/");
   const loginHref = useAuthLoginHref(
-    `/login?next=${encodeURIComponent(next)}`,
+    `/login?mode=signup&next=${encodeURIComponent(next)}`,
   );
   const anyBusy = busy || guestBusy || resumeBusy;
 

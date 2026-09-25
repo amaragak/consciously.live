@@ -23,14 +23,16 @@ export function StickyToolHeader({ stuck, activeTool }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const tool = HOME_V2_TOOLS.find((t) => t.id === activeTool);
   const ctaLabel = tool?.stickyCta ?? "Start free";
-  const ctaHref = tool?.href ?? HOME_V2_START_FREE_HREF;
+  const ctaHref = tool
+    ? `/login?mode=signup&next=${encodeURIComponent(tool.href)}`
+    : HOME_V2_START_FREE_HREF;
   const verbLabel = tool?.label ?? null;
 
   if (!stuck) return null;
 
   return (
     <header
-      className="home-v2-sticky-enter fixed inset-x-0 top-0 z-40 border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-hero-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6"
+      className="home-v2-sticky-enter fixed inset-x-0 top-0 z-40 border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6"
     >
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[64px]">
         <div className="shrink-0">

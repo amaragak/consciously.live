@@ -36,6 +36,7 @@
   --hv2-hero-pattern-opacity: 0;
   --hv2-hero-pattern-size: 800px 800px;
   --hv2-hero-pattern-mask: none;
+  --hv2-sticky-bg: var(--hv2-navy);
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -52,14 +53,15 @@
   --hv2-hero-card-label: rgba(246, 241, 231, 0.55);
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.22);
+  --hv2-hero-glass-blur: 16px;
 }
 
 /*
  * Light mode: off-white paisley + centre fade (clear band = full 1200px content
  * column), light gold-peach primary, original marketing colour bands.
- * Scoped away from `:root.v2` so the V2 scheme keeps the design navy hero.
+ * Scoped away from `:root.v2` / `:root.hybrid` so those keep their own heroes.
  */
-:root:not(.dark):not(.v2) .home-v2 {
+:root:not(.dark):not(.v2):not(.hybrid) .home-v2 {
   --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 */
   --hv2-gold-rgb: 250 202 152;
   --hv2-tan-text: var(--accent-link);
@@ -82,6 +84,7 @@
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-offwhite.webp");
   --hv2-hero-pattern-opacity: var(--home-hero-pattern-opacity);
   --hv2-hero-pattern-size: 800px 800px;
+  --hv2-sticky-bg: var(--home-hero-bg);
   /* Pattern fades across side gutters; centre keeps a whisper of the tile. */
   --hv2-hero-pattern-mask: linear-gradient(
     to right,
@@ -110,6 +113,55 @@
   --hv2-hero-card-label: var(--marketing-muted);
   --hv2-hero-menu-bg: var(--marketing-card-bg);
   --hv2-hero-elev: var(--marketing-card-shadow);
+  --hv2-hero-glass-blur: 0px;
+}
+
+/*
+ * Hybrid: same light page + gold-peach accents as light mode, with the navy
+ * duotone paisley hero (full tile, no fade mask — matches classic hybrid).
+ */
+:root.hybrid .home-v2 {
+  --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 */
+  --hv2-gold-rgb: 250 202 152;
+  --hv2-tan-text: var(--accent-link);
+  --hv2-on-gold: var(--on-accent);
+  --hv2-page: var(--background);
+  --hv2-ink: var(--marketing-ink);
+  --hv2-body: var(--marketing-body);
+  --hv2-muted: var(--marketing-muted);
+  --hv2-line: var(--marketing-card-border);
+  --hv2-card: var(--marketing-card-bg);
+  --hv2-card-border: var(--marketing-card-border);
+  --hv2-card-track: #f1eadb;
+  --hv2-band-a: var(--marketing-band-a);
+  --hv2-band-b: var(--marketing-band-b);
+  --hv2-band-c: var(--marketing-band-c);
+  --hv2-band-d: var(--marketing-band-d);
+  --hv2-band-ideate: var(--marketing-band-ideate);
+  --hv2-sand: var(--marketing-band-a);
+  --hv2-hero-bg: #1a1820;
+  --hv2-hero-pattern: url("/patterns/paisley-dark-duotone.webp");
+  --hv2-hero-pattern-opacity: 0.88;
+  --hv2-hero-pattern-size: 640px 640px;
+  --hv2-hero-pattern-mask: none;
+  --hv2-sticky-bg: var(--hv2-navy);
+  --hv2-hero-fg: var(--hv2-ivory);
+  --hv2-hero-muted: var(--hv2-on-navy);
+  --hv2-hero-nav: var(--hv2-on-navy);
+  --hv2-hero-nav-muted: var(--hv2-on-navy-muted);
+  --hv2-hero-hairline: var(--hv2-hairline);
+  --hv2-hero-divider: rgba(246, 241, 231, 0.2);
+  --hv2-hero-input-bg: rgba(246, 241, 231, 0.06);
+  --hv2-hero-input-fg: var(--hv2-ivory);
+  --hv2-hero-placeholder: rgba(246, 241, 231, 0.45);
+  --hv2-hero-card-bg: rgba(246, 241, 231, 0.05);
+  --hv2-hero-card-border: rgba(246, 241, 231, 0.16);
+  --hv2-hero-card-fg: var(--hv2-ivory);
+  --hv2-hero-card-muted: rgba(246, 241, 231, 0.68);
+  --hv2-hero-card-label: rgba(246, 241, 231, 0.55);
+  --hv2-hero-menu-bg: var(--hv2-navy);
+  --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
+  --hv2-hero-glass-blur: 16px;
 }
 
 /*
@@ -140,6 +192,7 @@
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
   --hv2-hero-pattern-opacity: 0.18;
   --hv2-hero-pattern-mask: none;
+  --hv2-sticky-bg: var(--hv2-navy);
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -156,6 +209,7 @@
   --hv2-hero-card-label: rgba(246, 241, 231, 0.55);
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
+  --hv2-hero-glass-blur: 16px;
 }
 
 .home-v2 {
@@ -222,6 +276,46 @@
 .home-v2-hero > .home-v2-hero-chrome {
   position: relative;
   z-index: 5;
+}
+
+/* Translucent hero chrome — cards + prompt; blur only when scheme sets it. */
+.home-v2-hero-glass {
+  -webkit-backdrop-filter: blur(var(--hv2-hero-glass-blur, 0px));
+  backdrop-filter: blur(var(--hv2-hero-glass-blur, 0px));
+}
+
+/*
+ * Prompt: one glass fill on the pill (desktop) or the input (mobile).
+ * Never stack a second glass rect inside the shell.
+ */
+@media (max-width: 767.98px) {
+  .home-v2-prompt-shell.home-v2-hero-glass {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .home-v2-prompt-input {
+    -webkit-backdrop-filter: blur(var(--hv2-hero-glass-blur, 0px));
+    backdrop-filter: blur(var(--hv2-hero-glass-blur, 0px));
+  }
+}
+
+@media (min-width: 768px) {
+  .home-v2-prompt-shell .home-v2-prompt-input {
+    background-color: transparent !important;
+    background-image: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .home-v2-prompt-shell .home-v2-prompt-input:-webkit-autofill,
+  .home-v2-prompt-shell .home-v2-prompt-input:-webkit-autofill:hover,
+  .home-v2-prompt-shell .home-v2-prompt-input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--hv2-hero-input-fg);
+    transition: background-color 99999s ease-out;
+    box-shadow: 0 0 0 1000px transparent inset;
+  }
 }
 
 /* Full-page paisley field (Read, etc.) — same tile as hero, grows with content. */

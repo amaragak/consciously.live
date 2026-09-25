@@ -383,42 +383,79 @@ export type CognitoAuthConfig = {
   methods: { password: boolean; passkey: boolean; social: boolean };
 };
 
+/** Optimistic default — Cognito is always on in prod; form paints before config returns. */
+export const ASSUMED_COGNITO_AUTH_CONFIG: CognitoAuthConfig = {
+  enabled: true,
+  userPoolId: null,
+  clientId: null,
+  region: null,
+  domain: null,
+  issuer: null,
+  methods: { password: true, passkey: true, social: true },
+};
+
+let cognitoAuthConfigCache: CognitoAuthConfig | null = null;
+let cognitoAuthConfigInflight: Promise<CognitoAuthConfig> | null = null;
+
+export function getCachedCognitoAuthConfig(): CognitoAuthConfig | null {
+  return cognitoAuthConfigCache;
+}
+
 /** Public Cognito client config (pool / Hosted UI). Magic-link remains available. */
 export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
-  const base = getMedimadeApiBase();
-  if (!base) {
-    return {
-      enabled: false,
-      userPoolId: null,
-      clientId: null,
-      region: null,
-      domain: null,
-      issuer: null,
-      methods: { password: false, passkey: false, social: false },
+  if (
+    cognitoAuthConfigCache?.enabled &&
+    cognitoAuthConfigCache.clientId &&
+    cognitoAuthConfigCache.region
+  ) {
+    return cognitoAuthConfigCache;
+  }
+  if (cognitoAuthConfigInflight) return cognitoAuthConfigInflight;
+
+  cognitoAuthConfigInflight = (async () => {
+    const base = getMedimadeApiBase();
+    if (!base) {
+      const empty: CognitoAuthConfig = {
+        enabled: false,
+        userPoolId: null,
+        clientId: null,
+        region: null,
+        domain: null,
+        issuer: null,
+        methods: { password: false, passkey: false, social: false },
+      };
+      cognitoAuthConfigCache = empty;
+      return empty;
+    }
+    const res = await medimadeFetch(`${base}/auth/cognito/config`, {
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as Partial<CognitoAuthConfig> & {
+      error?: string;
     };
-  }
-  const res = await medimadeFetch(`${base}/auth/cognito/config`, {
-    cache: "no-store",
+    if (!res.ok) {
+      throw new Error(data.error ?? res.statusText);
+    }
+    const next: CognitoAuthConfig = {
+      enabled: data.enabled === true,
+      userPoolId: typeof data.userPoolId === "string" ? data.userPoolId : null,
+      clientId: typeof data.clientId === "string" ? data.clientId : null,
+      region: typeof data.region === "string" ? data.region : null,
+      domain: typeof data.domain === "string" ? data.domain : null,
+      issuer: typeof data.issuer === "string" ? data.issuer : null,
+      methods: {
+        password: data.methods?.password !== false,
+        passkey: data.methods?.passkey === true,
+        social: data.methods?.social === true,
+      },
+    };
+    cognitoAuthConfigCache = next;
+    return next;
+  })().finally(() => {
+    cognitoAuthConfigInflight = null;
   });
-  const data = (await res.json().catch(() => ({}))) as Partial<CognitoAuthConfig> & {
-    error?: string;
-  };
-  if (!res.ok) {
-    throw new Error(data.error ?? res.statusText);
-  }
-  return {
-    enabled: data.enabled === true,
-    userPoolId: typeof data.userPoolId === "string" ? data.userPoolId : null,
-    clientId: typeof data.clientId === "string" ? data.clientId : null,
-    region: typeof data.region === "string" ? data.region : null,
-    domain: typeof data.domain === "string" ? data.domain : null,
-    issuer: typeof data.issuer === "string" ? data.issuer : null,
-    methods: {
-      password: data.methods?.password !== false,
-      passkey: data.methods?.passkey === true,
-      social: data.methods?.social === true,
-    },
-  };
+
+  return cognitoAuthConfigInflight;
 }
 
 /**

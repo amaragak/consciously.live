@@ -22,13 +22,14 @@ export const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
   { id: "v2", label: "V2" },
 ];
 
-/** Homepage v2 header switcher — light/dark placeholders + v2 (palette defined). */
+/** Homepage v2 header switcher — light / dark / hybrid (light body + dark hero) / v2. */
 export const COLOR_SCHEME_OPTIONS_HOME_V2: ReadonlyArray<{
   id: ColorScheme;
   label: string;
 }> = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
+  { id: "hybrid", label: "Hybrid" },
   { id: "v2", label: "V2" },
 ];
 
@@ -78,6 +79,7 @@ export function isDarkColorScheme(scheme: ColorScheme): boolean {
 
 /**
  * Auth screens: query handoff from the page they left, else localStorage, else light.
+ * Hybrid always paints as light on signup/login (dark hero is homepage-only).
  */
 export function resolveAuthColorScheme(
   search?: string | { get(name: string): string | null } | null,
@@ -93,7 +95,8 @@ export function resolveAuthColorScheme(
       COLOR_SCHEME_QUERY_PARAM,
     );
   }
-  return parseColorScheme(raw) ?? getStoredColorScheme();
+  const scheme = parseColorScheme(raw) ?? getStoredColorScheme();
+  return scheme === "hybrid" ? "light" : scheme;
 }
 
 /** Append or replace `scheme=` on a same-origin path (keeps existing query/hash). */
@@ -156,6 +159,6 @@ export function toggleColorScheme(): ColorScheme {
  * Inline boot script — set class before first paint, and preload the active
  * hero paisley so `background-image` does not flash in after layout.
  * `/login` honors `?scheme=` from the page they clicked from; otherwise
- * localStorage; otherwise light.
+ * localStorage; otherwise light. Hybrid on auth always boots as light.
  */
-export const colorSchemeBootScript = `(function(){var scheme="light";try{var q=null;if(location.pathname==="/login"){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="hybrid"||s==="v2")scheme=s}}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var dark=scheme==="dark";var active=auth?(dark?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(dark?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
+export const colorSchemeBootScript = `(function(){var scheme="light";try{var auth=location.pathname==="/login";var q=null;if(auth){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="hybrid"||s==="v2")scheme=s}if(auth&&scheme==="hybrid")scheme="light"}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var active=auth?(scheme==="dark"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(scheme==="hybrid"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:scheme==="dark"?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;

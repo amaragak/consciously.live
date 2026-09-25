@@ -3,6 +3,7 @@
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { CognitoAuthConfig } from "@/lib/medimade-api";
+import { fetchCognitoAuthConfig } from "@/lib/medimade-api";
 import {
   CognitoIdpError,
   cognitoConfirmForgotPassword,
@@ -22,7 +23,7 @@ export type CognitoAuthMode = "signin" | "signup" | "confirm" | "forgot" | "rese
 const RESEND_COOLDOWN_MS = 8000;
 
 const fieldClass =
-  "mt-1.5 w-full rounded-xl border border-marketing-card-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-[border-color,box-shadow] focus:border-gold/70 focus:ring-1 focus:ring-gold/40";
+  "mt-1.5 w-full min-h-12 rounded-xl border border-marketing-card-border bg-background px-4 py-3 text-base text-foreground outline-none transition-[border-color,box-shadow] focus:border-accent/50 focus:ring-2 focus:ring-accent/30 sm:min-h-[52px]";
 
 function PasswordField({
   id,
@@ -31,6 +32,7 @@ function PasswordField({
   onChange,
   autoComplete,
   hint,
+  placeholder,
 }: {
   id: string;
   label: string;
@@ -38,6 +40,7 @@ function PasswordField({
   onChange: (value: string) => void;
   autoComplete: string;
   hint?: string;
+  placeholder?: string;
 }) {
   const [show, setShow] = useState(false);
   return (
@@ -53,6 +56,7 @@ function PasswordField({
           autoComplete={autoComplete}
           required
           value={value}
+          placeholder={placeholder}
           onChange={(ev) => onChange(ev.target.value)}
           className={`${fieldClass} pr-11`}
         />
@@ -60,7 +64,7 @@ function PasswordField({
           type="button"
           onClick={() => setShow((v) => !v)}
           aria-label={show ? "Hide password" : "Show password"}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted hover:text-foreground"
+          className="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:text-foreground"
         >
           {show ? (
             <EyeOff aria-hidden className="size-4" strokeWidth={2} />
@@ -79,8 +83,10 @@ export function CognitoAuthForm({
   disabled,
   onAuthenticated,
   hideIntro = false,
+  beforeForm,
   afterForm,
   submitVariant = "primary",
+  initialMode = "signin",
   onModeChange,
   onEmailChange,
 }: {
@@ -90,14 +96,20 @@ export function CognitoAuthForm({
     tokens: CognitoAuthTokens,
     meta?: { justCreated?: boolean },
   ) => Promise<void>;
-  /** Parent already shows brand / welcome copy. */
+  /** Parent already shows brand / welcome copy for sign-in and sign-up. */
   hideIntro?: boolean;
+  /** Google / passkey — rendered below the email form after an “or” divider. */
+  beforeForm?: ReactNode;
+  /** Google / passkey / divider — rendered after the primary submit button. */
   afterForm?: ReactNode;
   submitVariant?: "primary" | "secondary";
+  initialMode?: CognitoAuthMode;
   onModeChange?: (mode: CognitoAuthMode) => void;
   onEmailChange?: (email: string) => void;
 }) {
-  const [mode, setMode] = useState<CognitoAuthMode>("signin");
+  const [mode, setMode] = useState<CognitoAuthMode>(
+    initialMode === "signup" ? "signup" : "signin",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -127,6 +139,16 @@ export function CognitoAuthForm({
   }
 
   useEffect(() => {
+    if (initialMode !== "signin" && initialMode !== "signup") return;
+    setMode((current) => {
+      if (current === "confirm" || current === "forgot" || current === "reset") {
+        return current;
+      }
+      return initialMode;
+    });
+  }, [initialMode]);
+
+  useEffect(() => {
     onEmailChange?.(email);
   }, [email, onEmailChange]);
 
@@ -136,24 +158,39 @@ export function CognitoAuthForm({
     return () => window.clearInterval(timer);
   }, [mode, resendWaitSec]);
 
-  async function sendVerifyEmail(kind: "confirm" | "reset", address = email) {
+  async function resolveConfig(): Promise<CognitoAuthConfig> {
+    if (config.clientId?.trim() && config.region?.trim()) return config;
+    return fetchCognitoAuthConfig();
+  }
+
+  async function sendVerifyEmail(
+    kind: "confirm" | "reset",
+    address = email,
+    cfg?: CognitoAuthConfig,
+  ) {
     if (Date.now() - lastSentAt < RESEND_COOLDOWN_MS) return;
     const username = address.trim().toLowerCase();
     setLastSentAt(Date.now());
     setNow(Date.now());
+    const active = cfg ?? (await resolveConfig());
     if (kind === "reset") {
-      await cognitoForgotPassword(config, username);
+      await cognitoForgotPassword(active, username);
       return;
     }
-    const result = await cognitoResendSignUpCode(config, username);
+    const result = await cognitoResendSignUpCode(active, username);
     if (!result.pendingVerification) {
       throw new Error("Could not send a verification email for this account.");
     }
   }
 
-  async function finishSignIn(pwd: string, justCreated = false) {
+  async function finishSignIn(
+    pwd: string,
+    justCreated = false,
+    cfg?: CognitoAuthConfig,
+  ) {
+    const active = cfg ?? (await resolveConfig());
     const tokens = await cognitoPasswordSignIn(
-      config,
+      active,
       (email ?? "").trim().toLowerCase(),
       pwd,
     );
@@ -161,11 +198,11 @@ export function CognitoAuthForm({
   }
 
   /** Same verify + later account-setup path as first-time signup. */
-  async function enterVerifyFlow(address: string) {
+  async function enterVerifyFlow(address: string, cfg?: CognitoAuthConfig) {
     go("confirm");
     setUnverifiedExisting(true);
     try {
-      await sendVerifyEmail("confirm", address);
+      await sendVerifyEmail("confirm", address, cfg);
     } catch (sendErr) {
       setError(
         sendErr instanceof Error
@@ -183,17 +220,18 @@ export function CognitoAuthForm({
     if (username !== email) setEmail(username);
     setBusy(true);
     try {
+      const cfg = await resolveConfig();
       if (mode === "signin") {
         try {
-          await finishSignIn(password);
+          await finishSignIn(password, false, cfg);
           return;
         } catch (signInErr) {
           if (isUnconfirmedUserError(signInErr)) {
-            await enterVerifyFlow(username);
+            await enterVerifyFlow(username, cfg);
             return;
           }
           if (isMaskedUnconfirmedSignInError(signInErr)) {
-            const result = await cognitoResendSignUpCode(config, username).catch(
+            const result = await cognitoResendSignUpCode(cfg, username).catch(
               () => null,
             );
             if (result?.pendingVerification) {
@@ -208,15 +246,15 @@ export function CognitoAuthForm({
         }
       }
       if (mode === "signup") {
-        const { confirmed } = await cognitoSignUp(config, username, password);
+        const { confirmed } = await cognitoSignUp(cfg, username, password);
         if (confirmed) {
-          await finishSignIn(password, true);
+          await finishSignIn(password, true, cfg);
           return;
         }
         go("confirm");
         setUnverifiedExisting(false);
         try {
-          await sendVerifyEmail("confirm", username);
+          await sendVerifyEmail("confirm", username, cfg);
         } catch (sendErr) {
           setError(
             sendErr instanceof Error
@@ -227,21 +265,22 @@ export function CognitoAuthForm({
         return;
       }
       if (mode === "confirm") {
-        await cognitoConfirmSignUp(config, username, code);
-        await finishSignIn(password, true);
+        await cognitoConfirmSignUp(cfg, username, code);
+        await finishSignIn(password, true, cfg);
         return;
       }
       if (mode === "forgot") {
-        await cognitoForgotPassword(config, username);
+        await cognitoForgotPassword(cfg, username);
         go("reset");
         return;
       }
-      await cognitoConfirmForgotPassword(config, username, code, password);
-      await finishSignIn(password);
+      await cognitoConfirmForgotPassword(cfg, username, code, password);
+      await finishSignIn(password, false, cfg);
     } catch (err) {
       if (mode === "signup" && isUsernameExistsError(err)) {
         try {
-          await finishSignIn(password, true);
+          const cfg = await resolveConfig();
+          await finishSignIn(password, true, cfg);
           return;
         } catch (signInErr) {
           if (isUnconfirmedUserError(signInErr)) {
@@ -249,7 +288,8 @@ export function CognitoAuthForm({
             return;
           }
           if (isMaskedUnconfirmedSignInError(signInErr)) {
-            const result = await cognitoResendSignUpCode(config, username).catch(
+            const cfg = await resolveConfig();
+            const result = await cognitoResendSignUpCode(cfg, username).catch(
               () => null,
             );
             if (result?.pendingVerification) {
@@ -277,6 +317,7 @@ export function CognitoAuthForm({
   async function resendCode() {
     if (resendWaitSec > 0) return;
     setError(null);
+    setNotice(null);
     setBusy(true);
     try {
       await sendVerifyEmail(mode === "reset" ? "reset" : "confirm");
@@ -291,7 +332,7 @@ export function CognitoAuthForm({
 
   const submitLabel =
     mode === "signup"
-      ? "Create account"
+      ? "Create my account"
       : mode === "confirm"
         ? "Confirm and continue"
         : mode === "forgot"
@@ -302,54 +343,69 @@ export function CognitoAuthForm({
 
   const heading =
     mode === "signup"
-      ? "Create an account"
+      ? "Create your account"
       : mode === "confirm"
         ? unverifiedExisting
           ? "Verify your email"
-          : "Check your email"
-        : mode === "forgot" || mode === "reset"
-          ? "Reset your password"
-          : "Welcome in.";
+          : "Check your inbox"
+        : mode === "forgot"
+          ? "Forgot password?"
+          : mode === "reset"
+            ? "Choose a new password"
+            : "Sign in";
 
   const emailLabel = email.trim().toLowerCase();
   const sub =
     mode === "signup"
-      ? "Your library and journal stay with this email."
+      ? "Free to start. It takes less than a minute."
       : mode === "confirm"
         ? unverifiedExisting
           ? `This email is already registered, but it isn’t verified yet. Enter the code we sent to ${emailLabel || "you"} to finish creating your account.`
           : emailLabel
-            ? `We sent a code to ${emailLabel}. It is valid for 24 hours.`
+            ? `We’ve sent a code to ${emailLabel}. It is valid for 24 hours.`
             : "Enter the code we sent you."
         : mode === "forgot"
-          ? "We’ll email a code to reset it."
+          ? "We’ll email a code so you can reset it."
           : mode === "reset"
             ? emailLabel
               ? `We sent a reset code to ${emailLabel}. Choose a new password.`
               : "Choose a new password, then you’re in."
-            : "Sign in to your library and journal.";
+            : "Good to see you again.";
 
-  const showIntro = !hideIntro || mode !== "signin";
-  const showQuickActions = Boolean(afterForm) && (mode === "signin" || mode === "signup");
+  const showIntro =
+    !hideIntro || (mode !== "signin" && mode !== "signup");
+  const showQuickActions =
+    Boolean(beforeForm || afterForm) && (mode === "signin" || mode === "signup");
+  const errorId = "auth-form-error";
 
   return (
-    <div>
+    <div className="w-full">
       {showIntro ? (
-        <>
+        <div className="mb-5">
           <h2 className="font-display text-[1.75rem] font-medium leading-tight tracking-tight text-marketing-ink sm:text-3xl">
             {heading}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-marketing-body">{sub}</p>
-        </>
+          <p className="mt-2 text-sm leading-relaxed text-marketing-body sm:text-base">
+            {sub}
+          </p>
+        </div>
+      ) : null}
+
+      {showQuickActions && beforeForm ? (
+        <div className="mb-4 space-y-3">{beforeForm}</div>
       ) : null}
 
       <form
         onSubmit={(e) => void onSubmit(e)}
-        className="mt-6 space-y-3.5"
+        className="space-y-3.5"
+        noValidate={false}
       >
         {mode !== "confirm" && mode !== "reset" ? (
           <div>
-            <label htmlFor="auth-email" className="block text-sm font-medium text-foreground">
+            <label
+              htmlFor="auth-email"
+              className="block text-sm font-medium text-foreground"
+            >
               Email
             </label>
             <input
@@ -366,13 +422,17 @@ export function CognitoAuthForm({
               onBlur={() => setEmail((value) => value.trim().toLowerCase())}
               className={fieldClass}
               placeholder="you@example.com"
+              aria-describedby={error ? errorId : undefined}
             />
           </div>
         ) : null}
 
         {mode === "confirm" || mode === "reset" ? (
           <div>
-            <label htmlFor="auth-code" className="block text-sm font-medium text-foreground">
+            <label
+              htmlFor="auth-code"
+              className="block text-sm font-medium text-foreground"
+            >
               Code
             </label>
             <input
@@ -385,6 +445,7 @@ export function CognitoAuthForm({
               onChange={(ev) => setCode(ev.target.value)}
               className={fieldClass}
               placeholder="6-digit code"
+              aria-describedby={error ? errorId : undefined}
             />
           </div>
         ) : null}
@@ -400,6 +461,11 @@ export function CognitoAuthForm({
                 ? "new-password"
                 : "current-password"
             }
+            placeholder={
+              mode === "signup" || mode === "reset"
+                ? "At least 8 characters"
+                : undefined
+            }
             hint={
               mode === "signup" || mode === "reset"
                 ? "8+ characters, with upper and lower case and a number."
@@ -414,7 +480,7 @@ export function CognitoAuthForm({
               type="button"
               disabled={locked}
               onClick={() => go("forgot")}
-              className="text-xs font-medium text-accent-link underline-offset-2 hover:underline"
+              className="min-h-11 text-sm font-medium text-accent-link underline-offset-2 hover:underline"
             >
               Forgot password?
             </button>
@@ -422,37 +488,45 @@ export function CognitoAuthForm({
         ) : null}
 
         {notice && !/^we sent a (reset )?code to /i.test(notice) ? (
-          <p className="text-sm text-foreground">{notice}</p>
+          <p className="text-sm text-foreground" role="status">
+            {notice}
+          </p>
         ) : null}
-        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        {error ? (
+          <p id={errorId} className="text-sm text-danger" role="alert" aria-live="polite">
+            {error}
+          </p>
+        ) : null}
 
         <button
           type="submit"
           disabled={locked}
           className={
             submitVariant === "secondary"
-              ? "mt-1 w-full cursor-pointer rounded-xl border border-marketing-card-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
-              : "mt-1 w-full cursor-pointer rounded-xl accent-fill-gradient px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+              ? "mt-1 flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-full border border-marketing-card-border bg-background px-4 text-base font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
+              : "mt-1 flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 text-base font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
           }
         >
           {busy ? "Working…" : submitLabel}
         </button>
       </form>
 
-      {showQuickActions ? afterForm : null}
+      {showQuickActions && afterForm && !beforeForm ? (
+        <div className="mt-5 space-y-3">{afterForm}</div>
+      ) : null}
 
       {mode === "confirm" || mode === "reset" ? (
         <button
           type="button"
           disabled={locked || resendWaitSec > 0}
           onClick={() => void resendCode()}
-          className="mt-4 w-full text-center text-xs font-medium text-accent-link underline-offset-2 hover:underline disabled:no-underline disabled:opacity-50"
+          className="mt-4 min-h-11 w-full text-center text-sm font-medium text-accent-link underline-offset-2 hover:underline disabled:no-underline disabled:opacity-50"
         >
           {resendWaitSec > 0 ? `Resend code in ${resendWaitSec}s` : "Resend code"}
         </button>
       ) : null}
 
-      <p className="mt-6 text-center text-sm text-muted">
+      <p className="mt-5 text-center text-[15px] text-marketing-body">
         {mode === "signin" ? (
           <>
             New here?{" "}
@@ -460,7 +534,7 @@ export function CognitoAuthForm({
               type="button"
               disabled={locked}
               onClick={() => go("signup")}
-              className="font-medium text-accent-link underline-offset-2 hover:underline"
+              className="font-semibold text-accent-link underline-offset-2 hover:underline"
             >
               Create an account
             </button>
@@ -472,7 +546,7 @@ export function CognitoAuthForm({
               type="button"
               disabled={locked}
               onClick={() => go("signin")}
-              className="font-medium text-accent-link underline-offset-2 hover:underline"
+              className="font-semibold text-accent-link underline-offset-2 hover:underline"
             >
               Sign in
             </button>
@@ -482,7 +556,7 @@ export function CognitoAuthForm({
             type="button"
             disabled={locked}
             onClick={() => go("signin")}
-            className="font-medium text-accent-link underline-offset-2 hover:underline"
+            className="font-semibold text-accent-link underline-offset-2 hover:underline"
           >
             Back to sign in
           </button>

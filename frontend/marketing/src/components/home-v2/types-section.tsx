@@ -18,7 +18,7 @@ export function TypesSection({ motionReady }: { motionReady: boolean }) {
           <Link
             key={card.href}
             href={card.href}
-            className="flex flex-col gap-1.5 rounded-[16px] border border-[var(--hv2-hero-card-border)] bg-[var(--hv2-hero-card-bg)] p-4 text-[var(--hv2-hero-card-fg)] shadow-[var(--hv2-hero-elev)] transition-[border-color,box-shadow] hover:border-[rgb(var(--hv2-gold-rgb)/0.5)] md:gap-2.5 md:rounded-[20px] md:p-6"
+            className="home-v2-hero-glass flex flex-col gap-1.5 rounded-[16px] border border-[var(--hv2-hero-card-border)] bg-[var(--hv2-hero-card-bg)] p-4 text-[var(--hv2-hero-card-fg)] shadow-[var(--hv2-hero-elev)] transition-[border-color,box-shadow] hover:border-[rgb(var(--hv2-gold-rgb)/0.5)] md:gap-2.5 md:rounded-[20px] md:p-6"
           >
             <span className="home-v2-display text-[17px] md:text-[22px]">
               {card.title}

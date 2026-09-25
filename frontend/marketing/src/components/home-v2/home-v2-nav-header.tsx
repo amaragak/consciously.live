@@ -40,7 +40,7 @@ function resolveNav(pathname: string): {
       verbLabel: tool.label,
       activeTool: tool.id,
       activeSecondary: null,
-      ctaHref: tool.href,
+      ctaHref: `/login?mode=signup&next=${encodeURIComponent(tool.href)}`,
       ctaLabel: tool.stickyCta,
     };
   }
@@ -94,7 +94,7 @@ export function HomeV2NavHeader() {
   const secondaryLinks = SECONDARY.filter((s) => s.id !== activeSecondary);
 
   return (
-    <header className="home-v2 sticky top-0 z-40 border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-hero-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6">
+    <header className="home-v2 sticky top-0 z-40 border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6">
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[64px]">
         <div className="shrink-0">
           <Lockup

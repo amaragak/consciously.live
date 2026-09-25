@@ -59,7 +59,7 @@ export function HeroPrompt() {
     <div className="flex w-full flex-col gap-3.5 pt-2">
       <form
         onSubmit={(e) => void onSubmit(e)}
-        className="home-v2-prompt-shell flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[rgb(var(--hv2-gold-rgb)/0.5)] md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)]"
+        className="home-v2-prompt-shell home-v2-hero-glass flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[rgb(var(--hv2-gold-rgb)/0.5)] md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)]"
       >
         <label htmlFor="home-v2-hero-prompt" className="sr-only">
           What would you like a meditation for?
