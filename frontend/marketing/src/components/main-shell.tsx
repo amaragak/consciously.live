@@ -116,11 +116,13 @@ export function MainShell({
       ) : null}
       <div
         ref={contentRef}
-        className={`relative z-[1] flex min-h-0 w-full flex-1 flex-col ${
-          isAuthPage ? "h-full overflow-hidden" : ""
-        }`}
+        className={
+          isAuthPage
+            ? "relative z-[1] flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden"
+            : "relative z-[1] flex min-h-full w-full flex-col"
+        }
       >
-        {children}
+        <div className={isAuthPage ? "contents" : "flex-1"}>{children}</div>
         {showFooter ? <AppFooter /> : null}
       </div>
     </main>

@@ -107,7 +107,9 @@ function LoginInner() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [cognitoBusy, setCognitoBusy] = useState(false);
-  const [authMode, setAuthMode] = useState<CognitoAuthMode>("signin");
+  const [authMode, setAuthMode] = useState<CognitoAuthMode>(() =>
+    searchParams.get("mode") === "signup" ? "signup" : "signin",
+  );
   const [passkeyOffer, setPasskeyOffer] = useState<{
     needsProfileName: boolean;
     accessToken: string;
@@ -124,6 +126,12 @@ function LoginInner() {
 
   useLayoutEffect(() => {
     applyColorScheme(resolveAuthColorScheme(searchParams));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const mode = searchParams.get("mode");
+    if (mode === "signup") setAuthMode("signup");
+    else if (mode === "signin") setAuthMode("signin");
   }, [searchParams]);
 
   useEffect(() => {

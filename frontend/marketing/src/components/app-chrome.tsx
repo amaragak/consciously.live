@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppPrimaryTabsProvider } from "@/components/app-primary-tabs";
 import { MainShell } from "@/components/main-shell";
 import { SiteHeader } from "@/components/site-header";
+import { HomeV2NavHeader } from "@/components/home-v2/home-v2-nav-header";
 import { ScrollToTopOnNavigate } from "@/components/scroll-to-top-on-navigate";
 import {
   SignInPromptOverlay,
@@ -60,12 +61,14 @@ function SignInOverlayHost() {
 
 type Props = {
   children: ReactNode;
-  /** Kept for AppChromeHost API; marketing always uses SiteHeader now. */
+  /** Kept for AppChromeHost API; marketing header chosen below. */
   initialHasSessionHint: boolean;
 };
 
 /**
- * Marketing Next shell — always SiteHeader.
+ * Marketing Next shell.
+ * With homepage v2 on: `/` uses the in-page hero header; other marketing pages
+ * use HomeV2NavHeader; `/legacy/*` keeps the classic SiteHeader.
  * Logged-in users browse marketing freely; enter the SPA via “Go to dashboard”.
  * Deep app URLs still soft-redirect via SpaRedirect layouts.
  */
@@ -129,8 +132,21 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
   );
 
   const hideChrome = isPublicAuthPath(pathname);
-  const hideSiteHeader =
-    hideChrome || (pathname === "/" && isHomeV2Enabled());
+  const homeV2 = isHomeV2Enabled();
+  const isHome = pathname === "/";
+  const isLegacy =
+    pathname === "/legacy" || pathname.startsWith("/legacy/");
+
+  let siteHeader: ReactNode = null;
+  if (!hideChrome) {
+    if (homeV2 && isHome) {
+      siteHeader = null;
+    } else if (homeV2 && !isLegacy) {
+      siteHeader = <HomeV2NavHeader />;
+    } else {
+      siteHeader = <SiteHeader />;
+    }
+  }
 
   useLayoutEffect(() => {
     const scheme = hideChrome
@@ -142,7 +158,7 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
   return (
     <AppPrimaryTabsProvider>
       <ScrollToTopOnNavigate />
-      {hideSiteHeader ? null : <SiteHeader />}
+      {siteHeader}
       <MainShell>{body}</MainShell>
       <Suspense fallback={null}>
         <SignInOverlayHost />

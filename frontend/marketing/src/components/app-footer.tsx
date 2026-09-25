@@ -25,7 +25,7 @@ export function AppFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="app-footer mt-auto shrink-0 border-t border-border">
+    <footer className="app-footer shrink-0 border-t border-border">
       <div className="relative z-[1] mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="app-footer-card flex flex-col gap-6 rounded-2xl px-5 py-6 sm:px-8 sm:py-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">

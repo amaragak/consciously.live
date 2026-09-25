@@ -224,6 +224,37 @@
   z-index: 5;
 }
 
+/* Full-page paisley field (Read, etc.) — same tile as hero, grows with content. */
+.home-v2-field {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--hv2-hero-bg);
+  color: var(--hv2-hero-fg);
+}
+
+.home-v2-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--hv2-hero-pattern-opacity);
+  background-image: var(--hv2-hero-pattern);
+  background-repeat: repeat;
+  background-size: var(--hv2-hero-pattern-size);
+  -webkit-mask-image: var(--hv2-hero-pattern-mask);
+  mask-image: var(--hv2-hero-pattern-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+.home-v2-field > * {
+  position: relative;
+  z-index: 1;
+}
+
 .home-v2 a:focus-visible,
 .home-v2 button:focus-visible,
 .home-v2 input:focus-visible {

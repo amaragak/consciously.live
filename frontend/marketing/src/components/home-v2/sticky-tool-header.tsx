@@ -33,14 +33,16 @@ export function StickyToolHeader({ stuck, activeTool }: Props) {
       className="home-v2-sticky-enter fixed inset-x-0 top-0 z-40 border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-hero-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6"
     >
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[64px]">
-        <Link
-          href="/"
-          aria-label="Consciously home"
-          className="flex shrink-0 items-baseline gap-2"
-          onClick={() => setMenuOpen(false)}
-        >
-          <Lockup tool={verbLabel} size="sticky" onHero withMark />
-        </Link>
+        <div className="shrink-0">
+          <Lockup
+            tool={verbLabel}
+            size="sticky"
+            onHero
+            withMark
+            homeHref="/"
+            onHomeClick={() => setMenuOpen(false)}
+          />
+        </div>
 
         <nav
           aria-label="Main"

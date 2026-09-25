@@ -38,13 +38,9 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           aria-label="Main"
           className="relative flex h-14 items-center gap-4 md:h-[72px]"
         >
-          <Link
-            href="/"
-            aria-label="Consciously home"
-            className="shrink-0"
-          >
-            <Lockup size="nav" onHero withMark />
-          </Link>
+          <div className="shrink-0">
+            <Lockup size="nav" onHero withMark homeHref="/" />
+          </div>
 
           <div className="hidden min-w-0 flex-1 items-center justify-center gap-7 text-[15px] text-[var(--hv2-hero-nav)] lg:flex">
             {HOME_V2_TOOLS.map((t) => (

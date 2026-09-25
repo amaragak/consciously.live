@@ -53,7 +53,7 @@ export const HOME_V2_TOOLS: readonly {
 export const HOME_V2_LISTEN_HREF = "/library";
 export const HOME_V2_READ_HREF = "/read";
 export const HOME_V2_CONNECT_HREF = "/connect";
-export const HOME_V2_START_FREE_HREF = "/meditate";
+export const HOME_V2_START_FREE_HREF = "/login?mode=signup";
 export const HOME_V2_INSTAGRAM_HREF =
   "https://www.instagram.com/consciously.live/";
 

@@ -33,9 +33,7 @@ export function HomeV2Page() {
       <section className="home-v2-band home-v2-band--d">
         <ToolSection tool="chat" />
       </section>
-      <div className="home-v2-band home-v2-band--b py-10 md:py-16">
-        <FinalCta />
-      </div>
+      <FinalCta />
     </div>
   );
 }
