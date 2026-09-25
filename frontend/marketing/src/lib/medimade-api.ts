@@ -1726,12 +1726,20 @@ export async function ocrJournalPhoto(imageBase64: string): Promise<{
   };
 }
 
+export type JournalWeeklyEmotionScore = {
+  name: string;
+  score: number;
+};
+
 export type JournalWeeklyReflection = {
   ownerId: string;
   weekKey: string;
   weekStart: string;
   weekEnd: string;
   letterMarkdown: string;
+  preview?: string;
+  emotions?: JournalWeeklyEmotionScore[];
+  moodSummary?: string;
   meta: {
     generatedAt: string;
     model: string;
@@ -1746,6 +1754,7 @@ export type JournalWeeklyLetterSummary = {
   weekStart: string;
   weekEnd: string;
   generatedAt: string;
+  preview?: string;
 };
 
 export async function fetchJournalWeeklyReflectionRemote(opts?: {
@@ -1825,7 +1834,17 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
     const generatedAt =
       typeof row.generatedAt === "string" ? row.generatedAt : "";
     if (!weekKey || !weekStart || !weekEnd || !generatedAt) continue;
-    letters.push({ weekKey, weekStart, weekEnd, generatedAt });
+    const preview =
+      typeof row.preview === "string" && row.preview.trim()
+        ? row.preview.trim()
+        : undefined;
+    letters.push({
+      weekKey,
+      weekStart,
+      weekEnd,
+      generatedAt,
+      ...(preview ? { preview } : {}),
+    });
   }
   return {
     letters,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronLeft, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   fetchJournalInsightsRemote,
   getMedimadeApiBase,
@@ -77,99 +77,6 @@ function formatLetterRange(weekStart: string, weekEnd: string): string {
   }
 }
 
-function formatWrittenDate(iso: string): string {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
-function InsightsPastLettersSidebar(props: {
-  letters: JournalWeeklyLetterSummary[];
-  currentWeekKey: string;
-  selectedWeekKey: string | null;
-  loading: boolean;
-  mobileFullScreen?: boolean;
-  onSelect: (weekKey: string) => void;
-}) {
-  const {
-    letters,
-    currentWeekKey,
-    selectedWeekKey,
-    loading,
-    mobileFullScreen,
-    onSelect,
-  } = props;
-
-  return (
-    <aside
-      className={`flex max-h-[22rem] shrink-0 flex-col gap-3 overflow-visible border-b border-border pb-4 lg:max-h-none lg:w-64 lg:border-b-0 lg:pb-0 ${
-        mobileFullScreen
-          ? "max-sm:max-h-none max-sm:min-h-0 max-sm:flex-1 max-sm:border-b-0 max-sm:pb-0"
-          : ""
-      }`}
-    >
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-        Past letters
-      </h2>
-      <nav
-        className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
-        aria-label="Past weekly letters"
-      >
-        {loading ? (
-          <p className="text-sm text-muted">Loading…</p>
-        ) : letters.length === 0 ? (
-          <p className="text-sm text-muted">
-            Nothing here yet — your first letter will appear once you write one.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {letters.map((letter) => {
-              const isActive = letter.weekKey === selectedWeekKey;
-              const isCurrent = letter.weekKey === currentWeekKey;
-              return (
-                <li key={letter.weekKey}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(letter.weekKey)}
-                    className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                      isActive
-                        ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
-                        : "border-border bg-background text-foreground hover:border-accent/40"
-                    }`}
-                  >
-                    <span className="block text-sm font-medium">
-                      {formatLetterRange(letter.weekStart, letter.weekEnd)}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-muted">
-                      {isCurrent
-                        ? "This week"
-                        : letter.generatedAt
-                          ? `Written ${formatWrittenDate(letter.generatedAt)}`
-                          : "Not written yet"}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </nav>
-      <p className="text-xs text-muted">
-        Letters are written once a week, from that week&apos;s journal entries.
-      </p>
-    </aside>
-  );
-}
-
 function InsightTopicSection(props: {
   label: string;
   summaryMarkdown: string;
@@ -200,12 +107,126 @@ function InsightTopicSection(props: {
   );
 }
 
+function InsightsYourLettersSidebar(props: {
+  letters: JournalWeeklyLetterSummary[];
+  currentWeekKey: string;
+  selectedWeekKey: string | null;
+  loading: boolean;
+  onSelect: (weekKey: string) => void;
+  /** Compact chip row for mobile */
+  mobileChips?: boolean;
+}) {
+  const {
+    letters,
+    currentWeekKey,
+    selectedWeekKey,
+    loading,
+    onSelect,
+    mobileChips,
+  } = props;
+
+  if (mobileChips) {
+    return (
+      <div className="shrink-0 lg:hidden">
+        <label className="sr-only" htmlFor="insights-week-select">
+          Your letters
+        </label>
+        <select
+          id="insights-week-select"
+          className="w-full cursor-pointer rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent/50"
+          value={selectedWeekKey ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v) onSelect(v);
+          }}
+        >
+          {loading ? (
+            <option value="">Loading…</option>
+          ) : letters.length === 0 ? (
+            <option value={currentWeekKey || ""}>This week</option>
+          ) : (
+            letters.map((letter) => {
+              const isCurrent = letter.weekKey === currentWeekKey;
+              const range = formatLetterRange(letter.weekStart, letter.weekEnd);
+              return (
+                <option key={letter.weekKey} value={letter.weekKey}>
+                  {isCurrent ? `This week · ${range}` : range}
+                </option>
+              );
+            })
+          )}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <aside
+      aria-label="Your letters"
+      className="relative z-[1] hidden min-h-0 w-[260px] shrink-0 flex-col gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-3 pb-4 pt-3 xl:w-[300px] lg:flex"
+    >
+      <div className="px-3 pb-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
+        Your letters
+      </div>
+      <nav
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+        aria-label="Your letters"
+      >
+        {loading ? (
+          <p className="px-3 text-sm text-muted">Loading…</p>
+        ) : letters.length === 0 ? (
+          <p className="px-3 text-sm text-muted">
+            Nothing here yet — your first letter will appear once you write one.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {letters.map((letter) => {
+              const isActive = letter.weekKey === selectedWeekKey;
+              const isCurrent = letter.weekKey === currentWeekKey;
+              const range = formatLetterRange(letter.weekStart, letter.weekEnd);
+              const title = isCurrent ? `This week · ${range}` : range;
+              const preview = letter.preview?.trim();
+              return (
+                <li key={letter.weekKey}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(letter.weekKey)}
+                    className={`flex w-full cursor-pointer flex-col gap-1 rounded-xl px-4 py-3.5 text-left transition-colors ${
+                      isActive
+                        ? "border border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                        : "border border-transparent hover:bg-card/60"
+                    }`}
+                  >
+                    <span
+                      className={`block text-[15px] ${
+                        isActive ? "font-semibold" : "font-medium"
+                      }`}
+                    >
+                      {title}
+                    </span>
+                    <span className="line-clamp-1 text-[13px] text-muted">
+                      {preview
+                        ? `“${preview.replace(/^["“]|["”]$/g, "")}”`
+                        : isCurrent
+                          ? "This week’s letter"
+                          : "Weekly letter"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </nav>
+    </aside>
+  );
+}
+
 export function JournalInsightsView() {
   const { pathname: pathnameRaw } = useLocation();
   const pathname = pathnameRaw || INSIGHTS_HREF;
   const navigate = useNavigate();
   const routeWeekKey = insightsWeekKeyFromPath(pathname);
-  const mobileLetterOpen = Boolean(routeWeekKey);
 
   const cachedInsights = getCachedJournalInsights();
   const cachedLetters = getCachedWeeklyLetters();
@@ -229,67 +250,72 @@ export function JournalInsightsView() {
 
   const apiEnabled = Boolean(getMedimadeApiBase());
 
-  const load = useCallback(async (opts?: { force?: boolean }) => {
-    if (!apiEnabled) return;
-    if (!opts?.force) {
-      const cached = getCachedJournalInsights();
-      if (cached !== undefined) {
-        setInsights(cached);
-        return;
+  const load = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!apiEnabled) return;
+      if (!opts?.force) {
+        const cached = getCachedJournalInsights();
+        if (cached !== undefined) {
+          setInsights(cached);
+          return;
+        }
       }
-    }
-    try {
-      const got = await fetchJournalInsightsRemote();
-      setCachedJournalInsights(got);
-      setInsights(got);
-    } catch {
-      /* offline */
-    }
-  }, [apiEnabled]);
+      try {
+        const got = await fetchJournalInsightsRemote();
+        setCachedJournalInsights(got);
+        setInsights(got);
+      } catch {
+        /* offline */
+      }
+    },
+    [apiEnabled],
+  );
 
-  const loadLetters = useCallback(async (opts?: { force?: boolean }) => {
-    if (!apiEnabled) {
-      // Avoid a permanent "Loading…" when the API URL isn't configured.
-      setLettersLoading(false);
-      return;
-    }
-    if (!opts?.force) {
-      const cached = getCachedWeeklyLetters();
-      if (cached) {
-        setLetters(cached.letters);
-        setCurrentWeekKey(cached.currentWeekKey);
-        setSelectedWeekKey((prev) => {
-          if (routeWeekKey) return routeWeekKey;
-          if (prev) {
-            if (prev === cached.currentWeekKey) return prev;
-            if (cached.letters.some((l) => l.weekKey === prev)) return prev;
-          }
-          return cached.currentWeekKey || cached.letters[0]?.weekKey || null;
-        });
+  const loadLetters = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!apiEnabled) {
         setLettersLoading(false);
         return;
       }
-    }
-    setLettersLoading(true);
-    try {
-      const got = await listJournalWeeklyLettersRemote();
-      setCachedWeeklyLetters(got);
-      setLetters(got.letters);
-      setCurrentWeekKey(got.currentWeekKey);
-      setSelectedWeekKey((prev) => {
-        if (routeWeekKey) return routeWeekKey;
-        if (prev) {
-          if (prev === got.currentWeekKey) return prev;
-          if (got.letters.some((l) => l.weekKey === prev)) return prev;
+      if (!opts?.force) {
+        const cached = getCachedWeeklyLetters();
+        if (cached) {
+          setLetters(cached.letters);
+          setCurrentWeekKey(cached.currentWeekKey);
+          setSelectedWeekKey((prev) => {
+            if (routeWeekKey) return routeWeekKey;
+            if (prev) {
+              if (prev === cached.currentWeekKey) return prev;
+              if (cached.letters.some((l) => l.weekKey === prev)) return prev;
+            }
+            return cached.currentWeekKey || cached.letters[0]?.weekKey || null;
+          });
+          setLettersLoading(false);
+          return;
         }
-        return got.currentWeekKey || got.letters[0]?.weekKey || null;
-      });
-    } catch {
-      /* offline */
-    } finally {
-      setLettersLoading(false);
-    }
-  }, [apiEnabled, routeWeekKey]);
+      }
+      setLettersLoading(true);
+      try {
+        const got = await listJournalWeeklyLettersRemote();
+        setCachedWeeklyLetters(got);
+        setLetters(got.letters);
+        setCurrentWeekKey(got.currentWeekKey);
+        setSelectedWeekKey((prev) => {
+          if (routeWeekKey) return routeWeekKey;
+          if (prev) {
+            if (prev === got.currentWeekKey) return prev;
+            if (got.letters.some((l) => l.weekKey === prev)) return prev;
+          }
+          return got.currentWeekKey || got.letters[0]?.weekKey || null;
+        });
+      } catch {
+        /* offline */
+      } finally {
+        setLettersLoading(false);
+      }
+    },
+    [apiEnabled, routeWeekKey],
+  );
 
   useEffect(() => {
     void load();
@@ -326,9 +352,15 @@ export function JournalInsightsView() {
   }, [letters, currentWeekKey]);
 
   const topicsById = useMemo(() => {
-    const map = new Map<JournalInsightsTopicId, { summaryMarkdown: string; updatedAt: string }>();
+    const map = new Map<
+      JournalInsightsTopicId,
+      { summaryMarkdown: string; updatedAt: string }
+    >();
     for (const t of insights?.topics ?? []) {
-      map.set(t.topicId, { summaryMarkdown: t.summaryMarkdown, updatedAt: t.updatedAt });
+      map.set(t.topicId, {
+        summaryMarkdown: t.summaryMarkdown,
+        updatedAt: t.updatedAt,
+      });
     }
     return map;
   }, [insights]);
@@ -336,7 +368,6 @@ export function JournalInsightsView() {
   const activeWeekKey =
     routeWeekKey || selectedWeekKey || currentWeekKey || null;
 
-  /** Topic summaries are global — keep on desktop for any week; on mobile only with this week. */
   const isCurrentWeekLetter =
     Boolean(activeWeekKey) &&
     Boolean(currentWeekKey) &&
@@ -346,50 +377,33 @@ export function JournalInsightsView() {
     (weekKey: string) => {
       setSelectedWeekKey(weekKey);
       if (insightsWeekKeyFromPath(pathname) === weekKey) return;
-      navigate(`${INSIGHTS_HREF}/${encodeURIComponent(weekKey)}`);
+      // Keep list URL on desktop; deep-link week for shareable state.
+      navigate(`${INSIGHTS_HREF}/${encodeURIComponent(weekKey)}`, {
+        replace: true,
+      });
     },
     [pathname, navigate],
   );
 
-  const openInsightsList = useCallback(() => {
-    navigate(INSIGHTS_HREF);
-  }, [navigate]);
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden lg:flex-row lg:gap-4">
-      <div
-        className={
-          mobileLetterOpen ? "hidden sm:contents" : "contents"
-        }
-      >
-        <InsightsPastLettersSidebar
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      <InsightsYourLettersSidebar
+        letters={displayLetters}
+        currentWeekKey={currentWeekKey}
+        selectedWeekKey={activeWeekKey}
+        loading={lettersLoading}
+        onSelect={selectWeek}
+      />
+
+      <div className="mx-auto flex min-h-0 w-full max-w-[820px] flex-1 flex-col gap-7 overflow-y-auto px-4 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4 lg:px-10">
+        <InsightsYourLettersSidebar
           letters={displayLetters}
           currentWeekKey={currentWeekKey}
           selectedWeekKey={activeWeekKey}
           loading={lettersLoading}
-          mobileFullScreen={!mobileLetterOpen}
           onSelect={selectWeek}
+          mobileChips
         />
-      </div>
-
-      <div
-        className={`mx-auto flex min-h-0 w-full max-w-[820px] flex-1 flex-col overflow-y-auto px-0 py-0 sm:px-2 ${
-          !mobileLetterOpen ? "max-sm:hidden" : ""
-        }`}
-      >
-        {mobileLetterOpen ? (
-          <div className="mb-3 flex shrink-0 items-center sm:hidden">
-            <button
-              type="button"
-              onClick={openInsightsList}
-              className="inline-flex cursor-pointer items-center gap-0.5 text-sm font-semibold text-accent-link"
-              aria-label="Back to Insights list"
-            >
-              <ChevronLeft aria-hidden className="size-5" strokeWidth={2} />
-              Insights
-            </button>
-          </div>
-        ) : null}
 
         <JournalWeeklyReflectionCard
           weekKey={activeWeekKey}

@@ -1680,12 +1680,22 @@ export async function ocrJournalPhoto(imageBase64: string): Promise<{
   };
 }
 
+export type JournalWeeklyEmotionScore = {
+  name: string;
+  score: number;
+  /** Short snippets from the user's writing that support this score. */
+  examples?: string[];
+};
+
 export type JournalWeeklyReflection = {
   ownerId: string;
   weekKey: string;
   weekStart: string;
   weekEnd: string;
   letterMarkdown: string;
+  preview?: string;
+  emotions?: JournalWeeklyEmotionScore[];
+  moodSummary?: string;
   meta: {
     generatedAt: string;
     model: string;
@@ -1700,7 +1710,107 @@ export type JournalWeeklyLetterSummary = {
   weekStart: string;
   weekEnd: string;
   generatedAt: string;
+  preview?: string;
 };
+
+function parseEmotionExamples(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const t = item.trim().replace(/\s+/g, " ");
+    if (t.length < 8 || t.length > 220) continue;
+    out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseWeeklyEmotions(
+  raw: unknown,
+): JournalWeeklyEmotionScore[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: JournalWeeklyEmotionScore[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const name =
+      typeof (row as { name?: unknown }).name === "string"
+        ? (row as { name: string }).name.trim()
+        : "";
+    const scoreRaw = (row as { score?: unknown }).score;
+    const score =
+      typeof scoreRaw === "number"
+        ? scoreRaw
+        : typeof scoreRaw === "string"
+          ? Number(scoreRaw)
+          : NaN;
+    if (!name || !Number.isFinite(score)) continue;
+    const examples = parseEmotionExamples(
+      (row as { examples?: unknown }).examples,
+    );
+    out.push({
+      name,
+      score: Math.max(0, Math.min(10, Math.round(score))),
+      ...(examples ? { examples } : {}),
+    });
+  }
+  if (out.length < 1) return undefined;
+  out.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return out.slice(0, 5);
+}
+
+function parseJournalWeeklyReflection(
+  raw: unknown,
+): JournalWeeklyReflection | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const letterMarkdown =
+    typeof o.letterMarkdown === "string" ? o.letterMarkdown : "";
+  if (!letterMarkdown.trim()) return null;
+  const metaRaw =
+    o.meta && typeof o.meta === "object"
+      ? (o.meta as Record<string, unknown>)
+      : {};
+  const emotions = parseWeeklyEmotions(o.emotions);
+  const moodSummary =
+    typeof o.moodSummary === "string" && o.moodSummary.trim()
+      ? o.moodSummary.trim()
+      : undefined;
+  const preview =
+    typeof o.preview === "string" && o.preview.trim()
+      ? o.preview.trim()
+      : undefined;
+  return {
+    ownerId: typeof o.ownerId === "string" ? o.ownerId : "",
+    weekKey: typeof o.weekKey === "string" ? o.weekKey : "",
+    weekStart: typeof o.weekStart === "string" ? o.weekStart : "",
+    weekEnd: typeof o.weekEnd === "string" ? o.weekEnd : "",
+    letterMarkdown,
+    ...(preview ? { preview } : {}),
+    ...(emotions ? { emotions } : {}),
+    ...(moodSummary ? { moodSummary } : {}),
+    meta: {
+      generatedAt:
+        typeof metaRaw.generatedAt === "string" ? metaRaw.generatedAt : "",
+      model: typeof metaRaw.model === "string" ? metaRaw.model : "",
+      journalEntryCount:
+        typeof metaRaw.journalEntryCount === "number"
+          ? metaRaw.journalEntryCount
+          : 0,
+      meditationChatCount:
+        typeof metaRaw.meditationChatCount === "number"
+          ? metaRaw.meditationChatCount
+          : 0,
+      usage:
+        metaRaw.usage && typeof metaRaw.usage === "object"
+          ? (metaRaw.usage as {
+              input_tokens: number;
+              output_tokens: number;
+            })
+          : null,
+    },
+  };
+}
 
 export async function fetchJournalWeeklyReflectionRemote(opts?: {
   week?: string;
@@ -1733,10 +1843,7 @@ export async function fetchJournalWeeklyReflectionRemote(opts?: {
       res.statusText;
     throw new Error(msg);
   }
-  const reflection =
-    data.reflection && typeof data.reflection === "object"
-      ? (data.reflection as JournalWeeklyReflection)
-      : null;
+  const reflection = parseJournalWeeklyReflection(data.reflection);
   return {
     reflection,
     weekKey: typeof data.weekKey === "string" ? data.weekKey : "",
@@ -1779,7 +1886,17 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
     const generatedAt =
       typeof row.generatedAt === "string" ? row.generatedAt : "";
     if (!weekKey || !weekStart || !weekEnd || !generatedAt) continue;
-    letters.push({ weekKey, weekStart, weekEnd, generatedAt });
+    const preview =
+      typeof row.preview === "string" && row.preview.trim()
+        ? row.preview.trim()
+        : undefined;
+    letters.push({
+      weekKey,
+      weekStart,
+      weekEnd,
+      generatedAt,
+      ...(preview ? { preview } : {}),
+    });
   }
   return {
     letters,
@@ -1821,10 +1938,7 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
       res.statusText;
     throw new Error(msg);
   }
-  const reflection =
-    data.reflection && typeof data.reflection === "object"
-      ? (data.reflection as JournalWeeklyReflection)
-      : null;
+  const reflection = parseJournalWeeklyReflection(data.reflection);
   return {
     reflection,
     weekKey: typeof data.weekKey === "string" ? data.weekKey : "",

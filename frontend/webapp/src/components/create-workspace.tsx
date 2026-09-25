@@ -46,6 +46,7 @@ import {
   writeLinkedLifeAreaId,
   type CreateSessionV1,
 } from "@/lib/create-session-storage";
+import { consumeInsightsMeditationPrompt } from "@/lib/insights-meditation-handoff";
 import { setCreateMainChatVisible } from "@/lib/assistant-chat-fab-visibility";
 import {
   ChatThreadMessage,
@@ -1700,6 +1701,23 @@ export function CreateWorkspace({
     // Restore once per mount (full refresh). Client navigations keep the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!sessionHydrated) return;
+    if (parsedCreateRoute.path !== "oneShot") return;
+    const prefill = consumeInsightsMeditationPrompt();
+    if (!prefill) return;
+    setOneShotPrompt(prefill);
+    setPendingModeChoice("oneShot");
+    setCreationPath("oneShot");
+    setPhase("promptPick");
+    patchCreateSession({
+      oneShotPrompt: prefill,
+      pendingModeChoice: "oneShot",
+      creationPath: "oneShot",
+      phase: "promptPick",
+    });
+  }, [sessionHydrated, parsedCreateRoute.path]);
 
   const drumsLockedForMelodic = isMelodicMusicKey(
     backgroundMusic,

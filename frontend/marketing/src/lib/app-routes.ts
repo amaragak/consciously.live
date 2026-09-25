@@ -186,12 +186,20 @@ export function signedInDestinationForMarketingRoot(
 }
 
 /**
- * After magic-link verify: SPA-moved paths go to the Vite app; `/` and other
- * marketing pages stay on marketing (enter the app via “Go to dashboard”).
+ * After auth: open the SPA for `/` (dashboard), marketing section roots, and
+ * SPA-moved paths. Other marketing pages stay on marketing.
  */
 export function postAuthDestination(fallback = "/"): string {
   const next = consumeAuthNext(fallback);
-  if (next === "/") return next;
+  const path = normalizeAppPathname(next);
+
+  if (path === "/") {
+    return appHref("/");
+  }
+
+  const fromRoot = signedInDestinationForMarketingRoot(path);
+  if (fromRoot) return fromRoot;
+
   if (isSpaAppPath(next)) {
     return appHref(spaPathForAppPath(next));
   }

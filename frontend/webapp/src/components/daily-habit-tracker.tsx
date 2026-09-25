@@ -1,3 +1,4 @@
+import { Link, useRouter } from "@/lib/spa-nav";
 import { useEffect, useState } from "react";
 import {
   DAILY_HABITS_CHANGED_EVENT,
@@ -19,28 +20,25 @@ import {
 } from "@/lib/journal-storage";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
+import {
+  focusMyHrefFromIdeate,
+  writeFocusSessionHandoff,
+} from "@/lib/focus-session-handoff";
+import { writeFocusActiveIdeateSubtask } from "@/lib/focus-preflight-link";
 
-const ITEMS: {
-  pillar: DailyHabitPillar;
-  name: string;
-  help: string;
-}[] = [
-  {
-    pillar: "gratitude",
-    name: "Add a gratitude",
-    help: "Write one thing you're grateful for in Journal → Gratitudes",
-  },
-  {
-    pillar: "meditation",
-    name: "Do a meditation",
-    help: "Listen to any meditation in your library — or create a new one",
-  },
-  {
-    pillar: "lifeArea",
-    name: "Make progress on a life area",
-    help: "Complete any goal or To Do in Manifest, or add a thought",
-  },
-];
+export type TodayGoalStep = {
+  stepTitle: string;
+  goalTitle: string;
+  subtaskId: string;
+};
+
+type Props = {
+  /** Meditation suggested on the “Ready when you are” card. */
+  readyMeditationTitle?: string | null;
+  onPlayReadyMeditation?: (() => void) | null;
+  /** Next incomplete goal step; when absent, fall back to life-area wording. */
+  goalStep?: TodayGoalStep | null;
+};
 
 function emptyStatus(): DailyStatus {
   return {
@@ -67,10 +65,6 @@ function mergeRemoteDailyStatus(
   remote: DailyStatus,
   local: DailyStatus,
 ): DailyStatus {
-  // Flags: either side can mark a daily done today.
-  // Streaks: consecutive *days* — never Math.max(local, remote). That invented
-  // fake length when seed/cloud history disagreed with this device.
-  // Prefer remote (account) when signed in; local is offline fallback only.
   return {
     gratitude: remote.gratitude || local.gratitude,
     meditation: remote.meditation || local.meditation,
@@ -81,74 +75,6 @@ function mergeRemoteDailyStatus(
     fullStreakRecord: remote.fullStreakRecord,
     partialStreakRecord: remote.partialStreakRecord,
   };
-}
-
-function StreakDots({
-  streak,
-  todayComplete,
-}: {
-  streak: number;
-  todayComplete: boolean;
-}) {
-  const filled = Math.min(Math.max(0, streak), 7);
-  // Fill left → right; glow the newest filled day when today counts.
-  return (
-    <div className="mt-2 flex items-center gap-1.5" aria-hidden>
-      {Array.from({ length: 7 }, (_, i) => {
-        const on = i < filled;
-        const glow = on && todayComplete && i === filled - 1;
-        return (
-          <span
-            key={i}
-            className={
-              on
-                ? glow
-                  ? "h-2 w-2 rounded-full bg-gold shadow-[0_0_6px_color-mix(in_srgb,var(--gold)_70%,transparent)]"
-                  : "h-2 w-2 rounded-full bg-gold/85"
-                : "h-2 w-2 rounded-full border border-[color-mix(in_srgb,var(--border)_90%,var(--muted))] bg-transparent"
-            }
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function StreakBlock({
-  label,
-  days,
-  help,
-  record,
-  showDots,
-  todayComplete,
-}: {
-  label: string;
-  days: number;
-  help: string;
-  record: number;
-  showDots?: boolean;
-  todayComplete?: boolean;
-}) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-        {label}
-      </p>
-      <p className="mt-1 flex items-baseline gap-1.5">
-        <span className="font-display text-[28px] font-normal leading-none text-accent-link sm:text-[32px]">
-          {days}
-        </span>
-        <span className="text-[13px] text-muted">days</span>
-      </p>
-      <p className="mt-1.5 text-[11px] leading-[1.4] text-muted">{help}</p>
-      <p className="mt-1 text-[10px] tabular-nums text-muted/80">
-        Record · {record} {record === 1 ? "day" : "days"}
-      </p>
-      {showDots ? (
-        <StreakDots streak={days} todayComplete={Boolean(todayComplete)} />
-      ) : null}
-    </div>
-  );
 }
 
 function HabitCheckbox({
@@ -169,8 +95,8 @@ function HabitCheckbox({
       onClick={onToggle}
       className={
         checked
-          ? "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-gold text-[11px] font-semibold leading-none text-[var(--on-accent,#3D2E10)]"
-          : "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--border)_100%,var(--muted))] bg-transparent"
+          ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold text-[11px] font-semibold leading-none text-on-accent"
+          : "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[color-mix(in_srgb,var(--border)_100%,var(--muted))] bg-transparent"
       }
     >
       {checked ? "✓" : null}
@@ -178,8 +104,13 @@ function HabitCheckbox({
   );
 }
 
-/** Three-column daily habit row for the signed-in home dashboard. */
-export function DailyHabitTracker() {
+/** Today card for the signed-in home dashboard (partial streak only). */
+export function DailyHabitTracker({
+  readyMeditationTitle = null,
+  onPlayReadyMeditation = null,
+  goalStep = null,
+}: Props) {
+  const router = useRouter();
   const [status, setStatus] = useState<DailyStatus>(emptyStatus);
   const [dateLabel, setDateLabel] = useState("");
   const dateKey = localDateKey();
@@ -224,14 +155,14 @@ export function DailyHabitTracker() {
     };
   }, [dateKey]);
 
-  const doneCount = ITEMS.filter((item) => status[item.pillar]).length;
-  const todayComplete = doneCount === 3;
-  const todayPartial = doneCount >= 1;
+  const doneCount =
+    (status.gratitude ? 1 : 0) +
+    (status.meditation ? 1 : 0) +
+    (status.lifeArea ? 1 : 0);
 
   const toggle = (pillar: DailyHabitPillar) => {
     const next = !status[pillar];
     setLocalManualCheck(pillar, next, dateKey);
-    // Recompute streaks immediately so today counts as soon as a daily is done.
     setStatus(localStatusNow());
     if (isMedimadeSessionActive()) {
       void putDashboardDailyManualCheck({
@@ -254,84 +185,144 @@ export function DailyHabitTracker() {
     }
   };
 
-  const showStreaks = status.fullStreak > 0 || status.partialStreak > 0;
+  const streak = status.partialStreak;
+  const streakLine =
+    streak > 0
+      ? `${streak}-day streak · ${doneCount} of 3 done`
+      : `${doneCount} of 3 done`;
+
+  const lifeAreaName = goalStep
+    ? "Next step on your goal"
+    : "Make progress on a life area";
+  const lifeAreaHelp = goalStep
+    ? `${goalStep.stepTitle} · ${goalStep.goalTitle}`
+    : "Complete any goal or To Do in Manifest, or add a thought";
+
+  function openFocus() {
+    if (goalStep?.subtaskId) {
+      writeFocusSessionHandoff({ v: 1, subtaskId: goalStep.subtaskId });
+      writeFocusActiveIdeateSubtask(goalStep.subtaskId);
+      router.push(focusMyHrefFromIdeate());
+      return;
+    }
+    router.push("/focus/my");
+  }
+
+  const rows: {
+    pillar: DailyHabitPillar;
+    name: string;
+    help: string | null;
+    actionLabel: string;
+    onAction: () => void;
+    actionAsLink?: string;
+  }[] = [
+    {
+      pillar: "gratitude",
+      name: "Add a gratitude",
+      help: null,
+      actionLabel: "Add →",
+      onAction: () => {},
+      actionAsLink: "/journal/my/gratitudes?new=1",
+    },
+    {
+      pillar: "meditation",
+      name: "Do a meditation",
+      help: readyMeditationTitle
+        ? `Try: ${readyMeditationTitle}`
+        : "Listen to any meditation in your library — or create a new one",
+      actionLabel: readyMeditationTitle && onPlayReadyMeditation ? "Play →" : "Open →",
+      onAction: () => {
+        if (readyMeditationTitle && onPlayReadyMeditation) {
+          onPlayReadyMeditation();
+          return;
+        }
+        router.push("/meditate/library/creations");
+      },
+    },
+    {
+      pillar: "lifeArea",
+      name: lifeAreaName,
+      help: lifeAreaHelp,
+      actionLabel: "Focus →",
+      onAction: openFocus,
+    },
+  ];
 
   return (
-    <div
-      className="w-full border-y border-border"
-      style={{ borderTopWidth: 0.5, borderBottomWidth: 0.5 }}
+    <section
+      aria-label="Today"
+      className="flex h-full flex-col gap-1.5 rounded-[20px] border border-border bg-card p-6 sm:p-7"
     >
-      <div className="mx-auto flex max-w-6xl flex-col gap-5 px-6 py-5 sm:flex-row sm:items-start sm:gap-8">
-        {showStreaks ? (
-          <div className="flex w-full shrink-0 gap-6 sm:w-auto sm:gap-8">
-            <div className="min-w-0 flex-1 sm:w-[148px] sm:flex-none">
-              <StreakBlock
-                label="Full streak"
-                days={status.fullStreak}
-                help="Consecutive days you did all your dailies"
-                record={status.fullStreakRecord}
-                showDots
-                todayComplete={todayComplete}
-              />
-            </div>
-            <div className="min-w-0 flex-1 sm:w-[148px] sm:flex-none">
-              <StreakBlock
-                label="Partial streak"
-                days={status.partialStreak}
-                help="Consecutive days you did at least one of your dailies"
-                record={status.partialStreakRecord}
-                showDots
-                todayComplete={todayPartial}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {/* Today */}
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-            Today
-          </p>
-          <ul className="mt-2 space-y-3">
-            {ITEMS.map((item) => {
-              const checked = status[item.pillar];
-              return (
-                <li key={item.pillar} className="flex items-start gap-2.5">
-                  <span className="pt-0.5">
-                    <HabitCheckbox
-                      checked={checked}
-                      onToggle={() => toggle(item.pillar)}
-                      label={item.name}
-                    />
-                  </span>
-                  <span className="min-w-0">
-                    <span
-                      className={
-                        checked
-                          ? "block text-[13px] font-medium text-muted line-through"
-                          : "block text-[13px] font-medium text-foreground"
-                      }
-                    >
-                      {item.name}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] leading-[1.4] text-muted">
-                      {item.help}
-                    </span>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
-        {/* Date summary */}
-        <div className="shrink-0 text-left sm:w-[120px] sm:text-right">
-          <p className="text-[13px] text-muted">{dateLabel}</p>
-          <p className="mt-1 text-[12px] italic text-muted">
-            {doneCount} of 3 done
-          </p>
-        </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent-link">
+          Today · {dateLabel}
+        </p>
+        <p className="shrink-0 text-[14px] text-muted">
+          {streak > 0 ? (
+            <>
+              <span className="font-semibold text-foreground">{streak}-day streak</span>
+              {" · "}
+              {doneCount} of 3 done
+            </>
+          ) : (
+            streakLine
+          )}
+        </p>
       </div>
-    </div>
+
+      <ul className="mt-1 flex flex-col">
+        {rows.map((row, i) => {
+          const checked = status[row.pillar];
+          return (
+            <li
+              key={row.pillar}
+              className={`flex items-center justify-between gap-3 py-3.5 ${
+                i === 0 ? "" : "border-t border-border-subtle"
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <HabitCheckbox
+                  checked={checked}
+                  onToggle={() => toggle(row.pillar)}
+                  label={row.name}
+                />
+                <span className="min-w-0">
+                  <span
+                    className={`block text-[15px] ${
+                      checked
+                        ? "text-muted line-through"
+                        : "font-medium text-foreground"
+                    }`}
+                  >
+                    {row.name}
+                  </span>
+                  {row.help ? (
+                    <span className="mt-0.5 block truncate text-[13px] text-muted">
+                      {row.help}
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+              {row.actionAsLink ? (
+                <Link
+                  href={row.actionAsLink}
+                  className="shrink-0 text-[14px] font-semibold text-accent-link transition-opacity hover:opacity-80"
+                >
+                  {row.actionLabel}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={row.onAction}
+                  className="shrink-0 cursor-pointer text-[14px] font-semibold text-accent-link transition-opacity hover:opacity-80"
+                >
+                  {row.actionLabel}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

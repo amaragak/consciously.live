@@ -58,7 +58,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
     label: "Manifest",
     href: "/manifest/my",
     children: [
-      { id: "overview", label: "Overview", href: "/manifest/my" },
+      { id: "manifesto", label: "Manifesto", href: "/manifest/my" },
       { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
@@ -233,8 +233,8 @@ export function isSubItemActive(
       pathname.startsWith("/journal/my/insights/")
     );
   }
-  if (sectionId === "ideate" && sub.id === "overview") {
-    // Exact overview only — vision-board and goals are sibling routes.
+  if (sectionId === "ideate" && sub.id === "manifesto") {
+    // Exact manifesto home only — vision-board and goals are sibling routes.
     if (
       pathname.startsWith("/manifest/my/vision-board") ||
       pathname.startsWith("/manifest/goal/")
@@ -484,7 +484,7 @@ export function buildAppBreadcrumbs(
     if (pathname.startsWith("/manifest/my")) {
       return [
         { label: "Manifest", href: "/manifest/my" },
-        { label: "Overview", href: null },
+        { label: "Manifesto", href: null },
       ];
     }
     return [{ label: "Manifest", href: null }];

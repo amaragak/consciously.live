@@ -17,6 +17,15 @@ export const JOURNAL_MOOD_DOT: Record<JournalMoodId, string> = {
   heavy: "#A07080",
 };
 
+/** Soft solid fills for Insights Mon–Sun mood blocks (not theme tokens). */
+export const JOURNAL_MOOD_WEEK_CELL: Record<JournalMoodId, string> = {
+  calm: "#CFE0D5",
+  good: "#F6C99C",
+  mixed: "#EADCC6",
+  low: "#C9D1E0",
+  heavy: "#E0D0D6",
+};
+
 /** Soft pill fill/text used on reflect picker and legacy chips. */
 export const JOURNAL_MOOD_PILL: Record<
   JournalMoodId,

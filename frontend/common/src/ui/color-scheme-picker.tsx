@@ -92,7 +92,13 @@ export function ColorSchemePicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Appearance: ${current.label}`}
-        title={current.label}
+        title={
+          current.id === "hybrid"
+            ? "Hybrid — light UI with dark patterned surfaces"
+            : current.id === "v2"
+              ? "V2 — navy / ivory / gold palette"
+              : `Appearance: ${current.label}`
+        }
         onClick={() => setOpen((v) => !v)}
         className={triggerClass}
       >

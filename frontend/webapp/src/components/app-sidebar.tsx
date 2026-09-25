@@ -32,6 +32,44 @@ import {
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 
+function isAdminUnlocked(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("mm_admin_unlocked") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function AdminOnlyMarketingButton({
+  className,
+  onNavigate,
+  router,
+}: {
+  className?: string;
+  onNavigate?: () => void;
+  router: { push: (href: string) => void };
+}) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    setShow(isAdminUnlocked());
+  }, []);
+  if (!show) return null;
+  return (
+    <AlphaChromeButton
+      className={className}
+      title="Alpha — show marketing site without clearing session"
+      onClick={() => {
+        enterMarketingPreviewMode();
+        onNavigate?.();
+        router.push("/");
+      }}
+    >
+      View marketing page
+    </AlphaChromeButton>
+  );
+}
+
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -79,6 +117,7 @@ const SECTION_ICONS: Record<string, ReactNode> = {
 function NavSectionBlock({
   section,
   items,
+  lifeAreaItems,
   expanded,
   onToggle,
   pathname,
@@ -90,6 +129,8 @@ function NavSectionBlock({
   section: AppNavSection;
   /** Override static section.children when provided. */
   items?: AppNavSubItem[];
+  /** Manifest: user life areas under a muted subheading. */
+  lifeAreaItems?: AppNavSubItem[];
   expanded: boolean;
   onToggle: () => void;
   pathname: string;
@@ -100,9 +141,52 @@ function NavSectionBlock({
   emptyAction?: { href: string; label: string };
 }) {
   const subs = items ?? section.children ?? [];
-  const hasChildren = subs.length > 0 || Boolean(emptyAction);
+  const lifeAreas = lifeAreaItems ?? [];
+  const hasChildren =
+    subs.length > 0 || lifeAreas.length > 0 || Boolean(emptyAction);
   const sectionActive = activeNavSectionId(pathname) === section.id;
   const icon = SECTION_ICONS[section.id];
+
+  function renderSub(sub: AppNavSubItem) {
+    const active = isSubItemActive(
+      pathname,
+      hash,
+      search,
+      sub,
+      section.id,
+    );
+    return (
+      <li key={sub.id} className="flex items-center gap-0.5">
+        <Link
+          href={sub.href}
+          onClick={onNavigate}
+          aria-current={active ? "page" : undefined}
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-nav-active ${
+            active ? "font-medium text-accent-link" : "text-muted"
+          }`}
+        >
+          <span
+            className={`size-1 shrink-0 rounded-full ${
+              active ? "bg-accent" : "bg-muted/50"
+            }`}
+            aria-hidden
+          />
+          <span className="min-w-0 truncate">{sub.label}</span>
+        </Link>
+        {sub.actionHref ? (
+          <Link
+            href={sub.actionHref}
+            onClick={onNavigate}
+            aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
+            title={sub.actionAriaLabel ?? `New ${sub.label}`}
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-nav-active hover:text-accent-link"
+          >
+            +
+          </Link>
+        ) : null}
+      </li>
+    );
+  }
 
   return (
     <div className="px-2">
@@ -139,48 +223,15 @@ function NavSectionBlock({
       </div>
       {hasChildren && expanded ? (
         <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
-          {subs.map((sub) => {
-            const active = isSubItemActive(
-              pathname,
-              hash,
-              search,
-              sub,
-              section.id,
-            );
-            return (
-              <li key={sub.id} className="flex items-center gap-0.5">
-                <Link
-                  href={sub.href}
-                  onClick={onNavigate}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-nav-active ${
-                    active
-                      ? "font-medium text-accent-link"
-                      : "text-muted"
-                  }`}
-                >
-                  <span
-                    className={`size-1 shrink-0 rounded-full ${
-                      active ? "bg-accent" : "bg-muted/50"
-                    }`}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 truncate">{sub.label}</span>
-                </Link>
-                {sub.actionHref ? (
-                  <Link
-                    href={sub.actionHref}
-                    onClick={onNavigate}
-                    aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
-                    title={sub.actionAriaLabel ?? `New ${sub.label}`}
-                    className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-nav-active hover:text-accent-link"
-                  >
-                    +
-                  </Link>
-                ) : null}
-              </li>
-            );
-          })}
+          {subs.map(renderSub)}
+          {lifeAreas.length > 0 || emptyAction ? (
+            <li className="pt-1.5" aria-hidden={lifeAreas.length === 0}>
+              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                Your life areas
+              </p>
+            </li>
+          ) : null}
+          {lifeAreas.map(renderSub)}
           {emptyAction ? (
             <li>
               <Link
@@ -287,14 +338,15 @@ export function AppSidebar({
   const ideateChildren = useMemo((): AppNavSubItem[] => {
     const base =
       APP_NAV_MAIN.find((s) => s.id === "ideate")?.children?.slice() ?? [];
-    return [
-      ...base,
-      ...lifeAreas.map((d) => ({
-        id: `life-area:${d.id}`,
-        label: d.title,
-        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
-      })),
-    ];
+    return base;
+  }, []);
+
+  const ideateLifeAreaItems = useMemo((): AppNavSubItem[] => {
+    return lifeAreas.map((d) => ({
+      id: `life-area:${d.id}`,
+      label: d.title,
+      href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+    }));
   }, [lifeAreas]);
 
   const asideClass = useMemo(
@@ -324,7 +376,7 @@ export function AppSidebar({
       <aside className={asideClass} aria-label="App">
         {railCollapsed ? (
           <>
-            <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+            <nav className="app-sidebar-scroll flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
               {[...APP_NAV_MAIN, ...APP_NAV_ADMIN].map((section) => {
                 const sectionActive = activeNavSectionId(pathname) === section.id;
                 const icon = SECTION_ICONS[section.id];
@@ -382,13 +434,16 @@ export function AppSidebar({
           </>
         ) : (
           <>
-        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
+        <nav className="app-sidebar-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
           {APP_NAV_MAIN.map((section) => (
             <NavSectionBlock
               key={section.id}
               section={section}
               items={
                 section.id === "ideate" ? ideateChildren : section.children
+              }
+              lifeAreaItems={
+                section.id === "ideate" ? ideateLifeAreaItems : undefined
               }
               emptyAction={
                 section.id === "ideate" && lifeAreas.length === 0
@@ -447,17 +502,28 @@ export function AppSidebar({
             </button>
             <ColorSchemePicker variant="sidebar" menu="up" />
           </div>
-          <Link
-            href="/settings"
-            onClick={onNavigate}
-            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[15px] text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-            title={accountLabel}
-          >
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft/80 text-xs font-semibold text-accent-link">
-              {(accountLabel.trim()[0] || "G").toUpperCase()}
-            </span>
-            <span className="min-w-0 truncate">{accountLabel}</span>
-          </Link>
+          <div className="flex items-center gap-2 px-2.5 py-2">
+            <Link
+              href="/settings"
+              onClick={onNavigate}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-[15px] text-muted transition-colors hover:text-foreground"
+              title={accountLabel}
+            >
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft/80 text-xs font-semibold text-accent-link">
+                {(accountLabel.trim()[0] || "G").toUpperCase()}
+              </span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {accountLabel}
+              </span>
+            </Link>
+            <Link
+              href="/pricing"
+              onClick={onNavigate}
+              className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--accent-link)_35%,var(--border))] px-2.5 py-0.5 text-[12px] font-semibold text-accent-link transition-colors hover:bg-accent-soft/40"
+            >
+              Pro
+            </Link>
+          </div>
           <div className="mt-2 flex flex-col gap-1.5 px-1">
             <button
               type="button"
@@ -469,24 +535,11 @@ export function AppSidebar({
             >
               Sign out
             </button>
-            <Link
-              href="/pricing"
-              onClick={onNavigate}
-              className="rounded-lg border border-accent/70 bg-transparent px-2.5 py-1.5 text-sm font-medium text-accent-link transition-colors hover:bg-accent-soft/40"
-            >
-              Pro
-            </Link>
-            <AlphaChromeButton
+            <AdminOnlyMarketingButton
               className="mt-1 w-full justify-center md:hidden"
-              title="Alpha — show marketing site without clearing session"
-              onClick={() => {
-                enterMarketingPreviewMode();
-                onNavigate?.();
-                router.push("/");
-              }}
-            >
-              View marketing page
-            </AlphaChromeButton>
+              onNavigate={onNavigate}
+              router={router}
+            />
           </div>
         </div>
           </>

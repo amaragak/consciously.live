@@ -10,7 +10,26 @@ import {
   setMedimadeSession,
 } from "@/lib/medimade-api";
 import { decodeMedimadeJwtPayloadUnverified } from "@/lib/medimade-jwt-payload";
-import { safeAuthNext } from "@/lib/app-routes";
+import {
+  postAuthDestination,
+  rememberAuthNext,
+  safeAuthNext,
+} from "@/lib/app-routes";
+import { navigateAuthDestination } from "@/lib/spa-handoff";
+
+async function goPostAuth(
+  router: ReturnType<typeof useRouter>,
+  next: string,
+): Promise<void> {
+  rememberAuthNext(next);
+  const dest = postAuthDestination(next);
+  if (/^https?:\/\//i.test(dest)) {
+    const ok = await navigateAuthDestination(dest);
+    if (!ok) router.replace("/");
+    return;
+  }
+  router.replace(dest);
+}
 
 function CompleteProfileInner() {
   const router = useRouter();
@@ -29,7 +48,7 @@ function CompleteProfileInner() {
     const payload = decodeMedimadeJwtPayloadUnverified(jwt);
     if (payload?.name?.trim()) {
       setMedimadeSession(jwt, getMedimadeSessionEmail(), payload.name.trim());
-      router.replace(next);
+      void goPostAuth(router, next);
       return;
     }
     setPhase("form");
@@ -47,7 +66,7 @@ function CompleteProfileInner() {
       const { token, displayName } = await saveMedimadeProfileDisplayName(trimmed);
       const email = getMedimadeSessionEmail();
       setMedimadeSession(token, email, displayName);
-      router.replace(next);
+      await goPostAuth(router, next);
     } catch (e) {
       setPhase("form");
       setMessage(e instanceof Error ? e.message : "Could not save your name");

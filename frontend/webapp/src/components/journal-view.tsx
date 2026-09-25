@@ -21,6 +21,7 @@ import { SearchInput } from "@/components/search-input";
 import { Calendar, Folder } from "lucide-react";
 import { JournalLockGate } from "@/components/journal-lock-gate";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -1432,6 +1433,8 @@ export function JournalView() {
 
   const journalComposeChrome =
     (journalTab === "journal" || journalTab === "gratitude") && !insightsOpen;
+  /** Insights: flush rail + content like journal compose (no centred page padding). */
+  const journalFlushChrome = journalComposeChrome || insightsOpen;
 
     return (
     <JournalLockGate>
@@ -1445,7 +1448,7 @@ export function JournalView() {
           ? "journal-mobile-paisley-bg"
           : ""
       } ${
-        journalComposeChrome
+        journalFlushChrome
           ? "relative z-[1] max-w-6xl border-r-[0.5px] border-border px-0 pb-0 pt-0"
           : "mx-auto max-w-6xl px-4 pb-6 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
       }`}
@@ -1456,13 +1459,26 @@ export function JournalView() {
         } ${mobileComposeChrome ? "max-sm:hidden" : ""} ${
           importBatchId
             ? "mb-3"
-            : journalComposeChrome
+            : journalFlushChrome
               ? "mb-0"
               : "mb-3 md:mb-0"
         }`}
       >
-        {/* SPA shell has no top-bar tab slot; keep section tabs in-page at all breakpoints. */}
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 py-1.5">
+        {/* Desktop: section tabs in the top-bar centre (same as Library). */}
+        <AppPrimaryTabsDesktop>
+          <SegmentedPillTabs
+            aria-label="Journal section"
+            value={section}
+            onChange={(id) => {
+              flushSaveSync();
+              navigate(JOURNAL_SECTION_HREF[id]);
+            }}
+            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
+            options={JOURNAL_SECTION_TABS}
+          />
+        </AppPrimaryTabsDesktop>
+        {/* Mobile: keep tabs in-page. */}
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 py-1.5 md:hidden">
           <SegmentedPillTabs
             className="min-w-0 flex-1 shadow-md"
             equalWidth
@@ -1472,6 +1488,7 @@ export function JournalView() {
               flushSaveSync();
               navigate(JOURNAL_SECTION_HREF[id]);
             }}
+            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
             options={JOURNAL_SECTION_TABS}
           />
         </div>
@@ -1493,7 +1510,7 @@ export function JournalView() {
         <div
           className={
             insightsOpen
-              ? "flex min-h-0 flex-1 flex-col"
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
               : "hidden"
           }
           aria-hidden={!insightsOpen}
@@ -1513,17 +1530,6 @@ export function JournalView() {
           <aside
             className="relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-1.5 py-3 md:flex"
           >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
-              style={{
-                backgroundImage:
-                  'url("/patterns/hero/adobestock-2162625652.webp")',
-                backgroundRepeat: "repeat",
-                backgroundSize: "220px auto",
-                backgroundPosition: "center top",
-              }}
-            />
             <button
               type="button"
               onClick={toggleSidebarCollapsed}
@@ -1555,19 +1561,6 @@ export function JournalView() {
                 }`
           }`}
         >
-          {journalTab === "journal" || journalTab === "gratitude" ? (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 z-0 opacity-[0.15]"
-              style={{
-                backgroundImage:
-                  'url("/patterns/hero/adobestock-2162625652.webp")',
-                backgroundRepeat: "repeat",
-                backgroundSize: "220px auto",
-                backgroundPosition: "center top",
-              }}
-            />
-          ) : null}
           {journalTab === "journal" ? (
             <div className="relative z-[1] flex flex-col gap-2">
               <div className="hidden items-center gap-2 sm:flex">
@@ -2018,7 +2011,7 @@ export function JournalView() {
                                 {entryPreview(e)}
                               </span>
                               <div
-                                className={`mt-2 flex items-center justify-between gap-2 border-t pt-2 text-[10px] leading-snug ${isActive ? "border-border-subtle" : "border-border"} ${metaMuted}`}
+                                className={`mt-2 flex items-center justify-between gap-2 border-t-[0.5px] border-border-subtle pt-2 text-[10px] leading-snug ${metaMuted}`}
                               >
                                 <span>
                                   Created{" "}
@@ -2057,7 +2050,7 @@ export function JournalView() {
                               {entryPreview(e)}
                             </span>
                             <div
-                              className={`mt-2 border-t pt-2 text-[10px] leading-snug ${isActive ? "border-border-subtle" : "border-border"} ${metaMuted}`}
+                              className={`mt-2 border-t-[0.5px] border-border-subtle pt-2 text-[10px] leading-snug ${metaMuted}`}
                             >
                               Created{" "}
                               <time dateTime={e.createdAt}>
@@ -2090,7 +2083,7 @@ export function JournalView() {
           }`}
         >
           {jumpDate && filteredTabEntries.length === 0 ? (
-            <div className="flex min-h-[12rem] flex-1 items-center bg-background p-6">
+            <div className="flex min-h-[12rem] flex-1 items-center bg-[color:var(--journal-warm-bg)] p-6">
               <p className="text-sm text-muted">No entry on this day.</p>
             </div>
           ) : showGratitudeEditor && activeEntry ? (
@@ -2211,7 +2204,7 @@ export function JournalView() {
               </JournalRichEditor>
             </>
           ) : (
-            <div className="min-h-[12rem] flex-1 bg-background" />
+            <div className="min-h-[12rem] flex-1 bg-[color:var(--journal-warm-bg)]" />
           )}
         </section>
       </div>

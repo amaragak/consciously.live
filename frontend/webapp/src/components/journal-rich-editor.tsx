@@ -292,7 +292,7 @@ export function JournalRichEditor({
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
       {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter. */}
-      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)]">
         <div className="flex shrink-0 flex-col border-b border-border">
           <div className="flex items-start gap-2 px-7 pb-3 pt-3">
             <div className="min-w-0 flex-1">

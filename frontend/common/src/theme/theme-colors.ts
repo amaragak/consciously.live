@@ -50,8 +50,8 @@ export const INFO = "#0284c7";
 
 const NAV = "#33465C";
 // const NAV = "#6E88A3";
-/** Light app canvas + header base — midway between #FAF8F3 and #FCFBF8. */
-const APP_CANVAS_LIGHT = "#FBFAF6";
+/** Light app canvas + header — dashboard cream. */
+const APP_CANVAS_LIGHT = "#FAF6F0";
 /** Light-mode header base — matches app canvas. */
 const NAV_LIGHT = APP_CANVAS_LIGHT;
 const NAV_FOREGROUND = WHITE;
@@ -77,8 +77,8 @@ const PAPER_LIGHT = {
   muted: "#7A7566",
   faint: "#A39C8C",
   card: "#FFFFFF",
-  border: "#E5E0D2",
-  borderSubtle: "#EEE9DB",
+  border: "#EADFCF",
+  borderSubtle: "#F0E7DA",
   deep: "#1E2530",
   surface: WHITE,
 } as const;
@@ -125,8 +125,10 @@ const PAPER_DARK = {
  * Secondary raised surface (sidebar, questions grid cells) — warmer/deeper than
  * canvas in light; slate panel in dark. Independent of `--card` / card-warm.
  */
-const SURFACE_2_LIGHT = "#f1ebe0";
+const SURFACE_2_LIGHT = "#F4EEE5";
 const SURFACE_2_DARK = "#243041";
+/** List rails (journal / chat) — between header canvas and main sidebar. */
+const SURFACE_RAIL_LIGHT = "#F8F3EC";
 /** Cool panel for hybrid sidebar (`bg-surface-2`). */
 const SURFACE_2_HYBRID = "#ecf0ec";
 /** Slightly deeper hybrid edge — card hover / selected ring. */
@@ -424,7 +426,10 @@ function assemble(
     surface2Edge: dark
       ? mixHex(SURFACE_2_DARK, WHITE, 0.18)
       : mixHex(SURFACE_2_LIGHT, "#1E2530", 0.14),
-    surfaceRail: mixHex(surface2, headerCanvas, 0.5),
+    /** Midpoint of sidebar + header/canvas (light uses the designed cream). */
+    surfaceRail: dark
+      ? mixHex(SURFACE_2_DARK, paper.background, 0.5)
+      : SURFACE_RAIL_LIGHT,
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
     nav: dark ? NAV : NAV_LIGHT,
@@ -496,7 +501,7 @@ function assemble(
     marketingMenuBorder: dark ? "rgba(255,255,255,0.15)" : "#D8D2C4",
     marketingMenuHover: dark ? "rgba(255,255,255,0.1)" : "#F4F0E8",
     marketingMenuMuted: dark ? "#C8C0B2" : "#5A5548",
-    journalWarmBg: dark ? "#2A261F" : warmCreamBg,
+    journalWarmBg: dark ? "#2A261F" : "#FFFDF9",
     journalWarmBorder: dark ? "#5A4F3A" : warmCreamBorder,
     journalWarmInputBg: dark ? "#1C1914" : "#FFFFFF",
     // Create warm cards: light = cream; dark = former dark:bg-surface-2 / border.

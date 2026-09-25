@@ -41,6 +41,14 @@ type JournalEntry = {
   updatedAt: string;
   title: string;
   contentHtml: string;
+  mood?: string;
+};
+
+type WeeklyEmotionScore = {
+  name: string;
+  score: number;
+  /** Short verbatim snippets from journal/chats that support this score. */
+  examples?: string[];
 };
 
 type WeeklyReflection = {
@@ -49,6 +57,12 @@ type WeeklyReflection = {
   weekStart: string;
   weekEnd: string;
   letterMarkdown: string;
+  /** First sentence preview for the letters list; derived from letterMarkdown. */
+  preview?: string;
+  /** 3–5 emotions scored 0–10 from the week's writing; omit if unavailable. */
+  emotions?: WeeklyEmotionScore[];
+  /** One-line plain-English mood summary for the week; omit if unavailable. */
+  moodSummary?: string;
   meta: {
     generatedAt: string;
     model: string;
@@ -208,7 +222,11 @@ function journalItemsToWeekEntries(
     if (!inRange(updatedAt, weekStart, weekEnd) && !inRange(createdAt, weekStart, weekEnd)) {
       continue;
     }
-    out.push({ id, createdAt, updatedAt, title, contentHtml });
+    const mood =
+      typeof item.mood === "string" && item.mood.trim()
+        ? item.mood.trim().slice(0, 32)
+        : undefined;
+    out.push({ id, createdAt, updatedAt, title, contentHtml, ...(mood ? { mood } : {}) });
   }
   out.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
   return out;
@@ -446,6 +464,8 @@ function formatJournalForPrompt(entries: JournalEntry[]): string {
     .map((e) => {
       const title = e.title.trim() || "Untitled";
       const body = stripHtmlToText(e.contentHtml) || "(empty)";
+      // Mood chips are listed separately — do not put them here so emotion
+      // scores are read from the writing, not from the tags.
       return [
         `Entry · ${title}`,
         `Updated: ${e.updatedAt}`,
@@ -453,6 +473,87 @@ function formatJournalForPrompt(entries: JournalEntry[]): string {
       ].join("\n");
     })
     .join("\n\n---\n\n");
+}
+
+function formatMoodTagsForPrompt(entries: JournalEntry[]): string {
+  const lines: string[] = [];
+  for (const e of entries) {
+    const mood = e.mood?.trim();
+    if (!mood) continue;
+    const title = e.title.trim() || "Untitled";
+    const when = e.updatedAt || e.createdAt;
+    lines.push(`- ${when.slice(0, 10)} · ${title}: ${mood}`);
+  }
+  if (!lines.length) return "(No mood tags this week.)";
+  return lines.join("\n");
+}
+
+/** First readable sentence for sidebar preview (skips salutation). */
+function letterPreviewFromMarkdown(letterMarkdown: string): string {
+  const plain = letterMarkdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#>*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return "";
+  const withoutGreeting = plain.replace(/^Dear\s+[^,]+,\s*/i, "").trim();
+  const source = withoutGreeting || plain;
+  const sentence = source.match(/^(.{12,140}?[.!?])(?:\s|$)/);
+  const clipped = (sentence?.[1] ?? source).trim().slice(0, 140);
+  return clipped;
+}
+
+function parseEmotionExamples(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const t = item.trim().replace(/\s+/g, " ");
+    if (t.length < 8 || t.length > 220) continue;
+    out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseEmotions(raw: unknown): WeeklyEmotionScore[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: WeeklyEmotionScore[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const name =
+      typeof (row as { name?: unknown }).name === "string"
+        ? (row as { name: string }).name.trim()
+        : "";
+    const scoreRaw = (row as { score?: unknown }).score;
+    const score =
+      typeof scoreRaw === "number"
+        ? scoreRaw
+        : typeof scoreRaw === "string"
+          ? Number(scoreRaw)
+          : NaN;
+    if (!name || name.length > 40) continue;
+    if (!Number.isFinite(score)) continue;
+    const clamped = Math.max(0, Math.min(10, Math.round(score)));
+    const examples = parseEmotionExamples(
+      (row as { examples?: unknown }).examples,
+    );
+    out.push({
+      name,
+      score: clamped,
+      ...(examples ? { examples } : {}),
+    });
+  }
+  if (out.length < 1) return undefined;
+  out.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return out.slice(0, 5);
+}
+
+function parseMoodSummary(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim().replace(/\s+/g, " ");
+  if (t.length < 8 || t.length > 220) return undefined;
+  return t;
 }
 
 function formatChatsForPrompt(chats: MeditationChatSource[]): string {
@@ -470,11 +571,22 @@ function buildSystemPrompt(): string {
     "Tone: like a thoughtful friend who has been listening all week — honest but kind, unhurried, slightly poetic when natural.",
     "Weave together what showed up in their journal entries and what they explored while creating meditations.",
     "Name specific themes, feelings, or moments when the material supports it; do not invent facts.",
+    "TIME & DURATION (critical): If they mention how long something has been going on (e.g. 'one and a half months at the coworking space'), treat that as ongoing context — NOT as a completed chapter, trial that ended, or decision already behind them — unless they explicitly say it ended, they left, or they decided.",
+    "Never invent closure, endings, 'you've given it a real try and now…', deadlines passing, or that a period is 'up'. Do not escalate duration into a verdict.",
     "If the week was quiet or sparse, say so gently and still offer a short, honest letter.",
     "Do not diagnose. Do not give medical advice. Do not moralize.",
     "Length: roughly 3–8 short paragraphs (about 250–500 words).",
-    "You may use a simple salutation (e.g. 'Dear friend,' or their name if provided) and a soft sign-off.",
-    "Output ONLY the letter body in markdown (paragraphs; optional one short italic line). No JSON.",
+    "You may use a simple salutation (e.g. 'Dear friend,' or their name if provided) and a soft sign-off ending like 'With you, · consciously'.",
+    "EMOTIONS (required): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions that came through in what they wrote (e.g. Hope, Self-doubt, Gratitude). Score each 0–10 for how strongly it showed up; sort high to low.",
+    "For each emotion include 1–3 short examples: nearly verbatim snippets from their writing (journal or chats) that support that score. Keep each example one short phrase or sentence; do not invent quotes.",
+    "Optionally one plain-English moodSummary line for the Mood strip (may use mood tags + writing).",
+    "OUTPUT FORMAT (exact — no JSON wrapper, no markdown fences around the whole reply):",
+    "Line 1: <<<EMOTIONS>>>",
+    "Line 2: a JSON array only, e.g. [{\"name\":\"Hope\",\"score\":8,\"examples\":[\"I felt lighter after the walk\"]},{\"name\":\"Self-doubt\",\"score\":6,\"examples\":[\"not sure I belong here yet\"]}]",
+    "Line 3: <<<MOOD_SUMMARY>>>",
+    "Line 4: one summary sentence, or the word NONE",
+    "Line 5: <<<LETTER>>>",
+    "Then the full letter body in markdown (paragraphs).",
   ].join(" ");
 }
 
@@ -483,6 +595,7 @@ function buildUserPrompt(params: {
   displayName?: string;
   journalText: string;
   chatText: string;
+  moodTagsText: string;
 }): string {
   return [
     `WEEK: ${params.weekLabel}`,
@@ -490,13 +603,16 @@ function buildUserPrompt(params: {
       ? `Reader's name (optional salutation): ${params.displayName.trim()}`
       : "",
     "",
-    "JOURNAL ENTRIES THIS WEEK:",
+    "JOURNAL ENTRIES THIS WEEK (source for the letter and emotion scores):",
     params.journalText,
     "",
-    "MEDITATION CREATE CHATS THIS WEEK:",
+    "MEDITATION CREATE CHATS THIS WEEK (also for the letter and emotion scores):",
     params.chatText,
     "",
-    "Write the end-of-week letter now.",
+    "MOOD TAGS THIS WEEK (optional chips only — use for moodSummary if helpful; do NOT use as the source for emotion scores):",
+    params.moodTagsText,
+    "",
+    "Write the reply now in the exact <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<LETTER>>> format.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -539,11 +655,174 @@ function extractJsonObjectFromText(text: string): string | null {
   return null;
 }
 
+function extractJsonArrayFromText(text: string): string | null {
+  const start = text.indexOf("[");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "[") depth += 1;
+    if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1).trim();
+      if (depth < 0) return null;
+    }
+  }
+  return null;
+}
+
+/** Prefer delimiter format; fall back to JSON / salvage emotions from a messy blob. */
+function parseLetterModelOutput(outText: string): {
+  letterMarkdown: string;
+  emotions?: WeeklyEmotionScore[];
+  moodSummary?: string;
+} {
+  const delim = outText.match(
+    /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
+  );
+  if (delim) {
+    const emotionsRaw = extractJsonArrayFromText(delim[1] ?? "") ?? delim[1]?.trim();
+    let emotions: WeeklyEmotionScore[] | undefined;
+    if (emotionsRaw) {
+      try {
+        emotions = parseEmotions(JSON.parse(emotionsRaw));
+      } catch {
+        emotions = parseEmotions(emotionsRaw);
+      }
+    }
+    const moodLine = (delim[2] ?? "").trim();
+    const moodSummary =
+      !moodLine || /^none$/i.test(moodLine)
+        ? undefined
+        : parseMoodSummary(moodLine);
+    const letterMarkdown = (delim[3] ?? "").trim();
+    if (letterMarkdown) {
+      return { letterMarkdown, emotions, moodSummary };
+    }
+  }
+
+  const jsonObj = extractJsonObjectFromText(outText);
+  if (jsonObj) {
+    try {
+      const parsed = JSON.parse(jsonObj) as {
+        letterMarkdown?: unknown;
+        emotions?: unknown;
+        moodSummary?: unknown;
+      };
+      if (typeof parsed.letterMarkdown === "string" && parsed.letterMarkdown.trim()) {
+        return {
+          letterMarkdown: parsed.letterMarkdown.trim(),
+          emotions: parseEmotions(parsed.emotions),
+          moodSummary: parseMoodSummary(parsed.moodSummary),
+        };
+      }
+    } catch {
+      /* salvage below */
+    }
+    // Unescaped newlines inside letterMarkdown often break JSON.parse — salvage emotions.
+    const emotionsMatch = jsonObj.match(/"emotions"\s*:\s*(\[[\s\S]*?\])/);
+    const moodMatch = jsonObj.match(/"moodSummary"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    const letterMatch = jsonObj.match(
+      /"letterMarkdown"\s*:\s*"((?:\\.|[^"\\])*)"/,
+    );
+    let emotions: WeeklyEmotionScore[] | undefined;
+    if (emotionsMatch?.[1]) {
+      try {
+        emotions = parseEmotions(JSON.parse(emotionsMatch[1]));
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!emotions) {
+      const arr = extractJsonArrayFromText(jsonObj);
+      if (arr) {
+        try {
+          emotions = parseEmotions(JSON.parse(arr));
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    let letterMarkdown = "";
+    if (letterMatch?.[1]) {
+      try {
+        letterMarkdown = JSON.parse(`"${letterMatch[1]}"`) as string;
+      } catch {
+        letterMarkdown = letterMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+      }
+    }
+    if (!letterMarkdown.trim()) {
+      // Last resort: strip JSON-ish prefix and keep remaining prose.
+      letterMarkdown = outText
+        .replace(/^[\s\S]*?"letterMarkdown"\s*:\s*"/, "")
+        .replace(/"\s*,\s*"(emotions|moodSummary)"[\s\S]*$/, "")
+        .replace(/\\n/g, "\n")
+        .replace(/\\"/g, '"')
+        .trim();
+    }
+    if (letterMarkdown.trim()) {
+      return {
+        letterMarkdown: letterMarkdown.trim(),
+        emotions,
+        moodSummary: moodMatch?.[1]
+          ? parseMoodSummary(moodMatch[1].replace(/\\"/g, '"'))
+          : undefined,
+      };
+    }
+  }
+
+  // Emotions array alone somewhere in the blob + letter as the rest.
+  const arr = extractJsonArrayFromText(outText);
+  let emotions: WeeklyEmotionScore[] | undefined;
+  if (arr) {
+    try {
+      emotions = parseEmotions(JSON.parse(arr));
+    } catch {
+      /* ignore */
+    }
+  }
+  let letterMarkdown = outText;
+  if (arr) letterMarkdown = outText.replace(arr, "").trim();
+  letterMarkdown = letterMarkdown
+    .replace(/<<<EMOTIONS>>>/gi, "")
+    .replace(/<<<MOOD_SUMMARY>>>/gi, "")
+    .replace(/<<<LETTER>>>/gi, "")
+    .replace(/^\{[\s\S]*$/, "")
+    .trim();
+  return {
+    letterMarkdown: letterMarkdown || outText,
+    emotions,
+  };
+}
+
 async function callClaudeForLetter(params: {
   apiKey: string;
   system: string;
   user: string;
-}): Promise<{ letterMarkdown: string; usage: { input_tokens: number; output_tokens: number } | null }> {
+}): Promise<{
+  letterMarkdown: string;
+  emotions?: WeeklyEmotionScore[];
+  moodSummary?: string;
+  usage: { input_tokens: number; output_tokens: number } | null;
+}> {
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: {
@@ -553,7 +832,7 @@ async function callClaudeForLetter(params: {
     },
     body: JSON.stringify({
       model: CLAUDE_HAIKU_45_MODEL_ID,
-      max_tokens: 1200,
+      max_tokens: 2200,
       temperature: 0.55,
       system: params.system,
       messages: [{ role: "user", content: params.user }],
@@ -571,18 +850,11 @@ async function callClaudeForLetter(params: {
       : undefined;
     const outText = typeof block?.text === "string" ? block.text.trim() : "";
     if (!outText) throw new Error("Empty Claude response");
-    const jsonObj = extractJsonObjectFromText(outText);
-    if (jsonObj) {
-      try {
-        const parsed = JSON.parse(jsonObj) as { letterMarkdown?: unknown };
-        if (typeof parsed.letterMarkdown === "string" && parsed.letterMarkdown.trim()) {
-          return { letterMarkdown: parsed.letterMarkdown.trim(), usage };
-        }
-      } catch {
-        /* fall through to plain text */
-      }
+    const parsed = parseLetterModelOutput(outText);
+    if (!parsed.letterMarkdown.trim()) {
+      throw new Error("Empty letter in model response");
     }
-    return { letterMarkdown: outText, usage };
+    return { ...parsed, usage };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid Anthropic JSON";
     throw new Error(msg);
@@ -608,12 +880,21 @@ async function loadWeeklyReflection(
   const weekEnd = safeIso(item.weekEnd);
   const generatedAt = safeIso(item.generatedAt);
   if (!letterMarkdown.trim() || !weekStart || !weekEnd || !generatedAt) return null;
+  const previewStored =
+    typeof item.preview === "string" && item.preview.trim()
+      ? item.preview.trim()
+      : letterPreviewFromMarkdown(letterMarkdown);
+  const emotions = parseEmotions(item.emotions);
+  const moodSummary = parseMoodSummary(item.moodSummary);
   return {
     ownerId,
     weekKey,
     weekStart,
     weekEnd,
     letterMarkdown,
+    ...(previewStored ? { preview: previewStored } : {}),
+    ...(emotions ? { emotions } : {}),
+    ...(moodSummary ? { moodSummary } : {}),
     meta: {
       generatedAt,
       model:
@@ -638,6 +919,7 @@ type WeeklyLetterSummary = {
   weekStart: string;
   weekEnd: string;
   generatedAt: string;
+  preview?: string;
 };
 
 async function listWeeklyReflections(
@@ -674,7 +956,17 @@ async function listWeeklyReflections(
       const weekEnd = safeIso(item.weekEnd);
       const generatedAt = safeIso(item.generatedAt);
       if (!weekKey || !weekStart || !weekEnd || !generatedAt) continue;
-      out.push({ weekKey, weekStart, weekEnd, generatedAt });
+      const preview =
+        typeof item.preview === "string" && item.preview.trim()
+          ? item.preview.trim()
+          : letterPreviewFromMarkdown(letterMarkdown);
+      out.push({
+        weekKey,
+        weekStart,
+        weekEnd,
+        generatedAt,
+        ...(preview ? { preview } : {}),
+      });
     }
     startKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey);
@@ -696,6 +988,9 @@ async function saveWeeklyReflection(params: {
         weekStart: params.reflection.weekStart,
         weekEnd: params.reflection.weekEnd,
         letterMarkdown: params.reflection.letterMarkdown,
+        preview: params.reflection.preview,
+        emotions: params.reflection.emotions,
+        moodSummary: params.reflection.moodSummary,
         generatedAt: params.reflection.meta.generatedAt,
         model: params.reflection.meta.model,
         journalEntryCount: params.reflection.meta.journalEntryCount,
@@ -870,7 +1165,7 @@ export async function handler(
     }
 
     const apiKey = await getClaudeApiKey();
-    const { letterMarkdown, usage } = await callClaudeForLetter({
+    const { letterMarkdown, emotions, moodSummary, usage } = await callClaudeForLetter({
       apiKey,
       system: buildSystemPrompt(),
       user: buildUserPrompt({
@@ -878,9 +1173,11 @@ export async function handler(
         displayName: user?.name,
         journalText: formatJournalForPrompt(entries),
         chatText: formatChatsForPrompt(chats),
+        moodTagsText: formatMoodTagsForPrompt(entries),
       }),
     });
 
+    const preview = letterPreviewFromMarkdown(letterMarkdown);
     const now = new Date().toISOString();
     const reflection: WeeklyReflection = {
       ownerId,
@@ -888,6 +1185,9 @@ export async function handler(
       weekStart: bounds.weekStart,
       weekEnd: bounds.weekEnd,
       letterMarkdown,
+      ...(preview ? { preview } : {}),
+      ...(emotions ? { emotions } : {}),
+      ...(moodSummary ? { moodSummary } : {}),
       meta: {
         generatedAt: now,
         model: CLAUDE_HAIKU_45_MODEL_ID,

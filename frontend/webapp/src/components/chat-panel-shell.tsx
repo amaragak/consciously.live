@@ -68,11 +68,7 @@ export function ChatPanelShell({
 }) {
   return (
     <div
-      className={`relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl overflow-hidden border-r-[0.5px] border-border ${
-        classic
-          ? "bg-[color:var(--card-warm-bg)] hybrid:bg-[color:var(--chat-panel-bg)]"
-          : "bg-[color:var(--chat-panel-bg)]"
-      } ${className}`.trim()}
+      className={`relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl overflow-hidden border-r-[0.5px] border-border bg-[color:var(--chat-panel-bg)] ${className}`.trim()}
     >
       <ChatPanelPatternTile classic={classic} />
       {children}

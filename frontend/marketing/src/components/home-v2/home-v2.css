@@ -54,6 +54,12 @@
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.22);
   --hv2-hero-glass-blur: 16px;
+  /* Full-page fields (Read, etc.) — default to hero surface. */
+  --hv2-field-bg: var(--hv2-hero-bg);
+  --hv2-field-pattern: var(--hv2-hero-pattern);
+  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
+  --hv2-field-pattern-mask: var(--hv2-hero-pattern-mask);
 }
 
 /*
@@ -114,14 +120,20 @@
   --hv2-hero-menu-bg: var(--marketing-card-bg);
   --hv2-hero-elev: var(--marketing-card-shadow);
   --hv2-hero-glass-blur: 0px;
+  --hv2-field-bg: var(--hv2-hero-bg);
+  --hv2-field-pattern: var(--hv2-hero-pattern);
+  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
+  --hv2-field-pattern-mask: var(--hv2-hero-pattern-mask);
 }
 
 /*
- * Hybrid: same light page + gold-peach accents as light mode, with the navy
- * duotone paisley hero (full tile, no fade mask — matches classic hybrid).
+ * Hybrid: light page + gold-peach accents; navy duotone paisley on the homepage
+ * hero only. Sticky header + full-page fields (Read) share dark-mode navy chrome
+ * so they don't clash with the near-black hero tile.
  */
 :root.hybrid .home-v2 {
-  --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 */
+  --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 — light page CTAs */
   --hv2-gold-rgb: 250 202 152;
   --hv2-tan-text: var(--accent-link);
   --hv2-on-gold: var(--on-accent);
@@ -139,11 +151,13 @@
   --hv2-band-d: var(--marketing-band-d);
   --hv2-band-ideate: var(--marketing-band-ideate);
   --hv2-sand: var(--marketing-band-a);
+  /* Homepage hero — near-black duotone (unchanged). */
   --hv2-hero-bg: #1a1820;
   --hv2-hero-pattern: url("/patterns/paisley-dark-duotone.webp");
   --hv2-hero-pattern-opacity: 0.88;
   --hv2-hero-pattern-size: 640px 640px;
   --hv2-hero-pattern-mask: none;
+  /* Sticky / field chrome — match dark mode navy (not the hero black). */
   --hv2-sticky-bg: var(--hv2-navy);
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
@@ -162,6 +176,22 @@
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
+  /* Read / field pages — same tonal navy as dark, not hybrid hero black. */
+  --hv2-field-bg: #1a2330;
+  --hv2-field-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
+  --hv2-field-pattern-opacity: 0.18;
+  --hv2-field-pattern-size: 800px 800px;
+  --hv2-field-pattern-mask: none;
+}
+
+/**
+ * Sticky / site header on hybrid: copper gold like dark mode (page CTAs keep peach).
+ */
+:root.hybrid .home-v2-site-header {
+  --hv2-gold: #cc9871;
+  --hv2-gold-rgb: 204 152 113;
+  --hv2-on-gold: var(--hv2-navy);
+  --hv2-tan-text: #cc9871;
 }
 
 /*
@@ -210,6 +240,11 @@
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
+  --hv2-field-bg: #1a2330;
+  --hv2-field-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
+  --hv2-field-pattern-opacity: 0.18;
+  --hv2-field-pattern-size: 800px 800px;
+  --hv2-field-pattern-mask: none;
 }
 
 .home-v2 {
@@ -318,11 +353,11 @@
   }
 }
 
-/* Full-page paisley field (Read, etc.) — same tile as hero, grows with content. */
+/* Full-page paisley field (Read, etc.) — same tile family as hero, grows with content. */
 .home-v2-field {
   position: relative;
   isolation: isolate;
-  background-color: var(--hv2-hero-bg);
+  background-color: var(--hv2-field-bg);
   color: var(--hv2-hero-fg);
 }
 
@@ -332,12 +367,12 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: var(--hv2-hero-pattern-opacity);
-  background-image: var(--hv2-hero-pattern);
+  opacity: var(--hv2-field-pattern-opacity);
+  background-image: var(--hv2-field-pattern);
   background-repeat: repeat;
-  background-size: var(--hv2-hero-pattern-size);
-  -webkit-mask-image: var(--hv2-hero-pattern-mask);
-  mask-image: var(--hv2-hero-pattern-mask);
+  background-size: var(--hv2-field-pattern-size);
+  -webkit-mask-image: var(--hv2-field-pattern-mask);
+  mask-image: var(--hv2-field-pattern-mask);
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-size: 100% 100%;

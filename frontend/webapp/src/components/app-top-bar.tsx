@@ -28,6 +28,18 @@ import {
   readCreateSession,
 } from "@/lib/create-session-storage";
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
+
+function useAdminUnlocked(): boolean {
+  const [unlocked, setUnlocked] = useState(false);
+  useEffect(() => {
+    try {
+      setUnlocked(window.localStorage.getItem("mm_admin_unlocked") === "1");
+    } catch {
+      setUnlocked(false);
+    }
+  }, []);
+  return unlocked;
+}
 import {
   deriveEntryTitle,
   formatJournalEntryDate,
@@ -337,6 +349,7 @@ export function AppTopBar({
 }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
+  const adminUnlocked = useAdminUnlocked();
   const [crumbs, setCrumbs] = useState<AppBreadcrumbCrumb[]>([]);
 
   useLayoutEffect(() => {
@@ -491,15 +504,17 @@ export function AppTopBar({
               Open app
             </AlphaChromeButton>
           ) : null}
-          <AlphaChromeButton
-            title="Alpha — show marketing site without clearing session"
-            onClick={() => {
-              enterMarketingPreviewMode();
-              router.push("/");
-            }}
-          >
-            View marketing page
-          </AlphaChromeButton>
+          {adminUnlocked ? (
+            <AlphaChromeButton
+              title="Alpha — show marketing site without clearing session"
+              onClick={() => {
+                enterMarketingPreviewMode();
+                router.push("/");
+              }}
+            >
+              View marketing page
+            </AlphaChromeButton>
+          ) : null}
         </div>
         <div className="flex items-center gap-0.5 md:gap-2">
           <AppGlobalSearch />

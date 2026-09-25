@@ -40,7 +40,7 @@ export function JournalGratitudeEditor({
   const showFooter = Boolean(children || footerNote || onDelete);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background max-sm:flex-none">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)] max-sm:flex-none">
       <div className="relative z-10 shrink-0 border-b border-border px-7 pb-3 pt-3">
         <h2 className="font-display text-[26px] font-normal tracking-tight text-foreground">
           {isToday ? "Today" : dateLabel}
