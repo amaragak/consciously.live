@@ -129,8 +129,8 @@
 
 /*
  * Hybrid: light page + gold-peach accents; navy duotone paisley on the homepage
- * hero only. Sticky header + full-page fields (Read) share dark-mode navy chrome
- * so they don't clash with the near-black hero tile.
+ * hero only. Sticky header uses the same solid hero surface (no paisley); full-page
+ * fields (Read) keep tonal navy so they don't clash with the near-black hero tile.
  */
 :root.hybrid .home-v2 {
   --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 — light page CTAs */
@@ -157,8 +157,8 @@
   --hv2-hero-pattern-opacity: 0.88;
   --hv2-hero-pattern-size: 640px 640px;
   --hv2-hero-pattern-mask: none;
-  /* Sticky / field chrome — match dark mode navy (not the hero black). */
-  --hv2-sticky-bg: var(--hv2-navy);
+  /* Sticky chrome = hero surface (solid, no paisley) so scroll matches top-of-page. */
+  --hv2-sticky-bg: var(--hv2-hero-bg);
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -251,6 +251,15 @@
   font-family: var(--hv2-font-body);
   color: var(--hv2-ink);
   background: var(--hv2-page);
+}
+
+/*
+ * Site / sticky header also carries `.home-v2` for token scope, but must NOT
+ * inherit the light page fill — that was painting cream under ivory type.
+ */
+.home-v2.home-v2-site-header {
+  background: var(--hv2-sticky-bg);
+  color: var(--hv2-hero-fg);
 }
 
 .home-v2-band {

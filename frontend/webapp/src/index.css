@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Class-based dark / hybrid appearance (header dropdown). Default is light. */
+/* Class-based dark / hybrid appearance (header dropdown). Default is hybrid. */
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant v2 (&:where(.v2, .v2 *));
 @custom-variant hybrid (&:where(.hybrid, .hybrid *));

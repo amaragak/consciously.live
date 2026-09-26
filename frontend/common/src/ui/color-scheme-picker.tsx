@@ -30,7 +30,7 @@ export function ColorSchemePicker({
   menu = "down",
   options = COLOR_SCHEME_OPTIONS,
 }: ColorSchemePickerProps) {
-  const [scheme, setScheme] = useState<ColorScheme>("light");
+  const [scheme, setScheme] = useState<ColorScheme>("hybrid");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
