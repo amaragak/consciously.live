@@ -129,8 +129,8 @@
 
 /*
  * Hybrid: light page + gold-peach accents; navy duotone paisley on the homepage
- * hero only. Sticky header uses the same solid hero surface (no paisley); full-page
- * fields (Read) keep tonal navy so they don't clash with the near-black hero tile.
+ * hero only. Sticky header keeps the same peach primary as the hero chrome, on a
+ * solid tonal navy (paisley base) — not flat hero-black, and not copper.
  */
 :root.hybrid .home-v2 {
   --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 — light page CTAs */
@@ -157,8 +157,8 @@
   --hv2-hero-pattern-opacity: 0.88;
   --hv2-hero-pattern-size: 640px 640px;
   --hv2-hero-pattern-mask: none;
-  /* Sticky chrome = hero surface (solid, no paisley) so scroll matches top-of-page. */
-  --hv2-sticky-bg: var(--hv2-hero-bg);
+  /* Sticky = tonal navy under the paisley (solid, no tile) — matches scroll chrome to hero. */
+  --hv2-sticky-bg: #1a2330;
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -173,7 +173,7 @@
   --hv2-hero-card-fg: var(--hv2-ivory);
   --hv2-hero-card-muted: rgba(246, 241, 231, 0.68);
   --hv2-hero-card-label: rgba(246, 241, 231, 0.55);
-  --hv2-hero-menu-bg: var(--hv2-navy);
+  --hv2-hero-menu-bg: #1a2330;
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
   /* Read / field pages — same tonal navy as dark, not hybrid hero black. */
@@ -182,16 +182,6 @@
   --hv2-field-pattern-opacity: 0.18;
   --hv2-field-pattern-size: 800px 800px;
   --hv2-field-pattern-mask: none;
-}
-
-/**
- * Sticky / site header on hybrid: copper gold like dark mode (page CTAs keep peach).
- */
-:root.hybrid .home-v2-site-header {
-  --hv2-gold: #cc9871;
-  --hv2-gold-rgb: 204 152 113;
-  --hv2-on-gold: var(--hv2-navy);
-  --hv2-tan-text: #cc9871;
 }
 
 /*

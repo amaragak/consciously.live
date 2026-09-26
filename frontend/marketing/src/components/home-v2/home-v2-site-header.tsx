@@ -49,8 +49,8 @@ type Props = {
 };
 
 /**
- * Shared navy sticky chrome for homepage scroll header + all marketing pages.
- * Hybrid scopes copper gold onto `.home-v2-site-header` so it matches dark mode.
+ * Shared sticky chrome for homepage scroll header + all marketing pages.
+ * Hybrid keeps the same peach primary as the hero nav on tonal-navy sticky.
  */
 export function HomeV2SiteHeader({
   verbLabel,
