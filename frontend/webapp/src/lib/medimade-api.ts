@@ -1685,6 +1685,7 @@ export type JournalWeeklyEmotionScore = {
   score: number;
   /** Short snippets from the user's writing that support this score. */
   examples?: string[];
+  entryIds?: string[];
 };
 
 export type JournalWeeklyArcDay = {
@@ -1699,15 +1700,29 @@ export type JournalWeeklyArc = {
   days: JournalWeeklyArcDay[];
 };
 
+export type JournalWeeklyCitedItem = {
+  text: string;
+  entryIds?: string[];
+};
+
 export type JournalWeeklyRecurringThought = {
   text: string;
   count: number;
   alsoOn?: string[];
+  entryIds?: string[];
 };
 
 export type JournalWeeklyActivityByEntry = {
   entryId: string;
   items: string[];
+};
+
+export type JournalWellbeingLevel = "none" | "struggling" | "at_risk";
+
+export type JournalLetterFeedback = {
+  rating: "up" | "down";
+  note?: string;
+  at: string;
 };
 
 export type JournalWeeklyGeneratedParts = {
@@ -1741,12 +1756,15 @@ export type JournalWeeklyReflection = {
   emotions?: JournalWeeklyEmotionScore[];
   moodSummary?: string;
   arc?: JournalWeeklyArc;
-  wins?: string[];
-  promises?: string[];
+  /** Cited wins; legacy string[] is normalised on parse. */
+  wins?: JournalWeeklyCitedItem[];
+  promises?: JournalWeeklyCitedItem[];
   recurringThought?: JournalWeeklyRecurringThought;
   activities?: JournalWeeklyActivityByEntry[];
   /** Which AI parts were requested/generated for this week (opt-in generation). */
   generatedParts?: JournalWeeklyGeneratedParts;
+  wellbeing?: { level: JournalWellbeingLevel };
+  letterFeedback?: JournalLetterFeedback;
   meta: {
     generatedAt: string;
     model: string;
@@ -1768,7 +1786,7 @@ export type JournalWeeklyLetterSummary = {
   preview?: string;
   emotions?: JournalWeeklyEmotionScore[];
   activities?: JournalWeeklyActivityByEntry[];
-  promises?: string[];
+  promises?: JournalWeeklyCitedItem[];
   recurringThought?: JournalWeeklyRecurringThought;
   generatedParts?: JournalWeeklyGeneratedParts;
 };
@@ -1808,10 +1826,15 @@ function parseWeeklyEmotions(
     const examples = parseEmotionExamples(
       (row as { examples?: unknown }).examples,
     );
+    const entryIds = parseEntryIdList(
+      (row as { entryIds?: unknown }).entryIds ??
+        (row as { entry_ids?: unknown }).entry_ids,
+    );
     out.push({
       name,
       score: Math.max(0, Math.min(10, Math.round(score))),
       ...(examples ? { examples } : {}),
+      ...(entryIds ? { entryIds } : {}),
     });
   }
   if (out.length < 1) return undefined;
@@ -1819,20 +1842,53 @@ function parseWeeklyEmotions(
   return out.slice(0, 5);
 }
 
+function parseEntryIdList(raw: unknown, max = 6): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of raw) {
+    if (typeof id !== "string") continue;
+    const t = id.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseWeeklyCitedItems(
+  raw: unknown,
+  maxItems: number,
+): JournalWeeklyCitedItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: JournalWeeklyCitedItem[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      const t = item.trim().replace(/\s+/g, " ");
+      if (t.length < 4 || t.length > 160) continue;
+      out.push({ text: t });
+    } else if (item && typeof item === "object") {
+      const textRaw = (item as { text?: unknown }).text;
+      const t =
+        typeof textRaw === "string" ? textRaw.trim().replace(/\s+/g, " ") : "";
+      if (t.length < 4 || t.length > 160) continue;
+      const entryIds = parseEntryIdList(
+        (item as { entryIds?: unknown }).entryIds ??
+          (item as { entry_ids?: unknown }).entry_ids,
+      );
+      out.push({ text: t, ...(entryIds ? { entryIds } : {}) });
+    }
+    if (out.length >= maxItems) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function parseWeeklyStringList(
   raw: unknown,
   maxItems: number,
 ): string[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out: string[] = [];
-  for (const item of raw) {
-    if (typeof item !== "string") continue;
-    const t = item.trim().replace(/\s+/g, " ");
-    if (t.length < 4 || t.length > 160) continue;
-    out.push(t);
-    if (out.length >= maxItems) break;
-  }
-  return out.length > 0 ? out : undefined;
+  return parseWeeklyCitedItems(raw, maxItems)?.map((c) => c.text);
 }
 
 function parseWeeklyArc(raw: unknown): JournalWeeklyArc | undefined {
@@ -1893,6 +1949,9 @@ function parseWeeklyRecurringThought(
     text,
     count: Math.round(count),
     ...(alsoOn && alsoOn.length ? { alsoOn } : {}),
+    ...(parseEntryIdList(o.entryIds ?? o.entry_ids)
+      ? { entryIds: parseEntryIdList(o.entryIds ?? o.entry_ids) }
+      : {}),
   };
 }
 
@@ -1960,12 +2019,24 @@ function parseJournalWeeklyReflection(
       ? o.preview.trim()
       : undefined;
   const arc = parseWeeklyArc(o.arc);
-  const wins = parseWeeklyStringList(o.wins, 5);
-  const promises = parseWeeklyStringList(o.promises, 3);
+  const wins = parseWeeklyCitedItems(o.wins, 5);
+  const promises = parseWeeklyCitedItems(o.promises, 3);
   const recurringThought = parseWeeklyRecurringThought(
     o.recurringThought ?? o.recurring_thought,
   );
   const activities = parseWeeklyActivities(o.activities);
+  const wellbeingLevel =
+    o.wellbeing === "none" ||
+    o.wellbeing === "struggling" ||
+    o.wellbeing === "at_risk"
+      ? o.wellbeing
+      : o.wellbeing && typeof o.wellbeing === "object"
+        ? (o.wellbeing as { level?: unknown }).level === "struggling" ||
+          (o.wellbeing as { level?: unknown }).level === "at_risk" ||
+          (o.wellbeing as { level?: unknown }).level === "none"
+          ? ((o.wellbeing as { level: JournalWellbeingLevel }).level)
+          : undefined
+        : undefined;
   const hasLetter = Boolean(letterMarkdown.trim());
   const hasGeneratedPart = Boolean(
     generatedParts &&
@@ -2007,6 +2078,7 @@ function parseJournalWeeklyReflection(
     ...(recurringThought ? { recurringThought } : {}),
     ...(activities ? { activities } : {}),
     ...(generatedParts ? { generatedParts } : {}),
+    ...(wellbeingLevel ? { wellbeing: { level: wellbeingLevel } } : {}),
     meta: {
       generatedAt:
         typeof metaRaw.generatedAt === "string" ? metaRaw.generatedAt : "",
@@ -2172,7 +2244,7 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
         : undefined;
     const emotions = parseWeeklyEmotions(row.emotions);
     const activities = parseWeeklyActivities(row.activities);
-    const promises = parseWeeklyStringList(row.promises, 3);
+    const promises = parseWeeklyCitedItems(row.promises, 3);
     const recurringThought = parseWeeklyRecurringThought(
       row.recurringThought ?? row.recurring_thought,
     );
@@ -2217,6 +2289,8 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
   timeZone?: string;
   letter?: boolean;
   patterns?: JournalWeeklyPatternsSelection;
+  /** Short correction guidance strings for the model (max 10). */
+  corrections?: string[];
   /** @deprecated Prefer letter/patterns selection; kept for older callers. */
   regenerate?: boolean;
 }): Promise<{
@@ -2229,6 +2303,9 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
   periodType?: JournalInsightPeriodType;
   rangeKey?: string;
   empty?: boolean;
+  generationsRemaining?: number;
+  error?: string;
+  code?: string;
 }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
@@ -2252,6 +2329,9 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
       ...(opts?.timeZone?.trim() ? { timeZone: opts.timeZone.trim() } : {}),
       letter,
       patterns,
+      ...(opts?.corrections?.length
+        ? { corrections: opts.corrections.slice(0, 10) }
+        : {}),
       ...(opts?.regenerate ? { regenerate: true } : {}),
     }),
   });
@@ -2266,7 +2346,10 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
       (typeof data.detail === "string" && data.detail) ||
       (typeof data.error === "string" && data.error) ||
       res.statusText;
-    throw new Error(msg);
+    const err = new Error(msg) as Error & { code?: string; status?: number };
+    if (typeof data.code === "string") err.code = data.code;
+    err.status = res.status;
+    throw err;
   }
   const reflection = parseJournalWeeklyReflection(data.reflection);
   const periodType =

@@ -232,11 +232,7 @@ export function resolveInsightPeriod(
     };
   };
 
-  if (requested === "last7" || requested === "last30") {
-    const span = requested === "last7" ? 7 : 30;
-    return finish(requested, addDaysToDate(today, -(span - 1)), today);
-  }
-
+  // Explicit start/end win over last7/last30 so regenerate keeps the same range.
   const hasRange = isDateOnly(input.startDate) && isDateOnly(input.endDate);
   if (hasRange) {
     const startDate = (input.startDate as string).trim();
@@ -256,6 +252,11 @@ export function resolveInsightPeriod(
         ? "From"
         : "To";
     return { ok: false, error: `${bad} must be a valid date (YYYY-MM-DD)` };
+  }
+
+  if (requested === "last7" || requested === "last30") {
+    const span = requested === "last7" ? 7 : 30;
+    return finish(requested, addDaysToDate(today, -(span - 1)), today);
   }
 
   // Legacy clients: a week key, or nothing at all → the current week.

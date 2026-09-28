@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JournalInsightsView } from "@/components/journal-insights-view";
+import { InsightsNeedSupportLink } from "@/components/insights-need-support-link";
 import { scheduleJournalInsightsRefreshAfterLeavingEditor } from "@/components/journal-insights-autorefresh";
 import {
   clearJournalRemoteSessionCache,
@@ -1503,6 +1504,11 @@ export function JournalView() {
               Show all
             </button>
           </p>
+        ) : null}
+        {!insightsOpen ? (
+          <div className="mt-2 flex justify-end">
+            <InsightsNeedSupportLink />
+          </div>
         ) : null}
       </div>
 

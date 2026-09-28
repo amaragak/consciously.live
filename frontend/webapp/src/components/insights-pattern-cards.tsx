@@ -1,10 +1,12 @@
 /**
  * Insights update-2 pattern cards (after Mood, before the dark meditation CTA).
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { MoreHorizontal } from "lucide-react";
 import {
   type JournalWeeklyArc,
+  type JournalWeeklyCitedItem,
   type JournalWeeklyEmotionScore,
   type JournalWeeklyLetterSummary,
   type JournalWeeklyRecurringThought,
@@ -24,6 +26,12 @@ import {
   formatRangeWords,
   periodUiCopy,
 } from "@/lib/insight-period";
+import {
+  hideInsightItem,
+  isInsightItemHidden,
+} from "@/lib/insight-corrections";
+import { InsightsSourceLink } from "@/components/insights-source-link";
+import { wellbeingVisibility, type WellbeingLevel } from "@/lib/insight-wellbeing";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -194,9 +202,77 @@ function WeekMovedChart({
   );
 }
 
-function WinsCard({ wins }: { wins: string[] }) {
-  const actionWins = wins.filter((w) => !isWroteOnLine(w));
-  const wroteLine = wins.find(isWroteOnLine);
+function citedText(item: string | JournalWeeklyCitedItem): string {
+  return typeof item === "string" ? item : item.text;
+}
+
+function citedIds(item: string | JournalWeeklyCitedItem): string[] {
+  return typeof item === "string" ? [] : item.entryIds ?? [];
+}
+
+function PatternItemMenu({
+  kind,
+  text,
+  onHidden,
+}: {
+  kind: "win" | "promise" | "thought" | "activity" | "emotion";
+  text: string;
+  onHidden: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        aria-label="Item options"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+      >
+        <MoreHorizontal className="size-3.5" strokeWidth={2} />
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-card py-1 shadow-lg">
+          <button
+            type="button"
+            className="flex w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-surface-2"
+            onClick={() => {
+              hideInsightItem({ kind, text, reason: "incorrect" });
+              setOpen(false);
+              onHidden();
+            }}
+          >
+            That&apos;s not right
+          </button>
+          <button
+            type="button"
+            className="flex w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-surface-2"
+            onClick={() => {
+              hideInsightItem({ kind, text, reason: "hide" });
+              setOpen(false);
+              onHidden();
+            }}
+          >
+            Hide this
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function WinsCard({
+  wins,
+  onChange,
+}: {
+  wins: Array<string | JournalWeeklyCitedItem>;
+  onChange: () => void;
+}) {
+  const visible = wins.filter(
+    (w) => !isInsightItemHidden("win", citedText(w)),
+  );
+  const actionWins = visible.filter((w) => !isWroteOnLine(citedText(w)));
+  const wroteLine = visible.find((w) => isWroteOnLine(citedText(w)));
   if (actionWins.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
@@ -204,17 +280,28 @@ function WinsCard({ wins }: { wins: string[] }) {
         Wins you might have missed
       </div>
       <ul className="flex flex-col gap-2">
-        {[...actionWins, ...(wroteLine ? [wroteLine] : [])].map((w) => (
-          <li
-            key={w}
-            className="flex gap-2.5 text-[15px] leading-snug text-foreground"
-          >
-            <span className="mt-0.5 text-accent" aria-hidden>
-              ✓
-            </span>
-            <span>{w}</span>
-          </li>
-        ))}
+        {[...actionWins, ...(wroteLine ? [wroteLine] : [])].map((w) => {
+          const text = citedText(w);
+          return (
+            <li
+              key={text}
+              className="flex gap-2.5 text-[15px] leading-snug text-foreground"
+            >
+              <span className="mt-0.5 text-accent" aria-hidden>
+                ✓
+              </span>
+              <span className="min-w-0 flex-1">
+                <span>{text}</span>
+                <InsightsSourceLink entryIds={citedIds(w)} className="mt-1" />
+              </span>
+              <PatternItemMenu
+                kind="win"
+                text={text}
+                onHidden={onChange}
+              />
+            </li>
+          );
+        })}
       </ul>
       <p className="text-xs leading-relaxed text-muted">
         Pulled from what you wrote. Small steps count.
@@ -223,8 +310,16 @@ function WinsCard({ wins }: { wins: string[] }) {
   );
 }
 
-function PromisesCard({ promises }: { promises: string[] | undefined }) {
-  const list = promises ?? [];
+function PromisesCard({
+  promises,
+  onChange,
+}: {
+  promises: Array<string | JournalWeeklyCitedItem> | undefined;
+  onChange: () => void;
+}) {
+  const list = (promises ?? []).filter(
+    (p) => !isInsightItemHidden("promise", citedText(p)),
+  );
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="text-sm font-semibold text-foreground">
@@ -236,17 +331,28 @@ function PromisesCard({ promises }: { promises: string[] | undefined }) {
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {list.map((p) => (
-            <li
-              key={p}
-              className="flex gap-2.5 text-[15px] leading-snug text-foreground"
-            >
-              <span className="mt-0.5 text-muted" aria-hidden>
-                ○
-              </span>
-              <span>{p}</span>
-            </li>
-          ))}
+          {list.map((p) => {
+            const text = citedText(p);
+            return (
+              <li
+                key={text}
+                className="flex gap-2.5 text-[15px] leading-snug text-foreground"
+              >
+                <span className="mt-0.5 text-muted" aria-hidden>
+                  ○
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span>{text}</span>
+                  <InsightsSourceLink entryIds={citedIds(p)} className="mt-1" />
+                </span>
+                <PatternItemMenu
+                  kind="promise"
+                  text={text}
+                  onHidden={onChange}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
       <p className="text-xs leading-relaxed text-muted">
@@ -260,10 +366,14 @@ function RecurringThoughtCard({
   thought,
   weekLabel,
   periodNoun,
+  showMeditation = true,
+  onHidden,
 }: {
   thought: JournalWeeklyRecurringThought;
   weekLabel: string;
   periodNoun: string;
+  showMeditation?: boolean;
+  onHidden?: () => void;
 }) {
   const navigate = useNavigate();
   const also =
@@ -273,8 +383,17 @@ function RecurringThoughtCard({
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-accent/25 bg-accent-soft/40 px-6 py-[22px]">
-      <div className="text-sm font-semibold text-foreground">
-        The thought that keeps coming back
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm font-semibold text-foreground">
+          The thought that keeps coming back
+        </div>
+        {onHidden ? (
+          <PatternItemMenu
+            kind="thought"
+            text={thought.text}
+            onHidden={onHidden}
+          />
+        ) : null}
       </div>
       <p className="font-display text-[clamp(1.35rem,2.4vw,1.75rem)] font-normal italic leading-snug text-foreground">
         &ldquo;{thought.text}&rdquo;
@@ -283,21 +402,24 @@ function RecurringThoughtCard({
         {thought.count} time{thought.count === 1 ? "" : "s"} {periodNoun}
         {also}
       </p>
-      <button
-        type="button"
-        onClick={() => {
-          writeInsightsMeditationPrompt(
-            buildRecurringThoughtMeditationPrompt({
-              thought: thought.text,
-              weekLabel,
-            }),
-          );
-          navigate(insightsCreateMeditationHref());
-        }}
-        className="inline-flex h-11 w-fit cursor-pointer items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
-      >
-        Make a meditation for this thought
-      </button>
+      <InsightsSourceLink entryIds={thought.entryIds ?? []} />
+      {showMeditation ? (
+        <button
+          type="button"
+          onClick={() => {
+            writeInsightsMeditationPrompt(
+              buildRecurringThoughtMeditationPrompt({
+                thought: thought.text,
+                weekLabel,
+              }),
+            );
+            navigate(insightsCreateMeditationHref());
+          }}
+          className="inline-flex h-11 w-fit cursor-pointer items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
+        >
+          Make a meditation for this thought
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -541,6 +663,7 @@ export function InsightsPatternCards({
   storeEntries,
   weekLabel,
   periodDays = 7,
+  wellbeingLevel = "none",
   generatedParts,
   loadingParts,
 }: {
@@ -550,6 +673,7 @@ export function InsightsPatternCards({
   weekLabel: string;
   /** Inclusive day count of the selected insight period. */
   periodDays?: number;
+  wellbeingLevel?: WellbeingLevel;
   generatedParts?: {
     felt?: boolean;
     moved?: boolean;
@@ -563,16 +687,28 @@ export function InsightsPatternCards({
     thought?: boolean;
   } | null;
 }) {
+  const [hideTick, setHideTick] = useState(0);
+  const bumpHidden = () => setHideTick((n) => n + 1);
+  const vis = wellbeingVisibility(wellbeingLevel);
   const arc = reflection?.arc;
   const uiCopy = periodUiCopy(periodDays);
   const showArc =
-    Boolean(generatedParts?.moved) && Boolean(arc && arc.days.length >= 3);
+    vis.moved &&
+    Boolean(generatedParts?.moved) &&
+    Boolean(arc && arc.days.length >= 3);
   const wins = reflection?.wins ?? [];
+  void hideTick;
   const showWins =
-    Boolean(generatedParts?.wins) && wins.some((w) => !isWroteOnLine(w));
-  const showPromises = Boolean(generatedParts?.wins);
+    vis.wins &&
+    Boolean(generatedParts?.wins) &&
+    wins.some((w) => !isWroteOnLine(citedText(w)));
+  const showPromises = vis.promises && Boolean(generatedParts?.wins);
   const thought =
-    generatedParts?.thought ? reflection?.recurringThought : undefined;
+    generatedParts?.thought &&
+    reflection?.recurringThought &&
+    !isInsightItemHidden("thought", reflection.recurringThought.text)
+      ? reflection.recurringThought
+      : undefined;
 
   // Merge this period's activities into the letter list for lifts/over-time.
   const lettersForCharts = useMemo(() => {
@@ -647,11 +783,17 @@ export function InsightsPatternCards({
         </div>
       ) : showWins ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <WinsCard wins={wins} />
-          <PromisesCard promises={reflection?.promises} />
+          <WinsCard wins={wins} onChange={bumpHidden} />
+          <PromisesCard
+            promises={reflection?.promises}
+            onChange={bumpHidden}
+          />
         </div>
       ) : showPromises ? (
-        <PromisesCard promises={reflection?.promises} />
+        <PromisesCard
+          promises={reflection?.promises}
+          onChange={bumpHidden}
+        />
       ) : null}
 
       {loadingParts?.thought ? (
@@ -664,20 +806,24 @@ export function InsightsPatternCards({
           thought={thought}
           weekLabel={weekLabel}
           periodNoun={uiCopy.periodNoun}
+          showMeditation={vis.thoughtMeditation}
+          onHidden={bumpHidden}
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <WhatLiftsYouCard
-          letters={lettersForCharts}
-          entries={storeEntries}
-          minWindowDays={periodDays}
-        />
-        <OverTimeCard
-          letters={lettersForCharts}
-          thisWeekEmotions={emotions}
-        />
-      </div>
+      {vis.lifts ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <WhatLiftsYouCard
+            letters={lettersForCharts}
+            entries={storeEntries}
+            minWindowDays={periodDays}
+          />
+          <OverTimeCard
+            letters={lettersForCharts}
+            thisWeekEmotions={emotions}
+          />
+        </div>
+      ) : null}
     </>
   );
 }

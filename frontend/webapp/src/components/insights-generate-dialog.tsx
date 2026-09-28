@@ -45,6 +45,8 @@ export type InsightsGeneratePrefill = {
   periodType?: JournalInsightPeriodType;
   startDate?: string;
   endDate?: string;
+  /** Hide the Covering picker — used when regenerating an existing range. */
+  lockPeriod?: boolean;
 };
 
 const DEFAULT_PREFS: InsightsGeneratePrefs = {
@@ -167,12 +169,21 @@ export function InsightsGenerateDialog({
     useState<InsightsPeriodPreset>("last7");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [lockPeriod, setLockPeriod] = useState(false);
   const [previewEntries, setPreviewEntries] = useState(entryCount);
   const [previewMeds, setPreviewMeds] = useState(meditationCount);
   const [previewBusy, setPreviewBusy] = useState(false);
 
   const today = todayInTimeZone(timeZone);
   const resolvedPeriod = (() => {
+    if (lockPeriod && customFrom && customTo) {
+      return resolveInsightPeriod({
+        periodType: periodPreset === "custom" ? "custom" : periodPreset,
+        startDate: customFrom,
+        endDate: customTo,
+        timeZone,
+      });
+    }
     if (periodPreset === "custom") {
       return resolveInsightPeriod({
         periodType: "custom",
@@ -184,7 +195,7 @@ export function InsightsGenerateDialog({
     return resolveInsightPeriod({ periodType: periodPreset, timeZone });
   })();
   const rangeError =
-    periodPreset === "custom" && !resolvedPeriod.ok
+    periodPreset === "custom" && !lockPeriod && !resolvedPeriod.ok
       ? resolvedPeriod.error
       : null;
 
@@ -196,10 +207,20 @@ export function InsightsGenerateDialog({
     let nextPreset: InsightsPeriodPreset = prefs.periodPreset;
     let from = addDaysToDate(today, -6);
     let to = today;
+    let nextLock = false;
     if (prefill) {
       if (typeof prefill.letter === "boolean") nextLetter = prefill.letter;
       if (typeof prefill.patterns === "boolean") nextPatterns = prefill.patterns;
-      if (prefill.periodType === "last7" || prefill.periodType === "last30") {
+      if (prefill.lockPeriod && prefill.startDate && prefill.endDate) {
+        nextLock = true;
+        from = prefill.startDate;
+        to = prefill.endDate;
+        if (prefill.periodType === "last7" || prefill.periodType === "last30") {
+          nextPreset = prefill.periodType;
+        } else {
+          nextPreset = "custom";
+        }
+      } else if (prefill.periodType === "last7" || prefill.periodType === "last30") {
         nextPreset = prefill.periodType;
       } else if (prefill.startDate && prefill.endDate) {
         const asLast7 = resolveInsightPeriod({
@@ -240,6 +261,7 @@ export function InsightsGenerateDialog({
     setPeriodPreset(nextPreset);
     setCustomFrom(from);
     setCustomTo(to);
+    setLockPeriod(nextLock);
     setPreviewEntries(entryCount);
     setPreviewMeds(meditationCount);
 
@@ -355,6 +377,13 @@ export function InsightsGenerateDialog({
     }
     const n = previewEntries;
     const entryWord = n === 1 ? "entry" : "entries";
+    if (lockPeriod) {
+      const range = formatRangeWords(
+        resolvedPeriod.period.startDate,
+        resolvedPeriod.period.endDate,
+      );
+      return `From your ${n} ${entryWord}${medPart} between ${range}.`;
+    }
     if (periodPreset === "last7") {
       return `From your ${n} ${entryWord}${medPart} in the last 7 days.`;
     }
@@ -480,56 +509,76 @@ export function InsightsGenerateDialog({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-5 py-3.5 sm:px-6">
-          <div role="group" aria-labelledby="insights-period-label" className="flex flex-col gap-2">
-            <span
-              id="insights-period-label"
-              className="text-[13px] font-semibold text-foreground/80"
-            >
-              Covering
-            </span>
-            <div className="flex gap-1 rounded-[14px] bg-[color:var(--border-subtle,#F0E7DA)] p-1">
-              {segBtn("last7", "Last 7 days")}
-              {segBtn("last30", "Last 30 days")}
-              {segBtn("custom", "Custom…")}
+          {lockPeriod && resolvedPeriod.ok ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[13px] font-semibold text-foreground/80">
+                Covering
+              </span>
+              <p className="text-[15px] text-foreground">
+                {periodPreset === "last7"
+                  ? "Last 7 days"
+                  : periodPreset === "last30"
+                    ? "Last 30 days"
+                    : "Custom range"}
+                {" · "}
+                {formatRangeWords(
+                  resolvedPeriod.period.startDate,
+                  resolvedPeriod.period.endDate,
+                )}
+              </p>
             </div>
-            {periodPreset === "custom" ? (
-              <div className="flex flex-col gap-1.5 pt-1">
-                <div className="flex gap-3">
-                  <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
-                    From
-                    <input
-                      type="date"
-                      value={customFrom}
-                      max={customTo || today}
-                      onChange={(e) => setCustomFrom(e.target.value)}
-                      className="h-11 rounded-[10px] border border-border bg-card px-3 text-[15px] text-foreground outline-none"
-                    />
-                  </label>
-                  <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
-                    To
-                    <input
-                      type="date"
-                      value={customTo}
-                      max={today}
-                      min={customFrom || undefined}
-                      onChange={(e) => setCustomTo(e.target.value)}
-                      className="h-11 rounded-[10px] border border-border bg-card px-3 text-[15px] text-foreground outline-none"
-                    />
-                  </label>
-                </div>
-                <p className="text-[13px] text-muted">
-                  Up to {MAX_CUSTOM_RANGE_DAYS} days
-                  {customFrom && customTo
-                    ? ` · ${daysBetweenInclusive(customFrom, customTo)} selected`
-                    : ""}
-                  .
-                </p>
-                {rangeError ? (
-                  <p className="text-[13px] text-danger">{rangeError}</p>
-                ) : null}
+          ) : (
+            <div role="group" aria-labelledby="insights-period-label" className="flex flex-col gap-2">
+              <span
+                id="insights-period-label"
+                className="text-[13px] font-semibold text-foreground/80"
+              >
+                Covering
+              </span>
+              <div className="flex gap-1 rounded-[14px] bg-[color:var(--border-subtle,#F0E7DA)] p-1">
+                {segBtn("last7", "Last 7 days")}
+                {segBtn("last30", "Last 30 days")}
+                {segBtn("custom", "Custom…")}
               </div>
-            ) : null}
-          </div>
+              {periodPreset === "custom" ? (
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <div className="flex gap-3">
+                    <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
+                      From
+                      <input
+                        type="date"
+                        value={customFrom}
+                        max={customTo || today}
+                        onChange={(e) => setCustomFrom(e.target.value)}
+                        className="h-11 rounded-[10px] border border-border bg-card px-3 text-[15px] text-foreground outline-none"
+                      />
+                    </label>
+                    <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
+                      To
+                      <input
+                        type="date"
+                        value={customTo}
+                        max={today}
+                        min={customFrom || undefined}
+                        onChange={(e) => setCustomTo(e.target.value)}
+                        className="h-11 rounded-[10px] border border-border bg-card px-3 text-[15px] text-foreground outline-none"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-[13px] text-muted">
+                    Up to {MAX_CUSTOM_RANGE_DAYS} days
+                    {customFrom && customTo
+                      ? ` · ${daysBetweenInclusive(customFrom, customTo)} selected`
+                      : ""}
+                    .
+                  </p>
+                  {rangeError ? (
+                    <p className="text-[13px] text-danger">{rangeError}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <label className="flex cursor-pointer gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
             <input

@@ -1,5 +1,6 @@
 import { createMeditationHref } from "@/lib/create-meditation-path";
-import { getMedimadeSessionJwt } from "@/lib/auth-session";
+import { getMedimadeSessionDisplayName, getMedimadeSessionJwt } from "@/lib/auth-session";
+import { fillLetterNamePlaceholder } from "@/lib/insight-wellbeing";
 import {
   readAccountSessionStorage,
   writeAccountSessionStorage,
@@ -976,7 +977,12 @@ async function applyGetWeeklyReflection(
           id: res.weekKey || "week",
           title: res.weekKey || "This week",
           meta: "Weekly letter",
-          body: res.reflection.letterMarkdown.replace(/[#*_`]/g, "").trim(),
+          body: fillLetterNamePlaceholder(
+            res.reflection.letterMarkdown,
+            getMedimadeSessionDisplayName(),
+          )
+            .replace(/[#*_`]/g, "")
+            .trim(),
           href,
         },
       ],

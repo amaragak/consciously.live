@@ -35,6 +35,13 @@ import {
   type InsightPeriodType,
 } from "./_shared/insight-period";
 import {
+  INSIGHTS_DAILY_GENERATION_LIMIT,
+  parseWellbeingLevel,
+  WELLBEING_LETTER_GUIDANCE,
+  type WellbeingLevel,
+} from "./_shared/insight-wellbeing";
+import { coerceLetterMarkdown } from "./_shared/letter-markdown";
+import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
@@ -64,6 +71,8 @@ type WeeklyEmotionScore = {
   score: number;
   /** Short verbatim snippets from journal/chats that support this score. */
   examples?: string[];
+  /** Entry IDs that most support this emotion (validated). */
+  entryIds?: string[];
 };
 
 type WeeklyArcDay = {
@@ -78,16 +87,28 @@ type WeeklyArc = {
   days: WeeklyArcDay[];
 };
 
+type WeeklyCitedItem = {
+  text: string;
+  entryIds?: string[];
+};
+
 type WeeklyRecurringThought = {
   text: string;
   count: number;
   /** Prior weeks where a matching thought appeared (YYYY-MM-DD week starts). */
   alsoOn?: string[];
+  entryIds?: string[];
 };
 
 type WeeklyActivityByEntry = {
   entryId: string;
   items: string[];
+};
+
+type LetterFeedback = {
+  rating: "up" | "down";
+  note?: string;
+  at: string;
 };
 
 /** Which AI-generated surfaces were requested for this week. */
@@ -133,11 +154,13 @@ type WeeklyReflection = {
   /** One-line plain-English mood summary for the week; omit if unavailable. */
   moodSummary?: string;
   arc?: WeeklyArc;
-  wins?: string[];
-  promises?: string[];
+  wins?: WeeklyCitedItem[];
+  promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
   generatedParts?: WeeklyGeneratedParts;
+  wellbeing?: { level: WellbeingLevel };
+  letterFeedback?: LetterFeedback;
   meta: {
     generatedAt: string;
     model: string;
@@ -635,7 +658,9 @@ function letterPreviewFromMarkdown(letterMarkdown: string): string {
     .replace(/\s+/g, " ")
     .trim();
   if (!plain) return "";
-  const withoutGreeting = plain.replace(/^Dear\s+[^,]+,\s*/i, "").trim();
+  const withoutGreeting = plain
+    .replace(/^Dear\s+(?:\[\[NAME\]\]|[^,]+),\s*/i, "")
+    .trim();
   const source = withoutGreeting || plain;
   const sentence = source.match(/^(.{12,140}?[.!?])(?:\s|$)/);
   const clipped = (sentence?.[1] ?? source).trim().slice(0, 140);
@@ -655,7 +680,30 @@ function parseEmotionExamples(raw: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-function parseEmotions(raw: unknown): WeeklyEmotionScore[] | undefined {
+function filterEntryIds(
+  raw: unknown,
+  knownEntryIds: Set<string>,
+  max = 3,
+): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of raw) {
+    if (typeof id !== "string") continue;
+    const t = id.trim();
+    if (!t || seen.has(t)) continue;
+    if (knownEntryIds.size > 0 && !knownEntryIds.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseEmotions(
+  raw: unknown,
+  knownEntryIds: Set<string> = new Set(),
+): WeeklyEmotionScore[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: WeeklyEmotionScore[] = [];
   for (const row of raw) {
@@ -677,10 +725,17 @@ function parseEmotions(raw: unknown): WeeklyEmotionScore[] | undefined {
     const examples = parseEmotionExamples(
       (row as { examples?: unknown }).examples,
     );
+    const entryIds = filterEntryIds(
+      (row as { entry_ids?: unknown }).entry_ids ??
+        (row as { entryIds?: unknown }).entryIds,
+      knownEntryIds,
+      3,
+    );
     out.push({
       name,
       score: clamped,
       ...(examples ? { examples } : {}),
+      ...(entryIds ? { entryIds } : {}),
     });
   }
   if (out.length < 1) return undefined;
@@ -754,7 +809,51 @@ function parseStringList(
   return out.length > 0 ? out : undefined;
 }
 
-function parseRecurringThought(raw: unknown): WeeklyRecurringThought | undefined {
+function parseCitedItems(
+  raw: unknown,
+  knownEntryIds: Set<string>,
+  opts: { minLen: number; maxLen: number; maxItems: number },
+): WeeklyCitedItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: WeeklyCitedItem[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item === "string") {
+      const t = item.trim().replace(/\s+/g, " ");
+      if (t.length < opts.minLen || t.length > opts.maxLen) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ text: t });
+    } else if (item && typeof item === "object") {
+      const textRaw =
+        (item as { text?: unknown }).text ??
+        (item as { item?: unknown }).item;
+      const t =
+        typeof textRaw === "string"
+          ? textRaw.trim().replace(/\s+/g, " ")
+          : "";
+      if (t.length < opts.minLen || t.length > opts.maxLen) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const entryIds = filterEntryIds(
+        (item as { entry_ids?: unknown }).entry_ids ??
+          (item as { entryIds?: unknown }).entryIds,
+        knownEntryIds,
+        3,
+      );
+      out.push({ text: t, ...(entryIds ? { entryIds } : {}) });
+    }
+    if (out.length >= opts.maxItems) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseRecurringThought(
+  raw: unknown,
+  knownEntryIds: Set<string> = new Set(),
+): WeeklyRecurringThought | undefined {
   if (raw === null) return undefined;
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
@@ -769,9 +868,15 @@ function parseRecurringThought(raw: unknown): WeeklyRecurringThought | undefined
         : NaN;
   if (!text || text.length < 6 || text.length > 160) return undefined;
   if (!Number.isFinite(count) || count < 2) return undefined;
+  const entryIds = filterEntryIds(
+    o.entry_ids ?? o.entryIds,
+    knownEntryIds,
+    6,
+  );
   return {
     text,
     count: Math.min(20, Math.round(count)),
+    ...(entryIds ? { entryIds } : {}),
   };
 }
 
@@ -816,16 +921,20 @@ function parsePatternsBlob(
   knownEntryIds: Set<string>,
 ): {
   arc?: WeeklyArc;
-  wins?: string[];
-  promises?: string[];
+  wins?: WeeklyCitedItem[];
+  promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
 } {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
   const arc = parseArc(o.arc);
-  const wins = parseStringList(o.wins, { minLen: 6, maxLen: 120, maxItems: 4 });
-  const promises = parseStringList(o.promises, {
+  const wins = parseCitedItems(o.wins, knownEntryIds, {
+    minLen: 6,
+    maxLen: 120,
+    maxItems: 4,
+  });
+  const promises = parseCitedItems(o.promises, knownEntryIds, {
     minLen: 6,
     maxLen: 120,
     maxItems: 3,
@@ -833,11 +942,11 @@ function parsePatternsBlob(
   const recurringThought =
     o.recurring_thought === null || o.recurringThought === null
       ? undefined
-      : parseRecurringThought(o.recurring_thought ?? o.recurringThought);
-  const activities = parseActivities(
-    o.activities,
-    knownEntryIds,
-  );
+      : parseRecurringThought(
+          o.recurring_thought ?? o.recurringThought,
+          knownEntryIds,
+        );
+  const activities = parseActivities(o.activities, knownEntryIds);
   return {
     ...(arc ? { arc } : {}),
     ...(wins ? { wins } : {}),
@@ -872,10 +981,14 @@ function buildSystemPrompt(
     `PERIOD: the writing covers ${periodPhrase}. Refer to it as "${periodPhrase}" — never call a month "this week" or a week "this month".`,
     "Do not diagnose. Do not give medical advice. Do not moralize. Do not invent facts.",
     "TIME & DURATION (critical): If they mention how long something has been going on, treat that as ongoing context — NOT as a completed chapter — unless they explicitly say it ended.",
-    "EMOTIONS (always required): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions (e.g. Hope, Self-doubt). Score each 0–10; sort high to low.",
-    "For each emotion include 1–3 short nearly-verbatim examples from their writing. Do not invent quotes.",
+    "WELLBEING (always required): After reading the journal and chats, set wellbeing.level to exactly one of: none | struggling | at_risk.",
+    "struggling = sustained distress, hopelessness, exhaustion, panic, or grief.",
+    "at_risk = any mention of suicidal thoughts, wanting not to be here, self-harm, or being unsafe — past or present.",
+    "Rule out figures of speech ('killing it', 'die of embarrassment'), song lyrics, and fiction clearly marked as such. When genuinely unclear, choose the safer (higher) level.",
+    "EMOTIONS (always required unless wellbeing is at_risk — still output the array, the app may hide it): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions (e.g. Hope, Self-doubt). Score each 0–10; sort high to low.",
+    "For each emotion include 1–3 short nearly-verbatim examples from their writing, and entry_ids: up to 3 journal entry ids that most support it. Do not invent quotes or ids.",
     "Optionally one plain-English moodSummary line (or NONE).",
-    "PATTERNS JSON always includes activities: up to one object per journal entry { entry_id, items: [\"morning walk\", ...] } with 0–4 short lowercase labels. Omit entries with none.",
+    "PATTERNS JSON always includes activities: up to one object per journal entry { entry_id, items: [\"morning walk\", ...] } with 0–4 short lowercase labels. Omit entries with none. Never include activities the user marked as incorrect or hidden (see USER CORRECTIONS).",
   ];
   if (wantMoved) {
     parts.push(
@@ -886,30 +999,39 @@ function buildSystemPrompt(
   }
   if (wantWins) {
     parts.push(
-      `Also include wins: 1–4 concrete actions they DID in ${periodPhrase}, second person without the word 'you'. Actions only. Do NOT include a 'Wrote on N days' line.`,
-      "Also include promises: 0–3 short future intentions. Empty array if none.",
+      `Also include wins: 1–4 objects { text, entry_ids } — concrete actions they DID in ${periodPhrase}, second person without the word 'you'. Actions only. entry_ids: 1–3 supporting entry ids. Do NOT include a 'Wrote on N days' line.`,
+      "Also include promises: 0–3 objects { text, entry_ids } for future intentions. Empty array if none.",
     );
   } else {
     parts.push("Set wins to [] and promises to [].");
   }
   if (wantThought) {
     parts.push(
-      `Also include recurring_thought: { text, count } for a belief/phrase that repeats within ${periodPhrase} with count >= 2; otherwise null.`,
+      `Also include recurring_thought: { text, count, entry_ids } for a belief/phrase that repeats within ${periodPhrase} with count >= 2; entry_ids for each supporting entry; otherwise null.`,
     );
   } else {
     parts.push("Set recurring_thought to null.");
   }
   if (wantLetter) {
     parts.push(
-      "LETTER: Write directly TO the reader in second person ('you'), warm and human — roughly 3–8 short paragraphs (250–500 words). Soft salutation/sign-off optional.",
-      "If RECENT PROMISES are provided, mention one or two naturally in the letter prose — not as a checklist.",
+      "LETTER: Write directly TO the reader in second person ('you'), warm and human. Keep any sign-off to one short line.",
+      "LETTER LENGTH (strict when wellbeing is none): at most 160 words across all section bodies — prefer ~40–50 words per section.",
+      "LETTER OUTPUT (JSON only after <<<LETTER>>> — not freeform prose, not markdown):",
+      '{"greeting":"Dear [[NAME]],","sections":[{"heading":"What stood out","body":"..."},{"heading":"What shifted","body":"..."},{"heading":"Carry forward","body":"..."}]}',
+      "Rules: greeting must be exactly Dear [[NAME]], (literal [[NAME]] — never a real name). sections: 2 or 3 objects. Each heading is a short label (3–5 words). Each body is 1–2 short sentences.",
+      "In every body, wrap 1–2 concrete phrases in **double asterisks** for bold (required). No # headings inside body. No code fence.",
+      `When wellbeing is struggling, follow this tone instead of the default length: ${WELLBEING_LETTER_GUIDANCE.struggling}`,
+      `When wellbeing is at_risk, follow this tone (still use the same JSON shape; ~80–140 words total): ${WELLBEING_LETTER_GUIDANCE.at_risk}`,
+      "If RECENT PROMISES are provided, mention one or two naturally in a section body — not as a checklist.",
       "If PRIOR RECURRING THOUGHTS are provided, reuse the same wording when the same belief shows up again.",
     );
   } else {
     parts.push("Do NOT write a letter. After <<<LETTER>>> output only the word NONE.");
   }
   parts.push(
-    "OUTPUT FORMAT (exact — no JSON wrapper, no markdown fences around the whole reply):",
+    "OUTPUT FORMAT (exact — no JSON wrapper around the whole reply, no markdown fences around the whole reply):",
+    "<<<WELLBEING>>>",
+    '{"level":"none|struggling|at_risk"}',
     "<<<EMOTIONS>>>",
     "JSON array of emotions",
     "<<<MOOD_SUMMARY>>>",
@@ -918,7 +1040,7 @@ function buildSystemPrompt(
     `one JSON object with keys: ${patternKeys.join(", ")} (and null/[] for unused keys as instructed)`,
     "<<<LETTER>>>",
     wantLetter
-      ? "Then the full letter body in markdown (paragraphs)."
+      ? 'JSON only: {"greeting":"Dear [[NAME]],","sections":[{"heading":"…","body":"… **bold phrase** …"},…]} — 2–3 sections, ≤160 words total when wellbeing is none.'
       : "NONE",
   );
   return parts.join(" ");
@@ -927,13 +1049,13 @@ function buildSystemPrompt(
 function buildUserPrompt(params: {
   periodLabel: string;
   periodPhrase: string;
-  displayName?: string;
   journalText: string;
   chatText: string;
   moodTagsText: string;
   selection: WeeklyGenerateSelection;
   lastWeekPromises?: string[];
   priorRecurringThoughts?: Array<{ text: string; label: string }>;
+  corrections?: string[];
 }): string {
   const wantLetter = params.selection.letter;
   const promiseBlock =
@@ -958,17 +1080,23 @@ function buildUserPrompt(params: {
           "",
         ].join("\n")
       : "";
+  const correctionsBlock =
+    params.corrections && params.corrections.length > 0
+      ? [
+          "USER CORRECTIONS (honour these; do not repeat items marked incorrect or hidden):",
+          ...params.corrections.slice(0, 10).map((c) => `- ${c}`),
+          "",
+        ].join("\n")
+      : "";
   return [
     `PERIOD: ${params.periodLabel} — write about it as "${params.periodPhrase}"`,
-    params.displayName?.trim()
-      ? `Reader's name (optional salutation): ${params.displayName.trim()}`
-      : "",
     "",
-    `REQUESTED: letter=${wantLetter ? "yes" : "no"}; patterns moved=${params.selection.patterns.moved ? "yes" : "no"} wins=${params.selection.patterns.wins ? "yes" : "no"} thought=${params.selection.patterns.thought ? "yes" : "no"} (emotions+activities always)`,
+    `REQUESTED: letter=${wantLetter ? "yes" : "no"}; patterns moved=${params.selection.patterns.moved ? "yes" : "no"} wins=${params.selection.patterns.wins ? "yes" : "no"} thought=${params.selection.patterns.thought ? "yes" : "no"} (emotions+activities always; wellbeing always)`,
     "",
     promiseBlock,
     thoughtBlock,
-    "JOURNAL ENTRIES IN THIS PERIOD (use Entry id in activities; long entries may be shortened with […]):",
+    correctionsBlock,
+    "JOURNAL ENTRIES IN THIS PERIOD (use Entry id in activities and entry_ids; long entries may be shortened with […]):",
     params.journalText,
     "",
     "MEDITATION CREATE CHATS IN THIS PERIOD:",
@@ -977,7 +1105,7 @@ function buildUserPrompt(params: {
     "MOOD TAGS IN THIS PERIOD (optional for moodSummary only — not for emotion scores):",
     params.moodTagsText,
     "",
-    "Write the reply now in the exact <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<PATTERNS>>> / <<<LETTER>>> format.",
+    "Write the reply now in the exact <<<WELLBEING>>> / <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<PATTERNS>>> / <<<LETTER>>> format.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -1060,46 +1188,72 @@ function parseLetterModelOutput(
   knownEntryIds: Set<string> = new Set(),
 ): {
   letterMarkdown: string;
+  wellbeing: WellbeingLevel;
   emotions?: WeeklyEmotionScore[];
   moodSummary?: string;
   arc?: WeeklyArc;
-  wins?: string[];
-  promises?: string[];
+  wins?: WeeklyCitedItem[];
+  promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
 } {
-  const delimWithPatterns = outText.match(
-    /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<PATTERNS>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
+  const delimFull = outText.match(
+    /<<<WELLBEING>>>\s*([\s\S]*?)\s*<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<PATTERNS>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
   );
-  const delimLegacy = !delimWithPatterns
+  const delimWithPatterns = !delimFull
+    ? outText.match(
+        /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<PATTERNS>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
+      )
+    : null;
+  const delimLegacy = !delimFull && !delimWithPatterns
     ? outText.match(
         /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
       )
     : null;
-  const delim = delimWithPatterns
+  const delim = delimFull
     ? {
-        emotions: delimWithPatterns[1],
-        mood: delimWithPatterns[2],
-        patterns: delimWithPatterns[3],
-        letter: delimWithPatterns[4],
+        wellbeing: delimFull[1],
+        emotions: delimFull[2],
+        mood: delimFull[3],
+        patterns: delimFull[4],
+        letter: delimFull[5],
       }
-    : delimLegacy
+    : delimWithPatterns
       ? {
-          emotions: delimLegacy[1],
-          mood: delimLegacy[2],
-          patterns: null as string | null,
-          letter: delimLegacy[3],
+          wellbeing: null as string | null,
+          emotions: delimWithPatterns[1],
+          mood: delimWithPatterns[2],
+          patterns: delimWithPatterns[3],
+          letter: delimWithPatterns[4],
         }
-      : null;
+      : delimLegacy
+        ? {
+            wellbeing: null as string | null,
+            emotions: delimLegacy[1],
+            mood: delimLegacy[2],
+            patterns: null as string | null,
+            letter: delimLegacy[3],
+          }
+        : null;
   if (delim) {
+    let wellbeing: WellbeingLevel = "none";
+    if (delim.wellbeing) {
+      const wbRaw =
+        extractJsonObjectFromText(delim.wellbeing) ?? delim.wellbeing.trim();
+      try {
+        wellbeing = parseWellbeingLevel(JSON.parse(wbRaw));
+      } catch {
+        wellbeing = parseWellbeingLevel(wbRaw);
+      }
+    }
     const emotionsRaw =
       extractJsonArrayFromText(delim.emotions ?? "") ?? delim.emotions?.trim();
     let emotions: WeeklyEmotionScore[] | undefined;
     if (emotionsRaw) {
       try {
-        emotions = parseEmotions(JSON.parse(emotionsRaw));
+        emotions = parseEmotions(JSON.parse(emotionsRaw), knownEntryIds);
       } catch {
-        emotions = parseEmotions(emotionsRaw);
+        emotions = parseEmotions(emotionsRaw, knownEntryIds);
       }
     }
     const moodLine = (delim.mood ?? "").trim();
@@ -1119,9 +1273,9 @@ function parseLetterModelOutput(
         }
       }
     }
-    const letterMarkdown = (delim.letter ?? "").trim();
+    const letterMarkdown = coerceLetterMarkdown((delim.letter ?? "").trim());
     if (letterMarkdown) {
-      return { letterMarkdown, emotions, moodSummary, ...patterns };
+      return { letterMarkdown, wellbeing, emotions, moodSummary, ...patterns };
     }
   }
 
@@ -1142,8 +1296,11 @@ function parseLetterModelOutput(
       if (typeof parsed.letterMarkdown === "string" && parsed.letterMarkdown.trim()) {
         const patterns = parsePatternsBlob(parsed, knownEntryIds);
         return {
-          letterMarkdown: parsed.letterMarkdown.trim(),
-          emotions: parseEmotions(parsed.emotions),
+          letterMarkdown: coerceLetterMarkdown(parsed.letterMarkdown.trim()),
+          wellbeing: parseWellbeingLevel(
+            (parsed as { wellbeing?: unknown }).wellbeing,
+          ),
+          emotions: parseEmotions(parsed.emotions, knownEntryIds),
           moodSummary: parseMoodSummary(parsed.moodSummary),
           ...patterns,
         };
@@ -1160,7 +1317,7 @@ function parseLetterModelOutput(
     let emotions: WeeklyEmotionScore[] | undefined;
     if (emotionsMatch?.[1]) {
       try {
-        emotions = parseEmotions(JSON.parse(emotionsMatch[1]));
+        emotions = parseEmotions(JSON.parse(emotionsMatch[1]), knownEntryIds);
       } catch {
         /* ignore */
       }
@@ -1169,7 +1326,7 @@ function parseLetterModelOutput(
       const arr = extractJsonArrayFromText(jsonObj);
       if (arr) {
         try {
-          emotions = parseEmotions(JSON.parse(arr));
+          emotions = parseEmotions(JSON.parse(arr), knownEntryIds);
         } catch {
           /* ignore */
         }
@@ -1194,7 +1351,8 @@ function parseLetterModelOutput(
     }
     if (letterMarkdown.trim()) {
       return {
-        letterMarkdown: letterMarkdown.trim(),
+        letterMarkdown: coerceLetterMarkdown(letterMarkdown.trim()),
+        wellbeing: "none",
         emotions,
         moodSummary: moodMatch?.[1]
           ? parseMoodSummary(moodMatch[1].replace(/\\"/g, '"'))
@@ -1208,7 +1366,7 @@ function parseLetterModelOutput(
   let emotions: WeeklyEmotionScore[] | undefined;
   if (arr) {
     try {
-      emotions = parseEmotions(JSON.parse(arr));
+      emotions = parseEmotions(JSON.parse(arr), knownEntryIds);
     } catch {
       /* ignore */
     }
@@ -1216,6 +1374,7 @@ function parseLetterModelOutput(
   let letterMarkdown = outText;
   if (arr) letterMarkdown = outText.replace(arr, "").trim();
   letterMarkdown = letterMarkdown
+    .replace(/<<<WELLBEING>>>/gi, "")
     .replace(/<<<EMOTIONS>>>/gi, "")
     .replace(/<<<MOOD_SUMMARY>>>/gi, "")
     .replace(/<<<PATTERNS>>>/gi, "")
@@ -1223,7 +1382,8 @@ function parseLetterModelOutput(
     .replace(/^\{[\s\S]*$/, "")
     .trim();
   return {
-    letterMarkdown: letterMarkdown || outText,
+    letterMarkdown: coerceLetterMarkdown(letterMarkdown || outText),
+    wellbeing: "none",
     emotions,
   };
 }
@@ -1275,7 +1435,7 @@ async function callClaudeForLetter(params: {
       outText,
       params.knownEntryIds ?? new Set(),
     );
-    const letter = parsed.letterMarkdown.trim();
+    const letter = coerceLetterMarkdown(parsed.letterMarkdown.trim());
     if (!letter) {
       throw new Error("Empty letter in model response");
     }
@@ -1375,6 +1535,25 @@ function itemToReflection(
     ...(recurringThought ? { recurringThought } : {}),
     ...(patterns.activities ? { activities: patterns.activities } : {}),
     ...(generatedParts ? { generatedParts } : {}),
+    wellbeing: { level: parseWellbeingLevel(item.wellbeing) },
+    ...(item.letterFeedback &&
+    typeof item.letterFeedback === "object" &&
+    ((item.letterFeedback as { rating?: unknown }).rating === "up" ||
+      (item.letterFeedback as { rating?: unknown }).rating === "down")
+      ? {
+          letterFeedback: {
+            rating: (item.letterFeedback as { rating: "up" | "down" }).rating,
+            ...((item.letterFeedback as { note?: unknown }).note &&
+            typeof (item.letterFeedback as { note?: unknown }).note === "string"
+              ? { note: String((item.letterFeedback as { note: string }).note) }
+              : {}),
+            at:
+              typeof (item.letterFeedback as { at?: unknown }).at === "string"
+                ? String((item.letterFeedback as { at: string }).at)
+                : generatedAt,
+          },
+        }
+      : {}),
     meta: {
       generatedAt,
       model:
@@ -1556,6 +1735,57 @@ async function listWeeklyReflections(
   return mergeLetterSummaries(rangeRows, legacyRows);
 }
 
+function utcDateKey(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+async function getDailyGenerationCount(
+  table: string,
+  ownerId: string,
+  now = new Date(),
+): Promise<number> {
+  try {
+    const r = await ddb.send(
+      new GetCommand({
+        TableName: table,
+        Key: { pk: ownerId, sk: `GENCOUNT#${utcDateKey(now)}` },
+      }),
+    );
+    const count = (r.Item as { count?: unknown } | undefined)?.count;
+    return typeof count === "number" && Number.isFinite(count)
+      ? Math.max(0, Math.floor(count))
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function incrementDailyGenerationCount(
+  table: string,
+  ownerId: string,
+  usage: { input_tokens: number; output_tokens: number; rangeKey: string },
+  now = new Date(),
+): Promise<number> {
+  const day = utcDateKey(now);
+  const sk = `GENCOUNT#${day}`;
+  const current = await getDailyGenerationCount(table, ownerId, now);
+  const next = current + 1;
+  await ddb.send(
+    new PutCommand({
+      TableName: table,
+      Item: {
+        pk: ownerId,
+        sk,
+        count: next,
+        day,
+        updatedAt: now.toISOString(),
+        lastUsage: usage,
+      },
+    }),
+  );
+  return next;
+}
+
 async function saveWeeklyReflection(params: {
   table: string;
   reflection: WeeklyReflection;
@@ -1583,6 +1813,8 @@ async function saveWeeklyReflection(params: {
         recurringThought: params.reflection.recurringThought,
         activities: params.reflection.activities,
         generatedParts: params.reflection.generatedParts,
+        wellbeing: params.reflection.wellbeing ?? { level: "none" },
+        letterFeedback: params.reflection.letterFeedback,
         generatedAt: params.reflection.meta.generatedAt,
         model: params.reflection.meta.model,
         journalEntryCount: params.reflection.meta.journalEntryCount,
@@ -1766,6 +1998,7 @@ export async function handler(
     letter: true,
     patterns: { felt: true, moved: true, wins: true, thought: true },
   };
+  let correctionHints: string[] = [];
   let periodInput: {
     periodType?: unknown;
     startDate?: unknown;
@@ -1792,6 +2025,13 @@ export async function handler(
       timeZone: parsed.timeZone ?? periodInput.timeZone,
     };
     selection = parseGenerateSelection(parsed);
+    if (Array.isArray(parsed.corrections)) {
+      correctionHints = parsed.corrections
+        .filter((c): c is string => typeof c === "string")
+        .map((c) => c.trim())
+        .filter((c) => c.length >= 4 && c.length <= 240)
+        .slice(0, 10);
+    }
   } catch {
     /* ignore */
   }
@@ -1807,6 +2047,16 @@ export async function handler(
 
   if (!selection.letter && !anyPatternSelected(selection.patterns)) {
     return json(400, { error: "Choose at least one: letter or patterns" });
+  }
+
+  const usedToday = await getDailyGenerationCount(insightsTable, ownerId);
+  if (usedToday >= INSIGHTS_DAILY_GENERATION_LIMIT) {
+    return json(429, {
+      error: "You've generated a lot today. Try again tomorrow.",
+      code: "daily_limit",
+      limit: INSIGHTS_DAILY_GENERATION_LIMIT,
+      generationsRemaining: 0,
+    });
   }
 
   try {
@@ -1849,7 +2099,9 @@ export async function handler(
     const recentPromisesLetter = priorLetters.find(
       (l) => Array.isArray(l.promises) && l.promises.length > 0,
     );
-    const lastWeekPromises = recentPromisesLetter?.promises;
+    const lastWeekPromises = recentPromisesLetter?.promises?.map((p) =>
+      typeof p === "string" ? p : p.text,
+    );
     const priorRecurringThoughts = priorLetters
       .filter((l) => l.recurringThought?.text)
       .map((l) => ({
@@ -1865,7 +2117,6 @@ export async function handler(
         user: buildUserPrompt({
           periodLabel,
           periodPhrase,
-          displayName: user?.name,
           journalText: formatJournalForPrompt(entries),
           chatText: formatChatsForPrompt(chats),
           moodTagsText: formatMoodTagsForPrompt(entries),
@@ -1874,6 +2125,7 @@ export async function handler(
           ...(priorRecurringThoughts.length
             ? { priorRecurringThoughts }
             : {}),
+          ...(correctionHints.length ? { corrections: correctionHints } : {}),
         }),
         knownEntryIds,
       });
@@ -1896,6 +2148,7 @@ export async function handler(
 
     const {
       letterMarkdown: modelLetter,
+      wellbeing: modelWellbeing,
       emotions,
       moodSummary,
       arc,
@@ -1913,9 +2166,12 @@ export async function handler(
         : null;
     const wins = (() => {
       if (!selection.patterns.wins) return undefined;
-      const base = modelWins ? [...modelWins] : [];
-      if (wroteLine && !base.some((w) => /^wrote on \d+/i.test(w))) {
-        base.push(wroteLine);
+      const base: WeeklyCitedItem[] = modelWins ? [...modelWins] : [];
+      if (
+        wroteLine &&
+        !base.some((w) => /^wrote on \d+/i.test(w.text))
+      ) {
+        base.push({ text: wroteLine });
       }
       return base.length > 0 ? base.slice(0, 5) : undefined;
     })();
@@ -2001,6 +2257,10 @@ export async function handler(
         : existing?.activities
           ? { activities: existing.activities }
           : {}),
+      wellbeing: { level: modelWellbeing },
+      ...(existing?.letterFeedback
+        ? { letterFeedback: existing.letterFeedback }
+        : {}),
       generatedParts,
       meta: {
         generatedAt: now,
@@ -2012,6 +2272,11 @@ export async function handler(
     };
 
     await saveWeeklyReflection({ table: insightsTable, reflection });
+    await incrementDailyGenerationCount(insightsTable, ownerId, {
+      input_tokens: usage?.input_tokens ?? 0,
+      output_tokens: usage?.output_tokens ?? 0,
+      rangeKey,
+    });
 
     return json(200, {
       reflection,
@@ -2022,6 +2287,11 @@ export async function handler(
       endDate: reflection.endDate,
       periodType: reflection.periodType,
       rangeKey: reflection.rangeKey,
+      generationsRemaining: Math.max(
+        0,
+        INSIGHTS_DAILY_GENERATION_LIMIT -
+          (await getDailyGenerationCount(insightsTable, ownerId)),
+      ),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Weekly reflection failed";

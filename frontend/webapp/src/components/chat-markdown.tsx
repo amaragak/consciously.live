@@ -2,10 +2,16 @@ import { type ReactNode } from "react";
 
 /**
  * Streaming-friendly markdown subset:
- * - **bold** or *bold* — only when closing delimiters are found.
+ * - **bold** — only when closing delimiters are found.
+ * - *emphasis* — bold (script dialect) or italic (letters), via `singleAsteriskAs`.
+ * - _italics_ — underscore emphasis.
  * - # heading — ATX only on complete lines (last line is plain until a trailing newline).
  */
-function renderBoldInLine(line: string, keyPrefix: string): ReactNode[] {
+function renderInlineInLine(
+  line: string,
+  keyPrefix: string,
+  singleAsteriskAs: "bold" | "italic",
+): ReactNode[] {
   const out: ReactNode[] = [];
   let i = 0;
   let k = 0;
@@ -13,28 +19,48 @@ function renderBoldInLine(line: string, keyPrefix: string): ReactNode[] {
     if (line.startsWith("**", i)) {
       const close = line.indexOf("**", i + 2);
       if (close === -1) {
-        // Unclosed marker while streaming: drop the marker and keep parsing.
         i += 2;
         continue;
       }
       if (close === i + 2) {
-        // Empty bold marker: drop it.
         i += 4;
         continue;
       }
       const inner = line.slice(i + 2, close);
       out.push(
         <strong key={`${keyPrefix}-b-${k++}`} className="font-semibold">
-          {inner}
+          {renderInlineInLine(inner, `${keyPrefix}-bi-${k}`, singleAsteriskAs)}
         </strong>,
       );
       i = close + 2;
       continue;
     }
 
+    if (line[i] === "_" && (i === 0 || /\s/.test(line[i - 1]!))) {
+      const close = line.indexOf("_", i + 1);
+      if (close !== -1 && close > i + 1) {
+        const after = line[close + 1];
+        if (after == null || /[\s.,;:!?)\]]/.test(after)) {
+          const inner = line.slice(i + 1, close);
+          out.push(
+            <em key={`${keyPrefix}-i-${k++}`} className="italic font-normal">
+              {inner}
+            </em>,
+          );
+          i = close + 1;
+          continue;
+        }
+      }
+    }
+
     const ch = line[i];
     if (ch !== "*") {
-      const next = line.indexOf("*", i);
+      const nextStar = line.indexOf("*", i);
+      const nextUnd = line.indexOf("_", i);
+      let next = -1;
+      if (nextStar === -1) next = nextUnd;
+      else if (nextUnd === -1) next = nextStar;
+      else next = Math.min(nextStar, nextUnd);
       if (next === -1) {
         out.push(line.slice(i));
         break;
@@ -47,21 +73,27 @@ function renderBoldInLine(line: string, keyPrefix: string): ReactNode[] {
     // Single '*' marker
     const close = line.indexOf("*", i + 1);
     if (close === -1) {
-      // Unclosed marker while streaming: drop it.
       i += 1;
       continue;
     }
     if (close === i + 1) {
-      // "**" case is handled above; for "*/" empty marker, drop it.
       i += 2;
       continue;
     }
     const inner = line.slice(i + 1, close);
-    out.push(
-      <strong key={`${keyPrefix}-b-${k++}`} className="font-semibold">
-        {inner}
-      </strong>,
-    );
+    if (singleAsteriskAs === "italic") {
+      out.push(
+        <em key={`${keyPrefix}-i-${k++}`} className="italic font-normal">
+          {inner}
+        </em>,
+      );
+    } else {
+      out.push(
+        <strong key={`${keyPrefix}-b-${k++}`} className="font-semibold">
+          {inner}
+        </strong>,
+      );
+    }
     i = close + 1;
   }
   return out;
@@ -69,7 +101,11 @@ function renderBoldInLine(line: string, keyPrefix: string): ReactNode[] {
 
 const PAUSE_RE = /\[\[PAUSE\s+([^\]]+)\]\]/g;
 
-function renderBoldAndPausesInLine(line: string, keyPrefix: string): ReactNode[] {
+function renderBoldAndPausesInLine(
+  line: string,
+  keyPrefix: string,
+  singleAsteriskAs: "bold" | "italic",
+): ReactNode[] {
   const out: ReactNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -80,7 +116,10 @@ function renderBoldAndPausesInLine(line: string, keyPrefix: string): ReactNode[]
     const end = start + m[0].length;
 
     const before = line.slice(lastIndex, start);
-    if (before) out.push(...renderBoldInLine(before, `${keyPrefix}-pre-${k}`));
+    if (before)
+      out.push(
+        ...renderInlineInLine(before, `${keyPrefix}-pre-${k}`, singleAsteriskAs),
+      );
 
     out.push(
       <em key={`${keyPrefix}-pause-${k}`} className="italic font-medium">
@@ -93,7 +132,10 @@ function renderBoldAndPausesInLine(line: string, keyPrefix: string): ReactNode[]
   }
 
   const after = line.slice(lastIndex);
-  if (after) out.push(...renderBoldInLine(after, `${keyPrefix}-post-${k}`));
+  if (after)
+    out.push(
+      ...renderInlineInLine(after, `${keyPrefix}-post-${k}`, singleAsteriskAs),
+    );
 
   return out;
 }
@@ -103,9 +145,12 @@ const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 export function ChatMarkdown({
   text,
   className = "",
+  /** Script dialect keeps *bold*; letters use standard *italic*. */
+  singleAsteriskAs = "bold",
 }: {
   text: string;
   className?: string;
+  singleAsteriskAs?: "bold" | "italic";
 }) {
   const lines = text.split("\n");
   const lastIndex = lines.length - 1;
@@ -135,20 +180,28 @@ export function ChatMarkdown({
                 role="heading"
                 aria-level={level}
               >
-                {renderBoldAndPausesInLine(hm[2], `h-${idx}`)}
+                {renderBoldAndPausesInLine(
+                  hm[2],
+                  `h-${idx}`,
+                  singleAsteriskAs,
+                )}
               </div>
             );
           } else {
             inner = (
               <span className="block min-h-[1em] whitespace-pre-wrap">
-                {renderBoldAndPausesInLine(line, `p-${idx}`)}
+                {renderBoldAndPausesInLine(line, `p-${idx}`, singleAsteriskAs)}
               </span>
             );
           }
         } else {
           inner = (
             <span className="block min-h-[1em] whitespace-pre-wrap">
-              {renderBoldAndPausesInLine(line, `tail-${idx}`)}
+              {renderBoldAndPausesInLine(
+                line,
+                `tail-${idx}`,
+                singleAsteriskAs,
+              )}
             </span>
           );
         }

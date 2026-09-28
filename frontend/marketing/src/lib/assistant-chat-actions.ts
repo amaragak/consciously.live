@@ -1,5 +1,5 @@
 import { createMeditationHref } from "@/lib/create-meditation-path";
-import { getMedimadeSessionJwt } from "@/lib/auth-session";
+import { getMedimadeSessionDisplayName, getMedimadeSessionJwt } from "@/lib/auth-session";
 import {
   readAccountSessionStorage,
   writeAccountSessionStorage,
@@ -976,7 +976,16 @@ async function applyGetWeeklyReflection(
           id: res.weekKey || "week",
           title: res.weekKey || "This week",
           meta: "Weekly letter",
-          body: res.reflection.letterMarkdown.replace(/[#*_`]/g, "").trim(),
+          body: (() => {
+            const name =
+              getMedimadeSessionDisplayName()?.trim().split(/\s+/)[0] ||
+              "friend";
+            return res.reflection.letterMarkdown
+              .split("[[NAME]]")
+              .join(name)
+              .replace(/[#*_`]/g, "")
+              .trim();
+          })(),
           href,
         },
       ],

@@ -18,6 +18,7 @@ import {
   setCachedWeeklyLetters,
 } from "@/lib/journal-remote-cache";
 import { JournalWeeklyReflectionCard } from "@/components/journal-weekly-reflection-card";
+import { InsightsNeedSupportLink } from "@/components/insights-need-support-link";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import {
   insightHeaderLabel,
@@ -470,6 +471,10 @@ export function JournalInsightsView() {
                 })}
               </div>
             ) : null}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <InsightsNeedSupportLink />
           </div>
         </div>
       </div>

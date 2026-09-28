@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
 import {
   fetchJournalWeeklyReflectionRemote,
   getMedimadeApiBase,
@@ -13,6 +14,18 @@ import {
   invalidateCachedWeeklyReflection,
   setCachedWeeklyReflection,
 } from "@/lib/journal-remote-cache";
+
+const LETTER_NAME_PLACEHOLDER = "[[NAME]]";
+
+function fillLetterNamePlaceholder(
+  markdown: string,
+  displayName?: string | null,
+): string {
+  if (!markdown.includes(LETTER_NAME_PLACEHOLDER)) return markdown;
+  const first =
+    (displayName ?? "").trim().split(/\s+/).filter(Boolean)[0] || "friend";
+  return markdown.split(LETTER_NAME_PLACEHOLDER).join(first);
+}
 
 function formatWeekRange(weekStart: string, weekEnd: string): string {
   try {
@@ -180,7 +193,12 @@ export function JournalWeeklyReflectionCard({
       ) : reflection?.letterMarkdown?.trim() ? (
         <div className="mt-5">
           <div className="mt-5 font-display text-[17px] font-normal italic leading-[1.75] text-foreground/90 [&_p]:mb-4 [&_p:first-child]:text-[19px] [&_p:last-child]:mb-0">
-            <ChatMarkdown text={reflection.letterMarkdown} />
+            <ChatMarkdown
+              text={fillLetterNamePlaceholder(
+                reflection.letterMarkdown,
+                getMedimadeSessionDisplayName(),
+              )}
+            />
           </div>
           <p className="mt-4 text-xs text-muted">
             Written {formatTs(reflection.meta.generatedAt)}

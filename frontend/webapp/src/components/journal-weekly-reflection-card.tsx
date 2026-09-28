@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronRight, MoreHorizontal, Play } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreHorizontal, Play, ThumbsDown, ThumbsUp } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import {
   readInsightsCollapsePrefs,
   writeInsightsCollapsePrefs,
 } from "@/lib/insights-collapse-prefs";
+import { isInsightItemHidden, recentCorrectionGuidance } from "@/lib/insight-corrections";
 import {
   fetchJournalWeeklyReflectionRemote,
   getMedimadeApiBase,
@@ -34,6 +35,7 @@ import {
   writeInsightsMeditationPrompt,
 } from "@/lib/insights-meditation-handoff";
 import { InsightsPatternCards } from "@/components/insights-pattern-cards";
+import { InsightsSupportBanner } from "@/components/insights-support-banner";
 import {
   InsightsGenerateDialog,
   type InsightsGeneratePrefill,
@@ -46,6 +48,109 @@ import {
   parseInsightRangeKey,
   periodUiCopy,
 } from "@/lib/insight-period";
+import { InsightsSourceLink } from "@/components/insights-source-link";
+import {
+  fillLetterNamePlaceholder,
+  parseWellbeingLevel,
+  wellbeingVisibility,
+} from "@/lib/insight-wellbeing";
+import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
+
+function LetterFeedbackRow({
+  rangeKey,
+  initial,
+}: {
+  rangeKey: string;
+  initial: { rating: "up" | "down"; note?: string; at: string } | null;
+}) {
+  const storageKey = `mm_letter_feedback_${rangeKey}`;
+  const [rating, setRating] = useState<"up" | "down" | null>(() => {
+    if (initial?.rating) return initial.rating;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { rating?: string };
+      return parsed.rating === "up" || parsed.rating === "down"
+        ? parsed.rating
+        : null;
+    } catch {
+      return null;
+    }
+  });
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState(initial?.note ?? "");
+
+  const save = (next: "up" | "down", noteText?: string) => {
+    setRating(next);
+    const payload = {
+      rating: next,
+      ...(noteText?.trim() ? { note: noteText.trim() } : {}),
+      at: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  if (!rangeKey.trim()) return null;
+
+  return (
+    <div className="mt-8 flex flex-col gap-3 border-t border-border/60 pt-5">
+      <p className="text-sm text-muted">Did this feel right?</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          aria-pressed={rating === "up"}
+          aria-label="Yes, this felt right"
+          onClick={() => {
+            setNoteOpen(false);
+            save("up");
+          }}
+          className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors ${
+            rating === "up"
+              ? "border-accent bg-accent-soft text-foreground"
+              : "border-border bg-card text-muted hover:text-foreground"
+          }`}
+        >
+          <ThumbsUp className="size-3.5" strokeWidth={2} />
+          Yes
+        </button>
+        <button
+          type="button"
+          aria-pressed={rating === "down"}
+          aria-label="No, this did not feel right"
+          onClick={() => {
+            setNoteOpen(true);
+            save("down", note);
+          }}
+          className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors ${
+            rating === "down"
+              ? "border-accent bg-accent-soft text-foreground"
+              : "border-border bg-card text-muted hover:text-foreground"
+          }`}
+        >
+          <ThumbsDown className="size-3.5" strokeWidth={2} />
+          No
+        </button>
+      </div>
+      {noteOpen || rating === "down" ? (
+        <label className="flex flex-col gap-1.5 text-sm text-muted">
+          What felt off?{" "}
+          <span className="font-normal text-muted/80">(optional)</span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={() => save("down", note)}
+            rows={2}
+            className="rounded-xl border border-border bg-card px-3 py-2 text-[15px] text-foreground outline-none focus:border-accent/50"
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
 
 function formatWeekRange(weekStart: string, weekEnd: string): string {
   try {
@@ -430,6 +535,7 @@ function EmotionBars({ emotions }: { emotions: JournalWeeklyEmotionScore[] }) {
   return (
     <div className="flex flex-col gap-3">
       {emotions.map((e, i) => {
+        if (isInsightItemHidden("emotion", e.name)) return null;
         const pct = Math.max(0, Math.min(100, (e.score / 10) * 100));
         const barColor = i === 0 ? "bg-accent" : "bg-deep";
         const examples = e.examples?.length ? e.examples : null;
@@ -444,7 +550,10 @@ function EmotionBars({ emotions }: { emotions: JournalWeeklyEmotionScore[] }) {
           >
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="font-medium text-foreground">{e.name}</span>
-              <span className="text-muted">{e.score}/10</span>
+              <span className="flex items-center gap-2 text-muted">
+                <span>{e.score}/10</span>
+                <InsightsSourceLink entryIds={e.entryIds ?? []} />
+              </span>
             </div>
             <div
               className="h-[10px] overflow-hidden rounded-full bg-border-subtle"
@@ -567,7 +676,10 @@ function MoodWeekStrip({
                 >
                   {label}
                 </div>
-                <span>{d.dayLabel}</span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span>{d.dayLabel}</span>
+                  <span className="text-[11px] tabular-nums">{d.dateNum}</span>
+                </span>
               </div>
             );
           })}
@@ -629,12 +741,16 @@ export function JournalWeeklyReflectionCard({
 
   const openGenerateDialog = useCallback(
     (prefill?: InsightsGeneratePrefill | null) => {
+      const hasRange = Boolean(
+        reflection?.startDate && reflection?.endDate,
+      );
       const fromReflection: InsightsGeneratePrefill = {
-        ...(reflection?.startDate && reflection?.endDate
+        ...(hasRange
           ? {
-              startDate: reflection.startDate,
-              endDate: reflection.endDate,
-              periodType: reflection.periodType,
+              startDate: reflection!.startDate,
+              endDate: reflection!.endDate,
+              periodType: reflection!.periodType,
+              lockPeriod: true,
             }
           : {}),
       };
@@ -719,6 +835,7 @@ export function JournalWeeklyReflectionCard({
           startDate: selection.startDate,
           endDate: selection.endDate,
           timeZone: selection.timeZone,
+          corrections: recentCorrectionGuidance(10),
         });
         const nextKey =
           got.rangeKey ||
@@ -858,11 +975,21 @@ export function JournalWeeklyReflectionCard({
 
   const generatedParts = resolveGeneratedParts(reflection);
   const hasLetter = Boolean(reflection?.letterMarkdown?.trim());
+  const letterMarkdownDisplay = useMemo(
+    () =>
+      fillLetterNamePlaceholder(
+        reflection?.letterMarkdown ?? "",
+        getMedimadeSessionDisplayName(),
+      ),
+    [reflection?.letterMarkdown],
+  );
   const hasGeneratedPatterns = hasAnyGeneratedPatternPart(generatedParts);
   const hasAnyInsights = hasLetter || hasGeneratedPatterns;
   const emotions = normalizeEmotions(reflection?.emotions);
   const showEmotionChart =
     Boolean(generatedParts?.felt) && emotions.length >= 1;
+  const wellbeingLevel = parseWellbeingLevel(reflection?.wellbeing);
+  const wellbeingVis = wellbeingVisibility(wellbeingLevel);
   const meditationCount = reflection?.meta.meditationChatCount ?? 0;
   const pendingLetter = Boolean(pendingGeneration?.letter);
   const pendingFelt = Boolean(pendingGeneration?.patterns.felt);
@@ -880,7 +1007,7 @@ export function JournalWeeklyReflectionCard({
         periodDates.endDate,
       )}`;
     }
-    const plain = plainFromMarkdown(reflection.letterMarkdown);
+    const plain = plainFromMarkdown(letterMarkdownDisplay);
     const withoutDear = plain.replace(/^Dear\s+[^,.]+[,.]?\s*/i, "").trim();
     const m = withoutDear.match(/^(.{12,72}?)(?:[.!?]|\n|$)/);
     const snippet = (m?.[1] ?? withoutDear).trim();
@@ -896,7 +1023,7 @@ export function JournalWeeklyReflectionCard({
           periodDates.endDate,
         )}`
       : `Your insights for ${weekLabel}`;
-  }, [hasLetter, reflection, periodDates, weekLabel]);
+  }, [hasLetter, letterMarkdownDisplay, reflection, periodDates, weekLabel]);
 
   const writtenFromLine = useMemo(() => {
     if (!hasAnyInsights) return null;
@@ -911,13 +1038,15 @@ export function JournalWeeklyReflectionCard({
   const createMeditation = useCallback(() => {
     if (!hasAnyInsights || !reflection) return;
     const plain = hasLetter
-      ? plainFromMarkdown(reflection.letterMarkdown)
+      ? plainFromMarkdown(letterMarkdownDisplay)
       : "";
     const prompt = buildInsightsMeditationPrompt({
       letterPlain: plain,
       emotions: reflection.emotions,
       weekLabel: weekLabelLong,
-      wins: generatedParts?.wins ? reflection.wins : undefined,
+      wins: generatedParts?.wins
+        ? reflection.wins?.map((w) => (typeof w === "string" ? w : w.text))
+        : undefined,
       thought: generatedParts?.thought
         ? reflection.recurringThought?.text
         : undefined,
@@ -928,6 +1057,7 @@ export function JournalWeeklyReflectionCard({
     generatedParts,
     hasAnyInsights,
     hasLetter,
+    letterMarkdownDisplay,
     navigate,
     reflection,
     weekLabelLong,
@@ -965,11 +1095,11 @@ export function JournalWeeklyReflectionCard({
   const patternsCollapsible = showPatternsSection && !patternsOnlyAddCta;
 
   const letterMinutes = hasLetter && reflection
-    ? letterMinutesRead(reflection.letterMarkdown)
+    ? letterMinutesRead(letterMarkdownDisplay)
     : 1;
   const letterPreview =
     hasLetter && reflection
-      ? firstLetterSentence(reflection.letterMarkdown)
+      ? firstLetterSentence(letterMarkdownDisplay)
       : "";
 
   const patternsCollapsedMeta = useMemo(() => {
@@ -981,7 +1111,10 @@ export function JournalWeeklyReflectionCard({
     if (generatedParts?.moved && arc?.start && arc?.end) {
       bits.push(`${arc.start} → ${arc.end}`);
     }
-    const wins = (reflection?.wins ?? []).filter(Boolean);
+    const wins = (reflection?.wins ?? []).filter((w) => {
+      const text = typeof w === "string" ? w : w.text;
+      return Boolean(text);
+    });
     if (generatedParts?.wins && wins.length > 0) {
       bits.push(`${wins.length} win${wins.length === 1 ? "" : "s"}`);
     }
@@ -1015,6 +1148,17 @@ export function JournalWeeklyReflectionCard({
 
   return (
     <div className="flex flex-col gap-7">
+      {wellbeingVis.fullBanner || wellbeingVis.softBanner ? (
+        <InsightsSupportBanner
+          level={wellbeingLevel}
+          rangeKey={
+            reflection?.rangeKey ||
+            (periodDates
+              ? `${periodDates.startDate}_${periodDates.endDate}`
+              : undefined)
+          }
+        />
+      ) : null}
       <div className="flex items-end justify-between gap-6">
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-[12px] font-semibold uppercase tracking-[0.09em] text-accent-link">
@@ -1157,9 +1301,19 @@ export function JournalWeeklyReflectionCard({
                     </p>
                   ) : reflection ? (
                     <article className="max-w-[680px] py-6">
-                      <div className="font-display text-[19px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_p]:mb-[18px] [&_p:last-child]:mb-0">
-                        <ChatMarkdown text={reflection.letterMarkdown} />
+                      <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:font-bold [&_strong]:text-foreground [&_[role=heading]]:mb-2 [&_[role=heading]]:mt-6 [&_[role=heading]]:font-display [&_[role=heading]]:text-[15px] [&_[role=heading]]:font-semibold [&_[role=heading]]:tracking-wide [&_[role=heading]]:text-foreground/85 [&_[role=heading]:first-child]:mt-0">
+                        <ChatMarkdown
+                          text={letterMarkdownDisplay}
+                          singleAsteriskAs="italic"
+                        />
                       </div>
+                      <LetterFeedbackRow
+                        rangeKey={
+                          reflection.rangeKey ||
+                          `${reflection.startDate ?? ""}_${reflection.endDate ?? ""}`
+                        }
+                        initial={reflection.letterFeedback ?? null}
+                      />
                     </article>
                   ) : null}
                 </InsightsCollapsibleBody>
@@ -1235,7 +1389,7 @@ export function JournalWeeklyReflectionCard({
                       <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-border-subtle" />
                     </div>
                   </div>
-                ) : generatedParts?.felt ? (
+                ) : generatedParts?.felt && wellbeingVis.emotions ? (
                   <div className="relative z-[1] flex flex-col gap-3 overflow-visible rounded-xl border border-border bg-card px-6 py-[22px]">
                     <div className="text-sm font-semibold text-foreground">
                       {uiCopy.feltTitle}
@@ -1282,6 +1436,7 @@ export function JournalWeeklyReflectionCard({
                   storeEntries={storeEntries}
                   weekLabel={weekLabelLong}
                   periodDays={periodDays}
+                  wellbeingLevel={wellbeingLevel}
                   generatedParts={generatedParts}
                   loadingParts={
                     pendingAnyPattern
@@ -1294,7 +1449,7 @@ export function JournalWeeklyReflectionCard({
                   }
                 />
 
-                {hasAnyInsights ? (
+                {hasAnyInsights && wellbeingVis.turnIntoMeditation ? (
                   <div className="flex flex-col gap-4 rounded-xl bg-deep px-[26px] py-[22px] text-[color-mix(in_srgb,white_92%,var(--gold))] sm:flex-row sm:items-center sm:gap-5">
                     <span
                       aria-hidden
