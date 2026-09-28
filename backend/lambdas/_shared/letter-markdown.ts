@@ -1,5 +1,6 @@
 /**
  * Normalize weekly letter model output into markdown with ### headers and **bold**.
+ * Always includes a preamble before sections and a closing after them.
  */
 
 const LETTER_DEFAULT_HEADINGS = [
@@ -7,6 +8,14 @@ const LETTER_DEFAULT_HEADINGS = [
   "What shifted",
   "Carry forward",
 ] as const;
+
+/** Soft per-section ceiling so coerce never silently guts a full letter. */
+const SECTION_BODY_WORD_SOFT_MAX = 90;
+
+const DEFAULT_PREAMBLE =
+  "I've been sitting with what you wrote — thank you for putting this week into words.";
+const DEFAULT_CLOSING =
+  "Keep going. I'm in your corner.";
 
 function extractJsonObjectFromText(text: string): string | null {
   const t = text.trim();
@@ -59,19 +68,99 @@ function trimLetterBodyWords(body: string, maxWords: number): string {
   return `${words.slice(0, maxWords).join(" ").replace(/[,:;]+$/, "")}.`;
 }
 
+function asPlainParagraph(text: string | undefined | null): string {
+  return (text ?? "").replace(/\s+/g, " ").trim();
+}
+
+function splitSentences(text: string): string[] {
+  return (
+    text
+      .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+      ?.map((s) => s.trim())
+      .filter(Boolean) ?? []
+  );
+}
+
+/**
+ * Guarantee a warm opening and landing — peel a sentence from section bodies
+ * when the model omitted preamble/closing, else use a short default.
+ */
+export function ensurePreambleAndClosing(params: {
+  preamble?: string;
+  closing?: string;
+  sections: Array<{ heading: string; body: string }>;
+}): {
+  preamble: string;
+  closing: string;
+  sections: Array<{ heading: string; body: string }>;
+} {
+  const sections = params.sections.map((s) => ({
+    heading: s.heading,
+    body: asPlainParagraph(s.body),
+  }));
+  let preamble = asPlainParagraph(params.preamble);
+  let closing = asPlainParagraph(params.closing);
+
+  if (!preamble) {
+    const first = sections[0];
+    if (first) {
+      const parts = splitSentences(first.body);
+      if (parts.length >= 2) {
+        preamble = parts[0]!;
+        sections[0] = { ...first, body: parts.slice(1).join(" ") };
+      } else {
+        preamble = DEFAULT_PREAMBLE;
+      }
+    } else {
+      preamble = DEFAULT_PREAMBLE;
+    }
+  }
+
+  if (!closing) {
+    const lastIdx = sections.length - 1;
+    const last = sections[lastIdx];
+    if (last) {
+      const parts = splitSentences(last.body);
+      if (parts.length >= 2) {
+        closing = parts[parts.length - 1]!;
+        sections[lastIdx] = {
+          ...last,
+          body: parts.slice(0, -1).join(" "),
+        };
+      } else {
+        closing = DEFAULT_CLOSING;
+      }
+    } else {
+      closing = DEFAULT_CLOSING;
+    }
+  }
+
+  return { preamble, closing, sections };
+}
+
 export function letterSectionsToMarkdown(params: {
   greeting: string;
+  preamble?: string;
   sections: Array<{ heading: string; body: string }>;
+  closing?: string;
 }): string {
+  const framed = ensurePreambleAndClosing({
+    preamble: params.preamble,
+    closing: params.closing,
+    sections: params.sections,
+  });
   const lines: string[] = [params.greeting.trim() || "Dear [[NAME]],", ""];
-  for (const section of params.sections) {
+  lines.push(framed.preamble, "");
+  for (const section of framed.sections) {
     const heading = section.heading.replace(/^#+\s*/, "").trim() || "Note";
     const body = ensureLetterBodyHasBold(
-      trimLetterBodyWords(section.body.replace(/\s+/g, " ").trim(), 55),
+      trimLetterBodyWords(section.body, SECTION_BODY_WORD_SOFT_MAX),
     );
     if (!body) continue;
-    lines.push(`### ${heading}`, "", body, "");
+    // Heading sits directly on its body (no blank line between).
+    lines.push(`### ${heading}`, body, "");
   }
+  lines.push(framed.closing);
   return lines.join("\n").trim();
 }
 
@@ -83,11 +172,7 @@ function splitProseIntoSections(text: string, maxSections: number): string[] {
   if (paras.length >= 2) return paras.slice(0, maxSections);
   const single = paras[0] ?? text.replace(/\s+/g, " ").trim();
   if (!single) return [];
-  const sentences =
-    single
-      .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
-      ?.map((s) => s.trim())
-      .filter(Boolean) ?? [single];
+  const sentences = splitSentences(single);
   if (sentences.length <= maxSections) return sentences;
   const chunkSize = Math.ceil(sentences.length / maxSections);
   const out: string[] = [];
@@ -101,9 +186,97 @@ function splitProseIntoSections(text: string, maxSections: number): string[] {
   return out.filter(Boolean);
 }
 
+/** Parse markdown letters that already use ### section headers. */
+function parseAtxLetter(md: string): {
+  greeting: string;
+  preamble?: string;
+  sections: Array<{ heading: string; body: string }>;
+  closing?: string;
+} | null {
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i]!.trim()) i += 1;
+  if (i >= lines.length) return null;
+
+  let greeting = "Dear [[NAME]],";
+  const first = lines[i]!.trim();
+  if (/^Dear\s+/i.test(first) || /^\[\[NAME\]\],?$/i.test(first)) {
+    greeting = first.includes("[[NAME]]")
+      ? first.replace(/^Dear\s+[^,]+,/i, "Dear [[NAME]],")
+      : "Dear [[NAME]],";
+    if (/^Dear\s+/i.test(first)) greeting = "Dear [[NAME]],";
+    i += 1;
+  } else if (/^[A-Za-z][A-Za-z'-]{0,30},$/.test(first)) {
+    greeting = "Dear [[NAME]],";
+    i += 1;
+  }
+
+  const blocks: Array<{ type: "text" | "heading"; text: string }> = [];
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const hm = line.match(/^(#{1,6})\s+(.+)$/);
+    if (hm) {
+      blocks.push({ type: "heading", text: hm[2]!.trim() });
+      i += 1;
+      const bodyLines: string[] = [];
+      while (i < lines.length && !/^(#{1,6})\s+/.test(lines[i]!)) {
+        bodyLines.push(lines[i]!);
+        i += 1;
+      }
+      const body = bodyLines.join("\n").replace(/\s+/g, " ").trim();
+      if (body) blocks.push({ type: "text", text: body });
+      continue;
+    }
+    if (!line.trim()) {
+      i += 1;
+      continue;
+    }
+    const textLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i]!.trim() &&
+      !/^(#{1,6})\s+/.test(lines[i]!)
+    ) {
+      textLines.push(lines[i]!);
+      i += 1;
+    }
+    const text = textLines.join(" ").replace(/\s+/g, " ").trim();
+    if (text) blocks.push({ type: "text", text });
+  }
+
+  const sections: Array<{ heading: string; body: string }> = [];
+  let preamble: string | undefined;
+  let closing: string | undefined;
+  let pendingHeading: string | null = null;
+  let sawHeading = false;
+
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      pendingHeading = block.text;
+      sawHeading = true;
+      continue;
+    }
+    if (!sawHeading && !pendingHeading) {
+      preamble = preamble ? `${preamble} ${block.text}` : block.text;
+      continue;
+    }
+    if (pendingHeading) {
+      sections.push({ heading: pendingHeading, body: block.text });
+      pendingHeading = null;
+      continue;
+    }
+    // Trailing prose after sections → closing
+    closing = closing ? `${closing} ${block.text}` : block.text;
+  }
+
+  if (sections.length === 0) return null;
+  return { greeting, preamble, sections, closing };
+}
+
 /**
  * Turn model LETTER output into markdown with ### headers and **bold**.
  * Accepts structured JSON (preferred) or plain prose (forced into sections).
+ * Always ends with a preamble before sections and a closing after.
  */
 export function coerceLetterMarkdown(raw: string): string {
   let t = raw.trim();
@@ -118,6 +291,8 @@ export function coerceLetterMarkdown(raw: string): string {
     try {
       const parsed = JSON.parse(jsonRaw) as {
         greeting?: unknown;
+        preamble?: unknown;
+        closing?: unknown;
         sections?: unknown;
         body?: unknown;
         letterMarkdown?: unknown;
@@ -156,7 +331,16 @@ export function coerceLetterMarkdown(raw: string): string {
                 ? parsed.greeting.trim()
                 : "Dear [[NAME]],"
               : "Dear [[NAME]],";
-          return letterSectionsToMarkdown({ greeting, sections });
+          const preamble =
+            typeof parsed.preamble === "string" ? parsed.preamble : undefined;
+          const closing =
+            typeof parsed.closing === "string" ? parsed.closing : undefined;
+          return letterSectionsToMarkdown({
+            greeting,
+            preamble,
+            sections,
+            closing,
+          });
         }
       }
       if (
@@ -172,14 +356,29 @@ export function coerceLetterMarkdown(raw: string): string {
     }
   }
 
-  // Already has ATX headers — normalize greeting + ensure some bold.
+  // Already has ATX headers — re-parse and re-frame so preamble/closing exist.
   if (/^#{1,6}\s+\S+/m.test(t)) {
+    const parsed = parseAtxLetter(t);
+    if (parsed) {
+      return letterSectionsToMarkdown(parsed);
+    }
     let md = t;
     if (!/^Dear\s+/im.test(md) && !md.includes("[[NAME]]")) {
       md = `Dear [[NAME]],\n\n${md}`;
     } else {
       md = md.replace(/^Dear\s+[^,\n]+,/i, "Dear [[NAME]],");
       md = md.replace(/^[A-Z][a-z]{1,30},\s*\n/, "Dear [[NAME]],\n");
+    }
+    md = md.replace(/^(#{1,6}\s+[^\n]+)\n{2,}/gm, "$1\n");
+    // Inject defaults when greeting jumps straight to a heading / no closing.
+    if (/^Dear[^\n]*\n+#{1,6}\s+/m.test(md)) {
+      md = md.replace(
+        /^(Dear[^\n]*\n+)/,
+        `$1${DEFAULT_PREAMBLE}\n\n`,
+      );
+    }
+    if (/^#{1,6}\s+[^\n]+\n[^\n#]+$/m.test(md) && !/\n\n[^\n#].+$/.test(md)) {
+      md = `${md.trim()}\n\n${DEFAULT_CLOSING}`;
     }
     if (!/\*\*[^*]+\*\*/.test(md)) {
       md = md
@@ -193,20 +392,45 @@ export function coerceLetterMarkdown(raw: string): string {
     return md.trim();
   }
 
-  // Plain prose → forced sections with headers + bold.
+  // Plain prose → preamble + sections + closing when we have enough chunks.
   let body = t;
   const greet = body.match(
     /^(Dear\s+(?:\[\[NAME\]\]|[^\n,]+),|[A-Za-z][A-Za-z'-]{0,30},)\s*/i,
   );
   if (greet) body = body.slice(greet[0].length).trim();
-  const chunks = splitProseIntoSections(body, 3);
-  if (chunks.length === 0) return "Dear [[NAME]],";
-  const sections = chunks.map((chunk, i) => ({
+  const chunks = splitProseIntoSections(body, 5);
+  if (chunks.length === 0) {
+    return letterSectionsToMarkdown({
+      greeting: "Dear [[NAME]],",
+      sections: [
+        {
+          heading: LETTER_DEFAULT_HEADINGS[0],
+          body: "This period was quiet on the page — I'm still here with you.",
+        },
+      ],
+    });
+  }
+
+  let preamble: string | undefined;
+  let closing: string | undefined;
+  let sectionChunks = chunks;
+  if (chunks.length >= 4) {
+    preamble = chunks[0];
+    closing = chunks[chunks.length - 1];
+    sectionChunks = chunks.slice(1, -1).slice(0, 3);
+  } else if (chunks.length === 3) {
+    preamble = chunks[0];
+    sectionChunks = chunks.slice(1);
+  }
+
+  const sections = sectionChunks.map((chunk, i) => ({
     heading: LETTER_DEFAULT_HEADINGS[i] ?? `Part ${i + 1}`,
     body: chunk,
   }));
   return letterSectionsToMarkdown({
     greeting: "Dear [[NAME]],",
+    preamble,
     sections,
+    closing,
   });
 }

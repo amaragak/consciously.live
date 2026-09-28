@@ -1014,14 +1014,18 @@ function buildSystemPrompt(
   }
   if (wantLetter) {
     parts.push(
-      "LETTER: Write directly TO the reader in second person ('you'), warm and human. Keep any sign-off to one short line.",
-      "LETTER LENGTH (strict when wellbeing is none): at most 160 words across all section bodies — prefer ~40–50 words per section.",
+      "LETTER: Write directly TO the reader in second person ('you'), warm and human — like a note from someone who read their week carefully.",
+      "LETTER LENGTH (when wellbeing is none): about ~250 words total when there is enough journal/chat material; shorter is fine when the period is sparse. No hard maximum.",
       "LETTER OUTPUT (JSON only after <<<LETTER>>> — not freeform prose, not markdown):",
-      '{"greeting":"Dear [[NAME]],","sections":[{"heading":"What stood out","body":"..."},{"heading":"What shifted","body":"..."},{"heading":"Carry forward","body":"..."}]}',
-      "Rules: greeting must be exactly Dear [[NAME]], (literal [[NAME]] — never a real name). sections: 2 or 3 objects. Each heading is a short label (3–5 words). Each body is 1–2 short sentences.",
-      "In every body, wrap 1–2 concrete phrases in **double asterisks** for bold (required). No # headings inside body. No code fence.",
-      `When wellbeing is struggling, follow this tone instead of the default length: ${WELLBEING_LETTER_GUIDANCE.struggling}`,
-      `When wellbeing is at_risk, follow this tone (still use the same JSON shape; ~80–140 words total): ${WELLBEING_LETTER_GUIDANCE.at_risk}`,
+      '{"greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"What stood out","body":"..."},{"heading":"What shifted","body":"..."},{"heading":"Carry forward","body":"..."}],"closing":"…"}',
+      "Rules: greeting must be exactly Dear [[NAME]], (literal [[NAME]] — never a real name).",
+      "CRITICAL SHAPE: preamble and closing are mandatory non-empty strings. Jumping from the greeting straight into a section heading is WRONG. Ending on the last section body with no closing is WRONG.",
+      "preamble: required — 2–4 warm opening sentences BEFORE any section header; set the tone and acknowledge them as a person.",
+      "sections: 2 or 3 objects. Each heading is a short label (3–5 words). Each body is 2–4 sentences when material allows (not one clipped line).",
+      "closing: required — 2–3 warm closing sentences AFTER the last section; optional final sign-off line (e.g. With care,).",
+      "In every section body, wrap 1–2 concrete phrases in **double asterisks** for bold (required). No # headings inside body/preamble/closing. No code fence.",
+      `When wellbeing is struggling, follow this tone (still use greeting/preamble/sections/closing JSON; length can stay nearer ~150–200 words): ${WELLBEING_LETTER_GUIDANCE.struggling}`,
+      `When wellbeing is at_risk, follow this tone (same JSON shape; ~80–140 words total): ${WELLBEING_LETTER_GUIDANCE.at_risk}`,
       "If RECENT PROMISES are provided, mention one or two naturally in a section body — not as a checklist.",
       "If PRIOR RECURRING THOUGHTS are provided, reuse the same wording when the same belief shows up again.",
     );
@@ -1040,7 +1044,7 @@ function buildSystemPrompt(
     `one JSON object with keys: ${patternKeys.join(", ")} (and null/[] for unused keys as instructed)`,
     "<<<LETTER>>>",
     wantLetter
-      ? 'JSON only: {"greeting":"Dear [[NAME]],","sections":[{"heading":"…","body":"… **bold phrase** …"},…]} — 2–3 sections, ≤160 words total when wellbeing is none.'
+      ? 'JSON only: {"greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"…","body":"… **bold** …"},…],"closing":"…"} — ~250 words when material allows; shorter when sparse.'
       : "NONE",
   );
   return parts.join(" ");

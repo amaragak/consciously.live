@@ -54,6 +54,7 @@ import {
   parseWellbeingLevel,
   wellbeingVisibility,
 } from "@/lib/insight-wellbeing";
+import { frameLetterMarkdown } from "@/lib/letter-markdown";
 import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
 
 function LetterFeedbackRow({
@@ -978,7 +979,12 @@ export function JournalWeeklyReflectionCard({
   const letterMarkdownDisplay = useMemo(
     () =>
       fillLetterNamePlaceholder(
-        reflection?.letterMarkdown ?? "",
+        frameLetterMarkdown(
+          (reflection?.letterMarkdown ?? "").replace(
+            /^(#{1,6}\s+[^\n]+)\n{2,}/gm,
+            "$1\n",
+          ),
+        ),
         getMedimadeSessionDisplayName(),
       ),
     [reflection?.letterMarkdown],
@@ -1301,7 +1307,7 @@ export function JournalWeeklyReflectionCard({
                     </p>
                   ) : reflection ? (
                     <article className="max-w-[680px] py-6">
-                      <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:font-bold [&_strong]:text-foreground [&_[role=heading]]:mb-2 [&_[role=heading]]:mt-6 [&_[role=heading]]:font-display [&_[role=heading]]:text-[15px] [&_[role=heading]]:font-semibold [&_[role=heading]]:tracking-wide [&_[role=heading]]:text-foreground/85 [&_[role=heading]:first-child]:mt-0">
+                      <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:font-bold [&_strong]:text-foreground [&_[role=heading]]:mb-1.5 [&_[role=heading]]:mt-7 [&_[role=heading]]:font-display [&_[role=heading]]:!text-[17px] [&_[role=heading]]:font-semibold [&_[role=heading]]:leading-snug [&_[role=heading]]:tracking-tight [&_[role=heading]]:text-foreground [&_[role=heading]:first-child]:mt-0">
                         <ChatMarkdown
                           text={letterMarkdownDisplay}
                           singleAsteriskAs="italic"

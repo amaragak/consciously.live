@@ -167,16 +167,16 @@ export function ChatMarkdown({
           if (hm) {
             const level = Math.min(hm[1].length, 6) as 1 | 2 | 3 | 4 | 5 | 6;
             const sizes: Record<number, string> = {
-              1: "text-base font-semibold tracking-tight",
-              2: "text-[15px] font-semibold tracking-tight",
-              3: "text-sm font-semibold",
-              4: "text-sm font-semibold",
+              1: "text-lg font-semibold tracking-tight",
+              2: "text-base font-semibold tracking-tight",
+              3: "text-[17px] font-semibold tracking-tight",
+              4: "text-base font-semibold",
               5: "text-sm font-medium",
               6: "text-sm font-medium",
             };
             inner = (
               <div
-                className={`${sizes[level]} mt-1 first:mt-0 mb-0.5`}
+                className={`${sizes[level]} mt-7 first:mt-0 mb-1.5 text-foreground`}
                 role="heading"
                 aria-level={level}
               >
