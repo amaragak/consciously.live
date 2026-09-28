@@ -19,6 +19,10 @@ import {
 } from "@/lib/journal-remote-cache";
 import { JournalWeeklyReflectionCard } from "@/components/journal-weekly-reflection-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import {
+  insightHeaderLabel,
+  insightRangeKey,
+} from "@/lib/insight-period";
 
 const INSIGHTS_HREF = "/journal/my/insights";
 
@@ -54,6 +58,22 @@ function insightsWeekKeyFromPath(pathname: string): string | null {
   }
 }
 
+function letterIdentity(letter: JournalWeeklyLetterSummary): string {
+  return (
+    letter.rangeKey ||
+    (letter.startDate && letter.endDate
+      ? insightRangeKey(letter.startDate, letter.endDate)
+      : letter.weekKey)
+  );
+}
+
+function letterSidebarTitle(letter: JournalWeeklyLetterSummary): string {
+  const start =
+    letter.startDate || letter.weekStart?.slice(0, 10) || letter.weekKey;
+  const end = letter.endDate || letter.weekEnd?.slice(0, 10) || start;
+  return insightHeaderLabel(letter.periodType, start, end);
+}
+
 function formatTs(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
@@ -62,18 +82,6 @@ function formatTs(iso: string | null | undefined): string {
     return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   } catch {
     return "—";
-  }
-}
-
-function formatLetterRange(weekStart: string, weekEnd: string): string {
-  if (!weekStart || !weekEnd) return "This week";
-  try {
-    const s = new Date(weekStart);
-    const e = new Date(weekEnd);
-    const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
-    return `${s.toLocaleDateString(undefined, opts)} – ${e.toLocaleDateString(undefined, opts)}`;
-  } catch {
-    return `${weekStart.slice(0, 10)} – ${weekEnd.slice(0, 10)}`;
   }
 }
 
@@ -129,7 +137,7 @@ function InsightsYourLettersSidebar(props: {
     return (
       <div className="shrink-0 lg:hidden">
         <label className="sr-only" htmlFor="insights-week-select">
-          Your letters
+          Your insights
         </label>
         <select
           id="insights-week-select"
@@ -143,14 +151,13 @@ function InsightsYourLettersSidebar(props: {
           {loading ? (
             <option value="">Loading…</option>
           ) : letters.length === 0 ? (
-            <option value={currentWeekKey || ""}>This week</option>
+            <option value={currentWeekKey || ""}>Last 7 days</option>
           ) : (
             letters.map((letter) => {
-              const isCurrent = letter.weekKey === currentWeekKey;
-              const range = formatLetterRange(letter.weekStart, letter.weekEnd);
+              const id = letterIdentity(letter);
               return (
-                <option key={letter.weekKey} value={letter.weekKey}>
-                  {isCurrent ? `This week · ${range}` : range}
+                <option key={id} value={id}>
+                  {letterSidebarTitle(letter)}
                 </option>
               );
             })
@@ -162,35 +169,35 @@ function InsightsYourLettersSidebar(props: {
 
   return (
     <aside
-      aria-label="Your letters"
+      aria-label="Your insights"
       className="relative z-[1] hidden min-h-0 w-[260px] shrink-0 flex-col gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-3 pb-4 pt-3 xl:w-[300px] lg:flex"
     >
       <div className="px-3 pb-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
-        Your letters
+        Your insights
       </div>
       <nav
         className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
-        aria-label="Your letters"
+        aria-label="Your insights"
       >
         {loading ? (
           <p className="px-3 text-sm text-muted">Loading…</p>
         ) : letters.length === 0 ? (
           <p className="px-3 text-sm text-muted">
-            Nothing here yet — your first letter will appear once you write one.
+            Nothing here yet — your first insights will appear once you generate
+            them.
           </p>
         ) : (
           <ul className="space-y-1">
             {letters.map((letter) => {
-              const isActive = letter.weekKey === selectedWeekKey;
-              const isCurrent = letter.weekKey === currentWeekKey;
-              const range = formatLetterRange(letter.weekStart, letter.weekEnd);
-              const title = isCurrent ? `This week · ${range}` : range;
+              const id = letterIdentity(letter);
+              const isActive = id === selectedWeekKey;
+              const title = letterSidebarTitle(letter);
               const preview = letter.preview?.trim();
               return (
-                <li key={letter.weekKey}>
+                <li key={id}>
                   <button
                     type="button"
-                    onClick={() => onSelect(letter.weekKey)}
+                    onClick={() => onSelect(id)}
                     className={`flex w-full cursor-pointer flex-col gap-1 rounded-xl px-4 py-3.5 text-left transition-colors ${
                       isActive
                         ? "border border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
@@ -207,9 +214,7 @@ function InsightsYourLettersSidebar(props: {
                     <span className="line-clamp-1 text-[13px] text-muted">
                       {preview
                         ? `“${preview.replace(/^["“]|["”]$/g, "")}”`
-                        : isCurrent
-                          ? "This week’s letter"
-                          : "Weekly letter"}
+                        : "Insights from these days"}
                     </span>
                   </button>
                 </li>
@@ -243,7 +248,8 @@ export function JournalInsightsView() {
     if (routeWeekKey) return routeWeekKey;
     const cur = cachedLetters?.currentWeekKey;
     if (cur) return cur;
-    return cachedLetters?.letters[0]?.weekKey ?? null;
+    const first = cachedLetters?.letters[0];
+    return first ? letterIdentity(first) : null;
   });
   const [lettersLoading, setLettersLoading] = useState(() => !cachedLetters);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -271,6 +277,14 @@ export function JournalInsightsView() {
     [apiEnabled],
   );
 
+  const letterMatchesKey = useCallback(
+    (letter: JournalWeeklyLetterSummary, key: string | null) => {
+      if (!key) return false;
+      return letterIdentity(letter) === key || letter.weekKey === key;
+    },
+    [],
+  );
+
   const loadLetters = useCallback(
     async (opts?: { force?: boolean }) => {
       if (!apiEnabled) {
@@ -286,9 +300,14 @@ export function JournalInsightsView() {
             if (routeWeekKey) return routeWeekKey;
             if (prev) {
               if (prev === cached.currentWeekKey) return prev;
-              if (cached.letters.some((l) => l.weekKey === prev)) return prev;
+              if (cached.letters.some((l) => letterMatchesKey(l, prev)))
+                return prev;
             }
-            return cached.currentWeekKey || cached.letters[0]?.weekKey || null;
+            const first = cached.letters[0];
+            return (
+              cached.currentWeekKey ||
+              (first ? letterIdentity(first) : null)
+            );
           });
           setLettersLoading(false);
           return;
@@ -304,9 +323,10 @@ export function JournalInsightsView() {
           if (routeWeekKey) return routeWeekKey;
           if (prev) {
             if (prev === got.currentWeekKey) return prev;
-            if (got.letters.some((l) => l.weekKey === prev)) return prev;
+            if (got.letters.some((l) => letterMatchesKey(l, prev))) return prev;
           }
-          return got.currentWeekKey || got.letters[0]?.weekKey || null;
+          const first = got.letters[0];
+          return got.currentWeekKey || (first ? letterIdentity(first) : null);
         });
       } catch {
         /* offline */
@@ -314,7 +334,7 @@ export function JournalInsightsView() {
         setLettersLoading(false);
       }
     },
-    [apiEnabled, routeWeekKey],
+    [apiEnabled, routeWeekKey, letterMatchesKey],
   );
 
   useEffect(() => {
@@ -339,7 +359,7 @@ export function JournalInsightsView() {
 
   const displayLetters = useMemo(() => {
     if (!currentWeekKey) return letters;
-    if (letters.some((l) => l.weekKey === currentWeekKey)) return letters;
+    if (letters.some((l) => letterMatchesKey(l, currentWeekKey))) return letters;
     return [
       {
         weekKey: currentWeekKey,
@@ -349,7 +369,7 @@ export function JournalInsightsView() {
       },
       ...letters,
     ];
-  }, [letters, currentWeekKey]);
+  }, [letters, currentWeekKey, letterMatchesKey]);
 
   const topicsById = useMemo(() => {
     const map = new Map<
@@ -371,13 +391,17 @@ export function JournalInsightsView() {
   const isCurrentWeekLetter =
     Boolean(activeWeekKey) &&
     Boolean(currentWeekKey) &&
-    activeWeekKey === currentWeekKey;
+    (activeWeekKey === currentWeekKey ||
+      letters.some(
+        (l) =>
+          letterMatchesKey(l, activeWeekKey) &&
+          letterMatchesKey(l, currentWeekKey),
+      ));
 
   const selectWeek = useCallback(
     (weekKey: string) => {
       setSelectedWeekKey(weekKey);
       if (insightsWeekKeyFromPath(pathname) === weekKey) return;
-      // Keep list URL on desktop; deep-link week for shareable state.
       navigate(`${INSIGHTS_HREF}/${encodeURIComponent(weekKey)}`, {
         replace: true,
       });

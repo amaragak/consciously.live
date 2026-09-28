@@ -2,7 +2,7 @@
  * Insights update-2 pattern cards (after Mood, before the dark meditation CTA).
  */
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   type JournalWeeklyArc,
   type JournalWeeklyEmotionScore,
@@ -10,16 +10,20 @@ import {
   type JournalWeeklyRecurringThought,
   type JournalWeeklyReflection,
 } from "@/lib/medimade-api";
-import {
-  isJournalMoodId,
-  type JournalMoodId,
-} from "@/lib/journal-moods";
 import { type JournalEntry } from "@/lib/journal-storage";
 import {
   buildRecurringThoughtMeditationPrompt,
   insightsCreateMeditationHref,
   writeInsightsMeditationPrompt,
 } from "@/lib/insights-meditation-handoff";
+import { computeWhatLiftsYou } from "@/lib/what-lifts-you";
+import {
+  addDaysToDate,
+  dayOfWeek,
+  daysBetweenInclusive,
+  formatRangeWords,
+  periodUiCopy,
+} from "@/lib/insight-period";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -36,31 +40,63 @@ function formatShortDate(isoDay: string): string {
   }
 }
 
-function WeekMovedChart({ arc }: { arc: JournalWeeklyArc }) {
+function letterRangeLabel(letter: JournalWeeklyLetterSummary): string {
+  const start =
+    letter.startDate || letter.weekStart?.slice(0, 10) || letter.weekKey;
+  const end = letter.endDate || letter.weekEnd?.slice(0, 10) || start;
+  if (start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    return formatRangeWords(start, end);
+  }
+  return formatShortDate(letter.weekKey);
+}
+
+function letterIdentity(letter: JournalWeeklyLetterSummary): string {
+  return (
+    letter.rangeKey ||
+    (letter.startDate && letter.endDate
+      ? `${letter.startDate}_${letter.endDate}`
+      : letter.weekKey)
+  );
+}
+
+function WeekMovedChart({
+  arc,
+  startDate,
+  endDate,
+}: {
+  arc: JournalWeeklyArc;
+  startDate?: string;
+  endDate?: string;
+}) {
   const width = 560;
   const height = 120;
   const padX = 16;
   const padY = 16;
   const byDate = new Map(arc.days.map((d) => [d.date, d.value]));
-  // Place points across Mon–Sun of the week containing the first day.
-  const first = arc.days[0]!.date;
-  const monday = new Date(`${first}T12:00:00`);
-  const dow = monday.getDay();
-  const mondayOffset = dow === 0 ? -6 : 1 - dow;
-  monday.setDate(monday.getDate() + mondayOffset);
 
-  const points: Array<{ x: number; y: number; value: number; label: string }> =
+  const spanStart =
+    startDate ||
+    [...byDate.keys()].sort()[0] ||
+    arc.days[0]!.date;
+  const spanEnd =
+    endDate ||
+    [...byDate.keys()].sort().at(-1) ||
+    arc.days[arc.days.length - 1]!.date;
+  const dayCount = Math.max(1, daysBetweenInclusive(spanStart, spanEnd));
+  const labelEveryDay = dayCount <= 14;
+
+  const points: Array<{ x: number; y: number; value: number; date: string }> =
     [];
-  for (let i = 0; i < 7; i += 1) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
+  for (let i = 0; i < dayCount; i += 1) {
+    const key = addDaysToDate(spanStart, i);
     const value = byDate.get(key);
     if (value == null) continue;
-    const x = padX + (i / 6) * (width - padX * 2);
-    const y =
-      padY + ((5 - value) / 10) * (height - padY * 2);
-    points.push({ x, y, value, label: DAY_LABELS[i]! });
+    const x =
+      dayCount === 1
+        ? width / 2
+        : padX + (i / (dayCount - 1)) * (width - padX * 2);
+    const y = padY + ((5 - value) / 10) * (height - padY * 2);
+    points.push({ x, y, value, date: key });
   }
   if (points.length < 3) return null;
 
@@ -74,6 +110,31 @@ function WeekMovedChart({ arc }: { arc: JournalWeeklyArc }) {
     .join(" ");
 
   const guides = [0.25, 0.5, 0.75].map((t) => padY + t * (height - padY * 2));
+
+  const axisLabels: Array<{ x: number; label: string }> = [];
+  if (labelEveryDay) {
+    for (let i = 0; i < dayCount; i += 1) {
+      const key = addDaysToDate(spanStart, i);
+      const x =
+        dayCount === 1
+          ? width / 2
+          : padX + (i / (dayCount - 1)) * (width - padX * 2);
+      const dow = dayOfWeek(key);
+      const monIndex = dow === 0 ? 6 : dow - 1;
+      axisLabels.push({ x, label: DAY_LABELS[monIndex]! });
+    }
+  } else {
+    // Label each week's Monday that falls inside the span.
+    for (let i = 0; i < dayCount; i += 1) {
+      const key = addDaysToDate(spanStart, i);
+      if (dayOfWeek(key) !== 1 && i !== 0) continue;
+      const x =
+        dayCount === 1
+          ? width / 2
+          : padX + (i / (dayCount - 1)) * (width - padX * 2);
+      axisLabels.push({ x, label: formatShortDate(key) });
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -105,7 +166,7 @@ function WeekMovedChart({ arc }: { arc: JournalWeeklyArc }) {
         />
         {points.map((p, i) => (
           <circle
-            key={`${p.label}-${i}`}
+            key={`${p.date}-${i}`}
             cx={p.x}
             cy={p.y}
             r={i === lowestIdx ? 5.5 : 4}
@@ -117,9 +178,15 @@ function WeekMovedChart({ arc }: { arc: JournalWeeklyArc }) {
           />
         ))}
       </svg>
-      <div className="grid grid-cols-7 gap-1 text-center text-[12px] text-muted">
-        {DAY_LABELS.map((label) => (
-          <span key={label}>{label}</span>
+      <div className="relative h-5 text-[12px] text-muted">
+        {axisLabels.map((l) => (
+          <span
+            key={`${l.label}-${l.x}`}
+            className="absolute -translate-x-1/2 whitespace-nowrap"
+            style={{ left: `${(l.x / width) * 100}%` }}
+          >
+            {l.label}
+          </span>
         ))}
       </div>
       <p className="text-sm leading-relaxed text-foreground/80">{arc.summary}</p>
@@ -165,7 +232,7 @@ function PromisesCard({ promises }: { promises: string[] | undefined }) {
       </div>
       {list.length === 0 ? (
         <p className="text-[15px] leading-relaxed text-foreground/80">
-          No promises this week, and that&apos;s okay.
+          No promises this time, and that&apos;s okay.
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -183,7 +250,7 @@ function PromisesCard({ promises }: { promises: string[] | undefined }) {
         </ul>
       )}
       <p className="text-xs leading-relaxed text-muted">
-        Next week&apos;s letter will ask how these went.
+        The next insights you generate will ask how these went.
       </p>
     </div>
   );
@@ -192,9 +259,11 @@ function PromisesCard({ promises }: { promises: string[] | undefined }) {
 function RecurringThoughtCard({
   thought,
   weekLabel,
+  periodNoun,
 }: {
   thought: JournalWeeklyRecurringThought;
   weekLabel: string;
+  periodNoun: string;
 }) {
   const navigate = useNavigate();
   const also =
@@ -211,7 +280,7 @@ function RecurringThoughtCard({
         &ldquo;{thought.text}&rdquo;
       </p>
       <p className="text-sm text-muted">
-        {thought.count} time{thought.count === 1 ? "" : "s"} this week
+        {thought.count} time{thought.count === 1 ? "" : "s"} {periodNoun}
         {also}
       </p>
       <button
@@ -233,130 +302,126 @@ function RecurringThoughtCard({
   );
 }
 
-function mondayKeyFromIso(iso: string): string | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = local.getDay();
-  const mondayOffset = dow === 0 ? -6 : 1 - dow;
-  local.setDate(local.getDate() + mondayOffset);
-  const y = local.getFullYear();
-  const m = String(local.getMonth() + 1).padStart(2, "0");
-  const day = String(local.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function computeLiftsAndDrains(
-  letters: JournalWeeklyLetterSummary[],
-  entries: JournalEntry[],
-): { lifts: string[]; drains: string[]; locked: boolean } {
-  const moodById = new Map<string, JournalMoodId>();
-  const weekKeys = new Set<string>();
-  let tagged = 0;
-  for (const e of entries) {
-    if (e.mood && isJournalMoodId(e.mood)) {
-      moodById.set(e.id, e.mood);
-      tagged += 1;
-    }
-    const iso = e.updatedAt || e.createdAt;
-    const wk = iso ? mondayKeyFromIso(iso) : null;
-    if (wk) weekKeys.add(wk);
-  }
-  const locked = weekKeys.size < 3 || tagged < 8;
-
-  const good = new Map<string, number>();
-  const low = new Map<string, number>();
-  for (const letter of letters.slice(0, 4)) {
-    for (const row of letter.activities ?? []) {
-      const mood = moodById.get(row.entryId);
-      if (!mood) continue;
-      const bucket =
-        mood === "good" || mood === "calm"
-          ? good
-          : mood === "low" || mood === "heavy"
-            ? low
-            : null;
-      if (!bucket) continue;
-      for (const item of row.items) {
-        bucket.set(item, (bucket.get(item) ?? 0) + 1);
-      }
-    }
-  }
-
-  const lifts = [...good.entries()]
-    .filter(([k, n]) => n >= 2 && n > (low.get(k) ?? 0))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([k]) => k);
-  const drains = [...low.entries()]
-    .filter(([k, n]) => n >= 2 && n > (good.get(k) ?? 0))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([k]) => k);
-
-  return { lifts, drains, locked };
-}
-
 function WhatLiftsYouCard({
   letters,
   entries,
+  minWindowDays,
 }: {
   letters: JournalWeeklyLetterSummary[];
   entries: JournalEntry[];
+  minWindowDays?: number;
 }) {
-  const { lifts, drains, locked } = useMemo(
-    () => computeLiftsAndDrains(letters, entries),
-    [letters, entries],
+  const model = useMemo(
+    () =>
+      computeWhatLiftsYou(
+        entries.map((e) => ({
+          id: e.id,
+          at: e.updatedAt || e.createdAt,
+          mood: e.mood,
+        })),
+        letters.map((l) => ({
+          weekKey: l.weekKey,
+          activities: l.activities,
+        })),
+        new Date(),
+        minWindowDays,
+      ),
+    [letters, entries, minWindowDays],
   );
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-sm font-semibold text-foreground">What lifts you</div>
-        <span className="text-[12px] text-muted">Last 4 weeks</span>
+        <span className="text-[12px] text-muted">{model.windowLabel}</span>
       </div>
-      {locked ? (
+
+      {model.stage === "empty" ? (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted">Unlocks after 3 weeks of entries</p>
-          <div className="h-16 rounded-xl bg-border-subtle/60" aria-hidden />
+          <p className="text-sm text-muted">{model.emptyMessage}</p>
+          <Link
+            to="/journal/my"
+            className="inline-flex h-10 w-fit cursor-pointer items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
+          >
+            Write an entry
+          </Link>
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2">
-            <span className="text-[12px] font-medium uppercase tracking-wide text-muted">
-              Days you felt good or calm
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {lifts.length === 0 ? (
-                <span className="text-sm text-muted">Not enough tagged days yet.</span>
+          {model.good.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <span className="text-[12px] font-medium uppercase tracking-wide text-accent-link">
+                {model.goodLabel}
+              </span>
+              {model.stage === 1 ? (
+                <div className="flex flex-wrap gap-2">
+                  {model.good.map((item) => (
+                    <span
+                      key={`g-${item.label}`}
+                      className="rounded-full bg-accent-soft px-3 py-1 text-[13px] font-medium text-foreground"
+                    >
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
               ) : (
-                lifts.map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full bg-accent-soft px-3 py-1 text-[13px] font-medium text-foreground"
-                  >
-                    {item}
-                  </span>
-                ))
+                <div className="flex flex-col gap-2">
+                  {model.good.map((item) => (
+                    <div
+                      key={`g-${item.label}`}
+                      className="flex items-center justify-between gap-3 text-sm"
+                    >
+                      <span className="rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-medium text-foreground">
+                        {item.label}
+                      </span>
+                      <span className="shrink-0 text-muted">
+                        {item.count} of {item.of}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-          {drains.length > 0 ? (
+          ) : null}
+
+          {model.low.length > 0 ? (
             <div className="flex flex-col gap-2">
               <span className="text-[12px] font-medium uppercase tracking-wide text-muted">
-                Days you felt low
+                {model.lowLabel}
               </span>
-              <div className="flex flex-wrap gap-2">
-                {drains.map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full bg-surface-2 px-3 py-1 text-[13px] font-medium text-foreground/80"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
+              {model.stage === 1 ? (
+                <div className="flex flex-wrap gap-2">
+                  {model.low.map((item) => (
+                    <span
+                      key={`l-${item.label}`}
+                      className="rounded-full bg-surface-2 px-3 py-1 text-[13px] font-medium text-foreground/80"
+                    >
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {model.low.map((item) => (
+                    <div
+                      key={`l-${item.label}`}
+                      className="flex items-center justify-between gap-3 text-sm"
+                    >
+                      <span className="rounded-full bg-surface-2 px-3 py-1.5 text-[13px] font-medium text-foreground/80">
+                        {item.label}
+                      </span>
+                      <span className="shrink-0 text-muted">
+                        {item.count} of {item.of}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          ) : null}
+
+          {model.footer ? (
+            <p className="text-[12px] leading-relaxed text-muted">{model.footer}</p>
           ) : null}
         </>
       )}
@@ -390,11 +455,11 @@ function monthSummary(
     }
   }
   if (!parts.length) return "";
-  if (parts.length === 1) return `${parts[0]} across recent weeks.`;
+  if (parts.length === 1) return `${parts[0]} across recent insights.`;
   return `${parts[0]} while ${parts[1]}.`;
 }
 
-function MonthSoFarCard({
+function OverTimeCard({
   letters,
   thisWeekEmotions,
 }: {
@@ -416,9 +481,7 @@ function MonthSoFarCard({
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="text-sm font-semibold text-foreground">
-          Your month so far
-        </div>
+        <div className="text-sm font-semibold text-foreground">Over time</div>
         <div className="flex items-center gap-3 text-[12px] text-muted">
           {names.map((name, i) => (
             <span key={name} className="inline-flex items-center gap-1.5">
@@ -441,7 +504,7 @@ function MonthSoFarCard({
           );
           return (
             <div
-              key={w.weekKey}
+              key={letterIdentity(w)}
               className="flex flex-1 flex-col items-center gap-2"
             >
               <div className="flex h-24 w-full items-end justify-center gap-1">
@@ -458,8 +521,8 @@ function MonthSoFarCard({
                   ),
                 )}
               </div>
-              <span className="text-[11px] text-muted">
-                {formatShortDate(w.weekKey)}
+              <span className="text-center text-[11px] leading-tight text-muted">
+                {letterRangeLabel(w)}
               </span>
             </div>
           );
@@ -477,6 +540,7 @@ export function InsightsPatternCards({
   recentLetters,
   storeEntries,
   weekLabel,
+  periodDays = 7,
   generatedParts,
   loadingParts,
 }: {
@@ -484,6 +548,8 @@ export function InsightsPatternCards({
   recentLetters: JournalWeeklyLetterSummary[];
   storeEntries: JournalEntry[];
   weekLabel: string;
+  /** Inclusive day count of the selected insight period. */
+  periodDays?: number;
   generatedParts?: {
     felt?: boolean;
     moved?: boolean;
@@ -498,6 +564,7 @@ export function InsightsPatternCards({
   } | null;
 }) {
   const arc = reflection?.arc;
+  const uiCopy = periodUiCopy(periodDays);
   const showArc =
     Boolean(generatedParts?.moved) && Boolean(arc && arc.days.length >= 3);
   const wins = reflection?.wins ?? [];
@@ -507,14 +574,23 @@ export function InsightsPatternCards({
   const thought =
     generatedParts?.thought ? reflection?.recurringThought : undefined;
 
-  // Merge this week's activities into the letter list for lifts/month.
+  // Merge this period's activities into the letter list for lifts/over-time.
   const lettersForCharts = useMemo(() => {
     if (!reflection) return recentLetters;
+    const selfId =
+      reflection.rangeKey ||
+      (reflection.startDate && reflection.endDate
+        ? `${reflection.startDate}_${reflection.endDate}`
+        : reflection.weekKey);
     const self: JournalWeeklyLetterSummary = {
       weekKey: reflection.weekKey,
       weekStart: reflection.weekStart,
       weekEnd: reflection.weekEnd,
       generatedAt: reflection.meta.generatedAt,
+      ...(reflection.periodType ? { periodType: reflection.periodType } : {}),
+      ...(reflection.startDate ? { startDate: reflection.startDate } : {}),
+      ...(reflection.endDate ? { endDate: reflection.endDate } : {}),
+      ...(reflection.rangeKey ? { rangeKey: reflection.rangeKey } : {}),
       ...(reflection.preview ? { preview: reflection.preview } : {}),
       ...(reflection.emotions ? { emotions: reflection.emotions } : {}),
       ...(reflection.activities ? { activities: reflection.activities } : {}),
@@ -523,10 +599,12 @@ export function InsightsPatternCards({
         ? { recurringThought: reflection.recurringThought }
         : {}),
     };
-    const rest = recentLetters.filter((l) => l.weekKey !== reflection.weekKey);
-    return [self, ...rest].sort((a, b) =>
-      a.weekKey < b.weekKey ? 1 : a.weekKey > b.weekKey ? -1 : 0,
-    );
+    const rest = recentLetters.filter((l) => letterIdentity(l) !== selfId);
+    return [self, ...rest].sort((a, b) => {
+      const ae = a.endDate || a.weekEnd?.slice(0, 10) || a.weekKey;
+      const be = b.endDate || b.weekEnd?.slice(0, 10) || b.weekKey;
+      return ae < be ? 1 : ae > be ? -1 : 0;
+    });
   }, [recentLetters, reflection]);
 
   const emotions = reflection?.emotions ?? [];
@@ -545,13 +623,17 @@ export function InsightsPatternCards({
         <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-[22px]">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="text-sm font-semibold text-foreground">
-              How the week moved
+              {uiCopy.movedTitle}
             </div>
             <span className="text-[13px] text-muted">
               {arc.start} → {arc.end}
             </span>
           </div>
-          <WeekMovedChart arc={arc} />
+          <WeekMovedChart
+            arc={arc}
+            startDate={reflection?.startDate}
+            endDate={reflection?.endDate}
+          />
         </div>
       ) : null}
 
@@ -578,15 +660,20 @@ export function InsightsPatternCards({
           aria-busy
         />
       ) : thought ? (
-        <RecurringThoughtCard thought={thought} weekLabel={weekLabel} />
+        <RecurringThoughtCard
+          thought={thought}
+          weekLabel={weekLabel}
+          periodNoun={uiCopy.periodNoun}
+        />
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <WhatLiftsYouCard
           letters={lettersForCharts}
           entries={storeEntries}
+          minWindowDays={periodDays}
         />
-        <MonthSoFarCard
+        <OverTimeCard
           letters={lettersForCharts}
           thisWeekEmotions={emotions}
         />

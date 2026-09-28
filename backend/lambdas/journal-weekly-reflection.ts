@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/client-secrets-manager";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -19,6 +20,20 @@ import {
   parseAnthropicMessageUsage,
 } from "./_shared/anthropic-pricing";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
+import {
+  formatRangeWords,
+  insightRangeKey,
+  insightSortKey,
+  isDateOnly,
+  JOURNAL_TEXT_BUDGET_CHARS,
+  migrateStoredPeriod,
+  periodPhraseForPrompt,
+  resolveInsightPeriod,
+  trimTextsToBudget,
+  weekBoundsForDate,
+  type InsightPeriod,
+  type InsightPeriodType,
+} from "./_shared/insight-period";
 import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
@@ -98,6 +113,15 @@ type WeeklyGenerateSelection = {
 
 type WeeklyReflection = {
   ownerId: string;
+  /** v6: the period this insight covers. */
+  periodType: InsightPeriodType;
+  startDate: string;
+  endDate: string;
+  rangeKey: string;
+  /**
+   * Legacy fields, kept so older clients keep working: for `week` periods
+   * `weekKey` is still the Monday; otherwise it is the period's start date.
+   */
   weekKey: string;
   weekStart: string;
   weekEnd: string;
@@ -235,39 +259,14 @@ function inRange(iso: string, start: string, end: string): boolean {
   return t >= new Date(start).getTime() && t <= new Date(end).getTime();
 }
 
-/** Monday-start week; `weekKey` is the Monday calendar date (YYYY-MM-DD). */
-function weekBoundsFromDate(d = new Date()): {
-  weekKey: string;
-  weekStart: string;
-  weekEnd: string;
-} {
-  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = local.getDay();
-  const mondayOffset = dow === 0 ? -6 : 1 - dow;
-  const monday = new Date(local);
-  monday.setDate(local.getDate() + mondayOffset);
-  monday.setHours(0, 0, 0, 0);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  const weekKey = monday.toISOString().slice(0, 10);
-  return { weekKey, weekStart: monday.toISOString(), weekEnd: sunday.toISOString() };
-}
-
-function formatWeekLabel(weekStart: string, weekEnd: string): string {
-  try {
-    const s = new Date(weekStart);
-    const e = new Date(weekEnd);
-    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-    const sy = s.getFullYear();
-    const ey = e.getFullYear();
-    if (sy === ey) {
-      return `${s.toLocaleDateString(undefined, opts)} – ${e.toLocaleDateString(undefined, { ...opts, year: "numeric" })}`;
-    }
-    return `${s.toLocaleDateString(undefined, { ...opts, year: "numeric" })} – ${e.toLocaleDateString(undefined, { ...opts, year: "numeric" })}`;
-  } catch {
-    return `${weekStart.slice(0, 10)} – ${weekEnd.slice(0, 10)}`;
-  }
+/** `weekKey` stays the Monday for week periods; the start date otherwise. */
+function weekKeyForPeriod(period: {
+  periodType: InsightPeriodType;
+  startDate: string;
+}): string {
+  return period.periodType === "week"
+    ? weekBoundsForDate(period.startDate).startDate
+    : period.startDate;
 }
 
 async function getClaudeApiKey(): Promise<string> {
@@ -572,19 +571,26 @@ function dedupeChats(chats: MeditationChatSource[]): MeditationChatSource[] {
   return out;
 }
 
+/**
+ * Journal entries for the prompt, trimmed to the token budget. Long periods
+ * shorten every entry proportionally instead of dropping any of them.
+ */
 function formatJournalForPrompt(entries: JournalEntry[]): string {
-  if (!entries.length) return "(No journal entries this week.)";
+  if (!entries.length) return "(No journal entries in this period.)";
+  const bodies = trimTextsToBudget(
+    entries.map((e) => stripHtmlToText(e.contentHtml) || "(empty)"),
+    JOURNAL_TEXT_BUDGET_CHARS,
+  );
   return entries
-    .map((e) => {
+    .map((e, i) => {
       const title = e.title.trim() || "Untitled";
-      const body = stripHtmlToText(e.contentHtml) || "(empty)";
       // Mood chips are listed separately — do not put them here so emotion
       // scores are read from the writing, not from the tags.
       return [
         `Entry id: ${e.id}`,
         `Entry · ${title}`,
         `Updated: ${e.updatedAt}`,
-        body,
+        bodies[i] ?? "(empty)",
       ].join("\n");
     })
     .join("\n\n---\n\n");
@@ -617,7 +623,7 @@ function formatMoodTagsForPrompt(entries: JournalEntry[]): string {
     const when = e.updatedAt || e.createdAt;
     lines.push(`- ${when.slice(0, 10)} · ${title}: ${mood}`);
   }
-  if (!lines.length) return "(No mood tags this week.)";
+  if (!lines.length) return "(No mood tags in this period.)";
   return lines.join("\n");
 }
 
@@ -724,7 +730,8 @@ function parseArc(raw: unknown): WeeklyArc | undefined {
   }
   if (days.length < 3) return undefined;
   days.sort((a, b) => a.date.localeCompare(b.date));
-  return { start, end, summary, days: days.slice(0, 7) };
+  // One point per day with an entry — up to a 90-day custom period.
+  return { start, end, summary, days: days.slice(0, 90) };
 }
 
 function parseStringList(
@@ -841,13 +848,16 @@ function parsePatternsBlob(
 }
 
 function formatChatsForPrompt(chats: MeditationChatSource[]): string {
-  if (!chats.length) return "(No meditation create chats this week.)";
+  if (!chats.length) return "(No meditation create chats in this period.)";
   return chats
     .map((c) => [`${c.label} · ${c.when}`, c.text].join("\n"))
     .join("\n\n---\n\n");
 }
 
-function buildSystemPrompt(selection: WeeklyGenerateSelection): string {
+function buildSystemPrompt(
+  selection: WeeklyGenerateSelection,
+  periodPhrase: string,
+): string {
   const wantLetter = selection.letter;
   const wantMoved = selection.patterns.moved;
   const wantWins = selection.patterns.wins;
@@ -858,7 +868,8 @@ function buildSystemPrompt(selection: WeeklyGenerateSelection): string {
   if (wantThought) patternKeys.push("recurring_thought");
 
   const parts: string[] = [
-    "You help with end-of-week journal insights for a meditation and journaling app.",
+    "You help with journal insights for a meditation and journaling app.",
+    `PERIOD: the writing covers ${periodPhrase}. Refer to it as "${periodPhrase}" — never call a month "this week" or a week "this month".`,
     "Do not diagnose. Do not give medical advice. Do not moralize. Do not invent facts.",
     "TIME & DURATION (critical): If they mention how long something has been going on, treat that as ongoing context — NOT as a completed chapter — unless they explicitly say it ended.",
     "EMOTIONS (always required): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions (e.g. Hope, Self-doubt). Score each 0–10; sort high to low.",
@@ -875,7 +886,7 @@ function buildSystemPrompt(selection: WeeklyGenerateSelection): string {
   }
   if (wantWins) {
     parts.push(
-      "Also include wins: 1–4 concrete actions they DID this week, second person without the word 'you'. Actions only. Do NOT include a 'Wrote on N days' line.",
+      `Also include wins: 1–4 concrete actions they DID in ${periodPhrase}, second person without the word 'you'. Actions only. Do NOT include a 'Wrote on N days' line.`,
       "Also include promises: 0–3 short future intentions. Empty array if none.",
     );
   } else {
@@ -883,7 +894,7 @@ function buildSystemPrompt(selection: WeeklyGenerateSelection): string {
   }
   if (wantThought) {
     parts.push(
-      "Also include recurring_thought: { text, count } for a belief/phrase that repeats within THIS week with count >= 2; otherwise null.",
+      `Also include recurring_thought: { text, count } for a belief/phrase that repeats within ${periodPhrase} with count >= 2; otherwise null.`,
     );
   } else {
     parts.push("Set recurring_thought to null.");
@@ -914,14 +925,15 @@ function buildSystemPrompt(selection: WeeklyGenerateSelection): string {
 }
 
 function buildUserPrompt(params: {
-  weekLabel: string;
+  periodLabel: string;
+  periodPhrase: string;
   displayName?: string;
   journalText: string;
   chatText: string;
   moodTagsText: string;
   selection: WeeklyGenerateSelection;
   lastWeekPromises?: string[];
-  priorRecurringThoughts?: Array<{ text: string; weekKey: string }>;
+  priorRecurringThoughts?: Array<{ text: string; label: string }>;
 }): string {
   const wantLetter = params.selection.letter;
   const promiseBlock =
@@ -939,15 +951,15 @@ function buildUserPrompt(params: {
     params.priorRecurringThoughts &&
     params.priorRecurringThoughts.length > 0
       ? [
-          "PRIOR RECURRING THOUGHTS (reuse wording when the same belief appears this week):",
+          "PRIOR RECURRING THOUGHTS (reuse wording when the same belief appears again):",
           ...params.priorRecurringThoughts.map(
-            (t) => `- (${t.weekKey}) ${t.text}`,
+            (t) => `- (${t.label}) ${t.text}`,
           ),
           "",
         ].join("\n")
       : "";
   return [
-    `WEEK: ${params.weekLabel}`,
+    `PERIOD: ${params.periodLabel} — write about it as "${params.periodPhrase}"`,
     params.displayName?.trim()
       ? `Reader's name (optional salutation): ${params.displayName.trim()}`
       : "",
@@ -956,13 +968,13 @@ function buildUserPrompt(params: {
     "",
     promiseBlock,
     thoughtBlock,
-    "JOURNAL ENTRIES THIS WEEK (use Entry id in activities):",
+    "JOURNAL ENTRIES IN THIS PERIOD (use Entry id in activities; long entries may be shortened with […]):",
     params.journalText,
     "",
-    "MEDITATION CREATE CHATS THIS WEEK:",
+    "MEDITATION CREATE CHATS IN THIS PERIOD:",
     params.chatText,
     "",
-    "MOOD TAGS THIS WEEK (optional for moodSummary only — not for emotion scores):",
+    "MOOD TAGS IN THIS PERIOD (optional for moodSummary only — not for emotion scores):",
     params.moodTagsText,
     "",
     "Write the reply now in the exact <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<PATTERNS>>> / <<<LETTER>>> format.",
@@ -1274,19 +1286,13 @@ async function callClaudeForLetter(params: {
   }
 }
 
-async function loadWeeklyReflection(
-  table: string,
+function itemToReflection(
   ownerId: string,
-  weekKey: string,
-): Promise<WeeklyReflection | null> {
-  const r = await ddb.send(
-    new GetCommand({
-      TableName: table,
-      Key: { pk: ownerId, sk: `WEEKLY#${weekKey}` },
-    }),
-  );
-  const item = r.Item as Record<string, unknown> | undefined;
+  item: Record<string, unknown> | undefined,
+): WeeklyReflection | null {
   if (!item) return null;
+  const period = migrateStoredPeriod(item);
+  if (!period) return null;
   const letterMarkdown =
     typeof item.letterMarkdown === "string" ? item.letterMarkdown : "";
   const weekStart = safeIso(item.weekStart);
@@ -1352,7 +1358,11 @@ async function loadWeeklyReflection(
   })();
   return {
     ownerId,
-    weekKey,
+    periodType: period.periodType,
+    startDate: period.startDate,
+    endDate: period.endDate,
+    rangeKey: insightRangeKey(period.startDate, period.endDate),
+    weekKey: weekKeyForPeriod(period),
     weekStart,
     weekEnd,
     letterMarkdown,
@@ -1384,7 +1394,43 @@ async function loadWeeklyReflection(
   };
 }
 
+/**
+ * Read the insight for an exact range. New rows live at `RANGE#start#end`;
+ * pre-v6 rows are still at `WEEKLY#monday`, so a Monday–Sunday range falls
+ * back to the old key and is migrated on the way out.
+ */
+async function loadReflectionForPeriod(
+  table: string,
+  ownerId: string,
+  period: { startDate: string; endDate: string },
+): Promise<WeeklyReflection | null> {
+  const r = await ddb.send(
+    new GetCommand({
+      TableName: table,
+      Key: { pk: ownerId, sk: insightSortKey(period.startDate, period.endDate) },
+    }),
+  );
+  const direct = itemToReflection(ownerId, r.Item as Record<string, unknown>);
+  if (direct) return direct;
+
+  const week = weekBoundsForDate(period.startDate);
+  if (week.startDate !== period.startDate || week.endDate !== period.endDate) {
+    return null;
+  }
+  const legacy = await ddb.send(
+    new GetCommand({
+      TableName: table,
+      Key: { pk: ownerId, sk: `WEEKLY#${period.startDate}` },
+    }),
+  );
+  return itemToReflection(ownerId, legacy.Item as Record<string, unknown>);
+}
+
 type WeeklyLetterSummary = {
+  periodType: InsightPeriodType;
+  startDate: string;
+  endDate: string;
+  rangeKey: string;
   weekKey: string;
   weekStart: string;
   weekEnd: string;
@@ -1397,9 +1443,86 @@ type WeeklyLetterSummary = {
   generatedParts?: WeeklyGeneratedParts;
 };
 
-async function listWeeklyReflections(
+/** One stored row → list summary. Exported shape is shared by both key styles. */
+export function itemToLetterSummary(
+  item: Record<string, unknown>,
+): WeeklyLetterSummary | null {
+  const period = migrateStoredPeriod(item);
+  if (!period) return null;
+  const letterMarkdown =
+    typeof item.letterMarkdown === "string" ? item.letterMarkdown : "";
+  const weekStart = safeIso(item.weekStart);
+  const weekEnd = safeIso(item.weekEnd);
+  const generatedAt = safeIso(item.generatedAt);
+  if (!weekStart || !weekEnd || !generatedAt) return null;
+  const generatedParts = parseGeneratedParts(item.generatedParts);
+  const emotions = parseEmotions(item.emotions);
+  const patterns = parsePatternsBlob(
+    {
+      wins: item.wins,
+      promises: item.promises,
+      recurring_thought: item.recurringThought ?? item.recurring_thought,
+      activities: item.activities,
+    },
+    new Set(),
+  );
+  const hasLetter = Boolean(letterMarkdown.trim());
+  const hasParts =
+    Boolean(generatedParts) &&
+    (generatedParts!.letter ||
+      generatedParts!.felt ||
+      generatedParts!.moved ||
+      generatedParts!.wins ||
+      generatedParts!.thought);
+  if (!hasLetter && !hasParts && !emotions && !patterns.activities) return null;
+  const preview =
+    typeof item.preview === "string" && item.preview.trim()
+      ? item.preview.trim()
+      : hasLetter
+        ? letterPreviewFromMarkdown(letterMarkdown)
+        : undefined;
+  return {
+    periodType: period.periodType,
+    startDate: period.startDate,
+    endDate: period.endDate,
+    rangeKey: insightRangeKey(period.startDate, period.endDate),
+    weekKey: weekKeyForPeriod(period),
+    weekStart,
+    weekEnd,
+    generatedAt,
+    ...(preview ? { preview } : {}),
+    ...(emotions ? { emotions } : {}),
+    ...(patterns.activities ? { activities: patterns.activities } : {}),
+    ...(patterns.promises ? { promises: patterns.promises } : {}),
+    ...(patterns.recurringThought
+      ? { recurringThought: patterns.recurringThought }
+      : {}),
+    ...(generatedParts ? { generatedParts } : {}),
+  };
+}
+
+/**
+ * Newest first by end date. A `RANGE#` row always wins over a legacy `WEEKLY#`
+ * row for the same dates, so migrated weeks never show twice.
+ */
+export function mergeLetterSummaries(
+  rangeRows: WeeklyLetterSummary[],
+  legacyRows: WeeklyLetterSummary[],
+): WeeklyLetterSummary[] {
+  const byRange = new Map<string, WeeklyLetterSummary>();
+  for (const row of legacyRows) byRange.set(row.rangeKey, row);
+  for (const row of rangeRows) byRange.set(row.rangeKey, row);
+  return [...byRange.values()].sort((a, b) => {
+    if (a.endDate !== b.endDate) return a.endDate < b.endDate ? 1 : -1;
+    if (a.startDate !== b.startDate) return a.startDate < b.startDate ? 1 : -1;
+    return a.generatedAt < b.generatedAt ? 1 : -1;
+  });
+}
+
+async function queryInsightRows(
   table: string,
   ownerId: string,
+  prefix: string,
 ): Promise<WeeklyLetterSummary[]> {
   const out: WeeklyLetterSummary[] = [];
   let startKey: Record<string, unknown> | undefined;
@@ -1408,87 +1531,45 @@ async function listWeeklyReflections(
       new QueryCommand({
         TableName: table,
         KeyConditionExpression: "pk = :p AND begins_with(sk, :prefix)",
-        ExpressionAttributeValues: {
-          ":p": ownerId,
-          ":prefix": "WEEKLY#",
-        },
+        ExpressionAttributeValues: { ":p": ownerId, ":prefix": prefix },
         ScanIndexForward: false,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
     for (const raw of r.Items ?? []) {
-      const item = raw as Record<string, unknown>;
-      const letterMarkdown =
-        typeof item.letterMarkdown === "string" ? item.letterMarkdown : "";
-      const weekKey =
-        typeof item.weekKey === "string"
-          ? item.weekKey
-          : typeof item.sk === "string" && item.sk.startsWith("WEEKLY#")
-            ? item.sk.slice("WEEKLY#".length)
-            : "";
-      const weekStart = safeIso(item.weekStart);
-      const weekEnd = safeIso(item.weekEnd);
-      const generatedAt = safeIso(item.generatedAt);
-      if (!weekKey || !weekStart || !weekEnd || !generatedAt) continue;
-      const generatedParts = parseGeneratedParts(item.generatedParts);
-      const emotions = parseEmotions(item.emotions);
-      const patterns = parsePatternsBlob(
-        {
-          wins: item.wins,
-          promises: item.promises,
-          recurring_thought: item.recurringThought ?? item.recurring_thought,
-          activities: item.activities,
-        },
-        new Set(),
-      );
-      const hasLetter = Boolean(letterMarkdown.trim());
-      const hasParts =
-        Boolean(generatedParts) &&
-        (generatedParts!.letter ||
-          generatedParts!.felt ||
-          generatedParts!.moved ||
-          generatedParts!.wins ||
-          generatedParts!.thought);
-      if (!hasLetter && !hasParts && !emotions && !patterns.activities) {
-        continue;
-      }
-      const preview =
-        typeof item.preview === "string" && item.preview.trim()
-          ? item.preview.trim()
-          : hasLetter
-            ? letterPreviewFromMarkdown(letterMarkdown)
-            : undefined;
-      out.push({
-        weekKey,
-        weekStart,
-        weekEnd,
-        generatedAt,
-        ...(preview ? { preview } : {}),
-        ...(emotions ? { emotions } : {}),
-        ...(patterns.activities ? { activities: patterns.activities } : {}),
-        ...(patterns.promises ? { promises: patterns.promises } : {}),
-        ...(patterns.recurringThought
-          ? { recurringThought: patterns.recurringThought }
-          : {}),
-        ...(generatedParts ? { generatedParts } : {}),
-      });
+      const row = itemToLetterSummary(raw as Record<string, unknown>);
+      if (row) out.push(row);
     }
     startKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey);
-  out.sort((a, b) => (a.weekKey < b.weekKey ? 1 : a.weekKey > b.weekKey ? -1 : 0));
   return out;
+}
+
+async function listWeeklyReflections(
+  table: string,
+  ownerId: string,
+): Promise<WeeklyLetterSummary[]> {
+  const [rangeRows, legacyRows] = await Promise.all([
+    queryInsightRows(table, ownerId, "RANGE#"),
+    queryInsightRows(table, ownerId, "WEEKLY#"),
+  ]);
+  return mergeLetterSummaries(rangeRows, legacyRows);
 }
 
 async function saveWeeklyReflection(params: {
   table: string;
   reflection: WeeklyReflection;
 }): Promise<void> {
+  const { reflection } = params;
   await ddb.send(
     new PutCommand({
       TableName: params.table,
       Item: {
-        pk: params.reflection.ownerId,
-        sk: `WEEKLY#${params.reflection.weekKey}`,
+        pk: reflection.ownerId,
+        sk: insightSortKey(reflection.startDate, reflection.endDate),
+        periodType: reflection.periodType,
+        startDate: reflection.startDate,
+        endDate: reflection.endDate,
         weekKey: params.reflection.weekKey,
         weekStart: params.reflection.weekStart,
         weekEnd: params.reflection.weekEnd,
@@ -1510,6 +1591,22 @@ async function saveWeeklyReflection(params: {
       },
     }),
   );
+
+  // A regenerated legacy week now lives at RANGE#; drop the old row so the
+  // list does not have to keep de-duplicating it.
+  const week = weekBoundsForDate(reflection.startDate);
+  if (week.startDate === reflection.startDate && week.endDate === reflection.endDate) {
+    try {
+      await ddb.send(
+        new DeleteCommand({
+          TableName: params.table,
+          Key: { pk: reflection.ownerId, sk: `WEEKLY#${week.startDate}` },
+        }),
+      );
+    } catch {
+      /* de-duplication on read still covers this */
+    }
+  }
 }
 
 async function collectWeekData(params: {
@@ -1586,33 +1683,74 @@ export async function handler(
   }
   const ownerId = user.sub;
   const allUsers = false;
-
-  const weekParam = event.queryStringParameters?.week?.trim();
-  const bounds = weekParam
-    ? weekBoundsFromDate(new Date(`${weekParam}T12:00:00.000Z`))
-    : weekBoundsFromDate(new Date());
+  const qs = event.queryStringParameters ?? {};
 
   if (method === "GET") {
     try {
-      const listParam = event.queryStringParameters?.list?.trim();
+      const listParam = qs.list?.trim();
       if (listParam === "1" || listParam === "true") {
         const letters = await listWeeklyReflections(insightsTable, ownerId);
-        const current = weekBoundsFromDate(new Date());
+        const current = resolveInsightPeriod(
+          { periodType: "last7", timeZone: qs.timeZone },
+        );
         return json(200, {
           letters,
-          currentWeekKey: current.weekKey,
+          currentWeekKey: current.ok
+            ? insightRangeKey(current.period.startDate, current.period.endDate)
+            : "",
+          currentRangeKey: current.ok
+            ? insightRangeKey(current.period.startDate, current.period.endDate)
+            : "",
         });
       }
-      const cached = await loadWeeklyReflection(
+
+      const previewParam = qs.preview?.trim();
+      const resolved = resolveInsightPeriod({
+        periodType: qs.periodType,
+        startDate: qs.start ?? qs.startDate,
+        endDate: qs.end ?? qs.endDate,
+        week: qs.week,
+        timeZone: qs.timeZone,
+      });
+      if (!resolved.ok) {
+        return json(400, { error: resolved.error });
+      }
+      const period = resolved.period;
+
+      if (previewParam === "1" || previewParam === "true") {
+        const { entries, chats } = await collectWeekData({
+          journalTable,
+          analyticsTable,
+          jobsTable,
+          ownerId,
+          weekStart: period.startIso,
+          weekEnd: period.endIso,
+          allUsers,
+        });
+        return json(200, {
+          entryCount: entries.length,
+          meditationCount: chats.length,
+          startDate: period.startDate,
+          endDate: period.endDate,
+          periodType: period.periodType,
+          rangeKey: insightRangeKey(period.startDate, period.endDate),
+        });
+      }
+
+      const cached = await loadReflectionForPeriod(
         insightsTable,
         ownerId,
-        bounds.weekKey,
+        period,
       );
       return json(200, {
         reflection: cached,
-        weekKey: bounds.weekKey,
-        weekStart: bounds.weekStart,
-        weekEnd: bounds.weekEnd,
+        weekKey: weekKeyForPeriod(period),
+        weekStart: period.startIso,
+        weekEnd: period.endIso,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        periodType: period.periodType,
+        rangeKey: insightRangeKey(period.startDate, period.endDate),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Read failed";
@@ -1628,31 +1766,54 @@ export async function handler(
     letter: true,
     patterns: { felt: true, moved: true, wins: true, thought: true },
   };
+  let periodInput: {
+    periodType?: unknown;
+    startDate?: unknown;
+    endDate?: unknown;
+    week?: unknown;
+    timeZone?: unknown;
+  } = {
+    periodType: qs.periodType,
+    startDate: qs.start ?? qs.startDate,
+    endDate: qs.end ?? qs.endDate,
+    week: qs.week,
+    timeZone: qs.timeZone,
+  };
   try {
     const bodyRaw = event.isBase64Encoded
       ? Buffer.from(event.body ?? "", "base64").toString("utf-8")
       : (event.body ?? "");
     const parsed = JSON.parse(bodyRaw || "{}") as Record<string, unknown>;
-    if (typeof parsed.week === "string" && parsed.week.trim()) {
-      Object.assign(
-        bounds,
-        weekBoundsFromDate(new Date(`${parsed.week.trim()}T12:00:00.000Z`)),
-      );
-    }
+    periodInput = {
+      periodType: parsed.periodType ?? periodInput.periodType,
+      startDate: parsed.startDate ?? parsed.start ?? periodInput.startDate,
+      endDate: parsed.endDate ?? parsed.end ?? periodInput.endDate,
+      week: parsed.week ?? periodInput.week,
+      timeZone: parsed.timeZone ?? periodInput.timeZone,
+    };
     selection = parseGenerateSelection(parsed);
   } catch {
     /* ignore */
   }
+
+  const resolved = resolveInsightPeriod(periodInput);
+  if (!resolved.ok) {
+    return json(400, { error: resolved.error });
+  }
+  const period = resolved.period;
+  const rangeKey = insightRangeKey(period.startDate, period.endDate);
+  const periodPhrase = periodPhraseForPrompt(period);
+  const periodLabel = formatRangeWords(period.startDate, period.endDate);
 
   if (!selection.letter && !anyPatternSelected(selection.patterns)) {
     return json(400, { error: "Choose at least one: letter or patterns" });
   }
 
   try {
-    const existing = await loadWeeklyReflection(
+    const existing = await loadReflectionForPeriod(
       insightsTable,
       ownerId,
-      bounds.weekKey,
+      period,
     );
 
     const { entries, chats } = await collectWeekData({
@@ -1660,52 +1821,50 @@ export async function handler(
       analyticsTable,
       jobsTable,
       ownerId: user?.sub ?? ownerId,
-      weekStart: bounds.weekStart,
-      weekEnd: bounds.weekEnd,
+      weekStart: period.startIso,
+      weekEnd: period.endIso,
       allUsers,
     });
 
     if (!entries.length && !chats.length) {
       return json(200, {
         reflection: null,
-        weekKey: bounds.weekKey,
-        weekStart: bounds.weekStart,
-        weekEnd: bounds.weekEnd,
+        weekKey: weekKeyForPeriod(period),
+        weekStart: period.startIso,
+        weekEnd: period.endIso,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        periodType: period.periodType,
+        rangeKey,
         empty: true,
       });
     }
 
     const apiKey = await getClaudeApiKey();
     const priorLetters = (await listWeeklyReflections(insightsTable, ownerId))
-      .filter((l) => l.weekKey < bounds.weekKey)
-      .slice(0, 4);
-    // Promises from the most recent stored week within the last 2 weeks.
-    const twoWeeksAgo = (() => {
-      const d = new Date(`${bounds.weekKey}T12:00:00.000Z`);
-      d.setUTCDate(d.getUTCDate() - 14);
-      return d.toISOString().slice(0, 10);
-    })();
+      .filter((l) => l.endDate < period.startDate)
+      .slice(0, 8);
+
+    // Open promises from the most recent insight that ended before this one.
     const recentPromisesLetter = priorLetters.find(
-      (l) =>
-        l.weekKey >= twoWeeksAgo &&
-        Array.isArray(l.promises) &&
-        l.promises.length > 0,
+      (l) => Array.isArray(l.promises) && l.promises.length > 0,
     );
     const lastWeekPromises = recentPromisesLetter?.promises;
     const priorRecurringThoughts = priorLetters
       .filter((l) => l.recurringThought?.text)
       .map((l) => ({
         text: l.recurringThought!.text,
-        weekKey: l.weekKey,
+        label: formatRangeWords(l.startDate, l.endDate),
       }));
     const knownEntryIds = new Set(entries.map((e) => e.id));
     let modelOut: Awaited<ReturnType<typeof callClaudeForLetter>>;
     try {
       modelOut = await callClaudeForLetter({
         apiKey,
-        system: buildSystemPrompt(selection),
+        system: buildSystemPrompt(selection, periodPhrase),
         user: buildUserPrompt({
-          weekLabel: formatWeekLabel(bounds.weekStart, bounds.weekEnd),
+          periodLabel,
+          periodPhrase,
           displayName: user?.name,
           journalText: formatJournalForPrompt(entries),
           chatText: formatChatsForPrompt(chats),
@@ -1719,14 +1878,17 @@ export async function handler(
         knownEntryIds,
       });
     } catch (e) {
-      // Keep previous letter text if a new call fails mid-regenerate.
       if (existing?.letterMarkdown?.trim()) {
         return json(502, {
           error: e instanceof Error ? e.message : "Generation failed",
           reflection: existing,
-          weekKey: bounds.weekKey,
-          weekStart: bounds.weekStart,
-          weekEnd: bounds.weekEnd,
+          weekKey: weekKeyForPeriod(period),
+          weekStart: period.startIso,
+          weekEnd: period.endIso,
+          startDate: period.startDate,
+          endDate: period.endDate,
+          periodType: period.periodType,
+          rangeKey,
         });
       }
       throw e;
@@ -1747,7 +1909,7 @@ export async function handler(
     const writingDays = uniqueWritingDays(entries);
     const wroteLine =
       writingDays > 0
-        ? `Wrote on ${writingDays} day${writingDays === 1 ? "" : "s"} out of 7`
+        ? `Wrote on ${writingDays} day${writingDays === 1 ? "" : "s"} out of ${period.days}`
         : null;
     const wins = (() => {
       if (!selection.patterns.wins) return undefined;
@@ -1766,7 +1928,7 @@ export async function handler(
         const priorText = prior.recurringThought?.text;
         if (!priorText) continue;
         if (normalizeThoughtKey(priorText) === key) {
-          alsoOn.push(prior.weekKey);
+          alsoOn.push(prior.startDate);
         }
       }
       return alsoOn.length > 0
@@ -1792,13 +1954,20 @@ export async function handler(
     const now = new Date().toISOString();
     const reflection: WeeklyReflection = {
       ownerId,
-      weekKey: bounds.weekKey,
-      weekStart: bounds.weekStart,
-      weekEnd: bounds.weekEnd,
+      periodType: period.periodType,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      rangeKey,
+      weekKey: weekKeyForPeriod(period),
+      weekStart: period.startIso,
+      weekEnd: period.endIso,
       letterMarkdown,
       ...(preview ? { preview } : {}),
-      // Always refresh cheap data when any generation runs.
-      ...(emotions ? { emotions } : existing?.emotions ? { emotions: existing.emotions } : {}),
+      ...(emotions
+        ? { emotions }
+        : existing?.emotions
+          ? { emotions: existing.emotions }
+          : {}),
       ...(moodSummary
         ? { moodSummary }
         : existing?.moodSummary
@@ -1846,9 +2015,13 @@ export async function handler(
 
     return json(200, {
       reflection,
-      weekKey: bounds.weekKey,
-      weekStart: bounds.weekStart,
-      weekEnd: bounds.weekEnd,
+      weekKey: reflection.weekKey,
+      weekStart: reflection.weekStart,
+      weekEnd: reflection.weekEnd,
+      startDate: reflection.startDate,
+      endDate: reflection.endDate,
+      periodType: reflection.periodType,
+      rangeKey: reflection.rangeKey,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Weekly reflection failed";

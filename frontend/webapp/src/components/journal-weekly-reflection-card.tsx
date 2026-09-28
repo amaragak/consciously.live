@@ -39,6 +39,13 @@ import {
   type InsightsGeneratePrefill,
   type InsightsGenerateSelection,
 } from "@/components/insights-generate-dialog";
+import {
+  daysBetweenInclusive,
+  formatRangeWords,
+  insightHeaderLabel,
+  parseInsightRangeKey,
+  periodUiCopy,
+} from "@/lib/insight-period";
 
 function formatWeekRange(weekStart: string, weekEnd: string): string {
   try {
@@ -238,8 +245,10 @@ function hasAnyGeneratedPatternPart(
 type MoodDay = {
   key: string;
   dayLabel: string;
+  dateNum: number;
   mood: JournalMoodId | null;
   isToday: boolean;
+  inPeriod: boolean;
   emptyLabel: string;
 };
 
@@ -274,6 +283,93 @@ function startOfWeekMonday(d = new Date()): Date {
   return local;
 }
 
+function parseLocalDateOnly(dateStr: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function moodDaysForPeriod(
+  entries: JournalEntry[],
+  startDate: string,
+  endDate: string,
+): MoodDay[] {
+  const startLocal = parseLocalDateOnly(startDate);
+  const endLocal = parseLocalDateOnly(endDate);
+  if (!startLocal || !endLocal) return [];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const byDay = new Map<string, { mood: JournalMoodId; at: number }>();
+  const startMs = startLocal.getTime();
+  const endMs = new Date(
+    endLocal.getFullYear(),
+    endLocal.getMonth(),
+    endLocal.getDate(),
+    23,
+    59,
+    59,
+    999,
+  ).getTime();
+
+  for (const e of entries) {
+    if (e.kind === "gratitude") continue;
+    if (!isJournalMoodId(e.mood)) continue;
+    const at = new Date(e.updatedAt || e.createdAt).getTime();
+    if (!Number.isFinite(at) || at < startMs || at > endMs) continue;
+    const d = new Date(at);
+    d.setHours(0, 0, 0, 0);
+    const key = localDateKey(d);
+    const prev = byDay.get(key);
+    if (!prev || at >= prev.at) byDay.set(key, { mood: e.mood, at });
+  }
+
+  const days: MoodDay[] = [];
+  const cursor = new Date(startLocal);
+  while (cursor.getTime() <= endLocal.getTime()) {
+    const key = localDateKey(cursor);
+    const isToday = cursor.getTime() === today.getTime();
+    days.push({
+      key,
+      dayLabel: dayNames[cursor.getDay()]!,
+      dateNum: cursor.getDate(),
+      mood: byDay.get(key)?.mood ?? null,
+      isToday,
+      inPeriod: true,
+      emptyLabel: isToday ? "Today" : "–",
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+/** Calendar grid cells (Mon–Sun rows) for periods longer than 14 days. */
+function moodCalendarCells(
+  periodDays: MoodDay[],
+): Array<MoodDay | { key: string; blank: true }> {
+  if (periodDays.length === 0) return [];
+  const first = parseLocalDateOnly(periodDays[0]!.key);
+  if (!first) return periodDays;
+  const monday = startOfWeekMonday(first);
+  const last = parseLocalDateOnly(periodDays[periodDays.length - 1]!.key)!;
+  const endSunday = startOfWeekMonday(last);
+  endSunday.setDate(endSunday.getDate() + 6);
+
+  const byKey = new Map(periodDays.map((d) => [d.key, d]));
+  const cells: Array<MoodDay | { key: string; blank: true }> = [];
+  const cursor = new Date(monday);
+  while (cursor.getTime() <= endSunday.getTime()) {
+    const key = localDateKey(cursor);
+    const hit = byKey.get(key);
+    if (hit) cells.push(hit);
+    else cells.push({ key: `blank-${key}`, blank: true });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return cells;
+}
+
 function moodDaysForWeek(
   entries: JournalEntry[],
   weekStart: string,
@@ -283,48 +379,25 @@ function moodDaysForWeek(
   if (Number.isNaN(monday.getTime())) {
     monday = startOfWeekMonday();
   } else {
-    // Normalize to local calendar Monday of that instant.
     monday = startOfWeekMonday(monday);
   }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const byDay = new Map<string, { mood: JournalMoodId; at: number }>();
-  const start = weekStart ? new Date(weekStart).getTime() : monday.getTime();
-  const endBound = weekEnd
-    ? new Date(weekEnd).getTime()
-    : (() => {
-        const s = new Date(monday);
-        s.setDate(monday.getDate() + 6);
-        s.setHours(23, 59, 59, 999);
-        return s.getTime();
-      })();
-  for (const e of entries) {
-    if (e.kind === "gratitude") continue;
-    if (!isJournalMoodId(e.mood)) continue;
-    const at = new Date(e.updatedAt || e.createdAt).getTime();
-    if (!Number.isFinite(at) || at < start || at > endBound) continue;
-    const d = new Date(at);
-    d.setHours(0, 0, 0, 0);
-    const key = localDateKey(d);
-    const prev = byDay.get(key);
-    if (!prev || at >= prev.at) byDay.set(key, { mood: e.mood, at });
+  const startKey = localDateKey(monday);
+  const end = new Date(monday);
+  end.setDate(monday.getDate() + 6);
+  const endKey = localDateKey(end);
+  // Prefer ISO instants when available; fall back to Mon–Sun of weekStart.
+  if (weekStart && weekEnd) {
+    const s = new Date(weekStart);
+    const e = new Date(weekEnd);
+    if (!Number.isNaN(s.getTime()) && !Number.isNaN(e.getTime())) {
+      return moodDaysForPeriod(
+        entries,
+        localDateKey(s),
+        localDateKey(e),
+      );
+    }
   }
-  return dayNames.map((dayLabel, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    const key = localDateKey(d);
-    const isToday = d.getTime() === today.getTime();
-    const mood = byDay.get(key)?.mood ?? null;
-    return {
-      key,
-      dayLabel,
-      mood,
-      isToday,
-      emptyLabel: isToday ? "Today" : "–",
-    };
-  });
+  return moodDaysForPeriod(entries, startKey, endKey);
 }
 
 function normalizeEmotions(
@@ -421,36 +494,85 @@ function MoodWeekStrip({
   summary?: string;
 }) {
   if (!days.length) return null;
+  const useCalendar = days.length > 14;
+  const cells = useCalendar ? moodCalendarCells(days) : days;
+
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="grid grid-cols-7 gap-2">
-        {days.map((d) => {
-          const label = d.mood ? journalMoodLabel(d.mood) : d.emptyLabel;
-          const palette = d.mood ? JOURNAL_MOOD_PILL[d.mood] : null;
-          return (
-            <div
-              key={d.key}
-              className="flex flex-col items-center gap-2 text-[13px] text-muted"
-            >
+      {useCalendar ? (
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] text-muted">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+              <span key={d}>{d}</span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {cells.map((cell) => {
+              if ("blank" in cell) {
+                return <div key={cell.key} className="aspect-square" />;
+              }
+              const palette = cell.mood ? JOURNAL_MOOD_PILL[cell.mood] : null;
+              return (
+                <div
+                  key={cell.key}
+                  className={`flex aspect-square flex-col items-center justify-center rounded-lg text-[11px] font-semibold ${
+                    cell.mood
+                      ? ""
+                      : "border border-dashed border-border text-muted"
+                  }`}
+                  style={
+                    palette
+                      ? {
+                          backgroundColor: palette.background,
+                          color: palette.color,
+                        }
+                      : undefined
+                  }
+                  title={
+                    (cell.mood
+                      ? journalMoodLabel(cell.mood)
+                      : cell.emptyLabel) ?? undefined
+                  }
+                >
+                  {cell.dateNum}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-7 gap-2">
+          {days.map((d) => {
+            const label = d.mood ? journalMoodLabel(d.mood) : d.emptyLabel;
+            const palette = d.mood ? JOURNAL_MOOD_PILL[d.mood] : null;
+            return (
               <div
-                className={`flex h-11 w-full items-end justify-center rounded-xl pb-2 text-[12px] font-semibold ${
-                  d.mood
-                    ? ""
-                    : "border-[1.5px] border-dashed border-border font-medium text-muted"
-                }`}
-                style={
-                  palette
-                    ? { backgroundColor: palette.background, color: palette.color }
-                    : undefined
-                }
+                key={d.key}
+                className="flex flex-col items-center gap-2 text-[13px] text-muted"
               >
-                {label}
+                <div
+                  className={`flex h-11 w-full items-end justify-center rounded-xl pb-2 text-[12px] font-semibold ${
+                    d.mood
+                      ? ""
+                      : "border-[1.5px] border-dashed border-border font-medium text-muted"
+                  }`}
+                  style={
+                    palette
+                      ? {
+                          backgroundColor: palette.background,
+                          color: palette.color,
+                        }
+                      : undefined
+                  }
+                >
+                  {label}
+                </div>
+                <span>{d.dayLabel}</span>
               </div>
-              <span>{d.dayLabel}</span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
       {summary?.trim() ? (
         <p className="text-sm leading-relaxed text-foreground/80">{summary.trim()}</p>
       ) : null}
@@ -507,11 +629,20 @@ export function JournalWeeklyReflectionCard({
 
   const openGenerateDialog = useCallback(
     (prefill?: InsightsGeneratePrefill | null) => {
-      setDialogPrefill(prefill ?? null);
+      const fromReflection: InsightsGeneratePrefill = {
+        ...(reflection?.startDate && reflection?.endDate
+          ? {
+              startDate: reflection.startDate,
+              endDate: reflection.endDate,
+              periodType: reflection.periodType,
+            }
+          : {}),
+      };
+      setDialogPrefill({ ...fromReflection, ...(prefill ?? null) });
       setDialogOpen(true);
       setMenuOpen(false);
     },
-    [],
+    [reflection],
   );
 
   const load = useCallback(
@@ -530,8 +661,13 @@ export function JournalWeeklyReflectionCard({
       setLoading(true);
       setError(null);
       try {
+        const range = weekKey ? parseInsightRangeKey(weekKey) : null;
         const got = await fetchJournalWeeklyReflectionRemote(
-          weekKey ? { week: weekKey } : undefined,
+          range
+            ? { startDate: range.startDate, endDate: range.endDate }
+            : weekKey
+              ? { week: weekKey }
+              : undefined,
         );
         setCachedWeeklyReflection(cacheKey, got);
         setReflection(got.reflection);
@@ -579,14 +715,28 @@ export function JournalWeeklyReflectionCard({
         const got = await runJournalWeeklyReflectionRemote({
           letter: selection.letter,
           patterns: selection.patterns,
-          ...(weekKey ? { week: weekKey } : {}),
+          periodType: selection.periodType,
+          startDate: selection.startDate,
+          endDate: selection.endDate,
+          timeZone: selection.timeZone,
         });
+        const nextKey =
+          got.rangeKey ||
+          got.reflection?.rangeKey ||
+          weekKey ||
+          "__current__";
         invalidateCachedWeeklyReflection(weekKey);
-        setCachedWeeklyReflection(cacheKey, got);
+        invalidateCachedWeeklyReflection(nextKey);
+        setCachedWeeklyReflection(nextKey, got);
         setReflection(got.reflection);
         setWeekStart(got.weekStart);
         setWeekEnd(got.weekEnd);
         onLetterChanged?.();
+        if (got.rangeKey && got.rangeKey !== weekKey) {
+          navigate(`/journal/my/insights/${encodeURIComponent(got.rangeKey)}`, {
+            replace: true,
+          });
+        }
       } catch (e) {
         setError(
           e instanceof Error
@@ -598,13 +748,51 @@ export function JournalWeeklyReflectionCard({
         setPendingGeneration(null);
       }
     },
-    [apiEnabled, cacheKey, onLetterChanged, weekKey],
+    [apiEnabled, navigate, onLetterChanged, weekKey],
   );
 
   const weekLabel =
-    weekStart && weekEnd ? formatWeekRangeShort(weekStart, weekEnd) : "This week";
+    weekStart && weekEnd ? formatWeekRangeShort(weekStart, weekEnd) : "These days";
   const weekLabelLong =
-    weekStart && weekEnd ? formatWeekRange(weekStart, weekEnd) : "This week";
+    weekStart && weekEnd ? formatWeekRange(weekStart, weekEnd) : "These days";
+
+  const periodDates = useMemo(() => {
+    if (reflection?.startDate && reflection?.endDate) {
+      return {
+        startDate: reflection.startDate,
+        endDate: reflection.endDate,
+        periodType: reflection.periodType,
+      };
+    }
+    const fromKey = weekKey ? parseInsightRangeKey(weekKey) : null;
+    if (fromKey) {
+      return {
+        startDate: fromKey.startDate,
+        endDate: fromKey.endDate,
+        periodType: reflection?.periodType,
+      };
+    }
+    if (weekStart && weekEnd) {
+      return {
+        startDate: localDateKey(new Date(weekStart)),
+        endDate: localDateKey(new Date(weekEnd)),
+        periodType: reflection?.periodType,
+      };
+    }
+    return null;
+  }, [reflection, weekKey, weekStart, weekEnd]);
+
+  const periodDays = periodDates
+    ? daysBetweenInclusive(periodDates.startDate, periodDates.endDate)
+    : 7;
+  const uiCopy = periodUiCopy(periodDays);
+  const headerLabel = periodDates
+    ? insightHeaderLabel(
+        periodDates.periodType,
+        periodDates.startDate,
+        periodDates.endDate,
+      )
+    : weekLabel;
 
   const [storeTick, setStoreTick] = useState(0);
   useEffect(() => {
@@ -617,6 +805,14 @@ export function JournalWeeklyReflectionCard({
 
   const resolvedWeek = useMemo(() => {
     if (weekStart && weekEnd) return { weekStart, weekEnd };
+    if (periodDates) {
+      const start = parseLocalDateOnly(periodDates.startDate);
+      const end = parseLocalDateOnly(periodDates.endDate);
+      if (start && end) {
+        end.setHours(23, 59, 59, 999);
+        return { weekStart: start.toISOString(), weekEnd: end.toISOString() };
+      }
+    }
     if (weekKey) {
       const fromKey = weekBoundsFromKey(weekKey);
       if (fromKey) return fromKey;
@@ -626,7 +822,7 @@ export function JournalWeeklyReflectionCard({
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
     return { weekStart: monday.toISOString(), weekEnd: sunday.toISOString() };
-  }, [weekStart, weekEnd, weekKey]);
+  }, [weekStart, weekEnd, weekKey, periodDates]);
 
   const storeEntries = useMemo(() => {
     void storeTick;
@@ -644,15 +840,20 @@ export function JournalWeeklyReflectionCard({
     );
   }, [reflection, storeEntries, resolvedWeek]);
 
-  const moodDays = useMemo(
-    () =>
-      moodDaysForWeek(
+  const moodDays = useMemo(() => {
+    if (periodDates) {
+      return moodDaysForPeriod(
         storeEntries,
-        resolvedWeek.weekStart,
-        resolvedWeek.weekEnd,
-      ),
-    [storeEntries, resolvedWeek],
-  );
+        periodDates.startDate,
+        periodDates.endDate,
+      );
+    }
+    return moodDaysForWeek(
+      storeEntries,
+      resolvedWeek.weekStart,
+      resolvedWeek.weekEnd,
+    );
+  }, [storeEntries, resolvedWeek, periodDates]);
   const hasAnyMood = moodDays.some((d) => d.mood);
 
   const generatedParts = resolveGeneratedParts(reflection);
@@ -671,6 +872,32 @@ export function JournalWeeklyReflectionCard({
   const pendingAnyPattern =
     pendingFelt || pendingMoved || pendingWins || pendingThought;
 
+  const letterTitle = useMemo(() => {
+    if (!hasLetter || !reflection) {
+      if (!periodDates) return "Your insights";
+      return `Your insights for ${formatRangeWords(
+        periodDates.startDate,
+        periodDates.endDate,
+      )}`;
+    }
+    const plain = plainFromMarkdown(reflection.letterMarkdown);
+    const withoutDear = plain.replace(/^Dear\s+[^,.]+[,.]?\s*/i, "").trim();
+    const m = withoutDear.match(/^(.{12,72}?)(?:[.!?]|\n|$)/);
+    const snippet = (m?.[1] ?? withoutDear).trim();
+    if (snippet.length >= 12) {
+      const words = snippet.split(/\s+/).slice(0, 8).join(" ");
+      return words.endsWith(".") || words.endsWith("!") || words.endsWith("?")
+        ? words.slice(0, -1)
+        : words;
+    }
+    return periodDates
+      ? `Your insights for ${formatRangeWords(
+          periodDates.startDate,
+          periodDates.endDate,
+        )}`
+      : `Your insights for ${weekLabel}`;
+  }, [hasLetter, reflection, periodDates, weekLabel]);
+
   const writtenFromLine = useMemo(() => {
     if (!hasAnyInsights) return null;
     const j = reflection?.meta.journalEntryCount ?? weekEntryCount;
@@ -678,7 +905,6 @@ export function JournalWeeklyReflectionCard({
     if (meditationCount > 0) {
       line += ` and ${meditationCount} meditation${meditationCount === 1 ? "" : "s"}`;
     }
-    line += " this week";
     return line;
   }, [hasAnyInsights, reflection, weekEntryCount, meditationCount]);
 
@@ -716,8 +942,8 @@ export function JournalWeeklyReflectionCard({
     if (top.length === 1) {
       return `Written from your ${source}: easing into ${top[0]}.`;
     }
-    return `Written from your ${source}: a practice shaped by this week.`;
-  }, [emotions, hasLetter]);
+    return `Written from your ${source}: a practice shaped by ${uiCopy.periodNoun}.`;
+  }, [emotions, hasLetter, uiCopy.periodNoun]);
 
   const weekStartWeekday = weekdayLong(resolvedWeek.weekStart);
   const showPatternsSection =
@@ -792,16 +1018,16 @@ export function JournalWeeklyReflectionCard({
       <div className="flex items-end justify-between gap-6">
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-[12px] font-semibold uppercase tracking-[0.09em] text-accent-link">
-            Weekly reflection
+            {headerLabel}
           </p>
           <h1 className="font-display text-[clamp(1.75rem,3vw,2.25rem)] font-normal tracking-tight text-foreground">
-            A gentle letter for {weekLabel}
+            {letterTitle}
           </h1>
           {writtenFromLine ? (
             <p className="text-sm text-muted">{writtenFromLine}</p>
           ) : !hasAnyInsights && !loading ? (
             <p className="text-sm text-muted">
-              Your insights are written from this week&apos;s journal entries.
+              Your insights are written from these days&apos; journal entries.
             </p>
           ) : null}
         </div>
@@ -858,11 +1084,11 @@ export function JournalWeeklyReflectionCard({
                   Before the letter is written
                 </span>
                 <span className="font-display text-xl font-normal text-foreground">
-                  Your insights are written from this week&apos;s entries.
+                  Your insights are written from these days&apos; entries.
                 </span>
                 <span className="text-sm text-foreground/80">
                   {weekEntryCount === 0
-                    ? "Write your first entry this week to get insights."
+                    ? "Write your first entry in these dates to get insights."
                     : weekEntryCount === 1
                       ? "You've written 1 so far. A couple more make it richer."
                       : `You've written ${weekEntryCount} so far. A couple more make it richer.`}
@@ -880,7 +1106,7 @@ export function JournalWeeklyReflectionCard({
                   disabled={!apiEnabled || generating || weekEntryCount === 0}
                   title={
                     weekEntryCount === 0
-                      ? "Write at least one journal entry this week first"
+                      ? "Write at least one journal entry in these dates first"
                       : undefined
                   }
                   onClick={() => openGenerateDialog()}
@@ -961,10 +1187,10 @@ export function JournalWeeklyReflectionCard({
       ) : null}
 
       {apiEnabled && !loading && showPatternsSection ? (
-        <section aria-label="Patterns this week" className="flex flex-col">
+        <section aria-label="Patterns" className="flex flex-col">
           <InsightsSectionHeader
             id="insights-patterns"
-            title="Patterns this week"
+            title="Patterns"
             meta={patternsMeta}
             expanded={patternsOpen}
             collapsible={patternsCollapsible}
@@ -1012,7 +1238,7 @@ export function JournalWeeklyReflectionCard({
                 ) : generatedParts?.felt ? (
                   <div className="relative z-[1] flex flex-col gap-3 overflow-visible rounded-xl border border-border bg-card px-6 py-[22px]">
                     <div className="text-sm font-semibold text-foreground">
-                      How this week felt
+                      {uiCopy.feltTitle}
                     </div>
                     {showEmotionChart ? (
                       <>
@@ -1025,7 +1251,7 @@ export function JournalWeeklyReflectionCard({
                     ) : (
                       <p className="text-sm leading-relaxed text-muted">
                         Emotion scores will appear here once generation finishes
-                        reading this week&apos;s writing.
+                        reading this writing.
                       </p>
                     )}
                   </div>
@@ -1055,6 +1281,7 @@ export function JournalWeeklyReflectionCard({
                   recentLetters={recentLetters}
                   storeEntries={storeEntries}
                   weekLabel={weekLabelLong}
+                  periodDays={periodDays}
                   generatedParts={generatedParts}
                   loadingParts={
                     pendingAnyPattern
@@ -1077,7 +1304,7 @@ export function JournalWeeklyReflectionCard({
                     </span>
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <span className="font-display text-xl font-normal">
-                        Turn this week into a meditation
+                        {uiCopy.meditationTitle}
                       </span>
                       <span className="text-sm text-[color-mix(in_srgb,white_70%,transparent)]">
                         {meditationSubline}

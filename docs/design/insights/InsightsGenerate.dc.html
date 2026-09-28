@@ -17,6 +17,10 @@ a{color:inherit;text-decoration:none}
 .opt input{width:20px;height:20px;margin:2px 0 0;accent-color:#C98A55;flex-shrink:0}
 .sub{display:flex;gap:12px;align-items:center;padding:9px 4px;font-size:15px;cursor:pointer}
 .sub input{width:18px;height:18px;margin:0;accent-color:#C98A55}
+.seg{flex:1;height:44px;border-radius:10px;border:1px solid transparent;background:transparent;font-family:inherit;font-size:15px;font-weight:500;color:#4A4F5A;cursor:pointer}
+.seg.on{background:#FFFFFF;border-color:#EADFCF;color:#1B2230;font-weight:600;box-shadow:0 1px 2px rgba(27,34,48,0.06)}
+.date{display:flex;flex-direction:column;gap:6px;flex:1;font-size:13px;color:#6B6457}
+.date input{height:44px;border-radius:10px;border:1px solid #EADFCF;background:#FFFFFF;padding:0 12px;font-family:inherit;font-size:15px;color:#1B2230}
 .muted{font-size:13px;color:#6B6457}
 </style>
 </helmet>
@@ -28,13 +32,13 @@ a{color:inherit;text-decoration:none}
 </header>
 <div style="display: flex; height: 840px">
 <aside style="width: 300px; background: #F8F3EC; border-right: 1px solid #EADFCF; padding: 28px 20px; box-sizing: border-box">
-<div style="font-size: 12px; letter-spacing: 1.3px; text-transform: uppercase; color: #8A8175; padding: 0 12px 10px">Your letters</div>
-<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-left: 3px solid #F2B27A; border-radius: 12px; padding: 14px 16px; font-size: 15px; font-weight: 600">This week · 28 Sept – 5 Oct</div>
+<div style="font-size: 12px; letter-spacing: 1.3px; text-transform: uppercase; color: #8A8175; padding: 0 12px 10px">Your insights</div>
+<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-left: 3px solid #F2B27A; border-radius: 12px; padding: 14px 16px; font-size: 15px; font-weight: 600">Last 7 days · 22–28 Sept</div>
 </aside>
 <main style="flex-grow: 1; padding: 44px 56px; display: flex; justify-content: center">
 <div style="width: 820px; display: flex; flex-direction: column; gap: 16px">
-<div style="font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #A5632E; font-weight: 600">This week</div>
-<div style="font-family: 'Fraunces', serif; font-size: 36px">Your week so far</div>
+<div style="font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #A5632E; font-weight: 600">Insights</div>
+<div style="font-family: 'Fraunces', serif; font-size: 36px">Nothing written yet</div>
 <div class="muted" style="font-size: 15px">4 journal entries · 2 meditations</div>
 <div style="height: 220px; border-radius: 22px; border: 1.5px dashed #E3D6C3; margin-top: 12px"></div>
 </div>
@@ -48,17 +52,23 @@ a{color:inherit;text-decoration:none}
 <section role="dialog" aria-modal="true" aria-labelledby="gen-title" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 580px; background: #FAF6F0; border-radius: 24px; box-shadow: 0 24px 60px rgba(27,34,48,0.25); padding: 30px 32px 26px; display: flex; flex-direction: column; gap: 18px">
 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px">
 <div style="display: flex; flex-direction: column; gap: 6px">
-<h2 id="gen-title" style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 28px">Generate this week’s insights</h2>
-<span class="muted" style="font-size: 14px">From your 4 entries and 2 meditations since Monday.</span>
+<h2 id="gen-title" style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 28px">Generate insights</h2>
+<span class="muted" style="font-size: 14px">{{summary}}</span>
 </div>
 <button aria-label="Close" style="width: 40px; height: 40px; border-radius: 999px; border: none; background: transparent; color: #4A4F5A; font-size: 22px; flex-shrink: 0">×</button>
+</div>
+
+<div role="group" aria-labelledby="period-label" style="display: flex; flex-direction: column; gap: 8px">
+<span id="period-label" style="font-size: 13px; font-weight: 600; color: #4A4F5A">Covering</span>
+<div style="display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: #F0E7DA"><sc-if value="{{d7On}}" hint-placeholder-val="{{true}}"><button type="button" class="seg on" aria-pressed="true" onClick="{{pick7}}">Last 7 days</button></sc-if><sc-if value="{{d7Off}}" hint-placeholder-val="{{false}}"><button type="button" class="seg" aria-pressed="false" onClick="{{pick7}}">Last 7 days</button></sc-if><sc-if value="{{d30On}}" hint-placeholder-val="{{false}}"><button type="button" class="seg on" aria-pressed="true" onClick="{{pick30}}">Last 30 days</button></sc-if><sc-if value="{{d30Off}}" hint-placeholder-val="{{true}}"><button type="button" class="seg" aria-pressed="false" onClick="{{pick30}}">Last 30 days</button></sc-if><sc-if value="{{dcOn}}" hint-placeholder-val="{{false}}"><button type="button" class="seg on" aria-pressed="true" onClick="{{pickCustom}}">Custom…</button></sc-if><sc-if value="{{dcOff}}" hint-placeholder-val="{{true}}"><button type="button" class="seg" aria-pressed="false" onClick="{{pickCustom}}">Custom…</button></sc-if></div>
+<sc-if value="{{dcOn}}" hint-placeholder-val="{{false}}"><div style="display: flex; gap: 12px; padding-top: 4px"><label class="date">From<input type="date" value="2026-09-14"></label><label class="date">To<input type="date" value="2026-09-28"></label></div><div class="muted" style="padding-top: 6px">Up to 90 days.</div></sc-if>
 </div>
 
 <label class="opt">
 <input type="checkbox" checked="{{letter}}" onChange="{{toggleLetter}}">
 <span style="display: flex; flex-direction: column; gap: 4px">
 <span style="font-family: 'Fraunces', serif; font-size: 20px">A letter to you</span>
-<span class="muted" style="font-size: 14px; line-height: 1.5">A personal note written from your week: what came up, what shifted, what to carry forward.</span>
+<span class="muted" style="font-size: 14px; line-height: 1.5">A personal note written from these days: what came up, what shifted, what to carry forward.</span>
 </span>
 </label>
 
@@ -67,7 +77,7 @@ a{color:inherit;text-decoration:none}
 <input type="checkbox" checked="{{patterns}}" onChange="{{togglePatterns}}" style="width: 20px; height: 20px; margin: 2px 0 0; accent-color: #C98A55; flex-shrink: 0">
 <span style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1">
 <span style="font-family: 'Fraunces', serif; font-size: 20px">Patterns</span>
-<span class="muted" style="font-size: 14px; line-height: 1.5">Charts and highlights: how the week felt and moved, your wins, promises and recurring thoughts.</span>
+<span class="muted" style="font-size: 14px; line-height: 1.5">Charts and highlights: how this time felt and moved, your wins, promises and recurring thoughts.</span>
 </span>
 </label>
 <button type="button" onClick="{{toggleOpen}}" aria-expanded="{{openStr}}" style="align-self: flex-start; margin-left: 34px; border: none; background: transparent; padding: 6px 0; font-family: inherit; font-size: 14px; font-weight: 600; color: #A5632E">{{openLabel}}</button>
@@ -82,7 +92,7 @@ a{color:inherit;text-decoration:none}
 </sc-if>
 </div>
 
-<label class="sub" style="padding: 0 2px"><input type="checkbox" checked="{{remember}}" onChange="{{toggleRemember}}">Remember my choices for next week</label>
+<label class="sub" style="padding: 0 2px"><input type="checkbox" checked="{{remember}}" onChange="{{toggleRemember}}">Remember my choices for next time</label>
 
 <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px">
 <button type="button" style="height: 48px; padding: 0 20px; border-radius: 999px; border: 1px solid #E3D6C3; background: #FFFFFF; font-family: inherit; font-size: 15px; font-weight: 600; color: #1B2230">Cancel</button>
@@ -97,16 +107,21 @@ a{color:inherit;text-decoration:none}
 class Component extends DCLogic {
 constructor(props) {
 super(props);
-this.state = { letter: true, patterns: true, open: true, felt: true, moved: true, wins: true, thought: true, remember: true };
+this.state = { period: "d7", letter: true, patterns: true, open: false, felt: true, moved: true, wins: true, thought: true, remember: true };
 }
 renderVals() {
 var self = this;
 var s = this.state;
 function flip(k) { return function () { var o = {}; o[k] = !self.state[k]; self.setState(o); }; }
+var P = s.period;
+var sums = { d7: 'From your 4 entries and 2 meditations in the last 7 days.', d30: 'From your 13 entries and 7 meditations in the last 30 days.', dc: 'From your 7 entries and 4 meditations between 14 and 28 Sept.' };
+function pick(k) { return function () { self.setState({ period: k }); }; }
 var subs = s.felt || s.moved || s.wins || s.thought;
 var pat = s.patterns && subs;
 var go = s.letter && pat ? 'Generate letter + patterns' : (s.letter ? 'Generate letter' : 'Generate patterns');
 return {
+summary: sums[P], d7On: P === 'd7', d7Off: P !== 'd7', d30On: P === 'd30', d30Off: P !== 'd30', dcOn: P === 'dc', dcOff: P !== 'dc',
+pick7: pick('d7'), pick30: pick('d30'), pickCustom: pick('dc'),
 letter: s.letter, patterns: s.patterns, open: s.open,
 felt: s.felt, moved: s.moved, wins: s.wins, thought: s.thought, remember: s.remember,
 openStr: s.open ? 'true' : 'false',

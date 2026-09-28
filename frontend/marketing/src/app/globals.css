@@ -220,6 +220,27 @@ body {
   pointer-events: none;
 }
 
+/*
+ * Read articles sit on the navy field in hybrid/dark. Light-paper `--muted`
+ * and dimmed `--accent-link` marks go muddy there — use primary marks and a
+ * soft ivory for the quote body.
+ */
+:root.hybrid .home-v2-field .read-prose blockquote,
+:root.dark .home-v2-field .read-prose blockquote {
+  color: var(--hv2-on-navy);
+}
+
+:root.hybrid .home-v2-field .read-prose blockquote::before,
+:root.dark .home-v2-field .read-prose blockquote::before {
+  color: var(--accent-button);
+  opacity: 0.92;
+}
+
+:root.hybrid .home-v2-field .read-prose a,
+:root.dark .home-v2-field .read-prose a {
+  color: var(--accent-button);
+}
+
 .read-prose blockquote p {
   margin-top: 0.35rem;
   margin-bottom: 0.35rem;

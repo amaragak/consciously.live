@@ -1725,11 +1725,17 @@ export type JournalWeeklyPatternsSelection = {
   thought: boolean;
 };
 
+export type JournalInsightPeriodType = "last7" | "last30" | "custom" | "week";
+
 export type JournalWeeklyReflection = {
   ownerId: string;
   weekKey: string;
   weekStart: string;
   weekEnd: string;
+  periodType?: JournalInsightPeriodType;
+  startDate?: string;
+  endDate?: string;
+  rangeKey?: string;
   letterMarkdown: string;
   preview?: string;
   emotions?: JournalWeeklyEmotionScore[];
@@ -1754,12 +1760,17 @@ export type JournalWeeklyLetterSummary = {
   weekKey: string;
   weekStart: string;
   weekEnd: string;
+  periodType?: JournalInsightPeriodType;
+  startDate?: string;
+  endDate?: string;
+  rangeKey?: string;
   generatedAt: string;
   preview?: string;
   emotions?: JournalWeeklyEmotionScore[];
   activities?: JournalWeeklyActivityByEntry[];
   promises?: string[];
   recurringThought?: JournalWeeklyRecurringThought;
+  generatedParts?: JournalWeeklyGeneratedParts;
 };
 
 function parseEmotionExamples(raw: unknown): string[] | undefined {
@@ -1969,11 +1980,23 @@ function parseJournalWeeklyReflection(
   );
   // Patterns-only weeks may have an empty letter; legacy weeks always had a letter.
   if (!hasLetter && !hasGeneratedPart && !hasPatternPayload) return null;
+  const periodTypeRaw = o.periodType;
+  const periodType =
+    periodTypeRaw === "last7" ||
+    periodTypeRaw === "last30" ||
+    periodTypeRaw === "custom" ||
+    periodTypeRaw === "week"
+      ? periodTypeRaw
+      : undefined;
   return {
     ownerId: typeof o.ownerId === "string" ? o.ownerId : "",
     weekKey: typeof o.weekKey === "string" ? o.weekKey : "",
     weekStart: typeof o.weekStart === "string" ? o.weekStart : "",
     weekEnd: typeof o.weekEnd === "string" ? o.weekEnd : "",
+    ...(periodType ? { periodType } : {}),
+    ...(typeof o.startDate === "string" ? { startDate: o.startDate } : {}),
+    ...(typeof o.endDate === "string" ? { endDate: o.endDate } : {}),
+    ...(typeof o.rangeKey === "string" ? { rangeKey: o.rangeKey } : {}),
     letterMarkdown,
     ...(preview ? { preview } : {}),
     ...(emotions ? { emotions } : {}),
@@ -2009,19 +2032,30 @@ function parseJournalWeeklyReflection(
 
 export async function fetchJournalWeeklyReflectionRemote(opts?: {
   week?: string;
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  timeZone?: string;
 }): Promise<{
   reflection: JournalWeeklyReflection | null;
   weekKey: string;
   weekStart: string;
   weekEnd: string;
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  rangeKey?: string;
   empty?: boolean;
 }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const qs =
-    opts?.week?.trim()
-      ? `?week=${encodeURIComponent(opts.week.trim())}`
-      : "";
+  const params = new URLSearchParams();
+  if (opts?.week?.trim()) params.set("week", opts.week.trim());
+  if (opts?.startDate?.trim()) params.set("start", opts.startDate.trim());
+  if (opts?.endDate?.trim()) params.set("end", opts.endDate.trim());
+  if (opts?.periodType) params.set("periodType", opts.periodType);
+  if (opts?.timeZone?.trim()) params.set("timeZone", opts.timeZone.trim());
+  const qs = params.toString() ? `?${params.toString()}` : "";
   const res = await medimadeFetch(`${base}/journal/weekly-reflection${qs}`, {
     headers: medimadeApiAuthHeaders(),
   });
@@ -2039,12 +2073,63 @@ export async function fetchJournalWeeklyReflectionRemote(opts?: {
     throw new Error(msg);
   }
   const reflection = parseJournalWeeklyReflection(data.reflection);
+  const periodType =
+    data.periodType === "last7" ||
+    data.periodType === "last30" ||
+    data.periodType === "custom" ||
+    data.periodType === "week"
+      ? data.periodType
+      : undefined;
   return {
     reflection,
     weekKey: typeof data.weekKey === "string" ? data.weekKey : "",
     weekStart: typeof data.weekStart === "string" ? data.weekStart : "",
     weekEnd: typeof data.weekEnd === "string" ? data.weekEnd : "",
+    ...(typeof data.startDate === "string" ? { startDate: data.startDate } : {}),
+    ...(typeof data.endDate === "string" ? { endDate: data.endDate } : {}),
+    ...(periodType ? { periodType } : {}),
+    ...(typeof data.rangeKey === "string" ? { rangeKey: data.rangeKey } : {}),
     empty: data.empty === true,
+  };
+}
+
+export async function fetchJournalInsightsPreviewRemote(opts: {
+  startDate: string;
+  endDate: string;
+  periodType?: JournalInsightPeriodType;
+  timeZone?: string;
+}): Promise<{ entryCount: number; meditationCount: number }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const params = new URLSearchParams({
+    preview: "1",
+    start: opts.startDate,
+    end: opts.endDate,
+  });
+  if (opts.periodType) params.set("periodType", opts.periodType);
+  if (opts.timeZone?.trim()) params.set("timeZone", opts.timeZone.trim());
+  const res = await medimadeFetch(
+    `${base}/journal/weekly-reflection?${params.toString()}`,
+    { headers: medimadeApiAuthHeaders() },
+  );
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+  return {
+    entryCount:
+      typeof data.entryCount === "number" ? data.entryCount : 0,
+    meditationCount:
+      typeof data.meditationCount === "number" ? data.meditationCount : 0,
   };
 }
 
@@ -2096,6 +2181,16 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
       weekStart,
       weekEnd,
       generatedAt,
+      ...(typeof row.periodType === "string" &&
+      (row.periodType === "last7" ||
+        row.periodType === "last30" ||
+        row.periodType === "custom" ||
+        row.periodType === "week")
+        ? { periodType: row.periodType }
+        : {}),
+      ...(typeof row.startDate === "string" ? { startDate: row.startDate } : {}),
+      ...(typeof row.endDate === "string" ? { endDate: row.endDate } : {}),
+      ...(typeof row.rangeKey === "string" ? { rangeKey: row.rangeKey } : {}),
       ...(preview ? { preview } : {}),
       ...(emotions ? { emotions } : {}),
       ...(activities ? { activities } : {}),
@@ -2106,12 +2201,20 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
   return {
     letters,
     currentWeekKey:
-      typeof data.currentWeekKey === "string" ? data.currentWeekKey : "",
+      typeof data.currentWeekKey === "string"
+        ? data.currentWeekKey
+        : typeof data.currentRangeKey === "string"
+          ? data.currentRangeKey
+          : "",
   };
 }
 
 export async function runJournalWeeklyReflectionRemote(opts?: {
   week?: string;
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  timeZone?: string;
   letter?: boolean;
   patterns?: JournalWeeklyPatternsSelection;
   /** @deprecated Prefer letter/patterns selection; kept for older callers. */
@@ -2121,6 +2224,10 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
   weekKey: string;
   weekStart: string;
   weekEnd: string;
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  rangeKey?: string;
   empty?: boolean;
 }> {
   const base = getMedimadeApiBase();
@@ -2139,6 +2246,10 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
     headers: medimadeJsonHeaders(),
     body: JSON.stringify({
       ...(opts?.week?.trim() ? { week: opts.week.trim() } : {}),
+      ...(opts?.startDate?.trim() ? { startDate: opts.startDate.trim() } : {}),
+      ...(opts?.endDate?.trim() ? { endDate: opts.endDate.trim() } : {}),
+      ...(opts?.periodType ? { periodType: opts.periodType } : {}),
+      ...(opts?.timeZone?.trim() ? { timeZone: opts.timeZone.trim() } : {}),
       letter,
       patterns,
       ...(opts?.regenerate ? { regenerate: true } : {}),
@@ -2158,11 +2269,22 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
     throw new Error(msg);
   }
   const reflection = parseJournalWeeklyReflection(data.reflection);
+  const periodType =
+    data.periodType === "last7" ||
+    data.periodType === "last30" ||
+    data.periodType === "custom" ||
+    data.periodType === "week"
+      ? data.periodType
+      : undefined;
   return {
     reflection,
     weekKey: typeof data.weekKey === "string" ? data.weekKey : "",
     weekStart: typeof data.weekStart === "string" ? data.weekStart : "",
     weekEnd: typeof data.weekEnd === "string" ? data.weekEnd : "",
+    ...(typeof data.startDate === "string" ? { startDate: data.startDate } : {}),
+    ...(typeof data.endDate === "string" ? { endDate: data.endDate } : {}),
+    ...(periodType ? { periodType } : {}),
+    ...(typeof data.rangeKey === "string" ? { rangeKey: data.rangeKey } : {}),
     empty: data.empty === true,
   };
 }
