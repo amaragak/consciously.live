@@ -19,6 +19,11 @@ import {
   MEDITATION_TYPE_PILL_CLASS,
   meditationTypePillColors,
 } from "@/lib/meditation-type-pill";
+import {
+  BLOG_CATEGORIES,
+  DEFAULT_BLOG_CATEGORY,
+  normalizeBlogCategory,
+} from "@/lib/blog-categories";
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
@@ -64,6 +69,7 @@ function blankDraft(): BlogDraft {
     subheader: "",
     excerpt: "",
     tags: [],
+    category: DEFAULT_BLOG_CATEGORY,
     series: "",
     part: null,
     notes: "",
@@ -88,6 +94,7 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
     subheader: post.subheader,
     excerpt: post.excerpt,
     tags: post.tags,
+    category: post.category ?? DEFAULT_BLOG_CATEGORY,
     series: post.series,
     part: post.part,
     notes: post.notes ?? "",
@@ -381,6 +388,7 @@ export function AdminReadPanel() {
         subheader: draft.subheader,
         excerpt: draft.excerpt,
         tags: draft.tags,
+        category: draft.category,
         series: draft.series,
         part: draft.part,
         notes: draft.notes,
@@ -397,9 +405,10 @@ export function AdminReadPanel() {
       setPosts((prev) => {
         const rest = prev.filter((p) => p.id !== savedWithBody.id);
         return [savedWithBody, ...rest].sort((a, b) => {
-          const aT = a.publishedAt || a.updatedAt;
-          const bT = b.publishedAt || b.updatedAt;
-          return bT.localeCompare(aT);
+          const aHas = a.body.replace(/<[^>]+>/g, " ").trim() ? 0 : 1;
+          const bHas = b.body.replace(/<[^>]+>/g, " ").trim() ? 0 : 1;
+          if (aHas !== bHas) return aHas - bHas;
+          return b.updatedAt.localeCompare(a.updatedAt);
         });
       });
       liveBodyRef.current = savedWithBody.body;
@@ -678,7 +687,8 @@ export function AdminReadPanel() {
                         active ? "text-on-selected/70" : "text-muted"
                       }`}
                     >
-                      {p.published ? "Published" : "Draft"} · /{p.slug}
+                      {p.category} · {p.published ? "Published" : "Draft"} · /
+                      {p.slug}
                       {p.audioStatus === "generating"
                         ? " · generating audio"
                         : p.audioStatus === "failed"
@@ -753,6 +763,31 @@ export function AdminReadPanel() {
               <p className="mt-1 text-[11px] text-muted">
                 Shown under the subheader on the published post and in the post
                 list. Leave blank to hide.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Category
+              </label>
+              <select
+                value={draft.category}
+                disabled={busy}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    category: normalizeBlogCategory(e.target.value),
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              >
+                {BLOG_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">
+                Used to filter posts on /read.
               </p>
             </div>
             <div>

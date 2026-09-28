@@ -118,10 +118,6 @@ export function HomeV2AuthActions({
   if (signedIn) {
     return (
       <div className="flex items-center gap-3">
-        <ColorSchemePicker
-          variant="home-v2"
-          options={COLOR_SCHEME_OPTIONS_HOME_V2}
-        />
         <button
           type="button"
           disabled={dashboardBusy}
@@ -144,10 +140,6 @@ export function HomeV2AuthActions({
 
   return (
     <div className="flex items-center gap-3">
-      <ColorSchemePicker
-        variant="home-v2"
-        options={COLOR_SCHEME_OPTIONS_HOME_V2}
-      />
       <Link
         href={loginHref}
         className="whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] hover:text-[var(--hv2-gold)]"
@@ -211,6 +203,16 @@ function HomeV2AccountMenu() {
         <p className="truncate px-4 py-2.5 text-sm text-[var(--hv2-muted)]">
           Hi, <span className="font-medium text-[var(--hv2-ink)]">{greeting}</span>
         </p>
+        <div className="my-1 border-t border-[var(--hv2-line)]" role="separator" />
+        <div className="px-3 py-2">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[var(--hv2-muted)]">
+            Appearance
+          </p>
+          <ColorSchemePicker
+            className="w-full [&_button]:w-full [&_button]:justify-between"
+            options={COLOR_SCHEME_OPTIONS_HOME_V2}
+          />
+        </div>
         <div className="my-1 border-t border-[var(--hv2-line)]" role="separator" />
         <Link
           href="/profile"

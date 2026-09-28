@@ -20,6 +20,32 @@ export const DEFAULT_BLOG_INDEX_SUMMARY =
 
 export type BlogAudioStatus = "none" | "generating" | "ready" | "failed";
 
+/** Fixed Read categories — assign in admin; filter on /read. */
+export const BLOG_CATEGORIES = [
+  "Philosophy",
+  "Meditation & Psychedelics",
+  "Travel & Pilgrimage",
+  "Other",
+] as const;
+
+export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
+
+export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Other";
+
+/** Legacy labels still stored on older posts. */
+const BLOG_CATEGORY_ALIASES: Record<string, BlogCategory> = {
+  Backpacking: "Travel & Pilgrimage",
+};
+
+export function normalizeBlogCategory(raw: unknown): BlogCategory {
+  if (typeof raw !== "string") return DEFAULT_BLOG_CATEGORY;
+  const t = raw.trim();
+  if ((BLOG_CATEGORIES as readonly string[]).includes(t)) {
+    return t as BlogCategory;
+  }
+  return BLOG_CATEGORY_ALIASES[t] ?? DEFAULT_BLOG_CATEGORY;
+}
+
 export type BlogPost = {
   id: string;
   slug: string;
@@ -30,6 +56,8 @@ export type BlogPost = {
   excerpt: string;
   /** Topic chips shown on the index and article. */
   tags: string[];
+  /** Fixed browse category on /read. */
+  category: BlogCategory;
   /** Optional series name (e.g. “Chasing Mountains”). */
   series: string;
   /** Optional 1-based part within the series. */
@@ -317,6 +345,7 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
     excerpt:
       typeof raw.excerpt === "string" ? raw.excerpt.trim().slice(0, 500) : "",
     tags: normalizeBlogTags(raw.tags),
+    category: normalizeBlogCategory(raw.category),
     series: normalizeBlogSeries(raw.series),
     part: normalizeBlogPart(raw.part),
     notes:
@@ -373,51 +402,56 @@ function rowToPost(row: BlogRow): BlogPost {
 }
 
 export async function listBlogPosts(): Promise<BlogPost[]> {
-  const res = await ddb.send(
-    new QueryCommand({
-      TableName: tableName(),
-      KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
-      ExpressionAttributeValues: {
-        ":pk": BLOG_PK,
-        ":prefix": "POST#",
-      },
-      // Admin save → immediate re-list; eventual reads can return the prior title
-      // (capitalization-only edits look like “save did nothing”).
-      ConsistentRead: true,
-    }),
-  );
-  const posts = (res.Items ?? [])
-    .map((item) => coercePost(item as Record<string, unknown>))
+  const items: Record<string, unknown>[] = [];
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ddb.send(
+      new QueryCommand({
+        TableName: tableName(),
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+        ExpressionAttributeValues: {
+          ":pk": BLOG_PK,
+          ":prefix": "POST#",
+        },
+        // Admin save → immediate re-list; eventual reads can return the prior title
+        // (capitalization-only edits look like “save did nothing”).
+        ConsistentRead: true,
+        ExclusiveStartKey: exclusiveStartKey,
+      }),
+    );
+    for (const item of res.Items ?? []) {
+      items.push(item as Record<string, unknown>);
+    }
+    exclusiveStartKey = res.LastEvaluatedKey as
+      | Record<string, unknown>
+      | undefined;
+  } while (exclusiveStartKey);
+
+  const posts = items
+    .map((item) => coercePost(item))
     .filter((p): p is BlogPost => Boolean(p));
-  posts.sort(compareAdminBlogPosts);
+  posts.sort(compareBlogPostsByRecency);
   return posts;
 }
 
-function compareAdminBlogPosts(a: BlogPost, b: BlogPost): number {
-  const aT = a.publishedAt || a.updatedAt;
-  const bT = b.publishedAt || b.updatedAt;
-  return bT.localeCompare(aT);
-}
-
-function comparePublishedBlogPosts(a: BlogPost, b: BlogPost): number {
+/** Content first, then most recently updated. */
+export function compareBlogPostsByRecency(
+  a: Pick<BlogPost, "body" | "updatedAt">,
+  b: Pick<BlogPost, "body" | "updatedAt">,
+): number {
   const aHas = blogBodyHasContent(a.body) ? 0 : 1;
   const bHas = blogBodyHasContent(b.body) ? 0 : 1;
   if (aHas !== bHas) return aHas - bHas;
-  const aSeries = a.series.toLowerCase();
-  const bSeries = b.series.toLowerCase();
-  if (aSeries && bSeries && aSeries !== bSeries) {
-    return aSeries.localeCompare(bSeries);
-  }
-  if (aSeries && !bSeries) return -1;
-  if (!aSeries && bSeries) return 1;
-  if (aSeries && bSeries) {
-    const aPart = a.part ?? 9999;
-    const bPart = b.part ?? 9999;
-    if (aPart !== bPart) return aPart - bPart;
-  }
-  const aT = a.publishedAt || a.updatedAt;
-  const bT = b.publishedAt || b.updatedAt;
-  return bT.localeCompare(aT);
+  return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+}
+
+function compareAdminBlogPosts(a: BlogPost, b: BlogPost): number {
+  return compareBlogPostsByRecency(a, b);
+}
+
+/** Published index: content first, then most recently edited. */
+function comparePublishedBlogPosts(a: BlogPost, b: BlogPost): number {
+  return compareBlogPostsByRecency(a, b);
 }
 
 export async function listPublishedBlogPosts(): Promise<BlogPost[]> {
@@ -510,6 +544,9 @@ export async function putBlogPost(
     tags: Object.prototype.hasOwnProperty.call(input, "tags")
       ? normalizeBlogTags(input.tags)
       : (existing?.tags ?? []),
+    category: Object.prototype.hasOwnProperty.call(input, "category")
+      ? normalizeBlogCategory(input.category)
+      : (existing?.category ?? DEFAULT_BLOG_CATEGORY),
     series: Object.prototype.hasOwnProperty.call(input, "series")
       ? normalizeBlogSeries(input.series)
       : (existing?.series ?? ""),

@@ -50,7 +50,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className="hybrid"
+      data-color-scheme="hybrid"
+      suppressHydrationWarning
+    >
       <head>
         <link
           rel="preload"

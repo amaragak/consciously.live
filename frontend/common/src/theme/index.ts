@@ -20,7 +20,10 @@ export {
   applyColorScheme,
   setColorScheme,
   toggleColorScheme,
+  setColorSchemePreferencePersistence,
+  colorSchemePreferencePersists,
   colorSchemeBootScript,
+  colorSchemeBootScriptNoPersist,
 } from "./color-scheme";
 
 export * from "./theme-colors";

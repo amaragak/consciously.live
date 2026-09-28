@@ -12,7 +12,7 @@ export function ReadPostCard({ post }: { post: PublicBlogPostSummary }) {
 
   return (
     <article
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:border-accent/40 hover:bg-accent-soft/25 hover:shadow-[0_14px_36px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/20 dark:hover:shadow-[0_14px_36px_rgba(0,0,0,0.45)] sm:p-6"
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-[color:var(--hv2-field-card-border)] bg-[color:var(--hv2-field-card-bg)] p-5 shadow-[var(--hv2-field-card-shadow)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:border-accent/40 hover:bg-[color:var(--hv2-field-card-hover)] hover:shadow-[var(--hv2-field-card-hover-shadow)] focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/20 sm:p-6"
     >
       <Link
         href={`/read/${encodeURIComponent(post.slug)}`}
@@ -21,7 +21,16 @@ export function ReadPostCard({ post }: { post: PublicBlogPostSummary }) {
       />
       <div className="relative z-[1] flex h-full flex-col pointer-events-none">
         <div className="flex items-start justify-between gap-3">
-          <ReadSeriesLabel series={post.series} part={post.part} />
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--hv2-field-card-label)]">
+              {post.category}
+            </p>
+            <ReadSeriesLabel
+              series={post.series}
+              part={post.part}
+              className="mt-1 text-[color:var(--hv2-field-card-muted)]"
+            />
+          </div>
           {post.audioUrl ? (
             <span className="pointer-events-auto shrink-0">
               <ReadNarrationButton src={post.audioUrl} title={post.title} />
@@ -29,23 +38,23 @@ export function ReadPostCard({ post }: { post: PublicBlogPostSummary }) {
           ) : null}
         </div>
         <h2
-          className="mt-2 font-display text-xl font-medium tracking-tight text-foreground transition-colors duration-200 group-hover:text-accent-link sm:text-2xl"
+          className="mt-2 font-display text-xl font-medium tracking-tight text-[color:var(--hv2-field-card-fg)] transition-colors duration-200 group-hover:text-[color:var(--hv2-field-card-link)] sm:text-2xl"
         >
           {post.title}
         </h2>
         {blurb ? (
           <p
-            className="mt-2 line-clamp-3 text-[15px] leading-relaxed text-muted"
+            className="mt-2 line-clamp-3 text-[15px] leading-relaxed text-[color:var(--hv2-field-card-muted)]"
           >
             {blurb}
           </p>
         ) : null}
         <ReadPostTags tags={post.tags} className="mt-3" />
         <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-          <p className="text-xs text-muted">
+          <p className="text-xs text-[color:var(--hv2-field-card-muted)]">
             {formatBlogDate(post.publishedAt || post.updatedAt)}
           </p>
-          <span className="inline-flex items-center gap-1 text-sm font-medium text-accent-link">
+          <span className="inline-flex items-center gap-1 text-sm font-medium text-[color:var(--hv2-field-card-link)]">
             {post.hasBody ? "Continue" : "Coming soon"}
             <span
               aria-hidden

@@ -1,3 +1,8 @@
+import {
+  normalizeBlogCategory,
+  type BlogCategory,
+} from "@/lib/blog-categories";
+
 /**
  * Server-side public Read helpers for marketing SSR pages (`/read`).
  *
@@ -14,6 +19,7 @@ export type PublicBlogPostSummary = {
   subheader: string;
   excerpt: string;
   tags: string[];
+  category: BlogCategory;
   series: string;
   part: number | null;
   hasBody: boolean;
@@ -95,6 +101,7 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
     subheader: typeof o.subheader === "string" ? o.subheader.trim() : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt.trim() : "",
     tags: coerceTags(o.tags),
+    category: normalizeBlogCategory(o.category),
     series: typeof o.series === "string" ? o.series.trim() : "",
     part: (() => {
       const n =
@@ -157,7 +164,13 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
       authorPhotoEnabled: data.authorPhotoEnabled === true,
       posts: (data.posts ?? [])
         .map(coerceSummary)
-        .filter((p): p is PublicBlogPostSummary => Boolean(p)),
+        .filter((p): p is PublicBlogPostSummary => Boolean(p))
+        .sort((a, b) => {
+          const aHas = a.hasBody ? 0 : 1;
+          const bHas = b.hasBody ? 0 : 1;
+          if (aHas !== bHas) return aHas - bHas;
+          return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+        }),
     };
   } catch {
     return {

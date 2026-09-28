@@ -357,7 +357,6 @@ export function AppSidebar({
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </button>
-              <ColorSchemePicker compact menu="end" variant="sidebar" />
               <Link
                 href="/settings"
                 onClick={onNavigate}
@@ -434,7 +433,6 @@ export function AppSidebar({
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
-            <ColorSchemePicker variant="sidebar" menu="up" />
           </div>
           <Link
             href="/settings"
@@ -447,6 +445,12 @@ export function AppSidebar({
             </span>
             <span className="min-w-0 truncate">{accountLabel}</span>
           </Link>
+          <div className="mt-1 px-1">
+            <p className="mb-1 px-1.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+              Appearance
+            </p>
+            <ColorSchemePicker variant="sidebar" menu="up" className="w-full" />
+          </div>
           <div className="mt-2 flex flex-col gap-1.5 px-1">
             <button
               type="button"

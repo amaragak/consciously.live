@@ -10,6 +10,10 @@ import type { GenerationTimings } from "./meditation-analytics";
 import type { MeditationCreationProvenance } from "./meditation-creation-provenance";
 import type { MixerFactoryPreset } from "./mixer-factory-presets";
 import { normalizeFactoryPreset } from "./mixer-factory-presets";
+import {
+  normalizeBlogCategory,
+  type BlogCategory,
+} from "@/lib/blog-categories";
 
 export {
   clearMedimadeSession,
@@ -4604,6 +4608,7 @@ export type AdminBlogPost = {
   subheader: string;
   excerpt: string;
   tags: string[];
+  category: BlogCategory;
   series: string;
   part: number | null;
   /** Admin-only working notes — not returned on public blog APIs. */
@@ -4662,6 +4667,7 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     subheader: typeof o.subheader === "string" ? o.subheader : "",
     excerpt: typeof o.excerpt === "string" ? o.excerpt : "",
     tags: normalizeAdminBlogTags(o.tags),
+    category: normalizeBlogCategory(o.category),
     series: typeof o.series === "string" ? o.series : "",
     part: (() => {
       const n =

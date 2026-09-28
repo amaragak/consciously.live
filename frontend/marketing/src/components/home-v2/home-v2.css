@@ -60,6 +60,17 @@
   --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
   --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
   --hv2-field-pattern-mask: var(--hv2-hero-pattern-mask);
+  /* Post cards on the field — elevated panels matching the field, not paper. */
+  --hv2-field-card-bg: rgba(246, 241, 231, 0.06);
+  --hv2-field-card-border: rgba(246, 241, 231, 0.14);
+  --hv2-field-card-hover: rgba(246, 241, 231, 0.1);
+  --hv2-field-card-fg: var(--hv2-ivory);
+  --hv2-field-card-muted: var(--hv2-on-navy);
+  --hv2-field-card-label: var(--accent-button);
+  --hv2-field-card-link: var(--accent-button);
+  --hv2-field-card-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  --hv2-field-card-hover-shadow: 0 14px 36px rgb(0 0 0 / 0.4),
+    0 2px 8px rgb(0 0 0 / 0.2);
 }
 
 /*
@@ -125,6 +136,17 @@
   --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
   --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
   --hv2-field-pattern-mask: var(--hv2-hero-pattern-mask);
+  /* Light field = paper page; keep marketing white cards. */
+  --hv2-field-card-bg: var(--marketing-card-bg);
+  --hv2-field-card-border: var(--marketing-card-border);
+  --hv2-field-card-hover: var(--marketing-card-hover);
+  --hv2-field-card-fg: var(--marketing-ink);
+  --hv2-field-card-muted: var(--marketing-body);
+  --hv2-field-card-label: var(--accent-link);
+  --hv2-field-card-link: var(--accent-link);
+  --hv2-field-card-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  --hv2-field-card-hover-shadow: 0 14px 36px rgb(0 0 0 / 0.08),
+    0 2px 8px rgb(0 0 0 / 0.04);
 }
 
 /*
@@ -182,6 +204,17 @@
   --hv2-field-pattern-opacity: 0.18;
   --hv2-field-pattern-size: 800px 800px;
   --hv2-field-pattern-mask: none;
+  /* Dark elevated cards (match dark-mode marketing panels), not white paper. */
+  --hv2-field-card-bg: #2a3544;
+  --hv2-field-card-border: #3d4a5c;
+  --hv2-field-card-hover: #314155;
+  --hv2-field-card-fg: var(--hv2-ivory);
+  --hv2-field-card-muted: var(--hv2-on-navy);
+  --hv2-field-card-label: var(--accent-button);
+  --hv2-field-card-link: var(--accent-button);
+  --hv2-field-card-shadow: 0 1px 2px rgb(0 0 0 / 0.24);
+  --hv2-field-card-hover-shadow: 0 14px 36px rgb(0 0 0 / 0.4),
+    0 2px 8px rgb(0 0 0 / 0.22);
 }
 
 /*
@@ -235,6 +268,16 @@
   --hv2-field-pattern-opacity: 0.18;
   --hv2-field-pattern-size: 800px 800px;
   --hv2-field-pattern-mask: none;
+  --hv2-field-card-bg: #2a3544;
+  --hv2-field-card-border: #3d4a5c;
+  --hv2-field-card-hover: #314155;
+  --hv2-field-card-fg: var(--hv2-ivory);
+  --hv2-field-card-muted: var(--hv2-on-navy);
+  --hv2-field-card-label: var(--accent-button);
+  --hv2-field-card-link: var(--accent-button);
+  --hv2-field-card-shadow: 0 1px 2px rgb(0 0 0 / 0.24);
+  --hv2-field-card-hover-shadow: 0 14px 36px rgb(0 0 0 / 0.4),
+    0 2px 8px rgb(0 0 0 / 0.22);
 }
 
 .home-v2 {

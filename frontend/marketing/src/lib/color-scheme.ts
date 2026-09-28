@@ -1,4 +1,14 @@
-/** Re-export shared color scheme — do not edit here; change `@consciously/common`. */
+/**
+ * Next marketing colour scheme — hybrid default, no localStorage preference.
+ * Re-exports shared helpers after disabling persistence for this app.
+ */
+import {
+  setColorSchemePreferencePersistence,
+  colorSchemeBootScriptNoPersist,
+} from "@consciously/common/theme";
+
+setColorSchemePreferencePersistence(false);
+
 export {
   type ColorScheme,
   COLOR_SCHEME_STORAGE_KEY,
@@ -19,5 +29,9 @@ export {
   applyColorScheme,
   setColorScheme,
   toggleColorScheme,
-  colorSchemeBootScript,
+  setColorSchemePreferencePersistence,
+  colorSchemePreferencePersists,
 } from "@consciously/common/theme";
+
+/** Always hybrid (except `/login?scheme=`), and clears any stored preference. */
+export const colorSchemeBootScript = colorSchemeBootScriptNoPersist;

@@ -107,6 +107,13 @@ function AccountMenu({
           Hi, <span className="font-medium text-foreground">{greeting}</span>
         </p>
         <div className="my-1 border-t border-border" role="separator" />
+        <div className="px-3 py-2">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+            Appearance
+          </p>
+          <ColorSchemePicker className="w-full [&_button]:w-full [&_button]:justify-between" />
+        </div>
+        <div className="my-1 border-t border-border" role="separator" />
         <Link
           href="/profile"
           onClick={close}
@@ -265,7 +272,6 @@ export function SiteHeader() {
                 </Link>
               );
             })}
-            <ColorSchemePicker className="ml-1" />
             {showSignedInChrome ? (
               <div className="ml-1 flex items-center gap-2">
                 <button
@@ -308,7 +314,6 @@ export function SiteHeader() {
                 {guestBusy ? "…" : "Guest"}
               </AlphaChromeButton>
             ) : null}
-            <ColorSchemePicker />
             <details ref={mobileMenuRef} className="relative">
               <summary
                 aria-label="Menu"
@@ -383,6 +388,12 @@ export function SiteHeader() {
                         )}
                       </span>
                     </p>
+                    <div className="px-3 py-2">
+                      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+                        Appearance
+                      </p>
+                      <ColorSchemePicker className="w-full [&_button]:w-full [&_button]:justify-between" />
+                    </div>
                     <Link
                       href="/profile"
                       onClick={closeMobile}

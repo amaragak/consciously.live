@@ -1,5 +1,5 @@
 import "@/components/home-v2/home-v2.css";
-import { ReadPostCard } from "@/components/read-post-card";
+import { ReadPostIndex } from "@/components/read-post-index";
 import { fetchPublishedBlogIndex } from "@/lib/public-blog";
 
 export const metadata = {
@@ -44,19 +44,7 @@ export default async function ReadIndexPage() {
           ) : null}
         </div>
 
-        {posts.length === 0 ? (
-          <p className="mt-12 text-sm text-[var(--hv2-hero-nav-muted)]">
-            No posts yet — check back soon.
-          </p>
-        ) : (
-          <ul className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
-            {posts.map((post) => (
-              <li key={post.id}>
-                <ReadPostCard post={post} />
-              </li>
-            ))}
-          </ul>
-        )}
+        <ReadPostIndex posts={posts} />
       </div>
     </div>
   );
