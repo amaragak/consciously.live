@@ -74,6 +74,7 @@ import {
 } from "@/lib/plan-ideate-store";
 import type { PlanDream } from "@/lib/plan-dreams";
 import { soundDisplayName } from "@/lib/sound-taxonomy";
+import { readFocusDefaults } from "@/lib/settings-local-defaults";
 import { timeOfDayGreeting } from "@/lib/time-of-day-greeting";
 
 type TimerMode = "focus" | "shortBreak" | "longBreak";
@@ -183,8 +184,9 @@ export function FocusTimerView() {
   const [taskInput, setTaskInput] = useState("");
   const [mode, setMode] = useState<TimerMode>("focus");
   const [focusMinutes, setFocusMinutes] = useState<number>(25);
-  const [durationSec, setDurationSec] = useState(25 * 60);
-  const [remainingSec, setRemainingSec] = useState(25 * 60);
+  const initialFocusSec = readFocusDefaults().defaultSessionMinutes * 60;
+  const [durationSec, setDurationSec] = useState(initialFocusSec);
+  const [remainingSec, setRemainingSec] = useState(initialFocusSec);
   const [running, setRunning] = useState(false);
   const [sessionsToday, setSessionsToday] = useState(0);
   const [tasksOpen, setTasksOpen] = useState(false);

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consciously settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Instrument Sans',system-ui,sans-serif;background:#FAF6F0;color:#1B2230}
+a{color:inherit;text-decoration:none}
+.app a{display:block;padding:8px 12px;border-radius:8px;font-size:15px;color:#4A4F5A}
+.snav a{display:block;padding:9px 14px;border-radius:10px;font-size:15px;color:#4A4F5A}
+.card{background:#FFFFFF;border:1px solid #EADFCF;border-radius:20px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:32px;padding:18px 24px;border-top:1px solid #F0E7DA}
+.row:first-child{border-top:none}
+.t{font-size:16px;font-weight:500}
+.h{font-size:14px;line-height:1.5;color:#6B6457;margin-top:4px;max-width:520px}
+.sw{width:46px;height:28px;border-radius:999px;border:none;position:relative;flex-shrink:0;padding:0}
+.sw.off{background:#E3D9CB}
+.sw.on{background:#C98A55}
+.sw span{position:absolute;top:3px;width:22px;height:22px;border-radius:999px;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,0.15)}
+.sw.off span{left:3px}.sw.on span{left:21px}
+.seg{display:flex;padding:3px;border-radius:12px;background:#F4EEE5;border:1px solid #EADFCF;flex-shrink:0}
+.seg button{border:none;background:transparent;font-family:inherit;font-size:14px;padding:8px 14px;border-radius:9px;color:#4A4F5A}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#1B2230;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,0.08)}
+.btn{height:40px;padding:0 16px;border-radius:999px;border:1px solid #E3D6C3;background:#FFFFFF;font-family:inherit;font-size:14px;font-weight:600;color:#1B2230;flex-shrink:0}
+.btn.danger{color:#A3402C;border-color:#E9C9BF}
+.sec{display:flex;flex-direction:column;gap:14px}
+.sec h2{margin:0;font-family:'Fraunces',serif;font-weight:400;font-size:28px}
+.sec .lead{font-size:15px;color:#4A4F5A;margin:-6px 0 4px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2060px; display: flex; flex-direction: column; background: #FAF6F0; font-family: 'Instrument Sans', system-ui, sans-serif; color: #1B2230; overflow: hidden">
+
+<header style="height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 0 24px; border-bottom: 1px solid #EADFCF">
+<a href="#" style="display: flex; align-items: center; gap: 10px; font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; width: 216px">
+<svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="11" fill="#F2B27A"></circle><path d="M32 14L32 6M44.73 19.27L50.38 13.62M50 32L58 32M44.73 44.73L50.38 50.38M32 50L32 58M19.27 44.73L13.62 50.38M14 32L6 32M19.27 19.27L13.62 13.62" stroke="#F2B27A" stroke-width="4.5" stroke-linecap="round"></path></svg>
+consciously</a>
+<span style="font-family: 'Fraunces', serif; font-size: 19px">Settings</span>
+</header>
+
+<div style="flex-grow: 1; display: flex; min-height: 0">
+
+<!-- App sidebar (existing) -->
+<nav aria-label="App" class="app" style="width: 240px; flex-shrink: 0; background: #F4EEE5; border-right: 1px solid #EADFCF; padding: 16px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+<a href="#">Home</a><a href="#">Meditate</a><a href="#">Journal</a><a href="#">Manifest</a><a href="#">Focus</a><a href="#">Chat</a>
+<div style="margin-top: auto; border-top: 1px solid #EADFCF; padding-top: 12px; display: flex; flex-direction: column; gap: 4px">
+<a href="#" aria-current="page" style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #EADFCF; color: #1B2230; font-weight: 500">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+Settings</a>
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px"><span style="width: 30px; height: 30px; border-radius: 999px; background: #F2B27A; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px">A</span><span style="font-size: 15px; font-weight: 500; flex-grow: 1">Alex</span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid #E3C3A0; color: #A5632E">Pro</span></div>
+</div>
+</nav>
+
+<!-- Settings nav -->
+<nav aria-label="Settings sections" class="snav" style="width: 240px; flex-shrink: 0; background: #F8F3EC; border-right: 1px solid #EADFCF; padding: 28px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+<div style="font-size: 12px; letter-spacing: 1.3px; text-transform: uppercase; color: #8A8175; padding: 0 14px 10px">Settings</div>
+<a href="#">Account</a>
+<a href="#" aria-current="true" style="background: #FFFFFF; border: 1px solid #EADFCF; color: #1B2230; font-weight: 600">AI &amp; data</a>
+<a href="#" style="color: #1B2230">Privacy</a>
+<a href="#">Notifications</a>
+<a href="#">Email</a>
+<a href="#">Meditate</a>
+<a href="#">Focus</a>
+<a href="#">General</a>
+<div style="margin-top: 18px; border-top: 1px solid #EADFCF; padding-top: 14px; display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="font-size: 14px">Help &amp; feedback</a>
+<span style="font-size: 12px; color: #8A8175; padding: 6px 14px">Version 1.4.2</span>
+</div>
+</nav>
+
+<!-- Content -->
+<main style="flex-grow: 1; padding: 44px 56px 64px; box-sizing: border-box; display: flex; justify-content: center">
+<div style="width: 760px; display: flex; flex-direction: column; gap: 40px">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 40px; letter-spacing: -0.6px">Settings</h1>
+<span style="font-size: 15px; color: #6B6457">Changes save automatically. Everything starts at the most private option.</span>
+</div>
+<span role="status" style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #3F7A55; padding: 6px 12px; border-radius: 999px; background: #E8F2EA">✓ Saved</span>
+</div>
+
+<!-- AI & data -->
+<section class="sec" aria-labelledby="ai-h">
+<h2 id="ai-h">AI &amp; data</h2>
+<p class="lead">What AI does with your words, and how much it’s allowed to do.</p>
+
+<div class="card" style="padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; background: #FFFDF9">
+<div style="font-size: 16px; font-weight: 600">Who processes your data</div>
+<div style="display: grid; grid-template-columns: 200px 1fr; gap: 10px 20px; font-size: 15px">
+<span style="font-weight: 500">Anthropic (Claude)</span><span style="color: #4A4F5A">Writes your meditation scripts, Chat replies and weekly insights.</span>
+<span style="font-weight: 500">Fish Audio</span><span style="color: #4A4F5A">Turns meditation scripts into voice. Receives the script only, never your journal.</span>
+</div>
+<div style="display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-radius: 12px; background: #E8F2EA; color: #1F4D33; font-size: 15px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path><path d="M9 12l2 2 4-4"></path></svg>
+<span style="flex-grow: 1">Your content is never used to train AI models.</span>
+<a href="#" style="font-weight: 600; text-decoration: underline">Privacy policy</a>
+</div>
+</div>
+
+<div class="card">
+<div class="row"><div><div class="t">Personalise with my journal</div><div class="h">Let meditations and Chat draw on your journal entries. Off means they only use what you type into them.</div></div><button class="sw off" role="switch" aria-checked="false" aria-label="Personalise with my journal"><span></span></button></div>
+<div class="row"><div><div class="t">Insights from my journal</div><div class="h">Weekly letters, patterns and themes. Nothing is generated until you ask for it.</div></div><button class="sw off" role="switch" aria-checked="false" aria-label="Insights from my journal"><span></span></button></div>
+<div class="row"><div><div class="t">What Chat can do</div><div class="h">Whether Chat only suggests, asks before changing anything, or acts straight away (creating goals, starting sessions).</div></div>
+<div class="seg" role="group" aria-label="What Chat can do"><button aria-pressed="true">Suggest only</button><button aria-pressed="false">Ask first</button><button aria-pressed="false">Act</button></div></div>
+</div>
+
+<div class="card">
+<div class="row"><div><div class="t">Delete AI-made data</div><div class="h">Removes themes, scores and letters made from your journal. Your entries stay.</div></div><button class="btn danger">Delete…</button></div>
+<div class="row"><div><div class="t">Clear chat history</div><div class="h">Deletes all past Chat conversations.</div></div><button class="btn danger">Clear…</button></div>
+</div>
+</section>
+
+<!-- Privacy -->
+<section class="sec" aria-labelledby="pv-h">
+<h2 id="pv-h">Privacy</h2>
+<p class="lead">Who can see what, inside and outside Consciously.</p>
+
+<div class="card">
+<div class="row"><div><div class="t">Journal lock</div><div class="h">Ask for Face ID, fingerprint or your passcode to open Journal on this device.</div></div><button class="sw off" role="switch" aria-checked="false" aria-label="Journal lock"><span></span></button></div>
+<div class="row"><div><div class="t">New meditations are</div><div class="h">You can change this for each meditation.</div></div>
+<div class="seg" role="group" aria-label="Default visibility for new meditations"><button aria-pressed="true">Private</button><button aria-pressed="false">Link only</button><button aria-pressed="false">Public</button></div></div>
+<div class="row"><div><div class="t">Shared links</div><div class="h">3 active links. Revoke any of them at any time.</div></div><button class="btn">Manage</button></div>
+</div>
+
+<div class="card">
+<div class="row"><div><div class="t">Community name</div><div class="h">How you appear in Connect.</div></div><span style="height: 40px; box-sizing: border-box; padding: 9px 14px; border-radius: 10px; border: 1px solid #E3D6C3; background: #FFFFFF; font-size: 15px; width: 220px">Alex</span></div>
+<div class="row"><div><div class="t">Post anonymously by default</div><div class="h">Your name and avatar are hidden on new posts and replies.</div></div><button class="sw on" role="switch" aria-checked="true" aria-label="Post anonymously by default"><span></span></button></div>
+<div class="row"><div><div class="t">Show my activity in Connect</div><div class="h">Others can see when you’ve replied or liked something.</div></div><button class="sw off" role="switch" aria-checked="false" aria-label="Show my activity in Connect"><span></span></button></div>
+<div class="row"><div><div class="t">Blocked people and muted threads</div><div class="h">None yet.</div></div><button class="btn">View</button></div>
+</div>
+
+<div class="card">
+<div class="row"><div><div class="t">Share anonymous usage data</div><div class="h">Helps us see which features are used. Never includes what you write or say.</div></div><button class="sw off" role="switch" aria-checked="false" aria-label="Share anonymous usage data"><span></span></button></div>
+</div>
+</section>
+
+<div style="font-size: 14px; color: #8A8175; border-top: 1px solid #EADFCF; padding-top: 18px">Account, Notifications, Email, Meditate, Focus and General follow the same pattern: grouped cards, a short helper line under every control, saved as you change them.</div>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2060}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

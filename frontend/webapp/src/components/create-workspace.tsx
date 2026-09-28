@@ -47,6 +47,7 @@ import {
   type CreateSessionV1,
 } from "@/lib/create-session-storage";
 import { consumeInsightsMeditationPrompt } from "@/lib/insights-meditation-handoff";
+import { readMeditateDefaults } from "@/lib/settings-local-defaults";
 import { setCreateMainChatVisible } from "@/lib/assistant-chat-fab-visibility";
 import {
   ChatThreadMessage,
@@ -1240,7 +1241,11 @@ export function CreateWorkspace({
   const [lastUsedScript, setLastUsedScript] = useState<string | null>(null);
   const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
   const [meditationTargetMinutes, setMeditationTargetMinutes] =
-    useState<MeditationTargetMinutes>(5);
+    useState<MeditationTargetMinutes>(() =>
+      parseMeditationTargetMinutes(
+        readMeditateDefaults().defaultLengthMinutes,
+      ),
+    );
   /**
    * Experienced pacing: cued open-practice sits (~1–2 min) so Length still matches.
    * Default off — standard guided density.
@@ -1406,7 +1411,9 @@ export function CreateWorkspace({
   const autofocusingComposerRef = useRef(false);
   /** Once the user focuses/types in the composer, never restart intro typing. */
   const userTouchedComposerRef = useRef(false);
-  const [speakerModelId, setSpeakerModelId] = useState<string>("");
+  const [speakerModelId, setSpeakerModelId] = useState<string>(
+    () => readMeditateDefaults().defaultVoiceId?.trim() || "",
+  );
   const [journalMode, setJournalMode] = useState(
     () =>
       Boolean(seedFromHandoff) ||

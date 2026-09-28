@@ -60,6 +60,12 @@ export function App() {
           element={<Navigate to="/meditate/library/creations" replace />}
         />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/:section" element={<SettingsPage />} />
+        {/* Unknown settings subpaths → Account (avoid catch-all → home). */}
+        <Route
+          path="settings/*"
+          element={<Navigate to="/settings" replace />}
+        />
         <Route path="pricing" element={<PricingPage />} />
         <Route path="pricing/success" element={<PricingSuccessPage />} />
         <Route path="pro" element={<Navigate to="/pricing" replace />} />

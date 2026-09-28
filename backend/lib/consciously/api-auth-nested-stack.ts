@@ -200,6 +200,23 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       },
     );
 
+    const userSettings = new lambda_nodejs.NodejsFunction(
+      this,
+      "UserSettingsFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/user-settings.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        role,
+        environment: {
+          USERS_TABLE_NAME: usersTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        },
+      },
+    );
+
     const authCognitoConfig = new lambda_nodejs.NodejsFunction(
       this,
       "AuthCognitoConfigFunction",
@@ -331,6 +348,19 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthProfileDisplayNameIntegration",
         authProfileDisplayName,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "UserSettingsRoute",
+      path: "/settings",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "UserSettingsIntegration",
+        userSettings,
       ),
     });
     addNestHttpRoutes(this, httpApi, {

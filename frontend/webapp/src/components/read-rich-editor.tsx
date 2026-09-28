@@ -21,6 +21,8 @@ import {
   compressBlogPostImage,
   type ReadImageLayout,
 } from "@/components/read-image-extension";
+import { sliceToMarkdown } from "@/lib/tiptap-slice-to-markdown";
+import type { Slice } from "@tiptap/pm/model";
 
 const editorClass =
   "min-h-[16rem] w-full px-3 py-3 text-[15px] leading-relaxed text-foreground focus:outline-none " +
@@ -102,6 +104,8 @@ export function ReadRichEditor({
         class: editorClass,
         spellcheck: "true",
       },
+      /** Paste into markdown editors / notes gets bold/italic/links as markdown. */
+      clipboardTextSerializer: (slice: Slice) => sliceToMarkdown(slice),
     },
     onUpdate: ({ editor: ed }) => {
       onHtmlChangeRef.current(ed.getHTML(), docId);
