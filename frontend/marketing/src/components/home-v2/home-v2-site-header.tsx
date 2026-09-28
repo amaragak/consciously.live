@@ -6,7 +6,6 @@ import {
   HOME_V2_CONNECT_HREF,
   HOME_V2_LISTEN_HREF,
   HOME_V2_READ_HREF,
-  HOME_V2_TOOLS,
   type HomeV2ToolId,
 } from "@/components/home-v2/constants";
 import { HomeV2AuthActions } from "@/components/home-v2/hero-prompt";
@@ -30,9 +29,9 @@ export type HomeV2SiteHeaderNavItem = {
 
 type Props = {
   verbLabel: string | null;
-  /** Tools shown in the centre nav (already filtered). */
+  /** Tools shown in the centre nav (full list, fixed order). */
   toolLinks: readonly HomeV2SiteHeaderNavItem[];
-  /** Listen / Read / Connect (already filtered on marketing pages). */
+  /** Listen / Read / Connect (full list, fixed order). */
   secondaryLinks?: readonly HomeV2SiteHeaderNavItem[];
   /** Mobile drawer: full tool list. */
   mobileToolLinks: readonly HomeV2SiteHeaderNavItem[];
@@ -91,16 +90,21 @@ export function HomeV2SiteHeader({
           aria-label="Main"
           className="hidden min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] lg:flex"
         >
-          {toolLinks.map((t) =>
-            t.onClick ? (
+          {toolLinks.map((t) => {
+            const active = activeTool === t.id;
+            const className = `rounded-full px-3 py-2 hover:text-[var(--hv2-gold)]${
+              active ? " text-[var(--hv2-gold)]" : ""
+            }`;
+            return t.onClick ? (
               <a
                 key={t.id}
                 href={t.href}
+                aria-current={active ? "page" : undefined}
                 onClick={(e) => {
                   e.preventDefault();
                   t.onClick?.();
                 }}
-                className="rounded-full px-3 py-2 hover:text-[var(--hv2-gold)]"
+                className={className}
               >
                 {t.label}
               </a>
@@ -108,26 +112,32 @@ export function HomeV2SiteHeader({
               <Link
                 key={t.id}
                 href={t.href}
-                className="rounded-full px-3 py-2 hover:text-[var(--hv2-gold)]"
+                aria-current={active ? "page" : undefined}
+                className={className}
               >
                 {t.label}
               </Link>
-            ),
-          )}
+            );
+          })}
           <span
             className="mx-3 h-5 w-px bg-[var(--hv2-hero-divider)]"
             aria-hidden
           />
-          {secondaryLinks.map((s) =>
-            s.onClick ? (
+          {secondaryLinks.map((s) => {
+            const active = activeSecondary === s.id;
+            const className = `px-2.5 py-2 hover:text-[var(--hv2-gold)]${
+              active ? " text-[var(--hv2-gold)]" : ""
+            }`;
+            return s.onClick ? (
               <a
                 key={s.id}
                 href={s.href}
+                aria-current={active ? "page" : undefined}
                 onClick={(e) => {
                   e.preventDefault();
                   s.onClick?.();
                 }}
-                className="px-2.5 py-2 hover:text-[var(--hv2-gold)]"
+                className={className}
               >
                 {s.label}
               </a>
@@ -135,12 +145,13 @@ export function HomeV2SiteHeader({
               <Link
                 key={s.id}
                 href={s.href}
-                className="px-2.5 py-2 hover:text-[var(--hv2-gold)]"
+                aria-current={active ? "page" : undefined}
+                className={className}
               >
                 {s.label}
               </Link>
-            ),
-          )}
+            );
+          })}
         </nav>
 
         <div className="ml-auto hidden shrink-0 md:block lg:ml-0">

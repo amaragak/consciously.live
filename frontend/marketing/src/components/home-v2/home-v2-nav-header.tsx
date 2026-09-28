@@ -85,12 +85,11 @@ export function HomeV2NavHeader() {
   const { verbLabel, activeTool, activeSecondary, ctaHref, ctaLabel } =
     resolveNav(pathname);
 
-  const toolLinks = HOME_V2_TOOLS.filter((t) => t.id !== activeTool).map(
-    (t) => ({ id: t.id, label: t.label, href: t.href }),
-  );
-  const secondaryLinks = HOME_V2_SITE_HEADER_SECONDARY.filter(
-    (s) => s.id !== activeSecondary,
-  );
+  const toolLinks = HOME_V2_TOOLS.map((t) => ({
+    id: t.id,
+    label: t.label,
+    href: t.href,
+  }));
 
   return (
     <HomeV2SiteHeader
@@ -98,12 +97,8 @@ export function HomeV2NavHeader() {
       activeTool={activeTool}
       activeSecondary={activeSecondary}
       toolLinks={toolLinks}
-      secondaryLinks={secondaryLinks}
-      mobileToolLinks={HOME_V2_TOOLS.map((t) => ({
-        id: t.id,
-        label: t.label,
-        href: t.href,
-      }))}
+      secondaryLinks={HOME_V2_SITE_HEADER_SECONDARY}
+      mobileToolLinks={toolLinks}
       mobileSecondaryLinks={HOME_V2_SITE_HEADER_SECONDARY}
       ctaHref={ctaHref}
       ctaLabel={ctaLabel}

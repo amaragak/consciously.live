@@ -10,6 +10,8 @@ import { isInsightItemHidden, recentCorrectionGuidance } from "@/lib/insight-cor
 import {
   fetchJournalWeeklyReflectionRemote,
   getMedimadeApiBase,
+  isLikelyInsightsGatewayTimeout,
+  pollJournalWeeklyReflectionAfterGenerate,
   runJournalWeeklyReflectionRemote,
   type JournalWeeklyEmotionScore,
   type JournalWeeklyGeneratedParts,
@@ -24,7 +26,7 @@ import {
 import {
   isJournalMoodId,
   journalMoodLabel,
-  JOURNAL_MOOD_PILL,
+  JOURNAL_MOOD_WEEK_CELL,
   type JournalMoodId,
 } from "@/lib/journal-moods";
 import { loadJournalStore, type JournalEntry } from "@/lib/journal-storage";
@@ -36,6 +38,7 @@ import {
 } from "@/lib/insights-meditation-handoff";
 import { InsightsPatternCards } from "@/components/insights-pattern-cards";
 import { InsightsSupportBanner } from "@/components/insights-support-banner";
+import "@/components/insights-mood-week.css";
 import {
   InsightsGenerateDialog,
   type InsightsGeneratePrefill,
@@ -54,8 +57,182 @@ import {
   parseWellbeingLevel,
   wellbeingVisibility,
 } from "@/lib/insight-wellbeing";
-import { frameLetterMarkdown } from "@/lib/letter-markdown";
+import { coerceLetterMarkdown, frameLetterMarkdown } from "@/lib/letter-markdown";
 import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
+
+type InsightsPageNotice =
+  | {
+      kind: "error";
+      title: string;
+      message: string;
+      detail?: string;
+    }
+  | { kind: "daily_limit"; message: string; resetsAt?: string };
+
+function noticeFromUnknown(
+  e: unknown,
+  context: "load" | "generate",
+): InsightsPageNotice {
+  const err = e as Error & {
+    code?: string;
+    status?: number;
+    resetsAt?: string;
+  };
+  const rawMessage =
+    e instanceof Error
+      ? e.message.trim()
+      : typeof e === "string"
+        ? e.trim()
+        : "";
+  const code = e instanceof Error ? err.code : undefined;
+  const status = e instanceof Error ? err.status : undefined;
+  const resetsAt = e instanceof Error ? err.resetsAt : undefined;
+
+  const looksLikeLimit =
+    code === "daily_limit" ||
+    status === 429 ||
+    /daily[_\s-]?limit|used today's insights|generated a lot today|try again tomorrow|fresh ones unlock|that's enough for today/i.test(
+      rawMessage,
+    );
+
+  if (looksLikeLimit) {
+    return {
+      kind: "daily_limit",
+      message:
+        rawMessage && !/^request failed/i.test(rawMessage)
+          ? rawMessage
+          : "You've used today's insights.",
+      ...(typeof resetsAt === "string" && resetsAt ? { resetsAt } : {}),
+    };
+  }
+
+  if (typeof console !== "undefined") {
+    console.warn("[insights]", context, e);
+  }
+
+  const title =
+    context === "generate"
+      ? "Something went wrong writing this"
+      : "Couldn't load these insights";
+  const message =
+    context === "generate"
+      ? "Nothing was lost. You can try again in a moment."
+      : "Check your connection and try again in a moment.";
+
+  const detail =
+    rawMessage &&
+    !/^failed to generate/i.test(rawMessage) &&
+    !/^failed to load/i.test(rawMessage)
+      ? rawMessage
+      : status
+        ? `HTTP ${status}`
+        : undefined;
+
+  return {
+    kind: "error",
+    title,
+    message,
+    ...(detail ? { detail } : {}),
+  };
+}
+
+function formatInsightsUnlock(resetsAt: string | undefined): {
+  absolute: string;
+  relative: string;
+} | null {
+  if (!resetsAt) return null;
+  const at = new Date(resetsAt);
+  if (Number.isNaN(at.getTime())) return null;
+  const absolute = at.toLocaleString(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const hours = Math.max(
+    1,
+    Math.ceil((at.getTime() - Date.now()) / (60 * 60 * 1000)),
+  );
+  const relative =
+    hours === 1 ? "In about an hour" : `In about ${hours} hours`;
+  return { absolute, relative };
+}
+
+function InsightsNoticeCard({
+  notice,
+  onDismiss,
+  onRetry,
+}: {
+  notice: InsightsPageNotice;
+  onDismiss: () => void;
+  onRetry?: () => void;
+}) {
+  const unlock =
+    notice.kind === "daily_limit"
+      ? formatInsightsUnlock(notice.resetsAt)
+      : null;
+
+  const eyebrow =
+    notice.kind === "daily_limit" ? "Daily pause" : "Couldn't finish";
+  const title =
+    notice.kind === "daily_limit"
+      ? "That's enough for today"
+      : notice.title;
+  const body =
+    notice.kind === "daily_limit"
+      ? unlock
+        ? `Fresh insights unlock ${unlock.absolute}. Your writing stays put — come back then and pick up where you left off.`
+        : notice.message
+      : notice.message;
+
+  return (
+    <aside
+      role={notice.kind === "error" ? "alert" : "status"}
+      className="relative overflow-hidden rounded-xl border border-border bg-card px-5 py-5 shadow-sm"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-soft/50 blur-2xl"
+      />
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
+            {eyebrow}
+          </span>
+          <p className="font-display text-[22px] font-normal leading-snug text-foreground">
+            {title}
+          </p>
+          <p className="max-w-[36rem] text-[15px] leading-relaxed text-foreground/80">
+            {body}
+          </p>
+          {notice.kind === "daily_limit" && unlock ? (
+            <p className="text-sm text-muted">{unlock.relative}.</p>
+          ) : null}
+          {notice.kind === "error" && notice.detail ? (
+            <p className="text-xs text-muted">{notice.detail}</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {notice.kind === "error" && onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-5 text-[15px] font-semibold text-on-accent transition-opacity hover:opacity-90"
+            >
+              Try again
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="inline-flex h-11 cursor-pointer items-center justify-center rounded-full border border-border bg-background px-5 text-[15px] font-semibold text-foreground transition-colors hover:border-accent/40"
+          >
+            {notice.kind === "daily_limit" ? "Got it" : "Dismiss"}
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
 
 function LetterFeedbackRow({
   rangeKey,
@@ -634,11 +811,21 @@ function EmotionBars({ emotions }: { emotions: JournalWeeklyEmotionScore[] }) {
 }
 
 function moodDayAriaLabel(day: MoodDay): string {
-  if (day.entries.length === 0) return `${day.dayLabel} ${day.dateNum}, no entries`;
+  const when = (() => {
+    const d = parseLocalDateOnly(day.key);
+    if (!d) return `${day.dayLabel} ${day.dateNum}`;
+    return d.toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+    });
+  })();
+  if (day.entries.length === 0) return `${when}, no entries`;
   const moods = day.entries
     .map((e) => (e.mood ? journalMoodLabel(e.mood) : "untagged"))
     .join(", ");
-  return `${day.dayLabel} ${day.dateNum}, ${day.entries.length} ${day.entries.length === 1 ? "entry" : "entries"}: ${moods}`;
+  const n = day.entries.length;
+  return `${when}, ${n} ${n === 1 ? "entry" : "entries"}: ${moods}`;
 }
 
 function MoodDayCell({
@@ -651,71 +838,60 @@ function MoodDayCell({
   const hasEntries = day.entries.length > 0;
   const hasMood = day.entries.some((e) => e.mood);
   const multi = day.entries.length > 1;
+  const singleMood =
+    !multi && day.entries.length === 1 ? day.entries[0]?.mood ?? null : null;
+  const label = moodDayAriaLabel(day);
 
-  const body = (
+  if (!hasEntries) {
+    return (
+      <div className="mood-day-cell mood-day-cell--empty" aria-label={label} />
+    );
+  }
+
+  const cell = (
     <div
-      className={
-        compact
-          ? `relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-lg text-[11px] font-semibold ${
-              hasEntries
-                ? ""
-                : "border border-dashed border-border text-muted"
-            }`
-          : `relative flex h-11 w-full items-end justify-center overflow-hidden rounded-xl pb-2 text-[12px] font-semibold ${
-              hasEntries
-                ? ""
-                : "border-[1.5px] border-dashed border-border font-medium text-muted"
-            }`
-      }
-      aria-label={moodDayAriaLabel(day)}
+      className={[
+        "mood-day-cell",
+        !hasMood ? "mood-day-cell--untagged" : "",
+        multi ? "mood-day-cell--multi" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      aria-hidden
     >
-      {hasEntries && hasMood ? (
-        <div className="absolute inset-0 flex">
-          {day.entries.map((e) => {
-            const palette = e.mood ? JOURNAL_MOOD_PILL[e.mood] : null;
-            return (
-              <div
-                key={e.id}
-                className="h-full min-w-0 flex-1"
-                style={
-                  palette
-                    ? { backgroundColor: palette.background }
-                    : { backgroundColor: "var(--border-subtle, #e8e4dc)" }
-                }
-              />
-            );
-          })}
+      {hasMood ? (
+        <div className="mood-day-cell__slices">
+          {day.entries.map((e) => (
+            <div
+              key={e.id}
+              className="mood-day-cell__slice"
+              style={{
+                backgroundColor: e.mood
+                  ? JOURNAL_MOOD_WEEK_CELL[e.mood]
+                  : "var(--surface, var(--card))",
+              }}
+            />
+          ))}
         </div>
-      ) : hasEntries ? (
-        <div className="absolute inset-0 bg-surface-2">
-          <span className="absolute bottom-1.5 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-muted" />
-        </div>
-      ) : null}
-      <span
-        className="relative z-[1]"
-        style={
-          hasMood && day.mood
-            ? { color: JOURNAL_MOOD_PILL[day.mood].color }
-            : undefined
-        }
-      >
-        {compact
-          ? day.dateNum
-          : hasMood && day.mood
-            ? journalMoodLabel(day.mood)
-            : hasEntries
-              ? "·"
-              : day.emptyLabel}
-      </span>
-      {multi ? (
-        <span className="absolute right-0.5 top-0.5 z-[1] flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-foreground/80 px-1 text-[9px] font-bold text-background">
-          {day.entries.length}
+      ) : (
+        <span className="mood-day-cell__dot" />
+      )}
+
+      {singleMood && !compact ? (
+        <span className="mood-day-cell__word">
+          {journalMoodLabel(singleMood)}
         </span>
+      ) : null}
+
+      {compact ? (
+        <span className="mood-day-cell__word">{day.dateNum}</span>
+      ) : null}
+
+      {multi ? (
+        <span className="mood-day-cell__badge">{day.entries.length}</span>
       ) : null}
     </div>
   );
-
-  if (!hasEntries) return body;
 
   if (day.entries.length === 1) {
     const only = day.entries[0]!;
@@ -723,11 +899,11 @@ function MoodDayCell({
       <InsightsSourceLink
         entryIds={[only.id]}
         header={`${day.dayLabel} ${day.dateNum}`}
-        className="block w-full"
-        triggerLabel={moodDayAriaLabel(day)}
+        className="mood-day-trigger"
+        triggerLabel={label}
         clickHref={`/journal/my/${encodeURIComponent(only.id)}`}
       >
-        {body}
+        {cell}
       </InsightsSourceLink>
     );
   }
@@ -738,10 +914,10 @@ function MoodDayCell({
       header={`${day.dayLabel} ${day.dateNum} · ${day.entries.length} entries`}
       footerHref={`/journal/my?day=${encodeURIComponent(day.key)}`}
       footerLabel={`Open ${day.dayLabel} in Journal →`}
-      className="block w-full"
-      triggerLabel={moodDayAriaLabel(day)}
+      className="mood-day-trigger"
+      triggerLabel={label}
     >
-      {body}
+      {cell}
     </InsightsSourceLink>
   );
 }
@@ -761,38 +937,39 @@ function MoodWeekStrip({
     <div className="flex flex-col gap-3.5">
       {useCalendar ? (
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] text-muted">
+          <div className="mood-day-grid--calendar-head">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
               <span key={d}>{d}</span>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="mood-day-grid mood-day-grid--calendar">
             {cells.map((cell) => {
               if ("blank" in cell) {
-                return <div key={cell.key} className="aspect-square" />;
+                return (
+                  <div key={cell.key} className="mood-day-grid__blank" />
+                );
               }
               return <MoodDayCell key={cell.key} day={cell} compact />;
             })}
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-2">
+        <div className="mood-day-grid">
           {days.map((d) => (
-            <div
-              key={d.key}
-              className="flex flex-col items-center gap-2 text-[13px] text-muted"
-            >
+            <div key={d.key} className="mood-day-col">
               <MoodDayCell day={d} />
-              <span className="flex flex-col items-center leading-tight">
+              <span className="mood-day-col__label">
                 <span>{d.dayLabel}</span>
-                <span className="text-[11px] tabular-nums">{d.dateNum}</span>
+                <span className="mood-day-col__date">{d.dateNum}</span>
               </span>
             </div>
           ))}
         </div>
       )}
       {summary?.trim() ? (
-        <p className="text-sm leading-relaxed text-foreground/80">{summary.trim()}</p>
+        <p className="text-sm leading-relaxed text-foreground/80">
+          {summary.trim()}
+        </p>
       ) : null}
     </div>
   );
@@ -821,12 +998,15 @@ export function JournalWeeklyReflectionCard({
   const [generating, setGenerating] = useState(false);
   const [pendingGeneration, setPendingGeneration] =
     useState<InsightsGenerateSelection | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<InsightsPageNotice | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPrefill, setDialogPrefill] =
     useState<InsightsGeneratePrefill | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const lastGenerateSelectionRef = useRef<InsightsGenerateSelection | null>(
+    null,
+  );
   const [letterCollapsed, setLetterCollapsed] = useState(
     () => readInsightsCollapsePrefs().letterCollapsed,
   );
@@ -881,7 +1061,7 @@ export function JournalWeeklyReflectionCard({
         }
       }
       setLoading(true);
-      setError(null);
+      setNotice(null);
       try {
         const range = weekKey ? parseInsightRangeKey(weekKey) : null;
         const got = await fetchJournalWeeklyReflectionRemote(
@@ -896,8 +1076,8 @@ export function JournalWeeklyReflectionCard({
         setWeekStart(got.weekStart);
         setWeekEnd(got.weekEnd);
       } catch (e) {
-        setError(
-          e instanceof Error ? e.message : "Failed to load weekly reflection",
+        setNotice(
+          noticeFromUnknown(e, "load"),
         );
       } finally {
         setLoading(false);
@@ -939,8 +1119,10 @@ export function JournalWeeklyReflectionCard({
       setDialogOpen(false);
       setGenerating(true);
       setPendingGeneration(selection);
-      setError(null);
+      lastGenerateSelectionRef.current = selection;
+      setNotice(null);
       setMenuOpen(false);
+      const startedAt = Date.now();
       try {
         const got = await runJournalWeeklyReflectionRemote({
           letter: selection.letter,
@@ -986,11 +1168,38 @@ export function JournalWeeklyReflectionCard({
           });
         }
       } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Failed to generate weekly reflection",
-        );
+        // API Gateway hard-caps at 30s; Lambda often finishes and saves afterward.
+        if (isLikelyInsightsGatewayTimeout(e)) {
+          const recovered = await pollJournalWeeklyReflectionAfterGenerate({
+            startDate: selection.startDate,
+            endDate: selection.endDate,
+            periodType: selection.periodType,
+            timeZone: selection.timeZone,
+            notBeforeMs: startedAt,
+          });
+          if (recovered?.reflection) {
+            const nextKey =
+              recovered.rangeKey ||
+              recovered.reflection.rangeKey ||
+              weekKey ||
+              "__current__";
+            invalidateCachedWeeklyReflection(weekKey);
+            invalidateCachedWeeklyReflection(nextKey);
+            setCachedWeeklyReflection(nextKey, recovered);
+            setReflection(recovered.reflection);
+            setWeekStart(recovered.weekStart);
+            setWeekEnd(recovered.weekEnd);
+            onLetterChanged?.();
+            if (recovered.rangeKey && recovered.rangeKey !== weekKey) {
+              navigate(
+                `/journal/my/insights/${encodeURIComponent(recovered.rangeKey)}`,
+                { replace: true },
+              );
+            }
+            return;
+          }
+        }
+        setNotice(noticeFromUnknown(e, "generate"));
       } finally {
         setGenerating(false);
         setPendingGeneration(null);
@@ -1143,9 +1352,11 @@ export function JournalWeeklyReflectionCard({
     () =>
       fillLetterNamePlaceholder(
         frameLetterMarkdown(
-          (reflection?.letterMarkdown ?? "").replace(
-            /^(#{1,6}\s+[^\n]+)\n{2,}/gm,
-            "$1\n",
+          coerceLetterMarkdown(
+            (reflection?.letterMarkdown ?? "").replace(
+              /^(#{1,6}\s+[^\n]+)\n{2,}/gm,
+              "$1\n",
+            ),
           ),
         ),
         getMedimadeSessionDisplayName(),
@@ -1383,7 +1594,24 @@ export function JournalWeeklyReflectionCard({
         <p className="text-sm italic text-muted">Loading…</p>
       ) : null}
 
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {notice ? (
+        <InsightsNoticeCard
+          notice={notice}
+          onDismiss={() => setNotice(null)}
+          onRetry={
+            notice.kind === "error"
+              ? () => {
+                  const last = lastGenerateSelectionRef.current;
+                  if (last) {
+                    void generate(last);
+                    return;
+                  }
+                  openGenerateDialog();
+                }
+              : undefined
+          }
+        />
+      ) : null}
 
       {showLetterBlock ? (
         <section aria-label="Your letter" className="flex flex-col">

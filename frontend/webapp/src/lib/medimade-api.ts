@@ -2422,11 +2422,20 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
   }
   if (!res.ok) {
     const msg =
-      (typeof data.detail === "string" && data.detail) ||
-      (typeof data.error === "string" && data.error) ||
-      res.statusText;
-    const err = new Error(msg) as Error & { code?: string; status?: number };
+      (typeof data.detail === "string" && data.detail.trim()) ||
+      (typeof data.error === "string" && data.error.trim()) ||
+      (typeof res.statusText === "string" && res.statusText.trim()) ||
+      `Request failed (${res.status})`;
+    const err = new Error(msg) as Error & {
+      code?: string;
+      status?: number;
+      resetsAt?: string;
+    };
     if (typeof data.code === "string") err.code = data.code;
+    if (typeof data.resetsAt === "string" && data.resetsAt.trim()) {
+      err.resetsAt = data.resetsAt.trim();
+    }
+    // Gateway/API timeouts often omit a body — treat as daily_limit only when coded.
     err.status = res.status;
     throw err;
   }
@@ -2449,6 +2458,67 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
     ...(typeof data.rangeKey === "string" ? { rangeKey: data.rangeKey } : {}),
     empty: data.empty === true,
   };
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** API Gateway HTTP APIs hard-cap at 30s; Lambda may still finish and save. */
+export function isLikelyInsightsGatewayTimeout(e: unknown): boolean {
+  const err = e as Error & { status?: number };
+  if (!(e instanceof Error)) return false;
+  if (err.status === 504 || err.status === 503) return true;
+  return /timeout|timed out|gateway|request failed \(50[34]\)|failed to fetch|networkerror/i.test(
+    err.message,
+  );
+}
+
+/**
+ * After a gateway timeout, poll GET until a freshly saved reflection appears
+ * (Lambda timeout is 60s and often completes after API Gateway gives up).
+ */
+export async function pollJournalWeeklyReflectionAfterGenerate(opts: {
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  timeZone?: string;
+  /** Ignore reflections older than this (ms since epoch). */
+  notBeforeMs: number;
+  attempts?: number;
+  delayMs?: number;
+}): Promise<{
+  reflection: JournalWeeklyReflection | null;
+  weekKey: string;
+  weekStart: string;
+  weekEnd: string;
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  rangeKey?: string;
+  empty?: boolean;
+} | null> {
+  const attempts = opts.attempts ?? 16;
+  const delayMs = opts.delayMs ?? 2000;
+  const floor = opts.notBeforeMs - 15_000;
+  for (let i = 0; i < attempts; i++) {
+    await sleepMs(delayMs);
+    try {
+      const got = await fetchJournalWeeklyReflectionRemote({
+        ...(opts.startDate ? { startDate: opts.startDate } : {}),
+        ...(opts.endDate ? { endDate: opts.endDate } : {}),
+        ...(opts.periodType ? { periodType: opts.periodType } : {}),
+        ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+      });
+      const genAt = got.reflection?.meta?.generatedAt;
+      if (!genAt) continue;
+      const t = new Date(genAt).getTime();
+      if (Number.isFinite(t) && t >= floor) return got;
+    } catch {
+      /* keep polling */
+    }
+  }
+  return null;
 }
 
 async function streamChatRequest(

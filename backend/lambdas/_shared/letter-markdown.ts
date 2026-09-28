@@ -72,6 +72,59 @@ function asPlainParagraph(text: string | undefined | null): string {
   return (text ?? "").replace(/\s+/g, " ").trim();
 }
 
+/** Flatten `body` string or `bodyParts` / `parts` arrays into one section body. */
+function sectionBodyFromRow(row: object): string {
+  const direct =
+    typeof (row as { body?: unknown }).body === "string"
+      ? (row as { body: string }).body.trim()
+      : "";
+  if (direct) return direct;
+
+  const parts =
+    (row as { bodyParts?: unknown }).bodyParts ??
+    (row as { parts?: unknown }).parts;
+  if (!Array.isArray(parts) || parts.length === 0) return "";
+
+  return parts
+    .map((p) => {
+      if (typeof p === "string") return p;
+      if (
+        p &&
+        typeof p === "object" &&
+        typeof (p as { text?: unknown }).text === "string"
+      ) {
+        return (p as { text: string }).text;
+      }
+      return "";
+    })
+    .join("")
+    .trim();
+}
+
+/** Preamble/closing may be a string or an array of `{ text }` parts. */
+function textFromLetterField(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const t = value.trim();
+    return t || undefined;
+  }
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const joined = value
+    .map((p) => {
+      if (typeof p === "string") return p;
+      if (
+        p &&
+        typeof p === "object" &&
+        typeof (p as { text?: unknown }).text === "string"
+      ) {
+        return (p as { text: string }).text;
+      }
+      return "";
+    })
+    .join("")
+    .trim();
+  return joined || undefined;
+}
+
 function splitSentences(text: string): string[] {
   return (
     text
@@ -143,19 +196,23 @@ export function letterSectionsToMarkdown(params: {
   preamble?: string;
   sections: Array<{ heading: string; body: string }>;
   closing?: string;
+  /** When false, keep full section bodies (structured JSON). Default trims prose. */
+  softTrimBodies?: boolean;
 }): string {
   const framed = ensurePreambleAndClosing({
     preamble: params.preamble,
     closing: params.closing,
     sections: params.sections,
   });
+  const softTrim = params.softTrimBodies !== false;
   const lines: string[] = [params.greeting.trim() || "Dear [[NAME]],", ""];
   lines.push(framed.preamble, "");
   for (const section of framed.sections) {
     const heading = section.heading.replace(/^#+\s*/, "").trim() || "Note";
-    const body = ensureLetterBodyHasBold(
-      trimLetterBodyWords(section.body, SECTION_BODY_WORD_SOFT_MAX),
-    );
+    const rawBody = softTrim
+      ? trimLetterBodyWords(section.body, SECTION_BODY_WORD_SOFT_MAX)
+      : section.body.trim();
+    const body = ensureLetterBodyHasBold(rawBody);
     if (!body) continue;
     // Heading sits directly on its body (no blank line between).
     lines.push(`### ${heading}`, body, "");
@@ -311,10 +368,7 @@ export function coerceLetterMarkdown(raw: string): string {
               ? (row as { heading: string }).heading.trim()
               : (LETTER_DEFAULT_HEADINGS[sections.length] ??
                 `Part ${sections.length + 1}`);
-          const body =
-            typeof (row as { body?: unknown }).body === "string"
-              ? (row as { body: string }).body.trim()
-              : "";
+          const body = sectionBodyFromRow(row as object);
           if (!body) continue;
           sections.push({
             heading:
@@ -331,15 +385,14 @@ export function coerceLetterMarkdown(raw: string): string {
                 ? parsed.greeting.trim()
                 : "Dear [[NAME]],"
               : "Dear [[NAME]],";
-          const preamble =
-            typeof parsed.preamble === "string" ? parsed.preamble : undefined;
-          const closing =
-            typeof parsed.closing === "string" ? parsed.closing : undefined;
+          const preamble = textFromLetterField(parsed.preamble);
+          const closing = textFromLetterField(parsed.closing);
           return letterSectionsToMarkdown({
             greeting,
             preamble,
             sections,
             closing,
+            softTrimBodies: false,
           });
         }
       }

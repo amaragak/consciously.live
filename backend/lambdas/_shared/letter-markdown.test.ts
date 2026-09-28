@@ -61,6 +61,62 @@ describe("coerceLetterMarkdown", () => {
     assert.ok(preIdx >= 0 && headIdx > preIdx);
   });
 
+  it("assembles JSON with bodyParts (v8 sourced spans)", () => {
+    const md = coerceLetterMarkdown(
+      JSON.stringify({
+        greeting: "Dear [[NAME]],",
+        preamble: "This week you finished something real.",
+        sections: [
+          {
+            heading: "The work is done",
+            bodyParts: [
+              { text: "On Thursday you finished the last vocal take. " },
+              {
+                text: "That moment mattered",
+                sources: [{ entryId: "e1", quote: "vocal take" }],
+              },
+              { text: ". Your voice held up." },
+            ],
+          },
+          {
+            heading: "Then you moved",
+            bodyParts: [{ text: "By Saturday you'd sent two emails." }],
+          },
+        ],
+        closing: "Keep going. With care,",
+      }),
+    );
+    assert.match(md, /^Dear \[\[NAME\]\],/);
+    assert.match(md, /This week you finished something real\./);
+    assert.match(md, /### The work is done\n/);
+    assert.match(md, /On Thursday you finished/);
+    assert.match(md, /That moment mattered\. Your voice held up\./);
+    assert.match(md, /### Then you moved\n/);
+    assert.match(md, /By Saturday you'd sent/);
+    assert.match(md, /With care,/);
+    assert.doesNotMatch(md, /bodyParts|entryId|"greeting"/);
+  });
+
+  it("recovers when greeting was prepended to raw letter JSON", () => {
+    const json = JSON.stringify({
+      greeting: "Dear Alex,",
+      preamble: "A warm open.",
+      sections: [
+        {
+          heading: "What stood out",
+          bodyParts: [{ text: "You showed up anyway." }],
+        },
+      ],
+      closing: "Take care,",
+    });
+    const md = coerceLetterMarkdown(`Dear Alex,\n\n${json}`);
+    assert.match(md, /^Dear \[\[NAME\]\],/);
+    assert.match(md, /A warm open\./);
+    assert.match(md, /### What stood out\n/);
+    assert.match(md, /showed up anyway/);
+    assert.doesNotMatch(md, /\{|"sections"/);
+  });
+
   it("forces headers and bold onto plain prose letters", () => {
     const md = coerceLetterMarkdown(`Alex,
 

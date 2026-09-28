@@ -26,16 +26,7 @@ export function StickyToolHeader({ stuck, activeTool }: Props) {
 
   if (!stuck) return null;
 
-  const toolLinks = HOME_V2_TOOLS.filter((t) => t.id !== activeTool).map(
-    (t) => ({
-      id: t.id,
-      label: t.label,
-      href: `#tool-${t.id}`,
-      onClick: () => smoothScrollToId(`tool-${t.id}`),
-    }),
-  );
-
-  const mobileToolLinks = HOME_V2_TOOLS.map((t) => ({
+  const toolLinks = HOME_V2_TOOLS.map((t) => ({
     id: t.id,
     label: t.label,
     href: `#tool-${t.id}`,
@@ -48,7 +39,7 @@ export function StickyToolHeader({ stuck, activeTool }: Props) {
       activeTool={activeTool}
       toolLinks={toolLinks}
       secondaryLinks={HOME_V2_SITE_HEADER_SECONDARY}
-      mobileToolLinks={mobileToolLinks}
+      mobileToolLinks={toolLinks}
       mobileSecondaryLinks={HOME_V2_SITE_HEADER_SECONDARY}
       ctaHref={ctaHref}
       ctaLabel={ctaLabel}

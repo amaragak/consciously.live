@@ -1,0 +1,171 @@
+/**
+ * Insights Mood week strip — day cells with multi-entry stacks (v8).
+ * Styles: ./insights-mood-week.css
+ */
+
+.mood-day-col {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mood-day-col__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.mood-day-col__date {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Flyout wraps the trigger in span.inline-flex + a bare <button>.
+ * Force equal cells: block 100% × 52px with button chrome reset.
+ */
+.mood-day-trigger {
+  display: block !important;
+  box-sizing: border-box;
+  width: 100%;
+  height: 52px;
+  min-width: 0;
+}
+
+.mood-day-trigger > button {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 52px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.mood-day-cell {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 52px;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.mood-day-cell--empty {
+  border: 1.5px dashed var(--border);
+  background: transparent;
+}
+
+.mood-day-cell--untagged {
+  align-items: center;
+  justify-content: center;
+  border-color: var(--border);
+  background: var(--surface, var(--card));
+}
+
+/* Multi-entry: keep a visible box edge so stacked slices don't read as a glitch. */
+.mood-day-cell--multi {
+  border-color: color-mix(in srgb, #1e2530 42%, transparent);
+}
+
+.mood-day-cell__slices {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.mood-day-cell__slice {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.mood-day-cell__word {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  /* Fixed ink on pastel fills — tinted mood text fails 4.5:1 */
+  color: #1e2530;
+  pointer-events: none;
+}
+
+.mood-day-cell__dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.mood-day-cell__badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  min-width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #1e2530 12%, transparent);
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(30, 37, 48, 0.14),
+    0 2px 6px rgba(30, 37, 48, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: #1e2530;
+  pointer-events: none;
+}
+
+.mood-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mood-day-grid--calendar {
+  gap: 6px;
+}
+
+.mood-day-grid--calendar-head {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.mood-day-grid__blank {
+  height: 52px;
+}

@@ -35,8 +35,9 @@ import {
   type InsightPeriodType,
 } from "./_shared/insight-period";
 import {
-  INSIGHTS_DAILY_GENERATION_LIMIT,
+  formatInsightsDailyLimitMessage,
   parseWellbeingLevel,
+  resolveInsightsDailyLimit,
   WELLBEING_LETTER_GUIDANCE,
   type WellbeingLevel,
 } from "./_shared/insight-wellbeing";
@@ -1536,8 +1537,9 @@ async function callClaudeForLetter(params: {
     },
     body: JSON.stringify({
       model: CLAUDE_HAIKU_45_MODEL_ID,
-      max_tokens: 3200,
-      temperature: 0.55,
+      // Keep under API Gateway's 30s integration limit (letter + patterns).
+      max_tokens: 2048,
+      temperature: 0.5,
       system: params.system,
       messages: [{ role: "user", content: params.user }],
     }),
@@ -1557,7 +1559,12 @@ async function callClaudeForLetter(params: {
     const known = params.knownEntryIds ?? new Set();
     const byId = params.entriesById ?? new Map();
     const parsed = parseLetterModelOutput(outText, known, byId);
-    const letter = coerceLetterMarkdown(parsed.letterMarkdown.trim());
+    const rawLetter = parsed.letterMarkdown.trim();
+    // Patterns-only runs emit NONE — that is success, not an empty letter.
+    if (/^NONE$/i.test(rawLetter)) {
+      return { ...parsed, letterMarkdown: "", usage };
+    }
+    const letter = coerceLetterMarkdown(rawLetter);
     if (!letter) {
       throw new Error("Empty letter in model response");
     }
@@ -1859,6 +1866,39 @@ async function listWeeklyReflections(
 
 function utcDateKey(now = new Date()): string {
   return now.toISOString().slice(0, 10);
+}
+
+/** Localhost / 127.0.0.1 origins — no daily generation cap while developing. */
+function isDevClientRequest(event: APIGatewayProxyEventV2): boolean {
+  const headers = event.headers ?? {};
+  const pick = (name: string): string => {
+    const want = name.toLowerCase();
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === want && typeof v === "string") return v.trim();
+    }
+    return "";
+  };
+  for (const raw of [pick("origin"), pick("referer")]) {
+    if (!raw) continue;
+    try {
+      const host = new URL(raw).hostname.toLowerCase();
+      if (host === "localhost" || host === "127.0.0.1") return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
+function insightsDailyLimitApplies(params: {
+  event: APIGatewayProxyEventV2;
+  role?: string;
+}): number | null {
+  const limit = resolveInsightsDailyLimit();
+  if (limit == null) return null;
+  if (params.role === "admin") return null;
+  if (isDevClientRequest(params.event)) return null;
+  return limit;
 }
 
 async function getDailyGenerationCount(
@@ -2194,14 +2234,27 @@ export async function handler(
     return json(400, { error: "Choose at least one: letter or patterns" });
   }
 
-  const usedToday = await getDailyGenerationCount(insightsTable, ownerId);
-  if (usedToday >= INSIGHTS_DAILY_GENERATION_LIMIT) {
-    return json(429, {
-      error: "You've generated a lot today. Try again tomorrow.",
-      code: "daily_limit",
-      limit: INSIGHTS_DAILY_GENERATION_LIMIT,
-      generationsRemaining: 0,
-    });
+  const dailyLimit = insightsDailyLimitApplies({
+    event,
+    role: user.role,
+  });
+  if (dailyLimit != null) {
+    const usedToday = await getDailyGenerationCount(insightsTable, ownerId);
+    if (usedToday >= dailyLimit) {
+      const { error, resetsAt } = formatInsightsDailyLimitMessage({
+        timeZone:
+          typeof periodInput.timeZone === "string"
+            ? periodInput.timeZone
+            : null,
+      });
+      return json(429, {
+        error,
+        code: "daily_limit",
+        limit: dailyLimit,
+        generationsRemaining: 0,
+        resetsAt,
+      });
+    }
   }
 
   try {
@@ -2211,6 +2264,7 @@ export async function handler(
       period,
     );
 
+    const genStarted = Date.now();
     const { entries, chats } = await collectWeekData({
       journalTable,
       analyticsTable,
@@ -2234,6 +2288,14 @@ export async function handler(
         empty: true,
       });
     }
+
+    console.info("insights.generate.start", {
+      rangeKey,
+      entryCount: entries.length,
+      chatCount: chats.length,
+      letter: selection.letter,
+      patterns: selection.patterns,
+    });
 
     const apiKey = await getClaudeApiKey();
     const priorLetters = (await listWeeklyReflections(insightsTable, ownerId))
@@ -2433,6 +2495,20 @@ export async function handler(
       rangeKey,
     });
 
+    console.info("insights.generate.ok", {
+      rangeKey,
+      ms: Date.now() - genStarted,
+      letterChars: letterMarkdown.length,
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+    });
+
+    const appliedLimit = insightsDailyLimitApplies({
+      event,
+      role: user.role,
+    });
+    const usedAfter = await getDailyGenerationCount(insightsTable, ownerId);
+
     return json(200, {
       reflection,
       weekKey: reflection.weekKey,
@@ -2442,14 +2518,14 @@ export async function handler(
       endDate: reflection.endDate,
       periodType: reflection.periodType,
       rangeKey: reflection.rangeKey,
-      generationsRemaining: Math.max(
-        0,
-        INSIGHTS_DAILY_GENERATION_LIMIT -
-          (await getDailyGenerationCount(insightsTable, ownerId)),
-      ),
+      generationsRemaining:
+        appliedLimit == null
+          ? null
+          : Math.max(0, appliedLimit - usedAfter),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Weekly reflection failed";
+    console.error("insights.generate.fail", msg);
     return json(500, { error: msg });
   }
 }

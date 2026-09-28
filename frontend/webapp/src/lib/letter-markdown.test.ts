@@ -3,7 +3,51 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { frameLetterMarkdown } from "./letter-markdown.ts";
+import {
+  coerceLetterMarkdown,
+  frameLetterMarkdown,
+} from "./letter-markdown.ts";
+
+describe("coerceLetterMarkdown", () => {
+  it("converts bodyParts JSON into readable markdown", () => {
+    const md = coerceLetterMarkdown(
+      JSON.stringify({
+        greeting: "Dear [[NAME]],",
+        preamble: "This week you finished something real.",
+        sections: [
+          {
+            heading: "The work is done",
+            bodyParts: [
+              { text: "On Thursday you finished the last take. " },
+              { text: "That mattered." },
+            ],
+          },
+        ],
+        closing: "Keep going.",
+      }),
+    );
+    assert.match(md, /^Dear \[\[NAME\]\],/);
+    assert.match(md, /### The work is done\nOn Thursday you finished/);
+    assert.doesNotMatch(md, /bodyParts|"greeting"/);
+  });
+
+  it("recovers when raw JSON was stored after a greeting line", () => {
+    const json = JSON.stringify({
+      greeting: "Dear Alex,",
+      preamble: "A warm open.",
+      sections: [
+        {
+          heading: "What stood out",
+          bodyParts: [{ text: "You showed up anyway." }],
+        },
+      ],
+      closing: "Take care,",
+    });
+    const md = coerceLetterMarkdown(`Dear Alex,\n\n${json}`);
+    assert.match(md, /### What stood out\nYou showed up anyway\./);
+    assert.doesNotMatch(md, /\{|"sections"/);
+  });
+});
 
 describe("frameLetterMarkdown", () => {
   it("adds preamble and closing when greeting jumps to headers", () => {
