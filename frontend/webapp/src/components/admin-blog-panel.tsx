@@ -721,6 +721,19 @@ export function AdminReadPanel() {
           </p>
         ) : (
           <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-medium text-foreground">
+                {draft.id ? "Edit post" : "New post"}
+              </h2>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onSave()}
+                className="rounded-lg accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+              >
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
             <div>
               <label className="block text-xs font-medium text-muted">
                 Title

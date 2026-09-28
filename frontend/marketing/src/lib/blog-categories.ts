@@ -1,7 +1,7 @@
 /** Fixed Read categories — keep in sync with backend `_shared/blog.ts`. */
 
 export const BLOG_CATEGORIES = [
-  "Philosophy",
+  "Philosophy & Spirituality",
   "Meditation & Psychedelics",
   "Travel & Pilgrimage",
   "Other",
@@ -14,6 +14,7 @@ export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Other";
 /** Legacy labels still stored on older posts. */
 const BLOG_CATEGORY_ALIASES: Record<string, BlogCategory> = {
   Backpacking: "Travel & Pilgrimage",
+  Philosophy: "Philosophy & Spirituality",
 };
 
 export function normalizeBlogCategory(raw: unknown): BlogCategory {

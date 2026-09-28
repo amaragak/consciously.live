@@ -22,7 +22,7 @@ export type BlogAudioStatus = "none" | "generating" | "ready" | "failed";
 
 /** Fixed Read categories — assign in admin; filter on /read. */
 export const BLOG_CATEGORIES = [
-  "Philosophy",
+  "Philosophy & Spirituality",
   "Meditation & Psychedelics",
   "Travel & Pilgrimage",
   "Other",
@@ -35,6 +35,7 @@ export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Other";
 /** Legacy labels still stored on older posts. */
 const BLOG_CATEGORY_ALIASES: Record<string, BlogCategory> = {
   Backpacking: "Travel & Pilgrimage",
+  Philosophy: "Philosophy & Spirituality",
 };
 
 export function normalizeBlogCategory(raw: unknown): BlogCategory {
