@@ -1,88 +1,72 @@
-# Cursor prompt: Journal Insights page (weekly letter + patterns)
+# Cursor prompt: Journal Insights, update 3 (choose what to generate)
 
-Paste everything below the line into Cursor (Agent mode). Put `docs/design/insights/` in the repo first so Cursor can read the mock-up.
+Paste everything below the line into Cursor (Agent mode). Replace the files in `docs/design/insights/` with the two in this zip first.
 
 ---
 
-## Goal
+## Context
 
-Redesign the **Journal → Insights** page so the weekly letter reads like a real letter, and add a "Patterns this week" section under it: an emotion bar chart, a mood week and a "turn this into a meditation" action.
+Insights updates 1 and 2 are built (letter, emotion bars, mood week, arc, wins/promises, recurring thought, what lifts you, month view). This update makes generation **opt-in and selectable**: nothing is generated until the user asks, and they choose whether they want the letter, the patterns, or both. Build on what's there.
 
-## Scope: only these two areas
+Design references (design-tool files; treat them as specs, not code to paste):
+- `docs/design/insights/InsightsGenerate.dc.html`: the "Generate insights" dialog (it's interactive in the design tool; the logic in its script block shows the behaviour).
+- `docs/design/insights/Insights.dc.html`: the page, including the updated empty state with the "Generate insights…" button.
 
-1. **The Insights content area** (everything to the right of the letters list).
-2. **The Insights sidebar** (the "Past letters" list on the left, to be renamed "Your letters").
+## Scope (unchanged)
 
-**Do not touch** the main app header (including the "Journal › Insights" breadcrumb and the Journal / Gratitudes / Insights switcher), the main app sidebar, or any other page. They're being handled separately.
+Only the Insights content area, the "Your letters" sidebar and the generation backend. Don't touch the main app header, the main app sidebar, other pages, or the colour tokens. No Manifest or Today integration.
 
-Design reference: `docs/design/insights/Insights.dc.html` (desktop, 1440px). It's a design-tool file: layout, hierarchy and copy are the spec; treat it as a spec, not code to paste. Ignore its header bar, which is only there for context. The letter text, scores and moods in it are example data.
+## Step 0: plan first
 
-## Step 0: investigate first, then tell me the plan before editing
+Reply with a short plan: the new request shape for generation, how each option maps onto the prompt and the stored data, where "remember my choices" is stored, and how regenerating a single part works. **Wait for my OK.**
 
-1. Find the Insights page, the letters list, and how the weekly letter is generated and stored (the model call, prompt, response shape and table/model).
-2. Find where journal entry mood tags (Calm / Good / Mixed / Low / Heavy) are stored, and whether meditations can be linked to a week.
-3. Reply with a short plan, including the exact backend change for the emotion scores (below), and **wait for my OK**.
+## The dialog: "Generate this week's insights"
 
-## Rules
+**Opens from:**
+- The empty-state primary button, which is now **"Generate insights…"** (replacing "Write my letter"). Its heading changes to "Your insights are written from this week's entries."
+- The "⋯" menu on a week that already has insights: "Generate again…".
+- Small "Add a letter →" / "Add patterns →" links shown in place of whichever part hasn't been generated for that week (these open the dialog with that option pre-ticked).
 
-- **Colours: use the existing theme tokens as they are.** I'm editing the colour scheme separately, so don't add, rename or change any tokens. Hex values in the mock-up are approximations: map each one to the nearest existing token. The mood colours should map to existing soft tints; if there aren't five distinct ones, tell me rather than adding tokens.
-- Existing fonts and components; no new UI libraries. Light and dark themes must both work.
-- Keep existing behaviour: generating a letter, viewing past letters, and anything currently under "Show more insights" (move it below the new Patterns section rather than dropping it).
-- TypeScript, no `any`.
+**Contents (copy exact):**
+- Title "Generate this week's insights"; subline "From your {n} entries and {m} meditations since {weekday}." (drop the meditations part if it can't be counted).
+- **Option 1**, checkbox card: "A letter to you" / "A personal note written from your week: what came up, what shifted, what to carry forward."
+- **Option 2**, checkbox card: "Patterns" / "Charts and highlights: how the week felt and moved, your wins, promises and recurring thoughts."
+  - An expander, "Choose which patterns ▾" / "Hide pattern options ▴" (collapsed by default), revealing sub-checkboxes: **How this week felt** (· emotion scores), **How the week moved**, **Wins and promises**, **The thought that keeps coming back**.
+  - A muted line: "Always on, from your data: Mood week, What lifts you, Your month so far."
+  - Unticking "Patterns" disables the sub-checkboxes (greys them out and keeps their values). Unticking every sub-checkbox counts as "Patterns" being off.
+- "Remember my choices for next week" checkbox.
+- Footer: **Cancel** (secondary) and a primary button whose label follows the selection: "Generate letter + patterns" / "Generate letter" / "Generate patterns". With nothing selected it's disabled and reads "Choose at least one".
+- **Defaults:** the saved choices if "remember" was on; otherwise everything ticked.
+- If the week has fewer than 2 entries, show a gentle inline note above the footer ("Insights are richer with a few more entries. You can still generate now.") without blocking.
 
-## The one backend change: emotion scores
+**Behaviour:**
+- It's a modal dialog: focus moves in, Tab is trapped, Esc and Cancel close it, and focus returns to the button that opened it. `role="dialog"`, `aria-modal`, labelled by its title.
+- Mobile (< 768px): becomes a bottom sheet with the same content.
+- On submit: close the dialog and show loading placeholders in the page for exactly the parts being generated ("Writing your letter…", skeleton cards for the chosen patterns). Other parts stay as they are.
 
-Extend the **existing** letter-generation call (no new model call) so it also returns structured data alongside the letter text:
+## Backend
 
-```json
-{ "emotions": [ { "name": "Hope", "score": 8 }, ... ] }
-```
+- The generation endpoint takes the selection, e.g. `{ "letter": true, "patterns": { "felt": true, "moved": true, "wins": true, "thought": false } }`.
+- **Still one model call.** Build the prompt and the response schema from the selection: only ask for the letter text if `letter` is true, and only for the pattern fields that were ticked.
+- **Always extract the cheap data** (`emotions` scores and per-entry `activities`) whenever *any* generation runs, even if "How this week felt" isn't ticked. The always-on cards (What lifts you, Your month so far) depend on them. Store them, but only *show* "How this week felt" if it was ticked.
+- **Promises:** only generated when "Wins and promises" is ticked. A later letter checks in on the most recent stored promises, whichever week they came from, as long as they're within the last 2 weeks.
+- **Regenerating** replaces only the parts selected this time and keeps the others. Keep the previous letter text if the new call fails.
+- **Store the selection** with the week's insights, so the page knows which cards were generated versus not requested (not requested → show the "Add … →" link, not an empty card).
+- **"Remember my choices"** is stored per user (server-side preference if there's a settings table; otherwise tell me and use client storage).
 
-- 3–5 emotions, each scored 0–10 for how strongly it came through in the week's entries; sorted high to low; short plain-English names.
-- Store them with the letter. Older letters without scores simply hide the chart (no backfill needed).
-- Validate the shape; if parsing fails, save the letter anyway and hide the chart.
+## Page states
 
-## Insights sidebar: "Your letters"
-
-- Heading "YOUR LETTERS" (small, muted, uppercase).
-- One item per week, newest first: the date range in bold ("This week · 21–28 Sept", then "14–21 Sept"…) and the letter's first sentence in muted text, truncated to one line. This replaces the current "This week / This week" duplicate.
-- Selected item: a white card with an accent left border (as now). Other items have no card, and a subtle background on hover.
-- Surface: one step lighter than the main app sidebar, darker than the content (the same "list pane" surface as the Journal entries list).
-
-## Content area (max width about 820px, centred)
-
-**1. Title block**
-- "WEEKLY REFLECTION" label, H1 "A gentle letter for {date range}", and a subline "Written from your {n} journal entries and {m} meditations this week" (omit the meditations part if they can't be counted per week).
-- A "⋯" options button on the right holding the existing letter actions (e.g. regenerate) if there are any; otherwise leave it out.
-
-**2. The letter**
-- On a "paper" card (the lightest surface, 1px border, ~22px radius, generous padding: ~44px top, ~56px sides).
-- Body in Fraunces (serif) at about 19px, line-height 1.7, max ~70 characters per line. The greeting ("Dear {name},") and the sign-off ("With you, · consciously") are in italic.
-
-**3. "Patterns this week"** (H2, with a muted caption on the right: "From your mood tags and what you wrote")
-- **Card 1, "How this week felt"** (full width, first): horizontal bars from the stored emotion scores. Each row is the name on the left, "{score}/10" on the right, and a 10px rounded bar. The top emotion uses the accent colour and the rest use the dark ink colour. Caption underneath: "Read from your entries by AI: a reflection, not a measurement."
-- **Card 2, "Mood"** (full width, second): a Mon–Sun row. Each day is a short rounded block tinted by that day's mood tag with the mood **word inside** (so it doesn't rely on colour), plus the day name under it. Days without an entry get a dashed outline and "–"; today with no entry says "Today". If there are several entries in a day, use the most recent mood. One-line summary underneath, in plain words, generated with the letter if possible (e.g. "Mostly good, with a dip mid-week that eased by Friday"); otherwise leave it out.
-- **Card 3, "Turn this week into a meditation"** (dark card): play icon, title, one line ("Written from your letter: …" using the top one or two emotions), and a "Create meditation" button. This opens the existing create-meditation flow pre-filled with a short prompt built from the letter; if that flow can't take a pre-fill, just open it and tell me.
-
-**4. Empty state** (no letter yet this week)
-- A dashed card: "BEFORE THE LETTER IS WRITTEN", "Your letter is written from this week's entries.", "You've written {n} so far. A couple more make it richer." (use "Write your first entry this week to get a letter." when n = 0), plus two buttons: "Write an entry" (secondary) and "Write my letter" (primary; disabled with a tooltip if n = 0).
-- Hide Patterns until a letter exists. If mood tags exist, you can show the Mood card on its own.
-
-## Mobile (< 768px)
-
-- The letters list becomes a compact horizontal row of week chips (or a dropdown) above the content.
-- Order: title → letter → How this week felt → Mood (the 7 days still in one row; shrink the blocks) → meditation card → empty state.
-
-## Accessibility
-
-- Bars: each row exposes its text value ("Hope, 8 out of 10"). Don't rely on bar length alone.
-- Mood days: the word is always visible; the colour is supplementary.
-- The letter is real text (selectable, copyable), not an image.
+- **Nothing generated:** the empty state with "Generate insights…". Always-on cards (Mood week and, once unlocked, What lifts you and Your month so far) may still show below it if there's data.
+- **Letter only:** the letter card, then "Add patterns →" where the patterns would start, then the always-on cards.
+- **Patterns only:** a slim "Add a letter →" card where the letter would be, then the chosen pattern cards and the always-on cards.
+- **Both:** as now.
+- "Turn this week into a meditation" shows whenever a letter **or** patterns exist (build its pre-fill from whichever is there).
 
 ## Done when
 
-- The Insights content area and the letters sidebar match the mock-up, in light and dark themes, on desktop and mobile. The main app header and sidebar are unchanged.
-- New letters store emotion scores and show the chart; old letters without scores still display fine.
-- The empty state works with 0, 1 and several entries.
-- No colour tokens were added or changed.
-- Typecheck, lint and build pass. List every file you changed, the backend change you made, and any fallback you used.
+- Nothing is generated automatically; everything comes from the dialog.
+- Each combination (letter only, patterns only, any subset of patterns, both) produces exactly those parts, with one model call.
+- Regenerating one part leaves the others intact.
+- "Remember my choices" persists and pre-fills the next time.
+- The dialog is keyboard-accessible and becomes a bottom sheet on mobile.
+- Header, main sidebar and colour tokens are untouched. Typecheck, lint and build pass. List files changed, the request/response schema, and where the preference is stored.

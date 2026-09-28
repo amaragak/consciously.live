@@ -1687,6 +1687,44 @@ export type JournalWeeklyEmotionScore = {
   examples?: string[];
 };
 
+export type JournalWeeklyArcDay = {
+  date: string;
+  value: number;
+};
+
+export type JournalWeeklyArc = {
+  start: string;
+  end: string;
+  summary: string;
+  days: JournalWeeklyArcDay[];
+};
+
+export type JournalWeeklyRecurringThought = {
+  text: string;
+  count: number;
+  alsoOn?: string[];
+};
+
+export type JournalWeeklyActivityByEntry = {
+  entryId: string;
+  items: string[];
+};
+
+export type JournalWeeklyGeneratedParts = {
+  letter: boolean;
+  felt: boolean;
+  moved: boolean;
+  wins: boolean;
+  thought: boolean;
+};
+
+export type JournalWeeklyPatternsSelection = {
+  felt: boolean;
+  moved: boolean;
+  wins: boolean;
+  thought: boolean;
+};
+
 export type JournalWeeklyReflection = {
   ownerId: string;
   weekKey: string;
@@ -1696,6 +1734,13 @@ export type JournalWeeklyReflection = {
   preview?: string;
   emotions?: JournalWeeklyEmotionScore[];
   moodSummary?: string;
+  arc?: JournalWeeklyArc;
+  wins?: string[];
+  promises?: string[];
+  recurringThought?: JournalWeeklyRecurringThought;
+  activities?: JournalWeeklyActivityByEntry[];
+  /** Which AI parts were requested/generated for this week (opt-in generation). */
+  generatedParts?: JournalWeeklyGeneratedParts;
   meta: {
     generatedAt: string;
     model: string;
@@ -1711,6 +1756,10 @@ export type JournalWeeklyLetterSummary = {
   weekEnd: string;
   generatedAt: string;
   preview?: string;
+  emotions?: JournalWeeklyEmotionScore[];
+  activities?: JournalWeeklyActivityByEntry[];
+  promises?: string[];
+  recurringThought?: JournalWeeklyRecurringThought;
 };
 
 function parseEmotionExamples(raw: unknown): string[] | undefined {
@@ -1759,6 +1808,123 @@ function parseWeeklyEmotions(
   return out.slice(0, 5);
 }
 
+function parseWeeklyStringList(
+  raw: unknown,
+  maxItems: number,
+): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const t = item.trim().replace(/\s+/g, " ");
+    if (t.length < 4 || t.length > 160) continue;
+    out.push(t);
+    if (out.length >= maxItems) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseWeeklyArc(raw: unknown): JournalWeeklyArc | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const start = typeof o.start === "string" ? o.start.trim() : "";
+  const end = typeof o.end === "string" ? o.end.trim() : "";
+  const summary = typeof o.summary === "string" ? o.summary.trim() : "";
+  if (!start || !end || !summary || !Array.isArray(o.days)) return undefined;
+  const days: JournalWeeklyArcDay[] = [];
+  for (const row of o.days) {
+    if (!row || typeof row !== "object") continue;
+    const date =
+      typeof (row as { date?: unknown }).date === "string"
+        ? (row as { date: string }).date.trim()
+        : "";
+    const valueRaw = (row as { value?: unknown }).value;
+    const value =
+      typeof valueRaw === "number"
+        ? valueRaw
+        : typeof valueRaw === "string"
+          ? Number(valueRaw)
+          : NaN;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(value)) continue;
+    days.push({
+      date,
+      value: Math.max(-5, Math.min(5, Math.round(value))),
+    });
+  }
+  if (days.length < 3) return undefined;
+  return { start, end, summary, days };
+}
+
+function parseWeeklyRecurringThought(
+  raw: unknown,
+): JournalWeeklyRecurringThought | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const text = typeof o.text === "string" ? o.text.trim() : "";
+  const countRaw = o.count;
+  const count =
+    typeof countRaw === "number"
+      ? countRaw
+      : typeof countRaw === "string"
+        ? Number(countRaw)
+        : NaN;
+  if (!text || !Number.isFinite(count) || count < 2) return undefined;
+  const alsoOn = Array.isArray(o.alsoOn)
+    ? o.alsoOn
+        .filter(
+          (d): d is string =>
+            typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.trim()),
+        )
+        .map((d) => d.trim())
+        .slice(0, 8)
+    : undefined;
+  return {
+    text,
+    count: Math.round(count),
+    ...(alsoOn && alsoOn.length ? { alsoOn } : {}),
+  };
+}
+
+function parseWeeklyActivities(
+  raw: unknown,
+): JournalWeeklyActivityByEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: JournalWeeklyActivityByEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const entryIdRaw =
+      (row as { entryId?: unknown }).entryId ??
+      (row as { entry_id?: unknown }).entry_id;
+    const entryId = typeof entryIdRaw === "string" ? entryIdRaw.trim() : "";
+    if (!entryId || !Array.isArray((row as { items?: unknown }).items)) continue;
+    const items: string[] = [];
+    for (const it of (row as { items: unknown[] }).items) {
+      if (typeof it !== "string") continue;
+      const t = it.trim().toLowerCase().replace(/\s+/g, " ");
+      if (t.length < 2 || t.length > 40) continue;
+      items.push(t);
+      if (items.length >= 4) break;
+    }
+    if (!items.length) continue;
+    out.push({ entryId, items });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseGeneratedParts(
+  raw: unknown,
+): JournalWeeklyGeneratedParts | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  return {
+    letter: o.letter === true,
+    felt: o.felt === true,
+    moved: o.moved === true,
+    wins: o.wins === true,
+    thought: o.thought === true,
+  };
+}
+
 function parseJournalWeeklyReflection(
   raw: unknown,
 ): JournalWeeklyReflection | null {
@@ -1766,7 +1932,9 @@ function parseJournalWeeklyReflection(
   const o = raw as Record<string, unknown>;
   const letterMarkdown =
     typeof o.letterMarkdown === "string" ? o.letterMarkdown : "";
-  if (!letterMarkdown.trim()) return null;
+  const generatedParts = parseGeneratedParts(
+    o.generatedParts ?? o.generated_parts,
+  );
   const metaRaw =
     o.meta && typeof o.meta === "object"
       ? (o.meta as Record<string, unknown>)
@@ -1780,6 +1948,27 @@ function parseJournalWeeklyReflection(
     typeof o.preview === "string" && o.preview.trim()
       ? o.preview.trim()
       : undefined;
+  const arc = parseWeeklyArc(o.arc);
+  const wins = parseWeeklyStringList(o.wins, 5);
+  const promises = parseWeeklyStringList(o.promises, 3);
+  const recurringThought = parseWeeklyRecurringThought(
+    o.recurringThought ?? o.recurring_thought,
+  );
+  const activities = parseWeeklyActivities(o.activities);
+  const hasLetter = Boolean(letterMarkdown.trim());
+  const hasGeneratedPart = Boolean(
+    generatedParts &&
+      (generatedParts.letter ||
+        generatedParts.felt ||
+        generatedParts.moved ||
+        generatedParts.wins ||
+        generatedParts.thought),
+  );
+  const hasPatternPayload = Boolean(
+    emotions || arc || wins || promises || recurringThought || activities,
+  );
+  // Patterns-only weeks may have an empty letter; legacy weeks always had a letter.
+  if (!hasLetter && !hasGeneratedPart && !hasPatternPayload) return null;
   return {
     ownerId: typeof o.ownerId === "string" ? o.ownerId : "",
     weekKey: typeof o.weekKey === "string" ? o.weekKey : "",
@@ -1789,6 +1978,12 @@ function parseJournalWeeklyReflection(
     ...(preview ? { preview } : {}),
     ...(emotions ? { emotions } : {}),
     ...(moodSummary ? { moodSummary } : {}),
+    ...(arc ? { arc } : {}),
+    ...(wins ? { wins } : {}),
+    ...(promises ? { promises } : {}),
+    ...(recurringThought ? { recurringThought } : {}),
+    ...(activities ? { activities } : {}),
+    ...(generatedParts ? { generatedParts } : {}),
     meta: {
       generatedAt:
         typeof metaRaw.generatedAt === "string" ? metaRaw.generatedAt : "",
@@ -1890,12 +2085,22 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
       typeof row.preview === "string" && row.preview.trim()
         ? row.preview.trim()
         : undefined;
+    const emotions = parseWeeklyEmotions(row.emotions);
+    const activities = parseWeeklyActivities(row.activities);
+    const promises = parseWeeklyStringList(row.promises, 3);
+    const recurringThought = parseWeeklyRecurringThought(
+      row.recurringThought ?? row.recurring_thought,
+    );
     letters.push({
       weekKey,
       weekStart,
       weekEnd,
       generatedAt,
       ...(preview ? { preview } : {}),
+      ...(emotions ? { emotions } : {}),
+      ...(activities ? { activities } : {}),
+      ...(promises ? { promises } : {}),
+      ...(recurringThought ? { recurringThought } : {}),
     });
   }
   return {
@@ -1906,8 +2111,11 @@ export async function listJournalWeeklyLettersRemote(): Promise<{
 }
 
 export async function runJournalWeeklyReflectionRemote(opts?: {
-  regenerate?: boolean;
   week?: string;
+  letter?: boolean;
+  patterns?: JournalWeeklyPatternsSelection;
+  /** @deprecated Prefer letter/patterns selection; kept for older callers. */
+  regenerate?: boolean;
 }): Promise<{
   reflection: JournalWeeklyReflection | null;
   weekKey: string;
@@ -1917,12 +2125,23 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
 }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const patterns =
+    opts?.patterns ??
+    ({
+      felt: true,
+      moved: true,
+      wins: true,
+      thought: true,
+    } satisfies JournalWeeklyPatternsSelection);
+  const letter = opts?.letter ?? true;
   const res = await medimadeFetch(`${base}/journal/weekly-reflection`, {
     method: "POST",
     headers: medimadeJsonHeaders(),
     body: JSON.stringify({
-      ...(opts?.regenerate ? { regenerate: true } : {}),
       ...(opts?.week?.trim() ? { week: opts.week.trim() } : {}),
+      letter,
+      patterns,
+      ...(opts?.regenerate ? { regenerate: true } : {}),
     }),
   });
   let data: Record<string, unknown> = {};

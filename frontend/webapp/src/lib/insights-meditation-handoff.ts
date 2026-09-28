@@ -45,9 +45,11 @@ export function insightsCreateMeditationHref(): string {
 }
 
 export function buildInsightsMeditationPrompt(params: {
-  letterPlain: string;
+  letterPlain?: string;
   emotions?: Array<{ name: string; score: number }>;
   weekLabel: string;
+  wins?: string[];
+  thought?: string;
 }): string {
   const top = (params.emotions ?? [])
     .slice(0, 2)
@@ -59,14 +61,44 @@ export function buildInsightsMeditationPrompt(params: {
       : top.length === 1
         ? ` Focus on easing into ${top[0].toLowerCase()}.`
         : ` Focus on easing ${top[0].toLowerCase()} and trusting ${top[1].toLowerCase()}.`;
-  const excerpt = params.letterPlain.replace(/\s+/g, " ").trim().slice(0, 480);
+  const excerpt = (params.letterPlain ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 480);
+  const thought = params.thought?.trim().replace(/\s+/g, " ");
+  const wins = (params.wins ?? [])
+    .map((w) => w.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  const fromLetter = excerpt ? `\n\nFrom my letter:\n${excerpt}` : "";
+  const fromThought = thought
+    ? `\n\nA thought that keeps coming back: "${thought}".`
+    : "";
+  const fromWins =
+    wins.length > 0
+      ? `\n\nWins from this week: ${wins.join("; ")}.`
+      : "";
   return [
-    `A gentle guided meditation shaped by my weekly journal letter (${params.weekLabel}).`,
+    `A gentle guided meditation shaped by my weekly journal insights (${params.weekLabel}).`,
     emotionBit.trim(),
-    excerpt ? `\n\nFrom my letter:\n${excerpt}` : "",
+    fromLetter,
+    fromThought,
+    fromWins,
   ]
     .filter(Boolean)
     .join(" ")
     .replace(/\s+\n/g, "\n")
     .trim();
+}
+
+/** Prefill Create for a recurring thought from Insights. */
+export function buildRecurringThoughtMeditationPrompt(params: {
+  thought: string;
+  weekLabel: string;
+}): string {
+  const thought = params.thought.trim().replace(/\s+/g, " ");
+  return [
+    `A gentle guided meditation to ease the thought "${thought}" that keeps coming back (${params.weekLabel}).`,
+    "Help me hold it lightly, breathe space around it, and remember I don't have to believe every story my mind repeats.",
+  ].join(" ");
 }

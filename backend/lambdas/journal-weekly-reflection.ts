@@ -51,6 +51,51 @@ type WeeklyEmotionScore = {
   examples?: string[];
 };
 
+type WeeklyArcDay = {
+  date: string;
+  value: number;
+};
+
+type WeeklyArc = {
+  start: string;
+  end: string;
+  summary: string;
+  days: WeeklyArcDay[];
+};
+
+type WeeklyRecurringThought = {
+  text: string;
+  count: number;
+  /** Prior weeks where a matching thought appeared (YYYY-MM-DD week starts). */
+  alsoOn?: string[];
+};
+
+type WeeklyActivityByEntry = {
+  entryId: string;
+  items: string[];
+};
+
+/** Which AI-generated surfaces were requested for this week. */
+type WeeklyGeneratedParts = {
+  letter: boolean;
+  felt: boolean;
+  moved: boolean;
+  wins: boolean;
+  thought: boolean;
+};
+
+type WeeklyPatternsSelection = {
+  felt: boolean;
+  moved: boolean;
+  wins: boolean;
+  thought: boolean;
+};
+
+type WeeklyGenerateSelection = {
+  letter: boolean;
+  patterns: WeeklyPatternsSelection;
+};
+
 type WeeklyReflection = {
   ownerId: string;
   weekKey: string;
@@ -63,6 +108,12 @@ type WeeklyReflection = {
   emotions?: WeeklyEmotionScore[];
   /** One-line plain-English mood summary for the week; omit if unavailable. */
   moodSummary?: string;
+  arc?: WeeklyArc;
+  wins?: string[];
+  promises?: string[];
+  recurringThought?: WeeklyRecurringThought;
+  activities?: WeeklyActivityByEntry[];
+  generatedParts?: WeeklyGeneratedParts;
   meta: {
     generatedAt: string;
     model: string;
@@ -71,6 +122,69 @@ type WeeklyReflection = {
     usage?: { input_tokens: number; output_tokens: number } | null;
   };
 };
+
+function parseGeneratedParts(raw: unknown): WeeklyGeneratedParts | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  return {
+    letter: o.letter === true,
+    felt: o.felt === true,
+    moved: o.moved === true,
+    wins: o.wins === true,
+    thought: o.thought === true,
+  };
+}
+
+function parseGenerateSelection(raw: Record<string, unknown>): WeeklyGenerateSelection {
+  const patternsRaw =
+    raw.patterns && typeof raw.patterns === "object"
+      ? (raw.patterns as Record<string, unknown>)
+      : {};
+  const patterns: WeeklyPatternsSelection = {
+    felt: patternsRaw.felt === true,
+    moved: patternsRaw.moved === true,
+    wins: patternsRaw.wins === true,
+    thought: patternsRaw.thought === true,
+  };
+  // Legacy regenerate / missing selection → generate everything.
+  const hasExplicit =
+    typeof raw.letter === "boolean" ||
+    Object.prototype.hasOwnProperty.call(raw, "patterns");
+  if (!hasExplicit || raw.regenerate === true) {
+    return {
+      letter: true,
+      patterns: { felt: true, moved: true, wins: true, thought: true },
+    };
+  }
+  return {
+    letter: raw.letter === true,
+    patterns,
+  };
+}
+
+function anyPatternSelected(p: WeeklyPatternsSelection): boolean {
+  return p.felt || p.moved || p.wins || p.thought;
+}
+
+function mergeGeneratedParts(
+  prev: WeeklyGeneratedParts | undefined,
+  selection: WeeklyGenerateSelection,
+): WeeklyGeneratedParts {
+  const base = prev ?? {
+    letter: false,
+    felt: false,
+    moved: false,
+    wins: false,
+    thought: false,
+  };
+  return {
+    letter: selection.letter ? true : base.letter,
+    felt: selection.patterns.felt ? true : base.felt,
+    moved: selection.patterns.moved ? true : base.moved,
+    wins: selection.patterns.wins ? true : base.wins,
+    thought: selection.patterns.thought ? true : base.thought,
+  };
+}
 
 function json(
   statusCode: number,
@@ -467,12 +581,31 @@ function formatJournalForPrompt(entries: JournalEntry[]): string {
       // Mood chips are listed separately — do not put them here so emotion
       // scores are read from the writing, not from the tags.
       return [
+        `Entry id: ${e.id}`,
         `Entry · ${title}`,
         `Updated: ${e.updatedAt}`,
         body,
       ].join("\n");
     })
     .join("\n\n---\n\n");
+}
+
+function uniqueWritingDays(entries: JournalEntry[]): number {
+  const days = new Set<string>();
+  for (const e of entries) {
+    const iso = safeIso(e.updatedAt) || safeIso(e.createdAt);
+    if (!iso) continue;
+    days.add(iso.slice(0, 10));
+  }
+  return days.size;
+}
+
+function normalizeThoughtKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatMoodTagsForPrompt(entries: JournalEntry[]): string {
@@ -556,6 +689,157 @@ function parseMoodSummary(raw: unknown): string | undefined {
   return t;
 }
 
+function parseArc(raw: unknown): WeeklyArc | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const start =
+    typeof o.start === "string" ? o.start.trim().replace(/\s+/g, " ") : "";
+  const end =
+    typeof o.end === "string" ? o.end.trim().replace(/\s+/g, " ") : "";
+  const summary =
+    typeof o.summary === "string" ? o.summary.trim().replace(/\s+/g, " ") : "";
+  if (!start || start.length > 24 || !end || end.length > 24) return undefined;
+  if (!summary || summary.length < 12 || summary.length > 280) return undefined;
+  if (!Array.isArray(o.days)) return undefined;
+  const days: WeeklyArcDay[] = [];
+  for (const row of o.days) {
+    if (!row || typeof row !== "object") continue;
+    const dateRaw = (row as { date?: unknown }).date;
+    const date =
+      typeof dateRaw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.trim())
+        ? dateRaw.trim()
+        : "";
+    const valueRaw = (row as { value?: unknown }).value;
+    const value =
+      typeof valueRaw === "number"
+        ? valueRaw
+        : typeof valueRaw === "string"
+          ? Number(valueRaw)
+          : NaN;
+    if (!date || !Number.isFinite(value)) continue;
+    days.push({
+      date,
+      value: Math.max(-5, Math.min(5, Math.round(value))),
+    });
+  }
+  if (days.length < 3) return undefined;
+  days.sort((a, b) => a.date.localeCompare(b.date));
+  return { start, end, summary, days: days.slice(0, 7) };
+}
+
+function parseStringList(
+  raw: unknown,
+  opts: { minLen: number; maxLen: number; maxItems: number },
+): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const t = item.trim().replace(/\s+/g, " ");
+    if (t.length < opts.minLen || t.length > opts.maxLen) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= opts.maxItems) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseRecurringThought(raw: unknown): WeeklyRecurringThought | undefined {
+  if (raw === null) return undefined;
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const text =
+    typeof o.text === "string" ? o.text.trim().replace(/\s+/g, " ") : "";
+  const countRaw = o.count;
+  const count =
+    typeof countRaw === "number"
+      ? countRaw
+      : typeof countRaw === "string"
+        ? Number(countRaw)
+        : NaN;
+  if (!text || text.length < 6 || text.length > 160) return undefined;
+  if (!Number.isFinite(count) || count < 2) return undefined;
+  return {
+    text,
+    count: Math.min(20, Math.round(count)),
+  };
+}
+
+function parseActivities(
+  raw: unknown,
+  knownEntryIds: Set<string>,
+): WeeklyActivityByEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: WeeklyActivityByEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const entryIdRaw =
+      (row as { entry_id?: unknown }).entry_id ??
+      (row as { entryId?: unknown }).entryId;
+    const entryId =
+      typeof entryIdRaw === "string" ? entryIdRaw.trim() : "";
+    if (!entryId || (knownEntryIds.size > 0 && !knownEntryIds.has(entryId))) {
+      continue;
+    }
+    const itemsRaw = (row as { items?: unknown }).items;
+    if (!Array.isArray(itemsRaw)) continue;
+    const items: string[] = [];
+    const seen = new Set<string>();
+    for (const it of itemsRaw) {
+      if (typeof it !== "string") continue;
+      const t = it.trim().toLowerCase().replace(/\s+/g, " ");
+      if (t.length < 2 || t.length > 40) continue;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      items.push(t);
+      if (items.length >= 4) break;
+    }
+    if (!items.length) continue;
+    out.push({ entryId, items });
+    if (out.length >= 40) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parsePatternsBlob(
+  raw: unknown,
+  knownEntryIds: Set<string>,
+): {
+  arc?: WeeklyArc;
+  wins?: string[];
+  promises?: string[];
+  recurringThought?: WeeklyRecurringThought;
+  activities?: WeeklyActivityByEntry[];
+} {
+  if (!raw || typeof raw !== "object") return {};
+  const o = raw as Record<string, unknown>;
+  const arc = parseArc(o.arc);
+  const wins = parseStringList(o.wins, { minLen: 6, maxLen: 120, maxItems: 4 });
+  const promises = parseStringList(o.promises, {
+    minLen: 6,
+    maxLen: 120,
+    maxItems: 3,
+  });
+  const recurringThought =
+    o.recurring_thought === null || o.recurringThought === null
+      ? undefined
+      : parseRecurringThought(o.recurring_thought ?? o.recurringThought);
+  const activities = parseActivities(
+    o.activities,
+    knownEntryIds,
+  );
+  return {
+    ...(arc ? { arc } : {}),
+    ...(wins ? { wins } : {}),
+    ...(promises ? { promises } : {}),
+    ...(recurringThought ? { recurringThought } : {}),
+    ...(activities ? { activities } : {}),
+  };
+}
+
 function formatChatsForPrompt(chats: MeditationChatSource[]): string {
   if (!chats.length) return "(No meditation create chats this week.)";
   return chats
@@ -563,31 +847,70 @@ function formatChatsForPrompt(chats: MeditationChatSource[]): string {
     .join("\n\n---\n\n");
 }
 
-function buildSystemPrompt(): string {
-  return [
-    "You write end-of-week reflection letters for someone using a meditation and journaling app.",
-    "Write directly TO the reader in second person ('you'), as a gentle letter — warm, human, and present.",
-    "This is NOT a clinical report, NOT third-person analysis ('they/the user'), and NOT a bullet-point dashboard.",
-    "Tone: like a thoughtful friend who has been listening all week — honest but kind, unhurried, slightly poetic when natural.",
-    "Weave together what showed up in their journal entries and what they explored while creating meditations.",
-    "Name specific themes, feelings, or moments when the material supports it; do not invent facts.",
-    "TIME & DURATION (critical): If they mention how long something has been going on (e.g. 'one and a half months at the coworking space'), treat that as ongoing context — NOT as a completed chapter, trial that ended, or decision already behind them — unless they explicitly say it ended, they left, or they decided.",
-    "Never invent closure, endings, 'you've given it a real try and now…', deadlines passing, or that a period is 'up'. Do not escalate duration into a verdict.",
-    "If the week was quiet or sparse, say so gently and still offer a short, honest letter.",
-    "Do not diagnose. Do not give medical advice. Do not moralize.",
-    "Length: roughly 3–8 short paragraphs (about 250–500 words).",
-    "You may use a simple salutation (e.g. 'Dear friend,' or their name if provided) and a soft sign-off ending like 'With you, · consciously'.",
-    "EMOTIONS (required): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions that came through in what they wrote (e.g. Hope, Self-doubt, Gratitude). Score each 0–10 for how strongly it showed up; sort high to low.",
-    "For each emotion include 1–3 short examples: nearly verbatim snippets from their writing (journal or chats) that support that score. Keep each example one short phrase or sentence; do not invent quotes.",
-    "Optionally one plain-English moodSummary line for the Mood strip (may use mood tags + writing).",
+function buildSystemPrompt(selection: WeeklyGenerateSelection): string {
+  const wantLetter = selection.letter;
+  const wantMoved = selection.patterns.moved;
+  const wantWins = selection.patterns.wins;
+  const wantThought = selection.patterns.thought;
+  const patternKeys: string[] = ["activities"];
+  if (wantMoved) patternKeys.push("arc");
+  if (wantWins) patternKeys.push("wins", "promises");
+  if (wantThought) patternKeys.push("recurring_thought");
+
+  const parts: string[] = [
+    "You help with end-of-week journal insights for a meditation and journaling app.",
+    "Do not diagnose. Do not give medical advice. Do not moralize. Do not invent facts.",
+    "TIME & DURATION (critical): If they mention how long something has been going on, treat that as ongoing context — NOT as a completed chapter — unless they explicitly say it ended.",
+    "EMOTIONS (always required): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions (e.g. Hope, Self-doubt). Score each 0–10; sort high to low.",
+    "For each emotion include 1–3 short nearly-verbatim examples from their writing. Do not invent quotes.",
+    "Optionally one plain-English moodSummary line (or NONE).",
+    "PATTERNS JSON always includes activities: up to one object per journal entry { entry_id, items: [\"morning walk\", ...] } with 0–4 short lowercase labels. Omit entries with none.",
+  ];
+  if (wantMoved) {
+    parts.push(
+      "Also include arc: { start, end, summary, days:[{date:YYYY-MM-DD,value}] }. start/end are one-word mood labels. days only for days with entries; value -5..+5. If fewer than 3 entry days, arc: null.",
+    );
+  } else {
+    parts.push("Set arc to null.");
+  }
+  if (wantWins) {
+    parts.push(
+      "Also include wins: 1–4 concrete actions they DID this week, second person without the word 'you'. Actions only. Do NOT include a 'Wrote on N days' line.",
+      "Also include promises: 0–3 short future intentions. Empty array if none.",
+    );
+  } else {
+    parts.push("Set wins to [] and promises to [].");
+  }
+  if (wantThought) {
+    parts.push(
+      "Also include recurring_thought: { text, count } for a belief/phrase that repeats within THIS week with count >= 2; otherwise null.",
+    );
+  } else {
+    parts.push("Set recurring_thought to null.");
+  }
+  if (wantLetter) {
+    parts.push(
+      "LETTER: Write directly TO the reader in second person ('you'), warm and human — roughly 3–8 short paragraphs (250–500 words). Soft salutation/sign-off optional.",
+      "If RECENT PROMISES are provided, mention one or two naturally in the letter prose — not as a checklist.",
+      "If PRIOR RECURRING THOUGHTS are provided, reuse the same wording when the same belief shows up again.",
+    );
+  } else {
+    parts.push("Do NOT write a letter. After <<<LETTER>>> output only the word NONE.");
+  }
+  parts.push(
     "OUTPUT FORMAT (exact — no JSON wrapper, no markdown fences around the whole reply):",
-    "Line 1: <<<EMOTIONS>>>",
-    "Line 2: a JSON array only, e.g. [{\"name\":\"Hope\",\"score\":8,\"examples\":[\"I felt lighter after the walk\"]},{\"name\":\"Self-doubt\",\"score\":6,\"examples\":[\"not sure I belong here yet\"]}]",
-    "Line 3: <<<MOOD_SUMMARY>>>",
-    "Line 4: one summary sentence, or the word NONE",
-    "Line 5: <<<LETTER>>>",
-    "Then the full letter body in markdown (paragraphs).",
-  ].join(" ");
+    "<<<EMOTIONS>>>",
+    "JSON array of emotions",
+    "<<<MOOD_SUMMARY>>>",
+    "one summary sentence, or the word NONE",
+    "<<<PATTERNS>>>",
+    `one JSON object with keys: ${patternKeys.join(", ")} (and null/[] for unused keys as instructed)`,
+    "<<<LETTER>>>",
+    wantLetter
+      ? "Then the full letter body in markdown (paragraphs)."
+      : "NONE",
+  );
+  return parts.join(" ");
 }
 
 function buildUserPrompt(params: {
@@ -596,23 +919,53 @@ function buildUserPrompt(params: {
   journalText: string;
   chatText: string;
   moodTagsText: string;
+  selection: WeeklyGenerateSelection;
+  lastWeekPromises?: string[];
+  priorRecurringThoughts?: Array<{ text: string; weekKey: string }>;
 }): string {
+  const wantLetter = params.selection.letter;
+  const promiseBlock =
+    wantLetter &&
+    params.lastWeekPromises &&
+    params.lastWeekPromises.length > 0
+      ? [
+          "RECENT PROMISES (mention naturally in the letter if relevant):",
+          ...params.lastWeekPromises.map((p) => `- ${p}`),
+          "",
+        ].join("\n")
+      : "";
+  const thoughtBlock =
+    params.selection.patterns.thought &&
+    params.priorRecurringThoughts &&
+    params.priorRecurringThoughts.length > 0
+      ? [
+          "PRIOR RECURRING THOUGHTS (reuse wording when the same belief appears this week):",
+          ...params.priorRecurringThoughts.map(
+            (t) => `- (${t.weekKey}) ${t.text}`,
+          ),
+          "",
+        ].join("\n")
+      : "";
   return [
     `WEEK: ${params.weekLabel}`,
     params.displayName?.trim()
       ? `Reader's name (optional salutation): ${params.displayName.trim()}`
       : "",
     "",
-    "JOURNAL ENTRIES THIS WEEK (source for the letter and emotion scores):",
+    `REQUESTED: letter=${wantLetter ? "yes" : "no"}; patterns moved=${params.selection.patterns.moved ? "yes" : "no"} wins=${params.selection.patterns.wins ? "yes" : "no"} thought=${params.selection.patterns.thought ? "yes" : "no"} (emotions+activities always)`,
+    "",
+    promiseBlock,
+    thoughtBlock,
+    "JOURNAL ENTRIES THIS WEEK (use Entry id in activities):",
     params.journalText,
     "",
-    "MEDITATION CREATE CHATS THIS WEEK (also for the letter and emotion scores):",
+    "MEDITATION CREATE CHATS THIS WEEK:",
     params.chatText,
     "",
-    "MOOD TAGS THIS WEEK (optional chips only — use for moodSummary if helpful; do NOT use as the source for emotion scores):",
+    "MOOD TAGS THIS WEEK (optional for moodSummary only — not for emotion scores):",
     params.moodTagsText,
     "",
-    "Write the reply now in the exact <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<LETTER>>> format.",
+    "Write the reply now in the exact <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<PATTERNS>>> / <<<LETTER>>> format.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -690,16 +1043,45 @@ function extractJsonArrayFromText(text: string): string | null {
 }
 
 /** Prefer delimiter format; fall back to JSON / salvage emotions from a messy blob. */
-function parseLetterModelOutput(outText: string): {
+function parseLetterModelOutput(
+  outText: string,
+  knownEntryIds: Set<string> = new Set(),
+): {
   letterMarkdown: string;
   emotions?: WeeklyEmotionScore[];
   moodSummary?: string;
+  arc?: WeeklyArc;
+  wins?: string[];
+  promises?: string[];
+  recurringThought?: WeeklyRecurringThought;
+  activities?: WeeklyActivityByEntry[];
 } {
-  const delim = outText.match(
-    /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
+  const delimWithPatterns = outText.match(
+    /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<PATTERNS>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
   );
+  const delimLegacy = !delimWithPatterns
+    ? outText.match(
+        /<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
+      )
+    : null;
+  const delim = delimWithPatterns
+    ? {
+        emotions: delimWithPatterns[1],
+        mood: delimWithPatterns[2],
+        patterns: delimWithPatterns[3],
+        letter: delimWithPatterns[4],
+      }
+    : delimLegacy
+      ? {
+          emotions: delimLegacy[1],
+          mood: delimLegacy[2],
+          patterns: null as string | null,
+          letter: delimLegacy[3],
+        }
+      : null;
   if (delim) {
-    const emotionsRaw = extractJsonArrayFromText(delim[1] ?? "") ?? delim[1]?.trim();
+    const emotionsRaw =
+      extractJsonArrayFromText(delim.emotions ?? "") ?? delim.emotions?.trim();
     let emotions: WeeklyEmotionScore[] | undefined;
     if (emotionsRaw) {
       try {
@@ -708,14 +1090,26 @@ function parseLetterModelOutput(outText: string): {
         emotions = parseEmotions(emotionsRaw);
       }
     }
-    const moodLine = (delim[2] ?? "").trim();
+    const moodLine = (delim.mood ?? "").trim();
     const moodSummary =
       !moodLine || /^none$/i.test(moodLine)
         ? undefined
         : parseMoodSummary(moodLine);
-    const letterMarkdown = (delim[3] ?? "").trim();
+    let patterns: ReturnType<typeof parsePatternsBlob> = {};
+    if (delim.patterns) {
+      const patternsRaw =
+        extractJsonObjectFromText(delim.patterns) ?? delim.patterns.trim();
+      if (patternsRaw) {
+        try {
+          patterns = parsePatternsBlob(JSON.parse(patternsRaw), knownEntryIds);
+        } catch {
+          /* ignore broken patterns — letter still saves */
+        }
+      }
+    }
+    const letterMarkdown = (delim.letter ?? "").trim();
     if (letterMarkdown) {
-      return { letterMarkdown, emotions, moodSummary };
+      return { letterMarkdown, emotions, moodSummary, ...patterns };
     }
   }
 
@@ -726,12 +1120,20 @@ function parseLetterModelOutput(outText: string): {
         letterMarkdown?: unknown;
         emotions?: unknown;
         moodSummary?: unknown;
+        arc?: unknown;
+        wins?: unknown;
+        promises?: unknown;
+        recurring_thought?: unknown;
+        recurringThought?: unknown;
+        activities?: unknown;
       };
       if (typeof parsed.letterMarkdown === "string" && parsed.letterMarkdown.trim()) {
+        const patterns = parsePatternsBlob(parsed, knownEntryIds);
         return {
           letterMarkdown: parsed.letterMarkdown.trim(),
           emotions: parseEmotions(parsed.emotions),
           moodSummary: parseMoodSummary(parsed.moodSummary),
+          ...patterns,
         };
       }
     } catch {
@@ -773,7 +1175,7 @@ function parseLetterModelOutput(outText: string): {
       // Last resort: strip JSON-ish prefix and keep remaining prose.
       letterMarkdown = outText
         .replace(/^[\s\S]*?"letterMarkdown"\s*:\s*"/, "")
-        .replace(/"\s*,\s*"(emotions|moodSummary)"[\s\S]*$/, "")
+        .replace(/"\s*,\s*"(emotions|moodSummary|arc|wins|promises)"[\s\S]*$/, "")
         .replace(/\\n/g, "\n")
         .replace(/\\"/g, '"')
         .trim();
@@ -804,6 +1206,7 @@ function parseLetterModelOutput(outText: string): {
   letterMarkdown = letterMarkdown
     .replace(/<<<EMOTIONS>>>/gi, "")
     .replace(/<<<MOOD_SUMMARY>>>/gi, "")
+    .replace(/<<<PATTERNS>>>/gi, "")
     .replace(/<<<LETTER>>>/gi, "")
     .replace(/^\{[\s\S]*$/, "")
     .trim();
@@ -817,10 +1220,16 @@ async function callClaudeForLetter(params: {
   apiKey: string;
   system: string;
   user: string;
+  knownEntryIds?: Set<string>;
 }): Promise<{
   letterMarkdown: string;
   emotions?: WeeklyEmotionScore[];
   moodSummary?: string;
+  arc?: WeeklyArc;
+  wins?: string[];
+  promises?: string[];
+  recurringThought?: WeeklyRecurringThought;
+  activities?: WeeklyActivityByEntry[];
   usage: { input_tokens: number; output_tokens: number } | null;
 }> {
   const res = await fetch(ANTHROPIC_URL, {
@@ -832,7 +1241,7 @@ async function callClaudeForLetter(params: {
     },
     body: JSON.stringify({
       model: CLAUDE_HAIKU_45_MODEL_ID,
-      max_tokens: 2200,
+      max_tokens: 3200,
       temperature: 0.55,
       system: params.system,
       messages: [{ role: "user", content: params.user }],
@@ -850,11 +1259,15 @@ async function callClaudeForLetter(params: {
       : undefined;
     const outText = typeof block?.text === "string" ? block.text.trim() : "";
     if (!outText) throw new Error("Empty Claude response");
-    const parsed = parseLetterModelOutput(outText);
-    if (!parsed.letterMarkdown.trim()) {
+    const parsed = parseLetterModelOutput(
+      outText,
+      params.knownEntryIds ?? new Set(),
+    );
+    const letter = parsed.letterMarkdown.trim();
+    if (!letter) {
       throw new Error("Empty letter in model response");
     }
-    return { ...parsed, usage };
+    return { ...parsed, letterMarkdown: letter, usage };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid Anthropic JSON";
     throw new Error(msg);
@@ -879,13 +1292,64 @@ async function loadWeeklyReflection(
   const weekStart = safeIso(item.weekStart);
   const weekEnd = safeIso(item.weekEnd);
   const generatedAt = safeIso(item.generatedAt);
-  if (!letterMarkdown.trim() || !weekStart || !weekEnd || !generatedAt) return null;
+  if (!weekStart || !weekEnd || !generatedAt) return null;
+  const generatedParts = parseGeneratedParts(item.generatedParts);
+  const emotions = parseEmotions(item.emotions);
+  const moodSummary = parseMoodSummary(item.moodSummary);
+  const patterns = parsePatternsBlob(
+    {
+      arc: item.arc,
+      wins: item.wins,
+      promises: item.promises,
+      recurring_thought: item.recurringThought ?? item.recurring_thought,
+      activities: item.activities,
+    },
+    new Set(),
+  );
+  const hasLetter = Boolean(letterMarkdown.trim());
+  const hasParts =
+    Boolean(generatedParts) &&
+    (generatedParts!.letter ||
+      generatedParts!.felt ||
+      generatedParts!.moved ||
+      generatedParts!.wins ||
+      generatedParts!.thought);
+  const hasPatternsData = Boolean(
+    patterns.arc ||
+      patterns.wins ||
+      patterns.promises ||
+      patterns.recurringThought ||
+      patterns.activities ||
+      emotions,
+  );
+  // Legacy rows always had a letter; patterns-only rows need generatedParts/data.
+  if (!hasLetter && !hasParts && !hasPatternsData) return null;
   const previewStored =
     typeof item.preview === "string" && item.preview.trim()
       ? item.preview.trim()
-      : letterPreviewFromMarkdown(letterMarkdown);
-  const emotions = parseEmotions(item.emotions);
-  const moodSummary = parseMoodSummary(item.moodSummary);
+      : hasLetter
+        ? letterPreviewFromMarkdown(letterMarkdown)
+        : undefined;
+  const recurringThought = (() => {
+    const base =
+      patterns.recurringThought ??
+      parseRecurringThought(item.recurringThought);
+    if (!base) return undefined;
+    const alsoRaw =
+      item.recurringThought &&
+      typeof item.recurringThought === "object"
+        ? (item.recurringThought as { alsoOn?: unknown }).alsoOn
+        : undefined;
+    const alsoOn = Array.isArray(alsoRaw)
+      ? alsoRaw
+          .filter(
+            (d): d is string =>
+              typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d),
+          )
+          .slice(0, 8)
+      : undefined;
+    return alsoOn && alsoOn.length > 0 ? { ...base, alsoOn } : base;
+  })();
   return {
     ownerId,
     weekKey,
@@ -895,6 +1359,12 @@ async function loadWeeklyReflection(
     ...(previewStored ? { preview: previewStored } : {}),
     ...(emotions ? { emotions } : {}),
     ...(moodSummary ? { moodSummary } : {}),
+    ...(patterns.arc ? { arc: patterns.arc } : {}),
+    ...(patterns.wins ? { wins: patterns.wins } : {}),
+    ...(patterns.promises ? { promises: patterns.promises } : {}),
+    ...(recurringThought ? { recurringThought } : {}),
+    ...(patterns.activities ? { activities: patterns.activities } : {}),
+    ...(generatedParts ? { generatedParts } : {}),
     meta: {
       generatedAt,
       model:
@@ -920,6 +1390,11 @@ type WeeklyLetterSummary = {
   weekEnd: string;
   generatedAt: string;
   preview?: string;
+  emotions?: WeeklyEmotionScore[];
+  activities?: WeeklyActivityByEntry[];
+  promises?: string[];
+  recurringThought?: WeeklyRecurringThought;
+  generatedParts?: WeeklyGeneratedParts;
 };
 
 async function listWeeklyReflections(
@@ -945,7 +1420,6 @@ async function listWeeklyReflections(
       const item = raw as Record<string, unknown>;
       const letterMarkdown =
         typeof item.letterMarkdown === "string" ? item.letterMarkdown : "";
-      if (!letterMarkdown.trim()) continue;
       const weekKey =
         typeof item.weekKey === "string"
           ? item.weekKey
@@ -956,16 +1430,47 @@ async function listWeeklyReflections(
       const weekEnd = safeIso(item.weekEnd);
       const generatedAt = safeIso(item.generatedAt);
       if (!weekKey || !weekStart || !weekEnd || !generatedAt) continue;
+      const generatedParts = parseGeneratedParts(item.generatedParts);
+      const emotions = parseEmotions(item.emotions);
+      const patterns = parsePatternsBlob(
+        {
+          wins: item.wins,
+          promises: item.promises,
+          recurring_thought: item.recurringThought ?? item.recurring_thought,
+          activities: item.activities,
+        },
+        new Set(),
+      );
+      const hasLetter = Boolean(letterMarkdown.trim());
+      const hasParts =
+        Boolean(generatedParts) &&
+        (generatedParts!.letter ||
+          generatedParts!.felt ||
+          generatedParts!.moved ||
+          generatedParts!.wins ||
+          generatedParts!.thought);
+      if (!hasLetter && !hasParts && !emotions && !patterns.activities) {
+        continue;
+      }
       const preview =
         typeof item.preview === "string" && item.preview.trim()
           ? item.preview.trim()
-          : letterPreviewFromMarkdown(letterMarkdown);
+          : hasLetter
+            ? letterPreviewFromMarkdown(letterMarkdown)
+            : undefined;
       out.push({
         weekKey,
         weekStart,
         weekEnd,
         generatedAt,
         ...(preview ? { preview } : {}),
+        ...(emotions ? { emotions } : {}),
+        ...(patterns.activities ? { activities: patterns.activities } : {}),
+        ...(patterns.promises ? { promises: patterns.promises } : {}),
+        ...(patterns.recurringThought
+          ? { recurringThought: patterns.recurringThought }
+          : {}),
+        ...(generatedParts ? { generatedParts } : {}),
       });
     }
     startKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -991,6 +1496,12 @@ async function saveWeeklyReflection(params: {
         preview: params.reflection.preview,
         emotions: params.reflection.emotions,
         moodSummary: params.reflection.moodSummary,
+        arc: params.reflection.arc,
+        wins: params.reflection.wins,
+        promises: params.reflection.promises,
+        recurringThought: params.reflection.recurringThought,
+        activities: params.reflection.activities,
+        generatedParts: params.reflection.generatedParts,
         generatedAt: params.reflection.meta.generatedAt,
         model: params.reflection.meta.model,
         journalEntryCount: params.reflection.meta.journalEntryCount,
@@ -1113,36 +1624,36 @@ export async function handler(
     return json(405, { error: "Method not allowed" });
   }
 
-  let regenerate = false;
+  let selection: WeeklyGenerateSelection = {
+    letter: true,
+    patterns: { felt: true, moved: true, wins: true, thought: true },
+  };
   try {
     const bodyRaw = event.isBase64Encoded
       ? Buffer.from(event.body ?? "", "base64").toString("utf-8")
       : (event.body ?? "");
-    const parsed = JSON.parse(bodyRaw || "{}") as { regenerate?: unknown; week?: unknown };
-    if (parsed.regenerate === true) regenerate = true;
+    const parsed = JSON.parse(bodyRaw || "{}") as Record<string, unknown>;
     if (typeof parsed.week === "string" && parsed.week.trim()) {
-      Object.assign(bounds, weekBoundsFromDate(new Date(`${parsed.week.trim()}T12:00:00.000Z`)));
+      Object.assign(
+        bounds,
+        weekBoundsFromDate(new Date(`${parsed.week.trim()}T12:00:00.000Z`)),
+      );
     }
+    selection = parseGenerateSelection(parsed);
   } catch {
     /* ignore */
   }
 
+  if (!selection.letter && !anyPatternSelected(selection.patterns)) {
+    return json(400, { error: "Choose at least one: letter or patterns" });
+  }
+
   try {
-    if (!regenerate) {
-      const cached = await loadWeeklyReflection(
-        insightsTable,
-        ownerId,
-        bounds.weekKey,
-      );
-      if (cached) {
-        return json(200, {
-          reflection: cached,
-          weekKey: bounds.weekKey,
-          weekStart: bounds.weekStart,
-          weekEnd: bounds.weekEnd,
-        });
-      }
-    }
+    const existing = await loadWeeklyReflection(
+      insightsTable,
+      ownerId,
+      bounds.weekKey,
+    );
 
     const { entries, chats } = await collectWeekData({
       journalTable,
@@ -1165,19 +1676,119 @@ export async function handler(
     }
 
     const apiKey = await getClaudeApiKey();
-    const { letterMarkdown, emotions, moodSummary, usage } = await callClaudeForLetter({
-      apiKey,
-      system: buildSystemPrompt(),
-      user: buildUserPrompt({
-        weekLabel: formatWeekLabel(bounds.weekStart, bounds.weekEnd),
-        displayName: user?.name,
-        journalText: formatJournalForPrompt(entries),
-        chatText: formatChatsForPrompt(chats),
-        moodTagsText: formatMoodTagsForPrompt(entries),
-      }),
-    });
+    const priorLetters = (await listWeeklyReflections(insightsTable, ownerId))
+      .filter((l) => l.weekKey < bounds.weekKey)
+      .slice(0, 4);
+    // Promises from the most recent stored week within the last 2 weeks.
+    const twoWeeksAgo = (() => {
+      const d = new Date(`${bounds.weekKey}T12:00:00.000Z`);
+      d.setUTCDate(d.getUTCDate() - 14);
+      return d.toISOString().slice(0, 10);
+    })();
+    const recentPromisesLetter = priorLetters.find(
+      (l) =>
+        l.weekKey >= twoWeeksAgo &&
+        Array.isArray(l.promises) &&
+        l.promises.length > 0,
+    );
+    const lastWeekPromises = recentPromisesLetter?.promises;
+    const priorRecurringThoughts = priorLetters
+      .filter((l) => l.recurringThought?.text)
+      .map((l) => ({
+        text: l.recurringThought!.text,
+        weekKey: l.weekKey,
+      }));
+    const knownEntryIds = new Set(entries.map((e) => e.id));
+    let modelOut: Awaited<ReturnType<typeof callClaudeForLetter>>;
+    try {
+      modelOut = await callClaudeForLetter({
+        apiKey,
+        system: buildSystemPrompt(selection),
+        user: buildUserPrompt({
+          weekLabel: formatWeekLabel(bounds.weekStart, bounds.weekEnd),
+          displayName: user?.name,
+          journalText: formatJournalForPrompt(entries),
+          chatText: formatChatsForPrompt(chats),
+          moodTagsText: formatMoodTagsForPrompt(entries),
+          selection,
+          ...(lastWeekPromises?.length ? { lastWeekPromises } : {}),
+          ...(priorRecurringThoughts.length
+            ? { priorRecurringThoughts }
+            : {}),
+        }),
+        knownEntryIds,
+      });
+    } catch (e) {
+      // Keep previous letter text if a new call fails mid-regenerate.
+      if (existing?.letterMarkdown?.trim()) {
+        return json(502, {
+          error: e instanceof Error ? e.message : "Generation failed",
+          reflection: existing,
+          weekKey: bounds.weekKey,
+          weekStart: bounds.weekStart,
+          weekEnd: bounds.weekEnd,
+        });
+      }
+      throw e;
+    }
 
-    const preview = letterPreviewFromMarkdown(letterMarkdown);
+    const {
+      letterMarkdown: modelLetter,
+      emotions,
+      moodSummary,
+      arc,
+      wins: modelWins,
+      promises,
+      recurringThought: modelThought,
+      activities,
+      usage,
+    } = modelOut;
+
+    const writingDays = uniqueWritingDays(entries);
+    const wroteLine =
+      writingDays > 0
+        ? `Wrote on ${writingDays} day${writingDays === 1 ? "" : "s"} out of 7`
+        : null;
+    const wins = (() => {
+      if (!selection.patterns.wins) return undefined;
+      const base = modelWins ? [...modelWins] : [];
+      if (wroteLine && !base.some((w) => /^wrote on \d+/i.test(w))) {
+        base.push(wroteLine);
+      }
+      return base.length > 0 ? base.slice(0, 5) : undefined;
+    })();
+
+    const recurringThought = (() => {
+      if (!selection.patterns.thought || !modelThought) return undefined;
+      const key = normalizeThoughtKey(modelThought.text);
+      const alsoOn: string[] = [];
+      for (const prior of priorLetters) {
+        const priorText = prior.recurringThought?.text;
+        if (!priorText) continue;
+        if (normalizeThoughtKey(priorText) === key) {
+          alsoOn.push(prior.weekKey);
+        }
+      }
+      return alsoOn.length > 0
+        ? { ...modelThought, alsoOn: alsoOn.slice(0, 4) }
+        : modelThought;
+    })();
+
+    const letterMarkdown = selection.letter
+      ? /^none$/i.test(modelLetter.trim())
+        ? existing?.letterMarkdown ?? ""
+        : modelLetter.trim()
+      : (existing?.letterMarkdown ?? "");
+
+    const preview = letterMarkdown.trim()
+      ? letterPreviewFromMarkdown(letterMarkdown)
+      : existing?.preview;
+
+    const generatedParts = mergeGeneratedParts(
+      existing?.generatedParts,
+      selection,
+    );
+
     const now = new Date().toISOString();
     const reflection: WeeklyReflection = {
       ownerId,
@@ -1186,8 +1797,42 @@ export async function handler(
       weekEnd: bounds.weekEnd,
       letterMarkdown,
       ...(preview ? { preview } : {}),
-      ...(emotions ? { emotions } : {}),
-      ...(moodSummary ? { moodSummary } : {}),
+      // Always refresh cheap data when any generation runs.
+      ...(emotions ? { emotions } : existing?.emotions ? { emotions: existing.emotions } : {}),
+      ...(moodSummary
+        ? { moodSummary }
+        : existing?.moodSummary
+          ? { moodSummary: existing.moodSummary }
+          : {}),
+      ...(selection.patterns.moved
+        ? arc
+          ? { arc }
+          : {}
+        : existing?.arc
+          ? { arc: existing.arc }
+          : {}),
+      ...(selection.patterns.wins
+        ? {
+            ...(wins ? { wins } : {}),
+            ...(promises ? { promises } : {}),
+          }
+        : {
+            ...(existing?.wins ? { wins: existing.wins } : {}),
+            ...(existing?.promises ? { promises: existing.promises } : {}),
+          }),
+      ...(selection.patterns.thought
+        ? recurringThought
+          ? { recurringThought }
+          : {}
+        : existing?.recurringThought
+          ? { recurringThought: existing.recurringThought }
+          : {}),
+      ...(activities
+        ? { activities }
+        : existing?.activities
+          ? { activities: existing.activities }
+          : {}),
+      generatedParts,
       meta: {
         generatedAt: now,
         model: CLAUDE_HAIKU_45_MODEL_ID,

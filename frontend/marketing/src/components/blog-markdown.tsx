@@ -83,7 +83,7 @@ function MarkdownBody({ source }: { source: string }) {
       blocks.push(
         <h3
           key={`h3-${b++}`}
-          className="mt-8 font-display text-xl font-medium tracking-tight text-foreground"
+          className="mt-8 font-display text-xl font-medium tracking-tight"
         >
           {inlineToNodes(line.replace(/^###\s+/, ""), `h3-${b}`)}
         </h3>,
@@ -95,7 +95,7 @@ function MarkdownBody({ source }: { source: string }) {
       blocks.push(
         <h2
           key={`h2-${b++}`}
-          className="mt-10 font-display text-2xl font-medium tracking-tight text-foreground"
+          className="mt-10 font-display text-2xl font-medium tracking-tight"
         >
           {inlineToNodes(line.replace(/^##\s+/, ""), `h2-${b}`)}
         </h2>,
@@ -107,7 +107,7 @@ function MarkdownBody({ source }: { source: string }) {
       blocks.push(
         <h1
           key={`h1-${b++}`}
-          className="mt-10 font-display text-3xl font-medium tracking-tight text-foreground"
+          className="mt-10 font-display text-3xl font-medium tracking-tight"
         >
           {inlineToNodes(line.replace(/^#\s+/, ""), `h1-${b}`)}
         </h1>,
@@ -130,7 +130,7 @@ function MarkdownBody({ source }: { source: string }) {
       blocks.push(
         <ul
           key={`ul-${b++}`}
-          className="mt-4 list-disc space-y-2 pl-5 text-[17px] text-foreground"
+          className="mt-4 list-disc space-y-2 pl-5 text-[17px]"
         >
           {items}
         </ul>,
@@ -152,7 +152,7 @@ function MarkdownBody({ source }: { source: string }) {
     blocks.push(
       <p
         key={`p-${b++}`}
-        className="mt-4 text-[17px] leading-relaxed text-foreground"
+        className="mt-4 text-[17px] leading-relaxed"
       >
         {inlineToNodes(para.join(" "), `p-${b}`)}
       </p>,
@@ -161,7 +161,7 @@ function MarkdownBody({ source }: { source: string }) {
 
   if (blocks.length === 0 && source.trim()) {
     return (
-      <p className="whitespace-pre-wrap text-[17px] leading-relaxed text-foreground">
+      <p className="whitespace-pre-wrap text-[17px] leading-relaxed">
         {source}
       </p>
     );
@@ -172,12 +172,15 @@ function MarkdownBody({ source }: { source: string }) {
 
 const proseClass =
   "read-prose max-w-none " +
-  "[&_p]:mt-4 [&_p]:text-[17px] [&_p]:leading-relaxed [&_p]:text-foreground " +
-  "[&_h2]:mt-10 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-medium [&_h2]:tracking-tight [&_h2]:text-foreground " +
-  "[&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-xl [&_h3]:font-medium [&_h3]:tracking-tight [&_h3]:text-foreground " +
-  "[&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:text-[17px] [&_ul]:text-foreground " +
-  "[&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ol]:text-[17px] [&_ol]:text-foreground " +
+  // Inherit color from the page (home-v2 field uses --hv2-hero-fg). Do not
+  // force text-foreground — on hybrid/dark that is near-black on navy.
+  "[&_p]:mt-4 [&_p]:text-[17px] [&_p]:leading-relaxed " +
+  "[&_h2]:mt-10 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-medium [&_h2]:tracking-tight " +
+  "[&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-xl [&_h3]:font-medium [&_h3]:tracking-tight " +
+  "[&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:text-[17px] " +
+  "[&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ol]:text-[17px] " +
   "[&_strong]:font-semibold [&_em]:italic " +
+  "[&_sub]:align-sub [&_sub]:text-[0.75em] [&_sup]:align-super [&_sup]:text-[0.75em] " +
   "[&_a]:text-accent-link [&_a]:underline [&_a]:underline-offset-2";
 
 export function ReadBody({ source }: { source: string }) {

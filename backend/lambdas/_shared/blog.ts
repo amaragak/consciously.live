@@ -521,10 +521,16 @@ export async function putBlogPost(
         ? input.notes.slice(0, MAX_BLOG_NOTES_LEN)
         : ""
       : (existing?.notes ?? ""),
-    body:
-      typeof input.body === "string"
-        ? input.body.slice(0, 100_000)
-        : (existing?.body ?? ""),
+    // TipTap/React can race and PUT an empty body right after a good write.
+    // Never blank out existing content unless the client sent real text.
+    body: (() => {
+      if (typeof input.body !== "string") return existing?.body ?? "";
+      const incoming = input.body.slice(0, 100_000);
+      if (blogBodyHasContent(incoming)) return incoming;
+      const prev = existing?.body ?? "";
+      if (blogBodyHasContent(prev)) return prev;
+      return incoming;
+    })(),
     published,
     publishedAt,
     audioUrl: existing?.audioUrl ?? null,

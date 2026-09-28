@@ -407,6 +407,7 @@ export function JournalInsightsView() {
 
         <JournalWeeklyReflectionCard
           weekKey={activeWeekKey}
+          recentLetters={displayLetters}
           onLetterChanged={() => {
             invalidateCachedWeeklyLetters();
             void loadLetters({ force: true });

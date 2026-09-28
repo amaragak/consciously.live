@@ -221,6 +221,8 @@ export function AdminReadPanel() {
   const [draft, setDraft] = useState(blankDraft());
   const [editorNonce, setEditorNonce] = useState(0);
   const liveEditorDocRef = useRef(editorDocKey(null, 0));
+  /** TipTap updates draft via setState — keep a sync ref so Save never races empty body. */
+  const liveBodyRef = useRef("");
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [audioBusy, setAudioBusy] = useState(false);
@@ -258,6 +260,7 @@ export function AdminReadPanel() {
   function startNew() {
     const nextNonce = editorNonce + 1;
     liveEditorDocRef.current = editorDocKey("new", nextNonce);
+    liveBodyRef.current = "";
     setSelectedId("new");
     setDraft(blankDraft());
     setSlugTouched(false);
@@ -270,6 +273,7 @@ export function AdminReadPanel() {
     const post = posts.find((p) => p.id === id);
     const nextNonce = editorNonce + 1;
     liveEditorDocRef.current = editorDocKey(id, nextNonce);
+    liveBodyRef.current = post?.body ?? "";
     setSelectedId(id);
     setDraft(post ? draftFromPost(post) : blankDraft());
     setSlugTouched(Boolean(post));
@@ -355,6 +359,20 @@ export function AdminReadPanel() {
     }
     setBusy(true);
     setStatus(null);
+    // Prefer TipTap's sync ref; fall back to draft, then last-known post body.
+    // Never send an empty TipTap placeholder when we already have real content.
+    const bodyHasText = (b: string) =>
+      Boolean(
+        b
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+      );
+    const bodyToSave =
+      [liveBodyRef.current, draft.body, selected?.body ?? ""].find(bodyHasText) ||
+      liveBodyRef.current ||
+      draft.body;
     try {
       const saved = await saveAdminBlogPost({
         id: draft.id,
@@ -366,24 +384,41 @@ export function AdminReadPanel() {
         series: draft.series,
         part: draft.part,
         notes: draft.notes,
-        body: draft.body,
+        body: bodyToSave,
         published: draft.published,
       });
+      // Prefer the body we just sent — never let a stale server/normalize miss wipe it.
+      const savedWithBody =
+        saved.body.trim() || !bodyToSave.trim()
+          ? saved
+          : { ...saved, body: bodyToSave };
       // Apply server response immediately — don’t wait on re-list (avoids a
       // brief stale title overwrite after capitalization-only edits).
       setPosts((prev) => {
-        const rest = prev.filter((p) => p.id !== saved.id);
-        return [saved, ...rest].sort((a, b) => {
+        const rest = prev.filter((p) => p.id !== savedWithBody.id);
+        return [savedWithBody, ...rest].sort((a, b) => {
           const aT = a.publishedAt || a.updatedAt;
           const bT = b.publishedAt || b.updatedAt;
           return bT.localeCompare(aT);
         });
       });
-      liveEditorDocRef.current = editorDocKey(saved.id, editorNonce);
-      setSelectedId(saved.id);
-      setDraft(draftFromPost(saved));
+      liveBodyRef.current = savedWithBody.body;
+      const wasNew = !draft.id || draft.id !== savedWithBody.id;
+      // Remount only when a new post first gets an id — remounting on every
+      // save races TipTap empty HTML into liveBodyRef before the next Save.
+      if (wasNew) {
+        const nextNonce = editorNonce + 1;
+        liveEditorDocRef.current = editorDocKey(savedWithBody.id, nextNonce);
+        setEditorNonce(nextNonce);
+      } else {
+        liveEditorDocRef.current = editorDocKey(savedWithBody.id, editorNonce);
+      }
+      setSelectedId(savedWithBody.id);
+      setDraft(draftFromPost(savedWithBody));
       setSlugTouched(true);
-      setStatus(saved.published ? "Saved & published." : "Saved as draft.");
+      setStatus(
+        savedWithBody.published ? "Saved & published." : "Saved as draft.",
+      );
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -425,11 +460,17 @@ export function AdminReadPanel() {
         setPosts(list);
         const latest = list.find((p) => p.id === draft.id);
         if (!latest) return;
-        setDraft((d) =>
-          d.id === latest.id
-            ? { ...d, ...draftFromPost(latest), body: d.body, title: d.title }
-            : d,
-        );
+        setDraft((d) => {
+          if (d.id !== latest.id) return d;
+          const next = {
+            ...d,
+            ...draftFromPost(latest),
+            body: d.body,
+            title: d.title,
+          };
+          liveBodyRef.current = next.body;
+          return next;
+        });
         if (latest.audioStatus === "ready") {
           setAudioBusy(false);
         } else if (latest.audioStatus === "failed") {
@@ -949,6 +990,7 @@ export function AdminReadPanel() {
                 initialHtml={bodyToEditorHtml(draft.body)}
                 onHtmlChange={(html, fromDoc) => {
                   if (fromDoc !== liveEditorDocRef.current) return;
+                  liveBodyRef.current = html;
                   setDraft((d) => ({ ...d, body: html }));
                 }}
                 linkPosts={posts

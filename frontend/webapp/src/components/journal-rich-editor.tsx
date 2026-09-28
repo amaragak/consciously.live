@@ -2,6 +2,8 @@ import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Image as ImageIcon, List, ListOrdered, Redo2, Undo2 } from "lucide-react";
 import { formatJournalEntryDate } from "@/lib/journal-storage";
@@ -23,6 +25,7 @@ const editorClass =
   "[&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:font-display [&_h3]:text-base [&_h3]:font-medium " +
   "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 " +
   "[&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic " +
+  "[&_sub]:align-sub [&_sub]:text-[0.75em] [&_sup]:align-super [&_sup]:text-[0.75em] " +
   "[&_img]:my-3 [&_img]:max-h-[28rem] [&_img]:max-w-full [&_img]:rounded-lg";
 
 type Props = {
@@ -200,6 +203,8 @@ export function JournalRichEditor({
       StarterKit.configure({
         heading: { levels: [2, 3] },
       }),
+      Subscript,
+      Superscript,
       Placeholder.configure({
         placeholder,
         emptyEditorClass: "is-editor-empty",
@@ -443,6 +448,24 @@ export function JournalRichEditor({
             >
               <span className="italic">I</span>
             </ToolbarBtn>
+            <ToolbarBtn
+              label="Subscript"
+              active={editor.isActive("subscript")}
+              onClick={() => editor.chain().focus().toggleSubscript().run()}
+            >
+              <span className="text-[13px] font-semibold leading-none">
+                X<sub className="text-[9px]">2</sub>
+              </span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Superscript"
+              active={editor.isActive("superscript")}
+              onClick={() => editor.chain().focus().toggleSuperscript().run()}
+            >
+              <span className="text-[13px] font-semibold leading-none">
+                X<sup className="text-[9px]">2</sup>
+              </span>
+            </ToolbarBtn>
             <span className="mx-1 h-6 w-px bg-border" aria-hidden />
             <label className="sr-only" htmlFor="journal-text-style">
               Text style
@@ -573,6 +596,25 @@ export function JournalRichEditor({
           </div>
           {toolbarMoreOpen ? (
             <div className="flex flex-nowrap items-center gap-1 overflow-x-auto border-t border-border px-3 py-2">
+              <ToolbarBtn
+                label="Subscript"
+                active={editor.isActive("subscript")}
+                onClick={() => editor.chain().focus().toggleSubscript().run()}
+              >
+                <span className="text-[13px] font-semibold leading-none">
+                  X<sub className="text-[9px]">2</sub>
+                </span>
+              </ToolbarBtn>
+              <ToolbarBtn
+                label="Superscript"
+                active={editor.isActive("superscript")}
+                onClick={() => editor.chain().focus().toggleSuperscript().run()}
+              >
+                <span className="text-[13px] font-semibold leading-none">
+                  X<sup className="text-[9px]">2</sup>
+                </span>
+              </ToolbarBtn>
+              <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
               <ToolbarBtn
                 label="Heading 2"
                 active={editor.isActive("heading", { level: 2 })}

@@ -2,6 +2,8 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Image as ImageIcon,
@@ -28,6 +30,7 @@ const editorClass =
   "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 " +
   "[&_li]:my-0.5 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted " +
   "[&_strong]:font-semibold [&_em]:italic [&_a]:text-accent-link [&_a]:underline " +
+  "[&_sub]:align-sub [&_sub]:text-[0.75em] [&_sup]:align-super [&_sup]:text-[0.75em] " +
   "[&_img.read-img]:my-3 [&_img.read-img]:rounded-md [&_img.read-img]:h-auto " +
   "[&_img.read-img--inline]:mx-auto [&_img.read-img--inline]:block [&_img.read-img--inline]:max-w-full [&_img.read-img--inline]:w-auto " +
   "[&_img.read-img--full]:block [&_img.read-img--full]:w-full [&_img.read-img--full]:max-w-full";
@@ -84,6 +87,8 @@ export function ReadRichEditor({
           class: "text-accent-link underline underline-offset-2",
         },
       }),
+      Subscript,
+      Superscript,
       ReadImage,
       Placeholder.configure({
         placeholder,
@@ -222,6 +227,24 @@ export function ReadRichEditor({
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
           <span className="italic">I</span>
+        </ToolbarBtn>
+        <ToolbarBtn
+          label="Subscript"
+          active={editor.isActive("subscript")}
+          onClick={() => editor.chain().focus().toggleSubscript().run()}
+        >
+          <span className="text-[12px] font-semibold leading-none">
+            X<sub className="text-[8px]">2</sub>
+          </span>
+        </ToolbarBtn>
+        <ToolbarBtn
+          label="Superscript"
+          active={editor.isActive("superscript")}
+          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        >
+          <span className="text-[12px] font-semibold leading-none">
+            X<sup className="text-[8px]">2</sup>
+          </span>
         </ToolbarBtn>
         <ToolbarBtn
           label="Heading"

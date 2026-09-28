@@ -6,6 +6,7 @@ import {
   Code2,
   Focus,
   MessageSquare,
+  Settings,
   Shield,
   Sparkles,
 } from "lucide-react";
@@ -424,6 +425,26 @@ export function AppSidebar({
               <Link
                 href="/settings"
                 onClick={onNavigate}
+                title="Settings"
+                aria-label="Settings"
+                aria-current={
+                  pathname.startsWith("/settings") ? "page" : undefined
+                }
+                className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+                  pathname.startsWith("/settings")
+                    ? "bg-nav-active text-accent-link"
+                    : "text-muted hover:bg-nav-active hover:text-foreground"
+                }`}
+              >
+                <Settings
+                  aria-hidden
+                  className="size-[18px] shrink-0"
+                  strokeWidth={1.75}
+                />
+              </Link>
+              <Link
+                href="/settings"
+                onClick={onNavigate}
                 title={accountLabel}
                 aria-label={`Account: ${accountLabel}`}
                 className="flex size-8 items-center justify-center rounded-full bg-accent-soft/80 text-xs font-semibold text-accent-link"
@@ -502,6 +523,25 @@ export function AppSidebar({
             </button>
             <ColorSchemePicker variant="sidebar" menu="up" />
           </div>
+          <Link
+            href="/settings"
+            onClick={onNavigate}
+            aria-current={
+              pathname.startsWith("/settings") ? "page" : undefined
+            }
+            className={`mb-0.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[15px] transition-colors hover:bg-nav-active hover:text-foreground ${
+              pathname.startsWith("/settings")
+                ? "font-semibold text-accent-link"
+                : "text-muted"
+            }`}
+          >
+            <Settings
+              aria-hidden
+              className="size-[18px] shrink-0"
+              strokeWidth={1.75}
+            />
+            <span className="min-w-0 truncate">Settings</span>
+          </Link>
           <div className="flex items-center gap-2 px-2.5 py-2">
             <Link
               href="/settings"
