@@ -4,6 +4,10 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
+import {
+  MarkdownClipboard,
+  TIPTAP_DISABLE_PLAIN_CLIPBOARD,
+} from "@/lib/tiptap-markdown-clipboard";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Image as ImageIcon, List, ListOrdered, Redo2, Undo2 } from "lucide-react";
 import { formatJournalEntryDate } from "@/lib/journal-storage";
@@ -205,6 +209,7 @@ export function JournalRichEditor({
       }),
       Subscript,
       Superscript,
+      MarkdownClipboard,
       Placeholder.configure({
         placeholder,
         emptyEditorClass: "is-editor-empty",
@@ -214,6 +219,7 @@ export function JournalRichEditor({
     ],
     content: initialHtml,
     immediatelyRender: false,
+    enableCoreExtensions: TIPTAP_DISABLE_PLAIN_CLIPBOARD,
     editorProps: {
       attributes: {
         class: editorClass,

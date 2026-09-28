@@ -17,6 +17,10 @@ a{color:inherit;text-decoration:none}
 .letter p{margin:0 0 18px;font-family:'Fraunces',serif;font-size:19px;line-height:1.7;color:#2A303C}
 .day{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:13px;color:#6B6457}
 .dot{width:100%;height:44px;border-radius:12px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;box-sizing:border-box;font-size:12px;font-weight:600;color:#1B2230}
+.sec{width:100%;display:flex;align-items:center;gap:12px;padding:16px 0;border:0;border-bottom:1px solid #EADFCF;background:none;font:inherit;color:#1B2230;text-align:left;cursor:pointer}
+.sec .t{font-family:'Fraunces',serif;font-size:22px;font-weight:400}
+.sec .m{margin-left:auto;font-size:13px;color:#8A8175;display:flex;align-items:center;gap:10px}
+.chev{width:28px;height:28px;border-radius:6px;border:1px solid #EADFCF;display:flex;align-items:center;justify-content:center;color:#4A4F5A;flex-shrink:0}
 .theme{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-radius:12px;background:#FAF6F0;border:1px solid #EADFCF;font-size:15px}
 </style>
 </helmet>
@@ -54,8 +58,8 @@ a{color:inherit;text-decoration:none}
 </aside>
 
 <!-- Main -->
-<main style="flex-grow: 1; padding: 44px 56px 56px; box-sizing: border-box; display: flex; justify-content: center">
-<div style="width: 820px; display: flex; flex-direction: column; gap: 28px">
+<main style="flex-grow: 1; background: #FFFDF9; padding: 36px 64px 56px; box-sizing: border-box; display: flex; justify-content: flex-start">
+<div style="width: 760px; display: flex; flex-direction: column; gap: 22px">
 
 <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
 <div style="display: flex; flex-direction: column; gap: 8px">
@@ -63,28 +67,28 @@ a{color:inherit;text-decoration:none}
 <h1 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 36px; letter-spacing: -0.6px">A gentle letter for 21–28 Sept</h1>
 <div style="font-size: 14px; color: #6B6457">Written from your 4 journal entries and 2 meditations this week</div>
 </div>
-<button aria-label="Letter options" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid #EADFCF; background: #FFFFFF; color: #4A4F5A; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>
+<button aria-label="Letter options" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #EADFCF; background: #FFFDF9; color: #4A4F5A; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>
 </div>
 
-<!-- The letter -->
-<article class="letter" style="background: #FFFDF9; border: 1px solid #EADFCF; border-radius: 22px; padding: 44px 56px 36px">
+<!-- The letter (collapsible) -->
+<section aria-label="Your letter" style="display: flex; flex-direction: column">
+<button class="sec" aria-expanded="true" aria-controls="letter-body"><span class="chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span><span class="t">Your letter</span><span class="m">3 min read · Collapse</span></button>
+<article id="letter-body" class="letter" style="padding: 26px 0 4px; max-width: 680px">
 <p style="font-style: italic">Dear Alex,</p>
 <p>This week you kept coming back to the studio. On Monday you could picture it so clearly you almost laughed; by Wednesday the same picture came with a question: <em>who am I to charge for this?</em></p>
 <p>That question showed up three times. Each time, you wrote your way to the other side of it, and on Friday you listed what the work is actually worth. That’s not nothing. That’s the first step you said you’d take.</p>
 <p>You also noticed quiet mornings, twice, and how much lighter the day felt after them. Maybe protect one more of those next week.</p>
 <p style="margin: 8px 0 0; font-style: italic; color: #6B6457">With you, · consciously</p>
 </article>
+</section>
 
 <!-- Patterns -->
-<section aria-label="Patterns this week" style="display: flex; flex-direction: column; gap: 16px">
-<div style="display: flex; justify-content: space-between; align-items: baseline">
-<h2 style="margin: 0; font-family: 'Fraunces', serif; font-weight: 400; font-size: 24px">Patterns this week</h2>
-<span style="font-size: 13px; color: #6B6457">From your mood tags and what you wrote</span>
-</div>
+<section aria-label="Patterns this week" style="display: flex; flex-direction: column; gap: 20px">
+<button class="sec" aria-expanded="true" aria-controls="patterns-body"><span class="chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span><span class="t">Patterns this week</span><span class="m">From your mood tags and what you wrote · Collapse</span></button>
 
 <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px">
 
-<div style="grid-column: span 12; background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="grid-column: span 12; background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
 <div style="font-size: 14px; font-weight: 600">How this week felt</div>
 <div style="display: flex; flex-direction: column; gap: 6px"><div style="display: flex; justify-content: space-between; font-size: 14px"><span>Hope</span><span style="color: #6B6457">8/10</span></div><div style="height: 10px; border-radius: 999px; background: #F0E7DA"><div style="height: 10px; width: 80%; border-radius: 999px; background: #F2B27A"></div></div></div>
 <div style="display: flex; flex-direction: column; gap: 6px"><div style="display: flex; justify-content: space-between; font-size: 14px"><span>Self-doubt</span><span style="color: #6B6457">6/10</span></div><div style="height: 10px; border-radius: 999px; background: #F0E7DA"><div style="height: 10px; width: 60%; border-radius: 999px; background: #1E2533"></div></div></div>
@@ -93,7 +97,7 @@ a{color:inherit;text-decoration:none}
 <div style="display: flex; flex-direction: column; gap: 6px"><div style="display: flex; justify-content: space-between; font-size: 14px"><span>Overwhelm</span><span style="color: #6B6457">3/10</span></div><div style="height: 10px; border-radius: 999px; background: #F0E7DA"><div style="height: 10px; width: 30%; border-radius: 999px; background: #1E2533"></div></div></div>
 <div style="font-size: 12px; line-height: 1.5; color: #8A8175; padding-top: 2px">Read from your entries by AI: a reflection, not a measurement.</div>
 </div>
-<div style="grid-column: span 12; background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="grid-column: span 12; background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
 <div style="font-size: 14px; font-weight: 600">Mood</div>
 <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px">
 <div class="day"><div class="dot" style="background: #F6C99C">Good</div>Mon</div>
@@ -110,7 +114,7 @@ a{color:inherit;text-decoration:none}
 </div>
 
 <!-- How the week moved -->
-<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
 <div style="display: flex; justify-content: space-between; align-items: baseline">
 <div style="font-size: 14px; font-weight: 600">How the week moved</div>
 <div style="font-size: 14px; color: #4A4F5A"><b style="font-weight: 600; color: #1B2230">Anxious</b> → <b style="font-weight: 600; color: #1B2230">Calm</b></div>
@@ -128,7 +132,7 @@ a{color:inherit;text-decoration:none}
 
 <!-- Wins + promises -->
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
-<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
 <div style="font-size: 14px; font-weight: 600">Wins you might have missed</div>
 <div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px">
 <span style="display: flex; gap: 10px"><span aria-hidden="true" style="color: #A5632E">✓</span>Listed what your work is actually worth</span>
@@ -137,7 +141,7 @@ a{color:inherit;text-decoration:none}
 </div>
 <div style="font-size: 13px; color: #6B6457">Pulled from what you wrote. Small steps count.</div>
 </div>
-<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
 <div style="font-size: 14px; font-weight: 600">Promises to yourself</div>
 <div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px">
 <span style="display: flex; gap: 10px"><span aria-hidden="true" style="color: #8A8175">○</span>Price the first collection</span>
@@ -148,7 +152,7 @@ a{color:inherit;text-decoration:none}
 </div>
 
 <!-- Recurring thought -->
-<div style="background: #FBEBDC; border: 1px solid #F2D6BA; border-radius: 20px; padding: 24px 26px; display: flex; align-items: center; gap: 24px">
+<div style="background: #FBEBDC; border: 1px solid #F2D6BA; border-radius: 12px; padding: 24px 26px; display: flex; align-items: center; gap: 24px">
 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px">
 <div style="font-size: 14px; font-weight: 600">The thought that keeps coming back</div>
 <div style="font-family: 'Fraunces', serif; font-size: 26px; font-style: italic; line-height: 1.3">“Who am I to charge for this?”</div>
@@ -159,7 +163,7 @@ a{color:inherit;text-decoration:none}
 
 <!-- What lifts you + month -->
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
-<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
 <div style="display: flex; justify-content: space-between; align-items: baseline"><div style="font-size: 14px; font-weight: 600">What lifts you</div><span style="font-size: 12px; color: #8A8175">Last 4 weeks</span></div>
 <div style="display: flex; flex-direction: column; gap: 8px">
 <span style="font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #A5632E">Days you felt good or calm</span>
@@ -171,7 +175,7 @@ a{color:inherit;text-decoration:none}
 </div>
 <div style="font-size: 12px; color: #8A8175">Unlocks after 3 weeks of entries.</div>
 </div>
-<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="background: #FFFFFF; border: 1px solid #EADFCF; border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
 <div style="display: flex; justify-content: space-between; align-items: baseline"><div style="font-size: 14px; font-weight: 600">Your month so far</div><span style="font-size: 12px; color: #8A8175">Weekly scores</span></div>
 <div style="display: flex; gap: 16px; font-size: 13px; color: #4A4F5A"><span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #F2B27A"></span>Hope</span><span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #1E2533"></span>Self-doubt</span></div>
 <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: end; height: 120px; border-bottom: 1px solid #F0E7DA">
@@ -185,7 +189,7 @@ a{color:inherit;text-decoration:none}
 </div>
 </div>
 
-<div style="background: #1E2533; color: #F6F1E7; border-radius: 20px; padding: 22px 26px; display: flex; align-items: center; gap: 20px">
+<div style="background: #1E2533; color: #F6F1E7; border-radius: 12px; padding: 22px 26px; display: flex; align-items: center; gap: 20px">
 <span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 999px; background: #F2B27A; color: #1B2230; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg></span>
 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px">
 <span style="font-family: 'Fraunces', serif; font-size: 20px">Turn this week into a meditation</span>
@@ -196,7 +200,7 @@ a{color:inherit;text-decoration:none}
 </section>
 
 <!-- Empty-state reference -->
-<section aria-label="Empty state example" style="border: 1.5px dashed #E3D6C3; border-radius: 20px; padding: 22px 26px; display: flex; align-items: center; gap: 24px">
+<section aria-label="Empty state example" style="border: 1.5px dashed #E3D6C3; border-radius: 12px; padding: 22px 26px; display: flex; align-items: center; gap: 24px">
 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px">
 <span style="font-size: 12px; letter-spacing: 1.3px; text-transform: uppercase; color: #8A8175">Before the letter is written</span>
 <span style="font-family: 'Fraunces', serif; font-size: 20px">Your insights are written from this week’s entries.</span>

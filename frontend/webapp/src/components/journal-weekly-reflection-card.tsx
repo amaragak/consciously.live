@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MoreHorizontal, Play } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreHorizontal, Play } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import {
+  readInsightsCollapsePrefs,
+  writeInsightsCollapsePrefs,
+} from "@/lib/insights-collapse-prefs";
 import {
   fetchJournalWeeklyReflectionRemote,
   getMedimadeApiBase,
@@ -79,6 +83,112 @@ function plainFromMarkdown(md: string): string {
     .replace(/[#>*_`~]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function letterWordCount(md: string): number {
+  const plain = plainFromMarkdown(md);
+  if (!plain) return 0;
+  return plain.split(/\s+/).filter(Boolean).length;
+}
+
+/** Minutes at 200 wpm, rounded up (min 1 when there is any text). */
+function letterMinutesRead(md: string): number {
+  const words = letterWordCount(md);
+  if (words <= 0) return 1;
+  return Math.max(1, Math.ceil(words / 200));
+}
+
+/** First sentence after the “Dear …,” greeting, for collapsed preview. */
+function firstLetterSentence(md: string): string {
+  const plain = plainFromMarkdown(md);
+  const withoutDear = plain.replace(/^Dear\s+[^,.]+[,.]?\s*/i, "").trim();
+  if (!withoutDear) return "";
+  const m = withoutDear.match(/^(.+?[.!?])(?:\s|$)/);
+  return (m?.[1] ?? withoutDear).trim();
+}
+
+function InsightsSectionHeader({
+  id,
+  title,
+  meta,
+  expanded,
+  onToggle,
+  collapsible,
+}: {
+  id: string;
+  title: string;
+  meta: string;
+  expanded: boolean;
+  onToggle: () => void;
+  collapsible: boolean;
+}) {
+  if (!collapsible) {
+    return (
+      <div className="flex w-full items-center gap-3 border-b border-border py-4 text-left">
+        <span
+          aria-hidden
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted"
+        >
+          <ChevronDown className="size-3.5" strokeWidth={2.2} />
+        </span>
+        <span className="font-display text-[22px] font-normal text-foreground">
+          {title}
+        </span>
+        <span className="ml-auto text-[13px] text-muted">{meta}</span>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      id={`${id}-header`}
+      aria-expanded={expanded}
+      aria-controls={`${id}-body`}
+      onClick={onToggle}
+      className="flex w-full cursor-pointer items-center gap-3 border-b border-border bg-transparent py-4 text-left font-inherit text-foreground"
+    >
+      <span
+        aria-hidden
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted"
+      >
+        {expanded ? (
+          <ChevronDown className="size-3.5" strokeWidth={2.2} />
+        ) : (
+          <ChevronRight className="size-3.5" strokeWidth={2.2} />
+        )}
+      </span>
+      <span className="font-display text-[22px] font-normal text-foreground">
+        {title}
+      </span>
+      <span className="ml-auto text-[13px] text-muted">{meta}</span>
+    </button>
+  );
+}
+
+function InsightsCollapsibleBody({
+  id,
+  open,
+  children,
+}: {
+  id: string;
+  open: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      id={`${id}-body`}
+      role="region"
+      aria-labelledby={`${id}-header`}
+      className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
+        open
+          ? "grid-rows-[1fr] opacity-100"
+          : "grid-rows-[0fr] opacity-0"
+      }`}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  );
 }
 
 function countEntriesInWeek(
@@ -377,8 +487,23 @@ export function JournalWeeklyReflectionCard({
   const [dialogPrefill, setDialogPrefill] =
     useState<InsightsGeneratePrefill | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [letterCollapsed, setLetterCollapsed] = useState(
+    () => readInsightsCollapsePrefs().letterCollapsed,
+  );
+  const [patternsCollapsed, setPatternsCollapsed] = useState(
+    () => readInsightsCollapsePrefs().patternsCollapsed,
+  );
 
   const apiEnabled = Boolean(getMedimadeApiBase());
+
+  const persistCollapse = useCallback(
+    (next: { letterCollapsed: boolean; patternsCollapsed: boolean }) => {
+      setLetterCollapsed(next.letterCollapsed);
+      setPatternsCollapsed(next.patternsCollapsed);
+      writeInsightsCollapsePrefs(next);
+    },
+    [],
+  );
 
   const openGenerateDialog = useCallback(
     (prefill?: InsightsGeneratePrefill | null) => {
@@ -602,6 +727,66 @@ export function JournalWeeklyReflectionCard({
     Boolean(pendingGeneration) ||
     !loading;
 
+  const letterOpen = !letterCollapsed;
+  const patternsOpen = !patternsCollapsed;
+  const letterCollapsible = hasLetter && !pendingLetter;
+  /** Only the dashed “Add patterns” CTA — do not collapse that alone. */
+  const patternsOnlyAddCta =
+    hasLetter &&
+    !hasGeneratedPatterns &&
+    !pendingAnyPattern &&
+    !hasAnyMood;
+  const patternsCollapsible = showPatternsSection && !patternsOnlyAddCta;
+
+  const letterMinutes = hasLetter && reflection
+    ? letterMinutesRead(reflection.letterMarkdown)
+    : 1;
+  const letterPreview =
+    hasLetter && reflection
+      ? firstLetterSentence(reflection.letterMarkdown)
+      : "";
+
+  const patternsCollapsedMeta = useMemo(() => {
+    const bits: string[] = [];
+    if (showEmotionChart && emotions[0]) {
+      bits.push(`${emotions[0].name} ${emotions[0].score}/10`);
+    }
+    const arc = reflection?.arc;
+    if (generatedParts?.moved && arc?.start && arc?.end) {
+      bits.push(`${arc.start} → ${arc.end}`);
+    }
+    const wins = (reflection?.wins ?? []).filter(Boolean);
+    if (generatedParts?.wins && wins.length > 0) {
+      bits.push(`${wins.length} win${wins.length === 1 ? "" : "s"}`);
+    }
+    if (bits.length === 0) return "Expand";
+    return `${bits.slice(0, 3).join(" · ")} · Expand`;
+  }, [
+    emotions,
+    generatedParts,
+    reflection,
+    showEmotionChart,
+  ]);
+
+  const letterMeta = letterCollapsible
+    ? `${letterMinutes} min read · ${letterOpen ? "Collapse" : "Expand"}`
+    : "";
+  const patternsMeta = patternsCollapsible
+    ? patternsOpen
+      ? "From your mood tags and what you wrote · Collapse"
+      : patternsCollapsedMeta
+    : hasGeneratedPatterns || hasAnyMood
+      ? "From your mood tags and what you wrote"
+      : "";
+
+  const showLetterBlock =
+    apiEnabled &&
+    !loading &&
+    (pendingLetter ||
+      hasLetter ||
+      hasGeneratedPatterns ||
+      (!hasAnyInsights && !pendingAnyPattern));
+
   return (
     <div className="flex flex-col gap-7">
       <div className="flex items-end justify-between gap-6">
@@ -627,7 +812,7 @@ export function JournalWeeklyReflectionCard({
               aria-label="Insights options"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
-              className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted transition-colors hover:text-foreground"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-transparent text-muted transition-colors hover:text-foreground"
             >
               <MoreHorizontal className="size-[18px]" strokeWidth={2} />
             </button>
@@ -657,40 +842,16 @@ export function JournalWeeklyReflectionCard({
         </p>
       ) : loading ? (
         <p className="text-sm italic text-muted">Loading…</p>
-      ) : (
-        <>
-          {pendingLetter ? (
-            <div
-              className="rounded-[22px] border border-border bg-[color:var(--journal-warm-bg)] px-7 py-11 sm:px-14"
-              aria-busy
-            >
-              <p className="font-display text-lg italic text-muted">
-                Writing your letter…
-              </p>
-            </div>
-          ) : hasLetter && reflection ? (
-            <article className="rounded-[22px] border border-border bg-[color:var(--journal-warm-bg)] px-7 py-11 sm:px-14 sm:pb-9 sm:pt-11">
-              <div className="font-display text-[19px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_p]:mb-[18px] [&_p:last-child]:mb-0">
-                <ChatMarkdown text={reflection.letterMarkdown} />
-              </div>
-            </article>
-          ) : hasGeneratedPatterns ? (
-            <button
-              type="button"
-              disabled={!apiEnabled || generating}
-              onClick={() =>
-                openGenerateDialog({ letter: true, patterns: false })
-              }
-              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-[20px] border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
-            >
-              <span className="font-display text-lg text-foreground">
-                Add a letter →
-              </span>
-            </button>
-          ) : pendingAnyPattern ? null : (
+      ) : null}
+
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+
+      {showLetterBlock ? (
+        <section aria-label="Your letter" className="flex flex-col">
+          {!hasAnyInsights && !pendingLetter && !pendingAnyPattern ? (
             <section
               aria-label="Before insights are written"
-              className="flex flex-col gap-5 rounded-[20px] border-[1.5px] border-dashed border-border px-6 py-5 sm:flex-row sm:items-center sm:gap-6"
+              className="flex flex-col gap-5 rounded-xl border-[1.5px] border-dashed border-border px-6 py-5 sm:flex-row sm:items-center sm:gap-6"
             >
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -729,129 +890,228 @@ export function JournalWeeklyReflectionCard({
                 </button>
               </div>
             </section>
-          )}
-        </>
-      )}
-
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-
-      {apiEnabled && !loading && showPatternsSection ? (
-        <section aria-label="Patterns this week" className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-display text-2xl font-normal tracking-tight text-foreground">
-              Patterns this week
-            </h2>
-            <span className="text-[13px] text-muted">
-              From what you wrote this week
-            </span>
-          </div>
-
-          {hasLetter && !hasGeneratedPatterns && !pendingAnyPattern ? (
-            <button
-              type="button"
-              disabled={!apiEnabled || generating}
-              onClick={() =>
-                openGenerateDialog({ letter: false, patterns: true })
-              }
-              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-[20px] border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
-            >
-              <span className="text-sm font-semibold text-accent-link">
-                Add patterns →
-              </span>
-            </button>
-          ) : null}
-
-          {pendingFelt ? (
-            <div
-              className="flex flex-col gap-3 overflow-hidden rounded-[20px] border border-border bg-card px-6 py-[22px]"
-              aria-busy
-            >
-              <div className="h-4 w-40 animate-pulse rounded bg-border-subtle" />
-              <div className="flex flex-col gap-3">
-                <div className="h-2.5 animate-pulse rounded-full bg-border-subtle" />
-                <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-border-subtle" />
-                <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-border-subtle" />
-              </div>
-            </div>
-          ) : generatedParts?.felt ? (
-            <div className="relative z-[1] flex flex-col gap-3 overflow-visible rounded-[20px] border border-border bg-card px-6 py-[22px]">
-              <div className="text-sm font-semibold text-foreground">
-                How this week felt
-              </div>
-              {showEmotionChart ? (
-                <>
-                  <EmotionBars emotions={emotions} />
-                  <p className="pt-0.5 text-xs leading-relaxed text-muted">
-                    Hover a feeling to see what you wrote. Read from your
-                    entries by AI — a reflection, not a measurement.
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm leading-relaxed text-muted">
-                  Emotion scores will appear here once generation finishes
-                  reading this week&apos;s writing.
-                </p>
-              )}
-            </div>
-          ) : null}
-
-          {hasAnyMood || hasAnyInsights || pendingAnyPattern ? (
-            <div className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-card px-6 py-[22px]">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="text-sm font-semibold text-foreground">Mood</div>
-                <span className="text-[12px] text-muted">From your mood tags</span>
-              </div>
-              <MoodWeekStrip
-                days={moodDays}
-                summary={
-                  hasAnyInsights ? reflection?.moodSummary : undefined
+          ) : (
+            <>
+              <InsightsSectionHeader
+                id="insights-letter"
+                title="Your letter"
+                meta={letterMeta}
+                expanded={letterOpen}
+                collapsible={letterCollapsible}
+                onToggle={() =>
+                  persistCollapse({
+                    letterCollapsed: !letterCollapsed,
+                    patternsCollapsed,
+                  })
                 }
               />
-            </div>
-          ) : null}
-
-          <InsightsPatternCards
-            reflection={reflection}
-            recentLetters={recentLetters}
-            storeEntries={storeEntries}
-            weekLabel={weekLabelLong}
-            generatedParts={generatedParts}
-            loadingParts={
-              pendingAnyPattern
-                ? {
-                    moved: pendingMoved,
-                    wins: pendingWins,
-                    thought: pendingThought,
+              {letterCollapsible && !letterOpen && letterPreview ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    persistCollapse({
+                      letterCollapsed: false,
+                      patternsCollapsed,
+                    })
                   }
-                : null
+                  className="cursor-pointer truncate pt-3 text-left text-[15px] italic text-muted"
+                >
+                  {letterPreview}
+                  {letterPreview.endsWith(".") ? "" : "…"}
+                </button>
+              ) : null}
+              {letterCollapsible ? (
+                <InsightsCollapsibleBody
+                  id="insights-letter"
+                  open={letterOpen}
+                >
+                  {pendingLetter ? (
+                    <p className="py-6 font-display text-lg italic text-muted">
+                      Writing your letter…
+                    </p>
+                  ) : reflection ? (
+                    <article className="max-w-[680px] py-6">
+                      <div className="font-display text-[19px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_p]:mb-[18px] [&_p:last-child]:mb-0">
+                        <ChatMarkdown text={reflection.letterMarkdown} />
+                      </div>
+                    </article>
+                  ) : null}
+                </InsightsCollapsibleBody>
+              ) : pendingLetter ? (
+                <p className="py-6 font-display text-lg italic text-muted">
+                  Writing your letter…
+                </p>
+              ) : hasGeneratedPatterns ? (
+                <button
+                  type="button"
+                  disabled={!apiEnabled || generating}
+                  onClick={() =>
+                    openGenerateDialog({ letter: true, patterns: false })
+                  }
+                  className="mt-4 flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
+                >
+                  <span className="font-display text-lg text-foreground">
+                    Add a letter →
+                  </span>
+                </button>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {apiEnabled && !loading && showPatternsSection ? (
+        <section aria-label="Patterns this week" className="flex flex-col">
+          <InsightsSectionHeader
+            id="insights-patterns"
+            title="Patterns this week"
+            meta={patternsMeta}
+            expanded={patternsOpen}
+            collapsible={patternsCollapsible}
+            onToggle={() =>
+              persistCollapse({
+                letterCollapsed,
+                patternsCollapsed: !patternsCollapsed,
+              })
             }
           />
 
-          {hasAnyInsights ? (
-            <div className="flex flex-col gap-4 rounded-[20px] bg-deep px-[26px] py-[22px] text-[color-mix(in_srgb,white_92%,var(--gold))] sm:flex-row sm:items-center sm:gap-5">
-              <span
-                aria-hidden
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-deep"
-              >
-                <Play className="size-4 fill-current" strokeWidth={0} />
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="font-display text-xl font-normal">
-                  Turn this week into a meditation
-                </span>
-                <span className="text-sm text-[color-mix(in_srgb,white_70%,transparent)]">
-                  {meditationSubline}
-                </span>
+          {patternsCollapsible ? (
+            <InsightsCollapsibleBody
+              id="insights-patterns"
+              open={patternsOpen}
+            >
+              <div className="flex flex-col gap-4 pt-5">
+                {hasLetter && !hasGeneratedPatterns && !pendingAnyPattern ? (
+                  <button
+                    type="button"
+                    disabled={!apiEnabled || generating}
+                    onClick={() =>
+                      openGenerateDialog({ letter: false, patterns: true })
+                    }
+                    className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
+                  >
+                    <span className="text-sm font-semibold text-accent-link">
+                      Add patterns →
+                    </span>
+                  </button>
+                ) : null}
+
+                {pendingFelt ? (
+                  <div
+                    className="flex flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card px-6 py-[22px]"
+                    aria-busy
+                  >
+                    <div className="h-4 w-40 animate-pulse rounded bg-border-subtle" />
+                    <div className="flex flex-col gap-3">
+                      <div className="h-2.5 animate-pulse rounded-full bg-border-subtle" />
+                      <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-border-subtle" />
+                      <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-border-subtle" />
+                    </div>
+                  </div>
+                ) : generatedParts?.felt ? (
+                  <div className="relative z-[1] flex flex-col gap-3 overflow-visible rounded-xl border border-border bg-card px-6 py-[22px]">
+                    <div className="text-sm font-semibold text-foreground">
+                      How this week felt
+                    </div>
+                    {showEmotionChart ? (
+                      <>
+                        <EmotionBars emotions={emotions} />
+                        <p className="pt-0.5 text-xs leading-relaxed text-muted">
+                          Hover a feeling to see what you wrote. Read from your
+                          entries by AI — a reflection, not a measurement.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm leading-relaxed text-muted">
+                        Emotion scores will appear here once generation finishes
+                        reading this week&apos;s writing.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
+                {hasAnyMood || hasAnyInsights || pendingAnyPattern ? (
+                  <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-[22px]">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="text-sm font-semibold text-foreground">
+                        Mood
+                      </div>
+                      <span className="text-[12px] text-muted">
+                        From your mood tags
+                      </span>
+                    </div>
+                    <MoodWeekStrip
+                      days={moodDays}
+                      summary={
+                        hasAnyInsights ? reflection?.moodSummary : undefined
+                      }
+                    />
+                  </div>
+                ) : null}
+
+                <InsightsPatternCards
+                  reflection={reflection}
+                  recentLetters={recentLetters}
+                  storeEntries={storeEntries}
+                  weekLabel={weekLabelLong}
+                  generatedParts={generatedParts}
+                  loadingParts={
+                    pendingAnyPattern
+                      ? {
+                          moved: pendingMoved,
+                          wins: pendingWins,
+                          thought: pendingThought,
+                        }
+                      : null
+                  }
+                />
+
+                {hasAnyInsights ? (
+                  <div className="flex flex-col gap-4 rounded-xl bg-deep px-[26px] py-[22px] text-[color-mix(in_srgb,white_92%,var(--gold))] sm:flex-row sm:items-center sm:gap-5">
+                    <span
+                      aria-hidden
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-deep"
+                    >
+                      <Play className="size-4 fill-current" strokeWidth={0} />
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="font-display text-xl font-normal">
+                        Turn this week into a meditation
+                      </span>
+                      <span className="text-sm text-[color-mix(in_srgb,white_70%,transparent)]">
+                        {meditationSubline}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={createMeditation}
+                      className="inline-flex h-12 shrink-0 cursor-pointer items-center rounded-full bg-accent px-[22px] text-[15px] font-semibold text-deep transition-opacity hover:opacity-90"
+                    >
+                      Create meditation
+                    </button>
+                  </div>
+                ) : null}
               </div>
-              <button
-                type="button"
-                onClick={createMeditation}
-                className="inline-flex h-12 shrink-0 cursor-pointer items-center rounded-full bg-accent px-[22px] text-[15px] font-semibold text-deep transition-opacity hover:opacity-90"
-              >
-                Create meditation
-              </button>
+            </InsightsCollapsibleBody>
+          ) : (
+            <div className="flex flex-col gap-4 pt-5">
+              {hasLetter && !hasGeneratedPatterns && !pendingAnyPattern ? (
+                <button
+                  type="button"
+                  disabled={!apiEnabled || generating}
+                  onClick={() =>
+                    openGenerateDialog({ letter: false, patterns: true })
+                  }
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold text-accent-link">
+                    Add patterns →
+                  </span>
+                </button>
+              ) : null}
             </div>
-          ) : null}
+          )}
         </section>
       ) : null}
 

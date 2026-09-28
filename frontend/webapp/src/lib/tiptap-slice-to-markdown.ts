@@ -10,6 +10,10 @@ function escapeMdPlain(text: string): string {
   return text.replace(/([\\`*_[\]#])/g, "\\$1");
 }
 
+function markName(mark: Mark): string {
+  return mark.type.name;
+}
+
 function applyMarks(text: string, marks: readonly Mark[]): string {
   if (!text) return text;
   let out = text;
@@ -18,22 +22,28 @@ function applyMarks(text: string, marks: readonly Mark[]): string {
     if (name === "code") return 0;
     if (name === "bold" || name === "strong") return 1;
     if (name === "italic" || name === "em") return 2;
-    if (name === "subscript" || name === "superscript") return 3;
-    if (name === "link") return 4;
-    return 5;
+    if (name === "strike" || name === "strikeThrough") return 3;
+    if (name === "subscript" || name === "superscript") return 4;
+    if (name === "link") return 5;
+    return 6;
   };
   const sorted = [...marks].sort(
-    (a, b) => order(a.type.name) - order(b.type.name),
+    (a, b) => order(markName(a)) - order(markName(b)),
   );
   for (const mark of sorted) {
-    switch (mark.type.name) {
+    switch (markName(mark)) {
       case "bold":
       case "strong":
         out = `**${out}**`;
         break;
       case "italic":
       case "em":
-        out = `*${out}*`;
+        // Underscores avoid nested-`*` ambiguity with bold (`***x***`).
+        out = `_${out}_`;
+        break;
+      case "strike":
+      case "strikeThrough":
+        out = `~~${out}~~`;
         break;
       case "code":
         out = `\`${out.replace(/`/g, "\\`")}\``;

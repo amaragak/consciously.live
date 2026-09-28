@@ -132,7 +132,7 @@ function WinsCard({ wins }: { wins: string[] }) {
   const wroteLine = wins.find(isWroteOnLine);
   if (actionWins.length === 0) return null;
   return (
-    <div className="flex flex-col gap-3 rounded-[20px] border border-border bg-card px-6 py-[22px]">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="text-sm font-semibold text-foreground">
         Wins you might have missed
       </div>
@@ -159,7 +159,7 @@ function WinsCard({ wins }: { wins: string[] }) {
 function PromisesCard({ promises }: { promises: string[] | undefined }) {
   const list = promises ?? [];
   return (
-    <div className="flex flex-col gap-3 rounded-[20px] border border-border bg-card px-6 py-[22px]">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="text-sm font-semibold text-foreground">
         Promises to yourself
       </div>
@@ -203,7 +203,7 @@ function RecurringThoughtCard({
       : "";
 
   return (
-    <div className="flex flex-col gap-4 rounded-[20px] border border-accent/25 bg-accent-soft/40 px-6 py-[22px]">
+    <div className="flex flex-col gap-4 rounded-xl border border-accent/25 bg-accent-soft/40 px-6 py-[22px]">
       <div className="text-sm font-semibold text-foreground">
         The thought that keeps coming back
       </div>
@@ -310,7 +310,7 @@ function WhatLiftsYouCard({
   );
 
   return (
-    <div className="flex flex-col gap-3 rounded-[20px] border border-border bg-card px-6 py-[22px]">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-sm font-semibold text-foreground">What lifts you</div>
         <span className="text-[12px] text-muted">Last 4 weeks</span>
@@ -414,7 +414,7 @@ function MonthSoFarCard({
   );
 
   return (
-    <div className="flex flex-col gap-3 rounded-[20px] border border-border bg-card px-6 py-[22px]">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-6 py-[22px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-sm font-semibold text-foreground">
           Your month so far
@@ -535,14 +535,14 @@ export function InsightsPatternCards({
     <>
       {loadingParts?.moved ? (
         <div
-          className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-card px-6 py-[22px]"
+          className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-[22px]"
           aria-busy
         >
           <div className="h-4 w-36 animate-pulse rounded bg-border-subtle" />
           <div className="h-28 animate-pulse rounded-xl bg-border-subtle/70" />
         </div>
       ) : showArc && arc ? (
-        <div className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-card px-6 py-[22px]">
+        <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-[22px]">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="text-sm font-semibold text-foreground">
               How the week moved
@@ -560,8 +560,8 @@ export function InsightsPatternCards({
           className="grid grid-cols-1 gap-4 md:grid-cols-2"
           aria-busy
         >
-          <div className="h-36 animate-pulse rounded-[20px] border border-border bg-border-subtle/50" />
-          <div className="h-36 animate-pulse rounded-[20px] border border-border bg-border-subtle/50" />
+          <div className="h-36 animate-pulse rounded-xl border border-border bg-border-subtle/50" />
+          <div className="h-36 animate-pulse rounded-xl border border-border bg-border-subtle/50" />
         </div>
       ) : showWins ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -574,7 +574,7 @@ export function InsightsPatternCards({
 
       {loadingParts?.thought ? (
         <div
-          className="h-40 animate-pulse rounded-[20px] border border-accent/20 bg-accent-soft/30"
+          className="h-40 animate-pulse rounded-xl border border-accent/20 bg-accent-soft/30"
           aria-busy
         />
       ) : thought ? (

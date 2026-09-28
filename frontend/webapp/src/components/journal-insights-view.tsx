@@ -395,56 +395,58 @@ export function JournalInsightsView() {
         onSelect={selectWeek}
       />
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[820px] flex-1 flex-col gap-7 overflow-y-auto px-4 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4 lg:px-10">
-        <InsightsYourLettersSidebar
-          letters={displayLetters}
-          currentWeekKey={currentWeekKey}
-          selectedWeekKey={activeWeekKey}
-          loading={lettersLoading}
-          onSelect={selectWeek}
-          mobileChips
-        />
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto bg-[color:var(--journal-warm-bg)] px-7 pb-10 pt-9 sm:pb-14">
+        <div className="flex w-full max-w-[760px] flex-col gap-7">
+          <InsightsYourLettersSidebar
+            letters={displayLetters}
+            currentWeekKey={currentWeekKey}
+            selectedWeekKey={activeWeekKey}
+            loading={lettersLoading}
+            onSelect={selectWeek}
+            mobileChips
+          />
 
-        <JournalWeeklyReflectionCard
-          weekKey={activeWeekKey}
-          recentLetters={displayLetters}
-          onLetterChanged={() => {
-            invalidateCachedWeeklyLetters();
-            void loadLetters({ force: true });
-          }}
-        />
+          <JournalWeeklyReflectionCard
+            weekKey={activeWeekKey}
+            recentLetters={displayLetters}
+            onLetterChanged={() => {
+              invalidateCachedWeeklyLetters();
+              void loadLetters({ force: true });
+            }}
+          />
 
-        <div className={isCurrentWeekLetter ? undefined : "max-sm:hidden"}>
-          <button
-            type="button"
-            onClick={() => setMoreOpen((v) => !v)}
-            aria-expanded={moreOpen}
-            className="mb-6 flex cursor-pointer items-center gap-1 self-start text-sm text-muted transition-colors hover:text-foreground"
-          >
-            {moreOpen ? "Show less" : "Show more insights"}
+          <div className={isCurrentWeekLetter ? undefined : "max-sm:hidden"}>
+            <button
+              type="button"
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-expanded={moreOpen}
+              className="mb-6 flex cursor-pointer items-center gap-1 self-start text-sm text-muted transition-colors hover:text-foreground"
+            >
+              {moreOpen ? "Show less" : "Show more insights"}
+              {moreOpen ? (
+                <ChevronUp aria-hidden className="size-4" strokeWidth={2} />
+              ) : (
+                <ChevronDown aria-hidden className="size-4" strokeWidth={2} />
+              )}
+            </button>
+
             {moreOpen ? (
-              <ChevronUp aria-hidden className="size-4" strokeWidth={2} />
-            ) : (
-              <ChevronDown aria-hidden className="size-4" strokeWidth={2} />
-            )}
-          </button>
-
-          {moreOpen ? (
-            <div>
-              {MORE_INSIGHTS_TOPICS.map((t, i) => {
-                const row = topicsById.get(t.id);
-                return (
-                  <InsightTopicSection
-                    key={t.id}
-                    label={t.label}
-                    summaryMarkdown={row?.summaryMarkdown ?? ""}
-                    updatedAt={row?.updatedAt}
-                    last={i === MORE_INSIGHTS_TOPICS.length - 1}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
+              <div>
+                {MORE_INSIGHTS_TOPICS.map((t, i) => {
+                  const row = topicsById.get(t.id);
+                  return (
+                    <InsightTopicSection
+                      key={t.id}
+                      label={t.label}
+                      summaryMarkdown={row?.summaryMarkdown ?? ""}
+                      updatedAt={row?.updatedAt}
+                      last={i === MORE_INSIGHTS_TOPICS.length - 1}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
