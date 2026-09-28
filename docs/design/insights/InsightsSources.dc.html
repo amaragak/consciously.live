@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consciously insights source links</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Instrument Sans',system-ui,sans-serif;background:#FFFDF9;color:#1B2230}
+a{color:inherit;text-decoration:none}
+.cap{font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#A5632E;font-weight:600}
+.card{background:#FFFFFF;border:1px solid #EADFCF;border-radius:12px;padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.day{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:13px;color:#6B6457}
+.cell{width:100%;height:52px;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;border:1px solid transparent;box-sizing:border-box;position:relative}
+.cell span{flex:1}
+.n{position:absolute;right:6px;top:5px;font-size:11px;font-weight:600;color:#1B2230;background:rgba(255,255,255,0.8);border-radius:999px;padding:0 6px;line-height:16px}
+.fly{position:absolute;width:340px;background:#FFFFFF;border:1px solid #EADFCF;border-radius:12px;box-shadow:0 14px 36px rgba(27,34,48,0.16);padding:14px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.fly h4{margin:0 4px 4px;font-size:13px;font-weight:600;color:#4A4F5A}
+.item{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:8px}
+.item.hov{background:#F8F3EC}
+.row{display:flex;align-items:center;gap:8px;font-size:14px}
+.time{font-size:12px;color:#8A8175;font-variant-numeric:tabular-nums}
+.chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}
+.ex{font-family:'Fraunces',serif;font-size:14px;line-height:1.5;color:#4A4F5A}
+.ex mark{background:#FBEBDC;color:#1B2230;padding:0 2px;border-radius:3px}
+.open{font-size:13px;font-weight:600;color:#A5632E}
+.src{text-decoration:underline dotted #C98A55;text-underline-offset:4px;text-decoration-thickness:1.5px}
+.src.hov{background:#FBEBDC;border-radius:3px}
+.date{font-size:12px;color:#6B6457;border:1px solid #EADFCF;border-radius:999px;padding:2px 9px;background:#FFFDF9;white-space:nowrap}
+.date.hov{border-color:#C98A55;color:#1B2230}
+.note{font-size:13px;line-height:1.5;color:#6B6457}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1180px; box-sizing: border-box; padding: 56px 64px; background: #FFFDF9; display: grid; grid-template-columns: 1fr 1fr; gap: 48px 56px; align-content: start; overflow: hidden">
+
+<!-- A. Mood by day -->
+<section aria-label="Mood by day, with entries per day" style="display: flex; flex-direction: column; gap: 14px">
+<div class="cap">A · Mood, day by day</div>
+<div class="card" style="position: relative">
+<div style="font-size: 14px; font-weight: 600">Mood</div>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px">
+<a href="#" class="day"><span class="cell"><span style="background: #F6C99C"></span></span>Mon</a>
+<a href="#" class="day"><span class="cell"><span style="background: #EADCC6"></span></span>Tue</a>
+<a href="#" class="day" aria-label="Wednesday, 2 entries: Low, Mixed"><span class="cell" style="border-color: #1B2230"><span style="background: #C9D1E0"></span><span style="background: #EADCC6"></span><b class="n">2</b></span><b style="color: #1B2230">Wed</b></a>
+<span class="day"><span class="cell" style="border: 1.5px dashed #E3D6C3"></span>Thu</span>
+<a href="#" class="day"><span class="cell"><span style="background: #CFE0D5"></span></span>Fri</a>
+<a href="#" class="day" aria-label="Saturday, 3 entries: Good, Good, Calm"><span class="cell"><span style="background: #F6C99C"></span><span style="background: #F6C99C"></span><span style="background: #CFE0D5"></span><b class="n">3</b></span>Sat</a>
+<a href="#" class="day" aria-label="Sunday, 1 entry, no mood tagged"><span class="cell" style="background: #FFFFFF; border-color: #EADFCF; align-items: center; justify-content: center"><i aria-hidden="true" style="width: 6px; height: 6px; border-radius: 999px; background: #8A8175; flex: none"></i></span>Sun</a>
+</div>
+<div style="font-size: 14px; color: #4A4F5A">Mostly good, with a dip mid-week that eased by Friday.</div>
+<div style="height: 250px"></div>
+
+<!-- Flyout for Wed -->
+<div class="fly" role="dialog" aria-label="Wednesday 24 Sept entries" style="left: 150px; top: 152px">
+<h4>Wed 24 Sept · 2 entries</h4>
+<a href="#" class="item hov">
+<span class="row"><span class="time">08:12</span><span style="font-weight: 600">Can’t shake it</span><span class="chip" style="background: #C9D1E0; margin-left: auto">Low</span></span>
+<span class="ex">Woke up already doubting the whole EP. Who am I to charge for this?</span>
+</a>
+<a href="#" class="item">
+<span class="row"><span class="time">21:40</span><span style="font-weight: 600">Evening, a bit better</span><span class="chip" style="background: #EADCC6; margin-left: auto">Mixed</span></span>
+<span class="ex">Played the second track back and it didn’t sound as bad as I thought…</span>
+</a>
+<a href="#" class="open" style="padding: 4px 10px 2px">Open Wednesday in Journal →</a>
+</div>
+</div>
+<p class="note" style="margin: 0">Each day stacks one slice per entry, in that entry's mood colour, with a count when there's more than one. A day with entries but no mood gets a dot. Hover (or tap / Enter) opens the day's entries; a day with one entry opens that entry on click.</p>
+</section>
+
+<!-- B. Letter with sourced phrases -->
+<section aria-label="Letter phrases linked to entries" style="display: flex; flex-direction: column; gap: 14px">
+<div class="cap">B · The letter, with sourced phrases</div>
+<div style="position: relative; padding: 4px 0 0">
+<p style="margin: 0 0 16px; font-family: 'Fraunces', serif; font-size: 19px; line-height: 1.7; color: #2A303C">This week you kept coming back to the studio. On Monday you could <span class="src">picture it so clearly you almost laughed</span>; by Wednesday the same picture came with a question: <em class="src hov">who am I to charge for this?</em></p>
+<p style="margin: 0; font-family: 'Fraunces', serif; font-size: 19px; line-height: 1.7; color: #2A303C">That question showed up three times. On Friday you <span class="src">listed what the work is actually worth</span>.</p>
+
+<div class="fly" role="dialog" aria-label="Where this came from" style="left: 180px; top: 124px">
+<h4>From 3 entries</h4>
+<a href="#" class="item hov">
+<span class="row"><span class="time">Wed 24 · 08:12</span><span style="font-weight: 600">Can’t shake it</span></span>
+<span class="ex">…doubting the whole EP. <mark>Who am I to charge for this?</mark> Everyone else…</span>
+</a>
+<a href="#" class="item">
+<span class="row"><span class="time">Thu 25 · 19:03</span><span style="font-weight: 600">Pricing</span></span>
+<span class="ex">…and then the same voice again, <mark>who am I to ask for money</mark>…</span>
+</a>
+<a href="#" class="item">
+<span class="row"><span class="time">Sat 27 · 10:20</span><span style="font-weight: 600">Morning walk</span></span>
+<span class="ex">…noticed I didn’t ask <mark>who am I to charge</mark> once today…</span>
+</a>
+</div>
+</div>
+<div style="height: 250px"></div>
+<p class="note" style="margin: 0">Phrases the letter took from your entries get a quiet dotted underline. The flyout quotes the exact passage, highlighted. Quotes are checked against the entry text on the server; any that don't match are shown without a link.</p>
+</section>
+
+<!-- C. Wins with date chips -->
+<section aria-label="Wins linked to entries" style="display: flex; flex-direction: column; gap: 14px">
+<div class="cap">C · Wins, promises and the recurring thought</div>
+<div class="card" style="position: relative">
+<div style="font-size: 14px; font-weight: 600">Wins you might have missed</div>
+<div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px">
+<span style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="color: #A5632E">✓</span>Listed what your work is actually worth<a href="#" class="date hov" style="margin-left: auto">Fri 26</a></span>
+<span style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="color: #A5632E">✓</span>Sketched the studio layout<a href="#" class="date" style="margin-left: auto">Mon 22</a></span>
+<span style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="color: #A5632E">✓</span>Wrote on six days out of seven<a href="#" class="date" style="margin-left: auto">8 entries</a></span>
+</div>
+<div class="fly" role="dialog" aria-label="Friday 26 Sept entry" style="right: 20px; top: 84px">
+<a href="#" class="item hov">
+<span class="row"><span class="time">Fri 26 · 18:45</span><span style="font-weight: 600">What it’s worth</span><span class="chip" style="background: #CFE0D5; margin-left: auto">Calm</span></span>
+<span class="ex">…sat down and <mark>wrote out what each session is actually worth</mark>, hours, gear, the years…</span>
+<span class="open" style="padding-top: 4px">Open entry →</span>
+</a>
+</div>
+</div>
+<div style="height: 150px"></div>
+<p class="note" style="margin: 0">Each item carries a small date chip for the entry it came from (or "{n} entries" when several). Same flyout, same excerpt highlight. The recurring thought lists every occurrence.</p>
+</section>
+
+<!-- D. Emotion bars + how it moved -->
+<section aria-label="Emotion scores and chart points linked to entries" style="display: flex; flex-direction: column; gap: 14px">
+<div class="cap">D · Scores and chart points</div>
+<div class="card" style="position: relative">
+<div style="font-size: 14px; font-weight: 600">How this week felt</div>
+<a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; background: #F8F3EC"><span style="display: flex; justify-content: space-between; font-size: 14px"><span>Self-doubt</span><span style="color: #6B6457">6/10</span></span><span style="height: 10px; border-radius: 999px; background: #F0E7DA; display: block"><span style="height: 10px; width: 60%; border-radius: 999px; background: #1E2533; display: block"></span></span></a>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 0 0 4px"><span style="display: flex; justify-content: space-between; font-size: 14px"><span>Calm</span><span style="color: #6B6457">4/10</span></span><span style="height: 10px; border-radius: 999px; background: #F0E7DA; display: block"><span style="height: 10px; width: 40%; border-radius: 999px; background: #1E2533; display: block"></span></span></div>
+<div class="fly" role="dialog" aria-label="Entries behind Self-doubt" style="left: 60px; top: 100px">
+<h4>Most behind “Self-doubt”</h4>
+<a href="#" class="item hov"><span class="row"><span class="time">Wed 24 · 08:12</span><span style="font-weight: 600">Can’t shake it</span></span><span class="ex">…<mark>doubting the whole EP</mark>…</span></a>
+<a href="#" class="item"><span class="row"><span class="time">Thu 25 · 19:03</span><span style="font-weight: 600">Pricing</span></span><span class="ex">…<mark>the same voice again</mark>…</span></a>
+</div>
+</div>
+<div style="height: 170px"></div>
+<p class="note" style="margin: 0">Each emotion bar opens the up to 3 entries that most support it. On "How it moved", each point is a day and opens the same day flyout as Mood. What lifts you: each activity opens the days it appeared on.</p>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -42,6 +42,12 @@ import {
 } from "./_shared/insight-wellbeing";
 import { coerceLetterMarkdown } from "./_shared/letter-markdown";
 import {
+  sourcesFromLegacy,
+  verifyInsightSources,
+  type InsightSourceRef,
+  type LetterBodyPart,
+} from "./_shared/insight-sources";
+import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationGlobalUserPk,
   meditationUserPk,
@@ -69,10 +75,11 @@ type JournalEntry = {
 type WeeklyEmotionScore = {
   name: string;
   score: number;
-  /** Short verbatim snippets from journal/chats that support this score. */
+  /** @deprecated Prefer sources with verified quotes. */
   examples?: string[];
-  /** Entry IDs that most support this emotion (validated). */
+  /** @deprecated Prefer sources. */
   entryIds?: string[];
+  sources?: InsightSourceRef[];
 };
 
 type WeeklyArcDay = {
@@ -89,7 +96,9 @@ type WeeklyArc = {
 
 type WeeklyCitedItem = {
   text: string;
+  /** @deprecated Prefer sources. */
   entryIds?: string[];
+  sources?: InsightSourceRef[];
 };
 
 type WeeklyRecurringThought = {
@@ -97,7 +106,9 @@ type WeeklyRecurringThought = {
   count: number;
   /** Prior weeks where a matching thought appeared (YYYY-MM-DD week starts). */
   alsoOn?: string[];
+  /** @deprecated Prefer sources. */
   entryIds?: string[];
+  sources?: InsightSourceRef[];
 };
 
 type WeeklyActivityByEntry = {
@@ -109,6 +120,13 @@ type LetterFeedback = {
   rating: "up" | "down";
   note?: string;
   at: string;
+};
+
+type LetterDocument = {
+  greeting: string;
+  preamble: LetterBodyPart[];
+  sections: Array<{ heading: string; parts: LetterBodyPart[] }>;
+  closing: LetterBodyPart[];
 };
 
 /** Which AI-generated surfaces were requested for this week. */
@@ -147,6 +165,8 @@ type WeeklyReflection = {
   weekStart: string;
   weekEnd: string;
   letterMarkdown: string;
+  /** Structured letter with sourced spans (v8). */
+  letterDocument?: LetterDocument;
   /** First sentence preview for the letters list; derived from letterMarkdown. */
   preview?: string;
   /** 3–5 emotions scored 0–10 from the week's writing; omit if unavailable. */
@@ -700,9 +720,35 @@ function filterEntryIds(
   return out.length > 0 ? out : undefined;
 }
 
+function entryTextById(entries: JournalEntry[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const e of entries) {
+    map.set(e.id, stripHtmlToText(e.contentHtml) || e.title || "");
+  }
+  return map;
+}
+
+function attachSources(
+  entryIds: string[] | undefined,
+  examples: string[] | undefined,
+  explicitSources: unknown,
+  entriesById: Map<string, string>,
+  max = 3,
+): InsightSourceRef[] | undefined {
+  const fromExplicit = verifyInsightSources(explicitSources, entriesById, max);
+  if (fromExplicit) return fromExplicit;
+  return sourcesFromLegacy({
+    entryIds,
+    examples,
+    entriesById,
+    max,
+  });
+}
+
 function parseEmotions(
   raw: unknown,
   knownEntryIds: Set<string> = new Set(),
+  entriesById: Map<string, string> = new Map(),
 ): WeeklyEmotionScore[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: WeeklyEmotionScore[] = [];
@@ -731,11 +777,23 @@ function parseEmotions(
       knownEntryIds,
       3,
     );
+    const sources = attachSources(
+      entryIds,
+      examples,
+      (row as { sources?: unknown }).sources,
+      entriesById.size > 0 ? entriesById : new Map([...knownEntryIds].map((id) => [id, ""])),
+      3,
+    );
+    // Prefer sources; keep legacy fields for older clients when no verified quotes.
     out.push({
       name,
       score: clamped,
-      ...(examples ? { examples } : {}),
-      ...(entryIds ? { entryIds } : {}),
+      ...(sources ? { sources } : {}),
+      ...(!sources && examples ? { examples } : {}),
+      ...(!sources && entryIds ? { entryIds } : {}),
+      ...(sources
+        ? { entryIds: sources.map((s) => s.entryId) }
+        : {}),
     });
   }
   if (out.length < 1) return undefined;
@@ -813,6 +871,7 @@ function parseCitedItems(
   raw: unknown,
   knownEntryIds: Set<string>,
   opts: { minLen: number; maxLen: number; maxItems: number },
+  entriesById: Map<string, string> = new Map(),
 ): WeeklyCitedItem[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: WeeklyCitedItem[] = [];
@@ -843,7 +902,20 @@ function parseCitedItems(
         knownEntryIds,
         3,
       );
-      out.push({ text: t, ...(entryIds ? { entryIds } : {}) });
+      const sources = attachSources(
+        entryIds,
+        undefined,
+        (item as { sources?: unknown }).sources,
+        entriesById.size > 0
+          ? entriesById
+          : new Map([...knownEntryIds].map((id) => [id, ""])),
+        3,
+      );
+      out.push({
+        text: t,
+        ...(sources ? { sources, entryIds: sources.map((s) => s.entryId) } : {}),
+        ...(!sources && entryIds ? { entryIds } : {}),
+      });
     }
     if (out.length >= opts.maxItems) break;
   }
@@ -853,6 +925,7 @@ function parseCitedItems(
 function parseRecurringThought(
   raw: unknown,
   knownEntryIds: Set<string> = new Set(),
+  entriesById: Map<string, string> = new Map(),
 ): WeeklyRecurringThought | undefined {
   if (raw === null) return undefined;
   if (!raw || typeof raw !== "object") return undefined;
@@ -873,10 +946,20 @@ function parseRecurringThought(
     knownEntryIds,
     6,
   );
+  const sources = attachSources(
+    entryIds,
+    undefined,
+    o.sources,
+    entriesById.size > 0
+      ? entriesById
+      : new Map([...knownEntryIds].map((id) => [id, ""])),
+    6,
+  );
   return {
     text,
     count: Math.min(20, Math.round(count)),
-    ...(entryIds ? { entryIds } : {}),
+    ...(sources ? { sources, entryIds: sources.map((s) => s.entryId) } : {}),
+    ...(!sources && entryIds ? { entryIds } : {}),
   };
 }
 
@@ -919,6 +1002,7 @@ function parseActivities(
 function parsePatternsBlob(
   raw: unknown,
   knownEntryIds: Set<string>,
+  entriesById: Map<string, string> = new Map(),
 ): {
   arc?: WeeklyArc;
   wins?: WeeklyCitedItem[];
@@ -929,22 +1013,33 @@ function parsePatternsBlob(
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
   const arc = parseArc(o.arc);
-  const wins = parseCitedItems(o.wins, knownEntryIds, {
-    minLen: 6,
-    maxLen: 120,
-    maxItems: 4,
-  });
-  const promises = parseCitedItems(o.promises, knownEntryIds, {
-    minLen: 6,
-    maxLen: 120,
-    maxItems: 3,
-  });
+  const wins = parseCitedItems(
+    o.wins,
+    knownEntryIds,
+    {
+      minLen: 6,
+      maxLen: 120,
+      maxItems: 4,
+    },
+    entriesById,
+  );
+  const promises = parseCitedItems(
+    o.promises,
+    knownEntryIds,
+    {
+      minLen: 6,
+      maxLen: 120,
+      maxItems: 3,
+    },
+    entriesById,
+  );
   const recurringThought =
     o.recurring_thought === null || o.recurringThought === null
       ? undefined
       : parseRecurringThought(
           o.recurring_thought ?? o.recurringThought,
           knownEntryIds,
+          entriesById,
         );
   const activities = parseActivities(o.activities, knownEntryIds);
   return {
@@ -986,7 +1081,7 @@ function buildSystemPrompt(
     "at_risk = any mention of suicidal thoughts, wanting not to be here, self-harm, or being unsafe — past or present.",
     "Rule out figures of speech ('killing it', 'die of embarrassment'), song lyrics, and fiction clearly marked as such. When genuinely unclear, choose the safer (higher) level.",
     "EMOTIONS (always required unless wellbeing is at_risk — still output the array, the app may hide it): From the journal entry text and meditation chats — not from mood tags — name exactly 3–5 short plain-English emotions (e.g. Hope, Self-doubt). Score each 0–10; sort high to low.",
-    "For each emotion include 1–3 short nearly-verbatim examples from their writing, and entry_ids: up to 3 journal entry ids that most support it. Do not invent quotes or ids.",
+      "For each emotion include sources: 1–3 objects { entryId, quote } — quote is a short verbatim passage (≤25 words) from that entry that supports the score. Prefer sources over bare examples/entry_ids.",
     "Optionally one plain-English moodSummary line (or NONE).",
     "PATTERNS JSON always includes activities: up to one object per journal entry { entry_id, items: [\"morning walk\", ...] } with 0–4 short lowercase labels. Omit entries with none. Never include activities the user marked as incorrect or hidden (see USER CORRECTIONS).",
   ];
@@ -999,15 +1094,15 @@ function buildSystemPrompt(
   }
   if (wantWins) {
     parts.push(
-      `Also include wins: 1–4 objects { text, entry_ids } — concrete actions they DID in ${periodPhrase}, second person without the word 'you'. Actions only. entry_ids: 1–3 supporting entry ids. Do NOT include a 'Wrote on N days' line.`,
-      "Also include promises: 0–3 objects { text, entry_ids } for future intentions. Empty array if none.",
+      `Also include wins: 1–4 objects { text, sources:[{entryId,quote}] } — concrete actions they DID in ${periodPhrase}, second person without the word 'you'. Actions only. sources: 1–3 supporting entries with short verbatim quotes. Do NOT include a 'Wrote on N days' line.`,
+      "Also include promises: 0–3 objects { text, sources:[{entryId,quote}] } for future intentions. Empty array if none.",
     );
   } else {
     parts.push("Set wins to [] and promises to [].");
   }
   if (wantThought) {
     parts.push(
-      `Also include recurring_thought: { text, count, entry_ids } for a belief/phrase that repeats within ${periodPhrase} with count >= 2; entry_ids for each supporting entry; otherwise null.`,
+      `Also include recurring_thought: { text, count, sources:[{entryId,quote}] } for a belief/phrase that repeats within ${periodPhrase} with count >= 2; sources for each supporting entry with a short verbatim quote; otherwise null.`,
     );
   } else {
     parts.push("Set recurring_thought to null.");
@@ -1017,13 +1112,13 @@ function buildSystemPrompt(
       "LETTER: Write directly TO the reader in second person ('you'), warm and human — like a note from someone who read their week carefully.",
       "LETTER LENGTH (when wellbeing is none): about ~250 words total when there is enough journal/chat material; shorter is fine when the period is sparse. No hard maximum.",
       "LETTER OUTPUT (JSON only after <<<LETTER>>> — not freeform prose, not markdown):",
-      '{"greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"What stood out","body":"..."},{"heading":"What shifted","body":"..."},{"heading":"Carry forward","body":"..."}],"closing":"…"}',
+      '{"greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"What stood out","bodyParts":[{"text":"…"},{"text":"key phrase","sources":[{"entryId":"…","quote":"…"}]},{"text":"…"}]}],"closing":"…"}',
       "Rules: greeting must be exactly Dear [[NAME]], (literal [[NAME]] — never a real name).",
       "CRITICAL SHAPE: preamble and closing are mandatory non-empty strings. Jumping from the greeting straight into a section heading is WRONG. Ending on the last section body with no closing is WRONG.",
       "preamble: required — 2–4 warm opening sentences BEFORE any section header; set the tone and acknowledge them as a person.",
-      "sections: 2 or 3 objects. Each heading is a short label (3–5 words). Each body is 2–4 sentences when material allows (not one clipped line).",
+      "sections: 2 or 3 objects. Each heading is a short label (3–5 words). Prefer bodyParts (array of { text, sources? }) over a single body string — at most one sourced span per sentence; sources use { entryId, quote } with a short verbatim quote. If you use body instead of bodyParts, still attach section-level sources when you paraphrase a specific entry.",
       "closing: required — 2–3 warm closing sentences AFTER the last section; optional final sign-off line (e.g. With care,).",
-      "In every section body, wrap 1–2 concrete phrases in **double asterisks** for bold (required). No # headings inside body/preamble/closing. No code fence.",
+      "In every section, mark 1–2 concrete phrases for bold with **double asterisks** inside text parts (required). No # headings inside body/preamble/closing. No code fence.",
       `When wellbeing is struggling, follow this tone (still use greeting/preamble/sections/closing JSON; length can stay nearer ~150–200 words): ${WELLBEING_LETTER_GUIDANCE.struggling}`,
       `When wellbeing is at_risk, follow this tone (same JSON shape; ~80–140 words total): ${WELLBEING_LETTER_GUIDANCE.at_risk}`,
       "If RECENT PROMISES are provided, mention one or two naturally in a section body — not as a checklist.",
@@ -1060,6 +1155,7 @@ function buildUserPrompt(params: {
   lastWeekPromises?: string[];
   priorRecurringThoughts?: Array<{ text: string; label: string }>;
   corrections?: string[];
+  letterRevision?: { feedback: string; priorLetterMarkdown: string };
 }): string {
   const wantLetter = params.selection.letter;
   const promiseBlock =
@@ -1092,6 +1188,20 @@ function buildUserPrompt(params: {
           "",
         ].join("\n")
       : "";
+  const revision = params.letterRevision;
+  const revisionBlock =
+    wantLetter &&
+    revision?.feedback?.trim() &&
+    revision?.priorLetterMarkdown?.trim()
+      ? [
+          "LETTER REWRITE REQUEST:",
+          "The reader disliked the previous letter below. Write a fresh letter for the same period that addresses their feedback. Do not reuse the same structure, phrasing, or framing unless the feedback asks you to keep something. Still use the required LETTER JSON shape (greeting, preamble, sections, closing) and [[NAME]].",
+          `USER FEEDBACK ON WHAT FELT OFF: ${revision.feedback.trim().slice(0, 800)}`,
+          "PREVIOUS LETTER (do not repeat — improve against the feedback):",
+          revision.priorLetterMarkdown.trim().slice(0, 6000),
+          "",
+        ].join("\n")
+      : "";
   return [
     `PERIOD: ${params.periodLabel} — write about it as "${params.periodPhrase}"`,
     "",
@@ -1100,6 +1210,7 @@ function buildUserPrompt(params: {
     promiseBlock,
     thoughtBlock,
     correctionsBlock,
+    revisionBlock,
     "JOURNAL ENTRIES IN THIS PERIOD (use Entry id in activities and entry_ids; long entries may be shortened with […]):",
     params.journalText,
     "",
@@ -1190,8 +1301,10 @@ function extractJsonArrayFromText(text: string): string | null {
 function parseLetterModelOutput(
   outText: string,
   knownEntryIds: Set<string> = new Set(),
+  entriesById: Map<string, string> = new Map(),
 ): {
   letterMarkdown: string;
+  letterDocument?: LetterDocument;
   wellbeing: WellbeingLevel;
   emotions?: WeeklyEmotionScore[];
   moodSummary?: string;
@@ -1255,9 +1368,9 @@ function parseLetterModelOutput(
     let emotions: WeeklyEmotionScore[] | undefined;
     if (emotionsRaw) {
       try {
-        emotions = parseEmotions(JSON.parse(emotionsRaw), knownEntryIds);
+        emotions = parseEmotions(JSON.parse(emotionsRaw), knownEntryIds, entriesById);
       } catch {
-        emotions = parseEmotions(emotionsRaw, knownEntryIds);
+        emotions = parseEmotions(emotionsRaw, knownEntryIds, entriesById);
       }
     }
     const moodLine = (delim.mood ?? "").trim();
@@ -1271,7 +1384,11 @@ function parseLetterModelOutput(
         extractJsonObjectFromText(delim.patterns) ?? delim.patterns.trim();
       if (patternsRaw) {
         try {
-          patterns = parsePatternsBlob(JSON.parse(patternsRaw), knownEntryIds);
+          patterns = parsePatternsBlob(
+            JSON.parse(patternsRaw),
+            knownEntryIds,
+            entriesById,
+          );
         } catch {
           /* ignore broken patterns — letter still saves */
         }
@@ -1298,13 +1415,13 @@ function parseLetterModelOutput(
         activities?: unknown;
       };
       if (typeof parsed.letterMarkdown === "string" && parsed.letterMarkdown.trim()) {
-        const patterns = parsePatternsBlob(parsed, knownEntryIds);
+        const patterns = parsePatternsBlob(parsed, knownEntryIds, entriesById);
         return {
           letterMarkdown: coerceLetterMarkdown(parsed.letterMarkdown.trim()),
           wellbeing: parseWellbeingLevel(
             (parsed as { wellbeing?: unknown }).wellbeing,
           ),
-          emotions: parseEmotions(parsed.emotions, knownEntryIds),
+          emotions: parseEmotions(parsed.emotions, knownEntryIds, entriesById),
           moodSummary: parseMoodSummary(parsed.moodSummary),
           ...patterns,
         };
@@ -1397,13 +1514,15 @@ async function callClaudeForLetter(params: {
   system: string;
   user: string;
   knownEntryIds?: Set<string>;
+  entriesById?: Map<string, string>;
 }): Promise<{
   letterMarkdown: string;
+  letterDocument?: LetterDocument;
   emotions?: WeeklyEmotionScore[];
   moodSummary?: string;
   arc?: WeeklyArc;
-  wins?: string[];
-  promises?: string[];
+  wins?: WeeklyCitedItem[];
+  promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
   usage: { input_tokens: number; output_tokens: number } | null;
@@ -1435,10 +1554,9 @@ async function callClaudeForLetter(params: {
       : undefined;
     const outText = typeof block?.text === "string" ? block.text.trim() : "";
     if (!outText) throw new Error("Empty Claude response");
-    const parsed = parseLetterModelOutput(
-      outText,
-      params.knownEntryIds ?? new Set(),
-    );
+    const known = params.knownEntryIds ?? new Set();
+    const byId = params.entriesById ?? new Map();
+    const parsed = parseLetterModelOutput(outText, known, byId);
     const letter = coerceLetterMarkdown(parsed.letterMarkdown.trim());
     if (!letter) {
       throw new Error("Empty letter in model response");
@@ -2003,6 +2121,9 @@ export async function handler(
     patterns: { felt: true, moved: true, wins: true, thought: true },
   };
   let correctionHints: string[] = [];
+  let letterRevision:
+    | { feedback: string; priorLetterMarkdown: string }
+    | undefined;
   let periodInput: {
     periodType?: unknown;
     startDate?: unknown;
@@ -2035,6 +2156,26 @@ export async function handler(
         .map((c) => c.trim())
         .filter((c) => c.length >= 4 && c.length <= 240)
         .slice(0, 10);
+    }
+    const rev = parsed.letterRevision;
+    if (rev && typeof rev === "object") {
+      const feedback =
+        typeof (rev as { feedback?: unknown }).feedback === "string"
+          ? (rev as { feedback: string }).feedback.trim()
+          : "";
+      const priorLetterMarkdown =
+        typeof (rev as { priorLetterMarkdown?: unknown }).priorLetterMarkdown ===
+        "string"
+          ? (rev as { priorLetterMarkdown: string }).priorLetterMarkdown.trim()
+          : "";
+      if (
+        feedback.length >= 2 &&
+        feedback.length <= 800 &&
+        priorLetterMarkdown.length >= 20 &&
+        priorLetterMarkdown.length <= 6000
+      ) {
+        letterRevision = { feedback, priorLetterMarkdown };
+      }
     }
   } catch {
     /* ignore */
@@ -2130,8 +2271,10 @@ export async function handler(
             ? { priorRecurringThoughts }
             : {}),
           ...(correctionHints.length ? { corrections: correctionHints } : {}),
+          ...(letterRevision ? { letterRevision } : {}),
         }),
         knownEntryIds,
+        entriesById: entryTextById(entries),
       });
     } catch (e) {
       if (existing?.letterMarkdown?.trim()) {
@@ -2152,6 +2295,7 @@ export async function handler(
 
     const {
       letterMarkdown: modelLetter,
+      letterDocument: modelLetterDocument,
       wellbeing: modelWellbeing,
       emotions,
       moodSummary,
@@ -2222,6 +2366,11 @@ export async function handler(
       weekStart: period.startIso,
       weekEnd: period.endIso,
       letterMarkdown,
+      ...(selection.letter && modelLetterDocument
+        ? { letterDocument: modelLetterDocument }
+        : !selection.letter && existing?.letterDocument
+          ? { letterDocument: existing.letterDocument }
+          : {}),
       ...(preview ? { preview } : {}),
       ...(emotions
         ? { emotions }
@@ -2262,9 +2411,11 @@ export async function handler(
           ? { activities: existing.activities }
           : {}),
       wellbeing: { level: modelWellbeing },
-      ...(existing?.letterFeedback
-        ? { letterFeedback: existing.letterFeedback }
-        : {}),
+      ...(letterRevision
+        ? {}
+        : existing?.letterFeedback
+          ? { letterFeedback: existing.letterFeedback }
+          : {}),
       generatedParts,
       meta: {
         generatedAt: now,

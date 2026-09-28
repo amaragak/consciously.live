@@ -1680,12 +1680,19 @@ export async function ocrJournalPhoto(imageBase64: string): Promise<{
   };
 }
 
+export type InsightSourceRef = {
+  entryId: string;
+  quote?: string;
+};
+
 export type JournalWeeklyEmotionScore = {
   name: string;
   score: number;
-  /** Short snippets from the user's writing that support this score. */
+  /** @deprecated Prefer sources. */
   examples?: string[];
+  /** @deprecated Prefer sources. */
   entryIds?: string[];
+  sources?: InsightSourceRef[];
 };
 
 export type JournalWeeklyArcDay = {
@@ -1702,14 +1709,18 @@ export type JournalWeeklyArc = {
 
 export type JournalWeeklyCitedItem = {
   text: string;
+  /** @deprecated Prefer sources. */
   entryIds?: string[];
+  sources?: InsightSourceRef[];
 };
 
 export type JournalWeeklyRecurringThought = {
   text: string;
   count: number;
   alsoOn?: string[];
+  /** @deprecated Prefer sources. */
   entryIds?: string[];
+  sources?: InsightSourceRef[];
 };
 
 export type JournalWeeklyActivityByEntry = {
@@ -1826,15 +1837,17 @@ function parseWeeklyEmotions(
     const examples = parseEmotionExamples(
       (row as { examples?: unknown }).examples,
     );
-    const entryIds = parseEntryIdList(
+    const cited = sourcesOrLegacy(
+      (row as { sources?: unknown }).sources,
       (row as { entryIds?: unknown }).entryIds ??
         (row as { entry_ids?: unknown }).entry_ids,
+      3,
     );
     out.push({
       name,
       score: Math.max(0, Math.min(10, Math.round(score))),
       ...(examples ? { examples } : {}),
-      ...(entryIds ? { entryIds } : {}),
+      ...cited,
     });
   }
   if (out.length < 1) return undefined;
@@ -1857,6 +1870,47 @@ function parseEntryIdList(raw: unknown, max = 6): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+function parseInsightSourceRefs(
+  raw: unknown,
+  max = 6,
+): InsightSourceRef[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: InsightSourceRef[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const entryId =
+      typeof (row as { entryId?: unknown }).entryId === "string"
+        ? (row as { entryId: string }).entryId.trim()
+        : typeof (row as { entry_id?: unknown }).entry_id === "string"
+          ? (row as { entry_id: string }).entry_id.trim()
+          : "";
+    if (!entryId) continue;
+    const quote =
+      typeof (row as { quote?: unknown }).quote === "string"
+        ? (row as { quote: string }).quote.trim()
+        : "";
+    out.push(quote ? { entryId, quote } : { entryId });
+    if (out.length >= max) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function sourcesOrLegacy(
+  sourcesRaw: unknown,
+  entryIdsRaw: unknown,
+  max = 6,
+): { sources?: InsightSourceRef[]; entryIds?: string[] } {
+  const sources = parseInsightSourceRefs(sourcesRaw, max);
+  if (sources) {
+    return {
+      sources,
+      entryIds: sources.map((s) => s.entryId),
+    };
+  }
+  const entryIds = parseEntryIdList(entryIdsRaw, max);
+  return entryIds ? { entryIds } : {};
+}
+
 function parseWeeklyCitedItems(
   raw: unknown,
   maxItems: number,
@@ -1877,7 +1931,12 @@ function parseWeeklyCitedItems(
         (item as { entryIds?: unknown }).entryIds ??
           (item as { entry_ids?: unknown }).entry_ids,
       );
-      out.push({ text: t, ...(entryIds ? { entryIds } : {}) });
+      const cited = sourcesOrLegacy(
+        (item as { sources?: unknown }).sources,
+        entryIds,
+        3,
+      );
+      out.push({ text: t, ...cited });
     }
     if (out.length >= maxItems) break;
   }
@@ -1949,9 +2008,7 @@ function parseWeeklyRecurringThought(
     text,
     count: Math.round(count),
     ...(alsoOn && alsoOn.length ? { alsoOn } : {}),
-    ...(parseEntryIdList(o.entryIds ?? o.entry_ids)
-      ? { entryIds: parseEntryIdList(o.entryIds ?? o.entry_ids) }
-      : {}),
+    ...sourcesOrLegacy(o.sources, o.entryIds ?? o.entry_ids, 6),
   };
 }
 
@@ -2291,6 +2348,14 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
   patterns?: JournalWeeklyPatternsSelection;
   /** Short correction guidance strings for the model (max 10). */
   corrections?: string[];
+  /**
+   * When rewriting after thumbs-down: user note + the previous letter
+   * (passed as reference so the model can avoid the same mistakes).
+   */
+  letterRevision?: {
+    feedback: string;
+    priorLetterMarkdown: string;
+  };
   /** @deprecated Prefer letter/patterns selection; kept for older callers. */
   regenerate?: boolean;
 }): Promise<{
@@ -2318,6 +2383,8 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
       thought: true,
     } satisfies JournalWeeklyPatternsSelection);
   const letter = opts?.letter ?? true;
+  const revisionFeedback = opts?.letterRevision?.feedback?.trim() ?? "";
+  const revisionPrior = opts?.letterRevision?.priorLetterMarkdown?.trim() ?? "";
   const res = await medimadeFetch(`${base}/journal/weekly-reflection`, {
     method: "POST",
     headers: medimadeJsonHeaders(),
@@ -2331,6 +2398,14 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
       patterns,
       ...(opts?.corrections?.length
         ? { corrections: opts.corrections.slice(0, 10) }
+        : {}),
+      ...(revisionFeedback && revisionPrior
+        ? {
+            letterRevision: {
+              feedback: revisionFeedback.slice(0, 800),
+              priorLetterMarkdown: revisionPrior.slice(0, 6000),
+            },
+          }
         : {}),
       ...(opts?.regenerate ? { regenerate: true } : {}),
     }),

@@ -2126,6 +2126,16 @@ export function JournalView() {
                 initialHtml={initialHtmlForEditor}
                 initialTitle={initialTitleForEditor}
                 createdAt={activeEntry.createdAt}
+                highlightQuote={(() => {
+                  try {
+                    const q = new URLSearchParams(window.location.search).get(
+                      "highlight",
+                    );
+                    return q?.trim() || null;
+                  } catch {
+                    return null;
+                  }
+                })()}
                 transcribeApiBase={getMedimadeApiBase()}
                 hideCreatedDate
                 entryMenuBefore={

@@ -60,9 +60,14 @@ import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
 function LetterFeedbackRow({
   rangeKey,
   initial,
+  regenerating = false,
+  onRewrite,
 }: {
   rangeKey: string;
   initial: { rating: "up" | "down"; note?: string; at: string } | null;
+  regenerating?: boolean;
+  /** Called when user wants a rewrite after thumbs-down + note. */
+  onRewrite?: (note: string) => void;
 }) {
   const storageKey = `mm_letter_feedback_${rangeKey}`;
   const [rating, setRating] = useState<"up" | "down" | null>(() => {
@@ -94,6 +99,9 @@ function LetterFeedbackRow({
       /* ignore */
     }
   };
+
+  const canRewrite =
+    rating === "down" && Boolean(note.trim()) && Boolean(onRewrite);
 
   if (!rangeKey.trim()) return null;
 
@@ -148,6 +156,21 @@ function LetterFeedbackRow({
             className="rounded-xl border border-border bg-card px-3 py-2 text-[15px] text-foreground outline-none focus:border-accent/50"
           />
         </label>
+      ) : null}
+      {canRewrite ? (
+        <button
+          type="button"
+          disabled={regenerating}
+          onClick={() => {
+            const trimmed = note.trim();
+            if (!trimmed || !onRewrite) return;
+            save("down", trimmed);
+            onRewrite(trimmed);
+          }}
+          className="inline-flex h-10 w-fit cursor-pointer items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {regenerating ? "Rewriting…" : "Rewrite with this feedback"}
+        </button>
       ) : null}
     </div>
   );
@@ -348,11 +371,21 @@ function hasAnyGeneratedPatternPart(
   return parts.felt || parts.moved || parts.wins || parts.thought;
 }
 
+type MoodDayEntry = {
+  id: string;
+  mood: JournalMoodId | null;
+  at: number;
+  createdAt: string;
+  title?: string;
+};
+
 type MoodDay = {
   key: string;
   dayLabel: string;
   dateNum: number;
+  /** Primary mood for legacy single-color fallback (first tagged, else null). */
   mood: JournalMoodId | null;
+  entries: MoodDayEntry[];
   isToday: boolean;
   inPeriod: boolean;
   emptyLabel: string;
@@ -408,7 +441,7 @@ function moodDaysForPeriod(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const byDay = new Map<string, { mood: JournalMoodId; at: number }>();
+  const byDay = new Map<string, MoodDayEntry[]>();
   const startMs = startLocal.getTime();
   const endMs = new Date(
     endLocal.getFullYear(),
@@ -422,14 +455,23 @@ function moodDaysForPeriod(
 
   for (const e of entries) {
     if (e.kind === "gratitude") continue;
-    if (!isJournalMoodId(e.mood)) continue;
     const at = new Date(e.updatedAt || e.createdAt).getTime();
     if (!Number.isFinite(at) || at < startMs || at > endMs) continue;
     const d = new Date(at);
     d.setHours(0, 0, 0, 0);
     const key = localDateKey(d);
-    const prev = byDay.get(key);
-    if (!prev || at >= prev.at) byDay.set(key, { mood: e.mood, at });
+    const list = byDay.get(key) ?? [];
+    list.push({
+      id: e.id,
+      mood: isJournalMoodId(e.mood) ? e.mood : null,
+      at,
+      createdAt: e.createdAt,
+      title: e.title?.trim() || undefined,
+    });
+    byDay.set(key, list);
+  }
+  for (const [, list] of byDay) {
+    list.sort((a, b) => a.at - b.at);
   }
 
   const days: MoodDay[] = [];
@@ -437,11 +479,14 @@ function moodDaysForPeriod(
   while (cursor.getTime() <= endLocal.getTime()) {
     const key = localDateKey(cursor);
     const isToday = cursor.getTime() === today.getTime();
+    const dayEntries = byDay.get(key) ?? [];
+    const firstMood = dayEntries.find((x) => x.mood)?.mood ?? null;
     days.push({
       key,
       dayLabel: dayNames[cursor.getDay()]!,
       dateNum: cursor.getDate(),
-      mood: byDay.get(key)?.mood ?? null,
+      mood: firstMood,
+      entries: dayEntries,
       isToday,
       inPeriod: true,
       emptyLabel: isToday ? "Today" : "–",
@@ -526,6 +571,8 @@ function normalizeEmotions(
       name,
       score: Math.max(0, Math.min(10, Math.round(score))),
       ...(examples?.length ? { examples } : {}),
+      ...(row.sources?.length ? { sources: row.sources } : {}),
+      ...(row.entryIds?.length ? { entryIds: row.entryIds } : {}),
     });
   }
   out.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -539,22 +586,14 @@ function EmotionBars({ emotions }: { emotions: JournalWeeklyEmotionScore[] }) {
         if (isInsightItemHidden("emotion", e.name)) return null;
         const pct = Math.max(0, Math.min(100, (e.score / 10) * 100));
         const barColor = i === 0 ? "bg-accent" : "bg-deep";
-        const examples = e.examples?.length ? e.examples : null;
-        return (
-          <div
-            key={`${e.name}-${i}`}
-            className="group relative flex flex-col gap-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-            tabIndex={examples ? 0 : undefined}
-            aria-describedby={
-              examples ? `emotion-evidence-${i}` : undefined
-            }
-          >
+        const sources = e.sources;
+        const entryIds =
+          sources?.map((s) => s.entryId) ?? e.entryIds ?? [];
+        const row = (
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="font-medium text-foreground">{e.name}</span>
-              <span className="flex items-center gap-2 text-muted">
-                <span>{e.score}/10</span>
-                <InsightsSourceLink entryIds={e.entryIds ?? []} />
-              </span>
+              <span className="text-muted">{e.score}/10</span>
             </div>
             <div
               className="h-[10px] overflow-hidden rounded-full bg-border-subtle"
@@ -566,33 +605,144 @@ function EmotionBars({ emotions }: { emotions: JournalWeeklyEmotionScore[] }) {
                 style={{ width: `${pct}%` }}
               />
             </div>
-            {examples ? (
-              <div
-                id={`emotion-evidence-${i}`}
-                role="tooltip"
-                className="pointer-events-none absolute left-0 right-0 top-full z-30 mt-2 hidden rounded-xl border border-border bg-background px-3.5 py-3 shadow-md group-hover:block group-focus-within:block"
-              >
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  From your writing
-                </p>
-                <ul className="flex flex-col gap-1.5">
-                  {examples.map((quote, qi) => (
-                    <li
-                      key={qi}
-                      className="text-[13px] leading-snug text-foreground/90"
-                    >
-                      <span className="text-muted">&ldquo;</span>
-                      {quote}
-                      <span className="text-muted">&rdquo;</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
           </div>
+        );
+        if (entryIds.length === 0) {
+          return (
+            <div key={`${e.name}-${i}`} className="rounded-lg">
+              {row}
+            </div>
+          );
+        }
+        return (
+          <InsightsSourceLink
+            key={`${e.name}-${i}`}
+            sources={sources}
+            entryIds={entryIds}
+            header={`Most behind '${e.name}'`}
+            className="block w-full rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            triggerLabel={`${e.name}, ${e.score} out of 10, sources`}
+          >
+            <div className="rounded-lg transition-colors hover:bg-accent-soft/20">
+              {row}
+            </div>
+          </InsightsSourceLink>
         );
       })}
     </div>
+  );
+}
+
+function moodDayAriaLabel(day: MoodDay): string {
+  if (day.entries.length === 0) return `${day.dayLabel} ${day.dateNum}, no entries`;
+  const moods = day.entries
+    .map((e) => (e.mood ? journalMoodLabel(e.mood) : "untagged"))
+    .join(", ");
+  return `${day.dayLabel} ${day.dateNum}, ${day.entries.length} ${day.entries.length === 1 ? "entry" : "entries"}: ${moods}`;
+}
+
+function MoodDayCell({
+  day,
+  compact,
+}: {
+  day: MoodDay;
+  compact?: boolean;
+}) {
+  const hasEntries = day.entries.length > 0;
+  const hasMood = day.entries.some((e) => e.mood);
+  const multi = day.entries.length > 1;
+
+  const body = (
+    <div
+      className={
+        compact
+          ? `relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-lg text-[11px] font-semibold ${
+              hasEntries
+                ? ""
+                : "border border-dashed border-border text-muted"
+            }`
+          : `relative flex h-11 w-full items-end justify-center overflow-hidden rounded-xl pb-2 text-[12px] font-semibold ${
+              hasEntries
+                ? ""
+                : "border-[1.5px] border-dashed border-border font-medium text-muted"
+            }`
+      }
+      aria-label={moodDayAriaLabel(day)}
+    >
+      {hasEntries && hasMood ? (
+        <div className="absolute inset-0 flex">
+          {day.entries.map((e) => {
+            const palette = e.mood ? JOURNAL_MOOD_PILL[e.mood] : null;
+            return (
+              <div
+                key={e.id}
+                className="h-full min-w-0 flex-1"
+                style={
+                  palette
+                    ? { backgroundColor: palette.background }
+                    : { backgroundColor: "var(--border-subtle, #e8e4dc)" }
+                }
+              />
+            );
+          })}
+        </div>
+      ) : hasEntries ? (
+        <div className="absolute inset-0 bg-surface-2">
+          <span className="absolute bottom-1.5 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-muted" />
+        </div>
+      ) : null}
+      <span
+        className="relative z-[1]"
+        style={
+          hasMood && day.mood
+            ? { color: JOURNAL_MOOD_PILL[day.mood].color }
+            : undefined
+        }
+      >
+        {compact
+          ? day.dateNum
+          : hasMood && day.mood
+            ? journalMoodLabel(day.mood)
+            : hasEntries
+              ? "·"
+              : day.emptyLabel}
+      </span>
+      {multi ? (
+        <span className="absolute right-0.5 top-0.5 z-[1] flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-foreground/80 px-1 text-[9px] font-bold text-background">
+          {day.entries.length}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  if (!hasEntries) return body;
+
+  if (day.entries.length === 1) {
+    const only = day.entries[0]!;
+    return (
+      <InsightsSourceLink
+        entryIds={[only.id]}
+        header={`${day.dayLabel} ${day.dateNum}`}
+        className="block w-full"
+        triggerLabel={moodDayAriaLabel(day)}
+        clickHref={`/journal/my/${encodeURIComponent(only.id)}`}
+      >
+        {body}
+      </InsightsSourceLink>
+    );
+  }
+
+  return (
+    <InsightsSourceLink
+      entryIds={day.entries.map((e) => e.id)}
+      header={`${day.dayLabel} ${day.dateNum} · ${day.entries.length} entries`}
+      footerHref={`/journal/my?day=${encodeURIComponent(day.key)}`}
+      footerLabel={`Open ${day.dayLabel} in Journal →`}
+      className="block w-full"
+      triggerLabel={moodDayAriaLabel(day)}
+    >
+      {body}
+    </InsightsSourceLink>
   );
 }
 
@@ -621,69 +771,24 @@ function MoodWeekStrip({
               if ("blank" in cell) {
                 return <div key={cell.key} className="aspect-square" />;
               }
-              const palette = cell.mood ? JOURNAL_MOOD_PILL[cell.mood] : null;
-              return (
-                <div
-                  key={cell.key}
-                  className={`flex aspect-square flex-col items-center justify-center rounded-lg text-[11px] font-semibold ${
-                    cell.mood
-                      ? ""
-                      : "border border-dashed border-border text-muted"
-                  }`}
-                  style={
-                    palette
-                      ? {
-                          backgroundColor: palette.background,
-                          color: palette.color,
-                        }
-                      : undefined
-                  }
-                  title={
-                    (cell.mood
-                      ? journalMoodLabel(cell.mood)
-                      : cell.emptyLabel) ?? undefined
-                  }
-                >
-                  {cell.dateNum}
-                </div>
-              );
+              return <MoodDayCell key={cell.key} day={cell} compact />;
             })}
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-7 gap-2">
-          {days.map((d) => {
-            const label = d.mood ? journalMoodLabel(d.mood) : d.emptyLabel;
-            const palette = d.mood ? JOURNAL_MOOD_PILL[d.mood] : null;
-            return (
-              <div
-                key={d.key}
-                className="flex flex-col items-center gap-2 text-[13px] text-muted"
-              >
-                <div
-                  className={`flex h-11 w-full items-end justify-center rounded-xl pb-2 text-[12px] font-semibold ${
-                    d.mood
-                      ? ""
-                      : "border-[1.5px] border-dashed border-border font-medium text-muted"
-                  }`}
-                  style={
-                    palette
-                      ? {
-                          backgroundColor: palette.background,
-                          color: palette.color,
-                        }
-                      : undefined
-                  }
-                >
-                  {label}
-                </div>
-                <span className="flex flex-col items-center leading-tight">
-                  <span>{d.dayLabel}</span>
-                  <span className="text-[11px] tabular-nums">{d.dateNum}</span>
-                </span>
-              </div>
-            );
-          })}
+          {days.map((d) => (
+            <div
+              key={d.key}
+              className="flex flex-col items-center gap-2 text-[13px] text-muted"
+            >
+              <MoodDayCell day={d} />
+              <span className="flex flex-col items-center leading-tight">
+                <span>{d.dayLabel}</span>
+                <span className="text-[11px] tabular-nums">{d.dateNum}</span>
+              </span>
+            </div>
+          ))}
         </div>
       )}
       {summary?.trim() ? (
@@ -821,7 +926,15 @@ export function JournalWeeklyReflectionCard({
   }, [menuOpen]);
 
   const generate = useCallback(
-    async (selection: InsightsGenerateSelection) => {
+    async (
+      selection: InsightsGenerateSelection,
+      opts?: {
+        letterRevision?: {
+          feedback: string;
+          priorLetterMarkdown: string;
+        };
+      },
+    ) => {
       if (!apiEnabled) return;
       setDialogOpen(false);
       setGenerating(true);
@@ -837,6 +950,9 @@ export function JournalWeeklyReflectionCard({
           endDate: selection.endDate,
           timeZone: selection.timeZone,
           corrections: recentCorrectionGuidance(10),
+          ...(opts?.letterRevision
+            ? { letterRevision: opts.letterRevision }
+            : {}),
         });
         const nextKey =
           got.rangeKey ||
@@ -849,6 +965,20 @@ export function JournalWeeklyReflectionCard({
         setReflection(got.reflection);
         setWeekStart(got.weekStart);
         setWeekEnd(got.weekEnd);
+        if (opts?.letterRevision) {
+          const rk =
+            got.rangeKey ||
+            got.reflection?.rangeKey ||
+            reflection?.rangeKey ||
+            "";
+          if (rk) {
+            try {
+              localStorage.removeItem(`mm_letter_feedback_${rk}`);
+            } catch {
+              /* ignore */
+            }
+          }
+        }
         onLetterChanged?.();
         if (got.rangeKey && got.rangeKey !== weekKey) {
           navigate(`/journal/my/insights/${encodeURIComponent(got.rangeKey)}`, {
@@ -866,7 +996,40 @@ export function JournalWeeklyReflectionCard({
         setPendingGeneration(null);
       }
     },
-    [apiEnabled, navigate, onLetterChanged, weekKey],
+    [apiEnabled, navigate, onLetterChanged, reflection?.rangeKey, weekKey],
+  );
+
+  const rewriteLetterFromFeedback = useCallback(
+    (note: string) => {
+      if (!reflection?.letterMarkdown?.trim() || !note.trim()) return;
+      const timeZone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const startDate = reflection.startDate || weekStart.slice(0, 10);
+      const endDate = reflection.endDate || weekEnd.slice(0, 10);
+      void generate(
+        {
+          letter: true,
+          patterns: {
+            felt: false,
+            moved: false,
+            wins: false,
+            thought: false,
+          },
+          remember: false,
+          periodType: reflection.periodType || "custom",
+          startDate,
+          endDate,
+          timeZone,
+        },
+        {
+          letterRevision: {
+            feedback: note.trim(),
+            priorLetterMarkdown: reflection.letterMarkdown,
+          },
+        },
+      );
+    },
+    [generate, reflection, weekEnd, weekStart],
   );
 
   const weekLabel =
@@ -1307,18 +1470,21 @@ export function JournalWeeklyReflectionCard({
                     </p>
                   ) : reflection ? (
                     <article className="max-w-[680px] py-6">
-                      <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:font-bold [&_strong]:text-foreground [&_[role=heading]]:mb-1.5 [&_[role=heading]]:mt-7 [&_[role=heading]]:font-display [&_[role=heading]]:!text-[17px] [&_[role=heading]]:font-semibold [&_[role=heading]]:leading-snug [&_[role=heading]]:tracking-tight [&_[role=heading]]:text-foreground [&_[role=heading]:first-child]:mt-0">
+                      <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:!text-[17px] [&_strong]:!font-medium [&_strong]:leading-[inherit] [&_strong]:text-foreground [&_[role=heading]]:mb-1.5 [&_[role=heading]]:mt-7 [&_[role=heading]]:font-display [&_[role=heading]]:!text-[17px] [&_[role=heading]]:font-semibold [&_[role=heading]]:leading-snug [&_[role=heading]]:tracking-tight [&_[role=heading]]:text-foreground [&_[role=heading]:first-child]:mt-0">
                         <ChatMarkdown
                           text={letterMarkdownDisplay}
                           singleAsteriskAs="italic"
                         />
                       </div>
                       <LetterFeedbackRow
+                        key={`${reflection.rangeKey || reflection.startDate}-${reflection.meta.generatedAt}`}
                         rangeKey={
                           reflection.rangeKey ||
                           `${reflection.startDate ?? ""}_${reflection.endDate ?? ""}`
                         }
                         initial={reflection.letterFeedback ?? null}
+                        regenerating={generating && Boolean(pendingLetter)}
+                        onRewrite={rewriteLetterFromFeedback}
                       />
                     </article>
                   ) : null}

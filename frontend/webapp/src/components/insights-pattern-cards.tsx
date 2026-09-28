@@ -207,7 +207,35 @@ function citedText(item: string | JournalWeeklyCitedItem): string {
 }
 
 function citedIds(item: string | JournalWeeklyCitedItem): string[] {
-  return typeof item === "string" ? [] : item.entryIds ?? [];
+  if (typeof item === "string") return [];
+  if (item.sources?.length) return item.sources.map((s) => s.entryId);
+  return item.entryIds ?? [];
+}
+
+function citedSources(item: string | JournalWeeklyCitedItem) {
+  if (typeof item === "string") return undefined;
+  return item.sources;
+}
+
+function SourceDateChip({
+  item,
+}: {
+  item: string | JournalWeeklyCitedItem;
+}) {
+  const sources = citedSources(item);
+  const ids = citedIds(item);
+  if (!sources?.length && !ids.length) return null;
+  return (
+    <InsightsSourceLink
+      sources={sources}
+      entryIds={ids}
+      className="shrink-0"
+    >
+      <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground">
+        {ids.length > 1 ? `${ids.length} entries` : "Source"}
+      </span>
+    </InsightsSourceLink>
+  );
 }
 
 function PatternItemMenu({
@@ -292,8 +320,8 @@ function WinsCard({
               </span>
               <span className="min-w-0 flex-1">
                 <span>{text}</span>
-                <InsightsSourceLink entryIds={citedIds(w)} className="mt-1" />
               </span>
+              <SourceDateChip item={w} />
               <PatternItemMenu
                 kind="win"
                 text={text}
@@ -343,8 +371,8 @@ function PromisesCard({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span>{text}</span>
-                  <InsightsSourceLink entryIds={citedIds(p)} className="mt-1" />
                 </span>
+                <SourceDateChip item={p} />
                 <PatternItemMenu
                   kind="promise"
                   text={text}
@@ -398,11 +426,23 @@ function RecurringThoughtCard({
       <p className="font-display text-[clamp(1.35rem,2.4vw,1.75rem)] font-normal italic leading-snug text-foreground">
         &ldquo;{thought.text}&rdquo;
       </p>
-      <p className="text-sm text-muted">
-        {thought.count} time{thought.count === 1 ? "" : "s"} {periodNoun}
-        {also}
+      <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
+        <span>
+          {thought.count} time{thought.count === 1 ? "" : "s"} {periodNoun}
+          {also}
+        </span>
+        <InsightsSourceLink
+          sources={thought.sources}
+          entryIds={
+            thought.sources?.map((s) => s.entryId) ?? thought.entryIds ?? []
+          }
+          header={`Most behind this thought`}
+        >
+          <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground">
+            {thought.count} times
+          </span>
+        </InsightsSourceLink>
       </p>
-      <InsightsSourceLink entryIds={thought.entryIds ?? []} />
       {showMeditation ? (
         <button
           type="button"

@@ -59,6 +59,8 @@ type Props = {
   bottomBar?: ReactNode;
   /** Hide the created-date line when date is shown elsewhere. */
   hideCreatedDate?: boolean;
+  /** Passage to highlight when opened from Insights (`?highlight=`). */
+  highlightQuote?: string | null;
   /** Optional secondary footer above the bottom bar (e.g. tags). */
   children?: ReactNode;
 };
@@ -83,6 +85,7 @@ export function JournalRichEditor({
   headerAfter,
   bottomBar,
   hideCreatedDate = false,
+  highlightQuote = null,
   children,
 }: Props) {
   const titleSeededForEntryRef = useRef<string | null>(null);
@@ -247,6 +250,78 @@ export function JournalRichEditor({
     editorSeededForEntryRef.current = entryId;
     editor.commands.setContent(initialHtml, { emitUpdate: false });
   }, [entryId, initialHtml, editor]);
+
+  useEffect(() => {
+    if (!editor || !highlightQuote?.trim()) return;
+    const root = editor.view.dom as HTMLElement;
+    const quote = highlightQuote.trim();
+    // Clear prior marks
+    root.querySelectorAll("mark[data-insights-highlight]").forEach((el) => {
+      const parent = el.parentNode;
+      if (!parent) return;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+    });
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    let n: Node | null;
+    while ((n = walker.nextNode())) {
+      if (n.nodeType === Node.TEXT_NODE && n.textContent) nodes.push(n as Text);
+    }
+    const haystack = nodes.map((t) => t.textContent ?? "").join("");
+    const lower = haystack.toLowerCase();
+    const idx = lower.indexOf(quote.toLowerCase());
+    if (idx < 0) return;
+
+    let remaining = idx;
+    let startNode: Text | null = null;
+    let startOffset = 0;
+    let endNode: Text | null = null;
+    let endOffset = 0;
+    let cursor = 0;
+    for (const t of nodes) {
+      const len = t.textContent?.length ?? 0;
+      if (!startNode && remaining < len) {
+        startNode = t;
+        startOffset = remaining;
+      }
+      if (startNode && cursor + len >= idx + quote.length) {
+        endNode = t;
+        endOffset = idx + quote.length - cursor;
+        break;
+      }
+      if (!startNode) remaining -= len;
+      cursor += len;
+    }
+    if (!startNode || !endNode) return;
+    try {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, Math.min(endOffset, endNode.textContent?.length ?? 0));
+      const mark = document.createElement("mark");
+      mark.setAttribute("data-insights-highlight", "1");
+      mark.className =
+        "rounded-sm bg-accent-soft px-0.5 transition-colors duration-[2.5s]";
+      range.surroundContents(mark);
+      mark.scrollIntoView({ block: "center", behavior: "smooth" });
+      const fade = window.setTimeout(() => {
+        mark.classList.add("bg-transparent");
+      }, 500);
+      const cleanup = window.setTimeout(() => {
+        if (!mark.parentNode) return;
+        const parent = mark.parentNode;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+      }, 3500);
+      return () => {
+        window.clearTimeout(fade);
+        window.clearTimeout(cleanup);
+      };
+    } catch {
+      /* surroundContents can fail on partial elements — ignore */
+    }
+  }, [editor, entryId, highlightQuote, initialHtml]);
 
   useEffect(() => {
     editorRef.current = editor;

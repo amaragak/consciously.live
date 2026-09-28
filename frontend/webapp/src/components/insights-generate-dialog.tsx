@@ -12,21 +12,19 @@ import {
   resolveInsightPeriod,
   todayInTimeZone,
 } from "@/lib/insight-period";
+import {
+  INSIGHTS_GENERATE_PREFS_KEY,
+  readInsightsGeneratePrefs,
+  writeInsightsGeneratePrefs,
+  type InsightsGeneratePrefs,
+  type InsightsPeriodPreset,
+} from "@/lib/insights-generate-prefs";
 
-export const INSIGHTS_GENERATE_PREFS_KEY = "mm_insights_generate_prefs_v2";
-
-export type InsightsPeriodPreset = "last7" | "last30" | "custom";
-
-export type InsightsGeneratePrefs = {
-  remember: boolean;
-  letter: boolean;
-  patterns: boolean;
-  felt: boolean;
-  moved: boolean;
-  wins: boolean;
-  thought: boolean;
-  /** Remembered Covering preset; custom falls back to last7. */
-  periodPreset: InsightsPeriodPreset;
+export {
+  INSIGHTS_GENERATE_PREFS_KEY,
+  writeInsightsGeneratePrefs,
+  type InsightsGeneratePrefs,
+  type InsightsPeriodPreset,
 };
 
 export type InsightsGenerateSelection = {
@@ -48,70 +46,6 @@ export type InsightsGeneratePrefill = {
   /** Hide the Covering picker — used when regenerating an existing range. */
   lockPeriod?: boolean;
 };
-
-const DEFAULT_PREFS: InsightsGeneratePrefs = {
-  remember: false,
-  letter: true,
-  patterns: true,
-  felt: true,
-  moved: true,
-  wins: true,
-  thought: true,
-  periodPreset: "last7",
-};
-
-function readPrefs(): InsightsGeneratePrefs {
-  if (typeof window === "undefined") return { ...DEFAULT_PREFS };
-  try {
-    const raw = window.localStorage.getItem(INSIGHTS_GENERATE_PREFS_KEY);
-    if (!raw) return { ...DEFAULT_PREFS };
-    const parsed = JSON.parse(raw) as Partial<InsightsGeneratePrefs>;
-    if (!parsed || typeof parsed !== "object") return { ...DEFAULT_PREFS };
-    if (parsed.remember !== true) return { ...DEFAULT_PREFS };
-    const preset =
-      parsed.periodPreset === "last30" || parsed.periodPreset === "last7"
-        ? parsed.periodPreset
-        : "last7";
-    return {
-      remember: true,
-      letter: parsed.letter !== false,
-      patterns: parsed.patterns !== false,
-      felt: parsed.felt !== false,
-      moved: parsed.moved !== false,
-      wins: parsed.wins !== false,
-      thought: parsed.thought !== false,
-      periodPreset: preset,
-    };
-  } catch {
-    return { ...DEFAULT_PREFS };
-  }
-}
-
-export function writeInsightsGeneratePrefs(prefs: InsightsGeneratePrefs): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (!prefs.remember) {
-      window.localStorage.removeItem(INSIGHTS_GENERATE_PREFS_KEY);
-      return;
-    }
-    window.localStorage.setItem(
-      INSIGHTS_GENERATE_PREFS_KEY,
-      JSON.stringify({
-        remember: true,
-        letter: prefs.letter,
-        patterns: prefs.patterns,
-        felt: prefs.felt,
-        moved: prefs.moved,
-        wins: prefs.wins,
-        thought: prefs.thought,
-        periodPreset:
-          prefs.periodPreset === "custom" ? "last7" : prefs.periodPreset,
-      } satisfies InsightsGeneratePrefs),
-    );
-  } catch {
-    /* ignore */
-  }
-}
 
 function focusableWithin(root: HTMLElement): HTMLElement[] {
   const nodes = root.querySelectorAll<HTMLElement>(
@@ -201,7 +135,7 @@ export function InsightsGenerateDialog({
 
   useEffect(() => {
     if (!open) return;
-    const prefs = readPrefs();
+    const prefs = readInsightsGeneratePrefs();
     let nextLetter = prefs.letter;
     let nextPatterns = prefs.patterns;
     let nextPreset: InsightsPeriodPreset = prefs.periodPreset;

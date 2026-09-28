@@ -8,6 +8,8 @@ import { CATEGORY_CARD_FILLS } from "@/lib/theme-colors";
 import {
   MEDITATION_TYPE_PILL_CLASS,
   meditationTypePillColors,
+  meditationTypePillSurfaceFromDom,
+  type MeditationTypePillSurface,
 } from "@/lib/meditation-type-pill";
 import { fetchLibraryCategoryImages } from "@/lib/medimade-api";
 
@@ -402,7 +404,16 @@ export function MeditationTypeCard({
   className?: string;
   size?: "default" | "lg";
 }) {
-  const colors = meditationTypePillColors(name);
+  const [surface, setSurface] = useState<MeditationTypePillSurface>("light");
+  useEffect(() => {
+    const apply = () => setSurface(meditationTypePillSurfaceFromDom());
+    apply();
+    const root = document.documentElement;
+    const obs = new MutationObserver(apply);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  const colors = meditationTypePillColors(name, surface);
   const sizeClass =
     size === "lg" ? "px-3 py-1.5 text-xs sm:text-[13px]" : "";
   return (

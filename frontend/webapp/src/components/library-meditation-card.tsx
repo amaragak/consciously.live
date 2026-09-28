@@ -17,6 +17,8 @@ import { parseMeditationCreationProvenance } from "@/lib/meditation-creation-pro
 import {
   MEDITATION_TYPE_PILL_CLASS,
   meditationTypePillColors,
+  meditationTypePillSurfaceFromDom,
+  type MeditationTypePillSurface,
 } from "@/lib/meditation-type-pill";
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
@@ -105,7 +107,16 @@ function MeditationTypePill({
   label: string;
   className?: string;
 }) {
-  const colors = meditationTypePillColors(label);
+  const [surface, setSurface] = useState<MeditationTypePillSurface>("light");
+  useEffect(() => {
+    const apply = () => setSurface(meditationTypePillSurfaceFromDom());
+    apply();
+    const root = document.documentElement;
+    const obs = new MutationObserver(apply);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  const colors = meditationTypePillColors(label, surface);
   return (
     <span
       className={`${MEDITATION_TYPE_PILL_CLASS} ${className}`}
