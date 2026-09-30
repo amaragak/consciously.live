@@ -149,21 +149,23 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           {" "}
           you&apos;d be.
         </h1>
-        <p
-          className={`m-0 max-w-none text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5] ${sub.className}`}
-          style={sub.style}
-        >
-          <em className="home-v2-display text-[19px] italic text-[var(--hv2-gold)] md:text-[26px]">
-            Live consciously
-          </em>{" "}
-          with our all-inclusive{" "}
-          <strong className="font-bold text-[var(--hv2-hero-fg)]">
-            mind reprogramming
-          </strong>{" "}
-          suite: Personalised AI-guided meditations, vision boarding, a goal
-          planner, your personal manifesto and focus sessions — everything you
-          need to turn the dream into your daily life.
-        </p>
+        <div className={sub.className} style={sub.style}>
+          <p className="m-0 max-w-none text-center text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5]">
+            <em className="home-v2-display text-[19px] italic text-[var(--hv2-ivory)] md:text-[26px]">
+              Live consciously
+            </em>{" "}
+            with our all-inclusive{" "}
+            <strong className="font-bold text-[var(--hv2-hero-fg)]">
+              mind reprogramming
+            </strong>{" "}
+            suite:
+          </p>
+          <p className="m-0 mt-2 max-w-none text-center text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:mt-2.5 md:text-[22px] md:leading-[1.5]">
+            Personalised AI-guided meditations, vision boarding, a goal
+            planner, your personal manifesto and focus sessions — everything you
+            need to turn the dream into your daily life.
+          </p>
+        </div>
         <div className={form.className} style={form.style}>
           <HeroPrompt />
         </div>

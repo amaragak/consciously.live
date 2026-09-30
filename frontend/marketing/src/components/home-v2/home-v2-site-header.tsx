@@ -72,6 +72,24 @@ export function HomeV2SiteHeader({
   const positionClass = isFixed
     ? "home-v2-sticky-enter inset-x-0 top-0"
     : "sticky top-0";
+  /* Non-home sticky matches hero chrome; home scroll sticky stays compact. */
+  const rowHeight = isFixed
+    ? "h-14 md:h-[64px]"
+    : "h-14 md:h-[72px]";
+  const lockupSize = isFixed ? "sticky" : "nav";
+  const navGap = isFixed ? "gap-1" : "gap-7";
+  const toolLinkClass = (active: boolean) =>
+    isFixed
+      ? `rounded-full px-3 py-2 hover:text-[var(--hv2-gold)]${
+          active ? " text-[var(--hv2-gold)]" : ""
+        }`
+      : `hover:text-[var(--hv2-gold)]${active ? " text-[var(--hv2-gold)]" : ""}`;
+  const secondaryLinkClass = (active: boolean) =>
+    isFixed
+      ? `px-2.5 py-2 hover:text-[var(--hv2-gold)]${
+          active ? " text-[var(--hv2-gold)]" : ""
+        }`
+      : `hover:text-[var(--hv2-gold)]${active ? " text-[var(--hv2-gold)]" : ""}`;
 
   return (
     <header
@@ -83,15 +101,21 @@ export function HomeV2SiteHeader({
         className="pointer-events-none absolute inset-0 px-5 md:px-6"
       >
         <div className="relative mx-auto h-full w-full max-w-[1200px]">
-          {/* Sticky sun is 38px — center the disc on the mark. */}
-          <span className="home-v2-site-header-sun-glow absolute left-[19px] top-1/2 size-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          {/* Align glow with lockup sun (nav=40px → 20px center; sticky=38px → 19px). */}
+          <span
+            className={`home-v2-site-header-sun-glow absolute top-1/2 size-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
+              isFixed ? "left-[19px]" : "left-[20px]"
+            }`}
+          />
         </div>
       </div>
-      <div className="relative mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[64px]">
-        <div className="shrink-0">
+      <div
+        className={`relative mx-auto flex w-full max-w-[1200px] items-center gap-4 ${rowHeight}`}
+      >
+        <div className="relative shrink-0">
           <Lockup
             tool={verbLabel}
-            size="sticky"
+            size={lockupSize}
             onHero
             withMark
             homeHref="/"
@@ -101,13 +125,11 @@ export function HomeV2SiteHeader({
 
         <nav
           aria-label="Main"
-          className="hidden min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] lg:flex"
+          className={`hidden min-w-0 flex-1 items-center justify-center whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] lg:flex ${navGap}`}
         >
           {toolLinks.map((t) => {
             const active = activeTool === t.id;
-            const className = `rounded-full px-3 py-2 hover:text-[var(--hv2-gold)]${
-              active ? " text-[var(--hv2-gold)]" : ""
-            }`;
+            const className = toolLinkClass(active);
             return t.onClick ? (
               <a
                 key={t.id}
@@ -133,14 +155,14 @@ export function HomeV2SiteHeader({
             );
           })}
           <span
-            className="mx-3 h-5 w-px bg-[var(--hv2-hero-divider)]"
+            className={`h-5 w-px bg-[var(--hv2-hero-divider)]${
+              isFixed ? " mx-3" : ""
+            }`}
             aria-hidden
           />
           {secondaryLinks.map((s) => {
             const active = activeSecondary === s.id;
-            const className = `px-2.5 py-2 hover:text-[var(--hv2-gold)]${
-              active ? " text-[var(--hv2-gold)]" : ""
-            }`;
+            const className = secondaryLinkClass(active);
             return s.onClick ? (
               <a
                 key={s.id}
@@ -169,7 +191,7 @@ export function HomeV2SiteHeader({
 
         <div className="ml-auto hidden shrink-0 md:block lg:ml-0">
           <HomeV2AuthActions
-            compact
+            compact={isFixed}
             ctaHref={ctaHref}
             ctaLabel={ctaLabel}
             ctaIcon={ctaIcon}

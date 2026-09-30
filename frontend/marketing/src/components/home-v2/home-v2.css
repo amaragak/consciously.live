@@ -51,8 +51,8 @@
   /* Soft circular lift around the sun (blurred disc, not a wide clipped strip). */
   --hv2-hero-chrome-glow-sun: radial-gradient(
     circle,
-    rgb(246 241 231 / 0.28) 0%,
-    rgb(246 241 231 / 0.12) 42%,
+    rgb(246 241 231 / 0.18) 0%,
+    rgb(246 241 231 / 0.07) 42%,
     rgb(246 241 231 / 0) 72%
   );
   --hv2-hero-fg: var(--hv2-ivory);
@@ -212,8 +212,8 @@
   );
   --hv2-hero-chrome-glow-sun: radial-gradient(
     circle,
-    rgb(246 241 231 / 0.28) 0%,
-    rgb(246 241 231 / 0.12) 42%,
+    rgb(246 241 231 / 0.18) 0%,
+    rgb(246 241 231 / 0.07) 42%,
     rgb(246 241 231 / 0) 72%
   );
   --hv2-hero-fg: var(--hv2-ivory);
@@ -289,8 +289,8 @@
   );
   --hv2-hero-chrome-glow-sun: radial-gradient(
     circle,
-    rgb(246 241 231 / 0.28) 0%,
-    rgb(246 241 231 / 0.12) 42%,
+    rgb(246 241 231 / 0.18) 0%,
+    rgb(246 241 231 / 0.07) 42%,
     rgb(246 241 231 / 0) 72%
   );
   --hv2-hero-fg: var(--hv2-ivory);
@@ -331,6 +331,18 @@
   font-family: var(--hv2-font-body);
   color: var(--hv2-ink);
   background: var(--hv2-page);
+}
+
+/*
+ * Home page only (`HomeV2Page` root) — steeper mist CTA gradient (lighter right
+ * edge). Does not change SPA or non-home Next pages / site-header roots.
+ */
+.home-v2:not(.home-v2-field):not(.home-v2-site-header) {
+  --accent-gradient-button: linear-gradient(
+    90deg,
+    var(--accent-button, #c3d2e8) 0%,
+    color-mix(in srgb, var(--accent-button, #c3d2e8) 28%, white) 100%
+  );
 }
 
 /*
@@ -494,30 +506,66 @@
 }
 
 .home-v2 a:focus-visible,
-.home-v2 button:focus-visible,
-.home-v2 input:focus-visible {
+.home-v2 button:focus-visible:not(.accent-fill-gradient),
+.home-v2 input:focus-visible:not(.home-v2-prompt-input) {
   outline: 2px solid var(--hv2-gold);
   outline-offset: 3px;
 }
 
-/* Prompt pill: ring the whole shell, not the inner text field. */
+/*
+ * Prompt focus must stay mist (#C3D2E8) — never --hv2-gold (header gold on hybrid).
+ * Hardcoded so theme remaps of --accent-button / --hv2-gold cannot leak through.
+ */
 .home-v2 .home-v2-prompt-shell:focus-within {
-  outline: 2px solid var(--hv2-gold);
+  outline: 2px solid #c3d2e8 !important;
   outline-offset: 0;
+  border-color: #c3d2e8 !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #c3d2e8 45%, transparent),
+    var(--hv2-hero-elev) !important;
+  animation: none !important;
 }
 
+.home-v2 .home-v2-prompt-shell .home-v2-prompt-input:focus,
 .home-v2 .home-v2-prompt-shell .home-v2-prompt-input:focus-visible {
-  outline: none;
+  outline: none !important;
 }
 
-@media (max-width: 767px) {
-  .home-v2 .home-v2-prompt-shell:focus-within {
-    outline: none;
+/** Mist border breathe while the prompt is idle (not focused). */
+@keyframes home-v2-prompt-border-pulse {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, #c3d2e8 32%, transparent);
+  }
+  50% {
+    border-color: color-mix(in srgb, #c3d2e8 95%, transparent);
+  }
+}
+
+@media (min-width: 768px) {
+  .home-v2-prompt-shell:not(:focus-within) {
+    animation: home-v2-prompt-border-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .home-v2-prompt-input:not(:focus):not(:disabled) {
+    animation: home-v2-prompt-border-pulse 1.6s ease-in-out infinite;
   }
 
+  .home-v2 .home-v2-prompt-shell:focus-within {
+    outline: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .home-v2 .home-v2-prompt-shell .home-v2-prompt-input:focus,
   .home-v2 .home-v2-prompt-shell .home-v2-prompt-input:focus-visible {
-    outline: 2px solid var(--hv2-gold);
+    outline: 2px solid #c3d2e8 !important;
     outline-offset: 3px;
+    border-color: #c3d2e8 !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, #c3d2e8 45%, transparent) !important;
+    animation: none !important;
   }
 }
 
@@ -595,6 +643,35 @@
   animation: home-v2-sticky-in 260ms ease both;
 }
 
+/** Hero “Create my meditation” — pulse fill only while the prompt has text. */
+@keyframes home-v2-create-meditate-bg-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    filter: brightness(0.96);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.14);
+  }
+}
+
+.home-v2-create-meditate-pulse {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.home-v2-create-meditate-pulse::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--accent-button);
+  background-image: var(--accent-gradient-button);
+  animation: home-v2-create-meditate-bg-pulse 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-v2-hero-anim,
   .home-v2-hero-anim.is-ready,
@@ -604,5 +681,20 @@
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+  }
+
+  .home-v2-prompt-shell:not(:focus-within),
+  .home-v2-prompt-input:not(:focus):not(:disabled) {
+    animation: none !important;
+  }
+
+  .home-v2-create-meditate-pulse {
+    background-color: var(--accent-button) !important;
+    background-image: var(--accent-gradient-button) !important;
+  }
+
+  .home-v2-create-meditate-pulse::before {
+    animation: none;
+    content: none;
   }
 }

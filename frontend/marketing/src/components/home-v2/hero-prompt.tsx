@@ -60,7 +60,7 @@ export function HeroPrompt() {
     <div className="flex w-full flex-col gap-3.5">
       <form
         onSubmit={(e) => void onSubmit(e)}
-        className="home-v2-prompt-shell home-v2-hero-glass flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[rgb(var(--hv2-gold-rgb)/0.45)] md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)] md:transition-[border-color,box-shadow] md:duration-200 md:ease-out md:hover:border-[var(--hv2-gold)] md:hover:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.35)] md:focus-within:border-[var(--hv2-gold)] md:focus-within:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.45)]"
+        className="home-v2-prompt-shell home-v2-hero-glass flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[#c3d2e8]/45 md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)] md:transition-[border-color,box-shadow] md:duration-200 md:ease-out md:hover:border-[#c3d2e8]"
       >
         <label htmlFor="home-v2-hero-prompt" className="sr-only">
           What would you like a meditation for?
@@ -72,12 +72,14 @@ export function HeroPrompt() {
           onChange={(e) => setPrompt(e.target.value)}
           disabled={busy}
           placeholder="Calm before my big pitch, confidence for launch day, deeper sleep…"
-          className="home-v2-prompt-input h-12 min-w-0 flex-1 rounded-2xl border border-[rgb(var(--hv2-gold-rgb)/0.45)] bg-[var(--hv2-hero-input-bg)] px-5 text-base text-[var(--hv2-hero-input-fg)] shadow-[var(--hv2-hero-elev)] outline-none transition-[border-color,box-shadow] duration-200 ease-out placeholder:text-[var(--hv2-hero-placeholder)] hover:border-[var(--hv2-gold)] focus:border-[var(--hv2-gold)] focus:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.45)] md:h-11 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[19px] md:shadow-none md:hover:border-0 md:focus:border-0 md:focus:shadow-none"
+          className="home-v2-prompt-input h-12 min-w-0 flex-1 rounded-2xl border border-[#c3d2e8]/45 bg-[var(--hv2-hero-input-bg)] px-5 text-base text-[var(--hv2-hero-input-fg)] shadow-[var(--hv2-hero-elev)] outline-none transition-[border-color,box-shadow] duration-200 ease-out placeholder:text-[var(--hv2-hero-placeholder)] hover:border-[#c3d2e8] md:h-11 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[19px] md:shadow-none md:hover:border-0"
         />
         <button
           type="submit"
           disabled={busy || !prompt.trim()}
-          className="accent-fill-gradient inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full px-7 text-base font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 md:h-12 md:px-7 md:text-[17px]"
+          className={`accent-fill-gradient relative isolate inline-flex h-12 shrink-0 items-center justify-center gap-2 overflow-hidden rounded-full px-7 text-base font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 md:h-12 md:px-7 md:text-[17px] ${
+            prompt.trim() && !busy ? "home-v2-create-meditate-pulse" : ""
+          }`}
         >
           {busy ? (
             "Creating…"
@@ -89,6 +91,9 @@ export function HeroPrompt() {
           )}
         </button>
       </form>
+      <p className="px-0 text-center text-[13px] font-bold text-[var(--hv2-hero-fg)] md:px-[30px] md:text-left md:text-[15px]">
+        Make it personal
+      </p>
       {error ? (
         <p className="px-[30px] text-sm text-red-300" role="alert">
           {error}
