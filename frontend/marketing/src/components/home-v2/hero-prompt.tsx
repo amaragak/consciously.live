@@ -91,9 +91,6 @@ export function HeroPrompt() {
           )}
         </button>
       </form>
-      <p className="px-0 text-center text-[13px] font-bold text-[var(--hv2-hero-fg)] md:px-[30px] md:text-left md:text-[15px]">
-        Make it personal
-      </p>
       {error ? (
         <p className="px-[30px] text-sm text-red-300" role="alert">
           {error}

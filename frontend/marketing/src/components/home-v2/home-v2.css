@@ -124,15 +124,13 @@
   --hv2-sticky-bg: var(--home-hero-bg);
   /* Pattern fades across side gutters; centre keeps a whisper of the tile. */
   --hv2-hero-pattern-mask: linear-gradient(
-    to right,
-    rgb(0 0 0 / 0.32) 0%,
-    rgb(0 0 0 / 0.24) max(0px, calc((50% - 600px) * 0.4)),
-    rgb(0 0 0 / 0.16) max(0px, calc((50% - 600px) * 0.75)),
-    rgb(0 0 0 / 0.12) max(0px, calc(50% - 600px)),
-    rgb(0 0 0 / 0.12) min(100%, calc(50% + 600px)),
-    rgb(0 0 0 / 0.16) min(100%, calc(100% - (50% - 600px) * 0.75)),
-    rgb(0 0 0 / 0.24) min(100%, calc(100% - (50% - 600px) * 0.4)),
-    rgb(0 0 0 / 0.32) 100%
+    90deg,
+    rgb(255 255 255 / 0.45) 0%,
+    rgb(255 255 255 / 0.28) 12%,
+    rgb(255 255 255 / 0.1) 28%,
+    rgb(255 255 255 / 0.1) 72%,
+    rgb(255 255 255 / 0.28) 88%,
+    rgb(255 255 255 / 0.45) 100%
   );
   --hv2-hero-fg: var(--marketing-ink);
   --hv2-hero-muted: var(--marketing-body);
@@ -199,9 +197,18 @@
   /* Homepage hero — near-black duotone (unchanged). */
   --hv2-hero-bg: #1a1820;
   --hv2-hero-pattern: url("/patterns/paisley-dark-duotone.webp");
-  --hv2-hero-pattern-opacity: 0.88;
+  --hv2-hero-pattern-opacity: 0.72;
   --hv2-hero-pattern-size: 640px 640px;
-  --hv2-hero-pattern-mask: none;
+  /* Softer across the content band; stronger in the left/right gutters. */
+  --hv2-hero-pattern-mask: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 1) 0%,
+    rgb(255 255 255 / 0.55) 12%,
+    rgb(255 255 255 / 0.32) 28%,
+    rgb(255 255 255 / 0.32) 72%,
+    rgb(255 255 255 / 0.55) 88%,
+    rgb(255 255 255 / 1) 100%
+  );
   /* Sticky = SPA dark header `#0F1B2D`, not tonal-paisley `#1a2330`. */
   --hv2-sticky-bg: #0f1b2d;
   --hv2-sticky-glow-sun: radial-gradient(
@@ -278,8 +285,16 @@
   --hv2-sand: var(--marketing-band-a);
   --hv2-hero-bg: #1a2330;
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
-  --hv2-hero-pattern-opacity: 0.18;
-  --hv2-hero-pattern-mask: none;
+  --hv2-hero-pattern-opacity: 0.14;
+  --hv2-hero-pattern-mask: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 1) 0%,
+    rgb(255 255 255 / 0.55) 12%,
+    rgb(255 255 255 / 0.32) 28%,
+    rgb(255 255 255 / 0.32) 72%,
+    rgb(255 255 255 / 0.55) 88%,
+    rgb(255 255 255 / 1) 100%
+  );
   --hv2-sticky-bg: #0f1b2d;
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
@@ -413,6 +428,8 @@
   mask-repeat: no-repeat;
   -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
+  -webkit-mask-mode: alpha;
+  mask-mode: alpha;
 }
 
 .home-v2-hero > *:not(.home-v2-hero-chrome):not(.home-v2-hero-sun-glow) {

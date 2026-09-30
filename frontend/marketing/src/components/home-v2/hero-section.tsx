@@ -151,7 +151,7 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
         </h1>
         <div className={sub.className} style={sub.style}>
           <p className="m-0 max-w-none text-center text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5]">
-            <em className="home-v2-display text-[19px] italic text-[var(--hv2-ivory)] md:text-[26px]">
+            <em className="home-v2-display text-[19px] font-normal italic text-[var(--hv2-ivory)] md:text-[26px]">
               Live consciously
             </em>{" "}
             with our all-inclusive{" "}
@@ -161,9 +161,8 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
             suite:
           </p>
           <p className="m-0 mt-2 max-w-none text-center text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:mt-2.5 md:text-[22px] md:leading-[1.5]">
-            Personalised AI-guided meditations, vision boarding, a goal
-            planner, your personal manifesto and focus sessions — everything you
-            need to turn the dream into your daily life.
+            Personalised AI-guided meditations · Vision board · Goal planner ·
+            Personal Manifesto · Focus sessions
           </p>
         </div>
         <div className={form.className} style={form.style}>
