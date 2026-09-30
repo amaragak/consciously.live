@@ -5,7 +5,6 @@ import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
-import { HomeV2TopChrome } from "@/components/home-v2/home-v2-top-chrome";
 
 function hasAppSession(): boolean {
   return isMedimadeSessionActive() && Boolean(getMedimadeSessionJwt());
@@ -47,8 +46,7 @@ function ConnectMarketingLanding({ signedIn }: { signedIn: boolean }) {
 
   return (
     <div className="w-full">
-      <section className="home-v2-hero flex w-full flex-col px-5 pb-16 text-[var(--hv2-hero-fg)] md:px-6 md:pb-20">
-        <HomeV2TopChrome />
+      <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-16 text-[var(--hv2-hero-fg)] md:px-6 md:pb-20">
         <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center px-0 pb-4 pt-10 text-center md:pt-14">
           <h1 className="home-v2-display m-0 max-w-3xl text-[34px] font-[350] leading-tight tracking-[-0.8px] text-[var(--hv2-hero-fg)] sm:text-[44px] md:text-[clamp(44px,5vw,56px)] md:tracking-[-1.2px]">
             A place to talk about what life is asking of you.

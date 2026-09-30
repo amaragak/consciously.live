@@ -87,13 +87,16 @@ export function HomeV2NavHeader({
   position = "sticky",
   home = false,
   activeTool: activeToolOverride,
+  scrolled = false,
 }: {
-  tone?: "solid" | "transparent";
+  tone?: "solid" | "transparent" | "overlay";
   position?: "fixed" | "sticky" | "static";
   /** Homepage: tool links scroll to `#tool-*` sections. */
   home?: boolean;
   /** Homepage sticky: highlight the section in view. */
   activeTool?: HomeV2ToolId | null;
+  /** With `tone="overlay"`: fade to solid fill when true. */
+  scrolled?: boolean;
 } = {}) {
   const pathname = usePathname() || "/";
   const resolved = resolveNav(pathname);
@@ -146,6 +149,7 @@ export function HomeV2NavHeader({
       ctaIcon={ctaIcon}
       position={position}
       tone={tone}
+      scrolled={scrolled}
     />
   );
 }

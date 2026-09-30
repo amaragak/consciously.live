@@ -32,7 +32,6 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 }
 
 export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
-  const [stuck, setStuck] = useState(false);
   const [activeTool, setActiveTool] = useState<HomeV2ToolId | null>(null);
   const [motionReady, setMotionReady] = useState(false);
 
@@ -67,16 +66,7 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
       setActiveTool(current);
     };
 
-    const updateStuck = () => {
-      const top =
-        scroller === document.documentElement
-          ? window.scrollY
-          : (scroller as HTMLElement).scrollTop;
-      setStuck(top > 140);
-    };
-
     const onScroll = () => {
-      updateStuck();
       updateActive();
     };
 
@@ -119,7 +109,7 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
     };
   }, [rootRef]);
 
-  return { stuck, activeTool, motionReady };
+  return { activeTool, motionReady };
 }
 
 export function smoothScrollToId(id: string) {

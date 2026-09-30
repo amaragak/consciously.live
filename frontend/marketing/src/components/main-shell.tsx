@@ -98,7 +98,9 @@ export function MainShell({
       className={`relative flex min-h-0 flex-1 flex-col bg-background ${
         isAuthPage
           ? "overflow-hidden"
-          : "overflow-y-auto overscroll-y-contain"
+          : isHeroPage
+            ? "overflow-y-auto overscroll-y-none"
+            : "overflow-y-auto overscroll-y-contain"
       }`}
       data-page-kind={isHeroPage ? "hero" : "standard"}
       data-app-layout={

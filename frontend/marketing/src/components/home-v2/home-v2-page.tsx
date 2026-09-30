@@ -4,18 +4,22 @@ import { useRef } from "react";
 import "@/components/home-v2/home-v2.css";
 import { FinalCta } from "@/components/home-v2/final-cta";
 import { HeroSection } from "@/components/home-v2/hero-section";
-import { StickyToolHeader } from "@/components/home-v2/sticky-tool-header";
+import {
+  HomeV2Chrome,
+  useHomeV2HeaderScrolled,
+} from "@/components/home-v2/home-v2-scroll-chrome";
 import { ToolLoopSection } from "@/components/home-v2/tool-loop-section";
 import { ToolSection } from "@/components/home-v2/tool-section";
 import { useHomeV2Scroll } from "@/components/home-v2/use-home-v2-scroll";
 
 export function HomeV2Page() {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { stuck, activeTool, motionReady } = useHomeV2Scroll(rootRef);
+  const { activeTool, motionReady } = useHomeV2Scroll(rootRef);
+  const scrolled = useHomeV2HeaderScrolled(rootRef);
 
   return (
-    <div ref={rootRef} className="home-v2 w-full">
-      <StickyToolHeader stuck={stuck} activeTool={activeTool} />
+    <div ref={rootRef} className="home-v2 relative w-full">
+      <HomeV2Chrome home activeTool={activeTool} scrolled={scrolled} />
       <HeroSection motionReady={motionReady} />
       <ToolLoopSection />
       <section className="home-v2-band home-v2-band--b">

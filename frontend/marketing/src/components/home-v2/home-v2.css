@@ -373,8 +373,8 @@
  * Site / sticky header also carries `.home-v2` for token scope, but must NOT
  * inherit the light page fill — that was painting cream under ivory type.
  */
-.home-v2.home-v2-site-header:not(.home-v2-site-header--transparent) {
-  background-color: var(--hv2-sticky-bg);
+.home-v2.home-v2-site-header.home-v2-site-header--solid {
+  background: var(--hv2-sticky-bg);
   color: var(--hv2-hero-fg);
 }
 
@@ -383,6 +383,156 @@
   background: transparent !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+/* One header: clear at top, quick fade to solid fill on scroll. */
+.home-v2.home-v2-site-header.home-v2-site-header--overlay {
+  background: transparent !important;
+  border-bottom: none;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  transition: background-color 5ms linear;
+}
+
+.home-v2.home-v2-site-header.home-v2-site-header--overlay.is-scrolled {
+  background: var(--hv2-sticky-bg) !important;
+  border-bottom: 1px solid var(--hv2-hero-hairline);
+}
+
+/* Compact bar + CTA after scroll — longer ease (bg fill already snapped). */
+.home-v2-site-header--overlay .home-v2-site-header-bar {
+  height: 3.5rem;
+  transition: height 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (min-width: 768px) {
+  .home-v2-site-header--overlay .home-v2-site-header-bar {
+    height: 72px;
+  }
+}
+
+.home-v2-site-header--overlay.is-scrolled .home-v2-site-header-bar {
+  height: 3rem;
+}
+
+@media (min-width: 768px) {
+  .home-v2-site-header--overlay.is-scrolled .home-v2-site-header-bar {
+    height: 3.5rem;
+  }
+}
+
+.home-v2-header-cta {
+  padding: 0.75rem 1.375rem;
+  font-size: 15px;
+  line-height: 1.25;
+  transition:
+    padding 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    font-size 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    min-width 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-v2-header-cta.is-compact {
+  padding: 0.4rem 1.05rem;
+  font-size: 14px;
+}
+
+.home-v2-site-header--overlay .home-v2-site-header-menu-btn {
+  height: 2.75rem;
+  width: 2.75rem;
+  transition:
+    height 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-v2-site-header--overlay.is-scrolled .home-v2-site-header-menu-btn {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+.home-v2-site-header--overlay .home-v2-header-cta-mobile {
+  padding: 0.625rem 1rem;
+  transition: padding 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-v2-site-header--overlay.is-scrolled .home-v2-header-cta-mobile {
+  padding: 0.4rem 0.85rem;
+}
+
+/* Lockup: hero nav size → SPA header size (28px sun / text-xl desktop; 24 / text-lg mobile). */
+.home-v2-site-header--overlay .home-v2-lockup-brand {
+  gap: 0.75rem;
+  transition: gap 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-v2-site-header--overlay .home-v2-lockup.is-compact .home-v2-lockup-brand {
+  gap: 0.5rem;
+}
+
+.home-v2-site-header--overlay .home-v2-lockup {
+  font-size: 1.5rem;
+  letter-spacing: -0.025em;
+  transition:
+    font-size 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    letter-spacing 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (min-width: 768px) {
+  .home-v2-site-header--overlay .home-v2-lockup {
+    font-size: 28px;
+    letter-spacing: -0.5px;
+  }
+}
+
+.home-v2-site-header--overlay .home-v2-lockup.is-compact {
+  font-size: 1.125rem; /* SPA mobile text-lg */
+  letter-spacing: -0.025em;
+}
+
+@media (min-width: 768px) {
+  .home-v2-site-header--overlay .home-v2-lockup.is-compact {
+    font-size: 1.25rem; /* SPA desktop text-xl */
+  }
+}
+
+.home-v2-site-header--overlay .home-v2-lockup-sun {
+  width: 40px;
+  height: 40px;
+  transition:
+    width 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-v2-site-header--overlay .home-v2-lockup.is-compact .home-v2-lockup-sun {
+  width: 24px; /* SPA mobile */
+  height: 24px;
+}
+
+@media (min-width: 768px) {
+  .home-v2-site-header--overlay .home-v2-lockup.is-compact .home-v2-lockup-sun {
+    width: 28px; /* SPA desktop */
+    height: 28px;
+  }
+}
+
+.home-v2-overlay-sun-glow {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 39;
+  height: 200px;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 5ms linear;
+}
+
+.home-v2-overlay-sun-glow.is-scrolled {
+  opacity: 0;
+}
+
+/* Pull hero paisley under the in-flow sticky chrome (home / Connect). */
+.home-v2-hero--under-chrome {
+  margin-top: calc(-1 * var(--hv2-sticky-header-h));
+  padding-top: var(--hv2-sticky-header-h);
 }
 
 /* Soft lift centered on the sticky lockup sun (not viewport-left). */
@@ -730,6 +880,18 @@
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+  }
+
+  .home-v2.home-v2-site-header.home-v2-site-header--overlay,
+  .home-v2-overlay-sun-glow,
+  .home-v2-site-header--overlay .home-v2-site-header-bar,
+  .home-v2-header-cta,
+  .home-v2-site-header--overlay .home-v2-site-header-menu-btn,
+  .home-v2-site-header--overlay .home-v2-header-cta-mobile,
+  .home-v2-site-header--overlay .home-v2-lockup,
+  .home-v2-site-header--overlay .home-v2-lockup-brand,
+  .home-v2-site-header--overlay .home-v2-lockup-sun {
+    transition: none !important;
   }
 
   .home-v2-prompt-shell:not(:focus-within),

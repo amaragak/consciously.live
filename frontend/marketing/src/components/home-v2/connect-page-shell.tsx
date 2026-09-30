@@ -2,11 +2,14 @@
 
 import { usePathname } from "next/navigation";
 import { HomeV2NavHeader } from "@/components/home-v2/home-v2-nav-header";
-import { HomeV2ScrollChrome } from "@/components/home-v2/home-v2-scroll-chrome";
+import {
+  HomeV2Chrome,
+  HomeV2ScrollChrome,
+} from "@/components/home-v2/home-v2-scroll-chrome";
 
 /**
- * Connect shell — landing uses shared scroll sticky (top chrome lives in the
- * hero via `HomeV2TopChrome`); nested routes keep a solid sticky header.
+ * Connect shell — landing: sticky fading chrome over hero; nested routes:
+ * solid sticky header.
  */
 export function ConnectPageShell({
   children,
@@ -25,5 +28,12 @@ export function ConnectPageShell({
     );
   }
 
-  return <HomeV2ScrollChrome>{children}</HomeV2ScrollChrome>;
+  return (
+    <HomeV2ScrollChrome>
+      <div className="relative">
+        <HomeV2Chrome />
+        {children}
+      </div>
+    </HomeV2ScrollChrome>
+  );
 }

@@ -13,6 +13,8 @@ type Props = {
   onHero?: boolean;
   /** Brand sun before the wordmark (header lockups). */
   withMark?: boolean;
+  /** Overlay header scrolled — animate down to SPA header mark/wordmark size. */
+  compact?: boolean;
   /**
    * When set, only the sun + “consciously” navigate home.
    * The tool verb stays plain text beside the link.
@@ -44,6 +46,7 @@ export function Lockup({
   onNavy = false,
   onHero = false,
   withMark = false,
+  compact = false,
   homeHref,
   onHomeClick,
 }: Props) {
@@ -69,33 +72,39 @@ export function Lockup({
       {sun ? (
         <LogoMark
           size={sun}
-          className="relative top-px mr-0.5 shrink-0 text-[var(--hv2-gold)]"
+          className="home-v2-lockup-sun relative top-px mr-0.5 shrink-0 text-[var(--hv2-gold)]"
         />
       ) : null}
-      <span className={brand}>consciously</span>
+      <span className={`home-v2-lockup-wordmark ${brand}`}>consciously</span>
     </>
   );
 
   return (
     <span
-      className={`home-v2-display inline-flex items-center gap-2 ${sizeClass[size]} ${className}`}
+      className={`home-v2-lockup home-v2-display inline-flex items-center gap-2 ${sizeClass[size]}${
+        compact ? " is-compact" : ""
+      } ${className}`.trim()}
     >
       {homeHref ? (
         <Link
           href={homeHref}
           aria-label="Consciously home"
           onClick={onHomeClick}
-          className={`inline-flex items-center ${brandGap}`}
+          className={`home-v2-lockup-brand inline-flex items-center ${brandGap}`}
         >
           {brandBlock}
         </Link>
       ) : (
-        <span className={`inline-flex items-center ${brandGap}`}>
+        <span
+          className={`home-v2-lockup-brand inline-flex items-center ${brandGap}`}
+        >
           {brandBlock}
         </span>
       )}
       {label ? (
-        <em className={`select-text font-normal italic ${verbClass}`}>
+        <em
+          className={`home-v2-lockup-verb select-text font-normal italic ${verbClass}`}
+        >
           {label}
         </em>
       ) : null}

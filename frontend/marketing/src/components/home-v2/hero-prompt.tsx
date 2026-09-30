@@ -136,8 +136,8 @@ export function HomeV2AuthActions({
               navigateToSpa("/").finally(() => setDashboardBusy(false)),
             );
           }}
-          className={`accent-fill-gradient rounded-full font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${
-            compact ? "px-5 py-2.5 text-[15px]" : "px-[22px] py-3 text-[15px]"
+          className={`home-v2-header-cta accent-fill-gradient rounded-full font-semibold transition-opacity hover:opacity-90 disabled:opacity-50${
+            compact ? " is-compact" : ""
           }`}
         >
           {dashboardBusy ? "Opening…" : "Dashboard →"}
@@ -157,10 +157,8 @@ export function HomeV2AuthActions({
       </Link>
       <Link
         href={ctaHref}
-        className={`accent-fill-gradient inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-center font-semibold transition-opacity hover:opacity-90 ${
-          compact
-            ? "min-w-[180px] px-5 py-2.5 text-[15px]"
-            : "px-[22px] py-3 text-[15px]"
+        className={`home-v2-header-cta accent-fill-gradient inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-center font-semibold transition-opacity hover:opacity-90${
+          compact ? " is-compact" : ""
         }`}
       >
         {ctaIcon}

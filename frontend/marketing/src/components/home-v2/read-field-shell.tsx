@@ -1,11 +1,14 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { HomeV2ScrollChrome } from "@/components/home-v2/home-v2-scroll-chrome";
-import { HomeV2TopChrome } from "@/components/home-v2/home-v2-top-chrome";
+import {
+  HomeV2Chrome,
+  HomeV2ScrollChrome,
+} from "@/components/home-v2/home-v2-scroll-chrome";
 
 /**
- * Read field shell — shared translucent top chrome + scroll sticky.
+ * Read field shell — sticky fading header lives inside the field so
+ * transparency reveals paisley (and overscroll keeps header with content).
  */
 export function ReadFieldShell({
   children,
@@ -18,9 +21,7 @@ export function ReadFieldShell({
   return (
     <HomeV2ScrollChrome showReadingProgress={isPost}>
       <div className="home-v2-field min-h-full">
-        <div className="px-5 md:px-6">
-          <HomeV2TopChrome />
-        </div>
+        <HomeV2Chrome />
         {children}
       </div>
     </HomeV2ScrollChrome>

@@ -43,10 +43,16 @@ type Props = {
   ctaLabel: string;
   /** Optional leading icon for tool CTAs (sidebar glyph). */
   ctaIcon?: ReactNode;
-  /** `fixed` = homepage scroll sticky; `sticky` = site-wide marketing header; `static` = in-flow (hero-like). */
+  /** `fixed` = overlay chrome; `sticky` = site-wide marketing; `static` = in-flow. */
   position?: "fixed" | "sticky" | "static";
-  /** `transparent` = over field/hero paisley (no solid sticky fill). */
-  tone?: "solid" | "transparent";
+  /**
+   * `solid` = always filled sticky.
+   * `overlay` = transparent at top; fades to solid when `scrolled`.
+   * `transparent` = always clear (legacy; prefer overlay).
+   */
+  tone?: "solid" | "transparent" | "overlay";
+  /** With `tone="overlay"`: solid fill + full-bleed hairline when true. */
+  scrolled?: boolean;
   className?: string;
   children?: ReactNode;
 };
@@ -68,17 +74,20 @@ export function HomeV2SiteHeader({
   ctaIcon,
   position = "sticky",
   tone = "solid",
+  scrolled = false,
   className = "",
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const isFixed = position === "fixed";
-  const isTransparent = tone === "transparent";
+  const isOverlay = tone === "overlay";
+  const isTransparent = tone === "transparent" || (isOverlay && !scrolled);
+  const isFilled = tone === "solid" || (isOverlay && scrolled);
+  const compactChrome = isOverlay && scrolled;
   const positionClass = isFixed
-    ? "home-v2-sticky-enter inset-x-0 top-0"
+    ? "inset-x-0 top-0"
     : position === "sticky"
       ? "sticky top-0"
       : "relative";
-  /* Same chrome as non-home / hero nav (home fixed only differs by position). */
   const toolLinkClass = (active: boolean) =>
     `hover:text-[var(--hv2-gold)]${active ? " text-[var(--hv2-gold)]" : ""}`;
   const secondaryLinkClass = (active: boolean) =>
@@ -86,23 +95,16 @@ export function HomeV2SiteHeader({
 
   return (
     <header
-      className={`home-v2 home-v2-site-header z-40 text-[var(--hv2-hero-fg)] ${
-        isTransparent
-          ? "home-v2-site-header--transparent overflow-visible bg-transparent"
-          : "overflow-hidden border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 md:px-6"
-      } ${positionClass} ${className}`.trim()}
-      style={
-        isTransparent
-          ? {
-              background: "transparent",
-              ...(isFixed ? { position: "fixed" as const } : null),
-            }
-          : isFixed
-            ? { position: "fixed" }
-            : undefined
-      }
+      className={`home-v2 home-v2-site-header z-40 px-5 text-[var(--hv2-hero-fg)] md:px-6 ${
+        isOverlay
+          ? `home-v2-site-header--overlay${scrolled ? " is-scrolled" : ""}`
+          : isTransparent
+            ? "home-v2-site-header--transparent bg-transparent"
+            : "home-v2-site-header--solid border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)]"
+      } ${isFilled ? "overflow-hidden" : "overflow-visible"} ${positionClass} ${className}`.trim()}
+      style={isFixed ? { position: "fixed" } : undefined}
     >
-      {!isTransparent ? (
+      {isFilled ? (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 px-5 md:px-6"
@@ -112,13 +114,18 @@ export function HomeV2SiteHeader({
           </div>
         </div>
       ) : null}
-      <div className="relative mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[72px]">
+      <div
+        className={`home-v2-site-header-bar relative mx-auto flex w-full max-w-[1200px] items-center gap-4${
+          isOverlay ? "" : " h-14 md:h-[72px]"
+        }${isTransparent ? " border-b border-[var(--hv2-hero-hairline)]" : ""}`}
+      >
         <div className="relative shrink-0">
           <Lockup
             tool={verbLabel}
             size="nav"
             onHero
             withMark
+            compact={compactChrome}
             homeHref="/"
             onHomeClick={() => setMenuOpen(false)}
           />
@@ -190,7 +197,7 @@ export function HomeV2SiteHeader({
 
         <div className="ml-auto hidden shrink-0 md:block lg:ml-0">
           <HomeV2AuthActions
-            compact={false}
+            compact={compactChrome}
             ctaHref={ctaHref}
             ctaLabel={ctaLabel}
             ctaIcon={ctaIcon}
@@ -200,7 +207,7 @@ export function HomeV2SiteHeader({
         <div className="ml-auto flex items-center gap-2 md:hidden">
           <Link
             href={ctaHref}
-            className="accent-fill-gradient inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold"
+            className="home-v2-header-cta-mobile accent-fill-gradient inline-flex items-center gap-2 rounded-full text-sm font-semibold"
           >
             {ctaIcon}
             {ctaLabel}
@@ -210,7 +217,7 @@ export function HomeV2SiteHeader({
             aria-label={menuOpen ? "Close menu" : "Open menu"}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}
-            className="inline-flex h-11 w-11 items-center justify-center text-[var(--hv2-hero-fg)]"
+            className="home-v2-site-header-menu-btn inline-flex items-center justify-center text-[var(--hv2-hero-fg)]"
           >
             <svg
               width="22"

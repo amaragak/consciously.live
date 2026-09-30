@@ -1,7 +1,6 @@
 "use client";
 
 import { HeroPrompt } from "@/components/home-v2/hero-prompt";
-import { HomeV2TopChrome } from "@/components/home-v2/home-v2-top-chrome";
 import { TypesSection } from "@/components/home-v2/types-section";
 
 export function HeroSection({ motionReady }: { motionReady: boolean }) {
@@ -20,10 +19,8 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
   return (
     <section
       id="tool-home"
-      className="home-v2-hero flex flex-col px-5 pb-14 text-[var(--hv2-hero-fg)] md:px-6 md:pb-[140px]"
+      className="home-v2-hero home-v2-hero--under-chrome flex flex-col px-5 pb-14 text-[var(--hv2-hero-fg)] md:px-6 md:pb-[140px]"
     >
-      <HomeV2TopChrome home />
-
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 pt-7 md:gap-6 md:pt-[72px]">
         <h1
           className={`home-v2-display m-0 text-[40px] font-[350] leading-none tracking-[-1px] md:text-[clamp(52px,6vw,88px)] md:tracking-[-2px] ${h1.className}`}
