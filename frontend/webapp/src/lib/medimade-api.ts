@@ -14,6 +14,12 @@ import {
   normalizeBlogCategory,
   type BlogCategory,
 } from "@/lib/blog-categories";
+import {
+  FIXED_SPEECH_PREVIEW_SPEED,
+  speakerPreviewLoudDrySampleKey,
+  speakerPreviewLoudFxSampleKey,
+  withSpeakerSampleCacheBust,
+} from "@/lib/speaker-sample-speed";
 
 export {
   clearMedimadeSession,
@@ -2993,10 +2999,162 @@ export async function applyVoiceFx(params: {
   return data;
 }
 
-export async function listFishSpeakers(): Promise<FishSpeaker[]> {
+const FISH_SPEAKERS_CACHE_KEY = "mm_fish_speakers_v1";
+const HIDDEN_FISH_SPEAKER_MODEL_ID = "8d797adca9af48ca9e8a1c7284db1d6c";
+
+type FishSpeakersClientCache = {
+  version: string;
+  speakers: FishSpeaker[];
+};
+
+let fishSpeakersMemory: FishSpeakersClientCache | null = null;
+let fishSpeakersInflight: Promise<FishSpeaker[]> | null = null;
+const preloadedSpeakerSampleUrls = new Set<string>();
+
+function fishSpeakersCacheVersion(speakers: FishSpeaker[]): string {
+  return speakers
+    .map((s) =>
+      [
+        s.modelId,
+        s.updatedAt ?? "",
+        s.name,
+        s.brand ?? "",
+        s.gender ?? "",
+        s.description ?? "",
+        (s.goodFor ?? []).join(","),
+      ].join("\0"),
+    )
+    .sort()
+    .join("\n");
+}
+
+function normalizeFishSpeakersList(speakers: FishSpeaker[]): FishSpeaker[] {
+  return speakers.filter((s) => s.modelId !== HIDDEN_FISH_SPEAKER_MODEL_ID);
+}
+
+function readFishSpeakersLocalCache(): FishSpeakersClientCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(FISH_SPEAKERS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<FishSpeakersClientCache>;
+    if (
+      typeof parsed.version !== "string" ||
+      !parsed.version.trim() ||
+      !Array.isArray(parsed.speakers)
+    ) {
+      return null;
+    }
+    const speakers = normalizeFishSpeakersList(
+      parsed.speakers.filter(
+        (s): s is FishSpeaker =>
+          Boolean(s) &&
+          typeof s === "object" &&
+          typeof (s as FishSpeaker).modelId === "string" &&
+          typeof (s as FishSpeaker).name === "string",
+      ),
+    );
+    if (speakers.length === 0) return null;
+    return { version: parsed.version.trim(), speakers };
+  } catch {
+    return null;
+  }
+}
+
+function writeFishSpeakersLocalCache(entry: FishSpeakersClientCache): void {
+  fishSpeakersMemory = entry;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(FISH_SPEAKERS_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Sync peek of memory/localStorage voice list — for first-paint hydration. */
+export function peekFishSpeakersCache(): FishSpeaker[] | null {
+  if (fishSpeakersMemory) return fishSpeakersMemory.speakers;
+  const local = readFishSpeakersLocalCache();
+  if (local) {
+    fishSpeakersMemory = local;
+    return local.speakers;
+  }
+  return null;
+}
+
+/** Drop client-side voice picker cache (call after admin voice edits). */
+export function invalidateFishSpeakersClientCache(): void {
+  fishSpeakersMemory = null;
+  fishSpeakersInflight = null;
+  preloadedSpeakerSampleUrls.clear();
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(FISH_SPEAKERS_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function speakerSampleMediaUrl(base: string, key: string): string {
+  const b = base.replace(/\/+$/, "");
+  const k = key.replace(/^\/+/, "");
+  return `${b}/${k}`;
+}
+
+/** Warm browser HTTP cache for Create › Audio voice preview stems. */
+export function preloadFishSpeakerSamples(
+  speakers: FishSpeaker[],
+  mediaBaseUrl?: string | null,
+  limit = 32,
+): void {
+  if (typeof window === "undefined") return;
+  const base = (mediaBaseUrl?.trim() || getMedimadeMediaBaseUrl() || "").trim();
+  if (!base || speakers.length === 0) return;
+  let n = 0;
+  for (const speaker of speakers) {
+    if (n >= limit) break;
+    const dry = withSpeakerSampleCacheBust(
+      speakerSampleMediaUrl(
+        base,
+        speakerPreviewLoudDrySampleKey(
+          speaker.modelId,
+          FIXED_SPEECH_PREVIEW_SPEED,
+          speaker.brand,
+        ),
+      ),
+      speaker.updatedAt,
+    );
+    const wet = withSpeakerSampleCacheBust(
+      speakerSampleMediaUrl(
+        base,
+        speakerPreviewLoudFxSampleKey(
+          speaker.modelId,
+          FIXED_SPEECH_PREVIEW_SPEED,
+          speaker.brand,
+        ),
+      ),
+      speaker.updatedAt,
+    );
+    for (const url of [dry, wet]) {
+      if (!url || preloadedSpeakerSampleUrls.has(url)) continue;
+      preloadedSpeakerSampleUrls.add(url);
+      // Warm CDN cache without attaching to the document.
+      void fetch(url, {
+        mode: "cors",
+        credentials: "omit",
+        cache: "force-cache",
+      }).catch(() => undefined);
+    }
+    n += 1;
+  }
+}
+
+async function fetchFishSpeakersNetwork(): Promise<FishSpeaker[]> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}/fish/speakers`);
+  const res = await medimadeFetch(`${base}/fish/speakers`, {
+    cache: "no-store",
+  });
   const data = (await res.json()) as {
     speakers?: FishSpeaker[];
     error?: string;
@@ -3006,9 +3164,44 @@ export async function listFishSpeakers(): Promise<FishSpeaker[]> {
     const msg = data.detail ?? data.error ?? res.statusText;
     throw new Error(msg);
   }
-  return (data.speakers ?? []).filter(
-    (s) => s.modelId !== "8d797adca9af48ca9e8a1c7284db1d6c",
-  );
+  const speakers = normalizeFishSpeakersList(data.speakers ?? []);
+  writeFishSpeakersLocalCache({
+    version: fishSpeakersCacheVersion(speakers),
+    speakers,
+  });
+  preloadFishSpeakerSamples(speakers);
+  return speakers;
+}
+
+export async function listFishSpeakers(opts?: {
+  /** Bypass client cache. */
+  refresh?: boolean;
+}): Promise<FishSpeaker[]> {
+  const refresh = opts?.refresh === true;
+
+  if (!refresh) {
+    if (fishSpeakersMemory) {
+      preloadFishSpeakerSamples(fishSpeakersMemory.speakers);
+      return fishSpeakersMemory.speakers;
+    }
+    const local = readFishSpeakersLocalCache();
+    if (local) {
+      fishSpeakersMemory = local;
+      preloadFishSpeakerSamples(local.speakers);
+      // Revalidate in background; return cached immediately.
+      void fetchFishSpeakersNetwork().catch(() => undefined);
+      return local.speakers;
+    }
+    if (fishSpeakersInflight) return fishSpeakersInflight;
+  }
+
+  const run = fetchFishSpeakersNetwork();
+  if (!refresh) fishSpeakersInflight = run;
+  try {
+    return await run;
+  } finally {
+    if (fishSpeakersInflight === run) fishSpeakersInflight = null;
+  }
 }
 
 export async function listOrpheusSpeakers(): Promise<OrpheusSpeaker[]> {
@@ -4420,6 +4613,7 @@ export async function patchAdminVoice(body: {
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+  invalidateFishSpeakersClientCache();
   return data;
 }
 
@@ -4435,6 +4629,7 @@ export async function deleteAdminVoiceSpeaker(modelId: string): Promise<void> {
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+  invalidateFishSpeakersClientCache();
 }
 
 export async function generateAdminVoiceSample(
@@ -4460,6 +4655,7 @@ export async function generateAdminVoiceSample(
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+  invalidateFishSpeakersClientCache();
   return data;
 }
 

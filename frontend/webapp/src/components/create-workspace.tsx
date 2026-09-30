@@ -68,7 +68,7 @@ import {
   type ProgramHandoff,
 } from "@/components/create-program-handoff";
 import { ChatPanelShell } from "@/components/chat-panel-shell";
-import { MeditationTypeCardGrid } from "@/components/community-category-grid";
+import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import {
   DictationMicButton,
   appendSpokenText,
@@ -92,6 +92,8 @@ import {
   peekBackgroundAudioCache,
   preloadBackgroundAudioCoverImages,
   listFishSpeakers,
+  peekFishSpeakersCache,
+  preloadFishSpeakerSamples,
   listOrpheusSpeakers,
   listLibraryPrograms,
   ttsProviderForSpeaker,
@@ -1388,7 +1390,10 @@ export function CreateWorkspace({
     setGaplessBedVolume(el, bedElementVolume(gain));
   }
   // Speakers come from backend `GET /fish/speakers` (Speechify only in Create UI).
-  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>([]);
+  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>(() => {
+    const raw = peekFishSpeakersCache();
+    return raw ? speechifySpeakersForPicker(raw) : [];
+  });
   const [orpheusSpeakers, setOrpheusSpeakers] = useState<OrpheusSpeaker[]>(
     () => [...ORPHEUS_VOICES],
   );
@@ -2408,6 +2413,12 @@ export function CreateWorkspace({
         setFishSpeakers((current) => current);
       });
   }, []);
+
+  useEffect(() => {
+    if (fishSpeakers.length > 0) {
+      preloadFishSpeakerSamples(fishSpeakers, mediaBaseUrl);
+    }
+  }, [fishSpeakers, mediaBaseUrl]);
 
   useEffect(() => {
     if (fishSpeakers.length === 0) return;
@@ -3437,7 +3448,7 @@ export function CreateWorkspace({
     const seed = pickDevRandomScriptSeed();
     devRandomSeedRef.current = seed;
     setRandomScript(true);
-    initedCreatePathsRef.current.add("style");
+    // Do not mark "style" as inited — Random is not By Type and must not resume as it.
     setCreationPath("style");
     setJournalMode(false);
     setPhase("claude");
@@ -3746,7 +3757,15 @@ export function CreateWorkspace({
         !(parsed.mix && randomScript)
       ) {
         beginStylePath();
+      } else if (parsed.mix && randomScript) {
+        setCreationPath("style");
       } else {
+        // By Type picker / questions — never keep Random breadcrumb chrome.
+        if (randomScript) {
+          setRandomScript(false);
+          devRandomSeedRef.current = null;
+          patchCreateSession({ randomScript: false });
+        }
         setCreationPath("style");
       }
       setJournalMode(false);
@@ -5330,7 +5349,8 @@ export function CreateWorkspace({
                   mode !== "fromProgram" &&
                   initedCreatePathsRef.current.has(mode);
                 if (mode === "style") {
-                  if (!resume) beginStylePath();
+                  // Random Script also sets creationPath "style"; never resume By Type from it.
+                  if (!resume || randomScript) beginStylePath();
                   pushCreate({ path: "style" });
                   return;
                 }
@@ -5394,12 +5414,12 @@ export function CreateWorkspace({
         ) : null}
         {showStyleTypePick ? (
           <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-            <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6">
-              <MeditationTypeCardGrid
+            <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 pt-1 sm:px-6 sm:pt-2">
+              <CommunityCategoryGrid
                 selected={pendingStyleType ?? ""}
                 onSelect={setPendingStyleType}
                 titles={meditationStyleTooltip}
-                variant="picker"
+                includeAll={false}
               />
               {pendingStyleType ? (
                 <div className="shrink-0 rounded-[6px] border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
@@ -6191,6 +6211,7 @@ export function CreateWorkspace({
                   stopAllAudioPreview();
                   setSoundMode(mode);
                 }}
+                selectedClassName="bg-[color-mix(in_srgb,var(--header-gold)_72%,white)] text-on-selected"
                 options={[
                   { id: "soundscape", label: "Soundscapes" },
                   { id: "mixer", label: "Build your own" },

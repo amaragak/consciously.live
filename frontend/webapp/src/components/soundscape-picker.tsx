@@ -216,10 +216,10 @@ export function SoundscapePicker({
                       ? { animationDelay: pulseDelay }
                       : undefined
                   }
-                  className={`flex w-full min-w-0 max-w-full items-center overflow-hidden rounded-[6px] p-0 text-left transition-[border-color,border-width,background-color] disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`flex w-full min-w-0 max-w-full items-center overflow-hidden rounded-[6px] text-left transition-[border-color,border-width,background-color,padding] disabled:cursor-not-allowed disabled:opacity-60 ${
                     selected
-                      ? "create-audio-selected-pulse border-[3px] border-accent-button bg-card"
-                      : "border-2 border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-card shadow-[0_2px_10px_rgb(28_25_23_/_0.14),0_1px_3px_rgb(28_25_23_/_0.1)]"
+                      ? "create-audio-selected-pulse border-[3px] border-accent-button bg-card p-0"
+                      : "border-2 border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-card p-px shadow-[0_2px_10px_rgb(28_25_23_/_0.14),0_1px_3px_rgb(28_25_23_/_0.1)]"
                   }`}
                 >
                   <span className="relative isolate block h-20 w-20 shrink-0 grow-0 basis-20 overflow-hidden bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background))] sm:h-[5.25rem] sm:w-[5.25rem] sm:basis-[5.25rem]">

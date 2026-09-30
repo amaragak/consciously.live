@@ -409,20 +409,20 @@ export function buildAppBreadcrumbs(
       pathname.startsWith("/meditate/create")
         ? parseCreateMeditationPathname(pathname)
         : { path: "pending" as const, styleStep: "type" as const, fromProgramStep: "pick" as const, mix: false, valid: true };
-    // Match create-path card eyebrows (By Type, Chat, Manifest, Journal, Direct, Random, By Program).
+    // Match create-path cards (By Type, By Chat, From Goal, From Journal, One-Shot Prompt, Random, By Program).
     const pathLabel =
       parsed.path === "style"
         ? opts?.createRandomScript
           ? "Random"
           : "By Type"
         : parsed.path === "freeflow"
-          ? "By chat"
+          ? "By Chat"
           : parsed.path === "goal"
-            ? "Manifest"
+            ? "From Goal"
             : parsed.path === "journalReflect"
-              ? "Journal"
+              ? "From Journal"
               : parsed.path === "oneShot"
-                ? "Direct"
+                ? "One-Shot Prompt"
                 : parsed.path === "fromProgram"
                   ? "By Program"
                   : null;

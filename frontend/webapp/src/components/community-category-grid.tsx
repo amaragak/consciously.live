@@ -1,9 +1,10 @@
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LIBRARY_MEDITATION_CATEGORIES,
   type LibraryMeditationCategory,
 } from "@/lib/community-library";
+import { createAudioPulseDelayMs } from "@/lib/create-audio-pulse";
 import { CATEGORY_CARD_FILLS } from "@/lib/theme-colors";
 import {
   MEDITATION_TYPE_PILL_CLASS,
@@ -240,10 +241,10 @@ export function MeditationTypeCardGrid({
     <div
       role="listbox"
       aria-label={includeAll ? "Community categories" : "Meditation types"}
-      className={
+      className={`${
         className ||
         "grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6"
-      }
+      }${!isPicker ? " p-1.5" : ""}`}
     >
       {cards.map((card, i) => {
         const fillIndex = includeAll ? i : i + 1;
@@ -278,25 +279,27 @@ export function MeditationTypeCardGrid({
             aria-selected={active}
             title={title}
             onClick={() => onSelect(card.value)}
-            style={
-              {
-                "--type-card-bg": light,
-                /* Soften pastels in dark mode — not the near-black fills. */
-                "--type-card-bg-dark": `color-mix(in srgb, ${light} 85%, #1a222c 15%)`,
-              } as CSSProperties
-            }
             className={
               isPicker
                 ? `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-[6px] bg-[var(--type-card-bg)] px-2.5 py-2 text-left transition-[filter,border-color] dark:bg-[var(--type-card-bg-dark)] sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-3 sm:px-2 sm:py-2.5 sm:text-center ${
                     active
-                      ? "border-[1.5px] border-solid border-accent"
-                      : "border-[0.5px] border-solid border-transparent hover:border-card-warm-border hover:brightness-[0.96] dark:hover:brightness-[0.96]"
+                      ? "create-audio-selected-pulse border-[3px] border-solid border-accent-button"
+                      : "border-2 border-solid border-transparent p-px hover:border-card-warm-border hover:brightness-[0.96] dark:hover:brightness-[0.96]"
                   }`
-                : `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-md border-0 px-2.5 py-2 text-left text-[#1E2530] ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-lg sm:px-2 sm:py-2.5 sm:text-center ${
+                : `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start rounded-md border-[3px] border-solid px-2.5 py-2 text-left text-[#1E2530] transition-[border-color,box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-lg sm:px-2 sm:py-2.5 sm:text-center ${
                     active
-                      ? "ring-2 ring-accent ring-offset-2 ring-offset-background"
-                      : ""
+                      ? "create-audio-selected-pulse border-accent-button"
+                      : `border-transparent ${CATEGORY_COVER_SHADOW}`
                   }`
+            }
+            style={
+              {
+                "--type-card-bg": light,
+                "--type-card-bg-dark": `color-mix(in srgb, ${light} 85%, #1a222c 15%)`,
+                ...(active
+                  ? { animationDelay: createAudioPulseDelayMs() }
+                  : null),
+              } as CSSProperties
             }
           >
             <CommunityCategoryIcon
@@ -345,6 +348,11 @@ function CategoryCoverCard({
   staggerIndex: number;
   busy: boolean;
 }) {
+  const pulseDelay = useMemo(
+    () => (active ? createAudioPulseDelayMs() : undefined),
+    [active],
+  );
+
   return (
     <button
       type="button"
@@ -354,19 +362,20 @@ function CategoryCoverCard({
       title={title}
       onClick={onSelect}
       tabIndex={reveal ? undefined : -1}
-      className={`relative aspect-square w-full min-w-0 overflow-hidden rounded-md border-0 bg-transparent sm:rounded-lg ${
+      style={
+        active && pulseDelay ? { animationDelay: pulseDelay } : undefined
+      }
+      className={`relative aspect-square w-full min-w-0 rounded-md border-[3px] border-solid bg-transparent sm:rounded-lg ${
         reveal
-          ? `cursor-pointer ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] hover:brightness-[0.97] ${
-              active
-                ? "ring-2 ring-accent ring-offset-2 ring-offset-background"
-                : ""
-            }`
-          : "pointer-events-none"
+          ? active
+            ? "create-audio-selected-pulse cursor-pointer border-accent-button"
+            : `cursor-pointer border-transparent ${CATEGORY_COVER_SHADOW} transition-[box-shadow,filter] hover:brightness-[0.97]`
+          : "pointer-events-none border-transparent"
       }`}
     >
-      {/* Invisible until covers flush — reserve grid space only. */}
+      {/* Image clipped to the pad inside the border so the pulse rim stays visible. */}
       <div
-        className={`absolute inset-0 transition-opacity ease-out ${
+        className={`absolute inset-0 overflow-hidden rounded-[3px] transition-opacity ease-out sm:rounded-[5px] ${
           reveal ? "opacity-100" : "opacity-0"
         }`}
         style={{
@@ -431,10 +440,15 @@ export function CommunityCategoryGrid({
   selected,
   onSelect,
   className,
+  includeAll = true,
+  titles,
 }: {
   selected: string;
   onSelect: (value: string) => void;
   className?: string;
+  /** Community library includes an “All” tile; Create › By Type omits it. */
+  includeAll?: boolean;
+  titles?: Partial<Record<string, string>>;
 }) {
   const [imageUrls, setImageUrls] = useState<Partial<Record<string, string>>>(
     {},
@@ -472,12 +486,15 @@ export function CommunityCategoryGrid({
     <MeditationTypeCardGrid
       selected={selected}
       onSelect={onSelect}
-      includeAll
+      includeAll={includeAll}
+      titles={titles}
       imageUrls={imageUrls}
       imagesLoading={imagesLoading}
       className={
         className ??
-        "mt-8 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
+        (includeAll
+          ? "mt-8 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
+          : "grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
       }
     />
   );
