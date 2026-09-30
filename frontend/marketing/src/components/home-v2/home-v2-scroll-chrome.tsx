@@ -60,7 +60,7 @@ export function useHomeV2HeaderScrolled(
 /**
  * Single page header: sticky to the content top (not viewport-fixed), so
  * overscroll at the top cannot pull it into the shell deadzone. Transparent
- * at rest; fades to solid fill once you scroll.
+ * at rest; fades to solid fill once you scroll. Sun glow lives in SiteHeader.
  */
 export function HomeV2Chrome({
   home = false,
@@ -76,23 +76,13 @@ export function HomeV2Chrome({
   const scrolled = scrolledProp ?? scrolledCtx ?? false;
 
   return (
-    <>
-      <div
-        aria-hidden
-        className={`home-v2-overlay-sun-glow px-5 md:px-6${scrolled ? " is-scrolled" : ""}`}
-      >
-        <div className="relative mx-auto h-full max-w-[1200px]">
-          <span className="home-v2-hero-chrome-glow-sun absolute left-[20px] top-[28px] size-[160px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl md:top-[36px] md:size-[200px]" />
-        </div>
-      </div>
-      <HomeV2NavHeader
-        tone="overlay"
-        position="sticky"
-        home={home}
-        activeTool={activeTool}
-        scrolled={scrolled}
-      />
-    </>
+    <HomeV2NavHeader
+      tone="overlay"
+      position="sticky"
+      home={home}
+      activeTool={activeTool}
+      scrolled={scrolled}
+    />
   );
 }
 

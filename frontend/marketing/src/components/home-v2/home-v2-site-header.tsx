@@ -104,10 +104,21 @@ export function HomeV2SiteHeader({
       } ${isFilled ? "overflow-hidden" : "overflow-visible"} ${positionClass} ${className}`.trim()}
       style={isFixed ? { position: "fixed" } : undefined}
     >
+      {/* Soft sun radial over hero/field — owned by the shared header (not a page sibling). */}
+      {isOverlay || tone === "transparent" ? (
+        <div
+          aria-hidden
+          className="home-v2-site-header-soft-sun pointer-events-none absolute inset-x-0 top-0 z-0"
+        >
+          <div className="relative mx-auto h-full max-w-[1200px]">
+            <span className="home-v2-hero-chrome-glow-sun absolute left-[20px] top-[28px] size-[160px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl md:top-[36px] md:size-[200px]" />
+          </div>
+        </div>
+      ) : null}
       {isFilled ? (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 px-5 md:px-6"
+          className="pointer-events-none absolute inset-0 z-0 px-5 md:px-6"
         >
           <div className="relative mx-auto h-full w-full max-w-[1200px]">
             <span className="home-v2-site-header-sun-glow absolute left-[20px] top-1/2 size-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
@@ -115,7 +126,7 @@ export function HomeV2SiteHeader({
         </div>
       ) : null}
       <div
-        className={`home-v2-site-header-bar relative mx-auto flex w-full max-w-[1200px] items-center gap-4${
+        className={`home-v2-site-header-bar relative z-[1] mx-auto flex w-full max-w-[1200px] items-center gap-4${
           isOverlay ? "" : " h-14 md:h-[72px]"
         }${isTransparent ? " border-b border-[var(--hv2-hero-hairline)]" : ""}`}
       >

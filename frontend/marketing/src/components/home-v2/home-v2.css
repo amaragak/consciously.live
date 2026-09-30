@@ -458,6 +458,17 @@
   padding: 0.4rem 0.85rem;
 }
 
+/* Soft sun radial inside shared header (fades when overlay fills). */
+.home-v2-site-header-soft-sun {
+  height: 200px;
+  opacity: 1;
+  transition: opacity 5ms linear;
+}
+
+.home-v2-site-header--overlay.is-scrolled .home-v2-site-header-soft-sun {
+  opacity: 0;
+}
+
 /* Lockup: hero nav size → SPA header size (28px sun / text-xl desktop; 24 / text-lg mobile). */
 .home-v2-site-header--overlay .home-v2-lockup-brand {
   gap: 0.75rem;
@@ -512,21 +523,6 @@
     width: 28px; /* SPA desktop */
     height: 28px;
   }
-}
-
-.home-v2-overlay-sun-glow {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  z-index: 39;
-  height: 200px;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 5ms linear;
-}
-
-.home-v2-overlay-sun-glow.is-scrolled {
-  opacity: 0;
 }
 
 /* Pull hero paisley under the in-flow sticky chrome (home / Connect). */
@@ -688,15 +684,19 @@
 
 .home-v2-field
   > *:not(.home-v2-site-header):not(.home-v2-reading-progress):not(
-    .home-v2-hero-sun-glow
-  ):not(.home-v2-hero-chrome) {
+    .home-v2-hero-chrome
+  ) {
   position: relative;
   z-index: 1;
 }
 
-.home-v2-field > .home-v2-hero-chrome,
-.home-v2-field > .home-v2-site-header {
+.home-v2-field > .home-v2-hero-chrome {
   position: relative;
+  z-index: 40;
+}
+
+/* Keep sticky — do not force `relative` on the overlay header. */
+.home-v2-field > .home-v2-site-header {
   z-index: 40;
 }
 
@@ -883,7 +883,7 @@
   }
 
   .home-v2.home-v2-site-header.home-v2-site-header--overlay,
-  .home-v2-overlay-sun-glow,
+  .home-v2-site-header-soft-sun,
   .home-v2-site-header--overlay .home-v2-site-header-bar,
   .home-v2-header-cta,
   .home-v2-site-header--overlay .home-v2-site-header-menu-btn,
