@@ -2899,6 +2899,10 @@ export type BackgroundAudioItem = {
   /** Normalized WAV sibling for pro-tier / high-quality download when present. */
   wavKey?: string;
   subcategory?: string;
+  /** Public CDN URL for composition / soundscape cover art when present. */
+  coverImageUrl?: string | null;
+  /** Smaller JPEG thumb for list / picker cards. */
+  coverImageThumbUrl?: string | null;
 };
 
 /** Prefer CDN MP3 for previews and mixer jobs (`background-audio/…` beds). */
@@ -3435,6 +3439,9 @@ export type AdminSoundItem = {
   pendingUpload?: AdminSoundPendingUpload | null;
   importedAt: string | null;
   updatedAt: string | null;
+  coverImageKey?: string | null;
+  coverImageUrl?: string | null;
+  lastCoverPrompt?: string | null;
 };
 
 export type AdminSoundsList = {
@@ -3493,6 +3500,272 @@ export async function listAdminSounds(): Promise<AdminSoundsList> {
   };
 }
 
+export type AdminCompositionCoverItem = {
+  key: string;
+  name: string;
+  category: "compositions";
+  coverImageKey: string | null;
+  coverImageUrl: string | null;
+  coverImageThumbKey: string | null;
+  coverImageThumbUrl: string | null;
+  lastCoverPrompt: string | null;
+  coverPromptHistory: string[];
+  updatedAt: string | null;
+};
+
+function parseAdminCompositionCoverItem(
+  raw: unknown,
+): AdminCompositionCoverItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const key = typeof o.key === "string" ? o.key.trim() : "";
+  const name = typeof o.name === "string" ? o.name.trim() : "";
+  if (!key || !name) return null;
+  return {
+    key,
+    name,
+    category: "compositions",
+    coverImageKey:
+      typeof o.coverImageKey === "string" && o.coverImageKey.trim()
+        ? o.coverImageKey.trim()
+        : null,
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
+    coverImageThumbKey:
+      typeof o.coverImageThumbKey === "string" && o.coverImageThumbKey.trim()
+        ? o.coverImageThumbKey.trim()
+        : null,
+    coverImageThumbUrl:
+      typeof o.coverImageThumbUrl === "string" && o.coverImageThumbUrl.trim()
+        ? o.coverImageThumbUrl.trim()
+        : null,
+    lastCoverPrompt:
+      typeof o.lastCoverPrompt === "string" && o.lastCoverPrompt.trim()
+        ? o.lastCoverPrompt.trim()
+        : null,
+    coverPromptHistory: Array.isArray(o.coverPromptHistory)
+      ? o.coverPromptHistory
+          .filter((p): p is string => typeof p === "string")
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [],
+    updatedAt:
+      typeof o.updatedAt === "string" && o.updatedAt.trim()
+        ? o.updatedAt.trim()
+        : null,
+  };
+}
+
+export async function listAdminCompositionCovers(): Promise<{
+  baseUrl?: string;
+  items: AdminCompositionCoverItem[];
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as {
+    baseUrl?: string;
+    items?: unknown[];
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const items: AdminCompositionCoverItem[] = [];
+  for (const raw of data.items ?? []) {
+    const item = parseAdminCompositionCoverItem(raw);
+    if (item) items.push(item);
+  }
+  return { baseUrl: data.baseUrl, items };
+}
+
+async function postAdminCompositionCoverAction(
+  body: Record<string, unknown>,
+): Promise<AdminCompositionCoverItem> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as {
+    item?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const item = parseAdminCompositionCoverItem(data.item);
+  if (!item) throw new Error("Invalid composition cover response");
+  invalidateBackgroundAudioClientCache();
+  return item;
+}
+
+export async function generateAdminCompositionCover(params: {
+  key: string;
+  title?: string;
+  model?: AdminImageModel;
+  /** Refinement note for regen — empty = fresh title-based generate. */
+  changeRequest?: string;
+}): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "generate-cover",
+    key: params.key,
+    title: params.title ?? "",
+    model: params.model ?? "gpt-image-1-mini",
+    changeRequest: params.changeRequest ?? "",
+  });
+}
+
+export async function clearAdminCompositionCover(
+  key: string,
+): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "clear-cover",
+    key,
+  });
+}
+
+/** Resize existing full covers → thumbs. Does not call AI image gen. */
+export async function ensureAdminCompositionCoverThumbs(params?: {
+  keys?: string[];
+}): Promise<{
+  ok: number;
+  fail: number;
+  processed: number;
+  errors: { key: string; error: string }[];
+  items: AdminCompositionCoverItem[];
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "ensure-thumbs",
+      ...(params?.keys?.length ? { keys: params.keys } : {}),
+    }),
+  });
+  const data = (await res.json()) as {
+    ok?: number;
+    fail?: number;
+    processed?: number;
+    errors?: { key?: string; error?: string }[];
+    items?: unknown[];
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const items: AdminCompositionCoverItem[] = [];
+  for (const raw of data.items ?? []) {
+    const item = parseAdminCompositionCoverItem(raw);
+    if (item) items.push(item);
+  }
+  return {
+    ok: typeof data.ok === "number" ? data.ok : 0,
+    fail: typeof data.fail === "number" ? data.fail : 0,
+    processed: typeof data.processed === "number" ? data.processed : 0,
+    errors: (data.errors ?? [])
+      .map((e) => ({
+        key: typeof e.key === "string" ? e.key : "",
+        error: typeof e.error === "string" ? e.error : "failed",
+      }))
+      .filter((e) => e.key),
+    items,
+  };
+}
+
+export type AdminAiProviderId =
+  | "anthropic"
+  | "fish"
+  | "openai"
+  | "google"
+  | "speechify";
+
+export type AdminAiProviderCard = {
+  id: AdminAiProviderId;
+  label: string;
+  uses: string;
+  rateLines: string[];
+  creditSource: "live" | "manual" | "none";
+  creditNote: string;
+  remainingUsd: number | null;
+  remainingSource: "live" | "manual" | "unknown";
+  manualNote: string;
+  manualUpdatedAt: string | null;
+  trackedSpendUsd: number;
+  trackedDetail: string;
+  fishLiveError: string | null;
+};
+
+export type AdminAiCostsSnapshot = {
+  generatedAt: string;
+  providers: AdminAiProviderCard[];
+  trackedTotalUsd: number;
+  notes: string[];
+};
+
+export async function getAdminAiCosts(): Promise<AdminAiCostsSnapshot> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/ai-costs`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as Partial<AdminAiCostsSnapshot> & {
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return {
+    generatedAt:
+      typeof data.generatedAt === "string"
+        ? data.generatedAt
+        : new Date().toISOString(),
+    providers: Array.isArray(data.providers)
+      ? (data.providers as AdminAiProviderCard[])
+      : [],
+    trackedTotalUsd:
+      typeof data.trackedTotalUsd === "number" ? data.trackedTotalUsd : 0,
+    notes: Array.isArray(data.notes)
+      ? data.notes.filter((n): n is string => typeof n === "string")
+      : [],
+  };
+}
+
+export async function setAdminAiCreditBalance(params: {
+  provider: AdminAiProviderId;
+  remainingUsd: number | null;
+  note?: string;
+}): Promise<void> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/ai-costs`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "set-credits",
+      provider: params.provider,
+      remainingUsd: params.remainingUsd,
+      note: params.note ?? "",
+    }),
+  });
+  const data = (await res.json()) as { error?: string; detail?: string };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+}
+
 export async function patchAdminSound(body: {
   key: string;
   enabled?: boolean;
@@ -3514,6 +3787,7 @@ export async function patchAdminSound(body: {
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+  invalidateBackgroundAudioClientCache();
   return { key: data.key ?? body.key };
 }
 
@@ -4879,6 +5153,10 @@ export type AdminBlogPost = {
   notes: string;
   body: string;
   published: boolean;
+  /** App-related highlight (admin-assigned). */
+  pinned: boolean;
+  /** Curated top picks / personal favourites (admin-assigned). */
+  topPicks: boolean;
   publishedAt: string | null;
   audioUrl: string | null;
   audioStatus: AdminBlogAudioStatus;
@@ -4941,6 +5219,8 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     notes: typeof o.notes === "string" ? o.notes : "",
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
+    pinned: o.pinned === true,
+    topPicks: o.topPicks === true,
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()
@@ -5250,13 +5530,63 @@ export async function generateAdminProgramDayDescription(params: {
 /** Treat day descriptions shorter than this as missing (auto-generate). */
 export const PROGRAM_DAY_DESCRIPTION_MIN_CHARS = 100;
 
-export async function listBackgroundAudio(): Promise<BackgroundAudioByCategory> {
-  const base = getMedimadeApiBase();
-  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}/media/background-audio`, {
-    cache: "no-store",
-  });
-  const data = (await res.json()) as {
+const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v1";
+
+type BgAudioClientCache = {
+  version: string;
+  data: BackgroundAudioByCategory;
+};
+
+let bgAudioMemory: BgAudioClientCache | null = null;
+let bgAudioInflight: Promise<BackgroundAudioByCategory> | null = null;
+
+function readBgAudioLocalCache(): BgAudioClientCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(BG_AUDIO_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BgAudioClientCache>;
+    if (
+      typeof parsed.version !== "string" ||
+      !parsed.version.trim() ||
+      !parsed.data ||
+      typeof parsed.data !== "object"
+    ) {
+      return null;
+    }
+    return {
+      version: parsed.version.trim(),
+      data: parsed.data as BackgroundAudioByCategory,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeBgAudioLocalCache(entry: BgAudioClientCache): void {
+  bgAudioMemory = entry;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BG_AUDIO_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Drop client-side soundscape/mixer catalog cache (call after admin catalog edits). */
+export function invalidateBackgroundAudioClientCache(): void {
+  bgAudioMemory = null;
+  bgAudioInflight = null;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(BG_AUDIO_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function parseBackgroundAudioPayload(
+  data: {
     baseUrl?: string;
     nature?: BackgroundAudioItem[];
     ambience?: BackgroundAudioItem[];
@@ -5264,15 +5594,9 @@ export async function listBackgroundAudio(): Promise<BackgroundAudioByCategory> 
     compositions?: BackgroundAudioItem[];
     drums?: BackgroundAudioItem[];
     noise?: BackgroundAudioItem[];
-    items?: BackgroundAudioItem[];
     factoryMixes?: unknown[];
-    error?: string;
-    detail?: string;
-  };
-  if (!res.ok) {
-    const msg = data.detail ?? data.error ?? res.statusText;
-    throw new Error(msg);
-  }
+  },
+): BackgroundAudioByCategory {
   return {
     baseUrl: data.baseUrl,
     nature: data.ambience ?? data.nature ?? [],
@@ -5286,6 +5610,125 @@ export async function listBackgroundAudio(): Promise<BackgroundAudioByCategory> 
           .filter((x): x is MixerFactoryPreset => Boolean(x))
       : undefined,
   };
+}
+
+export async function listBackgroundAudio(opts?: {
+  /** Bypass client + server caches. */
+  refresh?: boolean;
+}): Promise<BackgroundAudioByCategory> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const refresh = opts?.refresh === true;
+
+  if (!refresh) {
+    if (bgAudioMemory) return bgAudioMemory.data;
+    const local = readBgAudioLocalCache();
+    if (local) {
+      bgAudioMemory = local;
+      // Revalidate in background; return cached immediately.
+      void fetchBackgroundAudioNetwork(base, local.version).catch(() => undefined);
+      return local.data;
+    }
+    if (bgAudioInflight) return bgAudioInflight;
+  }
+
+  const run = fetchBackgroundAudioNetwork(
+    base,
+    refresh ? null : bgAudioMemory?.version ?? readBgAudioLocalCache()?.version ?? null,
+    refresh,
+  );
+  if (!refresh) bgAudioInflight = run;
+  try {
+    return await run;
+  } finally {
+    if (bgAudioInflight === run) bgAudioInflight = null;
+  }
+}
+
+async function fetchBackgroundAudioNetwork(
+  base: string,
+  ifNoneMatch: string | null,
+  refresh = false,
+): Promise<BackgroundAudioByCategory> {
+  const url = refresh
+    ? `${base}/media/background-audio?refresh=1`
+    : `${base}/media/background-audio`;
+  const headers: Record<string, string> = {};
+  if (ifNoneMatch && !refresh) {
+    headers["If-None-Match"] = `"${ifNoneMatch}"`;
+  }
+  const res = await medimadeFetch(url, {
+    cache: "no-store",
+    headers,
+  });
+
+  if (res.status === 304 && ifNoneMatch) {
+    const hit =
+      bgAudioMemory?.version === ifNoneMatch
+        ? bgAudioMemory
+        : readBgAudioLocalCache();
+    if (hit && hit.version === ifNoneMatch) {
+      bgAudioMemory = hit;
+      return hit.data;
+    }
+    // Stale If-None-Match with no local body — force a full fetch.
+    const retry = await medimadeFetch(`${base}/media/background-audio?refresh=1`, {
+      cache: "no-store",
+    });
+    const retryData = (await retry.json()) as {
+      baseUrl?: string;
+      nature?: BackgroundAudioItem[];
+      ambience?: BackgroundAudioItem[];
+      music?: BackgroundAudioItem[];
+      compositions?: BackgroundAudioItem[];
+      drums?: BackgroundAudioItem[];
+      noise?: BackgroundAudioItem[];
+      factoryMixes?: unknown[];
+      cacheVersion?: string;
+      error?: string;
+      detail?: string;
+    };
+    if (!retry.ok) {
+      throw new Error(retryData.detail ?? retryData.error ?? retry.statusText);
+    }
+    const parsedRetry = parseBackgroundAudioPayload(retryData);
+    const version =
+      (typeof retryData.cacheVersion === "string" &&
+        retryData.cacheVersion.trim()) ||
+      new Date().toISOString();
+    writeBgAudioLocalCache({ version, data: parsedRetry });
+    return parsedRetry;
+  }
+
+  const data = (await res.json()) as {
+    baseUrl?: string;
+    nature?: BackgroundAudioItem[];
+    ambience?: BackgroundAudioItem[];
+    music?: BackgroundAudioItem[];
+    compositions?: BackgroundAudioItem[];
+    drums?: BackgroundAudioItem[];
+    noise?: BackgroundAudioItem[];
+    items?: BackgroundAudioItem[];
+    factoryMixes?: unknown[];
+    cacheVersion?: string;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    const msg = data.detail ?? data.error ?? res.statusText;
+    throw new Error(msg);
+  }
+  const parsed = parseBackgroundAudioPayload(data);
+  const etag = (res.headers.get("ETag") || "")
+    .trim()
+    .replace(/^W\//, "")
+    .replace(/^"|"$/g, "");
+  const version =
+    (typeof data.cacheVersion === "string" && data.cacheVersion.trim()) ||
+    etag ||
+    new Date().toISOString();
+  writeBgAudioLocalCache({ version, data: parsed });
+  return parsed;
 }
 
 /**

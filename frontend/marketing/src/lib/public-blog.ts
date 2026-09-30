@@ -24,6 +24,8 @@ export type PublicBlogPostSummary = {
   part: number | null;
   hasBody: boolean;
   audioUrl: string | null;
+  pinned: boolean;
+  topPicks: boolean;
   publishedAt: string | null;
   updatedAt: string;
 };
@@ -113,6 +115,8 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
       typeof o.audioUrl === "string" && o.audioUrl.trim()
         ? o.audioUrl.trim()
         : null,
+    pinned: o.pinned === true,
+    topPicks: o.topPicks === true,
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()

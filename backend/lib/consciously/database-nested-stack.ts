@@ -21,6 +21,8 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
   readonly magicLink: dynamodb.Table;
   readonly refresh: dynamodb.Table;
   readonly meditationJobs: dynamodb.Table;
+  /** Lifetime + daily AI spend ledger (events + aggregates). */
+  readonly aiUsage: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.NestedStackProps) {
     super(scope, id, props);
@@ -80,6 +82,13 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
 
     this.meditationJobs = new dynamodb.Table(this, "MeditationJobsTable", {
       partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
+      ...payPerRequest,
+    });
+
+    this.aiUsage = new dynamodb.Table(this, "AiUsageTable", {
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      timeToLiveAttribute: "ttl",
       ...payPerRequest,
     });
   }

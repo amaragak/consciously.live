@@ -128,8 +128,8 @@ import {
 } from "@/lib/speaker-sample-speed";
 import {
   DualStemPlayer,
-  VOICE_FX_DIAL_DEFAULT,
-  VoiceFxKnob,
+  // VOICE_FX_DIAL_DEFAULT,
+  // VoiceFxKnob,
 } from "@consciously/common";
 import {
   buildCreateFlowTranscript,
@@ -1267,7 +1267,9 @@ export function CreateWorkspace({
   /** When on, speaker row plays CDN `*-fx.wav` (Pedalboard preset mixer); when off, dry Fish `*.mp3`. Dev-only toggle; production always on. */
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
   const voiceFxOn = showCreateAudioDevControls ? speakerFxPreviewOn : true;
-  const [voiceFxDial, setVoiceFxDial] = useState(VOICE_FX_DIAL_DEFAULT);
+  /** FX dial UI hidden for now — locked at mid blend. */
+  const voiceFxDial = 50;
+  // const [voiceFxDial, setVoiceFxDial] = useState(VOICE_FX_DIAL_DEFAULT);
   const [backgroundNature, setBackgroundNature] = useState<
     BackgroundAudioItem[]
   >([]);
@@ -1611,7 +1613,7 @@ export function CreateWorkspace({
     setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "speechify");
     setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
     setSpeakerFxPreviewOn(s.speakerFxPreviewOn);
-    setVoiceFxDial(s.voiceFxDial ?? VOICE_FX_DIAL_DEFAULT);
+    // setVoiceFxDial(s.voiceFxDial ?? VOICE_FX_DIAL_DEFAULT);
     setBackgroundNatureKey(backgroundAudioStreamingKey(s.backgroundNatureKey));
     setBackgroundMusicKey(backgroundAudioStreamingKey(s.backgroundMusicKey));
     setBackgroundDrumsKey(backgroundAudioStreamingKey(s.backgroundDrumsKey));
@@ -6046,8 +6048,8 @@ export function CreateWorkspace({
           </div>
         ) : null}
         {workspaceSectionStep === 2 ? (
-        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-4 sm:gap-3 sm:px-6">
+        <div className="create-audio-scroll flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-4 pb-3 sm:gap-3 sm:px-6 sm:pb-4">
           {/* Voice | equal pad | Pacing | equal pad | Sound — dividers frame pacing evenly */}
           <div className="flex shrink-0 flex-col">
             <VoiceCardRow
@@ -6059,7 +6061,91 @@ export function CreateWorkspace({
               previewWetUrl={speakerPreviewWetUrl}
               voiceFxDial={voiceFxDial}
               stopNonce={voiceCardStopNonce}
+              headerEnd={
+                <Tooltip.Provider delayDuration={200} disableHoverableContent>
+                  <div
+                    className="flex items-center gap-2"
+                    role="group"
+                    aria-label="Meditation pacing"
+                  >
+                    <span
+                      className={`inline-flex items-center gap-1 text-sm font-semibold ${
+                        longerBreaks ? "text-muted" : "text-foreground"
+                      }`}
+                    >
+                      Guided
+                      <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-border text-[10px] font-semibold leading-none text-muted hover:border-accent-button hover:text-foreground"
+                            aria-label="About guided pacing"
+                          >
+                            ?
+                          </button>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                          <Tooltip.Content
+                            side="bottom"
+                            align="center"
+                            sideOffset={6}
+                            className="z-[200] max-w-[16rem] rounded-lg border border-border bg-card px-2.5 py-2 text-xs leading-snug text-foreground shadow-md"
+                          >
+                            Continuous guidance with short natural pauses
+                            between lines.
+                            <Tooltip.Arrow className="fill-card stroke-border" />
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                    </span>
+                    <Switch.Root
+                      checked={longerBreaks}
+                      onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
+                      disabled={soundControlsDisabled}
+                      aria-label={
+                        longerBreaks
+                          ? "Switch to guided pacing"
+                          : "Switch to open sits pacing"
+                      }
+                      className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+                    </Switch.Root>
+                    <span
+                      className={`inline-flex items-center gap-1 text-sm font-semibold ${
+                        longerBreaks ? "text-foreground" : "text-muted"
+                      }`}
+                    >
+                      Open sits
+                      <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-border text-[10px] font-semibold leading-none text-muted hover:border-accent-button hover:text-foreground"
+                            aria-label="About open sits pacing"
+                          >
+                            ?
+                          </button>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                          <Tooltip.Content
+                            side="bottom"
+                            align="end"
+                            sideOffset={6}
+                            className="z-[200] max-w-[16rem] rounded-lg border border-border bg-card px-2.5 py-2 text-xs leading-snug text-foreground shadow-md"
+                          >
+                            Same length, with cued “take your time” sits of
+                            about a minute or two.
+                            <Tooltip.Arrow className="fill-card stroke-border" />
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                    </span>
+                  </div>
+                </Tooltip.Provider>
+              }
             />
+            {/* FX dial hidden for now — voiceFxDial locked at 50
             <div className="flex items-center gap-3 py-3">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
                 FX
@@ -6071,51 +6157,12 @@ export function CreateWorkspace({
               />
               <span className="text-xs tabular-nums text-muted">{voiceFxDial}</span>
             </div>
-            <div className="flex flex-col gap-1.5 py-3">
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-                Pacing
-              </span>
-              <div
-                className="flex items-center gap-2"
-                role="group"
-                aria-label="Meditation pacing"
-              >
-                <span
-                  className={`text-sm font-semibold ${
-                    longerBreaks ? "text-muted" : "text-foreground"
-                  }`}
-                >
-                  Guided
-                </span>
-                    <Switch.Root
-                  checked={longerBreaks}
-                  onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
-                  disabled={soundControlsDisabled}
-                      aria-label={
-                    longerBreaks
-                      ? "Switch to guided pacing"
-                      : "Switch to open sits pacing"
-                  }
-                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-                    </Switch.Root>
-                <span
-                  className={`text-sm font-semibold ${
-                    longerBreaks ? "text-foreground" : "text-muted"
-                  }`}
-                >
-                  Open sits
-                </span>
-              </div>
-              <p className="text-xs leading-snug text-muted">
-                {longerBreaks
-                  ? "Same length, with cued “take your time” sits of about a minute or two."
-                  : "Continuous guidance with short natural pauses between lines."}
-              </p>
-            </div>
+            */}
             <div className="border-t border-border" role="separator" aria-hidden />
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-3">
+                </div>
+
+          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
                 Sound
               </span>
@@ -6133,10 +6180,8 @@ export function CreateWorkspace({
                 ]}
               />
             </div>
-                </div>
 
           {soundMode === "soundscape" ? (
-            <div className="min-h-0 flex-1 overflow-y-auto pb-1">
               <SoundscapePicker
                 variant="create"
                 items={compositions}
@@ -6151,7 +6196,6 @@ export function CreateWorkspace({
                     disabled={soundControlsDisabled}
                 loading={factoryMixesLoading}
               />
-                    </div>
           ) : (
           <>
           <div className="shrink-0 pb-2 pt-0">
@@ -6491,6 +6535,7 @@ export function CreateWorkspace({
             />
           </Panel>
           */}
+        </div>
         </div>
         ) : null}
           </div>

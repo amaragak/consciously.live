@@ -179,7 +179,7 @@ function NavSectionBlock({
           title={section.label}
           className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-[15px] transition-colors hover:bg-background ${
             sectionActive
-              ? "font-bold text-accent-link"
+              ? "font-bold text-foreground"
               : "text-muted hover:text-foreground"
           }`}
         >
@@ -200,7 +200,7 @@ function NavSectionBlock({
             onClick={onToggle}
             className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-background ${
               sectionActive
-                ? "text-accent-link"
+                ? "text-foreground"
                 : "text-muted hover:text-foreground"
             }`}
           >
@@ -398,7 +398,7 @@ export function AppSidebar({
                     aria-current={sectionActive ? "page" : undefined}
                     className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
                       sectionActive
-                        ? "bg-nav-active font-bold text-accent-link"
+                        ? "bg-nav-active font-bold text-foreground"
                         : "text-muted hover:bg-background hover:text-foreground"
                     }`}
                   >

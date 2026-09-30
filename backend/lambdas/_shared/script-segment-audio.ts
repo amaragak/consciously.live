@@ -1,5 +1,6 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { parseBuffer } from "music-metadata";
+import { recordFishTtsUsage } from "./ai-usage";
 import { loudnormMp3Buffer } from "./ffmpeg-loudnorm";
 import { FIXED_SPEECH_PREVIEW_SPEED } from "./speaker-sample-speed";
 import {
@@ -54,7 +55,13 @@ async function fishTtsMp3(params: {
       }),
     });
     if (upstream.ok) {
-      return Buffer.from(await upstream.arrayBuffer());
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      void recordFishTtsUsage({
+        utf8Bytes: Buffer.byteLength(text, "utf8"),
+        model: fishTtsModel(),
+        feature: "script-segment-tts",
+      });
+      return buf;
     }
     lastErr = await upstream.text();
     const retryable = [429, 502, 503, 504].includes(upstream.status);

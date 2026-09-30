@@ -2,11 +2,13 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   DeleteCommand,
+  GetCommand,
   PutCommand,
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { normalizeBgAudioCategory, type BgAudioCategory } from "./background-audio-keys";
+import { invalidateBgAudioListCache } from "./bg-audio-list-cache";
 import { coerceSoundSubcategory } from "./sound-taxonomy";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
@@ -137,6 +139,16 @@ export type SoundCatalogRow = {
   fadeOutSec?: number;
   importedAt?: string;
   processing?: SoundProcessing;
+  /** Square cover for Music › Compositions admin art. */
+  coverImageKey?: string;
+  coverImageUrl?: string;
+  /** Smaller JPEG derived from the full cover (list / picker thumbs). */
+  coverImageThumbKey?: string;
+  coverImageThumbUrl?: string;
+  /** Last prompt used to generate the cover (admin). */
+  lastCoverPrompt?: string;
+  /** Prior cover prompts (oldest → newest), used when refining with a change note. */
+  coverPromptHistory?: string[];
   updatedAt: string;
 };
 
@@ -161,6 +173,79 @@ export function normalizeTags(raw: unknown): string[] {
   return out;
 }
 
+function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
+  const sk = typeof it.sk === "string" ? it.sk : "";
+  if (!sk) return null;
+  const importedAt = typeof it.importedAt === "string" ? it.importedAt : undefined;
+  const status = resolveSoundReviewStatus(it.status, { sk, importedAt });
+  const category =
+    normalizeBgAudioCategory(String(it.category ?? "")) ?? "music";
+  const suggestedCategory = normalizeBgAudioCategory(
+    String(it.suggestedCategory ?? ""),
+  );
+  return {
+    pk: SOUND_PK,
+    sk,
+    name: typeof it.name === "string" ? it.name : sk,
+    category,
+    subcategory:
+      typeof it.subcategory === "string" && it.subcategory.trim()
+        ? coerceSoundSubcategory(category, it.subcategory)
+        : undefined,
+    categoryPinned: it.categoryPinned === true ? true : undefined,
+    suggestedCategory: suggestedCategory ?? undefined,
+    suggestedSubcategory:
+      typeof it.suggestedSubcategory === "string"
+        ? coerceSoundSubcategory(
+            suggestedCategory ?? category,
+            it.suggestedSubcategory,
+          )
+        : undefined,
+    suggestedName:
+      typeof it.suggestedName === "string" ? it.suggestedName : undefined,
+    packPath: typeof it.packPath === "string" ? it.packPath : undefined,
+    tags: normalizeTags(it.tags),
+    status,
+    enabled: soundEnabledFromStatus(status),
+    notes: typeof it.notes === "string" ? it.notes : undefined,
+    originalKey: typeof it.originalKey === "string" ? it.originalKey : undefined,
+    trimStartSec: typeof it.trimStartSec === "number" ? it.trimStartSec : undefined,
+    trimEndSec: typeof it.trimEndSec === "number" ? it.trimEndSec : null,
+    fadeInSec: typeof it.fadeInSec === "number" ? it.fadeInSec : undefined,
+    fadeOutSec: typeof it.fadeOutSec === "number" ? it.fadeOutSec : undefined,
+    importedAt,
+    processing: parseSoundProcessing(it.processing),
+    coverImageKey:
+      typeof it.coverImageKey === "string" && it.coverImageKey.trim()
+        ? it.coverImageKey.trim()
+        : undefined,
+    coverImageUrl:
+      typeof it.coverImageUrl === "string" && it.coverImageUrl.trim()
+        ? it.coverImageUrl.trim()
+        : undefined,
+    coverImageThumbKey:
+      typeof it.coverImageThumbKey === "string" && it.coverImageThumbKey.trim()
+        ? it.coverImageThumbKey.trim()
+        : undefined,
+    coverImageThumbUrl:
+      typeof it.coverImageThumbUrl === "string" && it.coverImageThumbUrl.trim()
+        ? it.coverImageThumbUrl.trim()
+        : undefined,
+    lastCoverPrompt:
+      typeof it.lastCoverPrompt === "string" && it.lastCoverPrompt.trim()
+        ? it.lastCoverPrompt.trim().slice(0, 4000)
+        : undefined,
+    coverPromptHistory: Array.isArray(it.coverPromptHistory)
+      ? it.coverPromptHistory
+          .filter((p): p is string => typeof p === "string")
+          .map((p) => p.trim().slice(0, 4000))
+          .filter(Boolean)
+          .slice(-5)
+      : undefined,
+    updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
+  };
+}
+
 export async function listAllSoundRows(): Promise<SoundCatalogRow[]> {
   const items: SoundCatalogRow[] = [];
   let startKey: Record<string, unknown> | undefined;
@@ -177,46 +262,26 @@ export async function listAllSoundRows(): Promise<SoundCatalogRow[]> {
       }),
     );
     for (const it of out.Items ?? []) {
-      if (typeof it.sk !== "string" || !it.sk) continue;
-      const importedAt = typeof it.importedAt === "string" ? it.importedAt : undefined;
-      const status = resolveSoundReviewStatus(it.status, { sk: it.sk, importedAt });
-      const category =
-        normalizeBgAudioCategory(String(it.category ?? "")) ?? "music";
-      const suggestedCategory = normalizeBgAudioCategory(String(it.suggestedCategory ?? ""));
-      items.push({
-        pk: SOUND_PK,
-        sk: it.sk,
-        name: typeof it.name === "string" ? it.name : it.sk,
-        category,
-        subcategory:
-          typeof it.subcategory === "string" && it.subcategory.trim()
-            ? coerceSoundSubcategory(category, it.subcategory)
-            : undefined,
-        categoryPinned: it.categoryPinned === true ? true : undefined,
-        suggestedCategory: suggestedCategory ?? undefined,
-        suggestedSubcategory:
-          typeof it.suggestedSubcategory === "string"
-            ? coerceSoundSubcategory(suggestedCategory ?? category, it.suggestedSubcategory)
-            : undefined,
-        suggestedName: typeof it.suggestedName === "string" ? it.suggestedName : undefined,
-        packPath: typeof it.packPath === "string" ? it.packPath : undefined,
-        tags: normalizeTags(it.tags),
-        status,
-        enabled: soundEnabledFromStatus(status),
-        notes: typeof it.notes === "string" ? it.notes : undefined,
-        originalKey: typeof it.originalKey === "string" ? it.originalKey : undefined,
-        trimStartSec: typeof it.trimStartSec === "number" ? it.trimStartSec : undefined,
-        trimEndSec: typeof it.trimEndSec === "number" ? it.trimEndSec : null,
-        fadeInSec: typeof it.fadeInSec === "number" ? it.fadeInSec : undefined,
-        fadeOutSec: typeof it.fadeOutSec === "number" ? it.fadeOutSec : undefined,
-        importedAt,
-        processing: parseSoundProcessing(it.processing),
-        updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
-      });
+      const row = rowFromItem(it as Record<string, unknown>);
+      if (row) items.push(row);
     }
     startKey = out.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey);
   return items;
+}
+
+export async function getSoundRow(sk: string): Promise<SoundCatalogRow | null> {
+  const key = sk.trim();
+  if (!key) return null;
+  const res = await ddb.send(
+    new GetCommand({
+      TableName: tableName(),
+      Key: { pk: SOUND_PK, sk: key },
+      ConsistentRead: true,
+    }),
+  );
+  if (!res.Item) return null;
+  return rowFromItem(res.Item as Record<string, unknown>);
 }
 
 export async function putSoundRow(row: SoundCatalogRow): Promise<void> {
@@ -231,6 +296,7 @@ export async function putSoundRow(row: SoundCatalogRow): Promise<void> {
       },
     }),
   );
+  void invalidateBgAudioListCache();
 }
 
 /**
@@ -272,4 +338,5 @@ export async function deleteSoundRow(sk: string): Promise<void> {
       Key: { pk: SOUND_PK, sk },
     }),
   );
+  void invalidateBgAudioListCache();
 }

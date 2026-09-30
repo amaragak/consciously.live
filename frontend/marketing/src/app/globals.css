@@ -264,7 +264,7 @@ body {
 
 :root.hybrid .home-v2-field .read-prose blockquote::before,
 :root.dark .home-v2-field .read-prose blockquote::before {
-  color: var(--accent-button);
+  color: var(--header-gold, var(--gold));
   opacity: 0.92;
 }
 
@@ -533,6 +533,23 @@ body {
 
 .dark .brand-wordmark {
   color: #fff;
+}
+
+/**
+ * Italic header verb — soft left→right gold wash (sunlit edge on the left).
+ * Same treatment as the SPA `.app-header-section-verb` (hero + scrolled lockups).
+ */
+.header-gold-sunlit,
+.app-header-section-verb {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--header-gold, #d9b87c) 62%, white),
+    var(--header-gold, #d9b87c) 72%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Site header / app header sun lightening — values from --header-glow-* */

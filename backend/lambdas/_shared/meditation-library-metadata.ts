@@ -3,6 +3,7 @@
  */
 
 import { parseAnthropicMessageUsage } from "./anthropic-pricing";
+import { recordClaudeUsage } from "./ai-usage";
 import {
   type KnownMeditationType,
   inferPresetTypeFromScriptHeuristic,
@@ -86,9 +87,18 @@ async function callAnthropicMetadataJson(params: {
       `Anthropic metadata failed: ${responseText.slice(0, 500)}`,
     );
   }
+  const usage = parseAnthropicMessageUsage(responseText);
+  if (usage) {
+    void recordClaudeUsage({
+      model: params.model,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      feature: "library-metadata",
+    });
+  }
   return {
     responseText,
-    usage: parseAnthropicMessageUsage(responseText),
+    usage,
   };
 }
 

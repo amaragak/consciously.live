@@ -54,10 +54,8 @@ export const INFO = "#0284c7";
 
 const NAV = "#33465C";
 // const NAV = "#6E88A3";
-/** SPA light-mode header — midnight. */
-const NAV_HEADER_LIGHT = "#16284A";
-/** SPA dark-mode + Next sticky header. */
-const NAV_HEADER_DARK = "#0F1B2D";
+/** SPA header fill — shared by light + dark (Midnight Navy). */
+const NAV_HEADER = "#0F1B2D";
 /** Light app canvas. Hybrid header fill stays cream; SPA light/dark header is navy. */
 const APP_CANVAS_LIGHT = "#FAF6F0";
 const NAV_LIGHT = APP_CANVAS_LIGHT;
@@ -306,7 +304,7 @@ function headerSunGlowFromNav(navHex: string): string {
 }
 
 /** SPA dark / Next sticky header navy. */
-export const SPA_NAVY = NAV_HEADER_DARK;
+export const SPA_NAVY = NAV_HEADER;
 
 /** White or near-black depending on background lightness. */
 export function onColor(bgHex: string): string {
@@ -478,21 +476,18 @@ function assemble(
     sidebarBorder: dark ? paper.border : SIDEBAR_BORDER_LIGHT,
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
-    /** Light SPA: midnight `#16284A`. Dark SPA + Next sticky: `#0F1B2D`. */
-    nav: dark ? NAV_HEADER_DARK : NAV_HEADER_LIGHT,
+    /** SPA light + dark share the same navy header (`#0F1B2D`). */
+    nav: NAV_HEADER,
     navForeground: NAV_FOREGROUND,
     navMuted: NAV_MUTED,
     navCrumb: NAV_CRUMB,
     navActive: NAV_ACTIVE,
     headerGold: HEADER_GOLD,
     headerBorder: "rgba(255,255,255,0.1)",
-    headerShadow: dark
-      ? "0 4px 18px rgb(15 27 45 / 0.28)"
-      : "0 4px 18px rgb(22 40 74 / 0.28)",
-    headerGlowSun: headerSunGlowFromNav(dark ? NAV_HEADER_DARK : NAV_HEADER_LIGHT),
-    headerGlowRight: dark
-      ? "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(15 27 45 / 0) 68%)"
-      : "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(22 40 74 / 0) 68%)",
+    headerShadow: "0 4px 18px rgb(15 27 45 / 0.28)",
+    headerGlowSun: headerSunGlowFromNav(NAV_HEADER),
+    headerGlowRight:
+      "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(15 27 45 / 0) 68%)",
     // Light: tab / selected gold. Dark: navy selected.
     selected: dark ? NAV : TAB_SELECTED_LIGHT,
     onSelected: dark ? WHITE : ON_ACCENT,

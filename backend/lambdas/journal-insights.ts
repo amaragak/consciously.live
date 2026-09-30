@@ -17,6 +17,7 @@ import {
   CLAUDE_HAIKU_45_MODEL_ID,
   parseAnthropicMessageUsage,
 } from "./_shared/anthropic-pricing";
+import { recordClaudeUsage } from "./_shared/ai-usage";
 import { requireUserJson } from "./_shared/consciously-auth-http";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -610,6 +611,14 @@ async function callClaudeForInsights(params: {
     throw new Error(`Anthropic request failed (${res.status}): ${slice}`);
   }
   const usage = parseAnthropicMessageUsage(text);
+  if (usage) {
+    void recordClaudeUsage({
+      model: CLAUDE_HAIKU_45_MODEL_ID,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      feature: "journal-insights",
+    });
+  }
   // Anthropic response shape: { content: [{type:"text", text:"..."}], ... }
   try {
     const o = JSON.parse(text) as { content?: Array<{ type?: string; text?: string }> };

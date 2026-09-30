@@ -529,21 +529,21 @@ function AccountPasswordPanel({
   }
 
   const fieldClass =
-    "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50";
+    "w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50";
 
   return (
     <SettingsCard>
       <form onSubmit={(e) => void onSubmit(e)} className="space-y-4 px-4 py-4 sm:px-5">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-foreground">
+            <p className="text-base font-semibold text-foreground">
               {mode === "change"
                 ? "Change password"
                 : mode === "forgot"
                   ? "Reset password"
                   : "Enter reset code"}
             </p>
-            <p className="mt-1 text-xs text-muted">
+            <p className="mt-1 text-sm text-muted">
               {mode === "change"
                 ? `For ${email}`
                 : mode === "forgot"
@@ -580,7 +580,7 @@ function AccountPasswordPanel({
 
         {mode === "change" ? (
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-muted">Current password</span>
+            <span className="text-sm font-medium text-muted">Current password</span>
             <input
               type="password"
               autoComplete="current-password"
@@ -594,7 +594,7 @@ function AccountPasswordPanel({
 
         {mode === "reset" ? (
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-muted">Email code</span>
+            <span className="text-sm font-medium text-muted">Email code</span>
             <input
               type="text"
               inputMode="numeric"
@@ -610,7 +610,7 @@ function AccountPasswordPanel({
         {mode === "change" || mode === "reset" ? (
           <>
       <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-muted">New password</span>
+              <span className="text-sm font-medium text-muted">New password</span>
               <input
                 type="password"
                 autoComplete="new-password"
@@ -622,7 +622,7 @@ function AccountPasswordPanel({
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-muted">
+              <span className="text-sm font-medium text-muted">
                 Confirm new password
               </span>
               <input
@@ -691,7 +691,7 @@ function AiSection({ settings, onPatch }: SectionProps) {
         <p className="text-sm font-semibold text-foreground">
           Who processes your data
         </p>
-        <dl className="grid gap-2 text-sm sm:grid-cols-[minmax(0,11rem)_1fr] sm:gap-x-4">
+        <dl className="grid gap-2 text-base sm:grid-cols-[minmax(0,11rem)_1fr] sm:gap-x-4">
           {AI_PROVIDERS.map((p) => (
             <div key={p.id} className="contents">
               <dt className="font-medium text-foreground">{p.name}</dt>
@@ -1166,7 +1166,7 @@ function NotificationsSection({ settings, onPatch }: SectionProps) {
         className="border-t border-border/60 px-4 py-4 first:border-t-0 sm:px-5"
       >
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <p className="text-sm font-semibold text-foreground">Channels</p>
+          <p className="text-base font-semibold text-foreground">Channels</p>
           <SettingsStatusMarker status={SETTINGS_STATUS["notifications.grid"]} />
         </div>
         <div className="overflow-x-auto">

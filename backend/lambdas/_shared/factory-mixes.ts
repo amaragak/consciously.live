@@ -6,6 +6,7 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { invalidateBgAudioListCache } from "./bg-audio-list-cache";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -177,6 +178,7 @@ export async function putFactoryMix(
       Item: row,
     }),
   );
+  void invalidateBgAudioListCache();
   return next;
 }
 
@@ -189,4 +191,5 @@ export async function deleteFactoryMix(id: string): Promise<void> {
       Key: { pk: FACTORY_MIX_PK, sk },
     }),
   );
+  void invalidateBgAudioListCache();
 }

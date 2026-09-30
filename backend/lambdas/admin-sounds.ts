@@ -316,6 +316,9 @@ async function handleGet(bucket: string, baseUrl: string | undefined) {
       pendingUpload,
       importedAt: meta?.importedAt ?? meta?.updatedAt ?? null,
       updatedAt: meta?.updatedAt ?? null,
+      coverImageKey: meta?.coverImageKey ?? null,
+      coverImageUrl: meta?.coverImageUrl ?? null,
+      lastCoverPrompt: meta?.lastCoverPrompt ?? null,
     };
   }
 
@@ -434,6 +437,14 @@ async function handlePatch(event: APIGatewayProxyEventV2, bucket: string) {
     trimEndSec: existing?.trimEndSec,
     fadeInSec: existing?.fadeInSec,
     fadeOutSec: existing?.fadeOutSec,
+    // Cover art is keyed off the audio object key, not the display name —
+    // always preserve across rename / category / status patches.
+    coverImageKey: existing?.coverImageKey,
+    coverImageUrl: existing?.coverImageUrl,
+    coverImageThumbKey: existing?.coverImageThumbKey,
+    coverImageThumbUrl: existing?.coverImageThumbUrl,
+    lastCoverPrompt: existing?.lastCoverPrompt,
+    coverPromptHistory: existing?.coverPromptHistory,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(row);

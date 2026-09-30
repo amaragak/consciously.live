@@ -27,6 +27,10 @@ import {
   meditationUserPk,
 } from "./_shared/meditation-user-pk";
 import { coerceClaudeModel, parseAnthropicMessageUsage } from "./_shared/anthropic-pricing";
+import {
+  recordClaudeUsage,
+  recordFishTtsUsage,
+} from "./_shared/ai-usage";
 import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
 import { sanitizeMeditationCreationProvenance } from "./_shared/meditation-creation-provenance";
 import { estimateCoachChatTokensFromTranscript } from "./_shared/claude-coach-chat-estimate";
@@ -726,7 +730,16 @@ async function generateScriptFromClaude(params: {
   if (!text) {
     return Promise.reject(new Error("Empty script returned by Anthropic"));
   }
-  return { script: text, usage: parseAnthropicMessageUsage(responseText) };
+  const usage = parseAnthropicMessageUsage(responseText);
+  if (usage) {
+    void recordClaudeUsage({
+      model: params.model,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      feature: "meditation-script",
+    });
+  }
+  return { script: text, usage };
 }
 
 /** Keep DynamoDB item under 400 KB (UTF-8 bytes, incl. other attributes). */
@@ -792,6 +805,11 @@ async function fishTtsMp3(params: {
       }
 
       const buf = Buffer.from(await upstream.arrayBuffer());
+      void recordFishTtsUsage({
+        utf8Bytes: Buffer.byteLength(params.text, "utf8"),
+        model,
+        feature: "meditation-tts",
+      });
       return buf;
     } catch (e) {
       lastErr = e instanceof Error ? e.message : String(e);
@@ -1987,6 +2005,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           spokenUtf8Bytes,
           spokenWordCount,
           fishTtsModel,
+          ttsProvider,
           claudeHaiku45WorkerInputTokens: claudeWorkerInputTokens,
           claudeHaiku45WorkerOutputTokens: claudeWorkerOutputTokens,
           ...(claudeChatEstInputTokens != null && claudeChatEstOutputTokens != null

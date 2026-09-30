@@ -38,6 +38,7 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
     const mediaBucket = props.media.bucket;
     const mediaDistribution = props.media.distribution;
     const ideateTable = props.database.ideate;
+    const aiUsageTable = props.database.aiUsage;
     const habitsTable = props.database.habits;
     const famousQuotesTable = props.database.famousQuotes;
     const journalTable = props.database.journal;
@@ -51,6 +52,7 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
       ],
     });
     ideateTable.grantReadWriteData(role);
+    aiUsageTable.grantReadWriteData(role);
     famousQuotesTable.grantReadWriteData(role);
     habitsTable.grantReadWriteData(role);
     journalTable.grantReadData(role);
@@ -72,7 +74,9 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
         role,
         environment: {
           GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
@@ -221,6 +225,7 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
         environment: {
           FAMOUS_QUOTES_TABLE_NAME: famousQuotesTable.tableName,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );

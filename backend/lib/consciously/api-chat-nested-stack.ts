@@ -35,6 +35,7 @@ export class ConsciouslyApiChatNestedStack extends cdk.NestedStack {
     const claudeApiKeySecret = props.config.claudeApiKey;
     const authJwtSecret = props.config.authJwtSecret;
     const assistantChatTable = props.database.assistantChat;
+    const aiUsageTable = props.database.aiUsage;
 
     const role = new iam.Role(this, "LambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -46,6 +47,7 @@ export class ConsciouslyApiChatNestedStack extends cdk.NestedStack {
     });
     claudeApiKeySecret.grantRead(role);
     assistantChatTable.grantReadWriteData(role);
+    aiUsageTable.grantReadWriteData(role);
     authJwtSecret.grantRead(role);
 
     const claudeChat = new lambda_nodejs.NodejsFunction(this, "ClaudeChatFunction", {
@@ -57,6 +59,7 @@ export class ConsciouslyApiChatNestedStack extends cdk.NestedStack {
       role,
       environment: {
         CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
       },
     });
 
@@ -97,6 +100,7 @@ export class ConsciouslyApiChatNestedStack extends cdk.NestedStack {
         role,
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );

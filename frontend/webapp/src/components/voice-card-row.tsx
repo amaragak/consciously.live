@@ -1,10 +1,11 @@
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DualStemPlayer } from "@consciously/common";
 import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
+import { createAudioPulseDelayMs } from "@/lib/create-audio-pulse";
 
 const LAST_VOICE_STORAGE_KEY = "mm_last_fish_voice_v1";
 /** Pause between preview sample repeats (matches create-flow speaker bed). */
@@ -29,6 +30,8 @@ type VoiceCardRowProps = {
   disabled?: boolean;
   /** Bump to stop a running preview from outside, e.g. when generation starts. */
   stopNonce?: number;
+  /** Trailing content on the Voice label row (e.g. pacing toggle). */
+  headerEnd?: ReactNode;
 };
 
 function readLastVoiceId(): string | null {
@@ -89,6 +92,7 @@ export function VoiceCardRow({
   voiceFxDial,
   disabled,
   stopNonce = 0,
+  headerEnd,
 }: VoiceCardRowProps) {
   const playerRef = useRef<DualStemPlayer | null>(null);
   if (!playerRef.current) playerRef.current = new DualStemPlayer();
@@ -213,16 +217,20 @@ export function VoiceCardRow({
     "text-xs font-semibold uppercase tracking-[0.12em] text-foreground";
 
   const list = voices ?? [];
+  const pulseDelay = useMemo(
+    () => (value ? createAudioPulseDelayMs() : undefined),
+    [value],
+  );
 
   return (
     <section className="shrink-0 border-b border-border">
-      {/* Mobile: Voice label above the scroller */}
-      <span className={`mb-2 block sm:hidden ${labelClass}`}>Voice</span>
-      <div className="flex items-center gap-3">
-        <span className={`hidden w-12 shrink-0 sm:block ${labelClass}`}>
-          Voice
-        </span>
-        <div className="flex min-h-[3.5rem] min-w-0 flex-1 items-center gap-2.5 overflow-x-auto py-0.5">
+      <div className="mb-2 flex min-w-0 flex-wrap items-center justify-start gap-x-8 gap-y-2">
+        <span className={labelClass}>Voice</span>
+        {headerEnd ? (
+          <div className="min-w-0 shrink-0">{headerEnd}</div>
+        ) : null}
+      </div>
+      <div className="create-audio-well flex min-h-[3.5rem] min-w-0 w-full items-center gap-2.5 overflow-x-auto rounded-xl px-2.5 py-2">
           {list.map((voice) => {
             const selected = voice.modelId === value;
             const playing = previewingId === voice.modelId;
@@ -240,10 +248,15 @@ export function VoiceCardRow({
                     : `Select and play ${voice.name}`
                 }
                 onClick={() => activateVoice(voice.modelId)}
+                style={
+                  selected && pulseDelay
+                    ? { animationDelay: pulseDelay }
+                    : undefined
+                }
                 className={`flex shrink-0 cursor-pointer items-center border-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   selected
-                    ? "border-accent bg-card"
-                    : "border-border bg-card"
+                    ? "create-audio-selected-pulse border-accent-button bg-card"
+                    : "border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-card shadow-[0_2px_10px_rgb(28_25_23_/_0.14),0_1px_3px_rgb(28_25_23_/_0.1)]"
                 } flex-col gap-1 rounded-lg px-3 py-2 sm:flex-row sm:gap-2 sm:rounded-full sm:px-3.5`}
               >
                 <span
@@ -258,7 +271,7 @@ export function VoiceCardRow({
                 </span>
                 <span
                   className={`whitespace-nowrap text-sm leading-none ${
-                    selected ? "font-medium" : "font-normal"
+                    selected ? "font-semibold" : "font-normal"
                   } text-foreground`}
                 >
                   {voice.name}
@@ -266,7 +279,6 @@ export function VoiceCardRow({
               </button>
             );
           })}
-        </div>
       </div>
     </section>
   );

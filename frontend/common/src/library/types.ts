@@ -7,6 +7,10 @@ export type BackgroundAudioItem = {
   /** Normalized WAV sibling for pro-tier / high-quality download when present. */
   wavKey?: string;
   subcategory?: string;
+  /** Public CDN URL for composition / soundscape cover art when present. */
+  coverImageUrl?: string | null;
+  /** Smaller JPEG thumb for list / picker cards. */
+  coverImageThumbUrl?: string | null;
 };
 
 /** Fields needed to build a strip track from a library row. */

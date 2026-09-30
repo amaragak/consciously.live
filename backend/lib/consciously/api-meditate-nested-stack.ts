@@ -49,6 +49,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     const meditationJobsTable = props.database.meditationJobs;
     const soundCatalogTable = props.database.soundCatalog;
     const voiceAdminTable = props.database.voiceAdmin;
+    const aiUsageTable = props.database.aiUsage;
 
     const role = new iam.Role(this, "LambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -63,6 +64,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     meditationListenerMixTable.grantReadWriteData(role);
     soundCatalogTable.grantReadData(role);
     voiceAdminTable.grantReadData(role);
+    aiUsageTable.grantReadWriteData(role);
     mediaBucket.grantReadWrite(role);
     authJwtSecret.grantRead(role);
     fishApiKeySecret.grantRead(role);
@@ -83,6 +85,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     meditationJobsTable.grantReadWriteData(workerRole);
     soundCatalogTable.grantReadData(workerRole);
     voiceAdminTable.grantReadData(workerRole);
+    aiUsageTable.grantReadWriteData(workerRole);
     mediaBucket.grantReadWrite(workerRole);
     fishApiKeySecret.grantRead(workerRole);
     speechifyApiKeySecret.grantRead(workerRole);
@@ -128,6 +131,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           VOICE_FX_FUNCTION_NAME: voiceFxFunction.functionName,
           ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );
@@ -552,8 +556,8 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/list-background-audio.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
         role,
         environment: {
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
@@ -562,10 +566,12 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         },
       },
     );
+    // List caches the response payload in the sound catalog table.
+    soundCatalogTable.grantReadWriteData(listBackgroundAudio);
     addNestHttpRoutes(this, httpApi, {
       id: "ListBackgroundAudioRoute",
       path: "/media/background-audio",
-      methods: [apigwv2.HttpMethod.GET],
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
       integration: new integrations.HttpLambdaIntegration(
         "ListBackgroundAudioIntegration",
         listBackgroundAudio,

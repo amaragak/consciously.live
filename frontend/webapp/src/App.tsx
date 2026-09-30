@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AdminAiCostsPanel } from "./components/admin-ai-costs-panel";
+import { AdminCompositionCoversPanel } from "./components/admin-composition-covers-panel";
 import { AdminAnalyticsPanel } from "./components/admin-analytics-panel";
 import { AdminReadPanel } from "./components/admin-blog-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
@@ -82,12 +84,17 @@ export function App() {
           <Route path="blog" element={<AdminReadPanel />} />
           <Route path="read" element={<AdminReadPanel />} />
           <Route path="analytics" element={<AdminAnalyticsPanel />} />
+          <Route path="ai-costs" element={<AdminAiCostsPanel />} />
           <Route path="script-lab" element={<AdminScriptLabPanel />} />
           <Route path="stress-test" element={<AdminStressTestPanel />} />
           <Route path="dev-ui" element={<AdminDevUiPanel />} />
           <Route
             path="category-images"
             element={<AdminLibraryCategoriesPanel />}
+          />
+          <Route
+            path="composition-covers"
+            element={<AdminCompositionCoversPanel />}
           />
         </Route>
       </Route>

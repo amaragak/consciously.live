@@ -53,8 +53,10 @@ export function Lockup({
     : onNavy
       ? "text-[var(--hv2-ivory)]"
       : "text-black";
-  const verb =
-    onHero || onNavy ? "text-[var(--hv2-gold)]" : "text-[var(--hv2-tan-text)]";
+  const verbClass =
+    onHero || onNavy
+      ? "header-gold-sunlit"
+      : "text-[var(--hv2-tan-text)]";
   const label =
     typeof tool === "string" && tool
       ? tool.charAt(0).toUpperCase() + tool.slice(1)
@@ -93,7 +95,9 @@ export function Lockup({
         </span>
       )}
       {label ? (
-        <em className={`select-text font-normal italic ${verb}`}>{label}</em>
+        <em className={`select-text font-normal italic ${verbClass}`}>
+          {label}
+        </em>
       ) : null}
     </span>
   );

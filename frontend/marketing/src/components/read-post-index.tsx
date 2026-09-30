@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ReadPostCard } from "@/components/read-post-card";
+import { ReadPostStripSection } from "@/components/read-post-strip";
 import {
   BLOG_CATEGORIES,
   type BlogCategory,
@@ -31,6 +32,19 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("All");
 
+  const pinned = useMemo(
+    () => posts.filter((p) => p.pinned).slice().sort(comparePosts),
+    [posts],
+  );
+  const myPicks = useMemo(
+    () =>
+      posts
+        .filter((p) => p.topPicks && !p.pinned)
+        .slice()
+        .sort(comparePosts),
+    [posts],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return posts
@@ -42,8 +56,18 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
       .sort(comparePosts);
   }, [posts, query, category]);
 
+  const showHighlights =
+    !query.trim() && category === "All" && (pinned.length > 0 || myPicks.length > 0);
+
   return (
     <div className="mt-10">
+      {showHighlights ? (
+        <div className="mb-2">
+          <ReadPostStripSection title="Pinned" posts={pinned} />
+          <ReadPostStripSection title="My picks" posts={myPicks} />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
         <label className="relative min-w-[min(100%,14rem)] flex-1 basis-[14rem]">
           <span className="sr-only">Search posts</span>

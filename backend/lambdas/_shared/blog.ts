@@ -70,6 +70,10 @@ export type BlogPost = {
   /** HTML (TipTap) or legacy markdown body. */
   body: string;
   published: boolean;
+  /** App-related highlight on /read (admin-assigned). */
+  pinned: boolean;
+  /** Curated “top picks” / personal favourites (admin-assigned). */
+  topPicks: boolean;
   /** ISO timestamp when first published (sticky after unpublish). */
   publishedAt: string | null;
   /** CloudFront URL for TTS narration (no FX, no music). */
@@ -355,6 +359,8 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
         : "",
     body: typeof raw.body === "string" ? raw.body.slice(0, 100_000) : "",
     published: raw.published === true,
+    pinned: raw.pinned === true,
+    topPicks: raw.topPicks === true,
     publishedAt:
       typeof raw.publishedAt === "string" && raw.publishedAt.trim()
         ? raw.publishedAt.trim()
@@ -523,6 +529,14 @@ export async function putBlogPost(
     typeof input.published === "boolean"
       ? input.published
       : (existing?.published ?? false);
+  const pinned =
+    typeof input.pinned === "boolean"
+      ? input.pinned
+      : (existing?.pinned ?? false);
+  const topPicks =
+    typeof input.topPicks === "boolean"
+      ? input.topPicks
+      : (existing?.topPicks ?? false);
   let publishedAt = existing?.publishedAt ?? null;
   if (published && !publishedAt) publishedAt = now;
   if (!published) {
@@ -570,6 +584,8 @@ export async function putBlogPost(
       return incoming;
     })(),
     published,
+    pinned,
+    topPicks,
     publishedAt,
     audioUrl: existing?.audioUrl ?? null,
     audioStatus: existing?.audioStatus ?? "none",

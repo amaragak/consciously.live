@@ -43,9 +43,9 @@ type QuickAction = {
   href: string;
   keywords: string[];
   shortcut?: string;
-  /** Primary create CTA — mist “+” chip. */
+  /** Mist-blue action chip (all empty-state quick actions). */
   primary?: boolean;
-  icon: "plus" | "journal" | "heart" | "grid" | "sparkles" | "chat";
+  icon: "meditate" | "journal" | "heart" | "grid" | "sparkles" | "chat";
 };
 
 const EMPTY_QUICK_ACTIONS: QuickAction[] = [
@@ -57,7 +57,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     keywords: ["create", "meditation", "meditate", "new", "make"],
     shortcut: "↵",
     primary: true,
-    icon: "plus",
+    icon: "meditate",
   },
   {
     id: "add-journal",
@@ -66,6 +66,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     href: "/journal/my?new=1",
     keywords: ["journal", "entry", "write", "new", "add", "note"],
     shortcut: "J",
+    primary: true,
     icon: "journal",
   },
   {
@@ -75,6 +76,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     href: "/journal/my/gratitudes?new=1",
     keywords: ["gratitude", "grateful", "thanks"],
     shortcut: "G",
+    primary: true,
     icon: "heart",
   },
   {
@@ -83,6 +85,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     body: "Manifest.",
     href: "/manifest/my/vision-board",
     keywords: ["vision", "board", "manifest", "ideate", "dream"],
+    primary: true,
     icon: "grid",
   },
   {
@@ -91,6 +94,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     body: "Journal · letters and patterns.",
     href: "/journal/my/insights",
     keywords: ["insights", "letter", "patterns", "reflect"],
+    primary: true,
     icon: "sparkles",
   },
 ];
@@ -192,29 +196,32 @@ function IconSearch({ className }: { className?: string }) {
   );
 }
 
-function MistPlusChip() {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-on-accent shadow-[0_1px_4px_rgb(15_27_45_/_0.1)]"
-      style={{
-        backgroundColor: "var(--accent-button)",
-        backgroundImage: "var(--accent-gradient-button)",
-      }}
-    >
-      +
-    </span>
-  );
-}
-
 function SoftIcon({
   icon,
+  mist = false,
 }: {
   icon: NonNullable<FlyoutRow["icon"]>;
+  mist?: boolean;
 }) {
-  const cls = "size-4 text-muted";
+  const cls = mist ? "size-4 text-on-accent" : "size-4 text-muted";
   let glyph: ReactNode = null;
-  if (icon === "journal") glyph = <Book className={cls} strokeWidth={1.75} />;
+  if (icon === "meditate") {
+    // Material Icons "self_improvement" — person in lotus posture (Apache-2.0).
+    glyph = (
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="currentColor"
+        aria-hidden
+        className="size-4"
+      >
+        <circle cx="12" cy="6" r="2" />
+        <path d="M21 16v-2c-2.24 0-4.16-.96-5.6-2.68l-1.34-1.6A1.98 1.98 0 0 0 12.53 9h-1.05c-.59 0-1.15.26-1.53.72l-1.34 1.6C7.16 13.04 5.24 14 3 14v2c2.77 0 5.19-1.17 7-3.25V15l-3.88 1.55c-.67.27-1.12.93-1.12 1.66C5 19.2 5.8 20 6.79 20H9v-.5a2.5 2.5 0 0 1 2.5-2.5h3c.28 0 .5.22.5.5s-.22.5-.5.5h-3c-.83 0-1.5.67-1.5 1.5v.5h7.21c.99 0 1.79-.8 1.79-1.79 0-.73-.45-1.39-1.12-1.66L14 15v-2.25c1.81 2.08 4.23 3.25 7 3.25z" />
+      </svg>
+    );
+  } else if (icon === "journal")
+    glyph = <Book className={cls} strokeWidth={1.75} />;
   else if (icon === "heart") glyph = <Heart className={cls} strokeWidth={1.75} />;
   else if (icon === "grid")
     glyph = <LayoutGrid className={cls} strokeWidth={1.75} />;
@@ -225,6 +232,21 @@ function SoftIcon({
   else if (icon === "clock") glyph = <Clock className={cls} strokeWidth={1.75} />;
   else if (icon === "user") glyph = <User className={cls} strokeWidth={1.75} />;
   else glyph = <Sparkles className={cls} strokeWidth={1.75} />;
+
+  if (mist) {
+    return (
+      <span
+        aria-hidden
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-on-accent shadow-[0_1px_4px_rgb(15_27_45_/_0.1)]"
+        style={{
+          backgroundColor: "var(--accent-button)",
+          backgroundImage: "var(--accent-gradient-button)",
+        }}
+      >
+        {glyph}
+      </span>
+    );
+  }
 
   return (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-muted">
@@ -274,9 +296,7 @@ function ResultRow({
         active ? "bg-accent-soft/70" : "hover:bg-accent-soft/50"
       }`}
     >
-      {row.primary ? (
-        <MistPlusChip />
-      ) : row.imageUrl ? (
+      {row.imageUrl ? (
         <span className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-surface-2">
           <img
             src={row.imageUrl}
@@ -287,7 +307,10 @@ function ResultRow({
           />
         </span>
       ) : (
-        <SoftIcon icon={row.icon ?? "sparkles"} />
+        <SoftIcon
+          icon={row.icon ?? (row.primary ? "meditate" : "sparkles")}
+          mist={Boolean(row.primary)}
+        />
       )}
       <span className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-foreground">
@@ -535,6 +558,7 @@ export function AppGlobalSearch() {
         body: "Meditate · opens Create with this filled in.",
         href: insightsCreateMeditationHref(),
         primary: true,
+        icon: "meditate" as const,
         onNavigate: () => {
           writeInsightsMeditationPrompt(
             `Please write a complete guided meditation about: ${rawQuery}`,
@@ -547,6 +571,7 @@ export function AppGlobalSearch() {
         body: "Chat.",
         href: "/chat/my",
         icon: "chat",
+        primary: true,
       },
     ];
   }, [rawQuery]);
@@ -883,36 +908,6 @@ export function AppGlobalSearch() {
                 ) : null}
               </>
             )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-subtle bg-surface-2/60 px-3 py-2 text-[10px] text-muted">
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded border border-border bg-card px-1 font-sans">
-                ↑
-              </kbd>
-              <kbd className="rounded border border-border bg-card px-1 font-sans">
-                ↓
-              </kbd>
-              to move
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded border border-border bg-card px-1 font-sans">
-                ↵
-              </kbd>
-              to open
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded border border-border bg-card px-1 font-sans">
-                esc
-              </kbd>
-              to close
-            </span>
-            <span className="ml-auto inline-flex items-center gap-1">
-              <kbd className="rounded border border-border bg-card px-1 font-sans">
-                ⌘K
-              </kbd>
-              anywhere
-            </span>
           </div>
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
+import { createAudioPulseDelayMs } from "@/lib/create-audio-pulse";
 import { prettySubcategoryLabel, soundDisplayName } from "@/lib/sound-taxonomy";
 
 type SoundscapePickerProps = {
@@ -131,6 +132,10 @@ export function SoundscapePicker({
     return list.filter((item) => item.subcategory === categoryFilter);
   }, [items, isCreate, categoryFilter]);
 
+  const pulseDelay = useMemo(
+    () => (value ? createAudioPulseDelayMs() : undefined),
+    [value],
+  );
   // Keep a pre-selected soundscape visible if the category filter would hide it.
   useEffect(() => {
     if (!isCreate || !value || categoryFilter === "all") return;
@@ -153,7 +158,9 @@ export function SoundscapePicker({
   }, [value, sorted.length, categoryFilter]);
 
   if (loading) {
-    return <p className="px-1 py-6 text-sm text-muted">Loading soundscapes…</p>;
+    return (
+      <p className="px-1 py-6 text-sm text-muted">Loading soundscapes…</p>
+    );
   }
   if (items.length === 0) {
     return (
@@ -164,10 +171,128 @@ export function SoundscapePicker({
   }
 
   if (isCreate) {
+    const listBody =
+      sorted.length === 0 ? (
+        <p className="px-1 py-6 text-sm text-muted">
+          No soundscapes in this category.
+        </p>
+      ) : (
+        <ul
+          className={
+            compact
+              ? "grid grid-cols-1 items-start gap-2"
+              : "grid grid-cols-1 items-start gap-2 sm:grid-cols-2 lg:grid-cols-3"
+          }
+        >
+          {sorted.map((item) => {
+            const selected = item.key === value;
+            const playing = playingKey === item.key;
+            const title = soundDisplayName(item.name);
+            const pack = item.subcategory
+              ? prettySubcategoryLabel(item.subcategory)
+              : "";
+            const canPreview = Boolean(previewUrl(item.key));
+            const canSelect = !requirePreviewUrl || canPreview;
+            return (
+              <li
+                key={item.key}
+                ref={selected ? selectedItemRef : undefined}
+              >
+                <button
+                  type="button"
+                  disabled={disabled || !canSelect}
+                  aria-pressed={selected}
+                  aria-label={
+                    playing
+                      ? `Pause and keep ${title} selected`
+                      : `Select and play ${title}`
+                  }
+                  onClick={() => {
+                    if (value !== item.key) onChange(item.key);
+                    onTogglePreview(item.key);
+                  }}
+                  style={
+                    selected && pulseDelay
+                      ? { animationDelay: pulseDelay }
+                      : undefined
+                  }
+                  className={`flex w-full min-w-0 max-w-full items-center overflow-hidden rounded-[6px] p-0 text-left transition-[border-color,border-width,background-color] disabled:cursor-not-allowed disabled:opacity-60 ${
+                    selected
+                      ? "create-audio-selected-pulse border-[3px] border-accent-button bg-card"
+                      : "border-2 border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-card shadow-[0_2px_10px_rgb(28_25_23_/_0.14),0_1px_3px_rgb(28_25_23_/_0.1)]"
+                  }`}
+                >
+                  <span className="relative isolate block h-20 w-20 shrink-0 grow-0 basis-20 overflow-hidden bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background))] sm:h-[5.25rem] sm:w-[5.25rem] sm:basis-[5.25rem]">
+                    {item.coverImageThumbUrl || item.coverImageUrl ? (
+                      <img
+                        src={
+                          item.coverImageThumbUrl || item.coverImageUrl || ""
+                        }
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        width={84}
+                        height={84}
+                        className={`pointer-events-none absolute inset-0 h-full w-full max-h-full max-w-full object-cover object-center ${
+                          selected
+                            ? "[filter:brightness(1.1)_contrast(0.86)]"
+                            : "[filter:brightness(1.14)_contrast(0.62)_saturate(0.12)]"
+                        }`}
+                      />
+                    ) : (
+                      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium uppercase tracking-wide text-muted">
+                        No cover
+                      </span>
+                    )}
+                    <span
+                      className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center"
+                      aria-hidden
+                    >
+                      <span
+                        className={`flex h-9 w-9 items-center justify-center rounded-full shadow-[0_1px_4px_rgb(15_27_45_/_0.18)] backdrop-blur-[2px] ${
+                          selected
+                            ? "bg-accent-button text-on-accent"
+                            : "bg-[color-mix(in_srgb,var(--accent-button)_48%,transparent)] text-[color-mix(in_srgb,var(--on-accent)_72%,transparent)]"
+                        }`}
+                      >
+                        <PlayPauseIcon playing={playing} size={16} />
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex min-h-20 min-w-0 flex-1 items-center px-3 py-2.5 sm:min-h-[5.25rem] sm:px-4 sm:py-3.5">
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={`block truncate font-display text-[15px] text-foreground ${
+                          selected ? "font-semibold" : "font-normal"
+                        }`}
+                      >
+                        {title}
+                      </span>
+                      <span className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
+                        {pack ? (
+                          <span className="rounded-[8px] bg-accent-soft/50 px-1.5 py-0.5 text-accent-link">
+                            {pack}
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                        <span className="shrink-0 tabular-nums">
+                          {formatDuration(durations[item.key] ?? null)}
+                        </span>
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      );
+
     return (
-      <div>
+      <div className="flex min-h-0 flex-1 flex-col">
         {categories.length > 0 ? (
-          <div className="mb-3 flex flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:overflow-visible">
+          <div className="mb-2 mt-0 flex shrink-0 flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:overflow-visible">
             <button
               type="button"
               aria-pressed={categoryFilter === "all"}
@@ -200,88 +325,9 @@ export function SoundscapePicker({
             })}
           </div>
         ) : null}
-        {sorted.length === 0 ? (
-          <p className="px-1 py-6 text-sm text-muted">
-            No soundscapes in this category.
-          </p>
-        ) : (
-          <ul
-            className={
-              compact
-                ? "grid grid-cols-1 items-start gap-2"
-                : "grid grid-cols-1 items-start gap-2 sm:grid-cols-2 lg:grid-cols-3"
-            }
-          >
-            {sorted.map((item) => {
-              const selected = item.key === value;
-              const playing = playingKey === item.key;
-              const title = soundDisplayName(item.name);
-              const pack = item.subcategory
-                ? prettySubcategoryLabel(item.subcategory)
-                : "";
-              const canPreview = Boolean(previewUrl(item.key));
-              const canSelect = !requirePreviewUrl || canPreview;
-              return (
-                <li
-                  key={item.key}
-                  ref={selected ? selectedItemRef : undefined}
-                >
-                  <button
-                    type="button"
-                    disabled={disabled || !canSelect}
-                    aria-pressed={selected}
-                    aria-label={
-                      playing
-                        ? `Pause and keep ${title} selected`
-                        : `Select and play ${title}`
-                    }
-                    onClick={() => {
-                      if (value !== item.key) onChange(item.key);
-                      onTogglePreview(item.key);
-                    }}
-                    className={`flex w-full min-w-0 max-w-full items-center gap-2.5 rounded-[6px] border-2 px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:gap-3 sm:px-4 sm:py-3.5 ${
-                      selected
-                        ? "border-accent bg-card"
-                        : "border-border bg-card hover:border-accent/40"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full transition-colors ${
-                        selected
-                          ? "bg-accent-button text-on-accent"
-                          : "bg-accent/20 text-accent-link"
-                      }`}
-                      aria-hidden
-                    >
-                      <PlayPauseIcon playing={playing} size={14} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-display text-[15px] font-normal text-foreground">
-                        {title}
-                      </span>
-                      <span className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
-                        {pack ? (
-                          <span className="rounded-[8px] bg-accent-soft/50 px-1.5 py-0.5 text-accent-link">
-                            {pack}
-                          </span>
-                        ) : (
-                          <span />
-                        )}
-                        <span className="shrink-0 tabular-nums">
-                          {formatDuration(durations[item.key] ?? null)}
-                        </span>
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <p className={`mt-3 px-1 text-xs text-muted ${compact ? "hidden" : ""}`}>
-          Longer than your meditation? It fades out naturally when the narration
-          ends.
-        </p>
+        <div className="create-audio-well min-h-0 flex-1 overflow-y-auto rounded-xl p-2.5 pb-2">
+          {listBody}
+        </div>
       </div>
     );
   }
@@ -305,13 +351,18 @@ export function SoundscapePicker({
           return (
             <li key={item.key} ref={selected ? selectedItemRef : undefined}>
               <div
-                className={`flex flex-col gap-2 rounded-2xl bg-card shadow-sm transition-colors ${
+                className={`flex flex-col gap-2 rounded-2xl bg-card transition-colors ${
                   compact ? "p-2.5" : "p-4"
                 } ${
                   selected
-                    ? "border-2 border-accent"
-                    : "border border-border hover:border-accent/50"
+                    ? "create-audio-selected-pulse border-2 border-accent-button"
+                    : "border border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] shadow-sm"
                 }`}
+                style={
+                  selected && pulseDelay
+                    ? { animationDelay: pulseDelay }
+                    : undefined
+                }
               >
                 <div className="flex items-center gap-2.5">
                   <button
@@ -330,7 +381,11 @@ export function SoundscapePicker({
                     aria-pressed={selected}
                     className="flex min-h-[2.6em] min-w-0 flex-1 cursor-pointer items-center text-left disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <span className="line-clamp-2 font-display text-[15px] font-medium leading-[1.3] text-foreground">
+                    <span
+                      className={`line-clamp-2 font-display text-[15px] leading-[1.3] text-foreground ${
+                        selected ? "font-semibold" : "font-normal"
+                      }`}
+                    >
                       {title}
                     </span>
                   </button>
@@ -346,12 +401,6 @@ export function SoundscapePicker({
           );
         })}
       </ul>
-      {compact ? null : (
-        <p className="mt-3 px-1 text-xs text-muted">
-          Longer than your meditation? It fades out naturally when the narration
-          ends.
-        </p>
-      )}
     </div>
   );
 }

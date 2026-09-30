@@ -44,6 +44,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     const meditationAnalyticsTable = props.database.meditationAnalytics;
     const meditationJobsTable = props.database.meditationJobs;
     const voiceAdminTable = props.database.voiceAdmin;
+    const aiUsageTable = props.database.aiUsage;
     const { ffmpegLayer } = props;
 
     const role = new iam.Role(this, "LambdaRole", {
@@ -58,6 +59,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     journalInsightsTable.grantReadWriteData(role);
     mediaBucket.grantReadWrite(role);
     voiceAdminTable.grantReadData(role);
+    aiUsageTable.grantReadWriteData(role);
     authJwtSecret.grantRead(role);
     openAiApiKeySecret.grantRead(role);
     claudeApiKeySecret.grantRead(role);
@@ -84,6 +86,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
         role,
         environment: {
           OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         },
@@ -174,6 +177,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
         role,
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           JOURNAL_TABLE_NAME: journalTable.tableName,
           JOURNAL_INSIGHTS_TABLE_NAME: journalInsightsTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
@@ -212,6 +216,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           SPEECHIFY_TTS_MODEL: "simba-3.2",
         },
       },
@@ -234,6 +239,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
         role,
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           JOURNAL_TABLE_NAME: journalTable.tableName,
           JOURNAL_INSIGHTS_TABLE_NAME: journalInsightsTable.tableName,
           MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
@@ -270,6 +276,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
         role,
         environment: {
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         },
       },

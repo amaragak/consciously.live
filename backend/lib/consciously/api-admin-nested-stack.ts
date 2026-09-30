@@ -60,8 +60,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
     const soundCatalogTable = props.database.soundCatalog;
     const voiceAdminTable = props.database.voiceAdmin;
     const journalTable = props.database.journal;
+    const journalInsightsTable = props.database.journalInsights;
     const ideateTable = props.database.ideate;
     const meditationAnalyticsTable = props.database.meditationAnalytics;
+    const aiUsageTable = props.database.aiUsage;
 
     const authWebappOrigin = resolveAuthWebappOrigin(this);
     const authEmailFrom = resolveAuthEmailFrom(this);
@@ -97,8 +99,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       }),
     );
     journalTable.grantReadData(role);
+    journalInsightsTable.grantReadData(role);
     ideateTable.grantReadData(role);
     meditationAnalyticsTable.grantReadData(role);
+    aiUsageTable.grantReadWriteData(role);
 
     const fishTts = new lambda_nodejs.NodejsFunction(this, "FishTtsFunction", {
       entry: path.join(__dirname, "../../lambdas/fish-tts.ts"),
@@ -110,6 +114,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       role,
       environment: {
         FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         FISH_TTS_MODEL: "s2.1-pro-free",
       },
     });
@@ -216,6 +221,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         ADMIN_EMAILS: adminEmails,
         CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
       },
     });
     addNestHttpRoutes(this, httpApi, {
@@ -295,6 +301,79 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const adminCompositionCovers = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminCompositionCoversFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-composition-covers.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(180),
+        memorySize: 512,
+        role,
+        environment: {
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          SOUND_CATALOG_TABLE_NAME: soundCatalogTable.tableName,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+          CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminCompositionCoversRoute",
+      path: "/admin/composition-covers",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminCompositionCoversIntegration",
+        adminCompositionCovers,
+      ),
+    });
+
+    const adminAiCosts = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminAiCostsFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-ai-costs.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(120),
+        memorySize: 512,
+        role,
+        environment: {
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          SOUND_CATALOG_TABLE_NAME: soundCatalogTable.tableName,
+          JOURNAL_INSIGHTS_TABLE_NAME: journalInsightsTable.tableName,
+          FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminAiCostsRoute",
+      path: "/admin/ai-costs",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminAiCostsIntegration",
+        adminAiCosts,
+      ),
+    });
+
     const adminPrograms = new lambda_nodejs.NodejsFunction(
       this,
       "AdminProgramsFunction",
@@ -310,10 +389,13 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );
@@ -348,8 +430,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           FISH_TTS_MODEL: "s2.1-pro-free",
           SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           SPEECHIFY_VOICE_ID: "geffen_32",
           SPEECHIFY_TTS_MODEL: "simba-3.2",
           BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
@@ -441,8 +525,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         ADMIN_EMAILS: adminEmails,
         FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         FISH_TTS_MODEL: "s2.1-pro-free",
         SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         SPEECHIFY_VOICE_ID: "geffen_32",
         SPEECHIFY_TTS_MODEL: "simba-3.2",
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
@@ -480,7 +566,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );
@@ -556,7 +644,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           ADMIN_EMAILS: adminEmails,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           FISH_TTS_MODEL: "s2.1-pro-free",
           SCRIPT_EMBED_FUNCTION_NAME: scriptEmbed.functionName,
         },

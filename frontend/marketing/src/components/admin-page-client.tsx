@@ -12,10 +12,12 @@ const SECTIONS = [
   { href: "/admin/programs", label: "Programs" },
   { href: "/admin/read", label: "Read" },
   { href: "/admin/analytics", label: "Analytics" },
+  { href: "/admin/ai-costs", label: "AI costs" },
   { href: "/admin/script-lab", label: "Script Lab" },
   { href: "/admin/stress-test", label: "Stress Test" },
   { href: "/admin/dev-ui", label: "Dev UI" },
   { href: "/admin/category-images", label: "Category images" },
+  { href: "/admin/composition-covers", label: "Composition covers" },
 ] as const;
 
 function AdminSectionTabs({ pathname }: { pathname: string }) {

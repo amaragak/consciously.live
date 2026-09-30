@@ -75,6 +75,8 @@ function blankDraft(): BlogDraft {
     notes: "",
     body: "",
     published: false,
+    pinned: false,
+    topPicks: false,
     publishedAt: null,
     audioUrl: null,
     audioStatus: "none",
@@ -100,6 +102,8 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
     notes: post.notes ?? "",
     body: post.body,
     published: post.published,
+    pinned: post.pinned,
+    topPicks: post.topPicks,
     publishedAt: post.publishedAt,
     audioUrl: post.audioUrl,
     audioStatus: post.audioStatus,
@@ -230,6 +234,9 @@ export function AdminReadPanel() {
   const liveEditorDocRef = useRef(editorDocKey(null, 0));
   /** TipTap updates draft via setState — keep a sync ref so Save never races empty body. */
   const liveBodyRef = useRef("");
+  /** Always-current draft for Save (checkbox/select then Save before re-render). */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [audioBusy, setAudioBusy] = useState(false);
@@ -360,7 +367,8 @@ export function AdminReadPanel() {
   }
 
   async function onSave() {
-    if (!draft.title.trim()) {
+    const d = draftRef.current;
+    if (!d.title.trim()) {
       setStatus("Title is required.");
       return;
     }
@@ -377,29 +385,55 @@ export function AdminReadPanel() {
           .trim(),
       );
     const bodyToSave =
-      [liveBodyRef.current, draft.body, selected?.body ?? ""].find(bodyHasText) ||
+      [liveBodyRef.current, d.body, selected?.body ?? ""].find(bodyHasText) ||
       liveBodyRef.current ||
-      draft.body;
+      d.body;
+    const hasBody = bodyHasText(bodyToSave);
     try {
-      const saved = await saveAdminBlogPost({
-        id: draft.id,
-        title: draft.title,
-        slug: draft.slug || slugify(draft.title),
-        subheader: draft.subheader,
-        excerpt: draft.excerpt,
-        tags: draft.tags,
-        category: draft.category,
-        series: draft.series,
-        part: draft.part,
-        notes: draft.notes,
-        body: bodyToSave,
-        published: draft.published,
-      });
-      // Prefer the body we just sent — never let a stale server/normalize miss wipe it.
-      const savedWithBody =
-        saved.body.trim() || !bodyToSave.trim()
-          ? saved
-          : { ...saved, body: bodyToSave };
+      // Placeholder / metadata-only edits: omit empty TipTap `<p></p>` on existing
+      // posts so a body race can't interfere — category/pin/etc. still persist.
+      const payload: Partial<AdminBlogPost> & { id?: string } = {
+        ...(d.id ? { id: d.id } : {}),
+        title: d.title,
+        slug: d.slug || slugify(d.title),
+        subheader: d.subheader,
+        excerpt: d.excerpt,
+        tags: d.tags,
+        category: d.category,
+        series: d.series,
+        part: d.part,
+        notes: d.notes,
+        published: d.published,
+        pinned: d.pinned,
+        topPicks: d.topPicks,
+      };
+      if (hasBody) {
+        payload.body = bodyToSave;
+      } else if (!d.id) {
+        payload.body = "";
+      }
+      const saved = await saveAdminBlogPost(payload);
+      // Trust the metadata we just sent — empty-body saves must not lose pin/category
+      // if the response is partial or an older lambda omitted new fields.
+      const savedWithBody: AdminBlogPost = {
+        ...saved,
+        title: d.title.trim() || saved.title,
+        subheader: d.subheader,
+        excerpt: d.excerpt,
+        tags: d.tags,
+        category: d.category,
+        series: d.series,
+        part: d.part,
+        notes: d.notes,
+        published: d.published,
+        pinned: d.pinned,
+        topPicks: d.topPicks,
+        body: bodyHasText(saved.body)
+          ? saved.body
+          : hasBody
+            ? bodyToSave
+            : saved.body,
+      };
       // Apply server response immediately — don’t wait on re-list (avoids a
       // brief stale title overwrite after capitalization-only edits).
       setPosts((prev) => {
@@ -412,7 +446,7 @@ export function AdminReadPanel() {
         });
       });
       liveBodyRef.current = savedWithBody.body;
-      const wasNew = !draft.id || draft.id !== savedWithBody.id;
+      const wasNew = !d.id || d.id !== savedWithBody.id;
       // Remount only when a new post first gets an id — remounting on every
       // save races TipTap empty HTML into liveBodyRef before the next Save.
       if (wasNew) {
@@ -687,7 +721,9 @@ export function AdminReadPanel() {
                         active ? "text-on-selected/70" : "text-muted"
                       }`}
                     >
-                      {p.category} · {p.published ? "Published" : "Draft"} · /
+                      {p.category} · {p.published ? "Published" : "Draft"}
+                      {p.pinned ? " · Pinned" : ""}
+                      {p.topPicks ? " · Top pick" : ""} · /
                       {p.slug}
                       {p.audioStatus === "generating"
                         ? " · generating audio"
@@ -1051,17 +1087,51 @@ export function AdminReadPanel() {
                   }))}
               />
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={draft.published}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, published: e.target.checked }))
-                }
-                className="size-4 rounded border-border"
-              />
-              Published
-            </label>
+            <div className="flex flex-col gap-2">
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.published}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, published: e.target.checked }))
+                  }
+                  className="size-4 rounded border-border"
+                />
+                Published
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.pinned}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, pinned: e.target.checked }))
+                  }
+                  className="size-4 rounded border-border"
+                />
+                <span>
+                  Pinned
+                  <span className="ml-1.5 font-normal text-muted">
+                    — app-related highlight
+                  </span>
+                </span>
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.topPicks}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, topPicks: e.target.checked }))
+                  }
+                  className="size-4 rounded border-border"
+                />
+                <span>
+                  Top picks
+                  <span className="ml-1.5 font-normal text-muted">
+                    — personal favourites (my picks)
+                  </span>
+                </span>
+              </label>
+            </div>
             {draft.id ? (
               <p className="text-[11px] text-muted">
                 Updated {formatWhen(selected?.updatedAt)}

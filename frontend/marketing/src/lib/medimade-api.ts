@@ -2085,6 +2085,10 @@ export type BackgroundAudioItem = {
   /** Normalized WAV sibling for pro-tier / high-quality download when present. */
   wavKey?: string;
   subcategory?: string;
+  /** Public CDN URL for composition / soundscape cover art when present. */
+  coverImageUrl?: string | null;
+  /** Smaller JPEG thumb for list / picker cards. */
+  coverImageThumbUrl?: string | null;
 };
 
 /** Prefer CDN MP3 for previews and mixer jobs (`background-audio/…` beds). */
@@ -4055,6 +4059,8 @@ export type AdminBlogPost = {
   notes: string;
   body: string;
   published: boolean;
+  pinned: boolean;
+  topPicks: boolean;
   publishedAt: string | null;
   audioUrl: string | null;
   audioStatus: AdminBlogAudioStatus;
@@ -4116,6 +4122,8 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     notes: typeof o.notes === "string" ? o.notes : "",
     body: typeof o.body === "string" ? o.body : "",
     published: o.published === true,
+    pinned: o.pinned === true,
+    topPicks: o.topPicks === true,
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()
@@ -4425,13 +4433,63 @@ export async function generateAdminProgramDayDescription(params: {
 /** Treat day descriptions shorter than this as missing (auto-generate). */
 export const PROGRAM_DAY_DESCRIPTION_MIN_CHARS = 100;
 
-export async function listBackgroundAudio(): Promise<BackgroundAudioByCategory> {
-  const base = getMedimadeApiBase();
-  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}/media/background-audio`, {
-    cache: "no-store",
-  });
-  const data = (await res.json()) as {
+const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v1";
+
+type BgAudioClientCache = {
+  version: string;
+  data: BackgroundAudioByCategory;
+};
+
+let bgAudioMemory: BgAudioClientCache | null = null;
+let bgAudioInflight: Promise<BackgroundAudioByCategory> | null = null;
+
+function readBgAudioLocalCache(): BgAudioClientCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(BG_AUDIO_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BgAudioClientCache>;
+    if (
+      typeof parsed.version !== "string" ||
+      !parsed.version.trim() ||
+      !parsed.data ||
+      typeof parsed.data !== "object"
+    ) {
+      return null;
+    }
+    return {
+      version: parsed.version.trim(),
+      data: parsed.data as BackgroundAudioByCategory,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeBgAudioLocalCache(entry: BgAudioClientCache): void {
+  bgAudioMemory = entry;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BG_AUDIO_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Drop client-side soundscape/mixer catalog cache (call after admin catalog edits). */
+export function invalidateBackgroundAudioClientCache(): void {
+  bgAudioMemory = null;
+  bgAudioInflight = null;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(BG_AUDIO_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function parseBackgroundAudioPayload(
+  data: {
     baseUrl?: string;
     nature?: BackgroundAudioItem[];
     ambience?: BackgroundAudioItem[];
@@ -4439,15 +4497,9 @@ export async function listBackgroundAudio(): Promise<BackgroundAudioByCategory> 
     compositions?: BackgroundAudioItem[];
     drums?: BackgroundAudioItem[];
     noise?: BackgroundAudioItem[];
-    items?: BackgroundAudioItem[];
     factoryMixes?: unknown[];
-    error?: string;
-    detail?: string;
-  };
-  if (!res.ok) {
-    const msg = data.detail ?? data.error ?? res.statusText;
-    throw new Error(msg);
-  }
+  },
+): BackgroundAudioByCategory {
   return {
     baseUrl: data.baseUrl,
     nature: data.ambience ?? data.nature ?? [],
@@ -4461,6 +4513,123 @@ export async function listBackgroundAudio(): Promise<BackgroundAudioByCategory> 
           .filter((x): x is MixerFactoryPreset => Boolean(x))
       : undefined,
   };
+}
+
+export async function listBackgroundAudio(opts?: {
+  /** Bypass client + server caches. */
+  refresh?: boolean;
+}): Promise<BackgroundAudioByCategory> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const refresh = opts?.refresh === true;
+
+  if (!refresh) {
+    if (bgAudioMemory) return bgAudioMemory.data;
+    const local = readBgAudioLocalCache();
+    if (local) {
+      bgAudioMemory = local;
+      void fetchBackgroundAudioNetwork(base, local.version).catch(() => undefined);
+      return local.data;
+    }
+    if (bgAudioInflight) return bgAudioInflight;
+  }
+
+  const run = fetchBackgroundAudioNetwork(
+    base,
+    refresh ? null : bgAudioMemory?.version ?? readBgAudioLocalCache()?.version ?? null,
+    refresh,
+  );
+  if (!refresh) bgAudioInflight = run;
+  try {
+    return await run;
+  } finally {
+    if (bgAudioInflight === run) bgAudioInflight = null;
+  }
+}
+
+async function fetchBackgroundAudioNetwork(
+  base: string,
+  ifNoneMatch: string | null,
+  refresh = false,
+): Promise<BackgroundAudioByCategory> {
+  const url = refresh
+    ? `${base}/media/background-audio?refresh=1`
+    : `${base}/media/background-audio`;
+  const headers: Record<string, string> = {};
+  if (ifNoneMatch && !refresh) {
+    headers["If-None-Match"] = `"${ifNoneMatch}"`;
+  }
+  const res = await medimadeFetch(url, {
+    cache: "no-store",
+    headers,
+  });
+
+  if (res.status === 304 && ifNoneMatch) {
+    const hit =
+      bgAudioMemory?.version === ifNoneMatch
+        ? bgAudioMemory
+        : readBgAudioLocalCache();
+    if (hit && hit.version === ifNoneMatch) {
+      bgAudioMemory = hit;
+      return hit.data;
+    }
+    const retry = await medimadeFetch(`${base}/media/background-audio?refresh=1`, {
+      cache: "no-store",
+    });
+    const retryData = (await retry.json()) as {
+      baseUrl?: string;
+      nature?: BackgroundAudioItem[];
+      ambience?: BackgroundAudioItem[];
+      music?: BackgroundAudioItem[];
+      compositions?: BackgroundAudioItem[];
+      drums?: BackgroundAudioItem[];
+      noise?: BackgroundAudioItem[];
+      factoryMixes?: unknown[];
+      cacheVersion?: string;
+      error?: string;
+      detail?: string;
+    };
+    if (!retry.ok) {
+      throw new Error(retryData.detail ?? retryData.error ?? retry.statusText);
+    }
+    const parsedRetry = parseBackgroundAudioPayload(retryData);
+    const version =
+      (typeof retryData.cacheVersion === "string" &&
+        retryData.cacheVersion.trim()) ||
+      new Date().toISOString();
+    writeBgAudioLocalCache({ version, data: parsedRetry });
+    return parsedRetry;
+  }
+
+  const data = (await res.json()) as {
+    baseUrl?: string;
+    nature?: BackgroundAudioItem[];
+    ambience?: BackgroundAudioItem[];
+    music?: BackgroundAudioItem[];
+    compositions?: BackgroundAudioItem[];
+    drums?: BackgroundAudioItem[];
+    noise?: BackgroundAudioItem[];
+    items?: BackgroundAudioItem[];
+    factoryMixes?: unknown[];
+    cacheVersion?: string;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    const msg = data.detail ?? data.error ?? res.statusText;
+    throw new Error(msg);
+  }
+  const parsed = parseBackgroundAudioPayload(data);
+  const etag = (res.headers.get("ETag") || "")
+    .trim()
+    .replace(/^W\//, "")
+    .replace(/^"|"$/g, "");
+  const version =
+    (typeof data.cacheVersion === "string" && data.cacheVersion.trim()) ||
+    etag ||
+    new Date().toISOString();
+  writeBgAudioLocalCache({ version, data: parsed });
+  return parsed;
 }
 
 /**

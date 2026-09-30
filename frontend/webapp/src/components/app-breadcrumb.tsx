@@ -13,7 +13,7 @@ import type { AppBreadcrumbCrumb } from "@/lib/app-nav";
 
 function TrailSeparator() {
   return (
-    <span className="mx-2 shrink-0 text-[13px] text-nav-muted" aria-hidden>
+    <span className="app-header-crumb-sep mx-2 shrink-0 text-[13px]" aria-hidden>
       ›
     </span>
   );
@@ -105,7 +105,7 @@ function TrailEllipsisMenu({
                     role="menuitem"
                     href={c.href}
                     onClick={() => setOpen(false)}
-                    className="block truncate text-nav-muted underline-offset-2 hover:text-nav-foreground hover:underline"
+                    className="app-breadcrumb-parent block truncate underline-offset-2 hover:text-nav-foreground hover:underline"
                   >
                     {c.label}
                   </Link>
@@ -156,7 +156,7 @@ function TrailCrumb({
         className={
           current
             ? "app-header-crumb-current min-w-0 max-w-[240px] truncate font-semibold"
-            : "shrink-0 text-nav-muted"
+            : "app-header-crumb-trail shrink-0"
         }
         {...(current ? { "aria-current": "page" as const } : {})}
         title={current ? crumb.label : undefined}
@@ -168,7 +168,7 @@ function TrailCrumb({
   return (
     <Link
       href={crumb.href}
-      className="app-breadcrumb-parent shrink-0 text-nav-muted underline-offset-2 hover:text-nav-foreground hover:underline"
+      className="app-breadcrumb-parent shrink-0 underline-offset-2 hover:text-nav-foreground hover:underline"
     >
       {crumb.label}
     </Link>
@@ -303,7 +303,7 @@ export function AppBreadcrumbBack({
     </>
   );
   const className =
-    "inline-flex max-w-[40vw] items-center gap-1 font-ui text-sm text-nav-muted underline-offset-2 hover:text-nav-foreground hover:underline";
+    "app-header-crumb-trail inline-flex max-w-[40vw] items-center gap-1 font-ui text-sm underline-offset-2 hover:text-nav-foreground hover:underline";
   if (parent.href) {
     return (
       <Link href={parent.href} className={className} aria-label={`Back to ${label}`}>

@@ -76,7 +76,7 @@ export function SettingsSegmented<T extends string>({
               if (inactive || pressed) return;
               onChange(opt.value);
             }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:text-base ${
               pressed
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted hover:text-foreground"
@@ -121,12 +121,12 @@ export function SettingsRow({
     <div className="flex flex-col gap-3 border-t border-border/60 px-4 py-4 first:border-t-0 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:px-5">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <p className="text-base font-semibold text-foreground">{title}</p>
           {showMarker && settingsKey ? (
             <SettingsStatusMarker status={status} />
           ) : null}
         </div>
-        <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted">
+        <p className="mt-1 max-w-lg text-sm leading-relaxed text-muted">
           {helper}
         </p>
       </div>
@@ -171,7 +171,7 @@ export function SettingsSectionHeader({
       >
         {title}
       </h2>
-      <p className="text-sm leading-relaxed text-muted">{lead}</p>
+      <p className="text-base leading-relaxed text-muted">{lead}</p>
     </header>
   );
 }

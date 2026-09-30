@@ -2,6 +2,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
+import { recordSpeechifyTtsUsage } from "./ai-usage";
 import { getVoiceSpeaker } from "./voice-admin";
 
 const secrets = new SecretsManagerClient({});
@@ -124,7 +125,14 @@ export async function speechifyTtsMp3(params: {
       body,
     });
     if (upstream.ok) {
-      return Buffer.from(await upstream.arrayBuffer());
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      const chars = Buffer.byteLength(params.text ?? "", "utf8");
+      void recordSpeechifyTtsUsage({
+        chars,
+        model: speechifyTtsModel(),
+        feature: "speechify-tts",
+      });
+      return buf;
     }
     const err = await upstream.text();
     lastErr = `Speechify TTS failed: ${err.slice(0, 500)}`;

@@ -6,6 +6,7 @@ import {
 import { buildAssistantChatSystemPrompt } from "./_shared/assistant-chat-system-prompt";
 import { buildCachedMessagesRequestBody } from "./_shared/anthropic-prompt-cache";
 import { coerceClaudeModel } from "./_shared/anthropic-pricing";
+import { recordClaudeUsage } from "./_shared/ai-usage";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const TITLE_MODEL = "claude-haiku-4-5";
@@ -114,10 +115,13 @@ async function generateTitle(
 async function pipeAnthropicSseToClient(
   upstream: ReadableStream<Uint8Array>,
   out: awslambda.HttpResponseStream,
+  meter?: { model: string; feature: string },
 ): Promise<void> {
   const reader = upstream.getReader();
   const dec = new TextDecoder();
   let buf = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -135,6 +139,19 @@ async function pipeAnthropicSseToClient(
           data = JSON.parse(json) as Record<string, unknown>;
         } catch {
           continue;
+        }
+        if (data.type === "message_start") {
+          const msg = data.message as Record<string, unknown> | undefined;
+          const usage = msg?.usage as Record<string, unknown> | undefined;
+          if (typeof usage?.input_tokens === "number") {
+            inputTokens = usage.input_tokens;
+          }
+        }
+        if (data.type === "message_delta") {
+          const usage = data.usage as Record<string, unknown> | undefined;
+          if (typeof usage?.output_tokens === "number") {
+            outputTokens = usage.output_tokens;
+          }
         }
         if (data.type === "content_block_delta") {
           const delta = data.delta as Record<string, unknown> | undefined;
@@ -158,6 +175,14 @@ async function pipeAnthropicSseToClient(
     }
   }
   out.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  if (meter && (inputTokens > 0 || outputTokens > 0)) {
+    void recordClaudeUsage({
+      model: meter.model,
+      inputTokens,
+      outputTokens,
+      feature: meter.feature,
+    });
+  }
 }
 
 async function streamHandler(
@@ -307,7 +332,10 @@ async function streamHandler(
   });
 
   try {
-    await pipeAnthropicSseToClient(upstream.body, out);
+    await pipeAnthropicSseToClient(upstream.body, out, {
+      model,
+      feature: "assistant-chat",
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Stream failed";
     out.write(`data: ${JSON.stringify({ error: msg })}\n\n`);

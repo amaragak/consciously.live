@@ -12,6 +12,12 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import { CLAUDE_HAIKU_45_MODEL_ID } from "./anthropic-pricing";
+import {
+  recordClaudeUsageFromResponseText,
+  recordGoogleImageUsage,
+  recordOpenAiImageUsage,
+} from "./ai-usage";
 import type { MeditationCreationProvenance } from "./meditation-creation-provenance";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
@@ -186,6 +192,265 @@ export function buildMeditationCoverPrompt(input: MeditationCoverInput): string 
   ].join(" ");
 }
 
+/** Cover art prompt for Music › Compositions, derived from the track title. */
+export function buildCompositionCoverPrompt(params: {
+  title: string;
+}): string {
+  const title = params.title.trim() || "Untitled composition";
+  const cues = compositionTitleVisualCues(title);
+  const motifLine = cues.length
+    ? `Let these title-derived motifs guide the scene (poetically, not as text overlays): ${cues.join("; ")}.`
+    : `Derive the subject freely from the title's wording, rhythm, and implied place or feeling.`;
+
+  return [
+    `Photorealistic photograph capturing the mood of the instrumental piece titled "${title}".`,
+    motifLine,
+    `Subject matter is open: landscapes, interiors, people, objects, weather, architecture — whatever fits the title best. Make it specific and memorable to THIS title.`,
+    `Visual style: editorial photography, natural or dramatic light, shallow depth of field where it helps, subtle film grain, rich color graded to the title's emotional register.`,
+    `Square 1:1 composition. No overlaid text, logos, or UI chrome.`,
+  ].join(" ");
+}
+
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+let cachedClaudeKey: string | undefined;
+
+async function getClaudeApiKey(): Promise<string> {
+  if (cachedClaudeKey) return cachedClaudeKey;
+  const arn = process.env.CLAUDE_SECRET_ARN?.trim();
+  if (!arn) throw new Error("CLAUDE_SECRET_ARN is not set");
+  const out = await secrets.send(new GetSecretValueCommand({ SecretId: arn }));
+  const s = out.SecretString?.trim();
+  if (!s) throw new Error("Claude API key secret is empty");
+  cachedClaudeKey = s;
+  return cachedClaudeKey;
+}
+
+/**
+ * Rewrite the image prompt using prior cover prompts as context and a
+ * "what to change" note. Returns a full replacement prompt (not a diff).
+ */
+export async function refineCompositionCoverPromptWithChange(params: {
+  title: string;
+  previousPrompts: string[];
+  changeRequest: string;
+}): Promise<string> {
+  const title = params.title.trim() || "Untitled composition";
+  const change = params.changeRequest.trim().slice(0, 600);
+  if (!change) {
+    throw new Error("changeRequest is required to refine a cover prompt");
+  }
+
+  const previous = params.previousPrompts
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .slice(-5)
+    .map((p) => p.slice(0, 3500));
+
+  const baseFallback =
+    previous[previous.length - 1] || buildCompositionCoverPrompt({ title });
+
+  try {
+    const apiKey = await getClaudeApiKey();
+    const system = [
+      "You revise image-generation prompts for square photoreal album/cover art.",
+      "You are given prior prompt(s) that produced earlier versions of the cover, plus a short change request.",
+      "Write ONE complete replacement image prompt that keeps what still works from the prior prompt(s) and applies the requested change.",
+      "Do not invent hard bans on subject matter (people, faces, objects, interiors are fine).",
+      "Keep: photorealistic editorial style, square 1:1 intent, no overlaid text/logos/UI.",
+      "Reply with ONLY the prompt text — no quotes, labels, or explanation.",
+    ].join("\n");
+
+    const historyBlock =
+      previous.length === 0
+        ? `(none — start from a fresh title-based brief for "${title}")`
+        : previous
+            .map((p, i) => `--- prior prompt ${i + 1} of ${previous.length} ---\n${p}`)
+            .join("\n\n");
+
+    const user = [
+      `Track title: ${title}`,
+      "",
+      "Previous image prompts (oldest → newest):",
+      historyBlock,
+      "",
+      `Requested change:\n${change}`,
+      "",
+      "Write the full updated image prompt now.",
+    ].join("\n");
+
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_HAIKU_45_MODEL_ID,
+        max_tokens: 700,
+        temperature: 0.35,
+        system,
+        messages: [{ role: "user", content: user }],
+      }),
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(`Haiku cover refine failed: ${raw.slice(0, 400)}`);
+    }
+    void recordClaudeUsageFromResponseText({
+      responseText: raw,
+      model: CLAUDE_HAIKU_45_MODEL_ID,
+      feature: "composition-cover-refine",
+    });
+    let text = "";
+    try {
+      const parsed = JSON.parse(raw) as {
+        content?: Array<{ type?: string; text?: string }>;
+      };
+      text = (parsed.content ?? [])
+        .filter((c) => c.type === "text" && typeof c.text === "string")
+        .map((c) => c.text!.trim())
+        .join("\n")
+        .trim();
+    } catch {
+      throw new Error("Haiku returned invalid JSON");
+    }
+    text = text
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/^(updated|revised|final|improved)\s+prompt\s*:\s*/i, "")
+      .trim();
+    if (text.length < 20) {
+      throw new Error("Haiku returned an empty cover prompt");
+    }
+    return text.slice(0, 4000);
+  } catch (e) {
+    // Fallback: keep prior prompt and append the change note.
+    console.warn(
+      "refineCompositionCoverPromptWithChange fallback:",
+      e instanceof Error ? e.message : e,
+    );
+    return `${baseFallback} Apply this change while keeping the square photoreal cover style: ${change}`.slice(
+      0,
+      4000,
+    );
+  }
+}
+
+/** Roll prior last prompt into history (newest last), cap length. */
+export function appendCoverPromptHistory(
+  history: string[] | undefined,
+  lastPrompt: string | undefined,
+  max = 5,
+): string[] {
+  const out = (history ?? [])
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => p.slice(0, 4000));
+  const last = lastPrompt?.trim().slice(0, 4000);
+  if (last && out[out.length - 1] !== last) out.push(last);
+  return out.slice(-max);
+}
+
+/**
+ * Pull concrete visual motifs from composition titles like
+ * "(Theta 8Hz) ZEN Underwater" or "Chinese Miracle Mountain Lake".
+ */
+function compositionTitleVisualCues(title: string): string[] {
+  const raw = title.trim();
+  if (!raw) return [];
+  const cues: string[] = [];
+
+  const paren = raw.match(/\(([^)]+)\)/g) ?? [];
+  for (const p of paren) {
+    const inner = p.slice(1, -1).trim();
+    if (!inner) continue;
+    if (/\b(theta|delta|alpha|beta|gamma)\b/i.test(inner)) {
+      const band = inner.match(/\b(theta|delta|alpha|beta|gamma)\b/i)?.[1];
+      if (band) {
+        const mood: Record<string, string> = {
+          theta: "dreamy liminal dusk, soft indigo haze",
+          delta: "deep night stillness, low horizon, heavy quiet",
+          alpha: "calm daylight clarity, open air",
+          beta: "alert crisp daylight, sharper edges",
+          gamma: "high-energy crystalline light, bright speculars",
+        };
+        cues.push(`${band.toLowerCase()} brainwave mood — ${mood[band.toLowerCase()]!}`);
+      }
+    }
+    if (/\b\d+(\.\d+)?\s*hz\b/i.test(inner)) {
+      cues.push("subtle rhythmic pulse implied by light, water, or wind — not numerals");
+    }
+    if (/decreasing|increasing|frequency/i.test(inner)) {
+      cues.push("a sense of gradual shift or descent/ascent in the landscape");
+    }
+  }
+
+  const body = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const placeHints: Array<{ re: RegExp; cue: string }> = [
+    { re: /\bunderwater|ocean|sea|tidal|shore|river|lake|brook|waterfall\b/i, cue: "water body / aquatic environment matching the title" },
+    { re: /\bforest|woods|tree|grove|bamboo\b/i, cue: "forest or tree canopy environment" },
+    { re: /\bmountain|peak|alpine|himalaya\b/i, cue: "mountain terrain" },
+    { re: /\brain|storm|thunder|tempest\b/i, cue: "active weather — rain or storm atmosphere" },
+    { re: /\bfire|hearth|ember|flame\b/i, cue: "firelight or glowing embers in a wider scene" },
+    { re: /\bcave|grotto|underground\b/i, cue: "cave or subterranean space" },
+    { re: /\bdesert|dune|arid\b/i, cue: "desert or arid expanse" },
+    { re: /\bsnow|ice|glacier|winter|frost\b/i, cue: "cold winter or ice landscape" },
+    { re: /\bdawn|sunrise|morning\b/i, cue: "dawn / sunrise light" },
+    { re: /\bdusk|sunset|twilight|evening\b/i, cue: "dusk / twilight light" },
+    { re: /\bnight|midnight|nocturne\b/i, cue: "night landscape" },
+    { re: /\bcrystal|bowl|singing\b/i, cue: "crystalline light, refraction, mineral surfaces" },
+    { re: /\btemple|shrine|monastery|pagoda\b/i, cue: "sacred architecture" },
+    { re: /\bgarden|meadow|field|prairie\b/i, cue: "open garden or meadow" },
+    { re: /\bfog|mist|haze\b/i, cue: "fog or mist" },
+    { re: /\bcosmos|cosmic|galaxy|star|nebula|multiverse\b/i, cue: "celestial / night-sky scale" },
+    { re: /\bportal|gateway|threshold\b/i, cue: "architectural or natural threshold / opening" },
+    { re: /\broot|roots|earth|soil|ground\b/i, cue: "rooted earth, soil, or ancient tree roots" },
+    { re: /\bchinese|tibetan|slavic|peruvian|roman|ancient\b/i, cue: "place/culture hinted by the title" },
+    { re: /\bzen|trance|dream|sleep|heal|peace|serenity|quiet|still\b/i, cue: "quiet contemplative atmosphere" },
+  ];
+  for (const { re, cue } of placeHints) {
+    if (re.test(body) || re.test(raw)) cues.push(cue);
+  }
+
+  // Dedupe while preserving order; cap so the prompt stays focused.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of cues) {
+    const k = c.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+/** S3 key under the media bucket for a composition cover. */
+export function compositionCoverObjectKey(
+  soundKey: string,
+  ext: "jpg" | "png" | "webp" = "jpg",
+): string {
+  const stem = soundKey
+    .replace(/^background-audio\//i, "")
+    .replace(/\.(mp3|wav|opus)$/i, "")
+    .replace(/[^a-zA-Z0-9/_-]+/g, "-")
+    .replace(/\/+/g, "--")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 120) || "composition";
+  return `composition-covers/${stem}-${Date.now()}.${ext}`;
+}
+
+/** Sibling thumb key for a full-size composition cover object. */
+export function compositionCoverThumbObjectKey(fullCoverKey: string): string {
+  const trimmed = fullCoverKey.trim();
+  if (/\.thumb\.(jpe?g|png|webp)$/i.test(trimmed)) return trimmed;
+  return trimmed.replace(/\.(jpe?g|png|webp)$/i, ".thumb.jpg");
+}
+
+/** Edge length for list / picker thumbs (covers retina ~84 CSS px). */
+export const COMPOSITION_COVER_THUMB_EDGE = 256;
+
 export async function generateMeditationCoverJpeg(
   input: MeditationCoverInput,
 ): Promise<{ jpeg: Buffer; prompt: string }> {
@@ -262,6 +527,10 @@ async function generateGptImage1Mini(
       }`,
     );
   }
+  void recordOpenAiImageUsage({
+    feature: "cover-image",
+    model: COVER_MODEL,
+  });
   const b64 = data?.data?.[0]?.b64_json?.trim();
   if (b64) {
     return {
@@ -295,10 +564,9 @@ async function generateNanoBananaProImage(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
   const scenePrompt = [
-    "Create a single square 1:1 photorealistic editorial photograph suitable as a meditation library / category cover thumbnail.",
-    "Natural lighting, shallow depth of field, subtle film grain. No people, no faces, no text, no logos, no overlaid graphics, no UI chrome.",
-    "Generous negative space suitable for a small thumbnail.",
-    `Scene: ${trimmed}`,
+    "Create a single square 1:1 photorealistic photograph matching the scene brief below.",
+    "Follow the brief's subject and mood. People, faces, hands, interiors, objects, and landscapes are all allowed when they fit the brief.",
+    `Brief:\n${trimmed}`,
   ].join("\n");
 
   const upstream = await fetch(url, {
@@ -311,6 +579,12 @@ async function generateNanoBananaProImage(
       contents: [{ role: "user", parts: [{ text: scenePrompt }] }],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
+        // Keep full covers at ~1K (same as current NB Pro default); thumbs are
+        // resized separately in composition-cover-thumb.
+        imageConfig: {
+          aspectRatio: "1:1",
+          imageSize: "1K",
+        },
       },
     }),
   });
@@ -359,6 +633,10 @@ async function generateNanoBananaProImage(
   if (!outB64) {
     throw new Error("Nano Banana Pro response missing image data");
   }
+  void recordGoogleImageUsage({
+    feature: "cover-image",
+    model,
+  });
   return {
     body: Buffer.from(outB64, "base64"),
     mime: outMime,

@@ -13,6 +13,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { loudnormMp3Buffer } from "./ffmpeg-loudnorm";
+import { recordFishTtsUsage } from "./ai-usage";
 import { putVoiceStemStreams, voiceStemStreamKeys } from "./voice-stem-stream";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
@@ -187,7 +188,13 @@ async function fishTtsMp3(
     const detail = await upstream.text();
     throw new Error(`Fish TTS failed (${upstream.status}): ${detail.slice(0, 500)}`);
   }
-  return Buffer.from(await upstream.arrayBuffer());
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  void recordFishTtsUsage({
+    utf8Bytes: Buffer.byteLength(SPEAKER_PREVIEW_TEXT, "utf8"),
+    model: fishTtsModel(),
+    feature: "speaker-preview-tts",
+  });
+  return buf;
 }
 
 async function voiceFxMixerPair(

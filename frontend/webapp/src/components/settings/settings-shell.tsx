@@ -109,10 +109,10 @@ export function SettingsShell({
             key={item.id}
             to={`/settings/${item.id}`}
             aria-current={active ? "page" : undefined}
-            className={`rounded-xl px-3 py-2.5 text-sm transition-colors ${
+            className={`rounded-r-xl px-3 py-2.5 text-base transition-colors ${
               active
-                ? "border border-border bg-card font-semibold text-foreground"
-                : "text-muted hover:bg-card/80 hover:text-foreground"
+                ? "border-l-2 border-l-[color:var(--header-gold,var(--gold))] bg-card font-semibold text-foreground"
+                : "border-l-2 border-l-transparent text-muted hover:bg-card/80 hover:text-foreground"
             }`}
           >
             {item.label}
@@ -122,11 +122,11 @@ export function SettingsShell({
       <div className="mt-4 border-t border-border pt-4">
         <Link
           to="/settings/general#settings-help"
-          className="block rounded-xl px-3 py-2 text-sm text-muted hover:bg-card/80 hover:text-foreground"
+          className="block rounded-xl px-3 py-2 text-base text-muted hover:bg-card/80 hover:text-foreground"
         >
           Help & feedback
         </Link>
-        <p className="px-3 py-2 font-mono text-xs text-muted">v{version}</p>
+        <p className="px-3 py-2 font-mono text-sm text-muted">v{version}</p>
       </div>
     </nav>
   );
@@ -143,7 +143,7 @@ export function SettingsShell({
             <li key={item.id}>
               <Link
                 to={`/settings/${item.id}`}
-                className="flex items-center justify-between px-4 py-4 text-sm font-medium text-foreground hover:bg-background/80"
+                className="flex items-center justify-between px-4 py-4 text-base font-medium text-foreground hover:bg-background/80"
               >
                 {item.label}
                 <span className="text-muted" aria-hidden="true">
@@ -155,7 +155,7 @@ export function SettingsShell({
           <li>
             <Link
               to="/settings/general#settings-help"
-              className="flex items-center justify-between px-4 py-4 text-sm font-medium text-foreground hover:bg-background/80"
+              className="flex items-center justify-between px-4 py-4 text-base font-medium text-foreground hover:bg-background/80"
             >
               Help & feedback
               <span className="text-muted" aria-hidden="true">
@@ -198,7 +198,7 @@ export function SettingsShell({
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       {!isMobile ? nav : null}
-      <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-3 py-3 sm:px-4 md:py-4">
+      <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-3 py-3 pb-10 sm:px-4 sm:pb-12 md:justify-start md:px-3 md:pt-4 md:pb-14 lg:px-4 lg:pb-16">
         <div className="w-full max-w-[760px]">{mainContent}</div>
       </div>
     </div>

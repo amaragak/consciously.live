@@ -104,6 +104,10 @@ export type ListedBgItem = {
   size: number | null;
   wavKey?: string;
   subcategory?: string;
+  /** Public CDN URL for composition / soundscape cover art when present. */
+  coverImageUrl?: string | null;
+  /** Smaller JPEG thumb for list / picker cards. */
+  coverImageThumbUrl?: string | null;
 };
 
 export function mergeByNamePreferMp3(
