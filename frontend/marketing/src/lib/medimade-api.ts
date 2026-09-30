@@ -4080,7 +4080,8 @@ export type AdminBlogSettings = {
   updatedAt: string;
 };
 
-const DEFAULT_ADMIN_INDEX_SUMMARY = "Essays and updates from Consciously.";
+const DEFAULT_ADMIN_INDEX_SUMMARY =
+  "Essays on consciousness, travel and practice, written by hand.";
 
 function normalizeAdminBlogTags(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];

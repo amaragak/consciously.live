@@ -39,8 +39,8 @@
   --hv2-hero-pattern-opacity: 0;
   --hv2-hero-pattern-size: 800px 800px;
   --hv2-hero-pattern-mask: none;
-  /* Sticky chrome = SPA dark header `#0F1B2D`. */
-  --hv2-sticky-bg: #0f1b2d;
+  /* Sticky chrome — tonal navy `#1e232e` (Read field / content band). */
+  --hv2-sticky-bg: #1e232e;
   /* Match SPA header sun lightening on `#0F1B2D`. */
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
@@ -153,7 +153,22 @@
   --hv2-field-pattern: var(--hv2-hero-pattern);
   --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
   --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
-  --hv2-field-pattern-mask: var(--hv2-hero-pattern-mask);
+  /* Quiet across content; peak opacity only at the far edges, then long gutter fade. */
+  --hv2-field-pattern-mask: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.5) 0%,
+    rgb(255 255 255 / 0.42) max(0px, calc((50% - 600px) * 0.06)),
+    rgb(255 255 255 / 0.28) max(0px, calc((50% - 600px) * 0.22)),
+    rgb(255 255 255 / 0.16) max(0px, calc((50% - 600px) * 0.45)),
+    rgb(255 255 255 / 0.09) max(0px, calc((50% - 600px) * 0.72)),
+    rgb(255 255 255 / 0.05) max(0px, calc(50% - 600px)),
+    rgb(255 255 255 / 0.05) min(100%, calc(50% + 600px)),
+    rgb(255 255 255 / 0.09) min(100%, calc(100% - (50% - 600px) * 0.72)),
+    rgb(255 255 255 / 0.16) min(100%, calc(100% - (50% - 600px) * 0.45)),
+    rgb(255 255 255 / 0.28) min(100%, calc(100% - (50% - 600px) * 0.22)),
+    rgb(255 255 255 / 0.42) min(100%, calc(100% - (50% - 600px) * 0.06)),
+    rgb(255 255 255 / 0.5) 100%
+  );
   /* Light field = paper page; keep marketing white cards. */
   --hv2-field-card-bg: var(--marketing-card-bg);
   --hv2-field-card-border: var(--marketing-card-border);
@@ -209,8 +224,8 @@
     rgb(255 255 255 / 0.64) 88%,
     rgb(255 255 255 / 1) 100%
   );
-  /* Sticky = SPA dark header `#0F1B2D`, not tonal-paisley `#1a2330`. */
-  --hv2-sticky-bg: #0f1b2d;
+  /* Sticky = tonal navy `#1e232e` (matches Read content band). */
+  --hv2-sticky-bg: #1e232e;
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
     rgb(49 59 74 / 0.55) 0%,
@@ -240,12 +255,26 @@
   --hv2-hero-menu-bg: #1a2330;
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
-  /* Read / field pages — same tonal navy as dark, not hybrid hero black. */
-  --hv2-field-bg: #1a2330;
-  --hv2-field-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
-  --hv2-field-pattern-opacity: 0.18;
-  --hv2-field-pattern-size: 800px 800px;
-  --hv2-field-pattern-mask: none;
+  /* Read / field — same tile as hero; flat quiet band across content, fade in gutters. */
+  --hv2-field-bg: #1e232e;
+  --hv2-field-pattern: var(--hv2-hero-pattern);
+  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
+  --hv2-field-pattern-mask: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 1) 0%,
+    rgb(255 255 255 / 0.9) max(0px, calc((50% - 600px) * 0.06)),
+    rgb(255 255 255 / 0.62) max(0px, calc((50% - 600px) * 0.22)),
+    rgb(255 255 255 / 0.38) max(0px, calc((50% - 600px) * 0.45)),
+    rgb(255 255 255 / 0.22) max(0px, calc((50% - 600px) * 0.72)),
+    rgb(255 255 255 / 0.14) max(0px, calc(50% - 600px)),
+    rgb(255 255 255 / 0.14) min(100%, calc(50% + 600px)),
+    rgb(255 255 255 / 0.22) min(100%, calc(100% - (50% - 600px) * 0.72)),
+    rgb(255 255 255 / 0.38) min(100%, calc(100% - (50% - 600px) * 0.45)),
+    rgb(255 255 255 / 0.62) min(100%, calc(100% - (50% - 600px) * 0.22)),
+    rgb(255 255 255 / 0.9) min(100%, calc(100% - (50% - 600px) * 0.06)),
+    rgb(255 255 255 / 1) 100%
+  );
   /* Dark elevated cards (match dark-mode marketing panels), not white paper. */
   --hv2-field-card-bg: #2a3544;
   --hv2-field-card-border: #3d4a5c;
@@ -295,7 +324,7 @@
     rgb(255 255 255 / 0.64) 88%,
     rgb(255 255 255 / 1) 100%
   );
-  --hv2-sticky-bg: #0f1b2d;
+  --hv2-sticky-bg: #1e232e;
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
     rgb(49 59 74 / 0.55) 0%,
@@ -325,11 +354,26 @@
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
-  --hv2-field-bg: #1a2330;
-  --hv2-field-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
-  --hv2-field-pattern-opacity: 0.18;
-  --hv2-field-pattern-size: 800px 800px;
-  --hv2-field-pattern-mask: none;
+  /* Read / field — same tile as hero; flat quiet band across content, fade in gutters. */
+  --hv2-field-bg: #1e232e;
+  --hv2-field-pattern: var(--hv2-hero-pattern);
+  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
+  --hv2-field-pattern-mask: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 1) 0%,
+    rgb(255 255 255 / 0.9) max(0px, calc((50% - 600px) * 0.06)),
+    rgb(255 255 255 / 0.62) max(0px, calc((50% - 600px) * 0.22)),
+    rgb(255 255 255 / 0.38) max(0px, calc((50% - 600px) * 0.45)),
+    rgb(255 255 255 / 0.22) max(0px, calc((50% - 600px) * 0.72)),
+    rgb(255 255 255 / 0.14) max(0px, calc(50% - 600px)),
+    rgb(255 255 255 / 0.14) min(100%, calc(50% + 600px)),
+    rgb(255 255 255 / 0.22) min(100%, calc(100% - (50% - 600px) * 0.72)),
+    rgb(255 255 255 / 0.38) min(100%, calc(100% - (50% - 600px) * 0.45)),
+    rgb(255 255 255 / 0.62) min(100%, calc(100% - (50% - 600px) * 0.22)),
+    rgb(255 255 255 / 0.9) min(100%, calc(100% - (50% - 600px) * 0.06)),
+    rgb(255 255 255 / 1) 100%
+  );
   --hv2-field-card-bg: #2a3544;
   --hv2-field-card-border: #3d4a5c;
   --hv2-field-card-hover: #314155;
@@ -346,6 +390,13 @@
   font-family: var(--hv2-font-body);
   color: var(--hv2-ink);
   background: var(--hv2-page);
+  --hv2-sticky-header-h: 3.5rem;
+}
+
+@media (min-width: 768px) {
+  .home-v2 {
+    --hv2-sticky-header-h: 72px;
+  }
 }
 
 /*
@@ -367,6 +418,10 @@
 .home-v2.home-v2-site-header {
   background-color: var(--hv2-sticky-bg);
   color: var(--hv2-hero-fg);
+}
+
+.home-v2.home-v2-site-header.home-v2-site-header--transparent {
+  background-color: transparent;
 }
 
 /* Soft lift centered on the sticky lockup sun (not viewport-left). */
@@ -515,11 +570,21 @@
   mask-repeat: no-repeat;
   -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
+  -webkit-mask-mode: alpha;
+  mask-mode: alpha;
 }
 
-.home-v2-field > * {
+.home-v2-field > *:not(.home-v2-site-header):not(.home-v2-reading-progress) {
   position: relative;
   z-index: 1;
+}
+
+.home-v2-field > .home-v2-site-header {
+  z-index: 40;
+}
+
+.home-v2-field > .home-v2-reading-progress {
+  z-index: 45;
 }
 
 .home-v2 a:focus-visible,

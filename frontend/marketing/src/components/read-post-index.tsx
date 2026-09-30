@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ReadPostCard } from "@/components/read-post-card";
-import { ReadPostStripSection } from "@/components/read-post-strip";
+import { ReadPostStrip } from "@/components/read-post-strip";
 import {
   BLOG_CATEGORIES,
   type BlogCategory,
@@ -17,6 +16,15 @@ function matchesQuery(post: PublicBlogPostSummary, q: string): boolean {
   return hay.includes(q);
 }
 
+function matchesFilters(
+  post: PublicBlogPostSummary,
+  category: CategoryFilter,
+  q: string,
+): boolean {
+  if (category !== "All" && post.category !== category) return false;
+  return matchesQuery(post, q);
+}
+
 /** Content first, then most recently updated — mirrors backend sort. */
 function comparePosts(
   a: PublicBlogPostSummary,
@@ -28,46 +36,35 @@ function comparePosts(
   return (b.updatedAt || "").localeCompare(a.updatedAt || "");
 }
 
+/**
+ * Unified list order: pinned → My picks (topPicks, not pinned) → the rest.
+ * Within each band, content-first then recently updated.
+ */
+function compareListOrder(
+  a: PublicBlogPostSummary,
+  b: PublicBlogPostSummary,
+): number {
+  const band = (p: PublicBlogPostSummary) =>
+    p.pinned ? 0 : p.topPicks ? 1 : 2;
+  const d = band(a) - band(b);
+  if (d !== 0) return d;
+  return comparePosts(a, b);
+}
+
 export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("All");
 
-  const pinned = useMemo(
-    () => posts.filter((p) => p.pinned).slice().sort(comparePosts),
-    [posts],
-  );
-  const myPicks = useMemo(
-    () =>
-      posts
-        .filter((p) => p.topPicks && !p.pinned)
-        .slice()
-        .sort(comparePosts),
-    [posts],
-  );
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return posts
-      .filter((p) => {
-        if (category !== "All" && p.category !== category) return false;
-        return matchesQuery(p, q);
-      })
+      .filter((p) => matchesFilters(p, category, q))
       .slice()
-      .sort(comparePosts);
+      .sort(compareListOrder);
   }, [posts, query, category]);
-
-  const showHighlights =
-    !query.trim() && category === "All" && (pinned.length > 0 || myPicks.length > 0);
 
   return (
     <div className="mt-10">
-      {showHighlights ? (
-        <div className="mb-2">
-          <ReadPostStripSection title="Pinned" posts={pinned} />
-          <ReadPostStripSection title="My picks" posts={myPicks} />
-        </div>
-      ) : null}
-
       <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
         <label className="relative min-w-[min(100%,14rem)] flex-1 basis-[14rem]">
           <span className="sr-only">Search posts</span>
@@ -112,10 +109,13 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
             : "No posts match that search."}
         </p>
       ) : (
-        <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
+        <ul className="mt-8 flex flex-col gap-2">
           {filtered.map((post) => (
             <li key={post.id}>
-              <ReadPostCard post={post} />
+              <ReadPostStrip
+                post={post}
+                showAlexPick={post.pinned || post.topPicks}
+              />
             </li>
           ))}
         </ul>

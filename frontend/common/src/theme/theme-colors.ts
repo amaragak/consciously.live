@@ -54,8 +54,8 @@ export const INFO = "#0284c7";
 
 const NAV = "#33465C";
 // const NAV = "#6E88A3";
-/** SPA header fill — shared by light + dark (Midnight Navy). */
-const NAV_HEADER = "#0F1B2D";
+/** SPA header fill — shared by light + dark (tonal navy). */
+const NAV_HEADER = "#1E232E";
 /** Light app canvas. Hybrid header fill stays cream; SPA light/dark header is navy. */
 const APP_CANVAS_LIGHT = "#FAF6F0";
 const NAV_LIGHT = APP_CANVAS_LIGHT;
@@ -476,7 +476,7 @@ function assemble(
     sidebarBorder: dark ? paper.border : SIDEBAR_BORDER_LIGHT,
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
-    /** SPA light + dark share the same navy header (`#0F1B2D`). */
+    /** SPA light + dark share the same navy header (`#1E232E`). */
     nav: NAV_HEADER,
     navForeground: NAV_FOREGROUND,
     navMuted: NAV_MUTED,
@@ -603,7 +603,7 @@ export const hybrid = {
  */
 export const v2 = {
   ...assemble(PAPER_V2, "#C8A46A", false),
-  nav: "#0F1B2D",
+  nav: "#1E232E",
   homeHeroBg: "#0F1B2D",
   homeHeroPattern: "none",
   homeHeroPatternOpacity: "0",

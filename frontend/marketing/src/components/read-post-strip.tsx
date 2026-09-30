@@ -1,8 +1,14 @@
 import Link from "next/link";
 import type { PublicBlogPostSummary } from "@/lib/public-blog";
 
-/** Compact horizontal row for Pinned / My picks — not a card. */
-export function ReadPostStrip({ post }: { post: PublicBlogPostSummary }) {
+/** Compact horizontal row for the Read index list. */
+export function ReadPostStrip({
+  post,
+  showAlexPick = false,
+}: {
+  post: PublicBlogPostSummary;
+  showAlexPick?: boolean;
+}) {
   const blurb = (post.excerpt || post.subheader).trim();
 
   return (
@@ -25,15 +31,11 @@ export function ReadPostStrip({ post }: { post: PublicBlogPostSummary }) {
           </p>
         ) : null}
       </div>
-      <span className="shrink-0 text-sm font-medium text-[color:var(--hv2-field-card-link)]">
-        {post.hasBody ? "Continue" : "Soon"}
-        <span
-          aria-hidden
-          className="ml-1 inline-block transition-transform duration-200 group-hover:translate-x-0.5"
-        >
-          →
+      {showAlexPick ? (
+        <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--hv2-gold)_45%,transparent)] bg-[color-mix(in_srgb,var(--hv2-gold)_14%,transparent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--hv2-gold)]">
+          Alex&apos;s Pick
         </span>
-      </span>
+      ) : null}
     </Link>
   );
 }
@@ -54,7 +56,10 @@ export function ReadPostStripSection({
       <ul className="flex flex-col gap-2">
         {posts.map((post) => (
           <li key={post.id}>
-            <ReadPostStrip post={post} />
+            <ReadPostStrip
+              post={post}
+              showAlexPick={post.pinned || post.topPicks}
+            />
           </li>
         ))}
       </ul>

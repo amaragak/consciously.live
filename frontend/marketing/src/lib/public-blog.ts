@@ -57,7 +57,8 @@ export function blogPostTag(slug: string): string {
   return `blog-post:${slug.trim().toLowerCase()}`;
 }
 
-const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
+const DEFAULT_INDEX_SUMMARY =
+  "Essays on consciousness, travel and practice, written by hand.";
 
 function apiBase(): string | null {
   const u = process.env.NEXT_PUBLIC_MEDIMADE_API_URL?.trim().replace(/\/$/, "");

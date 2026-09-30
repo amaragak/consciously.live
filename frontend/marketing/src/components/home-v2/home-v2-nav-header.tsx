@@ -79,9 +79,16 @@ function resolveNav(pathname: string): {
 
 /**
  * Site-wide marketing header matching homepage-v2 chrome.
- * Used on every Next marketing page except `/` (hero owns that) and `/legacy/*`.
+ * Used on every Next marketing page except `/` (hero owns that), `/read`
+ * (field owns transparent chrome), and `/legacy/*`.
  */
-export function HomeV2NavHeader() {
+export function HomeV2NavHeader({
+  tone = "solid",
+  position = "sticky",
+}: {
+  tone?: "solid" | "transparent";
+  position?: "fixed" | "sticky" | "static";
+} = {}) {
   const pathname = usePathname() || "/";
   const { verbLabel, activeTool, activeSecondary, ctaHref, ctaLabel } =
     resolveNav(pathname);
@@ -107,7 +114,8 @@ export function HomeV2NavHeader() {
       ctaHref={ctaHref}
       ctaLabel={ctaLabel}
       ctaIcon={ctaIcon}
-      position="sticky"
+      position={position}
+      tone={tone}
     />
   );
 }

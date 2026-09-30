@@ -43,8 +43,10 @@ type Props = {
   ctaLabel: string;
   /** Optional leading icon for tool CTAs (sidebar glyph). */
   ctaIcon?: ReactNode;
-  /** `fixed` = homepage scroll sticky; `sticky` = site-wide marketing header. */
-  position?: "fixed" | "sticky";
+  /** `fixed` = homepage scroll sticky; `sticky` = site-wide marketing header; `static` = in-flow (hero-like). */
+  position?: "fixed" | "sticky" | "static";
+  /** `transparent` = over field/hero paisley (no solid sticky fill). */
+  tone?: "solid" | "transparent";
   className?: string;
   children?: ReactNode;
 };
@@ -65,13 +67,17 @@ export function HomeV2SiteHeader({
   ctaLabel,
   ctaIcon,
   position = "sticky",
+  tone = "solid",
   className = "",
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const isFixed = position === "fixed";
+  const isTransparent = tone === "transparent";
   const positionClass = isFixed
     ? "home-v2-sticky-enter inset-x-0 top-0"
-    : "sticky top-0";
+    : position === "sticky"
+      ? "sticky top-0"
+      : "relative";
   /* Same chrome as non-home / hero nav (home fixed only differs by position). */
   const toolLinkClass = (active: boolean) =>
     `hover:text-[var(--hv2-gold)]${active ? " text-[var(--hv2-gold)]" : ""}`;
@@ -80,7 +86,11 @@ export function HomeV2SiteHeader({
 
   return (
     <header
-      className={`home-v2 home-v2-site-header z-40 overflow-hidden border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${positionClass} ${className}`.trim()}
+      className={`home-v2 home-v2-site-header z-40 border-b border-[var(--hv2-hero-hairline)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${
+        isTransparent
+          ? "home-v2-site-header--transparent overflow-visible bg-transparent"
+          : "overflow-hidden bg-[var(--hv2-sticky-bg)]"
+      } ${positionClass} ${className}`.trim()}
       style={isFixed ? { position: "fixed" } : undefined}
     >
       <div
@@ -89,7 +99,13 @@ export function HomeV2SiteHeader({
       >
         <div className="relative mx-auto h-full w-full max-w-[1200px]">
           {/* Align glow with nav lockup sun (40px → 20px center). */}
-          <span className="home-v2-site-header-sun-glow absolute left-[20px] top-1/2 size-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          <span
+            className={`absolute left-[20px] top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
+              isTransparent
+                ? "home-v2-hero-chrome-glow-sun size-[160px] blur-2xl md:size-[200px]"
+                : "home-v2-site-header-sun-glow size-[180px]"
+            }`}
+          />
         </div>
       </div>
       <div className="relative mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[72px]">

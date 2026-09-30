@@ -32,7 +32,11 @@ function getScrollParent(el: HTMLElement): HTMLElement | Window {
  */
 export function ReadingProgress({
   containerId = "read-article-body",
-}: Props) {
+  underStickyHeader = false,
+}: Props & {
+  /** Sit under homepage-v2 sticky chrome (Read / home scroll header). */
+  underStickyHeader?: boolean;
+}) {
   const fillRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -98,13 +102,17 @@ export function ReadingProgress({
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-x-0 z-[90] h-1"
-      style={{ top: "var(--site-header-h)" }}
+      className="home-v2-reading-progress pointer-events-none fixed inset-x-0 z-[45] h-1"
+      style={{
+        top: underStickyHeader
+          ? "var(--hv2-sticky-header-h, 3.5rem)"
+          : "var(--site-header-h)",
+      }}
     >
-      <div className="relative h-full w-full bg-gold/30 dark:bg-gold/25">
+      <div className="relative h-full w-full bg-[color-mix(in_srgb,var(--hv2-gold)_30%,transparent)]">
         <div
           ref={fillRef}
-          className="absolute inset-y-0 left-0 w-full origin-left bg-gold transition-transform duration-150 ease-out motion-reduce:transition-none"
+          className="absolute inset-y-0 left-0 w-full origin-left bg-[var(--hv2-gold)] transition-transform duration-150 ease-out motion-reduce:transition-none"
           style={{ transform: "scaleX(0)" }}
         />
       </div>
