@@ -9,7 +9,7 @@ export function ReadPostStrip({
   post: PublicBlogPostSummary;
   showAlexPick?: boolean;
 }) {
-  const blurb = (post.excerpt || post.subheader).trim();
+  const blurb = post.subheader.trim();
 
   return (
     <Link

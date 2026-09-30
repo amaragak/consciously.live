@@ -151,24 +151,10 @@
   --hv2-hero-glass-blur: 0px;
   --hv2-field-bg: var(--hv2-hero-bg);
   --hv2-field-pattern: var(--hv2-hero-pattern);
-  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  /* Flat quiet field (former centre-band strength); no L/R gutter fade. */
+  --hv2-field-pattern-opacity: calc(var(--hv2-hero-pattern-opacity) * 0.05);
   --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
-  /* Quiet across content; peak opacity only at the far edges, then long gutter fade. */
-  --hv2-field-pattern-mask: linear-gradient(
-    90deg,
-    rgb(255 255 255 / 0.5) 0%,
-    rgb(255 255 255 / 0.42) max(0px, calc((50% - 600px) * 0.06)),
-    rgb(255 255 255 / 0.28) max(0px, calc((50% - 600px) * 0.22)),
-    rgb(255 255 255 / 0.16) max(0px, calc((50% - 600px) * 0.45)),
-    rgb(255 255 255 / 0.09) max(0px, calc((50% - 600px) * 0.72)),
-    rgb(255 255 255 / 0.05) max(0px, calc(50% - 600px)),
-    rgb(255 255 255 / 0.05) min(100%, calc(50% + 600px)),
-    rgb(255 255 255 / 0.09) min(100%, calc(100% - (50% - 600px) * 0.72)),
-    rgb(255 255 255 / 0.16) min(100%, calc(100% - (50% - 600px) * 0.45)),
-    rgb(255 255 255 / 0.28) min(100%, calc(100% - (50% - 600px) * 0.22)),
-    rgb(255 255 255 / 0.42) min(100%, calc(100% - (50% - 600px) * 0.06)),
-    rgb(255 255 255 / 0.5) 100%
-  );
+  --hv2-field-pattern-mask: none;
   /* Light field = paper page; keep marketing white cards. */
   --hv2-field-card-bg: var(--marketing-card-bg);
   --hv2-field-card-border: var(--marketing-card-border);
@@ -255,26 +241,12 @@
   --hv2-hero-menu-bg: #1a2330;
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
-  /* Read / field — same tile as hero; flat quiet band across content, fade in gutters. */
+  /* Read / field — flat quiet band (#1e232e + former centre opacity); no gutter fade. */
   --hv2-field-bg: #1e232e;
   --hv2-field-pattern: var(--hv2-hero-pattern);
-  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  --hv2-field-pattern-opacity: calc(var(--hv2-hero-pattern-opacity) * 0.14);
   --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
-  --hv2-field-pattern-mask: linear-gradient(
-    90deg,
-    rgb(255 255 255 / 1) 0%,
-    rgb(255 255 255 / 0.9) max(0px, calc((50% - 600px) * 0.06)),
-    rgb(255 255 255 / 0.62) max(0px, calc((50% - 600px) * 0.22)),
-    rgb(255 255 255 / 0.38) max(0px, calc((50% - 600px) * 0.45)),
-    rgb(255 255 255 / 0.22) max(0px, calc((50% - 600px) * 0.72)),
-    rgb(255 255 255 / 0.14) max(0px, calc(50% - 600px)),
-    rgb(255 255 255 / 0.14) min(100%, calc(50% + 600px)),
-    rgb(255 255 255 / 0.22) min(100%, calc(100% - (50% - 600px) * 0.72)),
-    rgb(255 255 255 / 0.38) min(100%, calc(100% - (50% - 600px) * 0.45)),
-    rgb(255 255 255 / 0.62) min(100%, calc(100% - (50% - 600px) * 0.22)),
-    rgb(255 255 255 / 0.9) min(100%, calc(100% - (50% - 600px) * 0.06)),
-    rgb(255 255 255 / 1) 100%
-  );
+  --hv2-field-pattern-mask: none;
   /* Dark elevated cards (match dark-mode marketing panels), not white paper. */
   --hv2-field-card-bg: #2a3544;
   --hv2-field-card-border: #3d4a5c;
@@ -354,26 +326,12 @@
   --hv2-hero-menu-bg: var(--hv2-navy);
   --hv2-hero-elev: 0 10px 28px rgb(0 0 0 / 0.28);
   --hv2-hero-glass-blur: 16px;
-  /* Read / field — same tile as hero; flat quiet band across content, fade in gutters. */
+  /* Read / field — flat quiet band (#1e232e + former centre opacity); no gutter fade. */
   --hv2-field-bg: #1e232e;
   --hv2-field-pattern: var(--hv2-hero-pattern);
-  --hv2-field-pattern-opacity: var(--hv2-hero-pattern-opacity);
+  --hv2-field-pattern-opacity: calc(var(--hv2-hero-pattern-opacity) * 0.14);
   --hv2-field-pattern-size: var(--hv2-hero-pattern-size);
-  --hv2-field-pattern-mask: linear-gradient(
-    90deg,
-    rgb(255 255 255 / 1) 0%,
-    rgb(255 255 255 / 0.9) max(0px, calc((50% - 600px) * 0.06)),
-    rgb(255 255 255 / 0.62) max(0px, calc((50% - 600px) * 0.22)),
-    rgb(255 255 255 / 0.38) max(0px, calc((50% - 600px) * 0.45)),
-    rgb(255 255 255 / 0.22) max(0px, calc((50% - 600px) * 0.72)),
-    rgb(255 255 255 / 0.14) max(0px, calc(50% - 600px)),
-    rgb(255 255 255 / 0.14) min(100%, calc(50% + 600px)),
-    rgb(255 255 255 / 0.22) min(100%, calc(100% - (50% - 600px) * 0.72)),
-    rgb(255 255 255 / 0.38) min(100%, calc(100% - (50% - 600px) * 0.45)),
-    rgb(255 255 255 / 0.62) min(100%, calc(100% - (50% - 600px) * 0.22)),
-    rgb(255 255 255 / 0.9) min(100%, calc(100% - (50% - 600px) * 0.06)),
-    rgb(255 255 255 / 1) 100%
-  );
+  --hv2-field-pattern-mask: none;
   --hv2-field-card-bg: #2a3544;
   --hv2-field-card-border: #3d4a5c;
   --hv2-field-card-hover: #314155;

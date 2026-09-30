@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: Props) {
   if (!post) return { title: "Post" };
   return {
     title: post.title,
-    description: post.excerpt || post.subheader || undefined,
+    description: post.subheader || undefined,
   };
 }
 
@@ -45,11 +45,16 @@ export default async function ReadPostPage({ params }: Props) {
       >
         ← Read
       </Link>
-      <div className="mt-8">
-        <p className="text-sm font-medium uppercase tracking-wide text-[#c3d2e8]">
+      <div className="mt-8 flex items-baseline justify-between gap-4">
+        <p className="m-0 shrink-0 text-sm font-medium uppercase tracking-wide text-[#c3d2e8]">
           {post.category}
         </p>
-        <ReadSeriesLabel series={post.series} part={post.part} size="lg" />
+        <ReadSeriesLabel
+          series={post.series}
+          part={post.part}
+          size="lg"
+          className="m-0 text-right text-accent-link"
+        />
       </div>
       <div
         className="mt-2 flex flex-wrap items-start justify-between gap-3"
@@ -64,11 +69,6 @@ export default async function ReadPostPage({ params }: Props) {
       {post.subheader ? (
         <p className="mt-3 max-w-3xl text-base leading-relaxed text-[var(--hv2-hero-muted)] sm:text-lg">
           {post.subheader}
-        </p>
-      ) : null}
-      {post.excerpt ? (
-        <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-[var(--hv2-hero-muted)] sm:text-base">
-          {post.excerpt}
         </p>
       ) : null}
       <ReadPostTags tags={post.tags} />

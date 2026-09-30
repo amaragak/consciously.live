@@ -797,25 +797,6 @@ export function AdminReadPanel() {
             </div>
             <div>
               <label className="block text-xs font-medium text-muted">
-                Summary{" "}
-                <span className="font-normal text-muted/80">(optional)</span>
-              </label>
-              <textarea
-                value={draft.excerpt}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, excerpt: e.target.value }))
-                }
-                rows={3}
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder="Shown under the subheader on the article and on the Read index"
-              />
-              <p className="mt-1 text-[11px] text-muted">
-                Shown under the subheader on the published post and in the post
-                list. Leave blank to hide.
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted">
                 Category
               </label>
               <select

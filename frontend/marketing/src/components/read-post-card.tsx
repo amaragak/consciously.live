@@ -8,7 +8,7 @@ import {
 } from "@/lib/public-blog";
 
 export function ReadPostCard({ post }: { post: PublicBlogPostSummary }) {
-  const blurb = post.excerpt || post.subheader;
+  const blurb = post.subheader;
 
   return (
     <article
