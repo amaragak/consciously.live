@@ -131,7 +131,7 @@ export function defaultUserSettings(): UserSettingsV1 {
       distractionBlocking: false,
     },
     general: {
-      theme: "hybrid",
+      theme: "light",
       language: "en",
       timeZone: null,
       textSize: "default",

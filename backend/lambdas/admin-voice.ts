@@ -17,6 +17,8 @@ import {
 import {
   SPEAKER_PREVIEW_TEXT,
   generateFishSpeakerPreview,
+  generateSpeechifyLetterIntroSample,
+  letterIntroSampleText,
   speakerPreviewReady,
 } from "./_shared/fish-speaker-preview";
 import {
@@ -253,8 +255,28 @@ async function handlePost(event: APIGatewayProxyEventV2) {
             apiBase,
             force,
           });
+    let letterIntroKey: string | null = null;
+    let letterIntroWrote = false;
+    if (brand === "speechify") {
+      const intro = await generateSpeechifyLetterIntroSample({
+        s3,
+        bucket,
+        modelId,
+        speakerName: existing?.name?.trim() || "your narrator",
+        force,
+        synthesize: async () =>
+          speechifyTtsMp3({
+            apiKey: await getSpeechifyApiKey(),
+            text: letterIntroSampleText(existing?.name?.trim() || "your narrator"),
+            voiceId: modelId,
+            rate: speechifyRateToSsml(existing?.speechifyRate ?? null),
+          }),
+      });
+      letterIntroKey = intro.key;
+      letterIntroWrote = intro.skipped !== true;
+    }
     let updatedAt = existing?.updatedAt;
-    if (existing && !keys.skipped) {
+    if (existing && (!keys.skipped || letterIntroWrote)) {
       const saved = await putVoiceSpeaker({
         modelId,
         name: existing.name,
@@ -276,7 +298,12 @@ async function handlePost(event: APIGatewayProxyEventV2) {
     );
     const bust = encodeURIComponent(updatedAt || String(Date.now()));
     const sampleUrl = domain ? `https://${domain}/${sampleKey}?v=${bust}` : null;
-    return json(200, { ok: true, ...keys, sampleUrl });
+    return json(200, {
+      ok: true,
+      ...keys,
+      ...(letterIntroKey ? { letterIntroKey } : {}),
+      sampleUrl,
+    });
   }
   return json(400, { error: "Unknown action" });
 }

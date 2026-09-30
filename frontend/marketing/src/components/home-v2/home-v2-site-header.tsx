@@ -41,6 +41,8 @@ type Props = {
   activeSecondary?: SecondaryId | null;
   ctaHref: string;
   ctaLabel: string;
+  /** Optional leading icon for tool CTAs (sidebar glyph). */
+  ctaIcon?: ReactNode;
   /** `fixed` = homepage scroll sticky; `sticky` = site-wide marketing header. */
   position?: "fixed" | "sticky";
   className?: string;
@@ -61,6 +63,7 @@ export function HomeV2SiteHeader({
   activeSecondary = null,
   ctaHref,
   ctaLabel,
+  ctaIcon,
   position = "sticky",
   className = "",
 }: Props) {
@@ -155,15 +158,21 @@ export function HomeV2SiteHeader({
         </nav>
 
         <div className="ml-auto hidden shrink-0 md:block lg:ml-0">
-          <HomeV2AuthActions compact ctaHref={ctaHref} ctaLabel={ctaLabel} />
+          <HomeV2AuthActions
+            compact
+            ctaHref={ctaHref}
+            ctaLabel={ctaLabel}
+            ctaIcon={ctaIcon}
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-2 md:hidden">
           <Link
             href={ctaHref}
-            className="rounded-full bg-[var(--hv2-gold)] px-4 py-2.5 text-sm font-semibold text-[var(--hv2-on-gold)]"
+            className="accent-fill-gradient inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold"
           >
-            Start free
+            {ctaIcon}
+            {ctaLabel}
           </Link>
           <button
             type="button"

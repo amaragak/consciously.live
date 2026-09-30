@@ -54,10 +54,31 @@ export function SearchInput({
         onChange={handleChange}
         placeholder={placeholder}
         aria-label={ariaLabel ?? placeholder}
-        className={`w-full rounded-xl border border-border py-2.5 pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 ${
+        className={`app-search-input w-full rounded-xl border border-border py-2.5 pl-9 pr-9 text-sm text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 ${
           /\bbg-/.test(inputClassName) ? "" : "bg-background"
         } ${inputClassName}`.trim()}
       />
+      {value.trim() ? (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => onChange("")}
+          className="absolute right-2.5 top-1/2 flex h-4 w-4 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-[#A39C8C] text-[#1E2530] transition-colors hover:bg-[#8A8478]"
+        >
+          <svg
+            viewBox="0 0 12 12"
+            width="8"
+            height="8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden
+          >
+            <path d="M3 3l6 6M9 3L3 9" />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }

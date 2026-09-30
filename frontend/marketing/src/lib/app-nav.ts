@@ -75,10 +75,15 @@ export const APP_NAV_MAIN: AppNavSection[] = [
   },
 ];
 
-export const APP_NAV_ADMIN: AppNavSection[] = [
-  { id: "admin", label: "Admin", href: "/admin" },
-  { id: "api", label: "API", href: "/settings" },
-];
+export const APP_NAV_ADMIN: AppNavSection[] = [];
+
+/** Owner account that sees Admin in the app header. */
+export const OWNER_ADMIN_EMAIL = "alexmaragakis@hotmail.co.uk";
+
+export function isOwnerAdminAccount(email?: string | null): boolean {
+  const e = (email ?? "").trim().toLowerCase();
+  return e === OWNER_ADMIN_EMAIL.toLowerCase();
+}
 
 export const SIDEBAR_EXPAND_STORAGE_KEY = "mm_sidebar_expand_v1";
 export const APP_SIDEBAR_COLLAPSED_KEY = "mm_app_sidebar_collapsed_v1";
@@ -86,6 +91,8 @@ export const APP_SIDEBAR_COLLAPSED_KEY = "mm_app_sidebar_collapsed_v1";
 export const APP_SIDEBAR_W_EXPANDED = 200;
 /** Desktop collapsed icon rail width (px). */
 export const APP_SIDEBAR_W_COLLAPSED = 56;
+/** Matches `transition-[width] duration-200` on the SPA sidebar. */
+export const APP_SIDEBAR_WIDTH_TRANSITION_MS = 200;
 
 export function loadAppSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return false;
@@ -196,9 +203,6 @@ export function activeNavSectionId(pathname: string): string | null {
     return "focus";
   }
   if (pathname.startsWith("/admin")) return "admin";
-  if (pathname.startsWith("/settings") || pathname.startsWith("/account")) {
-    return "api";
-  }
   return null;
 }
 
@@ -460,7 +464,27 @@ export function buildAppBreadcrumbs(
     return [{ label: "Admin", href: null }];
   }
   if (pathname.startsWith("/settings")) {
-    return [{ label: "API", href: null }];
+    const sectionId = pathname.split("/").filter(Boolean)[1];
+    if (sectionId) {
+      const sectionLabel =
+        (
+          {
+            account: "Account",
+            ai: "AI & data",
+            privacy: "Privacy",
+            notifications: "Notifications",
+            email: "Email",
+            meditate: "Meditate",
+            focus: "Focus",
+            general: "General",
+          } as Record<string, string>
+        )[sectionId] ?? sectionId;
+      return [
+        { label: "Settings", href: "/settings" },
+        { label: sectionLabel, href: null },
+      ];
+    }
+    return [{ label: "Settings", href: null }];
   }
   if (pathname.startsWith("/pro")) {
     return [{ label: "Pro", href: null }];

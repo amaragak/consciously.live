@@ -194,6 +194,7 @@ export function ideateBundleToAlgoliaRecords(
     if (!o || typeof o.id !== "string") continue;
     const title = str(o.label) || "Vision item";
     const body = str(o.prompt);
+    const imageUrl = str(o.imageUrl, 2048) || null;
     out.push({
       objectID: `vision:${o.id}`,
       userId: uid,
@@ -202,6 +203,7 @@ export function ideateBundleToAlgoliaRecords(
       body,
       href: "/manifest/my/vision-board",
       updatedAt: ts(o.updatedAt),
+      ...(imageUrl ? { imageUrl } : {}),
     });
   }
 

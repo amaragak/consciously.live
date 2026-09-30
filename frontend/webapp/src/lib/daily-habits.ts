@@ -8,6 +8,7 @@
 
 import {
   isGratitudeEntry,
+  journalEntryHasMeaningfulContent,
   localDateKey,
   localDateKeyFromIso,
 } from "@/lib/journal-storage";
@@ -187,7 +188,10 @@ export function gratitudeDoneForDate(
   dateKey: string,
 ): boolean {
   return entries.some(
-    (e) => isGratitudeEntry(e) && localDateKeyFromIso(e.createdAt) === dateKey,
+    (e) =>
+      isGratitudeEntry(e) &&
+      localDateKeyFromIso(e.createdAt) === dateKey &&
+      journalEntryHasMeaningfulContent(e),
   );
 }
 

@@ -18,8 +18,8 @@ import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import * as Switch from "@radix-ui/react-switch";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
-  FISH_SPEAKERS,
-  fishSpeakersForPicker,
+  pickDefaultSpeechifySpeaker,
+  speechifySpeakersForPicker,
 } from "@/lib/fish-speakers";
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
@@ -1374,14 +1374,12 @@ export function CreateWorkspace({
             : previewNoiseRef.current;
     setGaplessBedVolume(el, bedElementVolume(gain));
   }
-  // Speakers come from backend `GET /fish/speakers` (single source of truth).
-  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>(() =>
-    fishSpeakersForPicker([...FISH_SPEAKERS]),
-  );
+  // Speakers come from backend `GET /fish/speakers` (Speechify only in Create UI).
+  const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>([]);
   const [orpheusSpeakers, setOrpheusSpeakers] = useState<OrpheusSpeaker[]>(
     () => [...ORPHEUS_VOICES],
   );
-  const [ttsProvider, setTtsProvider] = useState<TtsProvider>("fish");
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>("speechify");
   const [orpheusVoiceId, setOrpheusVoiceId] = useState<string>(
     DEFAULT_ORPHEUS_VOICE_ID,
   );
@@ -1610,7 +1608,7 @@ export function CreateWorkspace({
       setIntroTypingDone(openingComplete);
     }
     setSpeakerModelId(s.speakerModelId);
-    setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "fish");
+    setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "speechify");
     setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
     setSpeakerFxPreviewOn(s.speakerFxPreviewOn);
     setVoiceFxDial(s.voiceFxDial ?? VOICE_FX_DIAL_DEFAULT);
@@ -1972,9 +1970,11 @@ export function CreateWorkspace({
         setInput(s.input);
         setSpeakerModelId(s.speakerModelId);
         setTtsProvider(
-          s.ttsProvider === "orpheus" || s.ttsProvider === "fish"
-            ? s.ttsProvider
-            : "fish",
+          s.ttsProvider === "orpheus"
+            ? "orpheus"
+            : s.ttsProvider === "fish"
+              ? "fish"
+              : "speechify",
         );
         setOrpheusVoiceId(
           typeof s.orpheusVoiceId === "string" && s.orpheusVoiceId.trim()
@@ -2382,22 +2382,17 @@ export function CreateWorkspace({
   useEffect(() => {
     void listFishSpeakers()
       .then((sp) => {
-        const next = fishSpeakersForPicker(sp ?? []);
+        const next = speechifySpeakersForPicker(sp ?? []);
         if (next.length === 0) return;
         setFishSpeakers(next);
-        // If current selection isn't valid anymore, pick Emily, else first.
-        const emily = next.find((s) => s.name.toLowerCase() === "emily");
+        const preferred = pickDefaultSpeechifySpeaker(next);
         setSpeakerModelId((current) => {
           if (next.some((s) => s.modelId === current)) return current;
-          return emily?.modelId ?? next[0]!.modelId;
+          return preferred?.modelId ?? next[0]!.modelId;
         });
       })
       .catch(() => {
-        setFishSpeakers((current) =>
-          current.length > 0
-            ? current
-            : fishSpeakersForPicker([...FISH_SPEAKERS]),
-        );
+        setFishSpeakers((current) => current);
       });
   }, []);
 
@@ -2405,8 +2400,7 @@ export function CreateWorkspace({
     if (fishSpeakers.length === 0) return;
     setSpeakerModelId((current) => {
       if (current && fishSpeakers.some((s) => s.modelId === current)) return current;
-      const emily = fishSpeakers.find((s) => s.name.toLowerCase() === "emily");
-      return emily?.modelId ?? fishSpeakers[0].modelId;
+      return pickDefaultSpeechifySpeaker(fishSpeakers)?.modelId ?? fishSpeakers[0]!.modelId;
     });
   }, [fishSpeakers, speakerModelId]);
 
@@ -6102,7 +6096,7 @@ export function CreateWorkspace({
                       ? "Switch to guided pacing"
                       : "Switch to open sits pacing"
                   }
-                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
                     </Switch.Root>

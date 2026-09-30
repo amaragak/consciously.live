@@ -1,7 +1,7 @@
 /**
  * Insights update-2 pattern cards (after Mood, before the dark meditation CTA).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MoreHorizontal } from "lucide-react";
 import {
@@ -25,12 +25,15 @@ import {
   daysBetweenInclusive,
   formatRangeWords,
   periodUiCopy,
+  type InsightPeriodType,
 } from "@/lib/insight-period";
 import {
   hideInsightItem,
   isInsightItemHidden,
 } from "@/lib/insight-corrections";
 import { InsightsSourceLink } from "@/components/insights-source-link";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { SectionEyebrow } from "@/components/section-eyebrow";
 import { wellbeingVisibility, type WellbeingLevel } from "@/lib/insight-wellbeing";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -167,7 +170,7 @@ function WeekMovedChart({
         <path
           d={path}
           fill="none"
-          stroke="var(--accent, #c4a484)"
+          stroke="var(--gold, #C8A46A)"
           strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -181,7 +184,7 @@ function WeekMovedChart({
             fill={
               i === lowestIdx
                 ? "var(--deep, #1e2530)"
-                : "var(--accent, #c4a484)"
+                : "var(--gold, #C8A46A)"
             }
           />
         ))}
@@ -248,8 +251,26 @@ function PatternItemMenu({
   onHidden: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="relative shrink-0">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         aria-label="Item options"
@@ -444,8 +465,7 @@ function RecurringThoughtCard({
         </InsightsSourceLink>
       </p>
       {showMeditation ? (
-        <button
-          type="button"
+        <PrimaryCreateButton
           onClick={() => {
             writeInsightsMeditationPrompt(
               buildRecurringThoughtMeditationPrompt({
@@ -455,10 +475,10 @@ function RecurringThoughtCard({
             );
             navigate(insightsCreateMeditationHref());
           }}
-          className="inline-flex h-11 w-fit cursor-pointer items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
+          className="h-11 w-fit px-4"
         >
           Make a meditation for this thought
-        </button>
+        </PrimaryCreateButton>
       ) : null}
     </div>
   );
@@ -512,9 +532,7 @@ function WhatLiftsYouCard({
         <>
           {model.good.length > 0 ? (
             <div className="flex flex-col gap-2">
-              <span className="text-[12px] font-medium uppercase tracking-wide text-accent-link">
-                {model.goodLabel}
-              </span>
+              <SectionEyebrow as="span">{model.goodLabel}</SectionEyebrow>
               {model.stage === 1 ? (
                 <div className="flex flex-wrap gap-2">
                   {model.good.map((item) => (
@@ -548,9 +566,9 @@ function WhatLiftsYouCard({
 
           {model.low.length > 0 ? (
             <div className="flex flex-col gap-2">
-              <span className="text-[12px] font-medium uppercase tracking-wide text-muted">
+              <SectionEyebrow as="span" tone="muted">
                 {model.lowLabel}
-              </span>
+              </SectionEyebrow>
               {model.stage === 1 ? (
                 <div className="flex flex-wrap gap-2">
                   {model.low.map((item) => (
@@ -703,6 +721,7 @@ export function InsightsPatternCards({
   storeEntries,
   weekLabel,
   periodDays = 7,
+  periodType,
   wellbeingLevel = "none",
   generatedParts,
   loadingParts,
@@ -713,6 +732,7 @@ export function InsightsPatternCards({
   weekLabel: string;
   /** Inclusive day count of the selected insight period. */
   periodDays?: number;
+  periodType?: InsightPeriodType;
   wellbeingLevel?: WellbeingLevel;
   generatedParts?: {
     felt?: boolean;
@@ -731,7 +751,7 @@ export function InsightsPatternCards({
   const bumpHidden = () => setHideTick((n) => n + 1);
   const vis = wellbeingVisibility(wellbeingLevel);
   const arc = reflection?.arc;
-  const uiCopy = periodUiCopy(periodDays);
+  const uiCopy = periodUiCopy(periodDays, periodType);
   const showArc =
     vis.moved &&
     Boolean(generatedParts?.moved) &&

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { HomeV2ToolId } from "@/components/home-v2/constants";
 import { HOME_V2_TOOLS } from "@/components/home-v2/constants";
+import { HomeV2ToolIcon } from "@/components/home-v2/home-v2-tool-icon";
 import { Lockup } from "@/components/home-v2/lockup";
 
 function WaveBars({ count = 36 }: { count?: number }) {
@@ -44,7 +45,7 @@ function MeditateVignette() {
           “I want to manifest opening my new studio.”
         </p>
         <div className="flex flex-wrap gap-2">
-          <span className="rounded-full bg-[var(--hv2-navy)] px-3.5 py-2 text-sm font-semibold text-[var(--hv2-ivory)]">
+          <span className="rounded-full bg-[var(--hv2-gold)] px-3.5 py-2 text-sm font-semibold text-[var(--hv2-navy)]">
             Manifestation
           </span>
           <span className="rounded-full border border-[#D9CCB2] px-3.5 py-2 text-sm">
@@ -61,7 +62,7 @@ function MeditateVignette() {
           You get
         </p>
         <div className="flex items-center gap-4">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--hv2-gold)] text-[var(--hv2-navy)]">
+          <span className="accent-fill-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </span>
           <div>
@@ -108,16 +109,16 @@ function JournalVignette() {
         </p>
         {(
           [
-            ["Vision", "78%"],
-            ["Self-doubt", "52%"],
-            ["Gratitude", "36%"],
+            ["Vision", "78%", true],
+            ["Self-doubt", "52%", false],
+            ["Gratitude", "36%", false],
           ] as const
-        ).map(([label, width]) => (
+        ).map(([label, width, gold]) => (
           <div key={label} className="flex flex-col gap-2">
             <span className="text-[15px]">{label}</span>
             <div className="h-2 rounded-full bg-[var(--hv2-card-track)]">
               <div
-                className="h-2 rounded-full bg-[var(--hv2-navy)]"
+                className={`h-2 rounded-full ${gold ? "bg-[var(--hv2-gold)]" : "bg-[var(--hv2-navy)]"}`}
                 style={{ width }}
               />
             </div>
@@ -266,8 +267,9 @@ export function ToolSection({ tool, visualLeft = false }: Props) {
       </p>
       <Link
         href={meta.href}
-        className="self-start border-b-2 border-[var(--hv2-gold)] pb-1 text-[17px] font-semibold text-[var(--hv2-ink)] hover:text-[var(--hv2-tan-text)]"
+        className="accent-fill-gradient inline-flex items-center gap-2 self-start rounded-full px-6 py-3 text-[17px] font-semibold transition-opacity hover:opacity-90"
       >
+        <HomeV2ToolIcon tool={tool} />
         {meta.ctaLabel}
       </Link>
     </div>

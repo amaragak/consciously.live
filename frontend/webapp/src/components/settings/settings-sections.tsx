@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import {
   SettingsCard,
   SettingsRow,
-  SettingsSectionHeader,
   SettingsSegmented,
   SettingsStatusMarker,
   SettingsSwitch,
@@ -424,11 +423,6 @@ function AccountSection(_props: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="account-heading"
-        title="Account"
-        lead="Your identity, sessions, and data on Consciously."
-      />
       <SettingsCard>{rows}</SettingsCard>
       {passwordOpen && passwordEnabled && cognito && email ? (
         <AccountPasswordPanel
@@ -615,7 +609,7 @@ function AccountPasswordPanel({
 
         {mode === "change" || mode === "reset" ? (
           <>
-            <label className="block space-y-1.5">
+      <label className="block space-y-1.5">
               <span className="text-xs font-medium text-muted">New password</span>
               <input
                 type="password"
@@ -857,11 +851,6 @@ function AiSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="ai-heading"
-        title="AI & data"
-        lead="What AI does with your words, and how much it’s allowed to do."
-      />
       {providerBlock}
       {prefRows.length ? <SettingsCard>{prefRows}</SettingsCard> : null}
       {actionRows.length ? <SettingsCard>{actionRows}</SettingsCard> : null}
@@ -1140,11 +1129,6 @@ function PrivacySection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="privacy-heading"
-        title="Privacy"
-        lead="Who can see what, inside and outside Consciously."
-      />
       {card1.length ? <SettingsCard>{card1}</SettingsCard> : null}
       {card2.length ? <SettingsCard>{card2}</SettingsCard> : null}
       {card3.length ? <SettingsCard>{card3}</SettingsCard> : null}
@@ -1348,11 +1332,6 @@ function NotificationsSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="notifications-heading"
-        title="Notifications"
-        lead="Where and when we get in touch."
-      />
       <SettingsCard>{rows}</SettingsCard>
     </>
   );
@@ -1448,11 +1427,6 @@ function EmailSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="email-heading"
-        title="Email"
-        lead="Choose which emails you get. Sign-in and security emails always arrive."
-      />
       <SettingsCard>{rows}</SettingsCard>
       <p className="text-xs text-muted">
         Every email has a one-click unsubscribe that updates these settings.
@@ -1625,11 +1599,6 @@ function MeditateSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="meditate-heading"
-        title="Meditate"
-        lead="Defaults when you create or play a meditation."
-      />
       <SettingsCard>{rows}</SettingsCard>
     </>
   );
@@ -1734,11 +1703,6 @@ function FocusSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="focus-heading"
-        title="Focus"
-        lead="Timer defaults and how focus sessions behave."
-      />
       <SettingsCard>{rows}</SettingsCard>
     </>
   );
@@ -1755,8 +1719,7 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
 
   const themeOptions = COLOR_SCHEME_OPTIONS.map((o) => ({
     value: o.id as ThemePreference,
-    label:
-      o.id === "v2" ? "Studio" : o.id === "hybrid" ? "Hybrid" : o.label,
+    label: o.label,
   }));
 
   const version =
@@ -1767,16 +1730,18 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
   const a11yRows: ReactNode[] = [];
 
   if (shouldShowSettingsRow("general.theme")) {
+    const themeValue: ThemePreference =
+      settings.general.theme === "dark" ? "dark" : "light";
     rows.push(
       <SettingsRow
         key="theme"
         settingsKey="general.theme"
         title="Theme"
-        helper="How Consciously looks on this device."
+        helper="Light or dark on this device."
         control={
           <SettingsSegmented
             aria-label="Theme"
-            value={settings.general.theme}
+            value={themeValue}
             options={themeOptions}
             onChange={(v) => {
               setColorScheme(v);
@@ -1963,11 +1928,6 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
-      <SettingsSectionHeader
-        id="general-heading"
-        title="General"
-        lead="Appearance, language, billing, and support."
-      />
       {rows.length ? <SettingsCard>{rows}</SettingsCard> : null}
       {a11yRows.length ? (
         <SettingsCard>{a11yRows}</SettingsCard>

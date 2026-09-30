@@ -112,8 +112,8 @@ function AuthSecondaryButton({
 function AuthBrandLockup() {
   return (
     <Link href="/" className="auth-split__lockup relative z-[1] inline-flex items-center gap-2.5 sm:gap-3">
-      <LogoMark size={28} className="shrink-0 text-accent-button lg:hidden" />
-      <LogoMark size={34} className="hidden shrink-0 text-accent-button lg:block" />
+      <LogoMark size={28} className="shrink-0 text-[color:var(--header-gold,#d9b87c)] lg:hidden" />
+      <LogoMark size={34} className="hidden shrink-0 text-[color:var(--header-gold,#d9b87c)] lg:block" />
       <span className="brand-wordmark font-display text-[21px] font-medium tracking-tight lowercase sm:text-[28px]">
         consciously
       </span>
@@ -622,8 +622,8 @@ export default function LoginPage() {
         <div className="auth-split" aria-busy="true">
           <aside className="auth-split__brand" data-mode="signup">
             <div className="auth-split__lockup relative z-[1] inline-flex items-center gap-2.5 sm:gap-3">
-              <LogoMark size={28} className="shrink-0 text-accent-button lg:hidden" />
-              <LogoMark size={34} className="hidden shrink-0 text-accent-button lg:block" />
+              <LogoMark size={28} className="shrink-0 text-[color:var(--header-gold,#d9b87c)] lg:hidden" />
+              <LogoMark size={34} className="hidden shrink-0 text-[color:var(--header-gold,#d9b87c)] lg:block" />
               <span className="brand-wordmark font-display text-[21px] font-medium tracking-tight lowercase sm:text-[28px]">
                 consciously
               </span>

@@ -1,5 +1,6 @@
 import {
   createContext,
+  forwardRef,
   useCallback,
   useContext,
   useMemo,
@@ -44,11 +45,24 @@ function usePrimaryTabsContext(): PrimaryTabsContextValue | null {
 }
 
 /** Mount point in the desktop top bar (centered). */
-export function AppPrimaryTabsSlot({ className }: { className?: string }) {
+export const AppPrimaryTabsSlot = forwardRef<
+  HTMLDivElement,
+  { className?: string }
+>(function AppPrimaryTabsSlot({ className }, ref) {
   const ctx = usePrimaryTabsContext();
   if (!ctx) return null;
-  return <div ref={ctx.setTarget} className={className} />;
-}
+  return (
+    <div
+      ref={(el) => {
+        ctx.setTarget(el);
+        if (typeof ref === "function") ref(el);
+        else if (ref) ref.current = el;
+      }}
+      className={className}
+      data-app-primary-tabs-slot
+    />
+  );
+});
 
 /**
  * Renders primary page tabs into the top-bar centre on desktop (`md+`).

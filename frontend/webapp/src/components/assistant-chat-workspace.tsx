@@ -32,6 +32,7 @@ import {
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
 
 function threadIdFromPath(pathname: string): string | null {
   const m = /^\/chat\/my\/([^/]+)\/?$/.exec(pathname);
@@ -273,7 +274,7 @@ export function AssistantChatWorkspace() {
           {/* Collapsed rail (desktop) */}
           {collapsed ? (
             <aside
-              className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-1.5 py-3 md:flex ${
+              className={`relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-sidebar-border bg-surface-rail px-1.5 py-3 md:flex ${
                 mobileComposeChrome ? "" : ""
               }`}
             >
@@ -286,19 +287,17 @@ export function AssistantChatWorkspace() {
               >
                 <IconChevron dir="right" />
               </button>
-              <button
-                type="button"
+              <PrimaryCreateButton
+                variant="compact"
                 onClick={() => void onNewChat()}
                 disabled={chat.busy || chat.opening}
                 aria-label="New chat"
-                className="relative z-[1] flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent disabled:opacity-50"
-              >
-                +
-              </button>
+                className="relative z-[1]"
+              />
             </aside>
           ) : (
             <aside
-              className={`relative z-[1] flex min-h-0 flex-col gap-3 overflow-hidden border-b-[0.5px] border-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+              className={`relative z-[1] flex min-h-0 flex-col gap-3 overflow-hidden border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                 mobileComposeChrome
                   ? "max-sm:hidden"
                   : "max-sm:h-fit max-sm:max-h-full max-sm:min-h-0 max-sm:flex-1 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
@@ -314,14 +313,13 @@ export function AssistantChatWorkspace() {
                 >
                   <IconChevron dir="left" />
                 </button>
-                <button
-                  type="button"
+                <PrimaryCreateButton
                   onClick={() => void onNewChat()}
                   disabled={chat.busy || chat.opening}
-                  className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+                  className="min-w-0 flex-1"
                 >
-                  + New chat
-                </button>
+                  New chat
+                </PrimaryCreateButton>
               </div>
 
               <nav className="relative z-[1] min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
@@ -344,7 +342,7 @@ export function AssistantChatWorkspace() {
                             <li key={t.id} className="group relative">
                               {isRenaming ? (
                                 <form
-                                  className="rounded-xl border border-border border-l-[3px] border-l-accent bg-card px-3 py-2 shadow-sm"
+                                  className="rounded-xl border border-border border-l-[3px] border-l-selected bg-card px-3 py-2 shadow-sm"
                                   onSubmit={(e) => {
                                     e.preventDefault();
                                     commitRename();
@@ -379,7 +377,7 @@ export function AssistantChatWorkspace() {
                                     }}
                                     className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 pr-14 text-left transition-colors ${
                                       isActive
-                                        ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                        ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                         : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                                     }`}
                                   >

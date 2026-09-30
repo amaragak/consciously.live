@@ -1280,7 +1280,7 @@ export function AdminSoundsPanel() {
               aria-checked={reviewMode}
               onClick={() => setReviewMode((v) => !v)}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                reviewMode ? "bg-accent" : "bg-border"
+                reviewMode ? "bg-accent-button" : "bg-border"
               }`}
             >
               <span
@@ -1991,7 +1991,7 @@ function SoundRow({
                       : "text-info hover:bg-info/10 dark:text-info dark:hover:bg-info/15"
                     : value === "loop_verified"
                       ? selected
-                        ? "bg-accent text-on-accent dark:bg-accent dark:text-on-accent"
+                        ? "bg-accent-button text-on-accent dark:bg-accent dark:text-on-accent"
                         : "text-accent-link hover:bg-accent-soft/50 dark:text-accent-link dark:hover:bg-accent-soft/30"
                   : value === "unused"
                     ? selected

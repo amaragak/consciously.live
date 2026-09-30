@@ -18,9 +18,9 @@ export function TypesSection({ motionReady }: { motionReady: boolean }) {
           <Link
             key={card.href}
             href={card.href}
-            className="home-v2-hero-glass flex flex-col gap-1.5 rounded-[16px] border border-[var(--hv2-hero-card-border)] bg-[var(--hv2-hero-card-bg)] p-4 text-[var(--hv2-hero-card-fg)] shadow-[var(--hv2-hero-elev)] transition-[border-color,box-shadow] hover:border-[rgb(var(--hv2-gold-rgb)/0.5)] md:gap-2.5 md:rounded-[20px] md:p-6"
+            className="group home-v2-hero-glass flex flex-col gap-1.5 rounded-[16px] border border-[var(--hv2-hero-card-border)] bg-[var(--hv2-hero-card-bg)] p-4 text-[var(--hv2-hero-card-fg)] shadow-[var(--hv2-hero-elev)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:border-[rgb(var(--hv2-gold-rgb)/0.55)] hover:bg-[rgba(246,241,231,0.09)] hover:shadow-[0_14px_36px_rgb(0_0_0_/_0.35),0_2px_8px_rgb(0_0_0_/_0.18)] md:gap-2.5 md:rounded-[20px] md:p-6"
           >
-            <span className="home-v2-display text-[17px] md:text-[22px]">
+            <span className="home-v2-display text-[17px] transition-colors duration-200 group-hover:text-[var(--hv2-gold)] md:text-[22px]">
               {card.title}
             </span>
             <span className="text-[13px] leading-snug text-[var(--hv2-hero-card-muted)] md:hidden">
@@ -29,8 +29,14 @@ export function TypesSection({ motionReady }: { motionReady: boolean }) {
             <span className="hidden text-[15px] leading-relaxed text-[var(--hv2-hero-card-muted)] md:block">
               {card.body}
             </span>
-            <span className="mt-auto hidden pt-1.5 text-[14px] text-[var(--hv2-gold)] md:block">
-              {card.tool} →
+            <span className="mt-auto inline-flex items-center gap-1 pt-1.5 text-[13px] font-medium text-[var(--hv2-gold)] md:text-[14px]">
+              {card.tool}
+              <span
+                aria-hidden
+                className="inline-block transition-transform duration-200 group-hover:translate-x-0.5"
+              >
+                →
+              </span>
             </span>
           </Link>
         ))}

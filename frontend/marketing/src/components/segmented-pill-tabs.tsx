@@ -38,7 +38,7 @@ export function SegmentedPillTabs<T extends string>({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={`inline-flex max-w-full flex-nowrap overflow-hidden rounded-full border border-border bg-background p-0.5 ${
+      className={`inline-flex max-w-full flex-nowrap overflow-hidden rounded-full border border-border bg-background p-1 ${
         equalWidth ? "w-full" : "shrink-0"
       } ${className}`}
     >
@@ -55,7 +55,7 @@ export function SegmentedPillTabs<T extends string>({
               if (disabled || opt.id === value) return;
               onChange(opt.id);
             }}
-            className={`cursor-pointer rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`cursor-pointer rounded-full px-3.5 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
               equalWidth ? "min-w-0 flex-1" : "shrink-0"
             } ${
               selected

@@ -90,7 +90,7 @@ export function ToolLoopSection() {
         >
           <span
             aria-hidden
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--hv2-gold)] text-[var(--hv2-navy)]"
+            className="accent-fill-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </span>
@@ -176,7 +176,7 @@ export function ToolLoopSection() {
             <div className="flex items-center gap-3.5">
               <span
                 aria-hidden
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--hv2-gold)] text-[var(--hv2-navy)]"
+                className="accent-fill-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
               </span>

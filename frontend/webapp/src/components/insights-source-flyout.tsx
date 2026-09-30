@@ -20,7 +20,6 @@ import {
   isJournalMoodId,
   journalMoodLabel,
   JOURNAL_MOOD_PILL,
-  type JournalMoodId,
 } from "@/lib/journal-moods";
 import {
   quoteWithContext,
@@ -33,6 +32,8 @@ export type InsightsFlyoutEntry = {
   createdAt?: string;
   updatedAt?: string;
   mood?: string | null;
+  /** Mood came from Insights inference, not a user journal tag. */
+  moodInferred?: boolean;
   quote?: string;
 };
 
@@ -293,8 +294,12 @@ export function InsightsSourceFlyout({
           const date = iso ? formatJournalEntryDate(iso) : "—";
           const moodId =
             (meta?.mood && isJournalMoodId(meta.mood) && meta.mood) ||
-            (full?.mood && isJournalMoodId(full.mood) && full.mood) ||
+            (!meta?.moodInferred &&
+              full?.mood &&
+              isJournalMoodId(full.mood) &&
+              full.mood) ||
             null;
+          const moodInferred = Boolean(meta?.moodInferred && moodId);
           const plain = full ? stripHtmlToText(full.contentHtml) : "";
           const ctx =
             ref.quote && plain
@@ -317,9 +322,14 @@ export function InsightsSourceFlyout({
                   <span className="text-xs text-muted">{date}</span>
                   {moodId ? (
                     <span
-                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${JOURNAL_MOOD_PILL[moodId as JournalMoodId]}`}
+                      className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                      style={{
+                        background: JOURNAL_MOOD_PILL[moodId].background,
+                        color: JOURNAL_MOOD_PILL[moodId].color,
+                      }}
                     >
                       {journalMoodLabel(moodId)}
+                      {moodInferred ? " · inferred" : ""}
                     </span>
                   ) : null}
                 </span>

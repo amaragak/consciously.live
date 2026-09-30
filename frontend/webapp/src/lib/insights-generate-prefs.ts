@@ -11,11 +11,15 @@ import {
 
 export const INSIGHTS_GENERATE_PREFS_KEY = "mm_insights_generate_prefs_v2";
 
-export type InsightsPeriodPreset = "last7" | "last30" | "custom";
+export type InsightsPeriodPreset = "last7" | "last30" | "sinceLast" | "custom";
 
 export type InsightsGeneratePrefs = {
   remember: boolean;
   letter: boolean;
+  /** Opt-in Speechify narration when generating a letter. */
+  letterNarration: boolean;
+  /** Speechify voice model id for letter narration (Beatrice when unset). */
+  letterVoiceId: string;
   patterns: boolean;
   felt: boolean;
   moved: boolean;
@@ -28,6 +32,8 @@ export type InsightsGeneratePrefs = {
 export const DEFAULT_INSIGHTS_GENERATE_PREFS: InsightsGeneratePrefs = {
   remember: false,
   letter: true,
+  letterNarration: false,
+  letterVoiceId: "",
   patterns: true,
   felt: true,
   moved: true,
@@ -45,12 +51,19 @@ function parsePrefs(raw: string | null): InsightsGeneratePrefs {
     }
     if (parsed.remember !== true) return { ...DEFAULT_INSIGHTS_GENERATE_PREFS };
     const preset =
-      parsed.periodPreset === "last30" || parsed.periodPreset === "last7"
+      parsed.periodPreset === "last30" ||
+      parsed.periodPreset === "last7" ||
+      parsed.periodPreset === "sinceLast"
         ? parsed.periodPreset
         : "last7";
     return {
       remember: true,
       letter: parsed.letter !== false,
+      letterNarration: parsed.letterNarration === true,
+      letterVoiceId:
+        typeof parsed.letterVoiceId === "string"
+          ? parsed.letterVoiceId.trim()
+          : "",
       patterns: parsed.patterns !== false,
       felt: parsed.felt !== false,
       moved: parsed.moved !== false,
@@ -98,6 +111,11 @@ export function writeInsightsGeneratePrefs(prefs: InsightsGeneratePrefs): void {
     const payload: InsightsGeneratePrefs = {
       remember: true,
       letter: prefs.letter,
+      letterNarration: prefs.letterNarration === true,
+      letterVoiceId:
+        typeof prefs.letterVoiceId === "string"
+          ? prefs.letterVoiceId.trim()
+          : "",
       patterns: prefs.patterns,
       felt: prefs.felt,
       moved: prefs.moved,

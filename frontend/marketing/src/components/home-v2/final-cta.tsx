@@ -16,9 +16,9 @@ export function FinalCta() {
       </p>
       <Link
         href={HOME_V2_START_FREE_HREF}
-        className="rounded-full bg-[var(--hv2-gold)] px-8 py-4 text-base font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 md:px-9 md:py-5 md:text-lg"
+        className="accent-fill-gradient rounded-full px-8 py-4 text-base font-semibold transition-opacity hover:opacity-90 md:px-9 md:py-5 md:text-lg"
       >
-        Start free
+        Start free →
       </Link>
     </section>
   );

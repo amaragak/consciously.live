@@ -12,20 +12,24 @@ import {
   HOME_HERO_PATTERN_LIGHT,
 } from "./color-scheme";
 
-/** Brand fill — gold-peach. Text on this fill must use `onAccent` (#3D2E10). */
+/** Brand fill — gold-peach (sun / logo). Light UI accent uses tab gold; CTAs use `MIST`. */
 export const PRIMARY = "#F0A865";
 
-/** Links and accent text on cream (deeper amber — peach fill on cream fails contrast). */
-export const ACCENT_LINK = "#B8703A";
+/**
+ * Eyebrow / selected-nav / insight section labels on cream.
+ * Slightly darker than tab gold (`#C8A46A` mixed toward ink) — was terracotta.
+ */
+export const ACCENT_LINK = "#A68B5E";
 
 /** Dark warm brown on gold-peach fills. */
 export const ON_ACCENT = "#3D2E10";
 
 /**
- * @deprecated Flat `PRIMARY` fills replaced button gradients. Kept so existing
- * `--accent-gradient*` CSS vars still resolve without breaking older CSS.
+ * @deprecated Placeholders for `--accent-gradient-button`. Light mode uses a
+ * horizontal mist → mist-end gradient; dark stays a flat copper fill.
  */
-export const ACCENT_BUTTON_GRADIENT = "{accent}";
+export const ACCENT_BUTTON_GRADIENT =
+  "linear-gradient(90deg, {accent} 0%, {end} 100%)";
 export const ACCENT_BUTTON_GRADIENT_BLEND = 1;
 
 /**
@@ -50,15 +54,24 @@ export const INFO = "#0284c7";
 
 const NAV = "#33465C";
 // const NAV = "#6E88A3";
-/** Light app canvas + header — dashboard cream. */
+/** Light app canvas — dashboard cream (not the header). */
 const APP_CANVAS_LIGHT = "#FAF6F0";
-/** Light-mode header base — matches app canvas. */
+/** Former light header fill — cream; still used by hybrid header. */
 const NAV_LIGHT = APP_CANVAS_LIGHT;
+/** Light-mode SPA header — navy (homepage v2 ink). */
+const NAV_LIGHT_HEADER = "#0F1B2D";
 const NAV_FOREGROUND = WHITE;
 const NAV_MUTED = "rgb(255 255 255 / 0.68)";
+/** Clickable trail crumbs on navy — brighter than muted for contrast. */
+const NAV_CRUMB = "rgb(255 255 255 / 0.88)";
 const NAV_ACTIVE = "rgb(255 255 255 / 0.14)";
 const NAV_FOREGROUND_LIGHT = "#1E2530";
 const NAV_MUTED_LIGHT = "#5A5648";
+/** Clickable crumbs on cream hybrid header. */
+const NAV_CRUMB_LIGHT = "#3D3A32";
+
+/** Light-mode segmented tab active fill + selected-row accent (journal / chat). */
+const TAB_SELECTED_LIGHT = "#C8A46A";
 /** Rated / filled library stars. */
 export const STAR_FILLED = "#D4B080";
 /** Unrated star glyphs — filled gold at 30% opacity. */
@@ -122,13 +135,15 @@ const PAPER_DARK = {
 } as const;
 
 /**
- * Secondary raised surface (sidebar, questions grid cells) — warmer/deeper than
+ * Secondary raised surface (main app sidebar, questions grid cells) — warmer/deeper than
  * canvas in light; slate panel in dark. Independent of `--card` / card-warm.
  */
-const SURFACE_2_LIGHT = "#F4EEE5";
+const SURFACE_2_LIGHT = "#EEE8DC";
 const SURFACE_2_DARK = "#243041";
-/** List rails (journal / chat) — between header canvas and main sidebar. */
-const SURFACE_RAIL_LIGHT = "#F8F3EC";
+/** List rails (journal / chat) — secondary sidebar between main rail and content. */
+const SURFACE_RAIL_LIGHT = "#F6F2EA";
+/** Right edge of main + secondary sidebars (light). */
+const SIDEBAR_BORDER_LIGHT = "#E0D6C4";
 /** Cool panel for hybrid sidebar (`bg-surface-2`). */
 const SURFACE_2_HYBRID = "#ecf0ec";
 /** Slightly deeper hybrid edge — card hover / selected ring. */
@@ -239,11 +254,26 @@ export function rel(hex: string, dh: number, ds: number, dl: number): string {
   return hslToHex(h + dh, s + ds, l + dl);
 }
 
+/** Cool mist — light-mode primary CTA fill (`accent-button` / accent-fill-gradient). */
+export const MIST = "#C3D2E8";
+/** Lighter mist stop — right edge of light-mode primary button gradient. */
+export const MIST_END = "#D6E1EF";
+
+/** Light-mode filled CTAs. Dark mode uses `DARK_PRIMARY` instead. */
+export const ACCENT_BUTTON_FILL = MIST;
+
 /**
- * Brighter gold for filled CTAs in light mode (header Pro, accent-fill-gradient).
- * Dark mode uses `DARK_PRIMARY` (breadcrumb-link copper) instead.
+ * Navy-header sun / italic section verb / current crumb (SPA), and marketing
+ * hybrid hero gold accents. Same hex as dark copper primary.
  */
-export const ACCENT_BUTTON_FILL = rel(resolveColor(PRIMARY), 1.8, 0.08, 0.12);
+export const HEADER_GOLD = "#D9B87C";
+export const HEADER_GOLD_RGB = "217 184 124";
+
+/**
+ * Dark-mode brand / primary fill (links, buttons, accents on navy).
+ * Softer gold than light PRIMARY peach so it stays legible on dark surfaces.
+ */
+export const DARK_PRIMARY = HEADER_GOLD;
 
 export function mixHex(a: string, b: string, t: number): string {
   const A = hexToRgb(a);
@@ -255,12 +285,6 @@ export function mixHex(a: string, b: string, t: number): string {
   );
 }
 
-/**
- * Dark-mode brand / primary fill — matches early breadcrumb link colour
- * (`accent-link` on dark). Shared bright peach is too loud on navy surfaces.
- */
-export const DARK_PRIMARY = mixHex(ACCENT_LINK, WHITE, 0.28);
-
 export function rgbChannels(hex: string): string {
   const { r, g, b } = hexToRgb(hex);
   return `${r} ${g} ${b}`;
@@ -268,6 +292,36 @@ export function rgbChannels(hex: string): string {
 
 export function rgba(hex: string, alpha: number): string {
   return `rgb(${rgbChannels(hex)} / ${alpha})`;
+}
+
+/**
+ * Soft radial lightening of the navy header around the sun — same hue,
+ * barely lifted toward white (subtle; no gold/peach).
+ */
+function headerSunGlowFromNav(navHex: string): string {
+  const core = mixHex(navHex, WHITE, 0.14);
+  const mid = mixHex(navHex, WHITE, 0.06);
+  return `radial-gradient(circle, ${rgba(core, 0.55)} 0%, ${rgba(mid, 0.28)} 40%, ${rgba(core, 0)} 70%)`;
+}
+
+/**
+ * SPA top bar chrome — identical in light and dark (navy bar on cream or slate canvas).
+ * Hybrid overrides these for its cream header.
+ */
+function spaHeaderChrome() {
+  return {
+    nav: NAV_LIGHT_HEADER,
+    navForeground: NAV_FOREGROUND,
+    navMuted: NAV_MUTED,
+    navCrumb: NAV_CRUMB,
+    navActive: NAV_ACTIVE,
+    headerGold: HEADER_GOLD,
+    headerBorder: "rgba(255,255,255,0.1)",
+    headerShadow: "0 4px 18px rgb(15 27 45 / 0.28)",
+    headerGlowSun: headerSunGlowFromNav(NAV_LIGHT_HEADER),
+    headerGlowRight:
+      "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(15 27 45 / 0) 68%)",
+  } as const;
 }
 
 /** White or near-black depending on background lightness. */
@@ -284,7 +338,7 @@ type Semantic = {
   border: string;
   borderSubtle: string;
   accent: string;
-  /** Filled CTAs — Pro gold in light; breadcrumb copper in dark. */
+  /** Filled CTAs — mist in light; breadcrumb copper in dark. */
   accentButton: string;
   accentSoft: string;
   accentLink: string;
@@ -297,12 +351,18 @@ type Semantic = {
   surface2Edge: string;
   /** List rails — midpoint of main sidebar (`surface2`) and header/canvas. */
   surfaceRail: string;
+  /** Right border on main + secondary sidebars. */
+  sidebarBorder: string;
   onAccent: string;
   overlay: string;
   nav: string;
   navForeground: string;
   navMuted: string;
+  /** Clickable non-current header trail crumbs (brighter than muted on navy). */
+  navCrumb: string;
   navActive: string;
+  /** SPA navy-header sun / verb / current crumb (+ marketing hybrid gold accents). */
+  headerGold: string;
   /** Selected / active segment fills — gold-peach in light, navy in dark. */
   selected: string;
   onSelected: string;
@@ -391,8 +451,8 @@ function brandFromPrimary(
   | "gradientDeep"
 > {
   const p = resolveColor(rawPrimary);
-  // Light: peach PRIMARY. Dark: softer copper (same as early breadcrumb links).
-  const accent = dark ? DARK_PRIMARY : p;
+  // Light: tab gold (not peach). Dark: softer copper. Peach stays on the sun via PRIMARY.
+  const accent = dark ? DARK_PRIMARY : TAB_SELECTED_LIGHT;
   return {
     accent,
     accentSoft: dark
@@ -412,15 +472,17 @@ function assemble(
 ): Semantic {
   const brand = brandFromPrimary(PRIMARY, paper, dark);
   const accentButton = dark ? DARK_PRIMARY : ACCENT_BUTTON_FILL;
+  /** Mist is cool/light — navy ink; dark gold CTAs keep warm brown. */
+  const onAccent = dark ? ON_ACCENT : NAV_FOREGROUND_LIGHT;
   const warmCreamBg = mixHex(PRIMARY, paper.background, WARM_CREAM_BG_MIX);
   const warmCreamBorder = mixHex(PRIMARY, paper.background, WARM_CREAM_BORDER_MIX);
   const surface2 = dark ? SURFACE_2_DARK : SURFACE_2_LIGHT;
-  /** Header/canvas base matches `--background` (light: nav; dark: paper). */
-  const headerCanvas = dark ? paper.background : NAV_LIGHT;
+  const header = spaHeaderChrome();
   return {
     ...paper,
     ...brand,
     accentButton,
+    onAccent,
     gold,
     surface2,
     surface2Edge: dark
@@ -430,17 +492,13 @@ function assemble(
     surfaceRail: dark
       ? mixHex(SURFACE_2_DARK, paper.background, 0.5)
       : SURFACE_RAIL_LIGHT,
+    sidebarBorder: dark ? paper.border : SIDEBAR_BORDER_LIGHT,
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
-    nav: dark ? NAV : NAV_LIGHT,
-    navForeground: dark ? NAV_FOREGROUND : NAV_FOREGROUND_LIGHT,
-    navMuted: dark ? NAV_MUTED : NAV_MUTED_LIGHT,
-    navActive: dark
-      ? NAV_ACTIVE
-      : mixHex(ACCENT_BUTTON_FILL, NAV_LIGHT, 0.84),
-    // Light: Pro/button gold for active fills. Dark: navy selected.
-    selected: dark ? NAV : ACCENT_BUTTON_FILL,
-    onSelected: dark ? WHITE : ON_ACCENT,
+    ...header,
+    // Light: tab / selected gold. Dark: navy selected.
+    selected: dark ? NAV : TAB_SELECTED_LIGHT,
+    onSelected: dark ? WHITE : NAV_LIGHT_HEADER,
     starIdle: dark ? STAR_IDLE_DARK : STAR_IDLE,
     starFilled: STAR_FILLED,
     danger: dark ? mixHex(DANGER, WHITE, 0.35) : DANGER,
@@ -455,26 +513,26 @@ function assemble(
     marketingInk: dark ? "#F4F0E8" : "#1E2530",
     marketingMuted: dark ? "#A8B0BC" : "#5A5342",
     marketingBody: dark ? "#A8B0BC" : "#7A7566",
-    /** Lighter mid band (e.g. “Tools that talk…”, pillars). */
+    /** Full-bleed marketing strips — gold-tinted paper (HEADER_GOLD); wide spread. */
     marketingBandA: dark
       ? "#2A3A4E"
-      : mixHex(PRIMARY, paper.background, 0.82),
-    /** Deeper CTA band (e.g. “Start with…”). */
+      : mixHex(HEADER_GOLD, paper.background, 0.78),
+    /** Richest gold band (e.g. Meditate strip). */
     marketingBandB: dark
       ? "#1A2330"
-      : mixHex(PRIMARY, paper.background, 0.7),
-    /** Mid band (meditate / feature strips). */
+      : mixHex(HEADER_GOLD, paper.background, 0.58),
+    /** Mid band (feature strips). */
     marketingBandC: dark
       ? "#243447"
-      : mixHex(PRIMARY, paper.background, 0.74),
+      : mixHex(HEADER_GOLD, paper.background, 0.68),
     /** Soft cream band (journal, listen samples). */
     marketingBandD: dark
       ? "#161D28"
-      : mixHex(PRIMARY, paper.background, 0.9),
-    /** Softest band (ideate) — distinct from journal band D. */
+      : mixHex(HEADER_GOLD, paper.background, 0.88),
+    /** Near-page band (e.g. Manifest) — clear contrast vs richest gold. */
     marketingBandIdeate: dark
       ? "#1A2330"
-      : mixHex(PRIMARY, paper.background, 0.94),
+      : mixHex(HEADER_GOLD, paper.background, 0.98),
     marketingCardBg: dark ? "#2A3544" : "#FFFFFF",
     marketingCardBorder: dark ? "rgba(255,255,255,0.1)" : "#E5DFD0",
     marketingCardHover: dark ? "#323E4F" : "#FBF8F2",
@@ -509,37 +567,39 @@ function assemble(
     cardWarmBorder: dark ? paper.border : warmCreamBorder,
     cardWarmInputBg: dark ? rgba(paper.background, 0.4) : "#FFFFFF",
     createHairlineBorder: dark ? paper.border : "rgba(180, 140, 80, 0.2)",
-    headerBorder: dark ? "rgba(255,255,255,0.1)" : "#E5E0D2",
-    headerShadow: dark
-      ? "0 4px 18px rgb(20 28 38 / 0.28)"
-      : "0 4px 18px rgb(80 60 30 / 0.06)",
     sidebarShadow: dark
       ? "4px 0 18px rgb(20 28 38 / 0.28)"
       : "4px 0 18px rgb(80 60 30 / 0.06)",
-    headerGlowSun: dark
-      ? "radial-gradient(circle, rgb(148 176 200 / 0.22) 0%, rgb(108 138 165 / 0.12) 42%, rgb(51 70 92 / 0) 78%)"
-      : "radial-gradient(circle, rgb(255 255 255 / 1) 0%, rgb(255 255 255 / 0.65) 42%, rgb(250 248 243 / 0) 78%)",
-    headerGlowRight: dark
-      ? "radial-gradient(circle, rgb(16 26 38 / 0.4) 0%, rgb(24 36 50 / 0.22) 32%, rgb(51 70 92 / 0) 68%)"
-      : "radial-gradient(circle, rgb(232 224 208 / 0.7) 0%, rgb(232 224 208 / 0.3) 36%, rgb(250 248 243 / 0) 70%)",
     proHeaderCtaBg: accentButton,
-    proHeaderCtaFg: ON_ACCENT,
+    proHeaderCtaFg: onAccent,
     proHeaderCtaImage: "none",
     proHeaderCtaShadow: "none",
   };
 }
 
-/** Filled CTA / `--gold` token — light uses Pro gold; dark uses breadcrumb copper. */
-export const light = assemble(PAPER_LIGHT, ACCENT_BUTTON_FILL, false);
+/** Filled CTA / `--gold` token — light tab gold; dark breadcrumb copper. */
+export const light = assemble(PAPER_LIGHT, TAB_SELECTED_LIGHT, false);
 export const dark = assemble(PAPER_DARK, DARK_PRIMARY, true);
 /** Light recipe + navy duotone hero/footer field (Next marketing). */
 export const hybrid = {
-  ...assemble(PAPER_HYBRID, ACCENT_BUTTON_FILL, false),
-  /** Header stays on light canvas; only `--background` uses hybrid paper. */
+  ...assemble(PAPER_HYBRID, TAB_SELECTED_LIGHT, false),
+  /** Header stays on cream canvas; only `--background` uses hybrid paper. */
   nav: NAV_LIGHT,
+  navForeground: NAV_FOREGROUND_LIGHT,
+  navMuted: NAV_MUTED_LIGHT,
+  navCrumb: NAV_CRUMB_LIGHT,
+  navActive: mixHex(ACCENT_BUTTON_FILL, NAV_LIGHT, 0.84),
+  headerGold: HEADER_GOLD,
+  headerBorder: "#E5E0D2",
+  headerShadow: "0 4px 18px rgb(80 60 30 / 0.06)",
+  /** Soft brightening of cream header around the sun (same hue, no gold). */
+  headerGlowSun: headerSunGlowFromNav(NAV_LIGHT),
+  headerGlowRight:
+    "radial-gradient(circle, rgb(250 246 240 / 0.5) 0%, rgb(250 246 240 / 0) 70%)",
   surface2: SURFACE_2_HYBRID,
   surface2Edge: SURFACE_2_HYBRID_EDGE,
   surfaceRail: mixHex(SURFACE_2_HYBRID, PAPER_HYBRID.background, 0.5),
+  sidebarBorder: PAPER_HYBRID.border,
   homeHeroBg: "#1A1820",
   homeHeroPattern: `url(${JSON.stringify(AUTH_HERO_PATTERN_DARK)})`,
   homeHeroPatternOpacity: "0.88",
@@ -562,9 +622,11 @@ export function accentGradientCss(s: Semantic): string {
   return s.accent;
 }
 
-/** Fills `ACCENT_BUTTON_GRADIENT` from the active theme — now a flat accent. */
-export function accentGradientButtonCss(s: Semantic): string {
+/** Fills `ACCENT_BUTTON_GRADIENT` from the active theme. */
+export function accentGradientButtonCss(s: Semantic, dark: boolean): string {
+  const end = dark ? s.accentButton : MIST_END;
   return ACCENT_BUTTON_GRADIENT.replaceAll("{accent}", s.accentButton)
+    .replaceAll("{end}", end)
     .replaceAll("{light}", s.accentButton)
     .replaceAll("{mid}", s.accentButton)
     .replaceAll("{deep}", s.accentButton);
@@ -625,12 +687,15 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--surface-2": s.surface2,
     "--surface-2-edge": s.surface2Edge,
     "--surface-rail": s.surfaceRail,
+    "--sidebar-border": s.sidebarBorder,
     "--on-accent": s.onAccent,
     "--overlay": s.overlay,
     "--nav": s.nav,
     "--nav-foreground": s.navForeground,
     "--nav-muted": s.navMuted,
+    "--nav-crumb": s.navCrumb,
     "--nav-active": s.navActive,
+    "--header-gold": s.headerGold,
     "--selected": s.selected,
     "--on-selected": s.onSelected,
     "--star-idle": s.starIdle,
@@ -640,7 +705,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--success": s.success,
     "--info": s.info,
     "--accent-gradient": accentGradientCss(s),
-    "--accent-gradient-button": accentGradientButtonCss(s),
+    "--accent-gradient-button": accentGradientButtonCss(s, dark),
     "--brand-wordmark-gradient": brandWordmarkGradientCss(s, dark),
     "--accent-rgb": rgbChannels(s.accent),
     "--foreground-rgb": rgbChannels(s.foreground),

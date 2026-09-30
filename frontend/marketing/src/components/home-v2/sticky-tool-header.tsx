@@ -9,6 +9,7 @@ import {
   HOME_V2_SITE_HEADER_SECONDARY,
   HomeV2SiteHeader,
 } from "@/components/home-v2/home-v2-site-header";
+import { HomeV2ToolIcon } from "@/components/home-v2/home-v2-tool-icon";
 import { smoothScrollToId } from "@/components/home-v2/use-home-v2-scroll";
 
 type Props = {
@@ -18,11 +19,12 @@ type Props = {
 
 export function StickyToolHeader({ stuck, activeTool }: Props) {
   const tool = HOME_V2_TOOLS.find((t) => t.id === activeTool);
-  const ctaLabel = tool?.stickyCta ?? "Start free";
+  const ctaLabel = tool?.stickyCta ?? "Start free →";
   const ctaHref = tool
     ? `/login?mode=signup&next=${encodeURIComponent(tool.href)}`
     : HOME_V2_START_FREE_HREF;
   const verbLabel = tool?.label ?? null;
+  const ctaIcon = tool ? <HomeV2ToolIcon tool={tool.id} /> : undefined;
 
   if (!stuck) return null;
 
@@ -43,6 +45,7 @@ export function StickyToolHeader({ stuck, activeTool }: Props) {
       mobileSecondaryLinks={HOME_V2_SITE_HEADER_SECONDARY}
       ctaHref={ctaHref}
       ctaLabel={ctaLabel}
+      ctaIcon={ctaIcon}
       position="fixed"
     />
   );

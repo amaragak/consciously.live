@@ -22,11 +22,14 @@
   --hv2-card: #ffffff;
   --hv2-card-border: #e0d4bc;
   --hv2-card-track: #f1eadb;
-  --hv2-band-a: var(--hv2-sand);
-  --hv2-band-b: var(--hv2-page);
-  --hv2-band-c: #f6f1e7;
-  --hv2-band-d: #f8f4ee;
-  --hv2-band-ideate: #faf7f2;
+  /* Full-bleed strips under the hero — soft tints of header gold into page ivory. */
+  --hv2-band-gold: var(--header-gold, #d9b87c);
+  /* Wide spread so adjacent tool strips (esp. Meditate ↔ Manifest) read clearly. */
+  --hv2-band-a: color-mix(in srgb, var(--hv2-band-gold) 22%, var(--hv2-page));
+  --hv2-band-b: color-mix(in srgb, var(--hv2-band-gold) 42%, var(--hv2-page));
+  --hv2-band-c: color-mix(in srgb, var(--hv2-band-gold) 32%, var(--hv2-page));
+  --hv2-band-d: color-mix(in srgb, var(--hv2-band-gold) 12%, var(--hv2-page));
+  --hv2-band-ideate: color-mix(in srgb, var(--hv2-band-gold) 2%, var(--hv2-page));
   --hv2-on-gold: var(--hv2-navy);
   --hv2-font-body: var(--font-instrument), system-ui, sans-serif;
   --hv2-font-display: var(--font-fraunces), Georgia, serif;
@@ -37,6 +40,20 @@
   --hv2-hero-pattern-size: 800px 800px;
   --hv2-hero-pattern-mask: none;
   --hv2-sticky-bg: var(--hv2-navy);
+  /* Match SPA app-top-bar sun lightening on navy. */
+  --hv2-sticky-glow-sun: radial-gradient(
+    circle,
+    rgb(49 59 74 / 0.55) 0%,
+    rgb(29 41 58 / 0.28) 40%,
+    transparent 70%
+  );
+  /* Soft circular lift around the sun (blurred disc, not a wide clipped strip). */
+  --hv2-hero-chrome-glow-sun: radial-gradient(
+    circle,
+    rgb(246 241 231 / 0.28) 0%,
+    rgb(246 241 231 / 0.12) 42%,
+    rgb(246 241 231 / 0) 72%
+  );
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -91,12 +108,14 @@
   --hv2-card: var(--marketing-card-bg);
   --hv2-card-border: var(--marketing-card-border);
   --hv2-card-track: #f1eadb;
-  --hv2-band-a: var(--marketing-band-a);
-  --hv2-band-b: var(--marketing-band-b);
-  --hv2-band-c: var(--marketing-band-c);
-  --hv2-band-d: var(--marketing-band-d);
-  --hv2-band-ideate: var(--marketing-band-ideate);
-  --hv2-sand: var(--marketing-band-a);
+  --hv2-band-gold: var(--header-gold, #d9b87c);
+  /* Wide spread so adjacent tool strips (esp. Meditate ↔ Manifest) read clearly. */
+  --hv2-band-a: color-mix(in srgb, var(--hv2-band-gold) 22%, var(--hv2-page));
+  --hv2-band-b: color-mix(in srgb, var(--hv2-band-gold) 42%, var(--hv2-page));
+  --hv2-band-c: color-mix(in srgb, var(--hv2-band-gold) 32%, var(--hv2-page));
+  --hv2-band-d: color-mix(in srgb, var(--hv2-band-gold) 12%, var(--hv2-page));
+  --hv2-band-ideate: color-mix(in srgb, var(--hv2-band-gold) 2%, var(--hv2-page));
+  --hv2-sand: var(--hv2-band-a);
   --hv2-hero-bg: var(--home-hero-bg);
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-offwhite.webp");
   --hv2-hero-pattern-opacity: var(--home-hero-pattern-opacity);
@@ -155,8 +174,9 @@
  * solid tonal navy (paisley base) — not flat hero-black, and not copper.
  */
 :root.hybrid .home-v2 {
-  --hv2-gold: var(--accent-button); /* ACCENT_BUTTON_FILL #faca98 — light page CTAs */
-  --hv2-gold-rgb: 250 202 152;
+  /* Match SPA navy-header gold (sun / italics) — not mist CTA fill. */
+  --hv2-gold: var(--header-gold, #d9b87c);
+  --hv2-gold-rgb: 217 184 124;
   --hv2-tan-text: var(--accent-link);
   --hv2-on-gold: var(--on-accent);
   --hv2-page: var(--background);
@@ -167,20 +187,34 @@
   --hv2-card: var(--marketing-card-bg);
   --hv2-card-border: var(--marketing-card-border);
   --hv2-card-track: #f1eadb;
-  --hv2-band-a: var(--marketing-band-a);
-  --hv2-band-b: var(--marketing-band-b);
-  --hv2-band-c: var(--marketing-band-c);
-  --hv2-band-d: var(--marketing-band-d);
-  --hv2-band-ideate: var(--marketing-band-ideate);
-  --hv2-sand: var(--marketing-band-a);
+  --hv2-band-gold: var(--header-gold, #d9b87c);
+  /* Wide spread so adjacent tool strips (esp. Meditate ↔ Manifest) read clearly. */
+  --hv2-band-a: color-mix(in srgb, var(--hv2-band-gold) 22%, var(--hv2-page));
+  --hv2-band-b: color-mix(in srgb, var(--hv2-band-gold) 42%, var(--hv2-page));
+  --hv2-band-c: color-mix(in srgb, var(--hv2-band-gold) 32%, var(--hv2-page));
+  --hv2-band-d: color-mix(in srgb, var(--hv2-band-gold) 12%, var(--hv2-page));
+  --hv2-band-ideate: color-mix(in srgb, var(--hv2-band-gold) 2%, var(--hv2-page));
+  --hv2-sand: var(--hv2-band-a);
   /* Homepage hero — near-black duotone (unchanged). */
   --hv2-hero-bg: #1a1820;
   --hv2-hero-pattern: url("/patterns/paisley-dark-duotone.webp");
   --hv2-hero-pattern-opacity: 0.88;
   --hv2-hero-pattern-size: 640px 640px;
   --hv2-hero-pattern-mask: none;
-  /* Sticky = tonal navy under the paisley (solid, no tile) — matches scroll chrome to hero. */
-  --hv2-sticky-bg: #1a2330;
+  /* Sticky = SPA navy (#0F1B2D), not tonal-paisley #1a2330. */
+  --hv2-sticky-bg: var(--hv2-navy);
+  --hv2-sticky-glow-sun: radial-gradient(
+    circle,
+    rgb(49 59 74 / 0.55) 0%,
+    rgb(29 41 58 / 0.28) 40%,
+    rgb(49 59 74 / 0) 70%
+  );
+  --hv2-hero-chrome-glow-sun: radial-gradient(
+    circle,
+    rgb(246 241 231 / 0.28) 0%,
+    rgb(246 241 231 / 0.12) 42%,
+    rgb(246 241 231 / 0) 72%
+  );
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -222,7 +256,7 @@
  * marketing band / card palette. Keep ivory/navy for text-on-panel + vignettes.
  */
 :root.dark .home-v2 {
-  --hv2-gold: var(--accent-button); /* DARK_PRIMARY #cc9871 */
+  --hv2-gold: var(--accent-button); /* DARK_PRIMARY #D9B87C */
   --hv2-gold-rgb: 204 152 113;
   --hv2-tan-text: var(--accent-button);
   --hv2-on-gold: var(--hv2-navy);
@@ -246,6 +280,18 @@
   --hv2-hero-pattern-opacity: 0.18;
   --hv2-hero-pattern-mask: none;
   --hv2-sticky-bg: var(--hv2-navy);
+  --hv2-sticky-glow-sun: radial-gradient(
+    circle,
+    rgb(49 59 74 / 0.55) 0%,
+    rgb(29 41 58 / 0.28) 40%,
+    rgb(49 59 74 / 0) 70%
+  );
+  --hv2-hero-chrome-glow-sun: radial-gradient(
+    circle,
+    rgb(246 241 231 / 0.28) 0%,
+    rgb(246 241 231 / 0.12) 42%,
+    rgb(246 241 231 / 0) 72%
+  );
   --hv2-hero-fg: var(--hv2-ivory);
   --hv2-hero-muted: var(--hv2-on-navy);
   --hv2-hero-nav: var(--hv2-on-navy);
@@ -291,8 +337,18 @@
  * inherit the light page fill — that was painting cream under ivory type.
  */
 .home-v2.home-v2-site-header {
-  background: var(--hv2-sticky-bg);
+  background-color: var(--hv2-sticky-bg);
+  background-image: var(--hv2-sticky-glow-sun);
+  background-repeat: no-repeat;
+  background-position: left 28px center;
+  background-size: 180px 180px;
   color: var(--hv2-hero-fg);
+}
+
+.home-v2-hero-chrome-glow-sun {
+  background: var(--hv2-hero-chrome-glow-sun);
+  /* Soft disc — blur does the falloff; avoid hard rect edges. */
+  border-radius: 9999px;
 }
 
 .home-v2-band {
@@ -345,7 +401,7 @@
   mask-size: 100% 100%;
 }
 
-.home-v2-hero > *:not(.home-v2-hero-chrome) {
+.home-v2-hero > *:not(.home-v2-hero-chrome):not(.home-v2-hero-sun-glow) {
   position: relative;
   z-index: 1;
 }
@@ -353,6 +409,15 @@
 .home-v2-hero > .home-v2-hero-chrome {
   position: relative;
   z-index: 5;
+}
+
+.home-v2-hero > .home-v2-hero-sun-glow {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 4;
+  height: 200px;
+  pointer-events: none;
 }
 
 /* Translucent hero chrome — cards + prompt; blur only when scheme sets it. */

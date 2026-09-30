@@ -889,6 +889,27 @@ export function findGratitudeEntryForLocalDate(
   );
 }
 
+/** Most recently touched gratitude whose updatedAt (else createdAt) is within `hours`. */
+export function findRecentGratitudeWithinHours(
+  entries: JournalEntry[],
+  hours: number,
+  nowMs = Date.now(),
+): JournalEntry | undefined {
+  const cutoff = nowMs - hours * 3_600_000;
+  let best: JournalEntry | undefined;
+  let bestTs = Number.NEGATIVE_INFINITY;
+  for (const e of entries) {
+    if (!isGratitudeEntry(e)) continue;
+    const t = Date.parse(e.updatedAt || e.createdAt);
+    if (!Number.isFinite(t) || t < cutoff) continue;
+    if (t >= bestTs) {
+      bestTs = t;
+      best = e;
+    }
+  }
+  return best;
+}
+
 export function journalEntryHasMeaningfulContent(e: JournalEntry): boolean {
   if (isGratitudeEntry(e)) {
     return (e.gratitude ?? []).some((s) => s.trim().length > 0)

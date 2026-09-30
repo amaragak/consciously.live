@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronRight, MoreHorizontal, Play, ThumbsDown, ThumbsUp } from "lucide-react";
+import { MoreHorizontal, Play, ThumbsDown, ThumbsUp } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { CollapsibleSection } from "@/components/collapsible-section";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { SectionEyebrow } from "@/components/section-eyebrow";
 import {
   readInsightsCollapsePrefs,
   writeInsightsCollapsePrefs,
@@ -9,6 +12,7 @@ import {
 import { isInsightItemHidden, recentCorrectionGuidance } from "@/lib/insight-corrections";
 import {
   fetchJournalWeeklyReflectionRemote,
+  generateJournalLetterAudioRemote,
   getMedimadeApiBase,
   isLikelyInsightsGatewayTimeout,
   pollJournalWeeklyReflectionAfterGenerate,
@@ -48,6 +52,7 @@ import {
   daysBetweenInclusive,
   formatRangeWords,
   insightHeaderLabel,
+  latestInsightEndDate,
   parseInsightRangeKey,
   periodUiCopy,
 } from "@/lib/insight-period";
@@ -59,6 +64,8 @@ import {
 } from "@/lib/insight-wellbeing";
 import { coerceLetterMarkdown, frameLetterMarkdown } from "@/lib/letter-markdown";
 import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
+import { LetterNarrationButton } from "@/components/letter-narration-button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type InsightsPageNotice =
   | {
@@ -68,6 +75,63 @@ type InsightsPageNotice =
       detail?: string;
     }
   | { kind: "daily_limit"; message: string; resetsAt?: string };
+
+/** Soft letter-shaped placeholder while a new (or regenerated) letter is written. */
+function LetterWritingPlaceholder() {
+  return (
+    <div
+      className="flex max-w-[680px] flex-col gap-6 py-1"
+      aria-busy
+      aria-live="polite"
+      aria-label="Writing your letter"
+    >
+      <div className="flex flex-col gap-2">
+        <p className="font-display text-[1.35rem] italic leading-snug text-foreground/70">
+          Sitting with what you wrote…
+        </p>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        <Skeleton className="h-3.5 w-[92%] rounded-full" />
+        <Skeleton
+          className="h-3.5 w-full rounded-full"
+          style={{ animationDelay: "90ms" }}
+        />
+        <Skeleton
+          className="h-3.5 w-[88%] rounded-full"
+          style={{ animationDelay: "180ms" }}
+        />
+        <Skeleton
+          className="h-3.5 w-[64%] rounded-full"
+          style={{ animationDelay: "270ms" }}
+        />
+      </div>
+      <div className="flex flex-col gap-2.5 pt-1">
+        <Skeleton
+          className="h-3.5 w-[96%] rounded-full"
+          style={{ animationDelay: "120ms" }}
+        />
+        <Skeleton
+          className="h-3.5 w-[90%] rounded-full"
+          style={{ animationDelay: "210ms" }}
+        />
+        <Skeleton
+          className="h-3.5 w-[72%] rounded-full"
+          style={{ animationDelay: "300ms" }}
+        />
+      </div>
+      <div className="flex flex-col gap-2.5 pt-1">
+        <Skeleton
+          className="h-3.5 w-[85%] rounded-full"
+          style={{ animationDelay: "150ms" }}
+        />
+        <Skeleton
+          className="h-3.5 w-[48%] rounded-full"
+          style={{ animationDelay: "240ms" }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function noticeFromUnknown(
   e: unknown,
@@ -195,9 +259,9 @@ function InsightsNoticeCard({
       />
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
+          <SectionEyebrow as="span" tone="muted">
             {eyebrow}
-          </span>
+          </SectionEyebrow>
           <p className="font-display text-[22px] font-normal leading-snug text-foreground">
             {title}
           </p>
@@ -420,90 +484,6 @@ function firstLetterSentence(md: string): string {
   return (m?.[1] ?? withoutDear).trim();
 }
 
-function InsightsSectionHeader({
-  id,
-  title,
-  meta,
-  expanded,
-  onToggle,
-  collapsible,
-}: {
-  id: string;
-  title: string;
-  meta: string;
-  expanded: boolean;
-  onToggle: () => void;
-  collapsible: boolean;
-}) {
-  if (!collapsible) {
-    return (
-      <div className="flex w-full items-center gap-3 border-b border-border py-4 text-left">
-        <span
-          aria-hidden
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted"
-        >
-          <ChevronDown className="size-3.5" strokeWidth={2.2} />
-        </span>
-        <span className="font-display text-[22px] font-normal text-foreground">
-          {title}
-        </span>
-        <span className="ml-auto text-[13px] text-muted">{meta}</span>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      id={`${id}-header`}
-      aria-expanded={expanded}
-      aria-controls={`${id}-body`}
-      onClick={onToggle}
-      className="flex w-full cursor-pointer items-center gap-3 border-b border-border bg-transparent py-4 text-left font-inherit text-foreground"
-    >
-      <span
-        aria-hidden
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted"
-      >
-        {expanded ? (
-          <ChevronDown className="size-3.5" strokeWidth={2.2} />
-        ) : (
-          <ChevronRight className="size-3.5" strokeWidth={2.2} />
-        )}
-      </span>
-      <span className="font-display text-[22px] font-normal text-foreground">
-        {title}
-      </span>
-      <span className="ml-auto text-[13px] text-muted">{meta}</span>
-    </button>
-  );
-}
-
-function InsightsCollapsibleBody({
-  id,
-  open,
-  children,
-}: {
-  id: string;
-  open: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      id={`${id}-body`}
-      role="region"
-      aria-labelledby={`${id}-header`}
-      className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
-        open
-          ? "grid-rows-[1fr] opacity-100"
-          : "grid-rows-[0fr] opacity-0"
-      }`}
-    >
-      <div className="min-h-0 overflow-hidden">{children}</div>
-    </div>
-  );
-}
-
 function countEntriesInWeek(
   entries: JournalEntry[],
   weekStart: string,
@@ -551,6 +531,8 @@ function hasAnyGeneratedPatternPart(
 type MoodDayEntry = {
   id: string;
   mood: JournalMoodId | null;
+  /** True when mood came from Insights LLM inference, not the journal. */
+  moodInferred?: boolean;
   at: number;
   createdAt: string;
   title?: string;
@@ -610,10 +592,16 @@ function moodDaysForPeriod(
   entries: JournalEntry[],
   startDate: string,
   endDate: string,
+  inferredMoods?: ReadonlyArray<{ entryId: string; mood: string }>,
 ): MoodDay[] {
   const startLocal = parseLocalDateOnly(startDate);
   const endLocal = parseLocalDateOnly(endDate);
   if (!startLocal || !endLocal) return [];
+
+  const inferredById = new Map<string, JournalMoodId>();
+  for (const row of inferredMoods ?? []) {
+    if (isJournalMoodId(row.mood)) inferredById.set(row.entryId, row.mood);
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -638,9 +626,12 @@ function moodDaysForPeriod(
     d.setHours(0, 0, 0, 0);
     const key = localDateKey(d);
     const list = byDay.get(key) ?? [];
+    const userMood = isJournalMoodId(e.mood) ? e.mood : null;
+    const inferred = !userMood ? inferredById.get(e.id) ?? null : null;
     list.push({
       id: e.id,
-      mood: isJournalMoodId(e.mood) ? e.mood : null,
+      mood: userMood ?? inferred,
+      ...(inferred ? { moodInferred: true } : {}),
       at,
       createdAt: e.createdAt,
       title: e.title?.trim() || undefined,
@@ -702,6 +693,7 @@ function moodDaysForWeek(
   entries: JournalEntry[],
   weekStart: string,
   weekEnd: string,
+  inferredMoods?: ReadonlyArray<{ entryId: string; mood: string }>,
 ): MoodDay[] {
   let monday = weekStart ? new Date(weekStart) : new Date(NaN);
   if (Number.isNaN(monday.getTime())) {
@@ -722,10 +714,11 @@ function moodDaysForWeek(
         entries,
         localDateKey(s),
         localDateKey(e),
+        inferredMoods,
       );
     }
   }
-  return moodDaysForPeriod(entries, startKey, endKey);
+  return moodDaysForPeriod(entries, startKey, endKey, inferredMoods);
 }
 
 function normalizeEmotions(
@@ -822,7 +815,11 @@ function moodDayAriaLabel(day: MoodDay): string {
   })();
   if (day.entries.length === 0) return `${when}, no entries`;
   const moods = day.entries
-    .map((e) => (e.mood ? journalMoodLabel(e.mood) : "untagged"))
+    .map((e) => {
+      if (!e.mood) return "untagged";
+      const label = journalMoodLabel(e.mood) ?? e.mood;
+      return e.moodInferred ? `${label} (inferred)` : label;
+    })
     .join(", ");
   const n = day.entries.length;
   return `${when}, ${n} ${n === 1 ? "entry" : "entries"}: ${moods}`;
@@ -893,11 +890,20 @@ function MoodDayCell({
     </div>
   );
 
+  const flyoutEntries = day.entries.map((e) => ({
+    id: e.id,
+    title: e.title,
+    createdAt: e.createdAt,
+    mood: e.mood,
+    moodInferred: e.moodInferred,
+  }));
+
   if (day.entries.length === 1) {
     const only = day.entries[0]!;
     return (
       <InsightsSourceLink
         entryIds={[only.id]}
+        entries={flyoutEntries}
         header={`${day.dayLabel} ${day.dateNum}`}
         className="mood-day-trigger"
         triggerLabel={label}
@@ -911,6 +917,7 @@ function MoodDayCell({
   return (
     <InsightsSourceLink
       entryIds={day.entries.map((e) => e.id)}
+      entries={flyoutEntries}
       header={`${day.dayLabel} ${day.dateNum} · ${day.entries.length} entries`}
       footerHref={`/journal/my?day=${encodeURIComponent(day.key)}`}
       footerLabel={`Open ${day.dayLabel} in Journal →`}
@@ -1007,6 +1014,12 @@ export function JournalWeeklyReflectionCard({
   const lastGenerateSelectionRef = useRef<InsightsGenerateSelection | null>(
     null,
   );
+  const letterSnapshotRef = useRef<{
+    letterMarkdown: string;
+    letterFeedback?: JournalWeeklyReflection["letterFeedback"];
+    letterAudioUrl?: string;
+    letterAudioStatus?: JournalWeeklyReflection["letterAudioStatus"];
+  } | null>(null);
   const [letterCollapsed, setLetterCollapsed] = useState(
     () => readInsightsCollapsePrefs().letterCollapsed,
   );
@@ -1122,6 +1135,33 @@ export function JournalWeeklyReflectionCard({
       lastGenerateSelectionRef.current = selection;
       setNotice(null);
       setMenuOpen(false);
+      if (selection.letter) {
+        setLetterCollapsed(false);
+        setReflection((prev) => {
+          if (!prev) return prev;
+          letterSnapshotRef.current = {
+            letterMarkdown: prev.letterMarkdown,
+            ...(prev.letterFeedback
+              ? { letterFeedback: prev.letterFeedback }
+              : {}),
+            ...(prev.letterAudioUrl
+              ? { letterAudioUrl: prev.letterAudioUrl }
+              : {}),
+            ...(prev.letterAudioStatus
+              ? { letterAudioStatus: prev.letterAudioStatus }
+              : {}),
+          };
+          return {
+            ...prev,
+            letterMarkdown: "",
+            letterFeedback: undefined,
+            letterAudioUrl: undefined,
+            letterAudioStatus: undefined,
+          };
+        });
+      } else {
+        letterSnapshotRef.current = null;
+      }
       const startedAt = Date.now();
       try {
         const got = await runJournalWeeklyReflectionRemote({
@@ -1167,6 +1207,32 @@ export function JournalWeeklyReflectionCard({
             replace: true,
           });
         }
+        if (
+          selection.letter &&
+          selection.letterNarration &&
+          got.reflection?.letterMarkdown?.trim()
+        ) {
+          try {
+            const audio = await generateJournalLetterAudioRemote({
+              startDate: selection.startDate,
+              endDate: selection.endDate,
+              periodType: selection.periodType,
+              timeZone: selection.timeZone,
+              ...(selection.letterVoiceId
+                ? { voiceId: selection.letterVoiceId }
+                : {}),
+            });
+            if (audio.reflection) {
+              setReflection(audio.reflection);
+              setCachedWeeklyReflection(nextKey, {
+                ...got,
+                reflection: audio.reflection,
+              });
+            }
+          } catch {
+            /* letter succeeded; narration can be retried from the play control */
+          }
+        }
       } catch (e) {
         // API Gateway hard-caps at 30s; Lambda often finishes and saves afterward.
         if (isLikelyInsightsGatewayTimeout(e)) {
@@ -1196,13 +1262,54 @@ export function JournalWeeklyReflectionCard({
                 { replace: true },
               );
             }
+            if (
+              selection.letter &&
+              selection.letterNarration &&
+              recovered.reflection.letterMarkdown?.trim()
+            ) {
+              try {
+                const audio = await generateJournalLetterAudioRemote({
+                  startDate: selection.startDate,
+                  endDate: selection.endDate,
+                  periodType: selection.periodType,
+                  timeZone: selection.timeZone,
+                  ...(selection.letterVoiceId
+                    ? { voiceId: selection.letterVoiceId }
+                    : {}),
+                });
+                if (audio.reflection) {
+                  setReflection(audio.reflection);
+                  setCachedWeeklyReflection(nextKey, {
+                    ...recovered,
+                    reflection: audio.reflection,
+                  });
+                }
+              } catch {
+                /* ignore */
+              }
+            }
             return;
           }
+        }
+        const snapshot = letterSnapshotRef.current;
+        if (selection.letter && snapshot) {
+          setReflection((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  letterMarkdown: snapshot.letterMarkdown,
+                  letterFeedback: snapshot.letterFeedback,
+                  letterAudioUrl: snapshot.letterAudioUrl,
+                  letterAudioStatus: snapshot.letterAudioStatus,
+                }
+              : prev,
+          );
         }
         setNotice(noticeFromUnknown(e, "generate"));
       } finally {
         setGenerating(false);
         setPendingGeneration(null);
+        letterSnapshotRef.current = null;
       }
     },
     [apiEnabled, navigate, onLetterChanged, reflection?.rangeKey, weekKey],
@@ -1218,6 +1325,8 @@ export function JournalWeeklyReflectionCard({
       void generate(
         {
           letter: true,
+          letterNarration: false,
+          letterVoiceId: "",
           patterns: {
             felt: false,
             moved: false,
@@ -1275,7 +1384,7 @@ export function JournalWeeklyReflectionCard({
   const periodDays = periodDates
     ? daysBetweenInclusive(periodDates.startDate, periodDates.endDate)
     : 7;
-  const uiCopy = periodUiCopy(periodDays);
+  const uiCopy = periodUiCopy(periodDays, periodDates?.periodType);
   const headerLabel = periodDates
     ? insightHeaderLabel(
         periodDates.periodType,
@@ -1331,20 +1440,26 @@ export function JournalWeeklyReflectionCard({
   }, [reflection, storeEntries, resolvedWeek]);
 
   const moodDays = useMemo(() => {
+    const inferred = reflection?.entryMoods;
     if (periodDates) {
       return moodDaysForPeriod(
         storeEntries,
         periodDates.startDate,
         periodDates.endDate,
+        inferred,
       );
     }
     return moodDaysForWeek(
       storeEntries,
       resolvedWeek.weekStart,
       resolvedWeek.weekEnd,
+      inferred,
     );
-  }, [storeEntries, resolvedWeek, periodDates]);
+  }, [storeEntries, resolvedWeek, periodDates, reflection?.entryMoods]);
   const hasAnyMood = moodDays.some((d) => d.mood);
+  const hasInferredMood = moodDays.some((d) =>
+    d.entries.some((e) => e.moodInferred),
+  );
 
   const generatedParts = resolveGeneratedParts(reflection);
   const hasLetter = Boolean(reflection?.letterMarkdown?.trim());
@@ -1380,30 +1495,14 @@ export function JournalWeeklyReflectionCard({
     pendingFelt || pendingMoved || pendingWins || pendingThought;
 
   const letterTitle = useMemo(() => {
-    if (!hasLetter || !reflection) {
-      if (!periodDates) return "Your insights";
-      return `Your insights for ${formatRangeWords(
-        periodDates.startDate,
-        periodDates.endDate,
-      )}`;
-    }
-    const plain = plainFromMarkdown(letterMarkdownDisplay);
-    const withoutDear = plain.replace(/^Dear\s+[^,.]+[,.]?\s*/i, "").trim();
-    const m = withoutDear.match(/^(.{12,72}?)(?:[.!?]|\n|$)/);
-    const snippet = (m?.[1] ?? withoutDear).trim();
-    if (snippet.length >= 12) {
-      const words = snippet.split(/\s+/).slice(0, 8).join(" ");
-      return words.endsWith(".") || words.endsWith("!") || words.endsWith("?")
-        ? words.slice(0, -1)
-        : words;
-    }
-    return periodDates
-      ? `Your insights for ${formatRangeWords(
-          periodDates.startDate,
-          periodDates.endDate,
-        )}`
-      : `Your insights for ${weekLabel}`;
-  }, [hasLetter, letterMarkdownDisplay, reflection, periodDates, weekLabel]);
+    const stored = reflection?.title?.trim();
+    if (stored) return stored;
+    if (!periodDates) return "Your insights";
+    return `Your insights for ${formatRangeWords(
+      periodDates.startDate,
+      periodDates.endDate,
+    )}`;
+  }, [reflection?.title, periodDates]);
 
   const writtenFromLine = useMemo(() => {
     if (!hasAnyInsights) return null;
@@ -1463,8 +1562,6 @@ export function JournalWeeklyReflectionCard({
     Boolean(pendingGeneration) ||
     !loading;
 
-  const letterOpen = !letterCollapsed;
-  const patternsOpen = !patternsCollapsed;
   const letterCollapsible = hasLetter && !pendingLetter;
   /** Only the dashed “Add patterns” CTA — do not collapse that alone. */
   const patternsOnlyAddCta =
@@ -1481,8 +1578,10 @@ export function JournalWeeklyReflectionCard({
     hasLetter && reflection
       ? firstLetterSentence(letterMarkdownDisplay)
       : "";
+  const letterSummary =
+    letterPreview || (hasLetter ? `${letterMinutes} min read` : "");
 
-  const patternsCollapsedMeta = useMemo(() => {
+  const patternsSummary = useMemo(() => {
     const bits: string[] = [];
     if (showEmotionChart && emotions[0]) {
       bits.push(`${emotions[0].name} ${emotions[0].score}/10`);
@@ -1498,25 +1597,9 @@ export function JournalWeeklyReflectionCard({
     if (generatedParts?.wins && wins.length > 0) {
       bits.push(`${wins.length} win${wins.length === 1 ? "" : "s"}`);
     }
-    if (bits.length === 0) return "Expand";
-    return `${bits.slice(0, 3).join(" · ")} · Expand`;
-  }, [
-    emotions,
-    generatedParts,
-    reflection,
-    showEmotionChart,
-  ]);
-
-  const letterMeta = letterCollapsible
-    ? `${letterMinutes} min read · ${letterOpen ? "Collapse" : "Expand"}`
-    : "";
-  const patternsMeta = patternsCollapsible
-    ? patternsOpen
-      ? "From your mood tags and what you wrote · Collapse"
-      : patternsCollapsedMeta
-    : hasGeneratedPatterns || hasAnyMood
-      ? "From your mood tags and what you wrote"
-      : "";
+    if (bits.length > 0) return bits.slice(0, 3).join(" · ");
+    return "From your mood tags and what you wrote";
+  }, [emotions, generatedParts, reflection, showEmotionChart]);
 
   const showLetterBlock =
     apiEnabled &&
@@ -1526,6 +1609,157 @@ export function JournalWeeklyReflectionCard({
       hasGeneratedPatterns ||
       (!hasAnyInsights && !pendingAnyPattern));
 
+  const letterBody =
+    pendingLetter ? (
+      <LetterWritingPlaceholder />
+    ) : hasLetter && reflection ? (
+      <article className="max-w-[680px]">
+        <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:!text-[17px] [&_strong]:!font-medium [&_strong]:leading-[inherit] [&_strong]:text-foreground [&_[role=heading]]:mb-1.5 [&_[role=heading]]:mt-7 [&_[role=heading]]:font-display [&_[role=heading]]:!text-[17px] [&_[role=heading]]:font-semibold [&_[role=heading]]:leading-snug [&_[role=heading]]:tracking-tight [&_[role=heading]]:text-foreground [&_[role=heading]:first-child]:mt-0">
+          <ChatMarkdown
+            text={letterMarkdownDisplay}
+            singleAsteriskAs="italic"
+          />
+        </div>
+        <LetterFeedbackRow
+          key={`${reflection.rangeKey || reflection.startDate}-${reflection.meta.generatedAt}`}
+          rangeKey={
+            reflection.rangeKey ||
+            `${reflection.startDate ?? ""}_${reflection.endDate ?? ""}`
+          }
+          initial={reflection.letterFeedback ?? null}
+          regenerating={generating && Boolean(pendingLetter)}
+          onRewrite={rewriteLetterFromFeedback}
+        />
+      </article>
+    ) : hasGeneratedPatterns ? (
+      <button
+        type="button"
+        disabled={!apiEnabled || generating}
+        onClick={() =>
+          openGenerateDialog({ letter: true, patterns: false })
+        }
+        className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
+      >
+        <span className="font-display text-lg text-foreground">
+          Add a letter →
+        </span>
+      </button>
+    ) : null;
+
+  const patternsInner = (
+    <div className="flex flex-col gap-4">
+      {hasLetter && !hasGeneratedPatterns && !pendingAnyPattern ? (
+        <button
+          type="button"
+          disabled={!apiEnabled || generating}
+          onClick={() =>
+            openGenerateDialog({ letter: false, patterns: true })
+          }
+          className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
+        >
+          <span className="text-sm font-semibold text-accent-link">
+            Add patterns →
+          </span>
+        </button>
+      ) : null}
+
+      {pendingFelt ? (
+        <div
+          className="flex flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card px-6 py-[22px]"
+          aria-busy
+        >
+          <div className="h-4 w-40 animate-pulse rounded bg-border-subtle" />
+          <div className="flex flex-col gap-3">
+            <div className="h-2.5 animate-pulse rounded-full bg-border-subtle" />
+            <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-border-subtle" />
+            <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-border-subtle" />
+          </div>
+        </div>
+      ) : generatedParts?.felt && wellbeingVis.emotions ? (
+        <div className="relative z-[1] flex flex-col gap-3 overflow-visible rounded-xl border border-border bg-card px-6 py-[22px]">
+          <div className="text-sm font-semibold text-foreground">
+            {uiCopy.feltTitle}
+          </div>
+          {showEmotionChart ? (
+            <>
+              <EmotionBars emotions={emotions} />
+              <p className="pt-0.5 text-xs leading-relaxed text-muted">
+                Hover a feeling to see what you wrote. Read from your
+                entries by AI — a reflection, not a measurement.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm leading-relaxed text-muted">
+              Emotion scores will appear here once generation finishes
+              reading this writing.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {hasAnyMood || hasAnyInsights || pendingAnyPattern ? (
+        <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-[22px]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="text-sm font-semibold text-foreground">Mood</div>
+            <span className="text-[12px] text-muted">
+              {hasInferredMood
+                ? "From your tags, plus moods inferred for untagged entries"
+                : "From your mood tags"}
+            </span>
+          </div>
+          <MoodWeekStrip
+            days={moodDays}
+            summary={hasAnyInsights ? reflection?.moodSummary : undefined}
+          />
+        </div>
+      ) : null}
+
+      <InsightsPatternCards
+        reflection={reflection}
+        recentLetters={recentLetters}
+        storeEntries={storeEntries}
+        weekLabel={weekLabelLong}
+        periodDays={periodDays}
+        periodType={periodDates?.periodType}
+        wellbeingLevel={wellbeingLevel}
+        generatedParts={generatedParts}
+        loadingParts={
+          pendingAnyPattern
+            ? {
+                moved: pendingMoved,
+                wins: pendingWins,
+                thought: pendingThought,
+              }
+            : null
+        }
+      />
+
+      {hasAnyInsights && wellbeingVis.turnIntoMeditation ? (
+        <div className="flex flex-col gap-4 rounded-xl bg-deep px-[26px] py-[22px] text-[color-mix(in_srgb,white_92%,var(--gold))] sm:flex-row sm:items-center sm:gap-5">
+          <span
+            aria-hidden
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
+          >
+            <Play className="size-4 fill-current" strokeWidth={0} />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="font-display text-xl font-normal">
+              {uiCopy.meditationTitle}
+            </span>
+            <span className="text-sm text-[color-mix(in_srgb,white_70%,transparent)]">
+              {meditationSubline}
+            </span>
+          </div>
+          <PrimaryCreateButton
+            onClick={createMeditation}
+            className="h-12 shrink-0 px-[22px] text-[15px]"
+          >
+            Create meditation
+          </PrimaryCreateButton>
+        </div>
+      ) : null}
+    </div>
+  );
   return (
     <div className="flex flex-col gap-7">
       {wellbeingVis.fullBanner || wellbeingVis.softBanner ? (
@@ -1541,9 +1775,7 @@ export function JournalWeeklyReflectionCard({
       ) : null}
       <div className="flex items-end justify-between gap-6">
         <div className="flex min-w-0 flex-col gap-2">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.09em] text-accent-link">
-            {headerLabel}
-          </p>
+          <SectionEyebrow>{headerLabel}</SectionEyebrow>
           <h1 className="font-display text-[clamp(1.75rem,3vw,2.25rem)] font-normal tracking-tight text-foreground">
             {letterTitle}
           </h1>
@@ -1613,288 +1845,102 @@ export function JournalWeeklyReflectionCard({
         />
       ) : null}
 
-      {showLetterBlock ? (
-        <section aria-label="Your letter" className="flex flex-col">
-          {!hasAnyInsights && !pendingLetter && !pendingAnyPattern ? (
-            <section
-              aria-label="Before insights are written"
-              className="flex flex-col gap-5 rounded-xl border-[1.5px] border-dashed border-border px-6 py-5 sm:flex-row sm:items-center sm:gap-6"
+      {showLetterBlock &&
+      !hasAnyInsights &&
+      !pendingLetter &&
+      !pendingAnyPattern ? (
+        <section
+          aria-label="Before insights are written"
+          className="flex flex-col gap-5 rounded-xl border-[1.5px] border-dashed border-border px-6 py-5 sm:flex-row sm:items-center sm:gap-6"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <SectionEyebrow as="span" tone="muted">
+              Before the letter is written
+            </SectionEyebrow>
+            <span className="font-display text-xl font-normal text-foreground">
+              Your insights are written from these days&apos; entries.
+            </span>
+            <span className="text-sm text-foreground/80">
+              {weekEntryCount === 0
+                ? "Write your first entry in these dates to get insights."
+                : weekEntryCount === 1
+                  ? "You've written 1 so far. A couple more make it richer."
+                  : `You've written ${weekEntryCount} so far. A couple more make it richer.`}
+            </span>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link
+              to="/journal/my"
+              className="inline-flex h-12 cursor-pointer items-center rounded-full border border-border bg-card px-5 text-[15px] font-semibold text-foreground transition-colors hover:border-accent/40"
             >
-              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
-                  Before the letter is written
-                </span>
-                <span className="font-display text-xl font-normal text-foreground">
-                  Your insights are written from these days&apos; entries.
-                </span>
-                <span className="text-sm text-foreground/80">
-                  {weekEntryCount === 0
-                    ? "Write your first entry in these dates to get insights."
-                    : weekEntryCount === 1
-                      ? "You've written 1 so far. A couple more make it richer."
-                      : `You've written ${weekEntryCount} so far. A couple more make it richer.`}
-                </span>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Link
-                  to="/journal/my"
-                  className="inline-flex h-12 cursor-pointer items-center rounded-full border border-border bg-card px-5 text-[15px] font-semibold text-foreground transition-colors hover:border-accent/40"
-                >
-                  Write an entry
-                </Link>
-                <button
-                  type="button"
-                  disabled={!apiEnabled || generating || weekEntryCount === 0}
-                  title={
-                    weekEntryCount === 0
-                      ? "Write at least one journal entry in these dates first"
-                      : undefined
-                  }
-                  onClick={() => openGenerateDialog()}
-                  className="inline-flex h-12 cursor-pointer items-center rounded-full accent-fill-gradient px-5 text-[15px] font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Generate insights…
-                </button>
-              </div>
-            </section>
-          ) : (
-            <>
-              <InsightsSectionHeader
-                id="insights-letter"
-                title="Your letter"
-                meta={letterMeta}
-                expanded={letterOpen}
-                collapsible={letterCollapsible}
-                onToggle={() =>
-                  persistCollapse({
-                    letterCollapsed: !letterCollapsed,
-                    patternsCollapsed,
-                  })
-                }
-              />
-              {letterCollapsible && !letterOpen && letterPreview ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    persistCollapse({
-                      letterCollapsed: false,
-                      patternsCollapsed,
-                    })
-                  }
-                  className="cursor-pointer truncate pt-3 text-left text-[15px] italic text-muted"
-                >
-                  {letterPreview}
-                  {letterPreview.endsWith(".") ? "" : "…"}
-                </button>
-              ) : null}
-              {letterCollapsible ? (
-                <InsightsCollapsibleBody
-                  id="insights-letter"
-                  open={letterOpen}
-                >
-                  {pendingLetter ? (
-                    <p className="py-6 font-display text-lg italic text-muted">
-                      Writing your letter…
-                    </p>
-                  ) : reflection ? (
-                    <article className="max-w-[680px] py-6">
-                      <div className="font-sans text-[17px] font-normal leading-[1.7] text-foreground [&_em]:italic [&_em]:font-normal [&_strong]:!text-[17px] [&_strong]:!font-medium [&_strong]:leading-[inherit] [&_strong]:text-foreground [&_[role=heading]]:mb-1.5 [&_[role=heading]]:mt-7 [&_[role=heading]]:font-display [&_[role=heading]]:!text-[17px] [&_[role=heading]]:font-semibold [&_[role=heading]]:leading-snug [&_[role=heading]]:tracking-tight [&_[role=heading]]:text-foreground [&_[role=heading]:first-child]:mt-0">
-                        <ChatMarkdown
-                          text={letterMarkdownDisplay}
-                          singleAsteriskAs="italic"
-                        />
-                      </div>
-                      <LetterFeedbackRow
-                        key={`${reflection.rangeKey || reflection.startDate}-${reflection.meta.generatedAt}`}
-                        rangeKey={
-                          reflection.rangeKey ||
-                          `${reflection.startDate ?? ""}_${reflection.endDate ?? ""}`
-                        }
-                        initial={reflection.letterFeedback ?? null}
-                        regenerating={generating && Boolean(pendingLetter)}
-                        onRewrite={rewriteLetterFromFeedback}
-                      />
-                    </article>
-                  ) : null}
-                </InsightsCollapsibleBody>
-              ) : pendingLetter ? (
-                <p className="py-6 font-display text-lg italic text-muted">
-                  Writing your letter…
-                </p>
-              ) : hasGeneratedPatterns ? (
-                <button
-                  type="button"
-                  disabled={!apiEnabled || generating}
-                  onClick={() =>
-                    openGenerateDialog({ letter: true, patterns: false })
-                  }
-                  className="mt-4 flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
-                >
-                  <span className="font-display text-lg text-foreground">
-                    Add a letter →
-                  </span>
-                </button>
-              ) : null}
-            </>
-          )}
+              Write an entry
+            </Link>
+            <button
+              type="button"
+              disabled={!apiEnabled || generating || weekEntryCount === 0}
+              title={
+                weekEntryCount === 0
+                  ? "Write at least one journal entry in these dates first"
+                  : undefined
+              }
+              onClick={() => openGenerateDialog()}
+              className="inline-flex h-12 cursor-pointer items-center rounded-full accent-fill-gradient px-5 text-[15px] font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Generate insights…
+            </button>
+          </div>
         </section>
       ) : null}
 
-      {apiEnabled && !loading && showPatternsSection ? (
-        <section aria-label="Patterns" className="flex flex-col">
-          <InsightsSectionHeader
-            id="insights-patterns"
-            title="Patterns"
-            meta={patternsMeta}
-            expanded={patternsOpen}
-            collapsible={patternsCollapsible}
-            onToggle={() =>
-              persistCollapse({
-                letterCollapsed,
-                patternsCollapsed: !patternsCollapsed,
-              })
-            }
-          />
-
-          {patternsCollapsible ? (
-            <InsightsCollapsibleBody
-              id="insights-patterns"
-              open={patternsOpen}
+      {(showLetterBlock && letterBody) ||
+      (apiEnabled && !loading && showPatternsSection) ? (
+        <div className="flex flex-col">
+          {showLetterBlock && letterBody ? (
+            <CollapsibleSection
+              eyebrow="Your letter"
+              summary={pendingLetter ? "Writing…" : letterSummary}
+              collapsed={pendingLetter ? false : letterCollapsed}
+              collapsible={letterCollapsible && !pendingLetter}
+              loading={pendingLetter}
+              headerEnd={
+                hasLetter && !pendingLetter && reflection ? (
+                  <LetterNarrationButton
+                    reflection={reflection}
+                    title={letterTitle || "Your letter"}
+                    weekKey={cacheKey}
+                    onReflectionUpdate={setReflection}
+                  />
+                ) : null
+              }
+              onToggle={() =>
+                persistCollapse({
+                  letterCollapsed: !letterCollapsed,
+                  patternsCollapsed,
+                })
+              }
             >
-              <div className="flex flex-col gap-4 pt-5">
-                {hasLetter && !hasGeneratedPatterns && !pendingAnyPattern ? (
-                  <button
-                    type="button"
-                    disabled={!apiEnabled || generating}
-                    onClick={() =>
-                      openGenerateDialog({ letter: false, patterns: true })
-                    }
-                    className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
-                  >
-                    <span className="text-sm font-semibold text-accent-link">
-                      Add patterns →
-                    </span>
-                  </button>
-                ) : null}
+              {letterBody}
+            </CollapsibleSection>
+          ) : null}
 
-                {pendingFelt ? (
-                  <div
-                    className="flex flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card px-6 py-[22px]"
-                    aria-busy
-                  >
-                    <div className="h-4 w-40 animate-pulse rounded bg-border-subtle" />
-                    <div className="flex flex-col gap-3">
-                      <div className="h-2.5 animate-pulse rounded-full bg-border-subtle" />
-                      <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-border-subtle" />
-                      <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-border-subtle" />
-                    </div>
-                  </div>
-                ) : generatedParts?.felt && wellbeingVis.emotions ? (
-                  <div className="relative z-[1] flex flex-col gap-3 overflow-visible rounded-xl border border-border bg-card px-6 py-[22px]">
-                    <div className="text-sm font-semibold text-foreground">
-                      {uiCopy.feltTitle}
-                    </div>
-                    {showEmotionChart ? (
-                      <>
-                        <EmotionBars emotions={emotions} />
-                        <p className="pt-0.5 text-xs leading-relaxed text-muted">
-                          Hover a feeling to see what you wrote. Read from your
-                          entries by AI — a reflection, not a measurement.
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm leading-relaxed text-muted">
-                        Emotion scores will appear here once generation finishes
-                        reading this writing.
-                      </p>
-                    )}
-                  </div>
-                ) : null}
-
-                {hasAnyMood || hasAnyInsights || pendingAnyPattern ? (
-                  <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-[22px]">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div className="text-sm font-semibold text-foreground">
-                        Mood
-                      </div>
-                      <span className="text-[12px] text-muted">
-                        From your mood tags
-                      </span>
-                    </div>
-                    <MoodWeekStrip
-                      days={moodDays}
-                      summary={
-                        hasAnyInsights ? reflection?.moodSummary : undefined
-                      }
-                    />
-                  </div>
-                ) : null}
-
-                <InsightsPatternCards
-                  reflection={reflection}
-                  recentLetters={recentLetters}
-                  storeEntries={storeEntries}
-                  weekLabel={weekLabelLong}
-                  periodDays={periodDays}
-                  wellbeingLevel={wellbeingLevel}
-                  generatedParts={generatedParts}
-                  loadingParts={
-                    pendingAnyPattern
-                      ? {
-                          moved: pendingMoved,
-                          wins: pendingWins,
-                          thought: pendingThought,
-                        }
-                      : null
-                  }
-                />
-
-                {hasAnyInsights && wellbeingVis.turnIntoMeditation ? (
-                  <div className="flex flex-col gap-4 rounded-xl bg-deep px-[26px] py-[22px] text-[color-mix(in_srgb,white_92%,var(--gold))] sm:flex-row sm:items-center sm:gap-5">
-                    <span
-                      aria-hidden
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-deep"
-                    >
-                      <Play className="size-4 fill-current" strokeWidth={0} />
-                    </span>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="font-display text-xl font-normal">
-                        {uiCopy.meditationTitle}
-                      </span>
-                      <span className="text-sm text-[color-mix(in_srgb,white_70%,transparent)]">
-                        {meditationSubline}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={createMeditation}
-                      className="inline-flex h-12 shrink-0 cursor-pointer items-center rounded-full bg-accent px-[22px] text-[15px] font-semibold text-deep transition-opacity hover:opacity-90"
-                    >
-                      Create meditation
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </InsightsCollapsibleBody>
-          ) : (
-            <div className="flex flex-col gap-4 pt-5">
-              {hasLetter && !hasGeneratedPatterns && !pendingAnyPattern ? (
-                <button
-                  type="button"
-                  disabled={!apiEnabled || generating}
-                  onClick={() =>
-                    openGenerateDialog({ letter: false, patterns: true })
-                  }
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card/60 px-6 py-4 text-left transition-colors hover:border-accent/40 disabled:opacity-50"
-                >
-                  <span className="text-sm font-semibold text-accent-link">
-                    Add patterns →
-                  </span>
-                </button>
-              ) : null}
-            </div>
-          )}
-        </section>
+          {apiEnabled && !loading && showPatternsSection ? (
+            <CollapsibleSection
+              eyebrow="Patterns"
+              summary={patternsSummary}
+              collapsed={patternsCollapsed}
+              collapsible={patternsCollapsible}
+              loading={pendingAnyPattern && !hasGeneratedPatterns && !hasAnyMood}
+              onToggle={() =>
+                persistCollapse({
+                  letterCollapsed,
+                  patternsCollapsed: !patternsCollapsed,
+                })
+              }
+            >
+              {patternsInner}
+            </CollapsibleSection>
+          ) : null}
+        </div>
       ) : null}
 
       <InsightsGenerateDialog
@@ -1905,6 +1951,7 @@ export function JournalWeeklyReflectionCard({
         meditationCount={meditationCount}
         weekStartLabel={weekStartWeekday}
         prefill={dialogPrefill}
+        lastLetterEndDate={latestInsightEndDate(recentLetters)}
       />
     </div>
   );

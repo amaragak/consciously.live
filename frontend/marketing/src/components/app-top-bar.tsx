@@ -1,7 +1,9 @@
 "use client";
 
+import { ColorSchemePicker } from "@consciously/common";
+import { Settings, Shield } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Fragment,
   useEffect,
@@ -17,11 +19,16 @@ import { AppNotificationsBell } from "@/components/app-notifications-bell";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
   buildAppBreadcrumbs,
+  isOwnerAdminAccount,
   type AppBreadcrumbCrumb,
 } from "@/lib/app-nav";
 import { ASSISTANT_CHAT_STORE_CHANGED } from "@/lib/assistant-chat-storage";
-import { enterMarketingPreviewMode } from "@/lib/marketing-preview";
 import { isCrossOriginApp } from "@/lib/app-origins";
+import {
+  clearMedimadeSession,
+  getMedimadeSessionDisplayName,
+  getMedimadeSessionEmail,
+} from "@/lib/auth-session";
 import { navigateToSpa } from "@/lib/spa-handoff";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
@@ -42,6 +49,76 @@ import {
   getJournalEntryLiveTitle,
   subscribeJournalEntryLiveTitle,
 } from "@/lib/journal-entry-live-title";
+
+function accountLabelFromSession(): string {
+  return (
+    getMedimadeSessionDisplayName()?.trim() ||
+    getMedimadeSessionEmail()?.trim() ||
+    "Guest"
+  );
+}
+
+function AccountMenu({ accountLabel }: { accountLabel: string }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const initial = (accountLabel.trim()[0] || "G").toUpperCase();
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account: ${accountLabel}`}
+        title={accountLabel}
+        onClick={() => setOpen((v) => !v)}
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-gold text-xs font-semibold text-on-accent transition-opacity hover:opacity-90"
+      >
+        {initial}
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-0 top-full z-[140] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card py-1.5 text-foreground shadow-[0_8px_24px_color-mix(in_srgb,var(--overlay)_16%,transparent)]"
+        >
+          <p className="truncate px-4 py-2.5 text-sm text-muted">
+            Signed in as{" "}
+            <span className="font-medium text-foreground">{accountLabel}</span>
+          </p>
+          <div className="my-1 border-t border-border-subtle" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              clearMedimadeSession();
+            }}
+            className="block w-full cursor-pointer px-4 py-2 text-left text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function lifeAreaTitleFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/);
@@ -322,8 +399,21 @@ export function AppTopBar({
   sidebarCollapsed?: boolean;
 }) {
   const pathname = usePathname() || "/";
-  const router = useRouter();
   const [crumbs, setCrumbs] = useState<AppBreadcrumbCrumb[]>([]);
+  const [accountLabel, setAccountLabel] = useState(accountLabelFromSession);
+  const [showAdmin, setShowAdmin] = useState(() =>
+    isOwnerAdminAccount(getMedimadeSessionEmail()),
+  );
+
+  useEffect(() => {
+    const sync = () => {
+      setAccountLabel(accountLabelFromSession());
+      setShowAdmin(isOwnerAdminAccount(getMedimadeSessionEmail()));
+    };
+    sync();
+    window.addEventListener("medimade-session-changed", sync);
+    return () => window.removeEventListener("medimade-session-changed", sync);
+  }, []);
 
   useLayoutEffect(() => {
     const rebuild = () => {
@@ -368,6 +458,17 @@ export function AppTopBar({
 
   return (
     <header className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-border bg-nav shadow-[var(--header-shadow)]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        {/* Align glow with desktop sun (sidebar brand column). */}
+        <span
+          className={`app-header-sun-glow absolute top-1/2 hidden h-32 w-64 -translate-x-1/2 -translate-y-1/2 blur-md md:block ${
+            sidebarCollapsed ? "left-7" : "left-[30px]"
+          }`}
+        />
+      </div>
       {/* Desktop: brand aligned with sidebar. Mobile: brand + breadcrumbs left. */}
       <div
         className="relative z-10 hidden h-full shrink-0 items-center px-2 transition-[width] duration-200 ease-out md:flex"
@@ -476,18 +577,40 @@ export function AppTopBar({
               Open app
             </AlphaChromeButton>
           ) : null}
-          <AlphaChromeButton
-            title="Alpha — show marketing site without clearing session"
-            onClick={() => {
-              enterMarketingPreviewMode();
-              router.push("/");
-            }}
-          >
-            View marketing page
-          </AlphaChromeButton>
         </div>
         <div className="flex items-center gap-0.5 md:gap-2">
           <AppGlobalSearch />
+          <ColorSchemePicker variant="header" />
+          <Link
+            href="/settings/account"
+            aria-label="Settings"
+            aria-current={
+              pathname.startsWith("/settings") ? "page" : undefined
+            }
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+              pathname.startsWith("/settings")
+                ? "bg-nav-active text-nav-foreground"
+                : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
+            }`}
+          >
+            <Settings aria-hidden className="size-[18px]" strokeWidth={1.75} />
+          </Link>
+          {showAdmin ? (
+            <Link
+              href="/admin"
+              aria-label="Admin"
+              aria-current={
+                pathname.startsWith("/admin") ? "page" : undefined
+              }
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                pathname.startsWith("/admin")
+                  ? "bg-nav-active text-nav-foreground"
+                  : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
+              }`}
+            >
+              <Shield aria-hidden className="size-[18px]" strokeWidth={1.75} />
+            </Link>
+          ) : null}
           <span className="relative translate-x-[5px] md:translate-x-0">
             <AppNotificationsBell />
           </span>
@@ -520,6 +643,7 @@ export function AppTopBar({
               </svg>
             </button>
           ) : null}
+          <AccountMenu accountLabel={accountLabel} />
         </div>
       </div>
 

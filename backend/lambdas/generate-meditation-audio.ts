@@ -59,6 +59,7 @@ import {
   createPromptFromProvenance,
   generateAndStoreMeditationCover,
 } from "./_shared/meditation-cover";
+import { scheduleIndexMeditation } from "./_shared/algolia-index-meditation";
 import type { MeditationCreationProvenance } from "./_shared/meditation-creation-provenance";
 import fs from "fs";
 import { execFile } from "child_process";
@@ -1270,6 +1271,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     typeof jobItem.userId === "string" && jobItem.userId.trim()
       ? jobItem.userId.trim()
       : GLOBAL_MEDITATION_USER_ID;
+  const jobUserEmail =
+    typeof jobItem.email === "string" && jobItem.email.trim()
+      ? jobItem.email.trim().toLowerCase()
+      : undefined;
 
   const body: {
     transcript?: string;
@@ -1948,12 +1953,13 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           },
         })
       : null;
+    const librarySk = `${createdAt}#${id}`;
     await ddb.send(
       new PutCommand({
         TableName: analyticsTableName,
         Item: {
           pk: meditationUserPk(jobUserId),
-          sk: `${createdAt}#${id}`,
+          sk: librarySk,
           id,
           createdAt,
           ...(jobCreatedAt ? { jobCreatedAt } : {}),
@@ -2054,6 +2060,16 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         },
       }),
     );
+    scheduleIndexMeditation({
+      email: jobUserEmail,
+      sk: librarySk,
+      title: libraryTitle,
+      description: libraryDescription,
+      meditationStyle: isJournalCatalog ? null : styleTrimmed || null,
+      meditationType: libraryMeditationType,
+      updatedAt: createdAt,
+      coverImageKey,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "analytics write failed";
     console.warn("analytics write failed", { msg });

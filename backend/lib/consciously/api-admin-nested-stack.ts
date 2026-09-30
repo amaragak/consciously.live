@@ -614,6 +614,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         JOURNAL_TABLE_NAME: journalTable.tableName,
         IDEATE_TABLE_NAME: ideateTable.tableName,
         MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+        MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
       },
     });
     const searchIntegration = new integrations.HttpLambdaIntegration(

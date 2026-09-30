@@ -45,6 +45,28 @@ export function fishSpeakersForPicker<T extends { modelId: string }>(
   return speakers.filter((s) => !HIDDEN_FISH_SPEAKER_MODEL_IDS.has(s.modelId));
 }
 
+/** Meditation create + letter narration UIs — Speechify voices only. */
+export function speechifySpeakersForPicker<
+  T extends { modelId: string; brand?: string | null },
+>(speakers: readonly T[]): T[] {
+  return fishSpeakersForPicker(speakers).filter((s) => s.brand === "speechify");
+}
+
+/** Default Speechify narrator for insights letters and create when unset. */
+export const DEFAULT_SPEECHIFY_SPEAKER_NAME = "Beatrice";
+
+export function pickDefaultSpeechifySpeaker<
+  T extends { modelId: string; name: string },
+>(speakers: readonly T[]): T | null {
+  if (!speakers.length) return null;
+  const beatrice = speakers.find(
+    (s) =>
+      s.name.trim().toLowerCase() ===
+      DEFAULT_SPEECHIFY_SPEAKER_NAME.toLowerCase(),
+  );
+  return beatrice ?? speakers[0] ?? null;
+}
+
 export type FishSpeakerModelId = (typeof FISH_SPEAKERS)[number]["modelId"];
 
 export function speakerNameForModelId(

@@ -18,7 +18,7 @@ export function HomeV2Page() {
       <StickyToolHeader stuck={stuck} activeTool={activeTool} />
       <HeroSection motionReady={motionReady} />
       <ToolLoopSection />
-      <section className="home-v2-band home-v2-band--c">
+      <section className="home-v2-band home-v2-band--b">
         <ToolSection tool="meditate" />
       </section>
       <section className="home-v2-band home-v2-band--d">

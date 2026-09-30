@@ -28,8 +28,6 @@ const marketingNav: { href: string; label: string }[] = [
   { href: "/chat", label: "Chat" },
   { href: "/connect", label: "Connect" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/admin", label: "Admin" },
-  { href: "/settings", label: "API" },
 ];
 
 function pricingNavLabel(signedIn: boolean): string {

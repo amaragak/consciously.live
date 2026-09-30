@@ -113,6 +113,25 @@ async function queryAllPk(
   return items;
 }
 
+function gratitudeHasContent(item: Record<string, unknown>): boolean {
+  const lines = item.gratitude;
+  if (Array.isArray(lines)) {
+    for (const line of lines) {
+      if (typeof line === "string" && line.trim().length > 0) return true;
+    }
+  }
+  const html = item.contentHtml;
+  if (typeof html === "string") {
+    const text = html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text.length > 0) return true;
+  }
+  return false;
+}
+
 function gratitudeDaysFromJournal(
   items: Record<string, unknown>[],
   tzOffsetMinutes: number,
@@ -138,6 +157,8 @@ function gratitudeDaysFromJournal(
     ) {
       continue;
     }
+    // Empty stubs (e.g. ?new=1) must not mark the daily done.
+    if (!gratitudeHasContent(item)) continue;
     const createdAt = typeof item.createdAt === "string" ? item.createdAt : "";
     const key = dateKeyFromIso(createdAt, tzOffsetMinutes);
     if (key) days.add(key);

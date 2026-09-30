@@ -52,6 +52,11 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
           ? window.innerHeight
           : (scroller as HTMLElement).clientHeight;
       const threshold = vh * 0.4;
+      const finalCta = root.querySelector<HTMLElement>("#tool-home-cta");
+      if (finalCta && finalCta.getBoundingClientRect().top < threshold) {
+        setActiveTool(null);
+        return;
+      }
       let current: HomeV2ToolId | null = null;
       for (const id of TOOL_IDS) {
         const el = root.querySelector<HTMLElement>(`[data-tool="${id}"]`);
@@ -89,7 +94,10 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
             io.unobserve(entry.target);
           }
         },
-        { root: scroller === document.documentElement ? null : scroller, threshold: 0.12 },
+        {
+          root: scroller === document.documentElement ? null : scroller,
+          threshold: 0.12,
+        },
       );
       revealEls.forEach((el) => {
         el.classList.add("home-v2-reveal");

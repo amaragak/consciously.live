@@ -64,7 +64,7 @@ export function App() {
         {/* Unknown settings subpaths → Account (avoid catch-all → home). */}
         <Route
           path="settings/*"
-          element={<Navigate to="/settings" replace />}
+          element={<Navigate to="/settings/account" replace />}
         />
         <Route path="pricing" element={<PricingPage />} />
         <Route path="pricing/success" element={<PricingSuccessPage />} />

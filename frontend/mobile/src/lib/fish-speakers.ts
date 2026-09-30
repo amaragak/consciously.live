@@ -38,6 +38,33 @@ export const HIDDEN_FISH_SPEAKER_MODEL_IDS = new Set<string>([
   "8d797adca9af48ca9e8a1c7284db1d6c",
 ]);
 
+export function fishSpeakersForPicker<T extends { modelId: string }>(
+  speakers: readonly T[],
+): T[] {
+  return speakers.filter((s) => !HIDDEN_FISH_SPEAKER_MODEL_IDS.has(s.modelId));
+}
+
+/** Meditation create — Speechify voices only. */
+export function speechifySpeakersForPicker<
+  T extends { modelId: string; brand?: string | null },
+>(speakers: readonly T[]): T[] {
+  return fishSpeakersForPicker(speakers).filter((s) => s.brand === "speechify");
+}
+
+export const DEFAULT_SPEECHIFY_SPEAKER_NAME = "Beatrice";
+
+export function pickDefaultSpeechifySpeaker<
+  T extends { modelId: string; name: string },
+>(speakers: readonly T[]): T | null {
+  if (!speakers.length) return null;
+  const beatrice = speakers.find(
+    (s) =>
+      s.name.trim().toLowerCase() ===
+      DEFAULT_SPEECHIFY_SPEAKER_NAME.toLowerCase(),
+  );
+  return beatrice ?? speakers[0] ?? null;
+}
+
 export type FishSpeakerModelId =
   (typeof FISH_SPEAKERS)[number]["modelId"];
 

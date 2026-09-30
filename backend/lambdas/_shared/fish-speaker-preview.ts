@@ -16,6 +16,7 @@ import { loudnormMp3Buffer } from "./ffmpeg-loudnorm";
 import { putVoiceStemStreams, voiceStemStreamKeys } from "./voice-stem-stream";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
+  speakerLetterIntroSampleKey,
   speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
@@ -27,6 +28,12 @@ const execFileAsync = promisify(execFile);
 const cloudfront = new CloudFrontClient({});
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 export const SPEAKER_PREVIEW_TEXT = "Welcome to your personalised meditation.";
+
+/** Letter-narration audition line — Speechify only (`letter-intro.mp3`). */
+export function letterIntroSampleText(speakerName: string): string {
+  const name = speakerName.trim() || "your narrator";
+  return `Hey I'm ${name}. I'll narrate your personal insights letter`;
+}
 const LOUD_PREVIEW_SECONDS = 6;
 const MIXER_VOICE_FX_PRESET = "mixer";
 /** Create plays these bare CDN URLs; immutable year-cache kept the old rate. */
@@ -440,4 +447,35 @@ export async function generateFishSpeakerPreview(params: {
     loudFxKey: uploadedFx,
     loudWetKey: uploaded.includes(loudWetKey) ? loudWetKey : null,
   };
+}
+
+/**
+ * Speechify-only single-play letter intro for Insights narrator picker.
+ * Does not generate Fish samples or FX stems.
+ */
+export async function generateSpeechifyLetterIntroSample(params: {
+  s3: S3Client;
+  bucket: string;
+  modelId: string;
+  speakerName: string;
+  force?: boolean;
+  synthesize: () => Promise<Buffer>;
+}): Promise<{ key: string; skipped?: boolean }> {
+  const key = speakerLetterIntroSampleKey(params.modelId);
+  if (!params.force && (await s3ObjectExists(params.s3, params.bucket, key))) {
+    return { key, skipped: true };
+  }
+  const buf = await params.synthesize();
+  const loudMp3 = await loudnormMp3Buffer(buf);
+  await params.s3.send(
+    new PutObjectCommand({
+      Bucket: params.bucket,
+      Key: key,
+      Body: loudMp3,
+      ContentType: "audio/mpeg",
+      CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+    }),
+  );
+  await invalidateSpeakerPreviewKeys([key]);
+  return { key };
 }

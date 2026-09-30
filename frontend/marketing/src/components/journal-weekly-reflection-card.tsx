@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { SectionEyebrow } from "@/components/section-eyebrow";
 import { getMedimadeSessionDisplayName } from "@/lib/auth-session";
 import {
   fetchJournalWeeklyReflectionRemote,
@@ -150,9 +151,7 @@ export function JournalWeeklyReflectionCard({
     <section className="mb-7 border-b-[0.5px] border-border pb-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-accent-link">
-            Weekly reflection
-          </p>
+          <SectionEyebrow>Weekly reflection</SectionEyebrow>
           <h2 className="mt-1 font-display text-2xl font-medium tracking-tight text-foreground">
             A gentle letter for {weekLabel.toLowerCase()}
           </h2>

@@ -487,3 +487,63 @@ export function coerceLetterMarkdown(raw: string): string {
     closing,
   });
 }
+
+/**
+ * Insights page headline from the model — not a truncated letter sentence.
+ * Strips cut-off dashes/ellipses and caps length.
+ */
+export function normalizeInsightTitle(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  let t = raw.replace(/\s+/g, " ").trim();
+  t = t.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+  t = t.replace(/[\s]*([—–\-−…]+|\.{2,})$/u, "").trim();
+  t = t.replace(/[,:;]+$/u, "").trim();
+  if (t.length > 90) {
+    t = t.slice(0, 90).replace(/\s+\S*$/, "").trim();
+    t = t.replace(/[\s]*([—–\-−…]+|\.{2,}|[,:;])$/u, "").trim();
+  }
+  if (t.length < 8) return undefined;
+  return t;
+}
+
+/** Pull `title` from LETTER JSON before it is coerced to markdown. */
+export function extractLetterTitleFromModelOutput(
+  raw: string,
+): string | undefined {
+  let t = raw.trim();
+  if (!t || /^NONE$/i.test(t)) return undefined;
+  t = t
+    .replace(/^```(?:json|markdown|md)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const jsonRaw = extractJsonObjectFromText(t) ?? (t.startsWith("{") ? t : null);
+  if (!jsonRaw) return undefined;
+  try {
+    const parsed = JSON.parse(jsonRaw) as { title?: unknown };
+    return normalizeInsightTitle(parsed.title);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Drop the opening salutation ("Dear Alex,", "Dear [[NAME]],", …) so TTS
+ * does not speak personal names (pronunciation failures).
+ */
+export function stripLetterGreetingForNarration(md: string): string {
+  const text = md.replace(/\r\n/g, "\n").trim();
+  if (!text) return "";
+  const lines = text.split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i]!.trim()) i += 1;
+  if (i >= lines.length) return "";
+  const first = lines[i]!.trim();
+  const isGreeting =
+    /^Dear\s+/i.test(first) ||
+    /^\[\[NAME\]\],?$/i.test(first) ||
+    /^[A-Za-z][A-Za-z'-]{0,40},$/.test(first);
+  if (!isGreeting) return text;
+  i += 1;
+  while (i < lines.length && !lines[i]!.trim()) i += 1;
+  return lines.slice(i).join("\n").trim();
+}

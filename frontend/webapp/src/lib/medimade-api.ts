@@ -1181,6 +1181,8 @@ export type UserContentSearchHit = {
   body: string;
   href: string;
   updatedAt?: number;
+  /** Cover / vision still for search flyout thumbnails. */
+  imageUrl?: string | null;
 };
 
 /**
@@ -1228,6 +1230,9 @@ export async function searchUserContentRemote(
       body: typeof o.body === "string" ? o.body : "",
       href: typeof o.href === "string" ? o.href : "/",
       ...(typeof o.updatedAt === "number" ? { updatedAt: o.updatedAt } : {}),
+      ...(typeof o.imageUrl === "string" && o.imageUrl.trim()
+        ? { imageUrl: o.imageUrl.trim() }
+        : {}),
     });
   }
   return out;
@@ -1732,6 +1737,12 @@ export type JournalWeeklyActivityByEntry = {
   items: string[];
 };
 
+/** LLM-inferred mood for an entry with no user mood — Insights only. */
+export type JournalWeeklyEntryMood = {
+  entryId: string;
+  mood: string;
+};
+
 export type JournalWellbeingLevel = "none" | "struggling" | "at_risk";
 
 export type JournalLetterFeedback = {
@@ -1755,7 +1766,12 @@ export type JournalWeeklyPatternsSelection = {
   thought: boolean;
 };
 
-export type JournalInsightPeriodType = "last7" | "last30" | "custom" | "week";
+export type JournalInsightPeriodType =
+  | "last7"
+  | "last30"
+  | "custom"
+  | "week"
+  | "sinceLast";
 
 export type JournalWeeklyReflection = {
   ownerId: string;
@@ -1767,6 +1783,8 @@ export type JournalWeeklyReflection = {
   endDate?: string;
   rangeKey?: string;
   letterMarkdown: string;
+  /** LLM-written Insights page headline (not a letter excerpt). */
+  title?: string;
   preview?: string;
   emotions?: JournalWeeklyEmotionScore[];
   moodSummary?: string;
@@ -1776,10 +1794,19 @@ export type JournalWeeklyReflection = {
   promises?: JournalWeeklyCitedItem[];
   recurringThought?: JournalWeeklyRecurringThought;
   activities?: JournalWeeklyActivityByEntry[];
+  /** Inferred moods for untagged entries (never written to the journal). */
+  entryMoods?: JournalWeeklyEntryMood[];
   /** Which AI parts were requested/generated for this week (opt-in generation). */
   generatedParts?: JournalWeeklyGeneratedParts;
   wellbeing?: { level: JournalWellbeingLevel };
   letterFeedback?: JournalLetterFeedback;
+  /** Speechify letter narration (Beatrice). */
+  letterAudioUrl?: string;
+  letterAudioStatus?: "none" | "generating" | "ready" | "failed";
+  letterAudioError?: string;
+  letterAudioProgress?: string;
+  letterAudioGeneratedAt?: string;
+  letterAudioVoiceId?: string;
   meta: {
     generatedAt: string;
     model: string;
@@ -2016,6 +2043,29 @@ function parseWeeklyRecurringThought(
   };
 }
 
+function parseWeeklyEntryMoods(
+  raw: unknown,
+): JournalWeeklyEntryMood[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: JournalWeeklyEntryMood[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const entryIdRaw =
+      (row as { entryId?: unknown }).entryId ??
+      (row as { entry_id?: unknown }).entry_id;
+    const entryId = typeof entryIdRaw === "string" ? entryIdRaw.trim() : "";
+    const moodRaw = (row as { mood?: unknown }).mood;
+    if (!entryId || seen.has(entryId)) continue;
+    if (typeof moodRaw !== "string" || !moodRaw.trim()) continue;
+    const mood = moodRaw.trim().toLowerCase();
+    if (!["calm", "good", "mixed", "low", "heavy"].includes(mood)) continue;
+    seen.add(entryId);
+    out.push({ entryId, mood });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function parseWeeklyActivities(
   raw: unknown,
 ): JournalWeeklyActivityByEntry[] | undefined {
@@ -2079,6 +2129,8 @@ function parseJournalWeeklyReflection(
     typeof o.preview === "string" && o.preview.trim()
       ? o.preview.trim()
       : undefined;
+  const title =
+    typeof o.title === "string" && o.title.trim() ? o.title.trim() : undefined;
   const arc = parseWeeklyArc(o.arc);
   const wins = parseWeeklyCitedItems(o.wins, 5);
   const promises = parseWeeklyCitedItems(o.promises, 3);
@@ -2086,6 +2138,9 @@ function parseJournalWeeklyReflection(
     o.recurringThought ?? o.recurring_thought,
   );
   const activities = parseWeeklyActivities(o.activities);
+  const entryMoods = parseWeeklyEntryMoods(
+    o.entryMoods ?? o.entry_moods,
+  );
   const wellbeingLevel =
     o.wellbeing === "none" ||
     o.wellbeing === "struggling" ||
@@ -2108,7 +2163,13 @@ function parseJournalWeeklyReflection(
         generatedParts.thought),
   );
   const hasPatternPayload = Boolean(
-    emotions || arc || wins || promises || recurringThought || activities,
+    emotions ||
+      arc ||
+      wins ||
+      promises ||
+      recurringThought ||
+      activities ||
+      entryMoods,
   );
   // Patterns-only weeks may have an empty letter; legacy weeks always had a letter.
   if (!hasLetter && !hasGeneratedPart && !hasPatternPayload) return null;
@@ -2130,6 +2191,7 @@ function parseJournalWeeklyReflection(
     ...(typeof o.endDate === "string" ? { endDate: o.endDate } : {}),
     ...(typeof o.rangeKey === "string" ? { rangeKey: o.rangeKey } : {}),
     letterMarkdown,
+    ...(title ? { title } : {}),
     ...(preview ? { preview } : {}),
     ...(emotions ? { emotions } : {}),
     ...(moodSummary ? { moodSummary } : {}),
@@ -2138,8 +2200,32 @@ function parseJournalWeeklyReflection(
     ...(promises ? { promises } : {}),
     ...(recurringThought ? { recurringThought } : {}),
     ...(activities ? { activities } : {}),
+    ...(entryMoods ? { entryMoods } : {}),
     ...(generatedParts ? { generatedParts } : {}),
     ...(wellbeingLevel ? { wellbeing: { level: wellbeingLevel } } : {}),
+    ...(typeof o.letterAudioUrl === "string" && o.letterAudioUrl.trim()
+      ? { letterAudioUrl: o.letterAudioUrl.trim() }
+      : {}),
+    ...(o.letterAudioStatus === "none" ||
+    o.letterAudioStatus === "generating" ||
+    o.letterAudioStatus === "ready" ||
+    o.letterAudioStatus === "failed"
+      ? { letterAudioStatus: o.letterAudioStatus }
+      : {}),
+    ...(typeof o.letterAudioError === "string" && o.letterAudioError.trim()
+      ? { letterAudioError: o.letterAudioError.trim() }
+      : {}),
+    ...(typeof o.letterAudioProgress === "string" &&
+    o.letterAudioProgress.trim()
+      ? { letterAudioProgress: o.letterAudioProgress.trim() }
+      : {}),
+    ...(typeof o.letterAudioGeneratedAt === "string" &&
+    o.letterAudioGeneratedAt.trim()
+      ? { letterAudioGeneratedAt: o.letterAudioGeneratedAt.trim() }
+      : {}),
+    ...(typeof o.letterAudioVoiceId === "string" && o.letterAudioVoiceId.trim()
+      ? { letterAudioVoiceId: o.letterAudioVoiceId.trim() }
+      : {}),
     meta: {
       generatedAt:
         typeof metaRaw.generatedAt === "string" ? metaRaw.generatedAt : "",
@@ -2227,8 +2313,8 @@ export async function fetchJournalWeeklyReflectionRemote(opts?: {
 }
 
 export async function fetchJournalInsightsPreviewRemote(opts: {
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
   periodType?: JournalInsightPeriodType;
   timeZone?: string;
 }): Promise<{ entryCount: number; meditationCount: number }> {
@@ -2236,9 +2322,9 @@ export async function fetchJournalInsightsPreviewRemote(opts: {
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const params = new URLSearchParams({
     preview: "1",
-    start: opts.startDate,
-    end: opts.endDate,
   });
+  if (opts.startDate?.trim()) params.set("start", opts.startDate.trim());
+  if (opts.endDate?.trim()) params.set("end", opts.endDate.trim());
   if (opts.periodType) params.set("periodType", opts.periodType);
   if (opts.timeZone?.trim()) params.set("timeZone", opts.timeZone.trim());
   const res = await medimadeFetch(
@@ -2458,6 +2544,114 @@ export async function runJournalWeeklyReflectionRemote(opts?: {
     ...(typeof data.rangeKey === "string" ? { rangeKey: data.rangeKey } : {}),
     empty: data.empty === true,
   };
+}
+
+/** Queue Speechify narration for an Insights letter (async worker). */
+export async function generateJournalLetterAudioRemote(opts: {
+  startDate: string;
+  endDate: string;
+  periodType?: JournalInsightPeriodType;
+  timeZone?: string;
+  /** Speechify voice model id (defaults to Beatrice on the worker). */
+  voiceId?: string;
+}): Promise<{
+  reflection: JournalWeeklyReflection | null;
+  weekKey: string;
+  weekStart: string;
+  weekEnd: string;
+  startDate?: string;
+  endDate?: string;
+  periodType?: JournalInsightPeriodType;
+  rangeKey?: string;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const startDate = opts.startDate.trim();
+  const endDate = opts.endDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw new Error("startDate and endDate are required");
+  }
+  const voiceId = opts.voiceId?.trim() || "";
+  const res = await medimadeFetch(`${base}/journal/weekly-reflection`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "generateLetterAudio",
+      startDate,
+      endDate,
+      ...(opts.periodType ? { periodType: opts.periodType } : {}),
+      ...(opts.timeZone?.trim() ? { timeZone: opts.timeZone.trim() } : {}),
+      ...(voiceId ? { voiceId } : {}),
+    }),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail.trim()) ||
+      (typeof data.error === "string" && data.error.trim()) ||
+      (typeof res.statusText === "string" && res.statusText.trim()) ||
+      `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  const reflection = parseJournalWeeklyReflection(data.reflection);
+  const periodType =
+    data.periodType === "last7" ||
+    data.periodType === "last30" ||
+    data.periodType === "custom" ||
+    data.periodType === "week"
+      ? data.periodType
+      : undefined;
+  return {
+    reflection,
+    weekKey: typeof data.weekKey === "string" ? data.weekKey : "",
+    weekStart: typeof data.weekStart === "string" ? data.weekStart : "",
+    weekEnd: typeof data.weekEnd === "string" ? data.weekEnd : "",
+    ...(typeof data.startDate === "string" ? { startDate: data.startDate } : {}),
+    ...(typeof data.endDate === "string" ? { endDate: data.endDate } : {}),
+    ...(periodType ? { periodType } : {}),
+    ...(typeof data.rangeKey === "string" ? { rangeKey: data.rangeKey } : {}),
+  };
+}
+
+/**
+ * Poll until letter audio leaves "generating" (or timeout).
+ * Worker can take several minutes for long letters.
+ */
+export async function pollJournalLetterAudioUntilSettled(opts: {
+  startDate: string;
+  endDate: string;
+  periodType?: JournalInsightPeriodType;
+  timeZone?: string;
+  /** Max wait; default ~12 minutes. */
+  maxMs?: number;
+  intervalMs?: number;
+  onUpdate?: (reflection: JournalWeeklyReflection) => void;
+}): Promise<JournalWeeklyReflection | null> {
+  const maxMs = opts.maxMs ?? 12 * 60_000;
+  const intervalMs = opts.intervalMs ?? 2500;
+  const deadline = Date.now() + maxMs;
+  let last: JournalWeeklyReflection | null = null;
+  while (Date.now() < deadline) {
+    const got = await fetchJournalWeeklyReflectionRemote({
+      startDate: opts.startDate,
+      endDate: opts.endDate,
+      periodType: opts.periodType,
+      timeZone: opts.timeZone,
+    });
+    last = got.reflection;
+    if (last) opts.onUpdate?.(last);
+    const st = last?.letterAudioStatus;
+    if (st === "ready" || st === "failed" || st === "none" || !st) {
+      return last;
+    }
+    await sleepMs(intervalMs);
+  }
+  return last;
 }
 
 function sleepMs(ms: number): Promise<void> {

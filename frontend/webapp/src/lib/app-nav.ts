@@ -75,10 +75,15 @@ export const APP_NAV_MAIN: AppNavSection[] = [
   },
 ];
 
-export const APP_NAV_ADMIN: AppNavSection[] = [
-  { id: "admin", label: "Admin", href: "/admin" },
-  { id: "api", label: "API", href: "/settings" },
-];
+export const APP_NAV_ADMIN: AppNavSection[] = [];
+
+/** Owner account that sees Admin in the app header. */
+export const OWNER_ADMIN_EMAIL = "alexmaragakis@hotmail.co.uk";
+
+export function isOwnerAdminAccount(email?: string | null): boolean {
+  const e = (email ?? "").trim().toLowerCase();
+  return e === OWNER_ADMIN_EMAIL.toLowerCase();
+}
 
 export const SIDEBAR_EXPAND_STORAGE_KEY = "mm_sidebar_expand_v1";
 export const APP_SIDEBAR_COLLAPSED_KEY = "mm_app_sidebar_collapsed_v1";
@@ -86,6 +91,20 @@ export const APP_SIDEBAR_COLLAPSED_KEY = "mm_app_sidebar_collapsed_v1";
 export const APP_SIDEBAR_W_EXPANDED = 200;
 /** Desktop collapsed icon rail width (px). */
 export const APP_SIDEBAR_W_COLLAPSED = 56;
+/** Matches `transition-[width] duration-200` on the SPA sidebar. */
+export const APP_SIDEBAR_WIDTH_TRANSITION_MS = 200;
+/**
+ * Distance from the viewport left edge to the start of the SPA header brand
+ * (sun / wordmark / breadcrumb). Tuned ~2px left of the raw sidebar icon inset
+ * (section row: outer px-2 + link px-2.5 = 18) so the fine-sun’s internal
+ * whitespace lines up with the sidebar glyphs.
+ */
+export const APP_SIDEBAR_ICON_INSET_PX = 16;
+/**
+ * Distance from the viewport left edge to the start of sidebar item labels
+ * (section row: icon inset + 18px icon + gap-2; sub-rows land on the same).
+ */
+export const APP_SIDEBAR_LABEL_INSET_PX = 42;
 
 export function loadAppSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return false;
@@ -196,9 +215,6 @@ export function activeNavSectionId(pathname: string): string | null {
     return "focus";
   }
   if (pathname.startsWith("/admin")) return "admin";
-  if (pathname.startsWith("/settings") || pathname.startsWith("/account")) {
-    return "api";
-  }
   return null;
 }
 
@@ -261,6 +277,96 @@ export type AppBreadcrumbCrumb = {
   href: string | null;
 };
 
+export type AppBreadcrumbOpts = {
+  lifeAreaTitle?: string | null;
+  createMeditationStyle?: string | null;
+  /** Random Script create path — show “Random” instead of “By Type”. */
+  createRandomScript?: boolean;
+  /** Selected program title on By Program chat / audio. */
+  createProgramTitle?: string | null;
+  /** Title for `/journal/my/[entryId]` (mobile entry editor). */
+  journalEntryTitle?: string | null;
+  /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
+  gratitudeEntryLabel?: string | null;
+  hash?: string;
+  search?: string;
+};
+
+export type AppHeaderLocation = {
+  /** Section verb in the brand phrase (Meditate, Journal, …). Empty on dashboard. */
+  verb: string;
+  /** Section home — used for mobile back when trail is a single leaf. */
+  href: string;
+  /**
+   * Trail after the brand phrase divider: sidebar leaf (Create, Library, …)
+   * and any deeper levels. Empty on dashboard / bare section homes (e.g. Focus).
+   */
+  trail: AppBreadcrumbCrumb[];
+};
+
+/**
+ * Brand phrase + optional trail for the logged-in header.
+ * Built from the same route config as {@link buildAppBreadcrumbs}.
+ * Section verb stays in the phrase; everything after it is the trail
+ * (so Create / Library / Insights appear after the divider, not alone as
+ * a second serif crumb). Dashboard (`/`) has wordmark only — no verb, no trail.
+ * Settings is a noun (not a verb): no italic phrase — divider + "Settings"
+ * as the first trail crumb at standard child size.
+ */
+export function resolveAppHeaderLocation(
+  pathname: string,
+  opts?: AppBreadcrumbOpts,
+): AppHeaderLocation {
+  const path =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname || "/";
+  if (path === "/") {
+    return { verb: "", href: "/", trail: [] };
+  }
+
+  // Settings is not a verb — keep it in the trail (child size), never italic.
+  if (path.startsWith("/settings") || path.startsWith("/account")) {
+    const crumbs = buildAppBreadcrumbs(pathname, opts);
+    let trail = crumbs.filter((c) => c.label !== "Home");
+    if (trail[0]?.label !== "Settings") {
+      trail = [
+        { label: "Settings", href: "/settings/account" },
+        ...trail.filter((c) => c.label !== "Settings"),
+      ];
+    }
+    trail = trail.map((c) =>
+      c.label === "Settings" &&
+      (c.href === "/settings" || c.href === "/settings/" || !c.href)
+        ? {
+            ...c,
+            // Bare /settings redirects; link the hub when a section is shown.
+            href: trail.length > 1 ? "/settings/account" : null,
+          }
+        : c,
+    );
+    return { verb: "", href: "/settings/account", trail };
+  }
+
+  const crumbs = buildAppBreadcrumbs(pathname, opts);
+  const sectionId = activeNavSectionId(pathname);
+  const section =
+    APP_NAV_MAIN.find((s) => s.id === sectionId) ??
+    APP_NAV_ADMIN.find((s) => s.id === sectionId) ??
+    null;
+
+  const verb = section?.label ?? crumbs[0]?.label ?? "";
+  const href = section?.href ?? (crumbs[0]?.href || "/");
+
+  let trail = crumbs;
+  if (verb && trail[0]?.label === verb) {
+    trail = trail.slice(1);
+  }
+  // Never surface a lone "Home" crumb in the trail.
+  trail = trail.filter((c) => c.label !== "Home");
+  return { verb, href, trail };
+}
+
 /**
  * Build breadcrumb crumbs for the logged-in top bar (no brand).
  * `lifeAreaTitle` is used when on `/manifest/goal/[id]`.
@@ -269,22 +375,8 @@ export type AppBreadcrumbCrumb = {
  */
 export function buildAppBreadcrumbs(
   pathname: string,
-  opts?: {
-    lifeAreaTitle?: string | null;
-    createMeditationStyle?: string | null;
-    /** Random Script create path — show “Random” instead of “By Type”. */
-    createRandomScript?: boolean;
-    /** Selected program title on By Program chat / audio. */
-    createProgramTitle?: string | null;
-    /** Title for `/journal/my/[entryId]` (mobile entry editor). */
-    journalEntryTitle?: string | null;
-    /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
-    gratitudeEntryLabel?: string | null;
-    hash?: string;
-    search?: string;
-  },
+  opts?: AppBreadcrumbOpts,
 ): AppBreadcrumbCrumb[] {
-  const hash = opts?.hash ?? "";
   const search = opts?.search ?? "";
 
   if (pathname === "/chat/my" || pathname === "/chat/my/") {
@@ -324,7 +416,7 @@ export function buildAppBreadcrumbs(
           ? "Random"
           : "By Type"
         : parsed.path === "freeflow"
-          ? "Chat"
+          ? "By chat"
           : parsed.path === "goal"
             ? "Manifest"
             : parsed.path === "journalReflect"
@@ -497,7 +589,27 @@ export function buildAppBreadcrumbs(
     return [{ label: "Admin", href: null }];
   }
   if (pathname.startsWith("/settings")) {
-    return [{ label: "API", href: null }];
+    const sectionId = pathname.split("/").filter(Boolean)[1];
+    if (sectionId) {
+      const sectionLabel =
+        (
+          {
+            account: "Account",
+            ai: "AI & data",
+            privacy: "Privacy",
+            notifications: "Notifications",
+            email: "Email",
+            meditate: "Meditate",
+            focus: "Focus",
+            general: "General",
+          } as Record<string, string>
+        )[sectionId] ?? sectionId;
+      return [
+        { label: "Settings", href: "/settings" },
+        { label: sectionLabel, href: null },
+      ];
+    }
+    return [{ label: "Settings", href: null }];
   }
   if (pathname.startsWith("/pro")) {
     return [{ label: "Pro", href: null }];

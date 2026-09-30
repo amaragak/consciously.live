@@ -593,7 +593,7 @@ export function MixerVoiceChannel({
         onCheckedChange={(v) => onFxChange(Boolean(v))}
         disabled={fxDisabled}
         aria-label={fxOn ? "Turn speaker FX off" : "Turn speaker FX on"}
-        className="relative h-4 w-8 cursor-pointer rounded-full border border-border bg-muted/30 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+        className="relative h-4 w-8 cursor-pointer rounded-full border border-border bg-muted/30 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Switch.Thumb className="block h-3 w-3 translate-x-[2px] rounded-full bg-surface shadow transition-transform will-change-transform data-[state=checked]:translate-x-[18px]" />
       </Switch.Root>

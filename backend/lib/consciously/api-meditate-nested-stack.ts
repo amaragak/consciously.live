@@ -127,6 +127,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
           FISH_TTS_MODEL: "s2.1-pro-free",
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           VOICE_FX_FUNCTION_NAME: voiceFxFunction.functionName,
+          ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
         },
       },
     );
@@ -530,6 +531,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
           OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          ALGOLIA_SECRET_ARN: algoliaSecret.secretArn,
         },
       },
     );

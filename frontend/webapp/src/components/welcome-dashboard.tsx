@@ -14,6 +14,8 @@ import {
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { formatDuration } from "@/components/library-meditation-card";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { SectionEyebrow } from "@/components/section-eyebrow";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
   formatJournalEntryDate,
@@ -186,14 +188,6 @@ function Waveform() {
         />
       ))}
     </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent-link">
-      {children}
-    </p>
   );
 }
 
@@ -453,11 +447,13 @@ export function WelcomeDashboard() {
             {ready ? (
               <>
                 <div className="flex items-center gap-4">
-                  <button
-                    type="button"
+                  <PrimaryCreateButton
+                    variant="compact"
+                    leadingPlus={false}
                     aria-label={`Play ${ready.title?.trim() || "meditation"}`}
                     onClick={playReady}
-                    className="flex h-[60px] w-[60px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-gold text-on-accent transition-opacity hover:opacity-90"
+                    className="!rounded-full"
+                    style={{ width: 60, height: 60, borderRadius: 9999 }}
                   >
                     <svg
                       width="20"
@@ -468,7 +464,7 @@ export function WelcomeDashboard() {
                     >
                       <path d="M8 5v14l11-7z" />
                     </svg>
-                  </button>
+                  </PrimaryCreateButton>
                   <div className="min-w-0 flex flex-col gap-1">
                     <p className="font-display text-[22px] font-medium leading-snug sm:text-[24px]">
                       {ready.title?.trim() || "Untitled"}
@@ -494,12 +490,9 @@ export function WelcomeDashboard() {
                     : "Loading your library…"}
                 </p>
                 {libraryReady ? (
-                  <Link
-                    href="/meditate/create"
-                    className="inline-flex h-11 w-fit items-center rounded-full bg-gold px-5 text-[15px] font-semibold text-on-accent transition-opacity hover:opacity-90"
-                  >
-                    Meditate → Create
-                  </Link>
+                  <PrimaryCreateButton to="/meditate/create" className="w-fit">
+                    Create a meditation
+                  </PrimaryCreateButton>
                 ) : null}
               </div>
             )}
@@ -521,7 +514,7 @@ export function WelcomeDashboard() {
             className="flex flex-col gap-2.5 rounded-[20px] border border-[#F2D6BA] bg-[#FBEBDC] p-6 sm:p-7 dark:border-[color:var(--card-warm-border)] dark:bg-[color:var(--card-warm-bg)]"
           >
             <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Meditate</SectionLabel>
+              <SectionEyebrow>Meditate</SectionEyebrow>
               <Link
                 href="/meditate/library/creations"
                 className="text-[14px] text-muted transition-colors hover:text-foreground"
@@ -562,12 +555,12 @@ export function WelcomeDashboard() {
                 ))}
               </ul>
             )}
-            <Link
-              href="/meditate/create"
-              className="mt-2.5 inline-flex h-11 w-fit items-center rounded-full bg-gold px-5 text-[15px] font-semibold text-on-accent transition-opacity hover:opacity-90"
+            <PrimaryCreateButton
+              to="/meditate/create"
+              className="mt-2.5 w-fit"
             >
-              + Create a meditation
-            </Link>
+              Create a meditation
+            </PrimaryCreateButton>
           </section>
 
           <section
@@ -575,7 +568,7 @@ export function WelcomeDashboard() {
             className="flex flex-col gap-2.5 rounded-[20px] border border-border bg-card p-6 sm:p-7"
           >
             <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Journal</SectionLabel>
+              <SectionEyebrow>Journal</SectionEyebrow>
               <button
                 type="button"
                 role="switch"
@@ -641,12 +634,13 @@ export function WelcomeDashboard() {
                 })}
               </ul>
             )}
-            <Link
-              href="/journal/my?new=1"
-              className="mt-2.5 inline-flex h-11 w-fit items-center rounded-full border border-border bg-card px-5 text-[15px] font-semibold text-foreground transition-colors hover:border-accent/40"
+            <PrimaryCreateButton
+              to="/journal/my?new=1"
+              tone="outline"
+              className="mt-2.5 w-fit"
             >
-              + New entry
-            </Link>
+              New entry
+            </PrimaryCreateButton>
           </section>
         </div>
 
@@ -656,7 +650,7 @@ export function WelcomeDashboard() {
           className="flex flex-col gap-5 rounded-[20px] border border-border bg-card p-6 sm:p-7"
         >
           <div className="flex items-center justify-between gap-3">
-            <SectionLabel>Manifest</SectionLabel>
+            <SectionEyebrow>Manifest</SectionEyebrow>
             <Link
               href="/manifest/my"
               className="text-[14px] text-muted transition-colors hover:text-foreground"

@@ -25,6 +25,7 @@ import {
   writeFocusSessionHandoff,
 } from "@/lib/focus-session-handoff";
 import { writeFocusActiveIdeateSubtask } from "@/lib/focus-preflight-link";
+import { SectionEyebrow } from "@/components/section-eyebrow";
 
 export type TodayGoalStep = {
   stepTitle: string;
@@ -254,9 +255,7 @@ export function DailyHabitTracker({
       className="flex h-full flex-col gap-1.5 rounded-[20px] border border-border bg-card p-6 sm:p-7"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent-link">
-          Today · {dateLabel}
-        </p>
+        <SectionEyebrow>Today · {dateLabel}</SectionEyebrow>
         <p className="shrink-0 text-[14px] text-muted">
           {streak > 0 ? (
             <>

@@ -19,9 +19,15 @@ import {
   type JournalImportPreviewRow,
 } from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { Calendar, Folder } from "lucide-react";
 import { JournalLockGate } from "@/components/journal-lock-gate";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+import {
+  HEADER_SECTION_TABS_IDLE,
+  HEADER_SECTION_TABS_SELECTED,
+  HEADER_SECTION_TABS_TRACK,
+} from "@/components/header-section-tabs";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import {
   getMedimadeSessionJwt,
@@ -40,7 +46,7 @@ import {
 import {
   emptyGratitudeLines,
   entriesForCloudPut,
-  findGratitudeEntryForLocalDate,
+  findRecentGratitudeWithinHours,
   formatJournalEntryDate,
   gratitudeLinesToHtml,
   groupJournalEntriesByWeek,
@@ -55,7 +61,6 @@ import {
   armJournalMeditationHandoffJson,
   JOURNAL_MEDITATION_PAYLOAD_KEY,
   loadJournalStoreRaw,
-  localDateKey,
   localDateKeyFromIso,
   mostRecentlyUpdatedId,
   mergeRemoteJournalKeepingLocalOnly,
@@ -1321,11 +1326,7 @@ export function JournalView() {
 
   const openTodayGratitude = useCallback(() => {
     flushSaveSync();
-    const todayKey = localDateKey();
-    const existing = findGratitudeEntryForLocalDate(
-      entriesRef.current,
-      todayKey,
-    );
+    const existing = findRecentGratitudeWithinHours(entriesRef.current, 24);
     if (existing) {
       setActiveEntryId(existing.id);
       latestHtmlRef.current = existing.contentHtml;
@@ -1336,9 +1337,9 @@ export function JournalView() {
     }
     const e = newGratitudeJournalEntry();
     const next = [e, ...entriesRef.current];
-      entriesRef.current = next;
+    entriesRef.current = next;
     setEntries(next);
-      persist(next, e.id);
+    persist(next, e.id);
     setActiveEntryId(e.id);
     latestHtmlRef.current = e.contentHtml;
     latestTitleRef.current = e.title;
@@ -1379,19 +1380,23 @@ export function JournalView() {
     if (section !== "journal" && section !== "gratitude") return;
     const prev = prevListSectionRef.current;
     prevListSectionRef.current = section;
-    if (prev === null) {
-      if (section === "gratitude" && !gratitudeEntryIdFromPath(pathname)) {
-        openTodayGratitude();
-      }
-      return;
-    }
-    if (prev === section) return;
+
     if (section === "gratitude") {
-      if (!gratitudeEntryIdFromPath(pathname)) openTodayGratitude();
+      if (gratitudeEntryIdFromPath(pathname)) return;
+      if (
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("new") === "1"
+      ) {
+        return;
+      }
+      // Bare `/journal/my/gratitudes` (breadcrumb, tab, sidebar): last ≤24h or new.
+      openTodayGratitudeCompose();
       return;
     }
+
+    if (prev === null || prev === section) return;
     activateJournalList();
-  }, [hydrated, section, pathname, openTodayGratitude, activateJournalList]);
+  }, [hydrated, section, pathname, openTodayGratitudeCompose, activateJournalList]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1474,12 +1479,14 @@ export function JournalView() {
               flushSaveSync();
               navigate(JOURNAL_SECTION_HREF[id]);
             }}
-            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
+            className={HEADER_SECTION_TABS_TRACK}
+            idleClassName={HEADER_SECTION_TABS_IDLE}
+            selectedClassName={HEADER_SECTION_TABS_SELECTED}
             options={JOURNAL_SECTION_TABS}
           />
         </AppPrimaryTabsDesktop>
         {/* Mobile: keep tabs in-page. */}
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 py-1.5 md:hidden">
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 py-1.5 md:hidden">
           <SegmentedPillTabs
             className="min-w-0 flex-1 shadow-md"
             equalWidth
@@ -1489,9 +1496,10 @@ export function JournalView() {
               flushSaveSync();
               navigate(JOURNAL_SECTION_HREF[id]);
             }}
-            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
+            selectedClassName="bg-selected text-on-selected hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
             options={JOURNAL_SECTION_TABS}
           />
+          <InsightsNeedSupportLink className="shrink-0" />
         </div>
         {importBatchId ? (
           <p className="mt-2 text-sm text-muted">
@@ -1505,12 +1513,10 @@ export function JournalView() {
             </button>
           </p>
         ) : null}
-        {!insightsOpen ? (
-          <div className="mt-2 flex justify-end">
-            <InsightsNeedSupportLink />
-          </div>
-        ) : null}
       </div>
+
+      {/* Desktop: float over journal/insights chrome — must not push layout or sit under rails. */}
+      <InsightsNeedSupportLink className="pointer-events-auto absolute right-4 top-3 z-20 hidden sm:right-6 md:block" />
 
       {insightsMounted ? (
         <div
@@ -1534,7 +1540,7 @@ export function JournalView() {
       >
         {journalTab === "journal" && sidebarCollapsed ? (
           <aside
-            className="relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-1.5 py-3 md:flex"
+            className="relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-sidebar-border bg-surface-rail px-1.5 py-3 md:flex"
           >
             <button
               type="button"
@@ -1544,20 +1550,18 @@ export function JournalView() {
             >
               <JournalSidebarChevron dir="right" />
             </button>
-            <button
-              type="button"
+            <PrimaryCreateButton
+              variant="compact"
               onClick={createEntry}
               aria-label="New entry"
-              className="relative z-[1] flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-sm font-bold text-on-accent"
-            >
-              +
-            </button>
+              className="relative z-[1]"
+            />
           </aside>
         ) : (
         <aside
           className={`flex shrink-0 flex-col ${
             journalTab === "journal" || journalTab === "gratitude"
-              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                   mobileComposeChrome
                     ? "max-sm:hidden"
                     : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
@@ -1578,13 +1582,12 @@ export function JournalView() {
                 >
                   <JournalSidebarChevron dir="left" />
             </button>
-            <button
-              type="button"
-                  onClick={createEntry}
-                  className="min-w-0 flex-1 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+            <PrimaryCreateButton
+              onClick={createEntry}
+              className="min-w-0 flex-1"
             >
-                  + New entry
-            </button>
+              New entry
+            </PrimaryCreateButton>
           </div>
               <div className="flex items-center gap-2">
                 <SearchInput
@@ -1718,14 +1721,13 @@ export function JournalView() {
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
-          <button
-            type="button"
+          <PrimaryCreateButton
             onClick={createEntry}
-                  aria-label="New entry"
-                  className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 sm:hidden"
+            aria-label="New entry"
+            className="shrink-0 py-2 sm:hidden"
           >
-                  + New
-          </button>
+            New
+          </PrimaryCreateButton>
               </div>
               <div className="flex items-center justify-end gap-1.5">
                 {/* sm+: folder + options */}
@@ -1831,13 +1833,12 @@ export function JournalView() {
             </div>
           ) : (
             <div className="relative z-[1] flex flex-col gap-2">
-              <button
-                type="button"
+              <PrimaryCreateButton
                 onClick={openTodayGratitudeCompose}
-                className="w-full cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+                className="w-full"
               >
-                + Add a gratitude for today
-              </button>
+                Add a gratitude for today
+              </PrimaryCreateButton>
               <div className="flex items-center gap-2">
                 <SearchInput
                   className="min-w-0 flex-1"
@@ -2006,7 +2007,7 @@ export function JournalView() {
                             onClick={() => selectEntry(e.id)}
                               className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                               isActive
-                                  ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                  ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                   : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >
@@ -2045,7 +2046,7 @@ export function JournalView() {
                             onClick={() => selectEntry(e.id)}
                             className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                                 isActive
-                                ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                 : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >

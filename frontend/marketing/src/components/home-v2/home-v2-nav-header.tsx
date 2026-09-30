@@ -15,6 +15,7 @@ import {
   HomeV2SiteHeader,
   type HomeV2SiteHeaderSecondaryId,
 } from "@/components/home-v2/home-v2-site-header";
+import { HomeV2ToolIcon } from "@/components/home-v2/home-v2-tool-icon";
 
 function sectionActive(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
@@ -43,7 +44,7 @@ function resolveNav(pathname: string): {
       activeTool: null,
       activeSecondary: "listen",
       ctaHref: HOME_V2_START_FREE_HREF,
-      ctaLabel: "Start free",
+      ctaLabel: "Start free →",
     };
   }
   if (
@@ -55,7 +56,7 @@ function resolveNav(pathname: string): {
       activeTool: null,
       activeSecondary: "read",
       ctaHref: HOME_V2_START_FREE_HREF,
-      ctaLabel: "Start free",
+      ctaLabel: "Start free →",
     };
   }
   if (sectionActive(pathname, HOME_V2_CONNECT_HREF)) {
@@ -64,7 +65,7 @@ function resolveNav(pathname: string): {
       activeTool: null,
       activeSecondary: "connect",
       ctaHref: HOME_V2_START_FREE_HREF,
-      ctaLabel: "Start free",
+      ctaLabel: "Start free →",
     };
   }
   return {
@@ -72,7 +73,7 @@ function resolveNav(pathname: string): {
     activeTool: null,
     activeSecondary: null,
     ctaHref: HOME_V2_START_FREE_HREF,
-    ctaLabel: "Start free",
+    ctaLabel: "Start free →",
   };
 }
 
@@ -90,6 +91,9 @@ export function HomeV2NavHeader() {
     label: t.label,
     href: t.href,
   }));
+  const ctaIcon = activeTool ? (
+    <HomeV2ToolIcon tool={activeTool} />
+  ) : undefined;
 
   return (
     <HomeV2SiteHeader
@@ -102,6 +106,7 @@ export function HomeV2NavHeader() {
       mobileSecondaryLinks={HOME_V2_SITE_HEADER_SECONDARY}
       ctaHref={ctaHref}
       ctaLabel={ctaLabel}
+      ctaIcon={ctaIcon}
       position="sticky"
     />
   );

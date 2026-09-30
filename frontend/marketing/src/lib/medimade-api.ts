@@ -1223,6 +1223,8 @@ export type UserContentSearchHit = {
   body: string;
   href: string;
   updatedAt?: number;
+  /** Cover / vision still for search flyout thumbnails. */
+  imageUrl?: string | null;
 };
 
 /**
@@ -1270,6 +1272,9 @@ export async function searchUserContentRemote(
       body: typeof o.body === "string" ? o.body : "",
       href: typeof o.href === "string" ? o.href : "/",
       ...(typeof o.updatedAt === "number" ? { updatedAt: o.updatedAt } : {}),
+      ...(typeof o.imageUrl === "string" && o.imageUrl.trim()
+        ? { imageUrl: o.imageUrl.trim() }
+        : {}),
     });
   }
   return out;

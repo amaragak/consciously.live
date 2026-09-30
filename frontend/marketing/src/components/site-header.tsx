@@ -39,8 +39,6 @@ const marketingNav: { href: string; label: string }[] = [
   { href: "/connect", label: "Connect" },
   { href: "/read", label: "Read" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/admin", label: "Admin" },
-  { href: "/settings", label: "API" },
 ];
 
 function pricingNavLabel(signedIn: boolean): string {
@@ -239,7 +237,7 @@ export function SiteHeader() {
           <Link href="/" className="relative inline-flex shrink-0 items-center">
             <LogoMark
               size={34}
-              className="relative z-[1] top-px mr-[13px] shrink-0 text-accent-button"
+              className="relative z-[1] top-px mr-[13px] shrink-0 text-[color:var(--header-gold,#d9b87c)]"
             />
             <span className="brand-wordmark relative z-[1] -top-px font-display text-2xl font-medium tracking-tight lowercase">
               consciously

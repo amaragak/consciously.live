@@ -1,15 +1,28 @@
 import { useEffect, useId, useRef, useState } from "react";
 import {
   fetchJournalInsightsPreviewRemote,
+  getMedimadeMediaBaseUrl,
+  listBackgroundAudio,
+  listFishSpeakers,
+  type FishSpeaker,
   type JournalInsightPeriodType,
   type JournalWeeklyPatternsSelection,
 } from "@/lib/medimade-api";
+import {
+  pickDefaultSpeechifySpeaker,
+  speechifySpeakersForPicker,
+} from "@/lib/fish-speakers";
+import {
+  speakerLetterIntroSampleKey,
+  withSpeakerSampleCacheBust,
+} from "@/lib/speaker-sample-speed";
 import {
   addDaysToDate,
   daysBetweenInclusive,
   formatRangeWords,
   MAX_CUSTOM_RANGE_DAYS,
   resolveInsightPeriod,
+  resolveSinceLastLetterPeriod,
   todayInTimeZone,
 } from "@/lib/insight-period";
 import {
@@ -29,6 +42,10 @@ export {
 
 export type InsightsGenerateSelection = {
   letter: boolean;
+  /** Generate Speechify narration after the letter (opt-in). */
+  letterNarration: boolean;
+  /** Speechify voice model id (Beatrice when empty / unavailable). */
+  letterVoiceId: string;
   patterns: JournalWeeklyPatternsSelection;
   remember: boolean;
   periodType: JournalInsightPeriodType;
@@ -67,6 +84,189 @@ function clientTimeZone(): string {
   }
 }
 
+function mediaFileUrl(base: string, key: string): string {
+  return `${base.replace(/\/$/, "")}/${key.replace(/^\//, "")}`;
+}
+
+function NarrateSpeakerSelect({
+  voices,
+  value,
+  onChange,
+  disabled,
+  previewUrlFor,
+}: {
+  voices: FishSpeaker[];
+  value: string;
+  onChange: (modelId: string) => void;
+  disabled?: boolean;
+  previewUrlFor: (modelId: string) => string | null;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const optionAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const selected = voices.find((s) => s.modelId === value);
+  const label = selected?.name || "Speaker";
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      const t = e.target as Node | null;
+      if (!t || rootRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) return;
+    optionAudioRef.current?.pause();
+    setPreviewingId(null);
+  }, [open]);
+
+  useEffect(
+    () => () => {
+      const el = optionAudioRef.current;
+      if (el) {
+        el.pause();
+        el.removeAttribute("src");
+      }
+    },
+    [],
+  );
+
+  async function toggleOptionPreview(modelId: string) {
+    const el = optionAudioRef.current;
+    const url = previewUrlFor(modelId);
+    if (!el || !url) return;
+    if (previewingId === modelId && !el.paused) {
+      el.pause();
+      setPreviewingId(null);
+      return;
+    }
+    el.loop = false;
+    if (el.src !== url) {
+      el.src = url;
+      el.load();
+    }
+    try {
+      await el.play();
+      setPreviewingId(modelId);
+    } catch {
+      setPreviewingId(null);
+    }
+  }
+
+  return (
+    <div ref={rootRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        disabled={disabled || voices.length === 0}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Narration speaker"
+        title={label}
+        onClick={() => {
+          if (disabled || voices.length === 0) return;
+          setOpen((v) => !v);
+        }}
+        className="flex w-full min-w-0 items-center gap-1 rounded-[10px] border border-border bg-card px-2.5 py-1.5 text-left text-sm disabled:opacity-50"
+      >
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+          {voices.length === 0 ? "Loading…" : label}
+        </span>
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-[90] mt-1 max-h-56 min-w-full overflow-auto rounded-xl border border-border bg-card py-1 shadow-xl"
+          role="listbox"
+        >
+          {voices.map((s) => (
+            <div
+              key={s.modelId}
+              className="flex items-center gap-1 pr-1.5 hover:bg-background"
+            >
+              <button
+                type="button"
+                className={`min-w-0 flex-1 truncate px-3 py-1.5 text-left text-sm ${
+                  s.modelId === value
+                    ? "font-medium text-foreground"
+                    : "text-muted"
+                }`}
+                onClick={() => {
+                  onChange(s.modelId);
+                  setOpen(false);
+                }}
+              >
+                {s.name}
+              </button>
+              <button
+                type="button"
+                disabled={!previewUrlFor(s.modelId)}
+                aria-label={
+                  previewingId === s.modelId
+                    ? `Pause ${s.name} sample`
+                    : `Play ${s.name} sample`
+                }
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void toggleOptionPreview(s.modelId);
+                }}
+                className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-accent-link transition-colors hover:bg-accent-soft/50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {previewingId === s.modelId ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width={14}
+                    height={14}
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                  </svg>
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width={14}
+                    height={14}
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M8 5v14l11-7L8 5z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <audio
+        ref={optionAudioRef}
+        className="hidden"
+        playsInline
+        onEnded={() => setPreviewingId(null)}
+      />
+    </div>
+  );
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -75,6 +275,11 @@ type Props = {
   meditationCount: number;
   weekStartLabel: string;
   prefill?: InsightsGeneratePrefill | null;
+  /**
+   * Inclusive end day of the most recent insights letter/range.
+   * Enables “Since your last letter” (starts the day after).
+   */
+  lastLetterEndDate?: string | null;
 };
 
 export function InsightsGenerateDialog({
@@ -85,6 +290,7 @@ export function InsightsGenerateDialog({
   meditationCount,
   weekStartLabel: _weekStartLabel,
   prefill = null,
+  lastLetterEndDate = null,
 }: Props) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -92,6 +298,10 @@ export function InsightsGenerateDialog({
   const timeZone = clientTimeZone();
 
   const [letter, setLetter] = useState(true);
+  const [letterNarration, setLetterNarration] = useState(false);
+  const [letterVoiceId, setLetterVoiceId] = useState("");
+  const [speechifySpeakers, setSpeechifySpeakers] = useState<FishSpeaker[]>([]);
+  const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(null);
   const [patterns, setPatterns] = useState(true);
   const [felt, setFelt] = useState(true);
   const [moved, setMoved] = useState(true);
@@ -109,6 +319,7 @@ export function InsightsGenerateDialog({
   const [previewBusy, setPreviewBusy] = useState(false);
 
   const today = todayInTimeZone(timeZone);
+  const sinceLastAvailable = Boolean(lastLetterEndDate);
   const resolvedPeriod = (() => {
     if (lockPeriod && customFrom && customTo) {
       return resolveInsightPeriod({
@@ -126,10 +337,21 @@ export function InsightsGenerateDialog({
         timeZone,
       });
     }
+    if (periodPreset === "sinceLast") {
+      if (!lastLetterEndDate) {
+        return {
+          ok: false as const,
+          error: "Generate a letter first to use this range",
+        };
+      }
+      return resolveSinceLastLetterPeriod(lastLetterEndDate, timeZone);
+    }
     return resolveInsightPeriod({ periodType: periodPreset, timeZone });
   })();
   const rangeError =
-    periodPreset === "custom" && !lockPeriod && !resolvedPeriod.ok
+    !lockPeriod &&
+    (periodPreset === "custom" || periodPreset === "sinceLast") &&
+    !resolvedPeriod.ok
       ? resolvedPeriod.error
       : null;
 
@@ -149,12 +371,20 @@ export function InsightsGenerateDialog({
         nextLock = true;
         from = prefill.startDate;
         to = prefill.endDate;
-        if (prefill.periodType === "last7" || prefill.periodType === "last30") {
+        if (
+          prefill.periodType === "last7" ||
+          prefill.periodType === "last30" ||
+          prefill.periodType === "sinceLast"
+        ) {
           nextPreset = prefill.periodType;
         } else {
           nextPreset = "custom";
         }
-      } else if (prefill.periodType === "last7" || prefill.periodType === "last30") {
+      } else if (
+        prefill.periodType === "last7" ||
+        prefill.periodType === "last30" ||
+        prefill.periodType === "sinceLast"
+      ) {
         nextPreset = prefill.periodType;
       } else if (prefill.startDate && prefill.endDate) {
         const asLast7 = resolveInsightPeriod({
@@ -184,7 +414,14 @@ export function InsightsGenerateDialog({
         }
       }
     }
+    if (nextPreset === "sinceLast" && !lastLetterEndDate) {
+      nextPreset = "last7";
+    }
     setLetter(nextLetter);
+    setLetterNarration(nextLetter ? prefs.letterNarration === true : false);
+    setLetterVoiceId(
+      typeof prefs.letterVoiceId === "string" ? prefs.letterVoiceId.trim() : "",
+    );
     setPatterns(nextPatterns);
     setFelt(prefs.felt);
     setMoved(prefs.moved);
@@ -218,6 +455,37 @@ export function InsightsGenerateDialog({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once per open
   }, [open, prefill]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const envMedia = getMedimadeMediaBaseUrl();
+    void listBackgroundAudio()
+      .then((data) => {
+        if (cancelled) return;
+        const fromApi = data.baseUrl?.trim();
+        setMediaBaseUrl(fromApi || envMedia || null);
+      })
+      .catch(() => {
+        if (!cancelled) setMediaBaseUrl(envMedia || null);
+      });
+    void listFishSpeakers()
+      .then((sp) => {
+        if (cancelled) return;
+        const next = speechifySpeakersForPicker(sp ?? []);
+        setSpeechifySpeakers(next);
+        setLetterVoiceId((current) => {
+          if (current && next.some((s) => s.modelId === current)) return current;
+          return pickDefaultSpeechifySpeaker(next)?.modelId ?? "";
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSpeechifySpeakers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !resolvedPeriod.ok) return;
@@ -324,6 +592,13 @@ export function InsightsGenerateDialog({
     if (periodPreset === "last30") {
       return `From your ${n} ${entryWord}${medPart} in the last 30 days.`;
     }
+    if (periodPreset === "sinceLast") {
+      const range = formatRangeWords(
+        resolvedPeriod.period.startDate,
+        resolvedPeriod.period.endDate,
+      );
+      return `From your ${n} ${entryWord}${medPart} since your last letter (${range}).`;
+    }
     const range = formatRangeWords(
       resolvedPeriod.period.startDate,
       resolvedPeriod.period.endDate,
@@ -335,6 +610,11 @@ export function InsightsGenerateDialog({
     if (!canGo || !resolvedPeriod.ok) return;
     const selection: InsightsGenerateSelection = {
       letter,
+      letterNarration: letter && letterNarration,
+      letterVoiceId:
+        letter && letterNarration && letterVoiceId.trim()
+          ? letterVoiceId.trim()
+          : "",
       patterns: patternsEffective
         ? { felt, moved, wins, thought }
         : { felt: false, moved: false, wins: false, thought: false },
@@ -347,6 +627,11 @@ export function InsightsGenerateDialog({
     writeInsightsGeneratePrefs({
       remember,
       letter,
+      letterNarration: letter && letterNarration,
+      letterVoiceId:
+        letter && letterNarration && letterVoiceId.trim()
+          ? letterVoiceId.trim()
+          : "",
       patterns: patternsEffective,
       felt,
       moved,
@@ -389,13 +674,22 @@ export function InsightsGenerateDialog({
     }
   };
 
-  const segBtn = (id: InsightsPeriodPreset, label: string) => (
+  const segBtn = (
+    id: InsightsPeriodPreset,
+    label: string,
+    opts?: { disabled?: boolean; title?: string },
+  ) => (
     <button
       key={id}
       type="button"
       aria-pressed={periodPreset === id}
-      onClick={() => setPeriodPreset(id)}
-      className={`flex-1 cursor-pointer rounded-[10px] border px-2 py-2.5 text-[13px] sm:text-[15px] ${
+      disabled={opts?.disabled}
+      title={opts?.title}
+      onClick={() => {
+        if (opts?.disabled) return;
+        setPeriodPreset(id);
+      }}
+      className={`flex-1 cursor-pointer rounded-[10px] border px-2 py-2.5 text-[13px] sm:text-[15px] disabled:cursor-not-allowed disabled:opacity-45 ${
         periodPreset === id
           ? "border-border bg-card font-semibold text-foreground shadow-sm"
           : "border-transparent bg-transparent font-medium text-muted"
@@ -453,7 +747,9 @@ export function InsightsGenerateDialog({
                   ? "Last 7 days"
                   : periodPreset === "last30"
                     ? "Last 30 days"
-                    : "Custom range"}
+                    : periodPreset === "sinceLast"
+                      ? "Since your last letter"
+                      : "Custom range"}
                 {" · "}
                 {formatRangeWords(
                   resolvedPeriod.period.startDate,
@@ -469,11 +765,40 @@ export function InsightsGenerateDialog({
               >
                 Covering
               </span>
-              <div className="flex gap-1 rounded-[14px] bg-[color:var(--border-subtle,#F0E7DA)] p-1">
-                {segBtn("last7", "Last 7 days")}
-                {segBtn("last30", "Last 30 days")}
-                {segBtn("custom", "Custom…")}
+              <div className="flex flex-col gap-1 rounded-[14px] bg-[color:var(--border-subtle,#F0E7DA)] p-1">
+                <div className="flex gap-1">
+                  {segBtn("last7", "Last 7 days")}
+                  {segBtn("last30", "Last 30 days")}
+                  {segBtn("custom", "Custom…")}
+                </div>
+                {segBtn(
+                  "sinceLast",
+                  "Since your last letter",
+                  sinceLastAvailable
+                    ? undefined
+                    : {
+                        disabled: true,
+                        title: "Generate a letter first to use this range",
+                      },
+                )}
               </div>
+              {periodPreset === "sinceLast" ? (
+                <div className="flex flex-col gap-1 pt-0.5">
+                  {resolvedPeriod.ok ? (
+                    <p className="text-[13px] text-muted">
+                      From{" "}
+                      {formatRangeWords(
+                        resolvedPeriod.period.startDate,
+                        resolvedPeriod.period.endDate,
+                      )}{" "}
+                      — the day after your last letter through today.
+                    </p>
+                  ) : null}
+                  {rangeError ? (
+                    <p className="text-[13px] text-danger">{rangeError}</p>
+                  ) : null}
+                </div>
+              ) : null}
               {periodPreset === "custom" ? (
                 <div className="flex flex-col gap-1.5 pt-1">
                   <div className="flex gap-3">
@@ -518,7 +843,11 @@ export function InsightsGenerateDialog({
             <input
               type="checkbox"
               checked={letter}
-              onChange={(e) => setLetter(e.target.checked)}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setLetter(next);
+                if (!next) setLetterNarration(false);
+              }}
               className="mt-0.5 size-[18px] shrink-0 accent-[var(--accent,#C98A55)]"
             />
             <span className="flex min-w-0 flex-col gap-0.5">
@@ -531,6 +860,48 @@ export function InsightsGenerateDialog({
               </span>
             </span>
           </label>
+          {letter ? (
+            <div className="ml-[30px] flex flex-col gap-1.5 rounded-xl border border-border bg-card/60 px-3.5 py-2.5">
+              <div className="flex items-center gap-2.5">
+                <input
+                  id="insights-letter-narrate"
+                  type="checkbox"
+                  checked={letterNarration}
+                  onChange={(e) => setLetterNarration(e.target.checked)}
+                  className="size-4 shrink-0 cursor-pointer accent-[var(--accent,#C98A55)]"
+                />
+                <label
+                  htmlFor="insights-letter-narrate"
+                  className="shrink-0 cursor-pointer text-sm font-semibold leading-tight text-foreground"
+                >
+                  Narrate with
+                </label>
+                <NarrateSpeakerSelect
+                  voices={speechifySpeakers}
+                  value={letterVoiceId}
+                  onChange={setLetterVoiceId}
+                  disabled={!letterNarration}
+                  previewUrlFor={(modelId) => {
+                    if (!mediaBaseUrl || !modelId) return null;
+                    const speaker = speechifySpeakers.find(
+                      (s) => s.modelId === modelId,
+                    );
+                    return withSpeakerSampleCacheBust(
+                      mediaFileUrl(
+                        mediaBaseUrl,
+                        speakerLetterIntroSampleKey(modelId),
+                      ),
+                      speaker?.updatedAt,
+                    );
+                  }}
+                />
+              </div>
+              <p className="pl-[26px] text-[13px] leading-snug text-muted">
+                Spoken version of the letter (no music). Takes a minute or two
+                after the letter is ready.
+              </p>
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-1 rounded-xl border border-border bg-card px-3.5 py-3">
             <label className="flex cursor-pointer gap-3">

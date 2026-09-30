@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   getMedimadeSessionJwt,
@@ -16,6 +16,7 @@ import {
   ColorSchemePicker,
   COLOR_SCHEME_OPTIONS_HOME_V2,
 } from "@consciously/common";
+import { HomeV2ToolIcon } from "@/components/home-v2/home-v2-tool-icon";
 
 function hasSession(): boolean {
   return isMedimadeSessionActive() && Boolean(getMedimadeSessionJwt());
@@ -59,7 +60,7 @@ export function HeroPrompt() {
     <div className="flex w-full flex-col gap-3.5 pt-2">
       <form
         onSubmit={(e) => void onSubmit(e)}
-        className="home-v2-prompt-shell home-v2-hero-glass flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[rgb(var(--hv2-gold-rgb)/0.5)] md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)]"
+        className="home-v2-prompt-shell home-v2-hero-glass flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[rgb(var(--hv2-gold-rgb)/0.45)] md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)] md:transition-[border-color,box-shadow] md:duration-200 md:ease-out md:hover:border-[var(--hv2-gold)] md:hover:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.35)] md:focus-within:border-[var(--hv2-gold)] md:focus-within:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.45)]"
       >
         <label htmlFor="home-v2-hero-prompt" className="sr-only">
           What would you like a meditation for?
@@ -71,14 +72,21 @@ export function HeroPrompt() {
           onChange={(e) => setPrompt(e.target.value)}
           disabled={busy}
           placeholder="Calm before my big pitch, confidence for launch day, deeper sleep…"
-          className="home-v2-prompt-input h-12 min-w-0 flex-1 rounded-2xl border border-[rgb(var(--hv2-gold-rgb)/0.5)] bg-[var(--hv2-hero-input-bg)] px-5 text-base text-[var(--hv2-hero-input-fg)] shadow-[var(--hv2-hero-elev)] placeholder:text-[var(--hv2-hero-placeholder)] outline-none md:h-11 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[19px] md:shadow-none"
+          className="home-v2-prompt-input h-12 min-w-0 flex-1 rounded-2xl border border-[rgb(var(--hv2-gold-rgb)/0.45)] bg-[var(--hv2-hero-input-bg)] px-5 text-base text-[var(--hv2-hero-input-fg)] shadow-[var(--hv2-hero-elev)] outline-none transition-[border-color,box-shadow] duration-200 ease-out placeholder:text-[var(--hv2-hero-placeholder)] hover:border-[var(--hv2-gold)] focus:border-[var(--hv2-gold)] focus:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.45)] md:h-11 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[19px] md:shadow-none md:hover:border-0 md:focus:border-0 md:focus:shadow-none"
         />
         <button
           type="submit"
           disabled={busy || !prompt.trim()}
-          className="h-12 shrink-0 rounded-full bg-[var(--hv2-gold)] px-7 text-base font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 disabled:opacity-50 md:h-12 md:px-7 md:text-[17px]"
+          className="accent-fill-gradient inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full px-7 text-base font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 md:h-12 md:px-7 md:text-[17px]"
         >
-          {busy ? "Creating…" : "Create my meditation"}
+          {busy ? (
+            "Creating…"
+          ) : (
+            <>
+              <HomeV2ToolIcon tool="meditate" />
+              Create my meditation
+            </>
+          )}
         </button>
       </form>
       <p className="px-0 text-center text-[13px] text-[var(--hv2-hero-nav-muted)] md:px-[30px] md:text-left md:text-[15px]">
@@ -99,10 +107,13 @@ export function HomeV2AuthActions({
   compact,
   ctaHref,
   ctaLabel,
+  ctaIcon,
 }: {
   compact?: boolean;
   ctaHref: string;
   ctaLabel: string;
+  /** Sidebar-matching glyph for tool CTAs (not Start free / Dashboard). */
+  ctaIcon?: ReactNode;
 }) {
   const [signedIn, setSignedIn] = useState(false);
   const [dashboardBusy, setDashboardBusy] = useState(false);
@@ -127,11 +138,11 @@ export function HomeV2AuthActions({
               navigateToSpa("/").finally(() => setDashboardBusy(false)),
             );
           }}
-          className={`rounded-full bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 disabled:opacity-50 ${
+          className={`accent-fill-gradient rounded-full font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${
             compact ? "px-5 py-2.5 text-[15px]" : "px-[22px] py-3 text-[15px]"
           }`}
         >
-          {dashboardBusy ? "Opening…" : "Dashboard"}
+          {dashboardBusy ? "Opening…" : "Dashboard →"}
         </button>
         <HomeV2AccountMenu />
       </div>
@@ -148,12 +159,13 @@ export function HomeV2AuthActions({
       </Link>
       <Link
         href={ctaHref}
-        className={`whitespace-nowrap rounded-full bg-[var(--hv2-gold)] text-center font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 ${
+        className={`accent-fill-gradient inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-center font-semibold transition-opacity hover:opacity-90 ${
           compact
             ? "min-w-[180px] px-5 py-2.5 text-[15px]"
             : "px-[22px] py-3 text-[15px]"
         }`}
       >
+        {ctaIcon}
         {ctaLabel}
       </Link>
     </div>

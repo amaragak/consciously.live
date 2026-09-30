@@ -7,7 +7,12 @@
  * local midnight-to-midnight bounds.
  */
 
-export type InsightPeriodType = "last7" | "last30" | "custom" | "week";
+export type InsightPeriodType =
+  | "last7"
+  | "last30"
+  | "custom"
+  | "week"
+  | "sinceLast";
 
 export const MAX_CUSTOM_RANGE_DAYS = 90;
 
@@ -181,7 +186,13 @@ export function weekBoundsForDate(dateStr: string): {
 }
 
 export function parsePeriodType(raw: unknown): InsightPeriodType | null {
-  if (raw === "last7" || raw === "last30" || raw === "custom" || raw === "week") {
+  if (
+    raw === "last7" ||
+    raw === "last30" ||
+    raw === "custom" ||
+    raw === "week" ||
+    raw === "sinceLast"
+  ) {
     return raw;
   }
   return null;

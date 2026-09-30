@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, MoreHorizontal } from "lucide-react";
 import { IconPlus } from "@tabler/icons-react";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { MixerChannel, MixerVoiceChannel } from "@/components/mixer-channel";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
 import { FactoryIconSelect } from "@/components/factory-icons";
@@ -1123,16 +1124,14 @@ export function MixerSoundsStudio({
           <p className="text-sm text-muted">
             Factory presets shown on the Sounds page. Save publishes to everyone.
           </p>
-          <button
-            type="button"
+          <PrimaryCreateButton
             onClick={createNew}
-            className="ml-auto inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 sm:px-3"
+            className="ml-auto sm:px-3"
             aria-label="New mix"
           >
-            <IconPlus size={18} stroke={2} className="sm:hidden" aria-hidden />
             <span className="sm:hidden">New</span>
-            <span className="hidden sm:inline">+ New mix</span>
-          </button>
+            <span className="hidden sm:inline">New mix</span>
+          </PrimaryCreateButton>
         </div>
       ) : null}
 
@@ -1242,7 +1241,7 @@ export function MixerSoundsStudio({
                           <div
                             className={`flex items-stretch rounded-xl border transition-colors ${
                               isActive
-                                ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                 : "border-border bg-background text-foreground hover:border-accent/40"
                             }`}
                           >

@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   SETTINGS_NAV,
@@ -16,8 +16,9 @@ export function parseSettingsSection(
   return SECTION_IDS.has(raw) ? (raw as SettingsSectionId) : null;
 }
 
-function useIsMobileNav(): boolean {
-  const [mobile, setMobile] = useState(false);
+/** `null` until the first media query sync — avoids desktop redirect on mobile. */
+function useIsMobileNav(): boolean | null {
+  const [mobile, setMobile] = useState<boolean | null>(null);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
     const sync = () => setMobile(mq.matches);
@@ -51,27 +52,30 @@ export function SettingsShell({
     (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim() ||
     "0.1.0";
 
-  // Desktop: `/settings` shows Account in place (no redirect). A navigate to
-  // `/settings/account` used to race the catch-all `*` route and bounce home
-  // when the section route wasn't registered yet (HMR / older bundles).
   const activeSection: SettingsSectionId | null = useMemo(() => {
-    if (isMobile) return sectionParam;
-    return sectionParam ?? "account";
+    if (isMobile === true) return sectionParam;
+    if (isMobile === false) return sectionParam ?? "account";
+    return sectionParam;
   }, [isMobile, sectionParam]);
+
+  // Wait for viewport; then desktop bare `/settings` → account in the URL.
+  if (isMobile === null) {
+    return (
+      <div className="flex min-h-0 flex-1 items-start justify-center px-3 py-3 text-sm text-muted">
+        Loading…
+      </div>
+    );
+  }
+  if (!isMobile && !sectionParam) {
+    return <Navigate to="/settings/account" replace />;
+  }
 
   const showList = isMobile && !sectionParam;
   const showSection = !isMobile || Boolean(sectionParam);
 
-  const header = (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="space-y-1.5">
-        <h1 className="font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-          Settings
-        </h1>
-        <p className="max-w-xl text-sm leading-relaxed text-muted">
-          Changes save automatically. Everything starts at the most private
-          option.
-        </p>
+  const statusBanner =
+    loadError || saveError || savedVisible ? (
+      <div className="flex flex-wrap items-center gap-2">
         {loadError ? (
           <p className="text-sm text-danger" role="alert">
             {loadError}
@@ -82,26 +86,22 @@ export function SettingsShell({
             {saveError}
           </p>
         ) : null}
+        {savedVisible ? (
+          <p
+            role="status"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-foreground"
+          >
+            <span aria-hidden="true">✓</span> Saved
+          </p>
+        ) : null}
       </div>
-      {savedVisible ? (
-        <p
-          role="status"
-          className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-border bg-card px-3 py-1.5 text-sm text-foreground sm:self-auto"
-        >
-          <span aria-hidden="true">✓</span> Saved
-        </p>
-      ) : null}
-    </div>
-  );
+    ) : null;
 
   const nav = (
     <nav
       aria-label="Settings sections"
-      className="flex h-full flex-col gap-0.5 border-border bg-background/60 px-3 py-6 md:w-56 md:shrink-0 md:border-r lg:w-60"
+      className="flex h-full flex-col gap-0.5 border-border bg-background/60 px-3 py-4 md:w-56 md:shrink-0 md:border-r lg:w-60"
     >
-      <p className="px-3 pb-2 text-[11px] font-medium uppercase tracking-widest text-muted">
-        Settings
-      </p>
       {SETTINGS_NAV.map((item) => {
         const active = activeSection === item.id;
         return (
@@ -136,8 +136,8 @@ export function SettingsShell({
     mainContent = <p className="text-sm text-muted">Loading settings…</p>;
   } else if (showList) {
     mainContent = (
-      <div className="space-y-6">
-        {header}
+      <div className="space-y-4">
+        {statusBanner}
         <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
           {SETTINGS_NAV.map((item) => (
             <li key={item.id}>
@@ -169,35 +169,21 @@ export function SettingsShell({
     );
   } else if (showSection && activeSection) {
     mainContent = (
-      <div className="space-y-8">
-        {isMobile ? (
-          <button
-            type="button"
-            className="text-sm font-medium text-muted hover:text-foreground"
-            onClick={() => navigate("/settings")}
-          >
-            ← All settings
-          </button>
-        ) : (
-          header
-        )}
+      <div className="space-y-4">
         {isMobile ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="font-display text-2xl font-medium tracking-tight">
-              {SETTINGS_NAV.find((n) => n.id === activeSection)?.label}
-            </h1>
-            {savedVisible ? (
-              <p role="status" className="text-sm text-muted">
-                ✓ Saved
-              </p>
-            ) : null}
-            {saveError ? (
-              <p role="alert" className="w-full text-sm text-danger">
-                {saveError}
-              </p>
-            ) : null}
+            <button
+              type="button"
+              className="text-sm font-medium text-muted hover:text-foreground"
+              onClick={() => navigate("/settings")}
+            >
+              ← All settings
+            </button>
+            {statusBanner}
           </div>
-        ) : null}
+        ) : (
+          statusBanner
+        )}
         <SettingsSectionContent
           section={activeSection}
           settings={settings}
@@ -212,7 +198,7 @@ export function SettingsShell({
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       {!isMobile ? nav : null}
-      <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-4 py-6 sm:px-6 md:py-10">
+      <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-3 py-3 sm:px-4 md:py-4">
         <div className="w-full max-w-[760px]">{mainContent}</div>
       </div>
     </div>

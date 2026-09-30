@@ -6,11 +6,11 @@ import {
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   IconAdjustmentsHorizontal,
-  IconPlus,
   IconSparkles,
 } from "@tabler/icons-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
 import {
   type LibraryMeditationItem,
   type LibraryProgram,
@@ -69,6 +69,11 @@ import {
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+import {
+  HEADER_SECTION_TABS_IDLE,
+  HEADER_SECTION_TABS_SELECTED,
+  HEADER_SECTION_TABS_TRACK,
+} from "@/components/header-section-tabs";
 import {
   MixEditorPanel,
   SOUNDSCAPE_MIX_GAIN,
@@ -2290,7 +2295,9 @@ export default function LibraryView({
             aria-label="Library section"
             value={libraryTab}
             onChange={(id) => goToLibraryTab(id)}
-            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
+            className={HEADER_SECTION_TABS_TRACK}
+            idleClassName={HEADER_SECTION_TABS_IDLE}
+            selectedClassName={HEADER_SECTION_TABS_SELECTED}
             options={LIBRARY_MAIN_TABS.map((tab) => ({
               id: tab.id,
               label: tab.label,
@@ -2305,31 +2312,30 @@ export default function LibraryView({
             aria-label="Library section"
             value={libraryTab}
             onChange={(id) => goToLibraryTab(id)}
-            selectedClassName="accent-fill-gradient text-on-accent hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
+            selectedClassName="bg-selected text-on-selected hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
             options={LIBRARY_MAIN_TABS.map((tab) => ({
               id: tab.id,
               label: tab.shortLabel,
             }))}
           />
-          <Link
+          <PrimaryCreateButton
+            variant="compact"
             to="/meditate/create"
             aria-label="Create new meditation"
-            className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent shadow-sm transition-opacity hover:opacity-90"
-          >
-            <IconPlus size={22} stroke={2.25} aria-hidden />
-          </Link>
+            className="h-[38px] w-[38px] shadow-sm"
+          />
         </div>
         {libraryTab === "meditations" ? (
           <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
             <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
               A library for your inner life
             </h1>
-            <Link
+            <PrimaryCreateButton
               to="/meditate/create"
-              className="hidden shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 md:inline-flex"
+              className="hidden shrink-0 shadow-sm md:inline-flex"
             >
-              + Create new
-            </Link>
+              Create new
+            </PrimaryCreateButton>
           </div>
         ) : null}
         {libraryTab === "community" ? (
@@ -2337,12 +2343,12 @@ export default function LibraryView({
             <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
               Quiet practices, openly shared
             </h1>
-            <Link
+            <PrimaryCreateButton
               to="/meditate/create"
-              className="hidden shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-3 py-2.5 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 md:inline-flex"
+              className="hidden shrink-0 shadow-sm md:inline-flex"
             >
-              + Create new
-            </Link>
+              Create new
+            </PrimaryCreateButton>
           </div>
         ) : null}
         {libraryTab === "programs" ? (
@@ -2362,13 +2368,13 @@ export default function LibraryView({
                 Make it your own
               </Link>
             ) : (
-              <Link
+              <PrimaryCreateButton
                 to="/meditate/create"
-                className={`hidden shrink-0 px-3 py-2.5 md:inline-flex ${makeItYourOwnClassName}`}
+                className={`hidden shrink-0 md:inline-flex ${makeItYourOwnClassName}`}
                 style={makeItYourOwnStyle}
               >
-                + Create new
-              </Link>
+                Create new
+              </PrimaryCreateButton>
             )}
           </div>
         ) : null}

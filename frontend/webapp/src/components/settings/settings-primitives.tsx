@@ -32,7 +32,7 @@ export function SettingsSwitch({
         onCheckedChange(!checked);
       }}
       className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-accent" : "bg-border"
+        checked ? "bg-accent-button" : "bg-border"
       }`}
     >
       <span

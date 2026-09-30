@@ -1,26 +1,34 @@
 "use client";
 
-import { Link, usePathname, useRouter  } from "@/lib/spa-nav";
-import {
-  Fragment,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { createPortal } from "react-dom";
+import { ColorSchemePicker } from "@consciously/common";
+import { Settings, Shield } from "lucide-react";
+import { Link, usePathname } from "@/lib/spa-nav";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo-mark";
-import { AppPrimaryTabsSlot, AppTopBarTrailingSlot } from "@/components/app-primary-tabs";
+import {
+  AppPrimaryTabsSlot,
+  AppTopBarTrailingSlot,
+} from "@/components/app-primary-tabs";
 import { AppGlobalSearch } from "@/components/app-global-search";
 import { AppNotificationsBell } from "@/components/app-notifications-bell";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
-  buildAppBreadcrumbs,
-  type AppBreadcrumbCrumb,
+  AppBreadcrumb,
+  AppBreadcrumbBack,
+} from "@/components/app-breadcrumb";
+import {
+  resolveAppHeaderLocation,
+  APP_SIDEBAR_ICON_INSET_PX,
+  isOwnerAdminAccount,
+  type AppHeaderLocation,
 } from "@/lib/app-nav";
 import { ASSISTANT_CHAT_STORE_CHANGED } from "@/lib/assistant-chat-storage";
-import { enterMarketingPreviewMode } from "@/lib/marketing-preview";
 import { appHref, isCrossOriginApp } from "@/lib/app-origins";
+import {
+  clearMedimadeSession,
+  getMedimadeSessionDisplayName,
+  getMedimadeSessionEmail,
+} from "@/lib/auth-session";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
@@ -28,18 +36,6 @@ import {
   readCreateSession,
 } from "@/lib/create-session-storage";
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
-
-function useAdminUnlocked(): boolean {
-  const [unlocked, setUnlocked] = useState(false);
-  useEffect(() => {
-    try {
-      setUnlocked(window.localStorage.getItem("mm_admin_unlocked") === "1");
-    } catch {
-      setUnlocked(false);
-    }
-  }, []);
-  return unlocked;
-}
 import {
   deriveEntryTitle,
   formatJournalEntryDate,
@@ -52,6 +48,76 @@ import {
   getJournalEntryLiveTitle,
   subscribeJournalEntryLiveTitle,
 } from "@/lib/journal-entry-live-title";
+
+function accountLabelFromSession(): string {
+  return (
+    getMedimadeSessionDisplayName()?.trim() ||
+    getMedimadeSessionEmail()?.trim() ||
+    "Guest"
+  );
+}
+
+function AccountMenu({ accountLabel }: { accountLabel: string }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const initial = (accountLabel.trim()[0] || "G").toUpperCase();
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account: ${accountLabel}`}
+        title={accountLabel}
+        onClick={() => setOpen((v) => !v)}
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-gold text-xs font-semibold text-on-accent transition-opacity hover:opacity-90"
+      >
+        {initial}
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-0 top-full z-[140] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card py-1.5 text-foreground shadow-[0_8px_24px_color-mix(in_srgb,var(--overlay)_16%,transparent)]"
+        >
+          <p className="truncate px-4 py-2.5 text-sm text-muted">
+            Signed in as{" "}
+            <span className="font-medium text-foreground">{accountLabel}</span>
+          </p>
+          <div className="my-1 border-t border-border-subtle" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              clearMedimadeSession();
+            }}
+            className="block w-full cursor-pointer px-4 py-2 text-left text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function lifeAreaTitleFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/);
@@ -154,210 +220,93 @@ function gratitudeEntryLabelFromPath(pathname: string): string | null {
   }
 }
 
-function BreadcrumbChevron() {
+function BrandPhrase({
+  verb,
+  size,
+  className,
+}: {
+  verb: string;
+  size: "desktop" | "mobile";
+  className?: string;
+}) {
+  const markSize = size === "desktop" ? 28 : 22;
+  const textPx = size === "desktop" ? 22 : 19;
   return (
     <span
-      className="mx-0.5 inline-flex shrink-0 items-center text-muted md:mx-2.5"
-      aria-hidden
+      className={`inline-flex shrink-0 items-baseline ${className ?? ""}`}
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="15"
-        height="15"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.25"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="opacity-70"
+      <Link
+        href="/"
+        title="consciously"
+        aria-label="consciously home"
+        className="inline-flex items-baseline"
       >
-        <path d="M9 6l6 6-6 6" />
-      </svg>
+        <LogoMark
+          size={markSize}
+          className="app-header-brand-sun relative top-[0.12em] mr-2 shrink-0 self-center"
+        />
+        <span
+          className="brand-wordmark relative shrink-0 font-display font-normal lowercase tracking-tight text-nav-foreground"
+          style={{ fontSize: textPx }}
+        >
+          consciously
+        </span>
+      </Link>
+      {verb ? (
+        <span
+          className="app-header-section-verb relative ml-[7px] shrink-0 font-display font-normal italic tracking-tight"
+          style={{ fontSize: textPx }}
+        >
+          {verb}
+        </span>
+      ) : null}
     </span>
   );
 }
 
-function BreadcrumbCrumb({
-  crumb,
-  last,
-  allowTruncate,
-}: {
-  crumb: AppBreadcrumbCrumb;
-  last: boolean;
-  /** Only the current (usually title) crumb should truncate. */
-  allowTruncate: boolean;
-}) {
-  const textClass = allowTruncate ? "min-w-0 truncate" : "shrink-0";
-  if (last || !crumb.href) {
-    return (
-      <span
-        className={`${textClass} ${
-          last ? "text-foreground" : "app-breadcrumb-plain italic text-muted"
-        }`}
-      >
-        {crumb.label}
-      </span>
-    );
-  }
-  return (
-    <Link
-      href={crumb.href}
-      className={`${textClass} app-breadcrumb-parent underline-offset-2 hover:underline`}
-    >
-      {crumb.label}
-    </Link>
-  );
-}
-
-function MobileBreadcrumbEllipsis({
-  intermediates,
-}: {
-  intermediates: AppBreadcrumbCrumb[];
-}) {
-  const [open, setOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
-    null,
-  );
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useLayoutEffect(() => {
-    if (!open || !buttonRef.current) {
-      setMenuPos(null);
-      return;
-    }
-    const rect = buttonRef.current.getBoundingClientRect();
-    setMenuPos({
-      top: rect.bottom + 6,
-      left: rect.left + rect.width / 2,
-    });
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: PointerEvent) {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (buttonRef.current?.contains(t) || menuRef.current?.contains(t)) {
-        return;
-      }
-      setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    function onReposition() {
-      if (!buttonRef.current) return;
-      const rect = buttonRef.current.getBoundingClientRect();
-      setMenuPos({
-        top: rect.bottom + 6,
-        left: rect.left + rect.width / 2,
-      });
-    }
-    // Defer so the opening click doesn't immediately close the menu.
-    const t = window.setTimeout(() => {
-      document.addEventListener("pointerdown", onPointerDown, true);
-    }, 0);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", onReposition);
-    window.addEventListener("scroll", onReposition, true);
-    return () => {
-      window.clearTimeout(t);
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", onReposition);
-      window.removeEventListener("scroll", onReposition, true);
-    };
-  }, [open]);
-
-  const menu =
-    open && menuPos && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            ref={menuRef}
-            role="menu"
-            aria-label="Intermediate steps"
-            style={{
-              position: "fixed",
-              top: menuPos.top,
-              left: menuPos.left,
-              transform: "translateX(-50%)",
-            }}
-            className="z-[200] min-w-[10rem] max-w-[min(100vw-2rem,16rem)] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg"
-          >
-            {intermediates.map((c, i) => (
-              <div
-                key={`mid-${c.label}-${i}`}
-                role="none"
-                className="px-3 py-2 text-sm"
-              >
-                {c.href ? (
-                  <Link
-                    role="menuitem"
-                    href={c.href}
-                    onClick={() => setOpen(false)}
-                    className="app-breadcrumb-parent block truncate underline-offset-2 hover:underline"
-                  >
-                    {c.label}
-                  </Link>
-                ) : (
-                  <span
-                    role="menuitem"
-                    className="app-breadcrumb-plain block truncate italic text-muted"
-                  >
-                    {c.label}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>,
-          document.body,
-        )
-      : null;
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Show intermediate breadcrumb steps"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-        className="inline-flex h-6 min-w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-background px-1.5 text-sm leading-none text-muted transition-colors hover:border-accent/40 hover:text-foreground"
-      >
-        …
-      </button>
-      {menu}
-    </>
-  );
-}
+const EMPTY_LOCATION: AppHeaderLocation = {
+  verb: "",
+  href: "/",
+  trail: [],
+};
 
 export function AppTopBar({
   mobileSidebarOpen = false,
   onToggleSidebar,
-  sidebarCollapsed = false,
 }: {
   mobileSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
-  /** Matches desktop sidebar rail width via --app-sidebar-w. */
+  /** @deprecated Header phrase no longer depends on sidebar rail width. */
   sidebarCollapsed?: boolean;
 }) {
   const pathname = usePathname() || "/";
-  const router = useRouter();
-  const adminUnlocked = useAdminUnlocked();
-  const [crumbs, setCrumbs] = useState<AppBreadcrumbCrumb[]>([]);
+  const [location, setLocation] = useState<AppHeaderLocation>(EMPTY_LOCATION);
+  const [accountLabel, setAccountLabel] = useState(accountLabelFromSession);
+  const [showAdmin, setShowAdmin] = useState(() =>
+    isOwnerAdminAccount(getMedimadeSessionEmail()),
+  );
+  const headerRef = useRef<HTMLElement | null>(null);
+  const leftClusterRef = useRef<HTMLDivElement | null>(null);
+  const phraseRef = useRef<HTMLDivElement | null>(null);
+  const tabsSlotRef = useRef<HTMLDivElement | null>(null);
+  const [leftMaxPx, setLeftMaxPx] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const sync = () => {
+      setAccountLabel(accountLabelFromSession());
+      setShowAdmin(isOwnerAdminAccount(getMedimadeSessionEmail()));
+    };
+    sync();
+    window.addEventListener("medimade-session-changed", sync);
+    return () => window.removeEventListener("medimade-session-changed", sync);
+  }, []);
 
   useLayoutEffect(() => {
     const rebuild = () => {
       // Defer so journal (or other) store writes never setState into TopBar mid-render.
       queueMicrotask(() => {
-        setCrumbs(
-          buildAppBreadcrumbs(pathname, {
+        setLocation(
+          resolveAppHeaderLocation(pathname, {
             lifeAreaTitle: lifeAreaTitleFromPath(pathname),
             createMeditationStyle: createMeditationStyleFromSession(pathname),
             createProgramTitle: createProgramTitleFromSession(pathname),
@@ -387,111 +336,107 @@ export function AppTopBar({
     };
   }, [pathname]);
 
-  const mobileHasEllipsis = crumbs.length > 2;
-  const mobileIntermediates = mobileHasEllipsis ? crumbs.slice(1, -1) : [];
-  const mobileCrumbs =
-    crumbs.length <= 2
-      ? crumbs
-      : [crumbs[0]!, crumbs[crumbs.length - 1]!];
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const measure = () => {
+      const headerRect = header.getBoundingClientRect();
+      // Measure the actual tab strip, not the full-bleed centering wrapper
+      // (that wrapper is inset-0 so its left edge is always 0 — which was
+      // clamping the phrase to ~120px and clipping "consciously").
+      const strip = tabsSlotRef.current;
+      const stripRect = strip?.getBoundingClientRect();
+      const hasTabs = Boolean(stripRect && stripRect.width > 1);
+      const phraseW = phraseRef.current?.getBoundingClientRect().width ?? 280;
+      // Phrase must always fit; trail collapses inside whatever remains.
+      const floor = Math.ceil(phraseW) + (location.trail.length > 0 ? 48 : 0);
+      if (!hasTabs || !stripRect) {
+        setLeftMaxPx(undefined);
+        return;
+      }
+      const toTabs = Math.floor(stripRect.left - headerRect.left - 24);
+      setLeftMaxPx(Math.max(floor, toTabs));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
+    if (tabsSlotRef.current) ro.observe(tabsSlotRef.current);
+    if (phraseRef.current) ro.observe(phraseRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [location.trail.length, location.verb, pathname]);
+
+  const trail = location.trail;
+  const parentCrumb =
+    trail.length >= 2
+      ? trail[trail.length - 2]!
+      : trail.length === 1
+        ? { label: location.verb, href: location.href }
+        : null;
 
   return (
-    <header className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-border bg-nav shadow-[var(--header-shadow)]">
-      {/* Desktop: brand aligned with sidebar. Mobile: brand + breadcrumbs left. */}
+    <header
+      ref={headerRef}
+      className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)]"
+    >
       <div
-        className="relative z-10 hidden h-full shrink-0 items-center px-2 transition-[width] duration-200 ease-out md:flex"
-        style={{ width: "var(--app-sidebar-w, 200px)" }}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        <Link
-          href="/"
-          className={`inline-flex min-w-0 items-center ${
-            sidebarCollapsed ? "justify-center px-0" : "gap-2 px-2.5"
-          }`}
-          title="consciously"
-        >
-          <LogoMark
-            size={28}
-            className="relative z-[1] shrink-0 text-accent-button"
-          />
-          {sidebarCollapsed ? null : (
-            <span className="brand-wordmark relative -top-px truncate font-display text-xl font-medium tracking-tight lowercase">
-              consciously
-            </span>
-          )}
-        </Link>
+        {/* Desktop sun center: icon inset + half of 28px LogoMark. */}
+        <span
+          className="app-header-sun-glow absolute top-1/2 hidden h-32 w-64 -translate-x-1/2 -translate-y-1/2 blur-md md:block"
+          style={{ left: APP_SIDEBAR_ICON_INSET_PX + 14 }}
+        />
       </div>
-
-      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3 overflow-hidden px-3 pr-[5.75rem] sm:px-4 md:pr-4">
-        <div className="pointer-events-auto flex min-w-0 items-center gap-2 overflow-hidden md:max-w-[min(100%,calc(50vw-10rem))] md:gap-2">
-          <Link
-            href="/"
-            className="inline-flex shrink-0 items-center md:hidden"
-          >
-            <LogoMark
-              size={24}
-              className="relative z-[1] mr-1.5 shrink-0 text-accent-button"
+      {/* Desktop: brand phrase + optional trail. Keep clear of centre tabs. */}
+      <div
+        ref={leftClusterRef}
+        className="pointer-events-none relative z-10 hidden items-center overflow-hidden pr-2 md:flex"
+        style={{
+          paddingLeft: APP_SIDEBAR_ICON_INSET_PX,
+          ...(leftMaxPx != null ? { maxWidth: leftMaxPx } : {}),
+        }}
+      >
+        <div className="pointer-events-auto flex max-w-full items-center">
+          <div ref={phraseRef} className="shrink-0">
+            <BrandPhrase
+              verb={location.verb}
+              size="desktop"
             />
-            <span className="brand-wordmark relative -top-px font-display text-lg font-medium tracking-tight lowercase">
-              consciously
-            </span>
-          </Link>
-
-          {/* Mobile: first … last; ellipsis opens intermediate steps */}
-          {mobileCrumbs.length > 0 ? (
-            <nav
-              aria-label="Breadcrumb"
-              className="flex min-w-0 items-center overflow-hidden font-display text-sm font-medium tracking-tight md:hidden"
-            >
-              {mobileCrumbs.map((c, i) => {
-                const last = i === mobileCrumbs.length - 1;
-                return (
-                  <Fragment key={`m-${c.label}-${i}`}>
-                    {i > 0 ? (
-                      <>
-                        <BreadcrumbChevron />
-                        {mobileHasEllipsis && i === 1 ? (
-                          <>
-                            <MobileBreadcrumbEllipsis
-                              intermediates={mobileIntermediates}
-                            />
-                            <BreadcrumbChevron />
-                          </>
-                        ) : null}
-                      </>
-                    ) : null}
-                    <BreadcrumbCrumb
-                      crumb={c}
-                      last={last}
-                      allowTruncate={last}
-                    />
-                  </Fragment>
-                );
-              })}
-            </nav>
+          </div>
+          {trail.length > 0 ? (
+            <>
+              <span
+                className="app-header-crumb-divider mx-[14px] inline-block h-[18px] w-px shrink-0 self-center"
+                aria-hidden
+              />
+              <AppBreadcrumb crumbs={trail} className="min-w-0 flex-1" />
+            </>
           ) : null}
-
-          {/* Desktop: full trail */}
-          <nav
-            aria-label="Breadcrumb"
-            className="hidden min-w-0 items-center overflow-hidden font-display text-lg font-medium tracking-tight md:flex"
-          >
-            {crumbs.map((c, i) => {
-              const last = i === crumbs.length - 1;
-              return (
-                <Fragment key={`${c.label}-${i}`}>
-                  {i > 0 ? <BreadcrumbChevron /> : null}
-                  <BreadcrumbCrumb
-                    crumb={c}
-                    last={last}
-                    allowTruncate={last}
-                  />
-                </Fragment>
-              );
-            })}
-          </nav>
         </div>
       </div>
 
+      {/* Mobile: back link on the left when deeper than a sidebar item. */}
+      <div className="relative z-10 flex min-w-0 flex-1 items-center px-3 md:hidden">
+        {trail.length > 0 && parentCrumb ? (
+          <AppBreadcrumbBack parent={parentCrumb} />
+        ) : null}
+      </div>
+
+      {/* Spacer so absolute centre/right chrome doesn't collide on desktop. */}
+      <div className="hidden min-w-0 flex-1 md:block" aria-hidden />
+
       <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2 sm:right-4">
+        {/* Mobile brand phrase sits to the left of the icon cluster. */}
+        <BrandPhrase
+          verb={location.verb}
+          size="mobile"
+          className="md:hidden"
+        />
         <AppTopBarTrailingSlot className="flex max-w-[min(100vw-11rem,28rem)] items-center justify-end overflow-x-auto" />
         <div className="hidden md:contents">
           {isCrossOriginApp() ? (
@@ -504,20 +449,40 @@ export function AppTopBar({
               Open app
             </AlphaChromeButton>
           ) : null}
-          {adminUnlocked ? (
-            <AlphaChromeButton
-              title="Alpha — show marketing site without clearing session"
-              onClick={() => {
-                enterMarketingPreviewMode();
-                router.push("/");
-              }}
-            >
-              View marketing page
-            </AlphaChromeButton>
-          ) : null}
         </div>
         <div className="flex items-center gap-0.5 md:gap-2">
           <AppGlobalSearch />
+          <ColorSchemePicker variant="header" />
+          <Link
+            href="/settings/account"
+            aria-label="Settings"
+            aria-current={
+              pathname.startsWith("/settings") ? "page" : undefined
+            }
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+              pathname.startsWith("/settings")
+                ? "bg-nav-active text-nav-foreground"
+                : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
+            }`}
+          >
+            <Settings aria-hidden className="size-[18px]" strokeWidth={1.75} />
+          </Link>
+          {showAdmin ? (
+            <Link
+              href="/admin"
+              aria-label="Admin"
+              aria-current={
+                pathname.startsWith("/admin") ? "page" : undefined
+              }
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                pathname.startsWith("/admin")
+                  ? "bg-nav-active text-nav-foreground"
+                  : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
+              }`}
+            >
+              <Shield aria-hidden className="size-[18px]" strokeWidth={1.75} />
+            </Link>
+          ) : null}
           <span className="relative translate-x-[5px] md:translate-x-0">
             <AppNotificationsBell />
           </span>
@@ -527,7 +492,7 @@ export function AppTopBar({
               aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileSidebarOpen}
               onClick={onToggleSidebar}
-              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground md:hidden"
+              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground md:hidden"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -550,13 +515,16 @@ export function AppTopBar({
               </svg>
             </button>
           ) : null}
+          <AccountMenu accountLabel={accountLabel} />
         </div>
       </div>
 
-      {/* True viewport centre (full header width), not content-area centre.
-          Above the breadcrumb flex row so tab clicks aren't swallowed. */}
+      {/* True viewport centre (full header width), not content-area centre. */}
       <div className="pointer-events-none absolute inset-0 z-[15] hidden items-center justify-center md:flex">
-        <AppPrimaryTabsSlot className="pointer-events-auto flex max-w-[min(100%,48rem)] items-center justify-center overflow-x-auto" />
+        <AppPrimaryTabsSlot
+          ref={tabsSlotRef}
+          className="pointer-events-auto flex max-w-[min(100%,48rem)] items-center justify-center overflow-x-auto"
+        />
       </div>
     </header>
   );

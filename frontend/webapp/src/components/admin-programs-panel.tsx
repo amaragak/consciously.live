@@ -27,6 +27,7 @@ import {
   MEDITATION_TARGET_MINUTES,
 } from "@/lib/medimade-api";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { packageOneShotPrompt } from "@/lib/homepage-one-shot-handoff";
 import { SOUNDSCAPE_ELEMENT_VOLUME } from "@/lib/bed-volume";
 import {
@@ -1162,14 +1163,13 @@ export function AdminProgramsPanel() {
               lesson audio stays off My Creations).
             </p>
           </div>
-          <button
-            type="button"
+          <PrimaryCreateButton
             disabled={saveBusy}
             onClick={() => void createProgram()}
-            className="shrink-0 cursor-pointer rounded-xl accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+            className="shrink-0 px-4 py-2"
           >
-            + New program
-          </button>
+            New program
+          </PrimaryCreateButton>
         </div>
       </div>
 

@@ -10,9 +10,12 @@ import {
   daysBetweenInclusive,
   insightRangeKey,
   insightSortKey,
+  latestInsightEndDate,
   migrateStoredPeriod,
   parseInsightRangeKey,
+  periodUiCopy,
   resolveInsightPeriod,
+  resolveSinceLastLetterPeriod,
   trimTextsToBudget,
   weekBoundsForDate,
   zonedRangeToIso,
@@ -128,6 +131,35 @@ describe("resolveInsightPeriod", () => {
     if (!ok.ok) return;
     assert.equal(ok.period.days, 20);
   });
+
+  it("builds sinceLast from the day after last end through today", () => {
+    const ok = resolveSinceLastLetterPeriod("2026-09-20", "UTC", now);
+    assert.equal(ok.ok, true);
+    if (!ok.ok) return;
+    assert.equal(ok.period.periodType, "sinceLast");
+    assert.equal(ok.period.startDate, "2026-09-21");
+    assert.equal(ok.period.endDate, "2026-09-28");
+    assert.equal(ok.period.days, 8);
+  });
+
+  it("rejects sinceLast when last letter already covers today", () => {
+    const bad = resolveSinceLastLetterPeriod("2026-09-28", "UTC", now);
+    assert.equal(bad.ok, false);
+  });
+});
+
+describe("latestInsightEndDate", () => {
+  it("picks the latest inclusive end day across letters", () => {
+    assert.equal(
+      latestInsightEndDate([
+        { endDate: "2026-09-10" },
+        { endDate: "2026-09-20", weekEnd: "2026-09-14" },
+        { weekEnd: "2026-09-18T12:00:00.000Z" },
+      ]),
+      "2026-09-20",
+    );
+    assert.equal(latestInsightEndDate([]), null);
+  });
 });
 
 describe("storage keys and migration", () => {
@@ -185,5 +217,36 @@ describe("token budget trimming", () => {
       assert.ok(t.includes("[…]"));
       assert.ok(t.startsWith("AAAA") || t.startsWith("BBBB") || t.startsWith("CCCC"));
     }
+  });
+});
+
+describe("periodUiCopy", () => {
+  it("uses week language for week and last7", () => {
+    assert.equal(
+      periodUiCopy(7, "week").meditationTitle,
+      "Turn this week into a meditation",
+    );
+    assert.equal(
+      periodUiCopy(7, "last7").periodNoun,
+      "this week",
+    );
+  });
+
+  it("does not call a short custom/sinceLast range a week", () => {
+    assert.equal(
+      periodUiCopy(5, "custom").meditationTitle,
+      "Turn these days into a meditation",
+    );
+    assert.equal(
+      periodUiCopy(3, "sinceLast").periodNoun,
+      "these days",
+    );
+  });
+
+  it("uses month language for last30", () => {
+    assert.equal(
+      periodUiCopy(30, "last30").meditationTitle,
+      "Turn this month into a meditation",
+    );
   });
 });

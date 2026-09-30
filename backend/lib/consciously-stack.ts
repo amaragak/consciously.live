@@ -126,6 +126,7 @@ export class ConsciouslyStack extends cdk.Stack {
       config: this.config,
       database: this.database,
       media: this.media,
+      ffmpegLayer: layers.ffmpegLayer,
     });
 
     this.apiChat = new ConsciouslyApiChatNestedStack(this, "ApiChat", {

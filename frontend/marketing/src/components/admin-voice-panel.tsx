@@ -142,9 +142,11 @@ export function AdminVoicePanel() {
           <div>
             <h2 className="text-sm font-semibold">Speakers</h2>
             <p className="mt-1 text-xs text-muted">
-              Fish Audio or Speechify. Hidden speakers stay off the Create picker. Generate
-              all skips voices that already have dry + FX stems; missing FX-only wet files
-              are bounced without re-synthesizing. Use Generate sample on a speaker to
+              Fish Audio or Speechify. Hidden speakers stay off the Create picker
+              (Create and letter narration show Speechify only). Generate all
+              skips voices that already have dry + FX stems; missing FX-only wet
+              files are bounced without re-synthesizing. Speechify also gets a
+              letter-intro audition clip. Use Generate sample on a speaker to
               rebuild the clip.
             </p>
           </div>

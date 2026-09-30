@@ -47,11 +47,12 @@ export function Lockup({
   homeHref,
   onHomeClick,
 }: Props) {
+  /* Light gold-tinted bands need full black wordmark for contrast. */
   const brand = onHero
     ? "text-[var(--hv2-hero-fg)]"
     : onNavy
       ? "text-[var(--hv2-ivory)]"
-      : "text-[var(--hv2-muted)]";
+      : "text-black";
   const verb =
     onHero || onNavy ? "text-[var(--hv2-gold)]" : "text-[var(--hv2-tan-text)]";
   const label =

@@ -6,7 +6,39 @@ import { describe, it } from "node:test";
 import {
   coerceLetterMarkdown,
   ensureLetterBodyHasBold,
+  extractLetterTitleFromModelOutput,
+  normalizeInsightTitle,
+  stripLetterGreetingForNarration,
 } from "./letter-markdown.ts";
+
+describe("normalizeInsightTitle", () => {
+  it("keeps a complete headline and strips cut-off dashes", () => {
+    assert.equal(
+      normalizeInsightTitle("A quiet kind of knowing"),
+      "A quiet kind of knowing",
+    );
+    assert.equal(
+      normalizeInsightTitle("This week you moved through something real —"),
+      "This week you moved through something real",
+    );
+    assert.equal(normalizeInsightTitle("Too"), undefined);
+  });
+
+  it("reads title from letter JSON", () => {
+    assert.equal(
+      extractLetterTitleFromModelOutput(
+        JSON.stringify({
+          title: "From spiral to quieter knowing",
+          greeting: "Dear [[NAME]],",
+          preamble: "Hi.",
+          sections: [{ heading: "A", body: "B **c**." }],
+          closing: "Bye.",
+        }),
+      ),
+      "From spiral to quieter knowing",
+    );
+  });
+});
 
 describe("coerceLetterMarkdown", () => {
   it("assembles JSON with preamble, headers, bold, and closing", () => {
@@ -147,6 +179,37 @@ describe("ensureLetterBodyHasBold", () => {
     assert.equal(
       ensureLetterBodyHasBold("You finished **something real** today."),
       "You finished **something real** today.",
+    );
+  });
+});
+
+describe("stripLetterGreetingForNarration", () => {
+  it("removes Dear [[NAME]] and Dear Name greetings", () => {
+    assert.equal(
+      stripLetterGreetingForNarration(
+        "Dear [[NAME]],\n\nI've been sitting with your week.\n\n### What stood out\nBody.",
+      ),
+      "I've been sitting with your week.\n\n### What stood out\nBody.",
+    );
+    assert.equal(
+      stripLetterGreetingForNarration(
+        "Dear Alex,\n\nKeep going.",
+      ),
+      "Keep going.",
+    );
+  });
+
+  it("removes a bare Name, salutation", () => {
+    assert.equal(
+      stripLetterGreetingForNarration("Maragakis,\n\nThank you for writing."),
+      "Thank you for writing.",
+    );
+  });
+
+  it("leaves body-only letters unchanged", () => {
+    assert.equal(
+      stripLetterGreetingForNarration("I've been sitting with your week."),
+      "I've been sitting with your week.",
     );
   });
 });

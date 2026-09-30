@@ -1,5 +1,24 @@
-/** Brand sun mark. Swap this file to replace the logo everywhere it is used. */
+/** Brand sun mark (fine sun). Colour via `currentColor` / `fill` prop — no hardcoded tokens. */
 export const LOGO_MARK_FILL = "#F0A865";
+
+const RAYS = [
+  [36.5, 24, 45, 24],
+  [32.84, 32.84, 38.85, 38.85],
+  [24, 36.5, 24, 45],
+  [15.16, 32.84, 9.15, 38.85],
+  [11.5, 24, 3, 24],
+  [15.16, 15.16, 9.15, 9.15],
+  [24, 11.5, 24, 3],
+  [32.84, 15.16, 38.85, 9.15],
+  [35.59, 28.68, 39.3, 30.18],
+  [28.88, 35.51, 30.45, 39.19],
+  [19.32, 35.59, 17.82, 39.3],
+  [12.49, 28.88, 8.81, 30.45],
+  [12.41, 19.32, 8.7, 17.82],
+  [19.12, 12.49, 17.55, 8.81],
+  [28.68, 12.41, 30.18, 8.7],
+  [35.51, 19.12, 39.19, 17.55],
+] as const;
 
 export function LogoMark({
   size = 34,
@@ -8,29 +27,44 @@ export function LogoMark({
 }: {
   size?: number;
   className?: string;
-  /** Defaults to `currentColor` so parents can theme light (clay) vs dark (gold). */
+  /** Defaults to `currentColor` so parents can theme light vs dark. */
   fill?: string;
 }) {
+  /** Gradient mark for large placements (64px+); flat elsewhere. */
+  if (size >= 64) {
+    return (
+      <img
+        src="/sun-gradient.svg"
+        width={size}
+        height={size}
+        alt=""
+        aria-hidden
+        className={className}
+        draggable={false}
+      />
+    );
+  }
+
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 36 36"
+      viewBox="0 0 48 48"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden
       focusable="false"
     >
-      <circle cx="18" cy="18" r="7" fill={fill} />
-      <g fill={fill}>
-        <polygon points="18,0 20,7 16,7" />
-        <polygon points="18,36 20,29 16,29" />
-        <polygon points="0,18 7,20 7,16" />
-        <polygon points="36,18 29,20 29,16" />
-        <polygon points="5.8,5.8 11.5,9 9,11.5" />
-        <polygon points="30.2,30.2 24.5,27 27,24.5" />
-        <polygon points="5.8,30.2 9,24.5 11.5,27" />
-        <polygon points="30.2,5.8 27,11.5 24.5,9" />
+      <circle cx="24" cy="24" r="8.2" fill={fill} />
+      <g
+        stroke={fill}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        fill="none"
+      >
+        {RAYS.map(([x1, y1, x2, y2]) => (
+          <line key={`${x1}-${y1}-${x2}-${y2}`} x1={x1} y1={y1} x2={x2} y2={y2} />
+        ))}
       </g>
     </svg>
   );

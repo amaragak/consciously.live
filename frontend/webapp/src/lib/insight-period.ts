@@ -7,7 +7,12 @@
  * local midnight-to-midnight bounds.
  */
 
-export type InsightPeriodType = "last7" | "last30" | "custom" | "week";
+export type InsightPeriodType =
+  | "last7"
+  | "last30"
+  | "custom"
+  | "week"
+  | "sinceLast";
 
 export const MAX_CUSTOM_RANGE_DAYS = 90;
 
@@ -181,7 +186,13 @@ export function weekBoundsForDate(dateStr: string): {
 }
 
 export function parsePeriodType(raw: unknown): InsightPeriodType | null {
-  if (raw === "last7" || raw === "last30" || raw === "custom" || raw === "week") {
+  if (
+    raw === "last7" ||
+    raw === "last30" ||
+    raw === "custom" ||
+    raw === "week" ||
+    raw === "sinceLast"
+  ) {
     return raw;
   }
   return null;
@@ -382,8 +393,19 @@ const MONTHS = [
 
 /** “14–28 Sept” / “30 Aug – 28 Sept”, stable across locales for the prompt. */
 export function formatRangeWords(startDate: string, endDate: string): string {
-  const [sy, sm, sd] = startDate.split("-").map(Number) as [number, number, number];
-  const [ey, em, ed] = endDate.split("-").map(Number) as [number, number, number];
+  const [sy, sm, sd] = startDate.split("-").map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const [ey, em, ed] = endDate.split("-").map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  if (![sy, sm, sd, ey, em, ed].every((n) => Number.isFinite(n) && n > 0)) {
+    return "These days";
+  }
   if (sy === ey && sm === em) return `${sd}–${ed} ${MONTHS[em - 1]}`;
   if (sy === ey) return `${sd} ${MONTHS[sm - 1]} – ${ed} ${MONTHS[em - 1]}`;
   return `${sd} ${MONTHS[sm - 1]} ${sy} – ${ed} ${MONTHS[em - 1]} ${ey}`;
@@ -398,12 +420,66 @@ export function insightHeaderLabel(
   const range = formatRangeWords(startDate, endDate);
   if (periodType === "last7") return `Last 7 days · ${range}`;
   if (periodType === "last30") return `Last 30 days · ${range}`;
+  if (periodType === "sinceLast") return `Since last letter · ${range}`;
   return range;
 }
 
 /**
- * Card titles and short phrases by period length.
- * ≤7 → week; 28–31 → month; else → these days / this time.
+ * Inclusive end calendar day of the most recent stored insight range.
+ * Prefers `endDate`, then date-only `weekEnd`.
+ */
+export function latestInsightEndDate(
+  letters: ReadonlyArray<{ endDate?: string; weekEnd?: string }>,
+): string | null {
+  let best: string | null = null;
+  for (const letter of letters) {
+    const end =
+      (isDateOnly(letter.endDate) && letter.endDate.trim()) ||
+      (typeof letter.weekEnd === "string" &&
+      isDateOnly(letter.weekEnd.trim().slice(0, 10))
+        ? letter.weekEnd.trim().slice(0, 10)
+        : null);
+    if (!end) continue;
+    if (!best || end > best) best = end;
+  }
+  return best;
+}
+
+/**
+ * Range from the day after `lastEndDate` through today in `timeZone`.
+ * Used by the generate dialog “Since your last letter” covering option.
+ */
+export function resolveSinceLastLetterPeriod(
+  lastEndDate: string,
+  timeZone: string,
+  now: Date = new Date(),
+): ResolvePeriodResult {
+  if (!isDateOnly(lastEndDate)) {
+    return { ok: false, error: "Generate a letter first to use this range" };
+  }
+  const today = todayInTimeZone(timeZone, now);
+  const startDate = addDaysToDate(lastEndDate.trim(), 1);
+  if (startDate > today) {
+    return {
+      ok: false,
+      error: "Your last letter already covers through today",
+    };
+  }
+  return resolveInsightPeriod(
+    {
+      periodType: "sinceLast",
+      startDate,
+      endDate: today,
+      timeZone,
+    },
+    now,
+  );
+}
+
+/**
+ * Card titles and short phrases by period.
+ * Prefer `periodType` when known; fall back to day-count heuristics for legacy rows.
+ * Custom / since-last ranges never say “week” just because they are ≤7 days.
  */
 export type PeriodUiCopy = {
   feltTitle: string;
@@ -415,32 +491,44 @@ export type PeriodUiCopy = {
   meditationTitle: string;
 };
 
-export function periodUiCopy(days: number): PeriodUiCopy {
-  if (days <= 7) {
-    return {
-      feltTitle: "How this week felt",
-      movedTitle: "How the week moved",
-      periodNoun: "this week",
-      periodNounThe: "the week",
-      meditationTitle: "Turn this week into a meditation",
-    };
+const WEEK_UI_COPY: PeriodUiCopy = {
+  feltTitle: "How this week felt",
+  movedTitle: "How the week moved",
+  periodNoun: "this week",
+  periodNounThe: "the week",
+  meditationTitle: "Turn this week into a meditation",
+};
+
+const MONTH_UI_COPY: PeriodUiCopy = {
+  feltTitle: "How this month felt",
+  movedTitle: "How the month moved",
+  periodNoun: "this month",
+  periodNounThe: "the month",
+  meditationTitle: "Turn this month into a meditation",
+};
+
+const DAYS_UI_COPY: PeriodUiCopy = {
+  feltTitle: "How these days felt",
+  movedTitle: "How it moved",
+  periodNoun: "these days",
+  periodNounThe: "this time",
+  meditationTitle: "Turn these days into a meditation",
+};
+
+export function periodUiCopy(
+  days: number,
+  periodType?: InsightPeriodType,
+): PeriodUiCopy {
+  if (periodType === "week" || periodType === "last7") return WEEK_UI_COPY;
+  if (periodType === "last30") return MONTH_UI_COPY;
+  if (periodType === "custom" || periodType === "sinceLast") {
+    if (days >= 28 && days <= 31) return MONTH_UI_COPY;
+    return DAYS_UI_COPY;
   }
-  if (days >= 28 && days <= 31) {
-    return {
-      feltTitle: "How this month felt",
-      movedTitle: "How the month moved",
-      periodNoun: "this month",
-      periodNounThe: "the month",
-      meditationTitle: "Turn this month into a meditation",
-    };
-  }
-  return {
-    feltTitle: "How these days felt",
-    movedTitle: "How it moved",
-    periodNoun: "these days",
-    periodNounThe: "this time",
-    meditationTitle: "Turn these days into a meditation",
-  };
+  // Legacy / unknown type: length heuristics (7-day default stays “week”).
+  if (days <= 7) return WEEK_UI_COPY;
+  if (days >= 28 && days <= 31) return MONTH_UI_COPY;
+  return DAYS_UI_COPY;
 }
 
 /**

@@ -45,6 +45,8 @@ export type AlgoliaUserRecord = {
   body: string;
   href: string;
   updatedAt: number;
+  /** Public media URL for search flyout thumbnails (covers, vision stills, …). */
+  imageUrl?: string | null;
 };
 
 let cachedCreds: AlgoliaCreds | null | undefined;
@@ -138,6 +140,7 @@ async function ensureIndexSettings(creds: AlgoliaCreds): Promise<void> {
           "body",
           "href",
           "updatedAt",
+          "imageUrl",
         ],
         hitsPerPage: 20,
       }),
@@ -240,6 +243,7 @@ export type AlgoliaHit = {
   body: string;
   href: string;
   updatedAt?: number;
+  imageUrl?: string | null;
 };
 
 export async function searchUserContent(opts: {
@@ -283,6 +287,10 @@ export async function searchUserContent(opts: {
     body: typeof h.body === "string" ? h.body : "",
     href: typeof h.href === "string" ? h.href : "/",
     updatedAt: typeof h.updatedAt === "number" ? h.updatedAt : undefined,
+    imageUrl:
+      typeof h.imageUrl === "string" && h.imageUrl.trim()
+        ? h.imageUrl.trim()
+        : null,
   }));
 }
 

@@ -49,6 +49,15 @@
   font-style: normal;
 }
 
+/** Hide native search cancel — we use a solid neutral clear control instead. */
+.app-search-input::-webkit-search-cancel-button,
+.app-search-input::-webkit-search-decoration,
+input[type="search"].app-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
 /* Frosted glass for text-over-image on Ideate vision board surfaces */
 .ideate-frosted-overlay {
   -webkit-backdrop-filter: blur(16px) saturate(140%);
@@ -118,12 +127,15 @@
   --color-surface-2: var(--surface-2);
   --color-surface-2-edge: var(--surface-2-edge);
   --color-surface-rail: var(--surface-rail);
+  --color-sidebar-border: var(--sidebar-border);
   --color-on-accent: var(--on-accent);
   --color-overlay: var(--overlay);
   --color-nav: var(--nav);
   --color-nav-foreground: var(--nav-foreground);
   --color-nav-muted: var(--nav-muted);
+  --color-nav-crumb: var(--nav-crumb);
   --color-nav-active: var(--nav-active);
+  --color-header-gold: var(--header-gold);
   --color-selected: var(--selected);
   --color-on-selected: var(--on-selected);
   --color-star-idle: var(--star-idle);
@@ -481,10 +493,10 @@ body {
   background-image: none;
 }
 
-/* Flat gold CTA fill — brighter gold, matches dark-mode header Pro. */
+/* Mist CTA fill — horizontal mist → mist-end (theme sets --accent-gradient-button). */
 @utility accent-fill-gradient {
   background-color: var(--accent-button);
-  background-image: none;
+  background-image: var(--accent-gradient-button);
   color: var(--on-accent);
 }
 
@@ -503,7 +515,8 @@ body {
   color: #fff;
 }
 
-/* Site header glows — values from --header-glow-* on :root / :root.dark. */
+/* Site header / app header sun lightening — values from --header-glow-* */
+.app-header-sun-glow,
 .site-header-glow-sun {
   background: var(--header-glow-sun);
 }
@@ -787,7 +800,7 @@ body {
 
 .auth-split__accent-word {
   font-style: italic;
-  color: var(--accent-button);
+  color: var(--header-gold, #d9b87c);
   font-weight: inherit;
 }
 
@@ -1123,7 +1136,7 @@ body {
     inset 0 -22px 40px -10px rgb(0 0 0 / 0.7);
 }
 
-/* Ideate life-area cards — light sandy / dark slate via inline CSS vars. */
+/* Ideate life-area cards — soft gold / dark slate via inline CSS vars. */
 .life-area-card {
   background-color: var(--life-area-bg);
 }

@@ -126,6 +126,7 @@ function meditationRecordsFromItems(
   algoliaUserId: string,
   items: Record<string, unknown>[],
 ): AlgoliaUserRecord[] {
+  const cf = process.env.MEDIA_CLOUDFRONT_DOMAIN?.trim() || "";
   const out: AlgoliaUserRecord[] = [];
   for (const it of items) {
     const sk = typeof it.sk === "string" ? it.sk : "";
@@ -149,6 +150,11 @@ function meditationRecordsFromItems(
           (typeof it.createdAt === "string" && it.createdAt) ||
           "",
       ) || Date.now();
+    const coverKey =
+      typeof it.coverImageKey === "string" && it.coverImageKey.trim()
+        ? it.coverImageKey.trim()
+        : "";
+    const imageUrl = coverKey && cf ? `https://${cf}/${coverKey}` : null;
     out.push({
       objectID: `meditation:${sk}`,
       userId: algoliaUserId,
@@ -160,6 +166,7 @@ function meditationRecordsFromItems(
         .slice(0, 4000),
       href: `/meditate/library/creations?focus=${encodeURIComponent(sk)}`,
       updatedAt,
+      ...(imageUrl ? { imageUrl } : {}),
     });
   }
   return out;

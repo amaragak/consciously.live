@@ -14,7 +14,9 @@ import {
   PutCommand,
   QueryCommand,
   ScanCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
   parseAnthropicMessageUsage,
@@ -41,7 +43,10 @@ import {
   WELLBEING_LETTER_GUIDANCE,
   type WellbeingLevel,
 } from "./_shared/insight-wellbeing";
-import { coerceLetterMarkdown } from "./_shared/letter-markdown";
+import {
+  coerceLetterMarkdown,
+  extractLetterTitleFromModelOutput,
+} from "./_shared/letter-markdown";
 import {
   sourcesFromLegacy,
   verifyInsightSources,
@@ -117,6 +122,26 @@ type WeeklyActivityByEntry = {
   items: string[];
 };
 
+/** Allowed journal mood ids — must match the SPA journal mood picker. */
+const JOURNAL_MOOD_IDS = ["calm", "good", "mixed", "low", "heavy"] as const;
+type JournalMoodId = (typeof JOURNAL_MOOD_IDS)[number];
+
+function isJournalMoodId(x: unknown): x is JournalMoodId {
+  return (
+    typeof x === "string" &&
+    (JOURNAL_MOOD_IDS as readonly string[]).includes(x)
+  );
+}
+
+/**
+ * LLM-inferred mood for an entry that had no user mood tag.
+ * Stored only on the insights reflection — never written back to the journal.
+ */
+type WeeklyEntryMood = {
+  entryId: string;
+  mood: JournalMoodId;
+};
+
 type LetterFeedback = {
   rating: "up" | "down";
   note?: string;
@@ -168,6 +193,10 @@ type WeeklyReflection = {
   letterMarkdown: string;
   /** Structured letter with sourced spans (v8). */
   letterDocument?: LetterDocument;
+  /**
+   * LLM-written Insights page headline for this period (not a letter excerpt).
+   */
+  title?: string;
   /** First sentence preview for the letters list; derived from letterMarkdown. */
   preview?: string;
   /** 3–5 emotions scored 0–10 from the week's writing; omit if unavailable. */
@@ -179,9 +208,21 @@ type WeeklyReflection = {
   promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
+  /**
+   * Moods inferred for entries that had no user mood tag.
+   * Insights-only — never written onto journal entries.
+   */
+  entryMoods?: WeeklyEntryMood[];
   generatedParts?: WeeklyGeneratedParts;
   wellbeing?: { level: WellbeingLevel };
   letterFeedback?: LetterFeedback;
+  /** Speechify letter narration (Beatrice) — Insights listen button. */
+  letterAudioUrl?: string;
+  letterAudioStatus?: "none" | "generating" | "ready" | "failed";
+  letterAudioError?: string;
+  letterAudioProgress?: string;
+  letterAudioGeneratedAt?: string;
+  letterAudioVoiceId?: string;
   meta: {
     generatedAt: string;
     model: string;
@@ -659,16 +700,63 @@ function normalizeThoughtKey(text: string): string {
 }
 
 function formatMoodTagsForPrompt(entries: JournalEntry[]): string {
-  const lines: string[] = [];
+  const tagged: string[] = [];
+  const untagged: string[] = [];
   for (const e of entries) {
-    const mood = e.mood?.trim();
-    if (!mood) continue;
     const title = e.title.trim() || "Untitled";
-    const when = e.updatedAt || e.createdAt;
-    lines.push(`- ${when.slice(0, 10)} · ${title}: ${mood}`);
+    const when = (e.updatedAt || e.createdAt).slice(0, 10);
+    const mood = e.mood?.trim();
+    if (mood && isJournalMoodId(mood)) {
+      tagged.push(`- ${when} · ${title} · id=${e.id}: ${mood}`);
+    } else {
+      untagged.push(`- ${when} · ${title} · id=${e.id}`);
+    }
   }
-  if (!lines.length) return "(No mood tags in this period.)";
-  return lines.join("\n");
+  const parts: string[] = [];
+  if (tagged.length) {
+    parts.push("User-tagged moods (do NOT re-emit these in entry_moods):", ...tagged);
+  } else {
+    parts.push("User-tagged moods: (none)");
+  }
+  if (untagged.length) {
+    parts.push(
+      "Untagged entries — you MUST assign each exactly one mood in entry_moods:",
+      ...untagged,
+    );
+  } else {
+    parts.push("Untagged entries: (none — set entry_moods to [])");
+  }
+  return parts.join("\n");
+}
+
+function parseEntryMoods(
+  raw: unknown,
+  knownEntryIds: Set<string>,
+  userMoodEntryIds: Set<string>,
+): WeeklyEntryMood[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: WeeklyEntryMood[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const entryIdRaw =
+      (row as { entry_id?: unknown }).entry_id ??
+      (row as { entryId?: unknown }).entryId;
+    const entryId =
+      typeof entryIdRaw === "string" ? entryIdRaw.trim() : "";
+    if (!entryId || seen.has(entryId)) continue;
+    if (knownEntryIds.size > 0 && !knownEntryIds.has(entryId)) continue;
+    // Never overwrite or store a shadow for a user-tagged entry.
+    if (userMoodEntryIds.has(entryId)) continue;
+    const moodRaw =
+      (row as { mood?: unknown }).mood ??
+      (row as { mood_id?: unknown }).mood_id;
+    if (!isJournalMoodId(moodRaw)) continue;
+    seen.add(entryId);
+    out.push({ entryId, mood: moodRaw });
+    if (out.length >= 80) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /** First readable sentence for sidebar preview (skips salutation). */
@@ -1004,12 +1092,14 @@ function parsePatternsBlob(
   raw: unknown,
   knownEntryIds: Set<string>,
   entriesById: Map<string, string> = new Map(),
+  userMoodEntryIds: Set<string> = new Set(),
 ): {
   arc?: WeeklyArc;
   wins?: WeeklyCitedItem[];
   promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
+  entryMoods?: WeeklyEntryMood[];
 } {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
@@ -1043,12 +1133,18 @@ function parsePatternsBlob(
           entriesById,
         );
   const activities = parseActivities(o.activities, knownEntryIds);
+  const entryMoods = parseEntryMoods(
+    o.entry_moods ?? o.entryMoods,
+    knownEntryIds,
+    userMoodEntryIds,
+  );
   return {
     ...(arc ? { arc } : {}),
     ...(wins ? { wins } : {}),
     ...(promises ? { promises } : {}),
     ...(recurringThought ? { recurringThought } : {}),
     ...(activities ? { activities } : {}),
+    ...(entryMoods ? { entryMoods } : {}),
   };
 }
 
@@ -1067,7 +1163,7 @@ function buildSystemPrompt(
   const wantMoved = selection.patterns.moved;
   const wantWins = selection.patterns.wins;
   const wantThought = selection.patterns.thought;
-  const patternKeys: string[] = ["activities"];
+  const patternKeys: string[] = ["activities", "entry_moods"];
   if (wantMoved) patternKeys.push("arc");
   if (wantWins) patternKeys.push("wins", "promises");
   if (wantThought) patternKeys.push("recurring_thought");
@@ -1085,6 +1181,7 @@ function buildSystemPrompt(
       "For each emotion include sources: 1–3 objects { entryId, quote } — quote is a short verbatim passage (≤25 words) from that entry that supports the score. Prefer sources over bare examples/entry_ids.",
     "Optionally one plain-English moodSummary line (or NONE).",
     "PATTERNS JSON always includes activities: up to one object per journal entry { entry_id, items: [\"morning walk\", ...] } with 0–4 short lowercase labels. Omit entries with none. Never include activities the user marked as incorrect or hidden (see USER CORRECTIONS).",
+    "PATTERNS JSON always includes entry_moods: [{ entry_id, mood }] for EVERY journal entry that has NO user mood tag. mood must be exactly one of: calm | good | mixed | low | heavy — inferred from that entry's writing alone. Do NOT include entries that already have a user mood tag. If every entry is tagged, use [].",
   ];
   if (wantMoved) {
     parts.push(
@@ -1113,7 +1210,8 @@ function buildSystemPrompt(
       "LETTER: Write directly TO the reader in second person ('you'), warm and human — like a note from someone who read their week carefully.",
       "LETTER LENGTH (when wellbeing is none): about ~250 words total when there is enough journal/chat material; shorter is fine when the period is sparse. No hard maximum.",
       "LETTER OUTPUT (JSON only after <<<LETTER>>> — not freeform prose, not markdown):",
-      '{"greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"What stood out","bodyParts":[{"text":"…"},{"text":"key phrase","sources":[{"entryId":"…","quote":"…"}]},{"text":"…"}]}],"closing":"…"}',
+      '{"title":"A quiet kind of knowing","greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"What stood out","bodyParts":[{"text":"…"},{"text":"key phrase","sources":[{"entryId":"…","quote":"…"}]},{"text":"…"}]}],"closing":"…"}',
+      "Rules: title is required — a complete Insights headline of about 4–10 words naming the emotional arc of the period. It must be a custom phrase, NOT a truncated sentence from the letter, and must NOT end with a dash, hyphen, or ellipsis.",
       "Rules: greeting must be exactly Dear [[NAME]], (literal [[NAME]] — never a real name).",
       "CRITICAL SHAPE: preamble and closing are mandatory non-empty strings. Jumping from the greeting straight into a section heading is WRONG. Ending on the last section body with no closing is WRONG.",
       "preamble: required — 2–4 warm opening sentences BEFORE any section header; set the tone and acknowledge them as a person.",
@@ -1140,7 +1238,7 @@ function buildSystemPrompt(
     `one JSON object with keys: ${patternKeys.join(", ")} (and null/[] for unused keys as instructed)`,
     "<<<LETTER>>>",
     wantLetter
-      ? 'JSON only: {"greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"…","body":"… **bold** …"},…],"closing":"…"} — ~250 words when material allows; shorter when sparse.'
+      ? 'JSON only: {"title":"…","greeting":"Dear [[NAME]],","preamble":"…","sections":[{"heading":"…","body":"… **bold** …"},…],"closing":"…"} — title is a complete 4–10 word headline (no trailing dash); letter ~250 words when material allows.'
       : "NONE",
   );
   return parts.join(" ");
@@ -1218,7 +1316,7 @@ function buildUserPrompt(params: {
     "MEDITATION CREATE CHATS IN THIS PERIOD:",
     params.chatText,
     "",
-    "MOOD TAGS IN THIS PERIOD (optional for moodSummary only — not for emotion scores):",
+    "MOOD TAGS IN THIS PERIOD (for moodSummary + entry_moods — not for emotion scores):",
     params.moodTagsText,
     "",
     "Write the reply now in the exact <<<WELLBEING>>> / <<<EMOTIONS>>> / <<<MOOD_SUMMARY>>> / <<<PATTERNS>>> / <<<LETTER>>> format.",
@@ -1303,8 +1401,10 @@ function parseLetterModelOutput(
   outText: string,
   knownEntryIds: Set<string> = new Set(),
   entriesById: Map<string, string> = new Map(),
+  userMoodEntryIds: Set<string> = new Set(),
 ): {
   letterMarkdown: string;
+  title?: string;
   letterDocument?: LetterDocument;
   wellbeing: WellbeingLevel;
   emotions?: WeeklyEmotionScore[];
@@ -1314,6 +1414,7 @@ function parseLetterModelOutput(
   promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
+  entryMoods?: WeeklyEntryMood[];
 } {
   const delimFull = outText.match(
     /<<<WELLBEING>>>\s*([\s\S]*?)\s*<<<EMOTIONS>>>\s*([\s\S]*?)\s*<<<MOOD_SUMMARY>>>\s*([\s\S]*?)\s*<<<PATTERNS>>>\s*([\s\S]*?)\s*<<<LETTER>>>\s*([\s\S]+)$/i,
@@ -1389,15 +1490,32 @@ function parseLetterModelOutput(
             JSON.parse(patternsRaw),
             knownEntryIds,
             entriesById,
+            userMoodEntryIds,
           );
         } catch {
           /* ignore broken patterns — letter still saves */
         }
       }
     }
-    const letterMarkdown = coerceLetterMarkdown((delim.letter ?? "").trim());
-    if (letterMarkdown) {
-      return { letterMarkdown, wellbeing, emotions, moodSummary, ...patterns };
+    const letterRaw = (delim.letter ?? "").trim();
+    const letterIsNone = /^NONE$/i.test(letterRaw);
+    // Keep literal NONE so callClaude can treat patterns-only as success;
+    // coerce would otherwise collapse it to "" and drop patterns below.
+    const letterMarkdown = letterIsNone
+      ? "NONE"
+      : coerceLetterMarkdown(letterRaw);
+    const title = letterIsNone
+      ? undefined
+      : extractLetterTitleFromModelOutput(letterRaw);
+    if (letterMarkdown || letterIsNone) {
+      return {
+        letterMarkdown,
+        ...(title ? { title } : {}),
+        wellbeing,
+        emotions,
+        moodSummary,
+        ...patterns,
+      };
     }
   }
 
@@ -1416,9 +1534,19 @@ function parseLetterModelOutput(
         activities?: unknown;
       };
       if (typeof parsed.letterMarkdown === "string" && parsed.letterMarkdown.trim()) {
-        const patterns = parsePatternsBlob(parsed, knownEntryIds, entriesById);
+        const patterns = parsePatternsBlob(
+          parsed,
+          knownEntryIds,
+          entriesById,
+          userMoodEntryIds,
+        );
+        const letterRaw = parsed.letterMarkdown.trim();
+        const title =
+          extractLetterTitleFromModelOutput(letterRaw) ??
+          extractLetterTitleFromModelOutput(jsonObj);
         return {
-          letterMarkdown: coerceLetterMarkdown(parsed.letterMarkdown.trim()),
+          letterMarkdown: coerceLetterMarkdown(letterRaw),
+          ...(title ? { title } : {}),
           wellbeing: parseWellbeingLevel(
             (parsed as { wellbeing?: unknown }).wellbeing,
           ),
@@ -1472,8 +1600,13 @@ function parseLetterModelOutput(
         .trim();
     }
     if (letterMarkdown.trim()) {
+      const letterRaw = letterMarkdown.trim();
+      const title =
+        extractLetterTitleFromModelOutput(letterRaw) ??
+        extractLetterTitleFromModelOutput(outText);
       return {
-        letterMarkdown: coerceLetterMarkdown(letterMarkdown.trim()),
+        letterMarkdown: coerceLetterMarkdown(letterRaw),
+        ...(title ? { title } : {}),
         wellbeing: "none",
         emotions,
         moodSummary: moodMatch?.[1]
@@ -1503,8 +1636,11 @@ function parseLetterModelOutput(
     .replace(/<<<LETTER>>>/gi, "")
     .replace(/^\{[\s\S]*$/, "")
     .trim();
+  const letterRaw = letterMarkdown || outText;
+  const title = extractLetterTitleFromModelOutput(letterRaw);
   return {
-    letterMarkdown: coerceLetterMarkdown(letterMarkdown || outText),
+    letterMarkdown: coerceLetterMarkdown(letterRaw),
+    ...(title ? { title } : {}),
     wellbeing: "none",
     emotions,
   };
@@ -1516,9 +1652,12 @@ async function callClaudeForLetter(params: {
   user: string;
   knownEntryIds?: Set<string>;
   entriesById?: Map<string, string>;
+  userMoodEntryIds?: Set<string>;
 }): Promise<{
   letterMarkdown: string;
+  title?: string;
   letterDocument?: LetterDocument;
+  wellbeing: WellbeingLevel;
   emotions?: WeeklyEmotionScore[];
   moodSummary?: string;
   arc?: WeeklyArc;
@@ -1526,6 +1665,7 @@ async function callClaudeForLetter(params: {
   promises?: WeeklyCitedItem[];
   recurringThought?: WeeklyRecurringThought;
   activities?: WeeklyActivityByEntry[];
+  entryMoods?: WeeklyEntryMood[];
   usage: { input_tokens: number; output_tokens: number } | null;
 }> {
   const res = await fetch(ANTHROPIC_URL, {
@@ -1558,21 +1698,87 @@ async function callClaudeForLetter(params: {
     if (!outText) throw new Error("Empty Claude response");
     const known = params.knownEntryIds ?? new Set();
     const byId = params.entriesById ?? new Map();
-    const parsed = parseLetterModelOutput(outText, known, byId);
+    const userMoods = params.userMoodEntryIds ?? new Set();
+    const parsed = parseLetterModelOutput(outText, known, byId, userMoods);
     const rawLetter = parsed.letterMarkdown.trim();
     // Patterns-only runs emit NONE — that is success, not an empty letter.
     if (/^NONE$/i.test(rawLetter)) {
       return { ...parsed, letterMarkdown: "", usage };
     }
+    // Title may live on the raw JSON before coerce strips structure to markdown.
+    const title =
+      parsed.title ?? extractLetterTitleFromModelOutput(rawLetter);
     const letter = coerceLetterMarkdown(rawLetter);
     if (!letter) {
       throw new Error("Empty letter in model response");
     }
-    return { ...parsed, letterMarkdown: letter, usage };
+    return {
+      ...parsed,
+      letterMarkdown: letter,
+      ...(title ? { title } : {}),
+      usage,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid Anthropic JSON";
     throw new Error(msg);
   }
+}
+
+
+function parseLetterAudioStatus(
+  raw: unknown,
+): WeeklyReflection["letterAudioStatus"] | undefined {
+  return raw === "none" ||
+    raw === "generating" ||
+    raw === "ready" ||
+    raw === "failed"
+    ? raw
+    : undefined;
+}
+
+function letterAudioFieldsFromItem(
+  item: Record<string, unknown>,
+): Pick<
+  WeeklyReflection,
+  | "letterAudioUrl"
+  | "letterAudioStatus"
+  | "letterAudioError"
+  | "letterAudioProgress"
+  | "letterAudioGeneratedAt"
+  | "letterAudioVoiceId"
+> {
+  const status = parseLetterAudioStatus(item.letterAudioStatus);
+  const url =
+    typeof item.letterAudioUrl === "string" && item.letterAudioUrl.trim()
+      ? item.letterAudioUrl.trim()
+      : undefined;
+  const err =
+    typeof item.letterAudioError === "string" && item.letterAudioError.trim()
+      ? item.letterAudioError.trim()
+      : undefined;
+  const progress =
+    typeof item.letterAudioProgress === "string" &&
+    item.letterAudioProgress.trim()
+      ? item.letterAudioProgress.trim()
+      : undefined;
+  const generatedAt =
+    typeof item.letterAudioGeneratedAt === "string" &&
+    item.letterAudioGeneratedAt.trim()
+      ? item.letterAudioGeneratedAt.trim()
+      : undefined;
+  const voiceId =
+    typeof item.letterAudioVoiceId === "string" &&
+    item.letterAudioVoiceId.trim()
+      ? item.letterAudioVoiceId.trim()
+      : undefined;
+  return {
+    ...(url ? { letterAudioUrl: url } : {}),
+    ...(status ? { letterAudioStatus: status } : {}),
+    ...(err ? { letterAudioError: err } : {}),
+    ...(progress ? { letterAudioProgress: progress } : {}),
+    ...(generatedAt ? { letterAudioGeneratedAt: generatedAt } : {}),
+    ...(voiceId ? { letterAudioVoiceId: voiceId } : {}),
+  };
 }
 
 function itemToReflection(
@@ -1584,6 +1790,10 @@ function itemToReflection(
   if (!period) return null;
   const letterMarkdown =
     typeof item.letterMarkdown === "string" ? item.letterMarkdown : "";
+  const title =
+    typeof item.title === "string" && item.title.trim()
+      ? item.title.trim()
+      : undefined;
   const weekStart = safeIso(item.weekStart);
   const weekEnd = safeIso(item.weekEnd);
   const generatedAt = safeIso(item.generatedAt);
@@ -1598,6 +1808,7 @@ function itemToReflection(
       promises: item.promises,
       recurring_thought: item.recurringThought ?? item.recurring_thought,
       activities: item.activities,
+      entry_moods: item.entryMoods ?? item.entry_moods,
     },
     new Set(),
   );
@@ -1615,6 +1826,7 @@ function itemToReflection(
       patterns.promises ||
       patterns.recurringThought ||
       patterns.activities ||
+      patterns.entryMoods ||
       emotions,
   );
   // Legacy rows always had a letter; patterns-only rows need generatedParts/data.
@@ -1655,6 +1867,7 @@ function itemToReflection(
     weekStart,
     weekEnd,
     letterMarkdown,
+    ...(title ? { title } : {}),
     ...(previewStored ? { preview: previewStored } : {}),
     ...(emotions ? { emotions } : {}),
     ...(moodSummary ? { moodSummary } : {}),
@@ -1663,6 +1876,7 @@ function itemToReflection(
     ...(patterns.promises ? { promises: patterns.promises } : {}),
     ...(recurringThought ? { recurringThought } : {}),
     ...(patterns.activities ? { activities: patterns.activities } : {}),
+    ...(patterns.entryMoods ? { entryMoods: patterns.entryMoods } : {}),
     ...(generatedParts ? { generatedParts } : {}),
     wellbeing: { level: parseWellbeingLevel(item.wellbeing) },
     ...(item.letterFeedback &&
@@ -1683,6 +1897,7 @@ function itemToReflection(
           },
         }
       : {}),
+    ...letterAudioFieldsFromItem(item),
     meta: {
       generatedAt,
       model:
@@ -1966,6 +2181,9 @@ async function saveWeeklyReflection(params: {
         weekStart: params.reflection.weekStart,
         weekEnd: params.reflection.weekEnd,
         letterMarkdown: params.reflection.letterMarkdown,
+        ...(params.reflection.title
+          ? { title: params.reflection.title }
+          : {}),
         preview: params.reflection.preview,
         emotions: params.reflection.emotions,
         moodSummary: params.reflection.moodSummary,
@@ -1974,9 +2192,28 @@ async function saveWeeklyReflection(params: {
         promises: params.reflection.promises,
         recurringThought: params.reflection.recurringThought,
         activities: params.reflection.activities,
+        entryMoods: params.reflection.entryMoods,
         generatedParts: params.reflection.generatedParts,
         wellbeing: params.reflection.wellbeing ?? { level: "none" },
         letterFeedback: params.reflection.letterFeedback,
+        ...(params.reflection.letterAudioUrl
+          ? { letterAudioUrl: params.reflection.letterAudioUrl }
+          : {}),
+        ...(params.reflection.letterAudioStatus
+          ? { letterAudioStatus: params.reflection.letterAudioStatus }
+          : {}),
+        ...(params.reflection.letterAudioError
+          ? { letterAudioError: params.reflection.letterAudioError }
+          : {}),
+        ...(params.reflection.letterAudioProgress
+          ? { letterAudioProgress: params.reflection.letterAudioProgress }
+          : {}),
+        ...(params.reflection.letterAudioGeneratedAt
+          ? { letterAudioGeneratedAt: params.reflection.letterAudioGeneratedAt }
+          : {}),
+        ...(params.reflection.letterAudioVoiceId
+          ? { letterAudioVoiceId: params.reflection.letterAudioVoiceId }
+          : {}),
         generatedAt: params.reflection.meta.generatedAt,
         model: params.reflection.meta.model,
         journalEntryCount: params.reflection.meta.journalEntryCount,
@@ -2164,6 +2401,8 @@ export async function handler(
   let letterRevision:
     | { feedback: string; priorLetterMarkdown: string }
     | undefined;
+  let postAction: string | undefined;
+  let letterAudioVoiceId: string | undefined;
   let periodInput: {
     periodType?: unknown;
     startDate?: unknown;
@@ -2182,6 +2421,14 @@ export async function handler(
       ? Buffer.from(event.body ?? "", "base64").toString("utf-8")
       : (event.body ?? "");
     const parsed = JSON.parse(bodyRaw || "{}") as Record<string, unknown>;
+    postAction =
+      typeof parsed.action === "string" ? parsed.action.trim() : undefined;
+    if (
+      typeof parsed.voiceId === "string" &&
+      parsed.voiceId.trim()
+    ) {
+      letterAudioVoiceId = parsed.voiceId.trim();
+    }
     periodInput = {
       periodType: parsed.periodType ?? periodInput.periodType,
       startDate: parsed.startDate ?? parsed.start ?? periodInput.startDate,
@@ -2189,7 +2436,9 @@ export async function handler(
       week: parsed.week ?? periodInput.week,
       timeZone: parsed.timeZone ?? periodInput.timeZone,
     };
-    selection = parseGenerateSelection(parsed);
+    if (postAction !== "generateLetterAudio") {
+      selection = parseGenerateSelection(parsed);
+    }
     if (Array.isArray(parsed.corrections)) {
       correctionHints = parsed.corrections
         .filter((c): c is string => typeof c === "string")
@@ -2229,6 +2478,78 @@ export async function handler(
   const rangeKey = insightRangeKey(period.startDate, period.endDate);
   const periodPhrase = periodPhraseForPrompt(period);
   const periodLabel = formatRangeWords(period.startDate, period.endDate);
+
+  if (postAction === "generateLetterAudio") {
+    try {
+      const existing = await loadReflectionForPeriod(
+        insightsTable,
+        ownerId,
+        period,
+      );
+      if (!existing?.letterMarkdown?.trim()) {
+        return json(400, { error: "Generate a letter before listening" });
+      }
+      const fn = process.env.LETTER_NARRATE_FUNCTION_NAME?.trim();
+      if (!fn) {
+        return json(500, { error: "Letter narration is not configured" });
+      }
+      const sk = insightSortKey(period.startDate, period.endDate);
+      await ddb.send(
+        new UpdateCommand({
+          TableName: insightsTable,
+          Key: { pk: ownerId, sk },
+          UpdateExpression:
+            "SET letterAudioStatus = :st, letterAudioError = :err, letterAudioProgress = :prog, letterAudioStartedAt = :at, letterAudioVoiceId = :vid",
+          ExpressionAttributeValues: {
+            ":st": "generating",
+            ":err": null,
+            ":prog": "Queued — starting narration…",
+            ":at": new Date().toISOString(),
+            ":vid": letterAudioVoiceId ?? null,
+          },
+        }),
+      );
+      await new LambdaClient({}).send(
+        new InvokeCommand({
+          FunctionName: fn,
+          InvocationType: "Event",
+          Payload: Buffer.from(
+            JSON.stringify({
+              ownerId,
+              startDate: period.startDate,
+              endDate: period.endDate,
+              ...(letterAudioVoiceId ? { voiceId: letterAudioVoiceId } : {}),
+            }),
+          ),
+        }),
+      );
+      const refreshed = await loadReflectionForPeriod(
+        insightsTable,
+        ownerId,
+        period,
+      );
+      return json(202, {
+        reflection: refreshed ?? {
+          ...existing,
+          letterAudioStatus: "generating",
+          letterAudioProgress: "Queued — starting narration…",
+          ...(letterAudioVoiceId
+            ? { letterAudioVoiceId }
+            : {}),
+        },
+        weekKey: weekKeyForPeriod(period),
+        weekStart: period.startIso,
+        weekEnd: period.endIso,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        periodType: period.periodType,
+        rangeKey,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not start narration";
+      return json(500, { error: msg });
+    }
+  }
 
   if (!selection.letter && !anyPatternSelected(selection.patterns)) {
     return json(400, { error: "Choose at least one: letter or patterns" });
@@ -2316,6 +2637,11 @@ export async function handler(
         label: formatRangeWords(l.startDate, l.endDate),
       }));
     const knownEntryIds = new Set(entries.map((e) => e.id));
+    const userMoodEntryIds = new Set(
+      entries
+        .filter((e) => isJournalMoodId(e.mood?.trim()))
+        .map((e) => e.id),
+    );
     let modelOut: Awaited<ReturnType<typeof callClaudeForLetter>>;
     try {
       modelOut = await callClaudeForLetter({
@@ -2337,6 +2663,7 @@ export async function handler(
         }),
         knownEntryIds,
         entriesById: entryTextById(entries),
+        userMoodEntryIds,
       });
     } catch (e) {
       if (existing?.letterMarkdown?.trim()) {
@@ -2357,6 +2684,7 @@ export async function handler(
 
     const {
       letterMarkdown: modelLetter,
+      title: modelTitle,
       letterDocument: modelLetterDocument,
       wellbeing: modelWellbeing,
       emotions,
@@ -2366,6 +2694,7 @@ export async function handler(
       promises,
       recurringThought: modelThought,
       activities,
+      entryMoods: modelEntryMoods,
       usage,
     } = modelOut;
 
@@ -2408,6 +2737,10 @@ export async function handler(
         : modelLetter.trim()
       : (existing?.letterMarkdown ?? "");
 
+    const title = selection.letter
+      ? modelTitle?.trim() || undefined
+      : existing?.title;
+
     const preview = letterMarkdown.trim()
       ? letterPreviewFromMarkdown(letterMarkdown)
       : existing?.preview;
@@ -2428,6 +2761,7 @@ export async function handler(
       weekStart: period.startIso,
       weekEnd: period.endIso,
       letterMarkdown,
+      ...(title ? { title } : {}),
       ...(selection.letter && modelLetterDocument
         ? { letterDocument: modelLetterDocument }
         : !selection.letter && existing?.letterDocument
@@ -2472,11 +2806,50 @@ export async function handler(
         : existing?.activities
           ? { activities: existing.activities }
           : {}),
+      ...(modelEntryMoods
+        ? { entryMoods: modelEntryMoods }
+        : existing?.entryMoods
+          ? { entryMoods: existing.entryMoods }
+          : {}),
       wellbeing: { level: modelWellbeing },
       ...(letterRevision
         ? {}
         : existing?.letterFeedback
           ? { letterFeedback: existing.letterFeedback }
+          : {}),
+      // Keep narration when the letter text is unchanged; otherwise drop it.
+      ...(selection.letter &&
+      letterMarkdown.trim() &&
+      letterMarkdown.trim() === (existing?.letterMarkdown ?? "").trim()
+        ? {
+            ...(existing?.letterAudioUrl
+              ? { letterAudioUrl: existing.letterAudioUrl }
+              : {}),
+            ...(existing?.letterAudioStatus
+              ? { letterAudioStatus: existing.letterAudioStatus }
+              : {}),
+            ...(existing?.letterAudioGeneratedAt
+              ? { letterAudioGeneratedAt: existing.letterAudioGeneratedAt }
+              : {}),
+            ...(existing?.letterAudioVoiceId
+              ? { letterAudioVoiceId: existing.letterAudioVoiceId }
+              : {}),
+          }
+        : !selection.letter
+          ? {
+              ...(existing?.letterAudioUrl
+                ? { letterAudioUrl: existing.letterAudioUrl }
+                : {}),
+              ...(existing?.letterAudioStatus
+                ? { letterAudioStatus: existing.letterAudioStatus }
+                : {}),
+              ...(existing?.letterAudioGeneratedAt
+                ? { letterAudioGeneratedAt: existing.letterAudioGeneratedAt }
+                : {}),
+              ...(existing?.letterAudioVoiceId
+                ? { letterAudioVoiceId: existing.letterAudioVoiceId }
+                : {}),
+            }
           : {}),
       generatedParts,
       meta: {

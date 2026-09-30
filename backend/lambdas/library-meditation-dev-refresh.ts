@@ -28,6 +28,7 @@ import {
   createPromptFromProvenance,
   generateAndStoreMeditationCover,
 } from "./_shared/meditation-cover";
+import { scheduleIndexMeditation } from "./_shared/algolia-index-meditation";
 import {
   deriveLibraryMetadataFromClaude,
   fallbackLibraryMetadata,
@@ -95,7 +96,8 @@ export async function handler(
 
   const auth = await requireUserJson(event);
   if ("statusCode" in auth) return auth;
-  const sub = (auth as { sub: string }).sub;
+  const user = auth as { sub: string; email?: string };
+  const sub = user.sub;
   const partitionKeys = [
     meditationUserPk(sub),
     meditationGlobalUserPk(),
@@ -182,6 +184,16 @@ export async function handler(
     const coverImageUrl = cfDomain
       ? `https://${cfDomain}/${coverImageKey}`
       : null;
+    scheduleIndexMeditation({
+      email: user.email,
+      sk,
+      title,
+      description,
+      meditationStyle,
+      meditationType,
+      coverImageKey,
+      updatedAt: Date.now(),
+    });
     return json(200, { ok: true, coverImageKey, coverImageUrl });
   }
 

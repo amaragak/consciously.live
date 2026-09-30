@@ -88,6 +88,10 @@ export async function handler(
     typeof body.sessionToken === "string" ? body.sessionToken : null,
   );
   const userId = auth?.sub?.trim() || GLOBAL_MEDITATION_USER_ID;
+  const userEmail =
+    typeof auth?.email === "string" && auth.email.trim()
+      ? auth.email.trim().toLowerCase()
+      : "";
 
   const tableName = process.env.MEDITATION_JOBS_TABLE_NAME;
   const workerFn = process.env.WORKER_FUNCTION_NAME;
@@ -185,6 +189,7 @@ export async function handler(
       Item: {
         jobId,
         userId,
+        ...(userEmail ? { email: userEmail } : {}),
         status: "pending",
         createdAt: now,
         updatedAt: now,

@@ -4,12 +4,14 @@
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --email=you@example.com
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --all --dry-run
+ *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --index-existing
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --public --force
  *   AWS_PROFILE=mm OPENAI_API_KEY=sk-… npx tsx scripts/backfill-meditation-covers.ts --limit=3
  *
  * Default email: Continue-as-guest account (alexmaragakis@hotmail.co.uk).
  * Uses OPENAI_API_KEY env, else Secrets Manager medimade/OPENAI_API_KEY.
  * `--public` / `--community`: only meditations with isPublic=true (Community tab).
+ * `--index-existing`: push cover imageUrl into Algolia for rows that already have coverImageKey (no image gen).
  */
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -30,6 +32,11 @@ import {
   LEGACY_MEDITATION_PARTITION_PK,
   meditationUserPk,
 } from "../lambdas/_shared/meditation-user-pk";
+import {
+  algoliaUserIdFromEmail,
+  upsertRecords,
+  type AlgoliaUserRecord,
+} from "../lambdas/_shared/algolia";
 import { OPENAI_SECRET_NAME } from "../lib/consciously/secret-names";
 
 const rawDdb = new DynamoDBClient({});
@@ -52,6 +59,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const all = args.includes("--all");
 const force = args.includes("--force");
+const indexExisting = args.includes("--index-existing");
 const publicOnly =
   args.includes("--public") || args.includes("--community");
 
@@ -200,11 +208,83 @@ async function resolveBucket(): Promise<string> {
   );
 }
 
+async function emailByUserIdMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const out = await ddb.send(
+      new ScanCommand({
+        TableName: USERS,
+        ProjectionExpression: "email, userId",
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of out.Items ?? []) {
+      const email =
+        typeof item.email === "string" ? item.email.trim().toLowerCase() : "";
+      const userId =
+        typeof item.userId === "string" ? item.userId.trim() : "";
+      if (email && userId) map.set(userId, email);
+    }
+    startKey = out.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return map;
+}
+
+function coverImageUrl(key: string): string | null {
+  const cf =
+    process.env.MEDIA_CLOUDFRONT_DOMAIN?.trim() ||
+    argValue("--cf-domain") ||
+    "";
+  if (!cf || !key) return null;
+  return `https://${cf}/${key}`;
+}
+
+async function indexCoverInAlgolia(opts: {
+  email: string | undefined;
+  row: LibRow;
+  coverImageKey: string;
+}): Promise<void> {
+  const email = opts.email?.trim().toLowerCase();
+  if (!email) return;
+  const imageUrl = coverImageUrl(opts.coverImageKey);
+  const record: AlgoliaUserRecord = {
+    objectID: `meditation:${opts.row.sk}`,
+    userId: algoliaUserIdFromEmail(email),
+    type: "meditation",
+    title: opts.row.title,
+    body: [
+      opts.row.description ?? "",
+      opts.row.meditationStyle ?? "",
+      opts.row.meditationType ?? "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 4000),
+    href: `/meditate/library/creations?focus=${encodeURIComponent(opts.row.sk)}`,
+    updatedAt: Date.now(),
+    ...(imageUrl ? { imageUrl } : {}),
+  };
+  try {
+    await upsertRecords([record]);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("algolia index skipped", opts.row.id, msg);
+  }
+}
+
 async function main(): Promise<void> {
-  await ensureOpenAiEnv();
-  const bucket = await resolveBucket();
+  if (!indexExisting) {
+    await ensureOpenAiEnv();
+  }
+  const bucket = indexExisting ? "" : await resolveBucket();
+  if (!process.env.ALGOLIA_SECRET_ARN?.trim() && !process.env.ALGOLIA_SECRET_NAME?.trim()) {
+    process.env.ALGOLIA_SECRET_NAME = "medimade/ALGOLIA";
+  }
 
   let rows: LibRow[];
+  let fixedEmail: string | null = null;
+  let userEmails: Map<string, string> | null = null;
   if (all || publicOnly) {
     console.log(
       publicOnly
@@ -215,9 +295,11 @@ async function main(): Promise<void> {
     if (publicOnly) {
       rows = rows.filter((r) => r.isPublic);
     }
+    userEmails = await emailByUserIdMap();
   } else {
     const email =
       emailArg || "alexmaragakis@hotmail.co.uk";
+    fixedEmail = email;
     const userId = await userIdForEmail(email);
     console.log(`user ${email} → ${userId}`);
     rows = await queryUserMeditations(userId);
@@ -226,18 +308,37 @@ async function main(): Promise<void> {
     }
   }
 
-  const targets = rows.filter((r) => force || !r.coverImageKey);
+  const targets = indexExisting
+    ? rows.filter((r) => Boolean(r.coverImageKey))
+    : rows.filter((r) => force || !r.coverImageKey);
   console.log(
     `found ${rows.length} catalogued meditations` +
       (publicOnly ? " (public)" : "") +
-      `, ${targets.length} need covers` +
+      (indexExisting
+        ? `, ${targets.length} with covers to index`
+        : `, ${targets.length} need covers`) +
       (limit ? ` (limit ${limit})` : "") +
-      (force ? " [--force]" : ""),
+      (force ? " [--force]" : "") +
+      (indexExisting ? " [--index-existing]" : ""),
   );
 
   let done = 0;
   for (const row of targets) {
     if (limit && done >= limit) break;
+    if (indexExisting) {
+      const key = row.coverImageKey!;
+      if (dryRun) {
+        console.log("would index", row.id, row.title, key);
+        done += 1;
+        continue;
+      }
+      const email =
+        fixedEmail || userEmails?.get(row.userId) || undefined;
+      await indexCoverInAlgolia({ email, row, coverImageKey: key });
+      console.log("indexed", row.id, key);
+      done += 1;
+      continue;
+    }
     const input: MeditationCoverInput = {
       title: row.title,
       description: row.description,
@@ -254,7 +355,7 @@ async function main(): Promise<void> {
     }
     const key = await generateAndStoreMeditationCover({
       s3,
-      bucket,
+      bucket: bucket || MEDIA_BUCKET,
       userId: row.userId,
       meditationId: row.id,
       input,
@@ -271,6 +372,9 @@ async function main(): Promise<void> {
         ExpressionAttributeValues: { ":k": key },
       }),
     );
+    const email =
+      fixedEmail || userEmails?.get(row.userId) || undefined;
+    await indexCoverInAlgolia({ email, row, coverImageKey: key });
     console.log("ok", row.id, key);
     done += 1;
   }

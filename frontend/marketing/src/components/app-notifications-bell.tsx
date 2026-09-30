@@ -124,7 +124,7 @@ export function AppNotificationsBell() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-[140] mt-1.5 w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
+          className="absolute right-0 top-full z-[220] mt-1.5 w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
         >
           <div className="flex items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
             <p className="text-sm font-semibold text-foreground">

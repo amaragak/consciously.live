@@ -13,6 +13,7 @@ import {
 } from "@/lib/plan-dreams";
 import { PlanResistanceThreadBanner } from "@/components/plan/plan-resistance-thread-banner";
 import { IdeateCollapsibleSection } from "@/components/plan/ideate-collapsible-section";
+import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { globalResistanceThreads } from "@/lib/plan-resistance-threads";
 import {
@@ -1451,13 +1452,9 @@ export function PlanHomeClient() {
           </ul>
           {orderedDreams.length > 0 && orderedDreams.length % 4 === 0 ? (
             <div className="mt-7 flex justify-center">
-              <button
-                type="button"
-                onClick={() => setModalOpen(true)}
-                className="inline-flex cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
-              >
-                + Add new life area
-              </button>
+              <PrimaryCreateButton onClick={() => setModalOpen(true)}>
+                Add new life area
+              </PrimaryCreateButton>
             </div>
           ) : null}
         </section>
@@ -1596,17 +1593,15 @@ export function PlanHomeClient() {
             </form>
           ) : (
             <div className="mt-5 flex justify-center">
-              <button
-                type="button"
+              <PrimaryCreateButton
                 onClick={() => {
                   setAddingValue(true);
                   setEditingValueId(null);
                   setEditValueDraft("");
                 }}
-                className="inline-flex cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
               >
-                + Add a value
-              </button>
+                Add a value
+              </PrimaryCreateButton>
             </div>
           )}
             </IdeateCollapsibleSection>
@@ -1732,21 +1727,21 @@ export function PlanHomeClient() {
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("author")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A865]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-gold/60 hover:bg-accent-soft/30"
                   >
                     From a thinker
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("work")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A865]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-gold/60 hover:bg-accent-soft/30"
                   >
                     From a work
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuoteAddMode("original")}
-                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-[#F0A865]/60 hover:bg-accent-soft/30"
+                    className="cursor-pointer rounded-full border border-border px-4 py-2 font-sans text-sm font-medium text-foreground transition-colors hover:border-gold/60 hover:bg-accent-soft/30"
                   >
                     Write your own
                   </button>
@@ -1832,7 +1827,7 @@ export function PlanHomeClient() {
                           const selected = authorSelectedQuotes.has(text);
                           return (
                             <li key={text}>
-                              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 px-3 py-2.5 transition-colors hover:border-[#F0A865]/45">
+                              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 px-3 py-2.5 transition-colors hover:border-gold/45">
                                 <input
                                   type="checkbox"
                                   checked={selected}
@@ -1937,17 +1932,15 @@ export function PlanHomeClient() {
             </div>
           ) : (
             <div className="mt-5 flex justify-center">
-              <button
-                type="button"
+              <PrimaryCreateButton
                 onClick={() => {
                   setAddingQuote(true);
                   setQuoteAddMode("choose");
                   setEditingQuoteId(null);
                 }}
-                className="inline-flex cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
               >
-                + Add a quote
-              </button>
+                Add a quote
+              </PrimaryCreateButton>
             </div>
           )}
             </IdeateCollapsibleSection>
@@ -1985,7 +1978,7 @@ export function PlanHomeClient() {
               return (
                 <li
                   key={q.id}
-                  className={`group border-l-2 border-[#F0A865] pl-5 ${
+                  className={`group border-l-2 border-gold pl-5 ${
                     i === questionCells.length - 1 ? "mb-0" : "mb-5"
                   }`}
                 >
@@ -2058,18 +2051,16 @@ export function PlanHomeClient() {
 
           <div className="mt-5 flex justify-center">
             <div className="relative" ref={addPickerRef}>
-              <button
-                type="button"
+              <PrimaryCreateButton
                 onClick={(e) => {
                   e.stopPropagation();
                   setAddQuestionOpen((o) => !o);
                   setWritingCustom(false);
                   setCustomDraft("");
                 }}
-                className="inline-flex cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
               >
-                {questions.length === 0 ? "+ Add another" : "+ Add a question"}
-              </button>
+                {questions.length === 0 ? "Add another" : "Add a question"}
+              </PrimaryCreateButton>
 
               {addQuestionOpen ? (
                 <div
@@ -2280,13 +2271,9 @@ export function PlanHomeClient() {
             </form>
           ) : (
             <div className="mt-5 flex justify-center">
-              <button
-                type="button"
-                onClick={() => setAddingRegret(true)}
-                className="inline-flex cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
-              >
-                + Add an entry
-              </button>
+              <PrimaryCreateButton onClick={() => setAddingRegret(true)}>
+                Add an entry
+              </PrimaryCreateButton>
             </div>
           )}
               </IdeateCollapsibleSection>
@@ -2396,7 +2383,7 @@ export function PlanHomeClient() {
                 type="button"
                 disabled={!newTitle.trim()}
                 onClick={() => addDream()}
-                className="cursor-pointer rounded-full bg-[#F0A865] px-5 py-2.5 text-sm font-medium text-[#1E2530] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-full bg-accent-button px-5 py-2.5 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Create
               </button>

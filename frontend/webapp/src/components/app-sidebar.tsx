@@ -1,19 +1,16 @@
 "use client";
 
-import { Link, usePathname, useRouter  } from "@/lib/spa-nav";
+import { Link, usePathname } from "@/lib/spa-nav";
 import {
   BookOpen,
-  Code2,
   Focus,
   MessageSquare,
-  Settings,
-  Shield,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  APP_NAV_ADMIN,
   APP_NAV_MAIN,
+  APP_SIDEBAR_WIDTH_TRANSITION_MS,
   activeNavSectionId,
   defaultSidebarExpandState,
   isSubItemActive,
@@ -22,54 +19,13 @@ import {
   type AppNavSection,
   type AppNavSubItem,
 } from "@/lib/app-nav";
-import { AlphaChromeButton } from "@/components/dev-chrome-button";
-import { ColorSchemePicker } from "@consciously/common";
-import { clearMedimadeSession, isMedimadeSessionActive } from "@/lib/auth-session";
-import { enterMarketingPreviewMode } from "@/lib/marketing-preview";
+import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import {
   pullIdeateStoreFromCloud,
   subscribeIdeateCloud,
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
-
-function isAdminUnlocked(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem("mm_admin_unlocked") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function AdminOnlyMarketingButton({
-  className,
-  onNavigate,
-  router,
-}: {
-  className?: string;
-  onNavigate?: () => void;
-  router: { push: (href: string) => void };
-}) {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    setShow(isAdminUnlocked());
-  }, []);
-  if (!show) return null;
-  return (
-    <AlphaChromeButton
-      className={className}
-      title="Alpha — show marketing site without clearing session"
-      onClick={() => {
-        enterMarketingPreviewMode();
-        onNavigate?.();
-        router.push("/");
-      }}
-    >
-      View marketing page
-    </AlphaChromeButton>
-  );
-}
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -111,8 +67,6 @@ const SECTION_ICONS: Record<string, ReactNode> = {
   journal: <BookOpen aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   ideate: <Sparkles aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   focus: <Focus aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
-  admin: <Shield aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
-  api: <Code2 aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
 };
 
 function NavSectionBlock({
@@ -120,6 +74,7 @@ function NavSectionBlock({
   items,
   lifeAreaItems,
   expanded,
+  showChildren,
   onToggle,
   pathname,
   hash,
@@ -133,6 +88,8 @@ function NavSectionBlock({
   /** Manifest: user life areas under a muted subheading. */
   lifeAreaItems?: AppNavSubItem[];
   expanded: boolean;
+  /** False while the rail is still widening — hide nested rows until settled. */
+  showChildren: boolean;
   onToggle: () => void;
   pathname: string;
   hash: string;
@@ -162,13 +119,17 @@ function NavSectionBlock({
           href={sub.href}
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
-          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-nav-active ${
-            active ? "font-medium text-accent-link" : "text-muted"
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
+            active
+              ? "font-bold text-accent-link"
+              : "text-muted"
           }`}
         >
           <span
             className={`size-1 shrink-0 rounded-full ${
-              active ? "bg-accent" : "bg-muted/50"
+              active
+                ? "bg-accent-link"
+                : "bg-muted/50"
             }`}
             aria-hidden
           />
@@ -180,7 +141,7 @@ function NavSectionBlock({
             onClick={onNavigate}
             aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
             title={sub.actionAriaLabel ?? `New ${sub.label}`}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-nav-active hover:text-accent-link"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-background hover:text-accent-link"
           >
             +
           </Link>
@@ -191,20 +152,21 @@ function NavSectionBlock({
 
   return (
     <div className="px-2">
-      <div className="flex items-center gap-0.5">
+      <div className="flex min-w-0 items-center gap-0.5">
         <Link
           href={section.href}
           onClick={onNavigate}
-          className={`flex min-w-0 flex-1 items-center gap-2 truncate rounded-lg px-2.5 py-2 text-[15px] transition-colors hover:bg-nav-active hover:text-foreground ${
-            sectionActive && !hasChildren
-              ? "font-semibold text-accent-link"
-              : sectionActive
-                ? "font-semibold text-foreground"
-                : "text-muted"
+          title={section.label}
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-[15px] transition-colors hover:bg-background ${
+            sectionActive
+              ? "font-bold text-accent-link"
+              : "text-muted hover:text-foreground"
           }`}
         >
           {icon ?? null}
-          <span className="min-w-0 truncate">{section.label}</span>
+          <span className="min-w-0 truncate whitespace-nowrap">
+            {section.label}
+          </span>
         </Link>
         {hasChildren ? (
           <button
@@ -216,13 +178,17 @@ function NavSectionBlock({
             }
             aria-expanded={expanded}
             onClick={onToggle}
-            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-background ${
+              sectionActive
+                ? "text-accent-link"
+                : "text-muted hover:text-foreground"
+            }`}
           >
             <ChevronIcon expanded={expanded} />
           </button>
         ) : null}
       </div>
-      {hasChildren && expanded ? (
+      {hasChildren && expanded && showChildren ? (
         <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
           {subs.map(renderSub)}
           {lifeAreas.length > 0 || emptyAction ? (
@@ -238,7 +204,7 @@ function NavSectionBlock({
               <Link
                 href={emptyAction.href}
                 onClick={onNavigate}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-foreground"
               >
                 <span
                   className="size-1 shrink-0 rounded-full bg-muted/50"
@@ -255,7 +221,6 @@ function NavSectionBlock({
 }
 
 type Props = {
-  accountLabel: string;
   mobileOpen?: boolean;
   onNavigate?: () => void;
   onCloseMobile?: () => void;
@@ -265,7 +230,6 @@ type Props = {
 };
 
 export function AppSidebar({
-  accountLabel,
   mobileOpen = false,
   onNavigate,
   onCloseMobile,
@@ -273,7 +237,6 @@ export function AppSidebar({
   onToggleCollapsed,
 }: Props) {
   const pathname = usePathname() || "/";
-  const router = useRouter();
   const [hash, setHash] = useState("");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>(
@@ -285,6 +248,28 @@ export function AppSidebar({
 
   // Mobile drawer always shows the full tree.
   const railCollapsed = collapsed && !mobileOpen;
+  /**
+   * Nested nav rows wait until the rail finishes widening. During the open
+   * transition parents stay one line with ellipsis; children mount after.
+   */
+  const [childrenReady, setChildrenReady] = useState(() => !collapsed);
+
+  useEffect(() => {
+    if (railCollapsed) {
+      setChildrenReady(false);
+      return;
+    }
+    // Mobile drawer is already full-width (slides in); show children immediately.
+    if (mobileOpen || (typeof window !== "undefined" && window.innerWidth < 768)) {
+      setChildrenReady(true);
+      return;
+    }
+    const id = window.setTimeout(
+      () => setChildrenReady(true),
+      APP_SIDEBAR_WIDTH_TRANSITION_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [railCollapsed, mobileOpen]);
 
   useEffect(() => {
     setHash(window.location.hash || "");
@@ -353,7 +338,7 @@ export function AppSidebar({
   const asideClass = useMemo(
     () =>
       [
-        "flex shrink-0 flex-col border-r-[0.5px] border-border bg-surface-2",
+        "flex shrink-0 flex-col overflow-x-hidden border-r-[0.5px] border-sidebar-border bg-surface-2",
         railCollapsed ? "w-14" : "w-[200px]",
         "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out",
         // Mobile: off-canvas until hamburger opens. Desktop: always visible.
@@ -378,7 +363,7 @@ export function AppSidebar({
         {railCollapsed ? (
           <>
             <nav className="app-sidebar-scroll flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
-              {[...APP_NAV_MAIN, ...APP_NAV_ADMIN].map((section) => {
+              {APP_NAV_MAIN.map((section) => {
                 const sectionActive = activeNavSectionId(pathname) === section.id;
                 const icon = SECTION_ICONS[section.id];
                 return (
@@ -391,8 +376,8 @@ export function AppSidebar({
                     aria-current={sectionActive ? "page" : undefined}
                     className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
                       sectionActive
-                        ? "bg-nav-active text-accent-link"
-                        : "text-muted hover:bg-nav-active hover:text-foreground"
+                        ? "bg-nav-active font-bold text-accent-link"
+                        : "text-muted hover:bg-background hover:text-foreground"
                     }`}
                   >
                     {icon ?? null}
@@ -421,36 +406,6 @@ export function AppSidebar({
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </button>
-              <ColorSchemePicker compact menu="end" variant="sidebar" />
-              <Link
-                href="/settings"
-                onClick={onNavigate}
-                title="Settings"
-                aria-label="Settings"
-                aria-current={
-                  pathname.startsWith("/settings") ? "page" : undefined
-                }
-                className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-                  pathname.startsWith("/settings")
-                    ? "bg-nav-active text-accent-link"
-                    : "text-muted hover:bg-nav-active hover:text-foreground"
-                }`}
-              >
-                <Settings
-                  aria-hidden
-                  className="size-[18px] shrink-0"
-                  strokeWidth={1.75}
-                />
-              </Link>
-              <Link
-                href="/settings"
-                onClick={onNavigate}
-                title={accountLabel}
-                aria-label={`Account: ${accountLabel}`}
-                className="flex size-8 items-center justify-center rounded-full bg-accent-soft/80 text-xs font-semibold text-accent-link"
-              >
-                {(accountLabel.trim()[0] || "G").toUpperCase()}
-              </Link>
             </div>
           </>
         ) : (
@@ -475,22 +430,8 @@ export function AppSidebar({
                   : undefined
               }
               expanded={Boolean(expanded[section.id])}
+              showChildren={childrenReady}
               onToggle={() => toggleSection(section.id)}
-              pathname={pathname}
-              hash={hash}
-              search={search}
-              onNavigate={onNavigate}
-            />
-          ))}
-
-          <div className="mx-3 my-3 border-t border-border" role="separator" />
-
-          {APP_NAV_ADMIN.map((section) => (
-            <NavSectionBlock
-              key={section.id}
-              section={section}
-              expanded={false}
-              onToggle={() => undefined}
               pathname={pathname}
               hash={hash}
               search={search}
@@ -500,12 +441,12 @@ export function AppSidebar({
         </nav>
 
         <div className="mt-auto shrink-0 border-t border-border px-2 py-3">
-          <div className="mb-1 flex items-center justify-end gap-1 px-1 md:justify-between">
+          <div className="mb-1 flex items-center justify-end gap-1 px-1 md:justify-start">
             <button
               type="button"
               onClick={onToggleCollapsed}
               aria-label="Collapse sidebar"
-              className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground md:inline-flex"
+              className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-background hover:text-foreground md:inline-flex"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -521,65 +462,6 @@ export function AppSidebar({
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
-            <ColorSchemePicker variant="sidebar" menu="up" />
-          </div>
-          <Link
-            href="/settings"
-            onClick={onNavigate}
-            aria-current={
-              pathname.startsWith("/settings") ? "page" : undefined
-            }
-            className={`mb-0.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[15px] transition-colors hover:bg-nav-active hover:text-foreground ${
-              pathname.startsWith("/settings")
-                ? "font-semibold text-accent-link"
-                : "text-muted"
-            }`}
-          >
-            <Settings
-              aria-hidden
-              className="size-[18px] shrink-0"
-              strokeWidth={1.75}
-            />
-            <span className="min-w-0 truncate">Settings</span>
-          </Link>
-          <div className="flex items-center gap-2 px-2.5 py-2">
-            <Link
-              href="/settings"
-              onClick={onNavigate}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-[15px] text-muted transition-colors hover:text-foreground"
-              title={accountLabel}
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft/80 text-xs font-semibold text-accent-link">
-                {(accountLabel.trim()[0] || "G").toUpperCase()}
-              </span>
-              <span className="min-w-0 truncate font-medium text-foreground">
-                {accountLabel}
-              </span>
-            </Link>
-            <Link
-              href="/pricing"
-              onClick={onNavigate}
-              className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--accent-link)_35%,var(--border))] px-2.5 py-0.5 text-[12px] font-semibold text-accent-link transition-colors hover:bg-accent-soft/40"
-            >
-              Pro
-            </Link>
-          </div>
-          <div className="mt-2 flex flex-col gap-1.5 px-1">
-            <button
-              type="button"
-              onClick={() => {
-                clearMedimadeSession();
-                onNavigate?.();
-              }}
-              className="cursor-pointer rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-nav-active"
-            >
-              Sign out
-            </button>
-            <AdminOnlyMarketingButton
-              className="mt-1 w-full justify-center md:hidden"
-              onNavigate={onNavigate}
-              router={router}
-            />
           </div>
         </div>
           </>

@@ -28,7 +28,7 @@ export function FactoryPresetRow({
       }}
       className={`flex cursor-pointer items-center gap-3 rounded-[10px] border-[0.5px] border-solid p-3 transition-colors ${
         loaded
-          ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+          ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
           : "border-border bg-background text-foreground hover:border-accent/40"
       }`}
     >

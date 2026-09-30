@@ -33,12 +33,21 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
       id="tool-home"
       className="home-v2-hero flex flex-col px-5 pb-14 text-[var(--hv2-hero-fg)] md:px-6 md:pb-[140px]"
     >
+      {/* Soft radial about the sun — lives on the hero (not chrome-clipped). */}
+      <div
+        aria-hidden
+        className="home-v2-hero-sun-glow px-5 md:px-6"
+      >
+        <div className="relative mx-auto h-full max-w-[1200px]">
+          <span className="home-v2-hero-chrome-glow-sun absolute left-[20px] top-[28px] size-[160px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl md:top-[36px] md:size-[200px]" />
+        </div>
+      </div>
       <div className="home-v2-hero-chrome mx-auto w-full max-w-[1200px] border-b border-[var(--hv2-hero-hairline)]">
         <nav
           aria-label="Main"
           className="relative flex h-14 items-center gap-4 md:h-[72px]"
         >
-          <div className="shrink-0">
+          <div className="relative shrink-0">
             <Lockup size="nav" onHero withMark homeHref="/" />
           </div>
 
@@ -71,7 +80,7 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           <div className="ml-auto hidden shrink-0 md:block lg:ml-0">
             <HomeV2AuthActions
               ctaHref={HOME_V2_START_FREE_HREF}
-              ctaLabel="Start free"
+              ctaLabel="Start free →"
             />
           </div>
 
@@ -120,10 +129,10 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
               <Link href="/login" className="block py-3" onClick={() => setMenuOpen(false)}>Sign in</Link>
               <Link
                 href={HOME_V2_START_FREE_HREF}
-                className="mt-2 inline-flex rounded-full bg-[var(--hv2-gold)] px-5 py-3 font-semibold text-[var(--hv2-on-gold)]"
+                className="accent-fill-gradient mt-2 inline-flex rounded-full px-5 py-3 font-semibold"
                 onClick={() => setMenuOpen(false)}
               >
-                Start free
+                Start free →
               </Link>
             </div>
           ) : null}
@@ -144,12 +153,12 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           className={`m-0 max-w-none text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5] ${sub.className}`}
           style={sub.style}
         >
+          <em className="home-v2-display text-[19px] italic text-[var(--hv2-gold)] md:text-[26px]">
+            Live consciously.
+          </em>{" "}
           Personalised AI-guided meditations, vision boarding, a goal planner,
           your personal manifesto and focus sessions — everything you need to
-          turn the dream into your daily life.{" "}
-          <em className="home-v2-display italic text-[var(--hv2-hero-fg)]">
-            Live consciously.
-          </em>
+          turn the dream into your daily life.
         </p>
         <div className={form.className} style={form.style}>
           <HeroPrompt />

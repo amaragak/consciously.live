@@ -41,7 +41,7 @@ import {
 import {
   emptyGratitudeLines,
   entriesForCloudPut,
-  findGratitudeEntryForLocalDate,
+  findRecentGratitudeWithinHours,
   formatJournalEntryDate,
   gratitudeLinesToHtml,
   groupJournalEntriesByWeek,
@@ -56,7 +56,6 @@ import {
   armJournalMeditationHandoffJson,
   JOURNAL_MEDITATION_PAYLOAD_KEY,
   loadJournalStoreRaw,
-  localDateKey,
   localDateKeyFromIso,
   mostRecentlyUpdatedId,
   mergeRemoteJournalKeepingLocalOnly,
@@ -1321,11 +1320,7 @@ export function JournalView() {
 
   const openTodayGratitude = useCallback(() => {
     flushSaveSync();
-    const todayKey = localDateKey();
-    const existing = findGratitudeEntryForLocalDate(
-      entriesRef.current,
-      todayKey,
-    );
+    const existing = findRecentGratitudeWithinHours(entriesRef.current, 24);
     if (existing) {
       setActiveEntryId(existing.id);
       latestHtmlRef.current = existing.contentHtml;
@@ -1379,19 +1374,23 @@ export function JournalView() {
     if (section !== "journal" && section !== "gratitude") return;
     const prev = prevListSectionRef.current;
     prevListSectionRef.current = section;
-    if (prev === null) {
-      if (section === "gratitude" && !gratitudeEntryIdFromPath(pathname)) {
-        openTodayGratitude();
-      }
-      return;
-    }
-    if (prev === section) return;
+
     if (section === "gratitude") {
-      if (!gratitudeEntryIdFromPath(pathname)) openTodayGratitude();
+      if (gratitudeEntryIdFromPath(pathname)) return;
+      if (
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("new") === "1"
+      ) {
+        return;
+      }
+      // Bare `/journal/my/gratitudes` (breadcrumb, tab, sidebar): last ?24h or new.
+      openTodayGratitudeCompose();
       return;
     }
+
+    if (prev === null || prev === section) return;
     activateJournalList();
-  }, [hydrated, section, pathname, openTodayGratitude, activateJournalList]);
+  }, [hydrated, section, pathname, openTodayGratitudeCompose, activateJournalList]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1523,7 +1522,7 @@ export function JournalView() {
       >
         {journalTab === "journal" && sidebarCollapsed ? (
           <aside
-            className="relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-border bg-surface-rail px-1.5 py-3 md:flex"
+            className="relative z-[1] hidden shrink-0 flex-col items-center gap-2 overflow-hidden border-r-[0.5px] border-sidebar-border bg-surface-rail px-1.5 py-3 md:flex"
           >
             <div
               aria-hidden
@@ -1557,7 +1556,7 @@ export function JournalView() {
         <aside
           className={`flex shrink-0 flex-col ${
             journalTab === "journal" || journalTab === "gratitude"
-              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                   mobileComposeChrome
                     ? "max-sm:hidden"
                     : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
@@ -2019,7 +2018,7 @@ export function JournalView() {
                               onClick={() => selectEntry(e.id)}
                               className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                                 isActive
-                                  ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                  ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                   : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                               }`}
                             >
@@ -2058,7 +2057,7 @@ export function JournalView() {
                             onClick={() => selectEntry(e.id)}
                             className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                               isActive
-                                ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                 : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >

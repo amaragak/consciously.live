@@ -124,6 +124,14 @@ export function withSpeakerSampleCacheBust(
   return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(v)}`;
 }
 
+/**
+ * Single-play letter-narration audition (Speechify only).
+ * Keep in sync with `backend/lambdas/_shared/speaker-sample-speed.ts`.
+ */
+export function speakerLetterIntroSampleKey(modelId: string): string {
+  return `speaker-samples/${modelId}/letter-intro.mp3`;
+}
+
 /** Orpheus preview samples — keep in sync with `backend/lib/speaker-sample-speed.ts`. */
 export function orpheusSpeakerPreviewLoudSampleKey(
   voiceId: string,

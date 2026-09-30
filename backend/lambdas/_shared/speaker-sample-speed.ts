@@ -111,6 +111,14 @@ export function speakerPreviewLoudWetSampleKey(
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud-wet.wav`;
 }
 
+/**
+ * Single-play letter-narration audition (Speechify only).
+ * Script: `Hey I'm <name>. I'll narrate your personal insights letter`
+ */
+export function speakerLetterIntroSampleKey(modelId: string): string {
+  return `speaker-samples/${modelId}/letter-intro.mp3`;
+}
+
 /** Orpheus preview samples: S3 keys `orpheus-speaker-samples/<voiceId>/<stem>.mp3`. */
 export function orpheusSpeakerPreviewSampleKey(
   voiceId: string,

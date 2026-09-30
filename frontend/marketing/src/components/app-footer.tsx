@@ -34,7 +34,10 @@ export function AppFooter() {
                 href="/"
                 className="inline-flex items-center gap-2 text-foreground transition-opacity hover:opacity-80"
               >
-                <LogoMark size={22} className="text-accent-button" />
+                <LogoMark
+                  size={22}
+                  className="text-[color:var(--header-gold,#d9b87c)]"
+                />
                 <span className="font-display text-lg font-medium tracking-tight">
                   consciously
                 </span>

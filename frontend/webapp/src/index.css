@@ -9,23 +9,26 @@
   --background: #f6f3ee;
   --foreground: #1c1917;
   --muted: #78716c;
-  --accent: #F0A865;
-  --accent-link: #B8703A;
-  --accent-button: #F0A865;
-  --accent-soft: color-mix(in srgb, #F0A865 18%, transparent);
-  --on-accent: #3D2E10;
+  --accent: #C8A46A;
+  --accent-link: #a68b5e;
+  --accent-button: #C3D2E8;
+  --accent-soft: color-mix(in srgb, #C8A46A 18%, transparent);
+  --on-accent: #1E2530;
+  --accent-gradient-button: linear-gradient(90deg, #C3D2E8 0%, #D6E1EF 100%);
   --border: #e7e5e4;
   --card: #fffcf8;
   --overlay: rgb(28 25 23 / 0.45);
-  --selected: #1e2530;
-  --on-selected: #fffcf8;
+  --selected: #C8A46A;
+  --on-selected: #0F1B2D;
   --danger: #b42318;
   --danger-soft: color-mix(in srgb, #b42318 12%, transparent);
   --success: #067647;
   --surface: #f3eee6;
-  --surface-2: #ebe4da;
-  --surface-rail: #f0ebe3;
+  --surface-2: #eee8dc;
+  --surface-rail: #f6f2ea;
+  --sidebar-border: #e0d6c4;
   --nav-active: color-mix(in srgb, #1e2530 6%, transparent);
+  --header-gold: #d9b87c;
   --marketing-ink: #1e2530;
   --marketing-muted: #5c6570;
   --marketing-eyebrow: #8a8078;
@@ -36,7 +39,7 @@
   --site-header-h: 3.5rem;
   --app-sidebar-w: 200px;
   --content-max-width: 72rem;
-  --gold: #ffd700;
+  --gold: #C8A46A;
   color-scheme: light;
 }
 
@@ -46,17 +49,47 @@
   --chat-panel-bg: #fffdf9;
 }
 
-/** Ancestor crumbs: accent + italic in light/dark; muted upright in hybrid. */
-.app-breadcrumb-parent {
-  color: var(--accent-link);
-  font-style: italic;
+/** UI sans for header trail / mobile back (Instrument Sans). */
+.font-ui {
+  font-family: "Instrument Sans", "DM Sans", system-ui, sans-serif;
 }
-:root.hybrid .app-breadcrumb-parent {
-  color: var(--muted);
-  font-style: normal;
+
+/** Section verb + brand sun in the SPA header (navy bar gold). */
+.app-header-section-verb,
+.app-header-brand-sun {
+  color: var(--header-gold, #d9b87c);
 }
-:root.hybrid .app-breadcrumb-plain {
-  font-style: normal;
+
+/** Current trail crumb after the divider — same gold as the section verb. */
+.app-header-crumb-current {
+  color: var(--header-gold, #d9b87c);
+}
+
+/** Hide native search cancel — we use a solid neutral clear control instead. */
+.app-search-input::-webkit-search-cancel-button,
+.app-search-input::-webkit-search-decoration,
+input[type="search"].app-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/** Soft lightening around the header sun mark (`--header-glow-sun`). */
+.app-header-sun-glow,
+.site-header-glow-sun {
+  background: var(--header-glow-sun);
+}
+
+.site-header-glow-right {
+  background: var(--header-glow-right);
+}
+
+/** Vertical hairline between brand phrase and trail (navy header). */
+.app-header-crumb-divider {
+  background-color: rgb(250 248 243 / 0.32);
+}
+:root.hybrid .app-header-crumb-divider {
+  background-color: var(--border);
 }
 
 html,
@@ -357,10 +390,13 @@ body {
   --color-surface-2: var(--surface-2);
   --color-surface-2-edge: var(--surface-2-edge);
   --color-surface-rail: var(--surface-rail);
+  --color-sidebar-border: var(--sidebar-border);
   --color-nav: var(--nav);
   --color-nav-foreground: var(--nav-foreground);
   --color-nav-muted: var(--nav-muted);
+  --color-nav-crumb: var(--nav-crumb);
   --color-nav-active: var(--nav-active);
+  --color-header-gold: var(--header-gold);
   --color-gold: var(--gold);
   --color-marketing-ink: var(--marketing-ink);
   --color-marketing-muted: var(--marketing-muted);
@@ -373,7 +409,7 @@ body {
 
 @utility accent-fill-gradient {
   background-color: var(--accent-button);
-  background-image: none;
+  background-image: var(--accent-gradient-button);
   color: var(--on-accent);
 }
 

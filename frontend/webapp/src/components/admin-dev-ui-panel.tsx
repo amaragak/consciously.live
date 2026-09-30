@@ -98,7 +98,7 @@ export function AdminDevUiPanel() {
                 }
                 className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
                   settings.createAudioDevControls
-                    ? "bg-accent"
+                    ? "bg-accent-button"
                     : "bg-border"
                 }`}
               >
@@ -132,7 +132,7 @@ export function AdminDevUiPanel() {
                   })
                 }
                 className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
-                  settings.libraryDevFlyout ? "bg-accent" : "bg-border"
+                  settings.libraryDevFlyout ? "bg-accent-button" : "bg-border"
                 }`}
               >
                 <span

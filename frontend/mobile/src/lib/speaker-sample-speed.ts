@@ -61,3 +61,8 @@ export function speakerPreviewLoudFxSampleKey(
   }
   return `speaker-samples/${modelId}/${speechSpeedToSampleStem(speed)}-loud-fx.wav`;
 }
+
+/** Single-play letter-narration audition (Speechify only). */
+export function speakerLetterIntroSampleKey(modelId: string): string {
+  return `speaker-samples/${modelId}/letter-intro.mp3`;
+}

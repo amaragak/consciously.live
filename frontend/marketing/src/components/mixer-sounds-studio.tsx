@@ -1241,7 +1241,7 @@ export function MixerSoundsStudio({
                           <div
                             className={`flex items-stretch rounded-xl border transition-colors ${
                               isActive
-                                ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                                ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                 : "border-border bg-background text-foreground hover:border-accent/40"
                             }`}
                           >

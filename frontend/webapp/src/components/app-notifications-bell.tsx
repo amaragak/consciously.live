@@ -106,16 +106,16 @@ export function AppNotificationsBell() {
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
-        className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-accent-soft/40 hover:text-foreground"
+        className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground"
       >
         <Bell aria-hidden className="size-[18px]" strokeWidth={1.75} />
         {unread > 0 ? (
-          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-on-accent">
+          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-bold leading-none text-on-accent">
             {unread > 9 ? "9+" : unread}
           </span>
         ) : pendingCount > 0 ? (
           <span
-            className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent"
+            className="absolute right-1.5 top-1.5 size-2 rounded-full bg-gold"
             aria-hidden
           />
         ) : null}
@@ -124,7 +124,7 @@ export function AppNotificationsBell() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-[140] mt-1.5 w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
+          className="absolute right-0 top-full z-[220] mt-1.5 w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
         >
           <div className="flex items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
             <p className="text-sm font-semibold text-foreground">
@@ -181,7 +181,7 @@ export function AppNotificationsBell() {
                       </p>
                       {!n.read ? (
                         <span
-                          className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent"
+                          className="mt-1.5 size-1.5 shrink-0 rounded-full bg-gold"
                           aria-hidden
                         />
                       ) : null}

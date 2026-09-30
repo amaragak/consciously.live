@@ -144,7 +144,7 @@ function InsightsPastLettersSidebar(props: {
                     onClick={() => onSelect(letter.weekKey)}
                     className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
                       isActive
-                        ? "border-border border-l-[3px] border-l-accent bg-card text-foreground shadow-sm"
+                        ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                         : "border-border bg-background text-foreground hover:border-accent/40"
                     }`}
                   >

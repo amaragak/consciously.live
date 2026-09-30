@@ -13,10 +13,6 @@ import {
   loadAppSidebarCollapsed,
   saveAppSidebarCollapsed,
 } from "@/lib/app-nav";
-import {
-  getMedimadeSessionDisplayName,
-  getMedimadeSessionEmail,
-} from "@/lib/auth-session";
 
 type Props = {
   children: ReactNode;
@@ -28,7 +24,6 @@ type Props = {
  */
 export function AppChrome({ children }: Props) {
   const pathname = usePathname() || "/";
-  const [accountLabel, setAccountLabel] = useState("Guest");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     loadAppSidebarCollapsed(),
@@ -36,11 +31,6 @@ export function AppChrome({ children }: Props) {
 
   useEffect(() => {
     const sync = () => {
-      setAccountLabel(
-        getMedimadeSessionDisplayName()?.trim() ||
-          getMedimadeSessionEmail()?.trim() ||
-          "Guest",
-      );
       setSidebarCollapsed(loadAppSidebarCollapsed());
     };
     sync();
@@ -85,7 +75,6 @@ export function AppChrome({ children }: Props) {
             aria-hidden
           />
           <AppSidebar
-            accountLabel={accountLabel}
             mobileOpen={mobileOpen}
             onCloseMobile={() => setMobileOpen(false)}
             onNavigate={() => setMobileOpen(false)}

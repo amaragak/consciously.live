@@ -29,6 +29,10 @@ import { colors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
 import {
+  pickDefaultSpeechifySpeaker,
+  speechifySpeakersForPicker,
+} from "../lib/fish-speakers";
+import {
   type BackgroundAudioItem,
   type FishSpeaker,
   type MedimadeChatTurn,
@@ -427,11 +431,12 @@ export default function CreateScreen() {
   useEffect(() => {
     void listFishSpeakers()
       .then((sp) => {
-        setFishSpeakers(sp);
-        const emily = sp.find((s) => s.name.toLowerCase() === "emily");
+        const next = speechifySpeakersForPicker(sp ?? []);
+        setFishSpeakers(next);
+        const preferred = pickDefaultSpeechifySpeaker(next);
         setSpeakerModelId((cur) => {
-          if (cur && sp.some((s) => s.modelId === cur)) return cur;
-          return emily?.modelId ?? sp[0]?.modelId ?? "";
+          if (cur && next.some((s) => s.modelId === cur)) return cur;
+          return preferred?.modelId ?? next[0]?.modelId ?? "";
         });
       })
       .catch(() => {

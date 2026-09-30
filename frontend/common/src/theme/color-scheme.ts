@@ -1,11 +1,11 @@
 /**
- * Appearance. Default is hybrid; applied as `class="dark"` / `class="hybrid"` /
- * `class="v2"` on `<html>` (not `prefers-color-scheme`). Hybrid = light page
- * body + dark homepage hero. `v2` is the Consciously homepage-v2 palette.
+ * Appearance. Default is light (SPA); applied as `class="dark"` / `class="hybrid"` /
+ * `class="v2"` on `<html>` (not `prefers-color-scheme`). Hybrid and v2 remain
+ * valid legacy values; the UI toggles light ↔ dark only.
  *
  * Preference persistence (localStorage) is on by default for the Vite SPA.
- * The Next marketing app turns it off so hybrid stays the default and choice
- * is session-only until hybrid becomes the sole scheme.
+ * The Next marketing app turns it off and defaults to hybrid (cream header /
+ * cool chrome) — its historical “light” look.
  */
 
 export type ColorScheme = "light" | "dark" | "hybrid" | "v2";
@@ -21,19 +21,15 @@ export const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
 }> = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
-  { id: "hybrid", label: "Hybrid" },
-  { id: "v2", label: "V2" },
 ];
 
-/** Homepage v2 header switcher — light / dark / hybrid (light body + dark hero) / v2. */
+/** Homepage v2 appearance — light / dark only. */
 export const COLOR_SCHEME_OPTIONS_HOME_V2: ReadonlyArray<{
   id: ColorScheme;
   label: string;
 }> = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
-  { id: "hybrid", label: "Hybrid" },
-  { id: "v2", label: "V2" },
 ];
 
 /** Hero paisley tiles — keep in sync with `--home-hero-pattern` in theme-colors. */
@@ -45,8 +41,10 @@ export const HOME_HERO_PATTERN_DARK =
 export const AUTH_HERO_PATTERN_LIGHT = "/patterns/paisley-amber-duotone.webp";
 export const AUTH_HERO_PATTERN_DARK = "/patterns/paisley-dark-duotone.webp";
 
-/** When false, skip localStorage — always default hybrid; live choice is session-only. */
+/** When false, skip localStorage — use {@link defaultColorScheme}; live choice is session-only. */
 let persistColorSchemePreference = true;
+/** Fallback when nothing is stored / painted. SPA = light; Next marketing sets hybrid. */
+let defaultColorScheme: ColorScheme = "light";
 
 export function setColorSchemePreferencePersistence(enabled: boolean): void {
   persistColorSchemePreference = enabled;
@@ -57,6 +55,15 @@ export function setColorSchemePreferencePersistence(enabled: boolean): void {
       /* private mode */
     }
   }
+}
+
+/** Used when persistence is off (Next) or storage is empty. */
+export function setDefaultColorScheme(scheme: ColorScheme): void {
+  defaultColorScheme = scheme;
+}
+
+export function getDefaultColorScheme(): ColorScheme {
+  return defaultColorScheme;
 }
 
 export function colorSchemePreferencePersists(): boolean {
@@ -80,17 +87,17 @@ function liveSchemeFromDom(): ColorScheme | null {
 }
 
 export function getStoredColorScheme(): ColorScheme {
-  if (typeof window === "undefined") return "hybrid";
+  if (typeof window === "undefined") return defaultColorScheme;
   if (!persistColorSchemePreference) {
-    return liveSchemeFromDom() ?? "hybrid";
+    return liveSchemeFromDom() ?? defaultColorScheme;
   }
   try {
     return (
       parseColorScheme(localStorage.getItem(COLOR_SCHEME_STORAGE_KEY)) ??
-      "hybrid"
+      defaultColorScheme
     );
   } catch {
-    return "hybrid";
+    return defaultColorScheme;
   }
 }
 
@@ -112,7 +119,7 @@ export function isDarkColorScheme(scheme: ColorScheme): boolean {
 }
 
 /**
- * Auth screens: query handoff from the page they left, else preference, else light.
+ * Auth screens: query handoff from the page they left, else preference, else default.
  * Hybrid always paints as light on signup/login (dark hero is homepage-only).
  */
 export function resolveAuthColorScheme(
@@ -175,7 +182,7 @@ export function setColorScheme(scheme: ColorScheme): void {
     }
   } else {
     try {
-      localStorage.removeItem(COLOR_SCHEME_STORAGE_KEY);
+      window.localStorage.removeItem(COLOR_SCHEME_STORAGE_KEY);
     } catch {
       /* private mode */
     }
@@ -185,37 +192,36 @@ export function setColorScheme(scheme: ColorScheme): void {
 }
 
 export function toggleColorScheme(): ColorScheme {
-  const cur = getStoredColorScheme();
-  const next: ColorScheme =
-    cur === "light"
-      ? "dark"
-      : cur === "dark"
-        ? "hybrid"
-        : cur === "hybrid"
-          ? "v2"
-          : "light";
+  const cur = getLiveColorScheme();
+  const next: ColorScheme = cur === "dark" ? defaultColorScheme : "dark";
   setColorScheme(next);
   return next;
 }
 
-function buildBootScript(opts: { readLocalStorage: boolean }): string {
+function buildBootScript(opts: {
+  readLocalStorage: boolean;
+  defaultScheme: ColorScheme;
+}): string {
+  const initial = JSON.stringify(opts.defaultScheme);
   const readLs = opts.readLocalStorage
     ? `else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="light"||s==="hybrid"||s==="v2")scheme=s;else{try{localStorage.removeItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)})}catch(e2){}}}`
     : `else{try{localStorage.removeItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)})}catch(e2){}}`;
-  return `(function(){var scheme="hybrid";try{var auth=location.pathname==="/login";var q=null;if(auth){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;${readLs}if(auth&&scheme==="hybrid")scheme="light"}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.dataset.colorScheme=scheme;root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var active=auth?(scheme==="dark"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(scheme==="hybrid"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:scheme==="dark"?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
+  return `(function(){var scheme=${initial};try{var auth=location.pathname==="/login";var q=null;if(auth){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;${readLs}if(auth&&scheme==="hybrid")scheme="light"}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.dataset.colorScheme=scheme;root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var active=auth?(scheme==="dark"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(scheme==="hybrid"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:scheme==="dark"?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
 }
 
 /**
  * Inline boot script — set class before first paint, and preload the active
  * hero paisley so `background-image` does not flash in after layout.
  * `/login` honors `?scheme=` from the page they clicked from; otherwise
- * localStorage; otherwise hybrid. Hybrid on auth always boots as light.
+ * localStorage; otherwise the SPA default (light). Hybrid on auth always boots as light.
  */
 export const colorSchemeBootScript = buildBootScript({
   readLocalStorage: true,
+  defaultScheme: "light",
 });
 
-/** Next marketing: always hybrid (auth query only); clears any stored preference. */
+/** Next marketing: hybrid default (auth query only); clears any stored preference. */
 export const colorSchemeBootScriptNoPersist = buildBootScript({
   readLocalStorage: false,
+  defaultScheme: "hybrid",
 });

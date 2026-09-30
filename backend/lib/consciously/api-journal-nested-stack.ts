@@ -16,6 +16,7 @@ export type ConsciouslyApiJournalNestedStackProps = cdk.NestedStackProps & {
   config: ConsciouslyConfigNestedStack;
   database: ConsciouslyDatabaseNestedStack;
   media: ConsciouslyMediaNestedStack;
+  ffmpegLayer: lambda.ILayerVersion;
 };
 
 /**
@@ -35,12 +36,15 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     const claudeApiKeySecret = props.config.claudeApiKey;
     const authJwtSecret = props.config.authJwtSecret;
     const algoliaSecret = props.config.algolia;
+    const speechifyApiKeySecret = props.config.speechifyApiKey;
     const mediaBucket = props.media.bucket;
     const mediaDistribution = props.media.distribution;
     const journalTable = props.database.journal;
     const journalInsightsTable = props.database.journalInsights;
     const meditationAnalyticsTable = props.database.meditationAnalytics;
     const meditationJobsTable = props.database.meditationJobs;
+    const voiceAdminTable = props.database.voiceAdmin;
+    const { ffmpegLayer } = props;
 
     const role = new iam.Role(this, "LambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -53,10 +57,12 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     journalTable.grantReadWriteData(role);
     journalInsightsTable.grantReadWriteData(role);
     mediaBucket.grantReadWrite(role);
+    voiceAdminTable.grantReadData(role);
     authJwtSecret.grantRead(role);
     openAiApiKeySecret.grantRead(role);
     claudeApiKeySecret.grantRead(role);
     algoliaSecret.grantRead(role);
+    speechifyApiKeySecret.grantRead(role);
     meditationAnalyticsTable.grantReadData(role);
     meditationJobsTable.grantReadData(role);
     role.addToPolicy(
@@ -189,6 +195,33 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const journalLetterNarrate = new lambda_nodejs.NodejsFunction(
+      this,
+      "JournalLetterNarrateFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/journal-letter-narrate.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 2048,
+        ephemeralStorageSize: cdk.Size.mebibytes(1024),
+        layers: [ffmpegLayer],
+        environment: {
+          JOURNAL_INSIGHTS_TABLE_NAME: journalInsightsTable.tableName,
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          SPEECHIFY_TTS_MODEL: "simba-3.2",
+        },
+      },
+    );
+    journalInsightsTable.grantReadWriteData(journalLetterNarrate);
+    voiceAdminTable.grantReadData(journalLetterNarrate);
+    mediaBucket.grantReadWrite(journalLetterNarrate);
+    speechifyApiKeySecret.grantRead(journalLetterNarrate);
+    journalLetterNarrate.grantInvoke(role);
+
     const journalWeeklyReflection = new lambda_nodejs.NodejsFunction(
       this,
       "JournalWeeklyReflectionFunction",
@@ -206,6 +239,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
           MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
           MEDITATION_JOBS_TABLE_NAME: meditationJobsTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          LETTER_NARRATE_FUNCTION_NAME: journalLetterNarrate.functionName,
         },
       },
     );

@@ -22,6 +22,8 @@ export {
   toggleColorScheme,
   setColorSchemePreferencePersistence,
   colorSchemePreferencePersists,
+  setDefaultColorScheme,
+  getDefaultColorScheme,
   colorSchemeBootScript,
   colorSchemeBootScriptNoPersist,
 } from "./color-scheme";
