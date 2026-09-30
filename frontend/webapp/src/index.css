@@ -49,6 +49,19 @@
   --chat-panel-bg: #fffdf9;
 }
 
+/** Ancestor crumbs: light grey on navy; muted upright on hybrid cream. */
+.app-breadcrumb-parent {
+  color: var(--nav-muted);
+  font-style: normal;
+}
+:root.hybrid .app-breadcrumb-parent {
+  color: var(--muted);
+  font-style: normal;
+}
+:root.hybrid .app-breadcrumb-plain {
+  font-style: normal;
+}
+
 /** UI sans for header trail / mobile back (Instrument Sans). */
 .font-ui {
   font-family: "Instrument Sans", "DM Sans", system-ui, sans-serif;
@@ -60,9 +73,12 @@
   color: var(--header-gold, #d9b87c);
 }
 
-/** Current trail crumb after the divider — same gold as the section verb. */
+/** Current trail crumb after the divider — light grey on navy, not gold. */
 .app-header-crumb-current {
-  color: var(--header-gold, #d9b87c);
+  color: var(--nav-muted);
+}
+:root.hybrid .app-header-crumb-current {
+  color: var(--foreground);
 }
 
 /** Hide native search cancel — we use a solid neutral clear control instead. */
@@ -84,7 +100,7 @@ input[type="search"].app-search-input::-webkit-search-cancel-button {
   background: var(--header-glow-right);
 }
 
-/** Vertical hairline between brand phrase and trail (navy header). */
+/** Vertical hairline between brand phrase and trail (ivory on navy; border on cream). */
 .app-header-crumb-divider {
   background-color: rgb(250 248 243 / 0.32);
 }
@@ -485,6 +501,26 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border) 85%, var(--muted))
     var(--surface-2);
+}
+
+/* Fade labels/tree in when expanding from the icon rail. */
+@keyframes app-sidebar-expanded-panel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.app-sidebar-expanded-panel {
+  animation: app-sidebar-expanded-panel-in 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar-expanded-panel {
+    animation: none;
+  }
 }
 
 .app-sidebar-scroll::-webkit-scrollbar {

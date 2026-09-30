@@ -105,7 +105,7 @@ function TrailEllipsisMenu({
                     role="menuitem"
                     href={c.href}
                     onClick={() => setOpen(false)}
-                    className="block truncate text-nav-crumb underline-offset-2 hover:text-nav-foreground hover:underline focus-visible:underline"
+                    className="block truncate text-nav-muted underline-offset-2 hover:text-nav-foreground hover:underline"
                   >
                     {c.label}
                   </Link>
@@ -168,7 +168,7 @@ function TrailCrumb({
   return (
     <Link
       href={crumb.href}
-      className="shrink-0 text-nav-crumb underline-offset-2 hover:text-nav-foreground hover:underline focus-visible:underline"
+      className="app-breadcrumb-parent shrink-0 text-nav-muted underline-offset-2 hover:text-nav-foreground hover:underline"
     >
       {crumb.label}
     </Link>
@@ -303,7 +303,7 @@ export function AppBreadcrumbBack({
     </>
   );
   const className =
-    "inline-flex max-w-[40vw] items-center gap-1 font-ui text-sm text-nav-crumb underline-offset-2 hover:text-nav-foreground hover:underline focus-visible:underline";
+    "inline-flex max-w-[40vw] items-center gap-1 font-ui text-sm text-nav-muted underline-offset-2 hover:text-nav-foreground hover:underline";
   if (parent.href) {
     return (
       <Link href={parent.href} className={className} aria-label={`Back to ${label}`}>

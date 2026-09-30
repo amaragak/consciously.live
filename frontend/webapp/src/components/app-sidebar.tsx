@@ -39,10 +39,30 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
-      className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+      className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
     >
       <path d="M6 9l6 6 6-6" />
     </svg>
+  );
+}
+
+/** Animate nested nav open/close without unmounting mid-transition. */
+function CollapsibleNavChildren({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      }`}
+      aria-hidden={!open}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
   );
 }
 
@@ -188,33 +208,35 @@ function NavSectionBlock({
           </button>
         ) : null}
       </div>
-      {hasChildren && expanded && showChildren ? (
-        <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
-          {subs.map(renderSub)}
-          {lifeAreas.length > 0 || emptyAction ? (
-            <li className="pt-1.5" aria-hidden={lifeAreas.length === 0}>
-              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                Your life areas
-              </p>
-            </li>
-          ) : null}
-          {lifeAreas.map(renderSub)}
-          {emptyAction ? (
-            <li>
-              <Link
-                href={emptyAction.href}
-                onClick={onNavigate}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-foreground"
-              >
-                <span
-                  className="size-1 shrink-0 rounded-full bg-muted/50"
-                  aria-hidden
-                />
-                <span className="min-w-0 truncate">{emptyAction.label}</span>
-              </Link>
-            </li>
-          ) : null}
-        </ul>
+      {hasChildren ? (
+        <CollapsibleNavChildren open={expanded && showChildren}>
+          <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
+            {subs.map(renderSub)}
+            {lifeAreas.length > 0 || emptyAction ? (
+              <li className="pt-1.5" aria-hidden={lifeAreas.length === 0}>
+                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  Your life areas
+                </p>
+              </li>
+            ) : null}
+            {lifeAreas.map(renderSub)}
+            {emptyAction ? (
+              <li>
+                <Link
+                  href={emptyAction.href}
+                  onClick={onNavigate}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-foreground"
+                >
+                  <span
+                    className="size-1 shrink-0 rounded-full bg-muted/50"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 truncate">{emptyAction.label}</span>
+                </Link>
+              </li>
+            ) : null}
+          </ul>
+        </CollapsibleNavChildren>
       ) : null}
     </div>
   );
@@ -340,7 +362,7 @@ export function AppSidebar({
       [
         "flex shrink-0 flex-col overflow-x-hidden border-r-[0.5px] border-sidebar-border bg-surface-2",
         railCollapsed ? "w-14" : "w-[200px]",
-        "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out",
+        "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out motion-reduce:transition-none",
         // Mobile: off-canvas until hamburger opens. Desktop: always visible.
         mobileOpen ? "translate-x-0" : "-translate-x-full",
         "md:translate-x-0",
@@ -410,7 +432,7 @@ export function AppSidebar({
           </>
         ) : (
           <>
-        <nav className="app-sidebar-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
+        <nav className="app-sidebar-scroll app-sidebar-expanded-panel flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
           {APP_NAV_MAIN.map((section) => (
             <NavSectionBlock
               key={section.id}

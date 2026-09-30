@@ -54,20 +54,21 @@ export const INFO = "#0284c7";
 
 const NAV = "#33465C";
 // const NAV = "#6E88A3";
-/** Light app canvas — dashboard cream (not the header). */
+/** SPA light-mode header — midnight. */
+const NAV_HEADER_LIGHT = "#16284A";
+/** SPA dark-mode + Next sticky header. */
+const NAV_HEADER_DARK = "#0F1B2D";
+/** Light app canvas. Hybrid header fill stays cream; SPA light/dark header is navy. */
 const APP_CANVAS_LIGHT = "#FAF6F0";
-/** Former light header fill — cream; still used by hybrid header. */
 const NAV_LIGHT = APP_CANVAS_LIGHT;
-/** Light-mode SPA header — navy (homepage v2 ink). */
-const NAV_LIGHT_HEADER = "#0F1B2D";
 const NAV_FOREGROUND = WHITE;
 const NAV_MUTED = "rgb(255 255 255 / 0.68)";
-/** Clickable trail crumbs on navy — brighter than muted for contrast. */
+/** Fallback trail crumb token on navy (dark); light/hybrid prefer accent-link CSS. */
 const NAV_CRUMB = "rgb(255 255 255 / 0.88)";
 const NAV_ACTIVE = "rgb(255 255 255 / 0.14)";
 const NAV_FOREGROUND_LIGHT = "#1E2530";
 const NAV_MUTED_LIGHT = "#5A5648";
-/** Clickable crumbs on cream hybrid header. */
+/** Trail crumb token on cream header (hybrid / light). */
 const NAV_CRUMB_LIGHT = "#3D3A32";
 
 /** Light-mode segmented tab active fill + selected-row accent (journal / chat). */
@@ -295,7 +296,7 @@ export function rgba(hex: string, alpha: number): string {
 }
 
 /**
- * Soft radial lightening of the navy header around the sun — same hue,
+ * Soft radial lightening of the header around the sun — same hue,
  * barely lifted toward white (subtle; no gold/peach).
  */
 function headerSunGlowFromNav(navHex: string): string {
@@ -304,25 +305,8 @@ function headerSunGlowFromNav(navHex: string): string {
   return `radial-gradient(circle, ${rgba(core, 0.55)} 0%, ${rgba(mid, 0.28)} 40%, ${rgba(core, 0)} 70%)`;
 }
 
-/**
- * SPA top bar chrome — identical in light and dark (navy bar on cream or slate canvas).
- * Hybrid overrides these for its cream header.
- */
-function spaHeaderChrome() {
-  return {
-    nav: NAV_LIGHT_HEADER,
-    navForeground: NAV_FOREGROUND,
-    navMuted: NAV_MUTED,
-    navCrumb: NAV_CRUMB,
-    navActive: NAV_ACTIVE,
-    headerGold: HEADER_GOLD,
-    headerBorder: "rgba(255,255,255,0.1)",
-    headerShadow: "0 4px 18px rgb(15 27 45 / 0.28)",
-    headerGlowSun: headerSunGlowFromNav(NAV_LIGHT_HEADER),
-    headerGlowRight:
-      "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(15 27 45 / 0) 68%)",
-  } as const;
-}
+/** SPA dark / Next sticky header navy. */
+export const SPA_NAVY = NAV_HEADER_DARK;
 
 /** White or near-black depending on background lightness. */
 export function onColor(bgHex: string): string {
@@ -477,7 +461,6 @@ function assemble(
   const warmCreamBg = mixHex(PRIMARY, paper.background, WARM_CREAM_BG_MIX);
   const warmCreamBorder = mixHex(PRIMARY, paper.background, WARM_CREAM_BORDER_MIX);
   const surface2 = dark ? SURFACE_2_DARK : SURFACE_2_LIGHT;
-  const header = spaHeaderChrome();
   return {
     ...paper,
     ...brand,
@@ -495,10 +478,24 @@ function assemble(
     sidebarBorder: dark ? paper.border : SIDEBAR_BORDER_LIGHT,
     overlay: BLACK,
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
-    ...header,
+    /** Light SPA: midnight `#16284A`. Dark SPA + Next sticky: `#0F1B2D`. */
+    nav: dark ? NAV_HEADER_DARK : NAV_HEADER_LIGHT,
+    navForeground: NAV_FOREGROUND,
+    navMuted: NAV_MUTED,
+    navCrumb: NAV_CRUMB,
+    navActive: NAV_ACTIVE,
+    headerGold: HEADER_GOLD,
+    headerBorder: "rgba(255,255,255,0.1)",
+    headerShadow: dark
+      ? "0 4px 18px rgb(15 27 45 / 0.28)"
+      : "0 4px 18px rgb(22 40 74 / 0.28)",
+    headerGlowSun: headerSunGlowFromNav(dark ? NAV_HEADER_DARK : NAV_HEADER_LIGHT),
+    headerGlowRight: dark
+      ? "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(15 27 45 / 0) 68%)"
+      : "radial-gradient(circle, rgb(16 26 38 / 0.35) 0%, rgb(24 36 50 / 0.18) 32%, rgb(22 40 74 / 0) 68%)",
     // Light: tab / selected gold. Dark: navy selected.
     selected: dark ? NAV : TAB_SELECTED_LIGHT,
-    onSelected: dark ? WHITE : NAV_LIGHT_HEADER,
+    onSelected: dark ? WHITE : ON_ACCENT,
     starIdle: dark ? STAR_IDLE_DARK : STAR_IDLE,
     starFilled: STAR_FILLED,
     danger: dark ? mixHex(DANGER, WHITE, 0.35) : DANGER,
@@ -633,9 +630,9 @@ export function accentGradientButtonCss(s: Semantic, dark: boolean): string {
 }
 
 /** Fills `BRAND_WORDMARK_GRADIENT` from the active theme (resolved hex stops). */
-export function brandWordmarkGradientCss(s: Semantic, dark: boolean): string {
-  if (!dark) {
-    /* Near-black wordmark on light-tan header; sun mark carries the gold. */
+export function brandWordmarkGradientCss(s: Semantic, _dark: boolean): string {
+  /* Cream / light headers get ink; navy headers get the sun-lit white→gold mark. */
+  if (hexToHsl(s.nav).l > 0.55) {
     const ink = "#1E2530";
     return `linear-gradient(0deg, ${ink}, ${ink})`;
   }

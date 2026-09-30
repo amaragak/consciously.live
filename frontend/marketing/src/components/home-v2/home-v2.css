@@ -39,8 +39,9 @@
   --hv2-hero-pattern-opacity: 0;
   --hv2-hero-pattern-size: 800px 800px;
   --hv2-hero-pattern-mask: none;
-  --hv2-sticky-bg: var(--hv2-navy);
-  /* Match SPA app-top-bar sun lightening on navy. */
+  /* Sticky chrome = SPA dark header `#0F1B2D`. */
+  --hv2-sticky-bg: #0f1b2d;
+  /* Match SPA header sun lightening on `#0F1B2D`. */
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
     rgb(49 59 74 / 0.55) 0%,
@@ -201,8 +202,8 @@
   --hv2-hero-pattern-opacity: 0.88;
   --hv2-hero-pattern-size: 640px 640px;
   --hv2-hero-pattern-mask: none;
-  /* Sticky = SPA navy (#0F1B2D), not tonal-paisley #1a2330. */
-  --hv2-sticky-bg: var(--hv2-navy);
+  /* Sticky = SPA dark header `#0F1B2D`, not tonal-paisley `#1a2330`. */
+  --hv2-sticky-bg: #0f1b2d;
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
     rgb(49 59 74 / 0.55) 0%,
@@ -279,7 +280,7 @@
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
   --hv2-hero-pattern-opacity: 0.18;
   --hv2-hero-pattern-mask: none;
-  --hv2-sticky-bg: var(--hv2-navy);
+  --hv2-sticky-bg: #0f1b2d;
   --hv2-sticky-glow-sun: radial-gradient(
     circle,
     rgb(49 59 74 / 0.55) 0%,

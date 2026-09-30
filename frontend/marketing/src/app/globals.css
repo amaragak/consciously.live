@@ -202,6 +202,26 @@ body {
   font-family: var(--font-fraunces), Georgia, serif;
 }
 
+/* Fade labels/tree in when expanding the app sidebar from the icon rail. */
+@keyframes app-sidebar-expanded-panel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.app-sidebar-expanded-panel {
+  animation: app-sidebar-expanded-panel-in 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar-expanded-panel {
+    animation: none;
+  }
+}
+
 /* Pull quotes on published Read posts */
 .read-prose blockquote {
   position: relative;

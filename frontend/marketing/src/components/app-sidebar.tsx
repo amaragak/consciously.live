@@ -41,10 +41,30 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
-      className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+      className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
     >
       <path d="M6 9l6 6 6-6" />
     </svg>
+  );
+}
+
+/** Animate nested nav open/close without unmounting mid-transition. */
+function CollapsibleNavChildren({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      }`}
+      aria-hidden={!open}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
   );
 }
 
@@ -127,68 +147,70 @@ function NavSectionBlock({
           </button>
         ) : null}
       </div>
-      {hasChildren && expanded && showChildren ? (
-        <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
-          {subs.map((sub) => {
-            const active = isSubItemActive(
-              pathname,
-              hash,
-              search,
-              sub,
-              section.id,
-            );
-            return (
-              <li key={sub.id} className="flex items-center gap-0.5">
+      {hasChildren ? (
+        <CollapsibleNavChildren open={expanded && showChildren}>
+          <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
+            {subs.map((sub) => {
+              const active = isSubItemActive(
+                pathname,
+                hash,
+                search,
+                sub,
+                section.id,
+              );
+              return (
+                <li key={sub.id} className="flex items-center gap-0.5">
+                  <Link
+                    href={sub.href}
+                    onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
+                      active
+                        ? "font-bold text-accent-link"
+                        : "text-muted"
+                    }`}
+                  >
+                    <span
+                      className={`size-1 shrink-0 rounded-full ${
+                        active
+                          ? "bg-accent-link"
+                          : "bg-muted/50"
+                      }`}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 truncate">{sub.label}</span>
+                  </Link>
+                  {sub.actionHref ? (
+                    <Link
+                      href={sub.actionHref}
+                      onClick={onNavigate}
+                      aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
+                      title={sub.actionAriaLabel ?? `New ${sub.label}`}
+                      className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-background hover:text-accent-link"
+                    >
+                      +
+                    </Link>
+                  ) : null}
+                </li>
+              );
+            })}
+            {emptyAction ? (
+              <li>
                 <Link
-                  href={sub.href}
+                  href={emptyAction.href}
                   onClick={onNavigate}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
-                    active
-                      ? "font-bold text-accent-link"
-                      : "text-muted"
-                  }`}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-foreground"
                 >
                   <span
-                    className={`size-1 shrink-0 rounded-full ${
-                      active
-                        ? "bg-accent-link"
-                        : "bg-muted/50"
-                    }`}
+                    className="size-1 shrink-0 rounded-full bg-muted/50"
                     aria-hidden
                   />
-                  <span className="min-w-0 truncate">{sub.label}</span>
+                  <span className="min-w-0 truncate">{emptyAction.label}</span>
                 </Link>
-                {sub.actionHref ? (
-                  <Link
-                    href={sub.actionHref}
-                    onClick={onNavigate}
-                    aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
-                    title={sub.actionAriaLabel ?? `New ${sub.label}`}
-                    className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-background hover:text-accent-link"
-                  >
-                    +
-                  </Link>
-                ) : null}
               </li>
-            );
-          })}
-          {emptyAction ? (
-            <li>
-              <Link
-                href={emptyAction.href}
-                onClick={onNavigate}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-foreground"
-              >
-                <span
-                  className="size-1 shrink-0 rounded-full bg-muted/50"
-                  aria-hidden
-                />
-                <span className="min-w-0 truncate">{emptyAction.label}</span>
-              </Link>
-            </li>
-          ) : null}
-        </ul>
+            ) : null}
+          </ul>
+        </CollapsibleNavChildren>
       ) : null}
     </div>
   );
@@ -312,7 +334,7 @@ export function AppSidebar({
       [
         "flex shrink-0 flex-col overflow-x-hidden border-r-[0.5px] border-sidebar-border bg-surface-2",
         railCollapsed ? "w-14" : "w-[200px]",
-        "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out",
+        "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out motion-reduce:transition-none",
         // Mobile: off-canvas until hamburger opens. Desktop: always visible.
         mobileOpen ? "translate-x-0" : "-translate-x-full",
         "md:translate-x-0",
@@ -382,7 +404,7 @@ export function AppSidebar({
           </>
         ) : (
           <>
-        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
+        <nav className="app-sidebar-expanded-panel flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
           {APP_NAV_MAIN.map((section) => (
             <NavSectionBlock
               key={section.id}
