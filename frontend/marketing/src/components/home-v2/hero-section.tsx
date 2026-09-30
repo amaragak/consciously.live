@@ -153,12 +153,7 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           className={`m-0 max-w-none text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5] ${sub.className}`}
           style={sub.style}
         >
-          <em className="home-v2-display text-[19px] italic text-[var(--hv2-gold)] md:text-[26px]">
-            Live consciously.
-          </em>{" "}
-          Personalised AI-guided meditations, vision boarding, a goal planner,
-          your personal manifesto and focus sessions — everything you need to
-          turn the dream into your daily life.
+          With our all inclusive mind reprogramming suite
         </p>
         <div className={form.className} style={form.style}>
           <HeroPrompt />

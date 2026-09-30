@@ -5180,7 +5180,7 @@ export function CreateWorkspace({
               aria-pressed={pendingModeChoice === "style"}
               className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">
                 By type
               </span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
@@ -5196,7 +5196,7 @@ export function CreateWorkspace({
               aria-pressed={pendingModeChoice === "freeflow"}
               className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">
                 Chat
               </span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
@@ -5212,7 +5212,7 @@ export function CreateWorkspace({
               aria-pressed={pendingModeChoice === "fromProgram"}
               className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">
                 By Program
               </span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
@@ -5236,7 +5236,7 @@ export function CreateWorkspace({
                   : "cursor-pointer"
               }`}
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">Manifest</span>
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">Manifest</span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
                 Move towards a goal
               </span>
@@ -5271,7 +5271,7 @@ export function CreateWorkspace({
                   : "cursor-pointer"
               }`}
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">
                 Journal
               </span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
@@ -5300,7 +5300,7 @@ export function CreateWorkspace({
               aria-pressed={pendingModeChoice === "oneShot"}
               className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">
                 Direct
               </span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">
@@ -5316,7 +5316,7 @@ export function CreateWorkspace({
               aria-pressed={pendingModeChoice === "randomScript"}
               className="create-path-card flex h-full cursor-pointer flex-col rounded-[6px] border border-border bg-card p-3.5 text-left sm:p-6"
             >
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:block">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.12em] text-gold sm:block">
                 Random
               </span>
               <span className="font-display text-[17px] font-normal leading-snug text-foreground sm:mt-2.5 sm:text-[19px]">

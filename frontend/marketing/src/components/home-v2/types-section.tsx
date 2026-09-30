@@ -10,7 +10,7 @@ export function TypesSection({ motionReady }: { motionReady: boolean }) {
       }`}
       style={motionReady ? { animationDelay: "450ms" } : undefined}
     >
-      <p className="text-[11px] uppercase tracking-[1.6px] text-[var(--hv2-hero-card-label)] md:text-[13px] md:tracking-[2px]">
+      <p className="home-v2-display text-center text-[19px] font-bold text-[var(--hv2-hero-fg)] md:text-[26px]">
         Or start somewhere else
       </p>
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">

@@ -339,11 +339,12 @@
  */
 .home-v2.home-v2-site-header {
   background-color: var(--hv2-sticky-bg);
-  background-image: var(--hv2-sticky-glow-sun);
-  background-repeat: no-repeat;
-  background-position: left 28px center;
-  background-size: 180px 180px;
   color: var(--hv2-hero-fg);
+}
+
+/* Soft lift centered on the sticky lockup sun (not viewport-left). */
+.home-v2-site-header-sun-glow {
+  background: var(--hv2-sticky-glow-sun);
 }
 
 .home-v2-hero-chrome-glow-sun {

@@ -75,9 +75,18 @@ export function HomeV2SiteHeader({
 
   return (
     <header
-      className={`home-v2 home-v2-site-header z-40 border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${positionClass} ${className}`.trim()}
+      className={`home-v2 home-v2-site-header relative z-40 overflow-hidden border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${positionClass} ${className}`.trim()}
     >
-      <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[64px]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 px-5 md:px-6"
+      >
+        <div className="relative mx-auto h-full w-full max-w-[1200px]">
+          {/* Sticky sun is 38px — center the disc on the mark. */}
+          <span className="home-v2-site-header-sun-glow absolute left-[19px] top-1/2 size-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+        </div>
+      </div>
+      <div className="relative mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[64px]">
         <div className="shrink-0">
           <Lockup
             tool={verbLabel}
