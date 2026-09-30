@@ -5539,6 +5539,7 @@ type BgAudioClientCache = {
 
 let bgAudioMemory: BgAudioClientCache | null = null;
 let bgAudioInflight: Promise<BackgroundAudioByCategory> | null = null;
+const preloadedCoverUrls = new Set<string>();
 
 function readBgAudioLocalCache(): BgAudioClientCache | null {
   if (typeof window === "undefined") return null;
@@ -5573,10 +5574,54 @@ function writeBgAudioLocalCache(entry: BgAudioClientCache): void {
   }
 }
 
+/** Sync peek of memory/localStorage catalog — for first-paint hydration. */
+export function peekBackgroundAudioCache(): BackgroundAudioByCategory | null {
+  if (bgAudioMemory) return bgAudioMemory.data;
+  const local = readBgAudioLocalCache();
+  if (local) {
+    bgAudioMemory = local;
+    return local.data;
+  }
+  return null;
+}
+
+/** Warm the browser HTTP cache for composition cover thumbs/fulls. */
+export function preloadBackgroundAudioCoverImages(
+  data: BackgroundAudioByCategory,
+  limit = 80,
+): void {
+  if (typeof window === "undefined") return;
+  const urls: string[] = [];
+  for (const item of data.compositions ?? []) {
+    const u = (item.coverImageThumbUrl || item.coverImageUrl || "").trim();
+    if (u) urls.push(u);
+  }
+  for (const item of [
+    ...(data.music ?? []),
+    ...(data.nature ?? []),
+    ...(data.drums ?? []),
+    ...(data.noise ?? []),
+  ]) {
+    const u = (item.coverImageThumbUrl || item.coverImageUrl || "").trim();
+    if (u) urls.push(u);
+  }
+  let n = 0;
+  for (const url of urls) {
+    if (preloadedCoverUrls.has(url)) continue;
+    preloadedCoverUrls.add(url);
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    n += 1;
+    if (n >= limit) break;
+  }
+}
+
 /** Drop client-side soundscape/mixer catalog cache (call after admin catalog edits). */
 export function invalidateBackgroundAudioClientCache(): void {
   bgAudioMemory = null;
   bgAudioInflight = null;
+  preloadedCoverUrls.clear();
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(BG_AUDIO_CACHE_KEY);
@@ -5625,6 +5670,7 @@ export async function listBackgroundAudio(opts?: {
     const local = readBgAudioLocalCache();
     if (local) {
       bgAudioMemory = local;
+      preloadBackgroundAudioCoverImages(local.data);
       // Revalidate in background; return cached immediately.
       void fetchBackgroundAudioNetwork(base, local.version).catch(() => undefined);
       return local.data;
@@ -5697,6 +5743,7 @@ async function fetchBackgroundAudioNetwork(
         retryData.cacheVersion.trim()) ||
       new Date().toISOString();
     writeBgAudioLocalCache({ version, data: parsedRetry });
+    preloadBackgroundAudioCoverImages(parsedRetry);
     return parsedRetry;
   }
 
@@ -5728,6 +5775,7 @@ async function fetchBackgroundAudioNetwork(
     etag ||
     new Date().toISOString();
   writeBgAudioLocalCache({ version, data: parsed });
+  preloadBackgroundAudioCoverImages(parsed);
   return parsed;
 }
 

@@ -229,7 +229,8 @@ export function SoundscapePicker({
                           item.coverImageThumbUrl || item.coverImageUrl || ""
                         }
                         alt=""
-                        loading="lazy"
+                        loading={isCreate ? "eager" : "lazy"}
+                        fetchPriority={isCreate ? "high" : undefined}
                         decoding="async"
                         width={84}
                         height={84}

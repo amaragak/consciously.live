@@ -24,6 +24,8 @@ import {
   listAdminFactoryMixes,
   listBackgroundAudio,
   listFishSpeakers,
+  peekBackgroundAudioCache,
+  preloadBackgroundAudioCoverImages,
   saveAdminFactoryMix,
   type BackgroundAudioItem,
   type FishSpeaker,
@@ -147,11 +149,14 @@ export function MixerSoundsStudio({
   const [iconDraft, setIconDraft] = useState("cloud-rain");
   const [iconBgDraft, setIconBgDraft] = useState("#E4EEF4");
   const [iconColorDraft, setIconColorDraft] = useState("#3D5A73");
+  const [cachedBeds] = useState(() => peekBackgroundAudioCache());
   const [factoryPresets, setFactoryPresets] = useState<MixerFactoryPreset[]>(
-    () => initialFactoryPresets ?? [],
+    () => initialFactoryPresets ?? cachedBeds?.factoryMixes ?? [],
   );
   const [factoryPresetsLoading, setFactoryPresetsLoading] = useState(
-    () => initialFactoryPresets == null,
+    () =>
+      initialFactoryPresets == null &&
+      (isAdmin || !cachedBeds),
   );
   const [loadedFactoryId, setLoadedFactoryId] = useState<string | null>(null);
   const [factoryPreviewId, setFactoryPreviewId] = useState<string | null>(null);
@@ -173,18 +178,20 @@ export function MixerSoundsStudio({
   });
 
   const [backgroundNature, setBackgroundNature] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.nature ?? [],
   );
   const [backgroundMusic, setBackgroundMusic] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.music ?? [],
   );
   const [backgroundDrums, setBackgroundDrums] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.drums ?? [],
   );
   const [backgroundNoise, setBackgroundNoise] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.noise ?? [],
   );
-  const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(null);
+  const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(
+    () => cachedBeds?.baseUrl?.trim() || getMedimadeMediaBaseUrl() || null,
+  );
   const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>([]);
   const [speakerModelId, setSpeakerModelId] = useState("");
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
@@ -454,6 +461,10 @@ export function MixerSoundsStudio({
   ]);
 
   useEffect(() => {
+    if (cachedBeds) preloadBackgroundAudioCoverImages(cachedBeds);
+  }, [cachedBeds]);
+
+  useEffect(() => {
     let cancelled = false;
     const envMediaBase = getMedimadeMediaBaseUrl();
     void (async () => {
@@ -466,6 +477,7 @@ export function MixerSoundsStudio({
         setBackgroundNoise(data.noise);
         const fromApi = data.baseUrl?.trim();
         setMediaBaseUrl(fromApi || envMediaBase || null);
+        preloadBackgroundAudioCoverImages(data);
         if (isAdmin) {
           try {
             const speakers = await listFishSpeakers();
@@ -481,13 +493,15 @@ export function MixerSoundsStudio({
         }
       } catch {
         if (cancelled) return;
-        setBackgroundNature([]);
-        setBackgroundMusic([]);
-        setBackgroundDrums([]);
-        setBackgroundNoise([]);
-        setMediaBaseUrl(envMediaBase || null);
-        if (!isAdmin && initialFactoryPresets == null) {
-          setFactoryPresets([]);
+        if (!cachedBeds) {
+          setBackgroundNature([]);
+          setBackgroundMusic([]);
+          setBackgroundDrums([]);
+          setBackgroundNoise([]);
+          setMediaBaseUrl(envMediaBase || null);
+          if (!isAdmin && initialFactoryPresets == null) {
+            setFactoryPresets([]);
+          }
         }
       } finally {
         if (!cancelled && !isAdmin) setFactoryPresetsLoading(false);
@@ -496,7 +510,7 @@ export function MixerSoundsStudio({
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, initialFactoryPresets]);
+  }, [isAdmin, initialFactoryPresets, cachedBeds]);
 
   useEffect(() => {
     if (!isAdmin) return;

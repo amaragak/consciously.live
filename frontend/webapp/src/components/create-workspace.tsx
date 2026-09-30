@@ -89,6 +89,8 @@ import {
   getMedimadeSessionJwt,
   fetchJournalStoreRemote,
   listBackgroundAudio,
+  peekBackgroundAudioCache,
+  preloadBackgroundAudioCoverImages,
   listFishSpeakers,
   listOrpheusSpeakers,
   listLibraryPrograms,
@@ -1270,20 +1272,25 @@ export function CreateWorkspace({
   /** FX dial UI hidden for now — locked at mid blend. */
   const voiceFxDial = 50;
   // const [voiceFxDial, setVoiceFxDial] = useState(VOICE_FX_DIAL_DEFAULT);
+  const [cachedBeds] = useState(() => peekBackgroundAudioCache());
   const [backgroundNature, setBackgroundNature] = useState<
     BackgroundAudioItem[]
-  >([]);
+  >(() => cachedBeds?.nature ?? []);
   const [backgroundMusic, setBackgroundMusic] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.music ?? [],
   );
   const [backgroundNoise, setBackgroundNoise] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.noise ?? [],
   );
   const [backgroundDrums, setBackgroundDrums] = useState<BackgroundAudioItem[]>(
-    [],
+    () => cachedBeds?.drums ?? [],
   );
-  const [compositions, setCompositions] = useState<BackgroundAudioItem[]>([]);
-  const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(null);
+  const [compositions, setCompositions] = useState<BackgroundAudioItem[]>(
+    () => cachedBeds?.compositions ?? [],
+  );
+  const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(
+    () => cachedBeds?.baseUrl?.trim() || getMedimadeMediaBaseUrl() || null,
+  );
   /**
    * Two independent sound beds: a ready-made composition, or the hand-built
    * mix. Generation reads whichever mode is active, so switching back and
@@ -1302,10 +1309,14 @@ export function CreateWorkspace({
   const [backgroundMusicGain, setBackgroundMusicGain] = useState(50);
   const [backgroundNoiseGain, setBackgroundNoiseGain] = useState(10);
   const [backgroundDrumsGain, setBackgroundDrumsGain] = useState(40);
-  const [factoryMixes, setFactoryMixes] = useState<MixerFactoryPreset[]>([]);
+  const [factoryMixes, setFactoryMixes] = useState<MixerFactoryPreset[]>(
+    () => cachedBeds?.factoryMixes ?? [],
+  );
   const [userMixPresets, setUserMixPresets] = useState<MixerPreset[]>([]);
   const [selectedMixKey, setSelectedMixKey] = useState("");
-  const [factoryMixesLoading, setFactoryMixesLoading] = useState(true);
+  const [factoryMixesLoading, setFactoryMixesLoading] = useState(
+    () => !cachedBeds,
+  );
   const [mixBaseline, setMixBaseline] = useState<CreateMixSnapshot | null>(
     null,
   );
@@ -4454,6 +4465,10 @@ export function CreateWorkspace({
   }, []);
 
   useEffect(() => {
+    if (cachedBeds) preloadBackgroundAudioCoverImages(cachedBeds);
+  }, [cachedBeds]);
+
+  useEffect(() => {
     let cancelled = false;
     const envMediaBase = getMedimadeMediaBaseUrl();
     (async () => {
@@ -4468,8 +4483,10 @@ export function CreateWorkspace({
         setFactoryMixes(data.factoryMixes ?? []);
         const fromApi = data.baseUrl?.trim();
         setMediaBaseUrl(fromApi || envMediaBase || null);
+        preloadBackgroundAudioCoverImages(data);
       } catch {
         if (cancelled) return;
+        if (cachedBeds) return;
         setBackgroundNature([]);
         setBackgroundMusic([]);
         setCompositions([]);
@@ -4484,7 +4501,7 @@ export function CreateWorkspace({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cachedBeds]);
 
   useEffect(() => {
     const base = mediaBaseUrl;
