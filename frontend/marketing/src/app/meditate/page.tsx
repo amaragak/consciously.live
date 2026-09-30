@@ -1,12 +1,11 @@
-import { EnhancedMeditatePage } from "@/components/enhanced-meditate-page";
+import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
 
 export const metadata = {
   title: "Meditate",
   description:
-    "AI guided meditations that actually sound good. Chat through mood and intention, then generate a session with the voice, ambience, and pacing you want.",
+    "Personalised guided meditations written from your words — goals, journal, and today’s worries — with voices and soundscapes that actually sound good.",
 };
 
-/** Meditation marketing — old overview kept in `./legacy-overview.tsx` (unused). */
 export default function MeditatePage() {
-  return <EnhancedMeditatePage />;
+  return <ToolMarketingPage tool="meditate" />;
 }

@@ -6,15 +6,6 @@ import {
   useState,
   type RefObject,
 } from "react";
-import type { HomeV2ToolId } from "@/components/home-v2/constants";
-
-const TOOL_IDS: HomeV2ToolId[] = [
-  "meditate",
-  "journal",
-  "manifest",
-  "focus",
-  "chat",
-];
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
@@ -31,8 +22,8 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
+/** Homepage motion + reveal only — no section-linked nav/wordmark. */
 export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
-  const [activeTool, setActiveTool] = useState<HomeV2ToolId | null>(null);
   const [motionReady, setMotionReady] = useState(false);
 
   useLayoutEffect(() => {
@@ -44,35 +35,6 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
     if (!root) return;
     const scroller = findScrollParent(root) ?? document.documentElement;
     const reduce = prefersReducedMotion();
-
-    const updateActive = () => {
-      const vh =
-        scroller === document.documentElement
-          ? window.innerHeight
-          : (scroller as HTMLElement).clientHeight;
-      const threshold = vh * 0.4;
-      const finalCta = root.querySelector<HTMLElement>("#tool-home-cta");
-      if (finalCta && finalCta.getBoundingClientRect().top < threshold) {
-        setActiveTool(null);
-        return;
-      }
-      let current: HomeV2ToolId | null = null;
-      for (const id of TOOL_IDS) {
-        const el = root.querySelector<HTMLElement>(`[data-tool="${id}"]`);
-        if (!el) continue;
-        const top = el.getBoundingClientRect().top;
-        if (top < threshold) current = id;
-      }
-      setActiveTool(current);
-    };
-
-    const onScroll = () => {
-      updateActive();
-    };
-
-    onScroll();
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
 
     if (!reduce) {
       const revealEls = root.querySelectorAll<HTMLElement>("[data-hv2-reveal]");
@@ -94,8 +56,6 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
         io.observe(el);
       });
       return () => {
-        scroller.removeEventListener("scroll", onScroll);
-        window.removeEventListener("resize", onScroll);
         io.disconnect();
       };
     }
@@ -103,13 +63,10 @@ export function useHomeV2Scroll(rootRef: RefObject<HTMLElement | null>) {
     root.querySelectorAll<HTMLElement>("[data-hv2-reveal]").forEach((el) => {
       el.classList.add("is-in");
     });
-    return () => {
-      scroller.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
+    return undefined;
   }, [rootRef]);
 
-  return { activeTool, motionReady };
+  return { motionReady };
 }
 
 export function smoothScrollToId(id: string) {

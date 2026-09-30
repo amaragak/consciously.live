@@ -64,7 +64,7 @@ export function ToolLoopSection() {
             className="flex flex-col gap-1.5 rounded-2xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-4"
             data-hv2-reveal
           >
-            <Lockup tool="Journal" size="card" />
+            <Lockup tool="Journal" size="card" onNavy />
             <span className="home-v2-display text-sm italic leading-snug">
               “I can see the business so clearly. Why do I keep waiting?”
             </span>
@@ -74,7 +74,7 @@ export function ToolLoopSection() {
             className="flex flex-col gap-1.5 rounded-2xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-4"
             data-hv2-reveal
           >
-            <Lockup tool="Manifest" size="card" />
+            <Lockup tool="Manifest" size="card" onNavy />
             <span className="home-v2-display text-sm leading-snug">
               Someone living the life they designed.
             </span>
@@ -116,7 +116,7 @@ export function ToolLoopSection() {
             25:00
           </span>
           <span className="flex flex-col gap-1">
-            <Lockup tool="Focus" size="card" />
+            <Lockup tool="Focus" size="card" onNavy />
             <span className="home-v2-display text-base">Price the first collection</span>
             <span className="text-xs text-[var(--hv2-muted)]">
               Focus timer · from your Manifest goal
@@ -142,7 +142,7 @@ export function ToolLoopSection() {
             className="flex flex-1 basis-0 flex-col gap-3 rounded-[22px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-6"
             data-hv2-reveal
           >
-            <Lockup tool="Journal" size="card" />
+            <Lockup tool="Journal" size="card" onNavy />
             <p className="home-v2-display m-0 text-lg italic leading-snug">
               “I can see the business so clearly. Why do I keep waiting to begin?”
             </p>
@@ -157,7 +157,7 @@ export function ToolLoopSection() {
             className="flex flex-1 basis-0 flex-col gap-3 rounded-[22px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-6"
             data-hv2-reveal
           >
-            <Lockup tool="Manifest" size="card" />
+            <Lockup tool="Manifest" size="card" onNavy />
             <p className="home-v2-display m-0 text-lg leading-snug">
               Someone living the life they designed.
             </p>
@@ -196,7 +196,7 @@ export function ToolLoopSection() {
             className="flex flex-1 basis-0 flex-col gap-3.5 rounded-[22px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-6"
             data-hv2-reveal
           >
-            <Lockup tool="Focus" size="card" />
+            <Lockup tool="Focus" size="card" onNavy />
             <div className="flex items-center gap-3.5">
               <span
                 className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-[5px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-sm"

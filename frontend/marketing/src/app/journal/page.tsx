@@ -1,11 +1,11 @@
-import { EnhancedJournalPage } from "@/components/enhanced-journal-page";
+import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
 
 export const metadata = {
   title: "Journal",
   description:
-    "A private journal that remembers patterns — and can turn an entry into a meditation when you want to go deeper.",
+    "A private journal for writing or speaking freely — with patterns over time, gratitudes, and a path into a meditation when you want to go deeper.",
 };
 
 export default function JournalPage() {
-  return <EnhancedJournalPage />;
+  return <ToolMarketingPage tool="journal" />;
 }

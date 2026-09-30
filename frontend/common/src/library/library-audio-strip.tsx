@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MutableRefObject,
 } from "react";
 import { isMelodicMusicKey } from "../audio/sound-taxonomy";
@@ -275,6 +276,7 @@ export function LibraryAudioStrip({
   besideSidebar = false,
   /** When false, load/sync only — do not start (click / playItem starts playback). */
   autoplay = false,
+  tone = "default",
 }: {
   track: LibraryActiveTrack | null;
   musicItems: BackgroundAudioItem[];
@@ -290,6 +292,8 @@ export function LibraryAudioStrip({
   /** When true, dock inset leaves room for the app sidebar. */
   besideSidebar?: boolean;
   autoplay?: boolean;
+  /** Dark navy bar for marketing / home-v2 surfaces. */
+  tone?: "default" | "dark";
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -878,7 +882,24 @@ export function LibraryAudioStrip({
         style={{
           paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))",
           boxShadow:
-            "0 -4px 16px color-mix(in srgb, var(--overlay) 12%, transparent), 0 -1px 4px color-mix(in srgb, var(--overlay) 8%, transparent)",
+            tone === "dark"
+              ? "0 -8px 28px rgb(0 0 0 / 0.45), 0 -1px 4px rgb(0 0 0 / 0.3)"
+              : "0 -4px 16px color-mix(in srgb, var(--overlay) 12%, transparent), 0 -1px 4px color-mix(in srgb, var(--overlay) 8%, transparent)",
+          ...(tone === "dark"
+            ? ({
+                colorScheme: "dark",
+                // Match home-v2 sticky / band navy so the bar sits on dark heroes.
+                ["--background"]: "#161a22",
+                ["--foreground"]: "#f6f1e7",
+                ["--muted"]: "rgba(246, 241, 231, 0.55)",
+                ["--card"]: "#1e232e",
+                ["--border"]: "rgba(246, 241, 231, 0.14)",
+                ["--accent-soft"]:
+                  "color-mix(in srgb, #c8a46a 22%, transparent)",
+                ["--overlay"]: "rgb(0 0 0 / 0.55)",
+                ["--gold"]: "#c8a46a",
+              } satisfies CSSProperties)
+            : null),
         }}
         role="region"
         aria-label="Now playing"

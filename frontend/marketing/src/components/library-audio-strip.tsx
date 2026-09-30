@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * App adapter: re-exports shared strip and injects media base + sidebar layout
- * from the marketing session / preview state.
+ * App adapter: re-exports shared strip and injects media base.
+ * Marketing / Next has no SPA sidebar — full-bleed dock + dark tone.
  */
 import {
   LibraryAudioStrip as SharedLibraryAudioStrip,
@@ -19,9 +19,7 @@ import {
   type BedVolumeChannel,
   type BackgroundAudioItem,
 } from "@consciously/common";
-import { useEffect, useState, type MutableRefObject } from "react";
-import { isMedimadeSessionActive } from "@/lib/auth-session";
-import { isMarketingPreviewMode } from "@/lib/marketing-preview";
+import type { MutableRefObject } from "react";
 import { getMedimadeMediaBaseUrl } from "@/lib/medimade-api";
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
@@ -52,23 +50,12 @@ export function LibraryAudioStrip(
     autoplay?: boolean;
   },
 ) {
-  const [besideSidebar, setBesideSidebar] = useState(false);
-  useEffect(() => {
-    const sync = () => {
-      setBesideSidebar(
-        isMedimadeSessionActive() && !isMarketingPreviewMode(),
-      );
-    };
-    sync();
-    window.addEventListener("medimade-session-changed", sync);
-    return () => window.removeEventListener("medimade-session-changed", sync);
-  }, []);
-
   return (
     <SharedLibraryAudioStrip
       {...props}
       mediaBase={getMedimadeMediaBaseUrl()}
-      besideSidebar={besideSidebar}
+      besideSidebar={false}
+      tone="dark"
     />
   );
 }

@@ -1,11 +1,11 @@
-import { EnhancedChatPage } from "@/components/enhanced-chat-page";
+import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
 
 export const metadata = {
   title: "Chat",
   description:
-    "A wise life coach that can also run Consciously — reflect, log gratitudes, add goals, and start meditations in one conversation.",
+    "A coach that listens, reflects, and acts — log wins, add steps, or start a meditation from the same conversation.",
 };
 
 export default function ChatMarketingPage() {
-  return <EnhancedChatPage />;
+  return <ToolMarketingPage tool="chat" />;
 }

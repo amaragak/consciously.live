@@ -14,27 +14,27 @@ import { useHomeV2Scroll } from "@/components/home-v2/use-home-v2-scroll";
 
 export function HomeV2Page() {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { activeTool, motionReady } = useHomeV2Scroll(rootRef);
+  const { motionReady } = useHomeV2Scroll(rootRef);
   const scrolled = useHomeV2HeaderScrolled(rootRef);
 
   return (
     <div ref={rootRef} className="home-v2 relative w-full">
-      <HomeV2Chrome home activeTool={activeTool} scrolled={scrolled} />
+      <HomeV2Chrome scrolled={scrolled} />
       <HeroSection motionReady={motionReady} />
       <ToolLoopSection />
       <section className="home-v2-band home-v2-band--b">
         <ToolSection tool="meditate" />
       </section>
-      <section className="home-v2-band home-v2-band--d">
+      <section className="home-v2-band home-v2-band--a">
         <ToolSection tool="journal" visualLeft />
       </section>
-      <section className="home-v2-band home-v2-band--ideate">
+      <section className="home-v2-band home-v2-band--d">
         <ToolSection tool="manifest" />
       </section>
-      <section className="home-v2-band home-v2-band--a">
+      <section className="home-v2-band home-v2-band--c">
         <ToolSection tool="focus" visualLeft />
       </section>
-      <section className="home-v2-band home-v2-band--d">
+      <section className="home-v2-band home-v2-band--b">
         <ToolSection tool="chat" />
       </section>
       <FinalCta />

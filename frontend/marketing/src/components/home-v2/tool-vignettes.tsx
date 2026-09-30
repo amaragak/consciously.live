@@ -1,0 +1,956 @@
+import type { ReactNode } from "react";
+import type { HomeV2ToolId } from "@/components/home-v2/constants";
+import { Lockup } from "@/components/home-v2/lockup";
+
+export function WaveBars({ count = 36 }: { count?: number }) {
+  const heights = [
+    10, 18, 24, 14, 28, 20, 26, 16, 22, 12, 26, 18, 28, 14, 22, 10, 20, 26, 16,
+    24, 12, 18, 22, 14, 20, 26, 12, 18, 24, 16, 22, 10, 20, 14, 24, 18,
+  ];
+  return (
+    <div className="home-v2-wave" aria-hidden>
+      {Array.from({ length: count }, (_, i) => (
+        <i
+          key={i}
+          className={i < 7 ? "on" : undefined}
+          style={{ height: `${heights[i % heights.length]}px` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ArrowDown() {
+  return (
+    <div className="flex justify-center text-[var(--hv2-tan-text)]" aria-hidden>
+      <svg
+        width="20"
+        height="24"
+        viewBox="0 0 20 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M10 2v18" />
+        <path d="M3 14l7 7 7-7" />
+      </svg>
+    </div>
+  );
+}
+
+function AskCard({
+  label = "You ask",
+  children,
+}: {
+  label?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-7 py-7">
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-tan-text)]">
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function GetCard({
+  label = "You get",
+  children,
+}: {
+  label?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-[18px] rounded-3xl bg-[var(--hv2-navy)] px-7 py-7 text-[var(--hv2-ivory)]">
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function PlayRow({
+  title,
+  meta,
+}: {
+  title: string;
+  meta: string;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-4">
+        <span className="accent-fill-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </span>
+        <div>
+          <p className="home-v2-display m-0 text-[22px] font-medium">{title}</p>
+          <p className="m-0 text-[13px] text-[rgba(246,241,231,0.6)]">{meta}</p>
+        </div>
+      </div>
+      <WaveBars />
+    </>
+  );
+}
+
+function Chip({
+  children,
+  active = false,
+}: {
+  children: ReactNode;
+  active?: boolean;
+}) {
+  if (active) {
+    return (
+      <span className="rounded-full bg-[var(--hv2-gold)] px-3.5 py-2 text-sm font-semibold text-[var(--hv2-navy)]">
+        {children}
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full border border-[#D9CCB2] px-3.5 py-2 text-sm">
+      {children}
+    </span>
+  );
+}
+
+function Stack({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-full max-w-[540px] flex-col gap-3" aria-hidden>
+      {children}
+    </div>
+  );
+}
+
+/* ─── Home page vignettes ─────────────────────────────────────────────── */
+
+export function MeditateVignette() {
+  return (
+    <Stack>
+      <AskCard>
+        <p className="home-v2-display m-0 text-xl italic leading-snug">
+          “I want to manifest opening my new studio.”
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Chip active>Manifestation</Chip>
+          <Chip>Visualization</Chip>
+          <Chip>Sleep</Chip>
+        </div>
+      </AskCard>
+      <ArrowDown />
+      <GetCard>
+        <PlayRow
+          title="Opening day at your new studio"
+          meta="Manifestation · Warm voice · Soft rain"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+export function JournalVignette() {
+  return (
+    <Stack>
+      <GetCard label="Today's entry">
+        <p className="home-v2-display m-0 text-[19px] italic leading-relaxed">
+          “
+          <span className="border-b-2 border-[var(--hv2-gold)]">
+            I can picture the studio so clearly
+          </span>
+          . But{" "}
+          <span className="border-b-2 border-[var(--hv2-gold)]">
+            who am I to charge for this?
+          </span>{" "}
+          <span className="border-b-2 border-[var(--hv2-gold)]">
+            Grateful for a quiet morning
+          </span>{" "}
+          to dream.”
+        </p>
+      </GetCard>
+      <ArrowDown />
+      <AskCard label="Patterns this month">
+        {(
+          [
+            ["Vision", "78%", true],
+            ["Self-doubt", "52%", false],
+            ["Gratitude", "36%", false],
+          ] as const
+        ).map(([label, width, gold]) => (
+          <div key={label} className="flex flex-col gap-2">
+            <span className="text-[15px]">{label}</span>
+            <div className="h-2 rounded-full bg-[var(--hv2-card-track)]">
+              <div
+                className={`h-2 rounded-full ${gold ? "bg-[var(--hv2-gold)]" : "bg-[var(--hv2-navy)]"}`}
+                style={{ width }}
+              />
+            </div>
+          </div>
+        ))}
+        <span className="pt-1 text-[15px] font-semibold text-[var(--hv2-tan-text)]">
+          Turn into a meditation →
+        </span>
+      </AskCard>
+    </Stack>
+  );
+}
+
+export function ManifestVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-6 rounded-3xl bg-[var(--hv2-navy)] p-10 text-[var(--hv2-ivory)]"
+      aria-hidden
+    >
+      <div className="flex flex-col gap-2.5">
+        <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+          Vision board
+        </p>
+        <div className="grid grid-cols-4 gap-2">
+          {["var(--hv2-gold)", "#3A4E6E", "#EFE6D3", "#8A6A34"].map((c) => (
+            <div
+              key={c}
+              className="h-[72px] rounded-[10px]"
+              style={{ background: c }}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+          Manifesto
+        </p>
+        <p className="home-v2-display m-0 text-xl italic leading-snug">
+          “I trust my vision and act on it every day.”
+        </p>
+      </div>
+      <div className="flex flex-col gap-2.5 border-t border-[rgba(246,241,231,0.14)] pt-5">
+        <p className="home-v2-display m-0 text-[22px]">Open my own studio</p>
+        <div className="flex flex-col gap-2 text-[15px]">
+          <span>● Price the first collection</span>
+          <span className="text-[rgba(246,241,231,0.7)]">○ Find a studio space</span>
+          <span className="text-[rgba(246,241,231,0.7)]">○ Open the online shop</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function FocusVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] items-center gap-8 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-10 py-12"
+      aria-hidden
+    >
+      <span className="home-v2-display flex h-[140px] w-[140px] shrink-0 items-center justify-center rounded-full border-[7px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-[34px]">
+        18:24
+      </span>
+      <div className="flex flex-col gap-2">
+        <p className="home-v2-display m-0 text-2xl leading-snug">
+          Price the first collection
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          From Manifest · Open my own studio · step 1 of 3
+        </p>
+        <p className="m-0 pt-1 text-[13px] text-[var(--hv2-tan-text)]">
+          Distracting sites blocked
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function ChatVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-10"
+      aria-hidden
+    >
+      <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+        I keep doubting myself.
+      </div>
+      <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+        Want a meditation for that?
+      </div>
+      <span className="self-start rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]">
+        ▸ Start meditation
+      </span>
+    </div>
+  );
+}
+
+export const HOME_TOOL_VIGNETTES: Record<HomeV2ToolId, ReactNode> = {
+  meditate: <MeditateVignette />,
+  journal: <JournalVignette />,
+  manifest: <ManifestVignette />,
+  focus: <FocusVignette />,
+  chat: <ChatVignette />,
+};
+
+/* ─── Feature marketing strip vignettes ───────────────────────────────── */
+
+function MeditateOneShotVignette() {
+  return (
+    <Stack>
+      <AskCard label="One-shot prompt">
+        <p className="home-v2-display m-0 text-xl italic leading-snug">
+          “Calm before tomorrow’s pitch.”
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Straight to the script generator — no coaching chat
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <GetCard>
+        <PlayRow
+          title="Steady before you speak"
+          meta="One-shot · Soft voice · Quiet room"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+function MeditateByTypeVignette() {
+  return (
+    <Stack>
+      <AskCard label="By type">
+        <div className="flex flex-wrap gap-2">
+          <Chip active>Manifestation</Chip>
+          <Chip>Visualization</Chip>
+          <Chip>Sleep</Chip>
+          <Chip>Breath</Chip>
+        </div>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Answer a few questions shaped around what you need today
+        </p>
+        <p className="home-v2-display m-0 text-lg italic leading-snug">
+          “Opening night at the studio — I want to feel already there.”
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <GetCard>
+        <PlayRow
+          title="Already at the opening"
+          meta="Manifestation · Warm voice · Soft rain"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+function MeditateFromChatVignette() {
+  return (
+    <Stack>
+      <div className="flex flex-col gap-3 rounded-3xl bg-[var(--hv2-navy)] p-7">
+        <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+          Free flow chat
+        </p>
+        <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+          I keep circling the same doubt.
+        </div>
+        <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+          Let’s sit with that — I’ll write a session from this thread.
+        </div>
+      </div>
+      <ArrowDown />
+      <GetCard>
+        <PlayRow
+          title="Out of the loop"
+          meta="From chat · Grounded voice · No ambience"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+function MeditateFromJournalVignette() {
+  return (
+    <Stack>
+      <AskCard label="Reflect on a journal entry">
+        <p className="home-v2-display m-0 text-xl italic leading-snug">
+          “I can see the business so clearly. Why do I keep waiting to begin?”
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <GetCard>
+        <PlayRow
+          title="Begin from what you already wrote"
+          meta="From journal · Warm voice · Soft rain"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+function MeditateFromGoalVignette() {
+  return (
+    <Stack>
+      <AskCard label="Move towards a goal">
+        <p className="home-v2-display m-0 text-xl leading-snug">
+          Open my own studio
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Life area · optionally one goal · dream and blockers
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <GetCard>
+        <PlayRow
+          title="Living as its successful owner, today"
+          meta="From goal · Visualization · Warm voice"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+function MeditateProgramsVignette() {
+  return (
+    <Stack>
+      <div
+        className="flex w-full flex-col gap-4 rounded-3xl bg-[var(--hv2-navy)] p-7 text-[var(--hv2-ivory)]"
+        aria-hidden
+      >
+        <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+          Library · Programs
+        </p>
+        <p className="home-v2-display m-0 text-[22px] font-medium">
+          Chakra Cleanse
+        </p>
+        <p className="m-0 text-sm leading-snug text-[rgba(246,241,231,0.65)]">
+          Seven energy centers — root to crown — color, location, and theme,
+          session by session.
+        </p>
+        <div className="flex flex-col gap-2">
+          {(
+            [
+              ["Intro", "Introduction", "5 min", true],
+              ["Day 2", "Root Chakra", "10 min", false],
+              ["Day 5", "Heart Chakra", "10 min", false],
+            ] as const
+          ).map(([day, title, mins, on]) => (
+            <div
+              key={title}
+              className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${
+                on
+                  ? "bg-[rgba(246,241,231,0.1)]"
+                  : "border border-[rgba(246,241,231,0.12)]"
+              }`}
+            >
+              <span
+                className={`accent-fill-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  on ? "" : "opacity-40"
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+              <div className="min-w-0">
+                <p className="m-0 text-xs uppercase tracking-[1px] text-[var(--hv2-gold)]">
+                  {day} · ready audio · {mins}
+                </p>
+                <p className="home-v2-display m-0 text-base">{title}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="m-0 text-[15px] font-semibold text-[var(--hv2-gold)]">
+          Explore course →
+        </p>
+      </div>
+      <ArrowDown />
+      <AskCard label="Make it your own">
+        <p className="home-v2-display m-0 text-lg leading-snug">
+          By Program · Chakra Cleanse
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Chip active>Root Chakra</Chip>
+          <Chip active>Heart Chakra</Chip>
+          <Chip>One meditation</Chip>
+        </div>
+        <p className="home-v2-display m-0 text-base italic leading-snug text-[var(--hv2-muted)]">
+          “What’s been making you feel unsteady lately?”
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Customization intake → generate fresh audio for you
+        </p>
+      </AskCard>
+    </Stack>
+  );
+}
+
+function JournalWriteSpeakVignette() {
+  return (
+    <Stack>
+      <AskCard label="Write">
+        <p className="home-v2-display m-0 text-lg italic leading-snug">
+          “I can picture the studio so clearly…”
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">Text entry · kept exactly</p>
+      </AskCard>
+      <div className="flex items-center justify-center gap-3 text-[var(--hv2-tan-text)]" aria-hidden>
+        <span className="text-xs uppercase tracking-[1.2px]">or</span>
+      </div>
+      <GetCard label="Speak">
+        <div className="flex items-center gap-4">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[rgba(246,241,231,0.3)]">
+            <span className="h-3 w-3 rounded-full bg-[var(--hv2-gold)]" />
+          </span>
+          <div>
+            <p className="home-v2-display m-0 text-[20px] font-medium">
+              Voice note · 1:42
+            </p>
+            <p className="m-0 text-[13px] text-[rgba(246,241,231,0.6)]">
+              Clip saved with the entry
+            </p>
+          </div>
+        </div>
+      </GetCard>
+    </Stack>
+  );
+}
+
+function JournalPatternsVignette() {
+  return <JournalVignette />;
+}
+
+function JournalGratitudesVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-4 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-7 py-7"
+      aria-hidden
+    >
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-tan-text)]">
+        Gratitudes today
+      </p>
+      {(
+        [
+          "A quiet morning to dream",
+          "The sketch that finally worked",
+          "A friend who asked how it’s going",
+        ] as const
+      ).map((line) => (
+        <div
+          key={line}
+          className="flex items-start gap-3 border-t border-[var(--hv2-card-border)] pt-3 first:border-t-0 first:pt-0"
+        >
+          <span className="mt-1 text-[var(--hv2-gold)]">✦</span>
+          <p className="home-v2-display m-0 text-lg italic leading-snug">{line}</p>
+        </div>
+      ))}
+      <p className="m-0 pt-1 text-sm text-[var(--hv2-muted)]">
+        Same timeline as the hard days
+      </p>
+    </div>
+  );
+}
+
+function JournalToMeditateVignette() {
+  return (
+    <Stack>
+      <AskCard label="Journal entry">
+        <p className="home-v2-display m-0 text-xl italic leading-snug">
+          “Who am I to charge for this?”
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <GetCard>
+        <p className="m-0 text-[15px] font-semibold text-[var(--hv2-gold)]">
+          Generate meditation
+        </p>
+        <PlayRow
+          title="Worth what you make"
+          meta="Reflect on a journal entry · Soft voice"
+        />
+      </GetCard>
+    </Stack>
+  );
+}
+
+function ManifestBoardVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-4 rounded-3xl bg-[var(--hv2-navy)] p-8 text-[var(--hv2-ivory)]"
+      aria-hidden
+    >
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+        Vision board
+      </p>
+      <div className="grid grid-cols-3 gap-2.5">
+        {(
+          [
+            ["var(--hv2-gold)", "Studio light"],
+            ["#3A4E6E", "First collection"],
+            ["#EFE6D3", "Quiet mornings"],
+            ["#8A6A34", "Open shop"],
+            ["#5C6B7A", "Craft table"],
+            ["#C4A574", "Opening night"],
+          ] as const
+        ).map(([c, label]) => (
+          <div key={label} className="flex flex-col gap-1.5">
+            <div className="h-[88px] rounded-[10px]" style={{ background: c }} />
+            <span className="text-[12px] text-[rgba(246,241,231,0.65)]">
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManifestManifestoVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-5 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-8 py-9"
+      aria-hidden
+    >
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-tan-text)]">
+        Personal manifesto
+      </p>
+      <p className="home-v2-display m-0 text-2xl italic leading-snug">
+        “I trust my vision and act on it every day.”
+      </p>
+      <p className="home-v2-display m-0 text-xl italic leading-snug text-[var(--hv2-muted)]">
+        “I charge what the work is worth.”
+      </p>
+      <p className="m-0 text-sm text-[var(--hv2-muted)]">
+        Lines you’ll recognise under pressure
+      </p>
+    </div>
+  );
+}
+
+function ManifestGoalsVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-5 rounded-3xl bg-[var(--hv2-navy)] p-8 text-[var(--hv2-ivory)]"
+      aria-hidden
+    >
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+        Goal
+      </p>
+      <p className="home-v2-display m-0 text-[26px]">Open my own studio</p>
+      <div className="flex flex-col gap-2.5 text-[15px]">
+        <span>● Price the first collection</span>
+        <span className="text-[rgba(246,241,231,0.7)]">○ Find a studio space</span>
+        <span className="text-[rgba(246,241,231,0.7)]">○ Open the online shop</span>
+      </div>
+      <div className="mt-1 rounded-2xl border border-[rgba(246,241,231,0.14)] px-4 py-3">
+        <p className="m-0 text-xs uppercase tracking-[1px] text-[var(--hv2-gold)]">
+          Named obstacle
+        </p>
+        <p className="home-v2-display m-0 mt-1 text-base italic">
+          “Who am I to charge for this?”
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ManifestHandoffVignette() {
+  return (
+    <Stack>
+      <AskCard label="From Manifest">
+        <p className="home-v2-display m-0 text-xl leading-snug">
+          Open my own studio
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Step · Price the first collection
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-2 rounded-3xl bg-[var(--hv2-navy)] p-5 text-[var(--hv2-ivory)]">
+          <Lockup tool="Meditate" size="card" onNavy />
+          <p className="home-v2-display m-0 text-sm leading-snug">
+            Feel the opening day
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-5">
+          <Lockup tool="Focus" size="card" onNavy />
+          <p className="home-v2-display m-0 text-sm leading-snug">
+            25:00 on pricing
+          </p>
+        </div>
+      </div>
+    </Stack>
+  );
+}
+
+function FocusFromStepVignette() {
+  return <FocusVignette />;
+}
+
+function FocusBlockingVignette() {
+  return (
+    <Stack>
+      <div
+        className="flex w-full items-center gap-6 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-8 py-8"
+        aria-hidden
+      >
+        <span className="home-v2-display flex h-[100px] w-[100px] shrink-0 items-center justify-center rounded-full border-[6px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-[26px]">
+          18:24
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <p className="home-v2-display m-0 text-xl">Session running</p>
+          <p className="m-0 text-sm text-[var(--hv2-tan-text)]">
+            Distracting sites blocked
+          </p>
+        </div>
+      </div>
+      <AskCard label="Blocked until the bell">
+        {(["Social feeds", "News tabs", "Shopping rabbit holes"] as const).map(
+          (site) => (
+            <div
+              key={site}
+              className="flex items-center justify-between border-t border-[var(--hv2-card-border)] pt-2.5 first:border-t-0 first:pt-0"
+            >
+              <span className="text-[15px]">{site}</span>
+              <span className="text-xs font-semibold uppercase tracking-[1px] text-[var(--hv2-tan-text)]">
+                Blocked
+              </span>
+            </div>
+          ),
+        )}
+      </AskCard>
+    </Stack>
+  );
+}
+
+function FocusLengthsVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-3"
+      aria-hidden
+    >
+      {(
+        [
+          ["25:00", "Pomodoro", "Price the first collection", true],
+          ["50:00", "Deep work", "Draft the shop copy", false],
+        ] as const
+      ).map(([time, kind, task, on]) => (
+        <div
+          key={time}
+          className={`flex items-center gap-5 rounded-3xl px-7 py-6 ${
+            on
+              ? "bg-[var(--hv2-navy)] text-[var(--hv2-ivory)]"
+              : "border border-[var(--hv2-card-border)] bg-[var(--hv2-card)]"
+          }`}
+        >
+          <span
+            className={`home-v2-display flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-full border-[5px] text-lg ${
+              on
+                ? "border-[rgba(246,241,231,0.2)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)]"
+                : "border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)]"
+            }`}
+          >
+            {time}
+          </span>
+          <div>
+            <p
+              className={`m-0 text-xs uppercase tracking-[1.2px] ${
+                on ? "text-[var(--hv2-gold)]" : "text-[var(--hv2-tan-text)]"
+              }`}
+            >
+              {kind}
+            </p>
+            <p className="home-v2-display m-0 text-lg leading-snug">{task}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FocusCloseLoopVignette() {
+  return (
+    <Stack>
+      <GetCard label="Session complete">
+        <p className="home-v2-display m-0 text-[22px]">
+          Price the first collection
+        </p>
+        <p className="m-0 text-[13px] text-[rgba(246,241,231,0.6)]">
+          25:00 · Open my own studio · step 1 of 3
+        </p>
+        <p className="m-0 text-[15px] font-semibold text-[var(--hv2-gold)]">
+          Progress logged on the goal
+        </p>
+      </GetCard>
+      <ArrowDown />
+      <AskCard label="Queued next">
+        <p className="home-v2-display m-0 text-xl leading-snug">
+          Find a studio space
+        </p>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Ready for tomorrow · less willpower to start
+        </p>
+      </AskCard>
+    </Stack>
+  );
+}
+
+function ChatContextVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-8"
+      aria-hidden
+    >
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full border border-[rgba(246,241,231,0.25)] px-3 py-1.5 text-xs text-[rgba(246,241,231,0.75)]">
+          Goal · Open studio
+        </span>
+        <span className="rounded-full border border-[rgba(246,241,231,0.25)] px-3 py-1.5 text-xs text-[rgba(246,241,231,0.75)]">
+          Journal · last night
+        </span>
+      </div>
+      <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+        I keep doubting myself before I price anything.
+      </div>
+      <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+        That doubt showed up in last night’s entry too. Want to name what’s under it?
+      </div>
+    </div>
+  );
+}
+
+function ChatActionsVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-8"
+      aria-hidden
+    >
+      <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+        I finished the first price sheet.
+      </div>
+      <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+        Beautiful. I can log that win, add the next step, or start a meditation.
+      </div>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {(
+          ["Log gratitude", "Add Manifest step", "Start meditation"] as const
+        ).map((action) => (
+          <span
+            key={action}
+            className="rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]"
+          >
+            ▸ {action}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChatDoorwayVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-8"
+      aria-hidden
+    >
+      <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+        I don’t know if I should write, plan, or sit.
+      </div>
+      <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+        Start here. Then we can hand off:
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-2">
+        {(
+          [
+            ["Journal", "Get it out of your head"],
+            ["Manifest", "Name the next step"],
+            ["Meditate", "Sit with the knot"],
+            ["Focus", "Protect an hour"],
+          ] as const
+        ).map(([tool, line]) => (
+          <div
+            key={tool}
+            className="rounded-2xl border border-[rgba(246,241,231,0.14)] px-3.5 py-3"
+          >
+            <Lockup tool={tool} size="card" onNavy />
+            <p className="m-0 mt-1.5 text-[13px] text-[rgba(246,241,231,0.7)]">
+              {line}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChatLongArcVignette() {
+  return (
+    <div
+      className="flex w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-8"
+      aria-hidden
+    >
+      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+        Continues from Tuesday
+      </p>
+      <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+        I’m back. The shop copy still feels stuck.
+      </div>
+      <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+        Last time you priced the collection. Want a Focus block on the copy, or a visualisation first?
+      </div>
+    </div>
+  );
+}
+
+export type ToolMarketingVignetteId =
+  | "meditate-oneshot"
+  | "meditate-bytype"
+  | "meditate-chat"
+  | "meditate-journal"
+  | "meditate-goal"
+  | "meditate-programs"
+  | "journal-write"
+  | "journal-patterns"
+  | "journal-gratitudes"
+  | "journal-meditate"
+  | "manifest-board"
+  | "manifest-manifesto"
+  | "manifest-goals"
+  | "manifest-handoff"
+  | "focus-step"
+  | "focus-blocking"
+  | "focus-lengths"
+  | "focus-close"
+  | "chat-context"
+  | "chat-actions"
+  | "chat-doorway"
+  | "chat-arc";
+
+export const TOOL_MARKETING_VIGNETTES: Record<
+  ToolMarketingVignetteId,
+  ReactNode
+> = {
+  "meditate-oneshot": <MeditateOneShotVignette />,
+  "meditate-bytype": <MeditateByTypeVignette />,
+  "meditate-chat": <MeditateFromChatVignette />,
+  "meditate-journal": <MeditateFromJournalVignette />,
+  "meditate-goal": <MeditateFromGoalVignette />,
+  "meditate-programs": <MeditateProgramsVignette />,
+  "journal-write": <JournalWriteSpeakVignette />,
+  "journal-patterns": <JournalPatternsVignette />,
+  "journal-gratitudes": <JournalGratitudesVignette />,
+  "journal-meditate": <JournalToMeditateVignette />,
+  "manifest-board": <ManifestBoardVignette />,
+  "manifest-manifesto": <ManifestManifestoVignette />,
+  "manifest-goals": <ManifestGoalsVignette />,
+  "manifest-handoff": <ManifestHandoffVignette />,
+  "focus-step": <FocusFromStepVignette />,
+  "focus-blocking": <FocusBlockingVignette />,
+  "focus-lengths": <FocusLengthsVignette />,
+  "focus-close": <FocusCloseLoopVignette />,
+  "chat-context": <ChatContextVignette />,
+  "chat-actions": <ChatActionsVignette />,
+  "chat-doorway": <ChatDoorwayVignette />,
+  "chat-arc": <ChatLongArcVignette />,
+};

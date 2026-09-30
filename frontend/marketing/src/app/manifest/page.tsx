@@ -1,11 +1,11 @@
-import { EnhancedIdeatePage } from "@/components/enhanced-ideate-page";
+import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
 
 export const metadata = {
   title: "Manifest",
   description:
-    "Hold dreams and goals gently—explore what is underneath, shape a vision, and turn it into a visualisation meditation.",
+    "Vision board, personal manifesto, and goals with real next steps — tied to meditations and focus sessions when you need a container.",
 };
 
-export default function IdeatePage() {
-  return <EnhancedIdeatePage />;
+export default function ManifestPage() {
+  return <ToolMarketingPage tool="manifest" />;
 }

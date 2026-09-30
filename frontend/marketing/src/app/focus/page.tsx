@@ -1,11 +1,11 @@
-import { EnhancedFocusPage } from "@/components/enhanced-focus-page";
+import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
 
 export const metadata = {
   title: "Focus",
   description:
-    "breath+work for Chrome by Consciously: block distracting sites, run focus and Pomodoro sessions, and stay in flow—coming to the Chrome Web Store.",
+    "Goal-linked focus sessions with distraction blocking — give your hours to the next step in Manifest, not another blank timer.",
 };
 
 export default function FocusPage() {
-  return <EnhancedFocusPage />;
+  return <ToolMarketingPage tool="focus" />;
 }

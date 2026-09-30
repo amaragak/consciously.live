@@ -67,8 +67,9 @@ type Props = {
 
 /**
  * Marketing Next shell.
- * With homepage v2 on: `/`, `/read`, and `/connect` use in-page chrome over
- * paisley; other marketing pages use HomeV2NavHeader; `/legacy/*` keeps SiteHeader.
+ * With homepage v2 on: `/`, tool marketing (`/meditate` etc.), `/read`, and
+ * `/connect` use in-page overlay chrome; other marketing pages use
+ * HomeV2NavHeader; `/legacy/*` keeps SiteHeader.
  * Logged-in users browse marketing freely; enter the SPA via “Go to dashboard”.
  * Deep app URLs still soft-redirect via SpaRedirect layouts.
  */
@@ -138,13 +139,19 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
     pathname === "/read" || pathname.startsWith("/read/");
   const isConnect =
     pathname === "/connect" || pathname.startsWith("/connect/");
+  const isToolMarketing =
+    pathname === "/meditate" ||
+    pathname === "/journal" ||
+    pathname === "/manifest" ||
+    pathname === "/focus" ||
+    pathname === "/chat";
   const isLegacy =
     pathname === "/legacy" || pathname.startsWith("/legacy/");
 
   let siteHeader: ReactNode = null;
   if (!hideChrome) {
-    if (homeV2 && (isHome || isRead || isConnect)) {
-      /* Home / Read / Connect own in-page chrome over paisley. */
+    if (homeV2 && (isHome || isRead || isConnect || isToolMarketing)) {
+      /* Home / tools / Read / Connect own in-page overlay chrome. */
       siteHeader = null;
     } else if (homeV2 && !isLegacy) {
       siteHeader = <HomeV2NavHeader />;

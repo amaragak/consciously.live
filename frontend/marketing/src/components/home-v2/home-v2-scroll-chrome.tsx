@@ -9,13 +9,15 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { HomeV2ToolId } from "@/components/home-v2/constants";
 import { HomeV2NavHeader } from "@/components/home-v2/home-v2-nav-header";
 import { ReadingProgress } from "@/components/reading-progress";
 
-const SCROLL_FILL_AT = 8;
-
 const HomeV2ScrolledContext = createContext<boolean | null>(null);
+
+/** Become compact/filled when scrolled past this. */
+const SCROLL_FILL_ENTER = 24;
+/** Return to transparent only when back below this (hysteresis). */
+const SCROLL_FILL_EXIT = 8;
 
 function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   let node: HTMLElement | null = el;
@@ -31,6 +33,7 @@ export function useHomeV2HeaderScrolled(
   rootRef: RefObject<HTMLElement | null>,
 ): boolean {
   const [scrolled, setScrolled] = useState(false);
+  const scrolledRef = useRef(false);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -42,7 +45,12 @@ export function useHomeV2HeaderScrolled(
         scroller === document.documentElement
           ? window.scrollY
           : (scroller as HTMLElement).scrollTop;
-      setScrolled(top > SCROLL_FILL_AT);
+      const next = scrolledRef.current
+        ? top > SCROLL_FILL_EXIT
+        : top > SCROLL_FILL_ENTER;
+      if (next === scrolledRef.current) return;
+      scrolledRef.current = next;
+      setScrolled(next);
     };
 
     update();
@@ -58,20 +66,15 @@ export function useHomeV2HeaderScrolled(
 }
 
 /**
- * Single page header: sticky to the content top (not viewport-fixed), so
- * overscroll at the top cannot pull it into the shell deadzone. Transparent
- * at rest; fades to solid fill once you scroll. Sun glow lives in SiteHeader.
+ * Single page header: sticky overlay that fills on scroll.
+ * Sun glow / compact states live in SiteHeader.
  */
 export function HomeV2Chrome({
-  home = false,
-  activeTool = null,
   scrolled: scrolledProp,
 }: {
-  home?: boolean;
-  activeTool?: HomeV2ToolId | null;
   /** Omit to read from `HomeV2ScrollChrome` context. */
   scrolled?: boolean;
-}) {
+} = {}) {
   const scrolledCtx = useContext(HomeV2ScrolledContext);
   const scrolled = scrolledProp ?? scrolledCtx ?? false;
 
@@ -79,16 +82,14 @@ export function HomeV2Chrome({
     <HomeV2NavHeader
       tone="overlay"
       position="sticky"
-      home={home}
-      activeTool={activeTool}
       scrolled={scrolled}
     />
   );
 }
 
 /**
- * Page shell: scroll-fill context for `HomeV2Chrome` + optional reading progress.
- * Place chrome inside the painted field/hero ancestor so transparency reveals it.
+ * Page shell: scroll-fill context for `HomeV2Chrome` + optional reading progress
+ * + reveal animations for `[data-hv2-reveal]`.
  */
 export function HomeV2ScrollChrome({
   children,
@@ -99,6 +100,42 @@ export function HomeV2ScrollChrome({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrolled = useHomeV2HeaderScrolled(rootRef);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const scroller = findScrollParent(root) ?? document.documentElement;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduce) {
+      root.querySelectorAll<HTMLElement>("[data-hv2-reveal]").forEach((el) => {
+        el.classList.add("is-in");
+      });
+      return undefined;
+    }
+
+    const revealEls = root.querySelectorAll<HTMLElement>("[data-hv2-reveal]");
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-in");
+          io.unobserve(entry.target);
+        }
+      },
+      {
+        root: scroller === document.documentElement ? null : scroller,
+        threshold: 0.12,
+      },
+    );
+    revealEls.forEach((el) => {
+      el.classList.add("home-v2-reveal");
+      io.observe(el);
+    });
+    return () => io.disconnect();
+  }, []);
 
   return (
     <div ref={rootRef} className="home-v2 min-h-full">

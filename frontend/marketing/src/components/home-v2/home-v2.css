@@ -22,14 +22,17 @@
   --hv2-card: #ffffff;
   --hv2-card-border: #e0d4bc;
   --hv2-card-track: #f1eadb;
-  /* Full-bleed strips under the hero — soft tints of header gold into page ivory. */
-  --hv2-band-gold: var(--header-gold, #d9b87c);
-  /* Wide spread so adjacent tool strips (esp. Meditate ↔ Manifest) read clearly. */
-  --hv2-band-a: color-mix(in srgb, var(--hv2-band-gold) 22%, var(--hv2-page));
-  --hv2-band-b: color-mix(in srgb, var(--hv2-band-gold) 42%, var(--hv2-page));
-  --hv2-band-c: color-mix(in srgb, var(--hv2-band-gold) 32%, var(--hv2-page));
-  --hv2-band-d: color-mix(in srgb, var(--hv2-band-gold) 12%, var(--hv2-page));
-  --hv2-band-ideate: color-mix(in srgb, var(--hv2-band-gold) 2%, var(--hv2-page));
+  /*
+   * Full-bleed strips — sticky-navy family with a wide step so neighbours
+   * (a/b/c/d/ideate) stay readable against each other.
+   * a lightest → c → ideate → d → b darkest.
+   */
+  --hv2-band-base: var(--hv2-sticky-bg);
+  --hv2-band-a: color-mix(in srgb, white 16%, var(--hv2-band-base));
+  --hv2-band-c: color-mix(in srgb, white 9%, var(--hv2-band-base));
+  --hv2-band-ideate: color-mix(in srgb, white 4%, var(--hv2-band-base));
+  --hv2-band-d: color-mix(in srgb, black 22%, var(--hv2-band-base));
+  --hv2-band-b: color-mix(in srgb, black 36%, var(--hv2-band-base));
   --hv2-on-gold: var(--hv2-navy);
   --hv2-font-body: var(--font-instrument), system-ui, sans-serif;
   --hv2-font-display: var(--font-fraunces), Georgia, serif;
@@ -109,13 +112,12 @@
   --hv2-card: var(--marketing-card-bg);
   --hv2-card-border: var(--marketing-card-border);
   --hv2-card-track: #f1eadb;
-  --hv2-band-gold: var(--header-gold, #d9b87c);
-  /* Wide spread so adjacent tool strips (esp. Meditate ↔ Manifest) read clearly. */
-  --hv2-band-a: color-mix(in srgb, var(--hv2-band-gold) 22%, var(--hv2-page));
-  --hv2-band-b: color-mix(in srgb, var(--hv2-band-gold) 42%, var(--hv2-page));
-  --hv2-band-c: color-mix(in srgb, var(--hv2-band-gold) 32%, var(--hv2-page));
-  --hv2-band-d: color-mix(in srgb, var(--hv2-band-gold) 12%, var(--hv2-page));
-  --hv2-band-ideate: color-mix(in srgb, var(--hv2-band-gold) 2%, var(--hv2-page));
+  --hv2-band-base: var(--hv2-sticky-bg);
+  --hv2-band-a: color-mix(in srgb, white 16%, var(--hv2-band-base));
+  --hv2-band-c: color-mix(in srgb, white 9%, var(--hv2-band-base));
+  --hv2-band-ideate: color-mix(in srgb, white 4%, var(--hv2-band-base));
+  --hv2-band-d: color-mix(in srgb, black 22%, var(--hv2-band-base));
+  --hv2-band-b: color-mix(in srgb, black 36%, var(--hv2-band-base));
   --hv2-sand: var(--hv2-band-a);
   --hv2-hero-bg: var(--home-hero-bg);
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-offwhite.webp");
@@ -187,13 +189,12 @@
   --hv2-card: var(--marketing-card-bg);
   --hv2-card-border: var(--marketing-card-border);
   --hv2-card-track: #f1eadb;
-  --hv2-band-gold: var(--header-gold, #d9b87c);
-  /* Wide spread so adjacent tool strips (esp. Meditate ↔ Manifest) read clearly. */
-  --hv2-band-a: color-mix(in srgb, var(--hv2-band-gold) 22%, var(--hv2-page));
-  --hv2-band-b: color-mix(in srgb, var(--hv2-band-gold) 42%, var(--hv2-page));
-  --hv2-band-c: color-mix(in srgb, var(--hv2-band-gold) 32%, var(--hv2-page));
-  --hv2-band-d: color-mix(in srgb, var(--hv2-band-gold) 12%, var(--hv2-page));
-  --hv2-band-ideate: color-mix(in srgb, var(--hv2-band-gold) 2%, var(--hv2-page));
+  --hv2-band-base: var(--hv2-sticky-bg);
+  --hv2-band-a: color-mix(in srgb, white 16%, var(--hv2-band-base));
+  --hv2-band-c: color-mix(in srgb, white 9%, var(--hv2-band-base));
+  --hv2-band-ideate: color-mix(in srgb, white 4%, var(--hv2-band-base));
+  --hv2-band-d: color-mix(in srgb, black 22%, var(--hv2-band-base));
+  --hv2-band-b: color-mix(in srgb, black 36%, var(--hv2-band-base));
   --hv2-sand: var(--hv2-band-a);
   /* Homepage hero — near-black duotone (unchanged). */
   --hv2-hero-bg: #1a1820;
@@ -278,12 +279,13 @@
   --hv2-card: var(--marketing-card-bg);
   --hv2-card-border: var(--marketing-card-border);
   --hv2-card-track: #243041;
-  --hv2-band-a: var(--marketing-band-a);
-  --hv2-band-b: var(--marketing-band-b);
-  --hv2-band-c: var(--marketing-band-c);
-  --hv2-band-d: var(--marketing-band-d);
-  --hv2-band-ideate: var(--marketing-band-ideate);
-  --hv2-sand: var(--marketing-band-a);
+  --hv2-band-base: var(--hv2-sticky-bg);
+  --hv2-band-a: color-mix(in srgb, white 16%, var(--hv2-band-base));
+  --hv2-band-c: color-mix(in srgb, white 9%, var(--hv2-band-base));
+  --hv2-band-ideate: color-mix(in srgb, white 4%, var(--hv2-band-base));
+  --hv2-band-d: color-mix(in srgb, black 22%, var(--hv2-band-base));
+  --hv2-band-b: color-mix(in srgb, black 36%, var(--hv2-band-base));
+  --hv2-sand: var(--hv2-band-a);
   --hv2-hero-bg: #1a2330;
   --hv2-hero-pattern: url("/patterns/paisley-tile-800-tonal-navy.webp");
   --hv2-hero-pattern-opacity: 0.14;
@@ -544,6 +546,21 @@
 
 .home-v2-band {
   width: 100%;
+  color: var(--hv2-ivory);
+  /* Dark-mode type + panels on navy bands (children use these tokens). */
+  --hv2-ink: var(--hv2-ivory);
+  --hv2-body: var(--hv2-on-navy);
+  --hv2-muted: var(--hv2-on-navy-muted);
+  --hv2-tan-text: var(--hv2-gold);
+  --hv2-card: rgba(246, 241, 231, 0.06);
+  --hv2-card-border: rgba(246, 241, 231, 0.14);
+  --hv2-card-track: rgba(246, 241, 231, 0.1);
+  --hv2-line: rgba(246, 241, 231, 0.14);
+}
+
+/* Lockups in bands defaulted to black wordmark — force ivory on navy strips. */
+.home-v2-band .home-v2-lockup-wordmark {
+  color: var(--hv2-ivory);
 }
 
 .home-v2-band--a {
