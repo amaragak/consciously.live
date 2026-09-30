@@ -373,13 +373,16 @@
  * Site / sticky header also carries `.home-v2` for token scope, but must NOT
  * inherit the light page fill — that was painting cream under ivory type.
  */
-.home-v2.home-v2-site-header {
+.home-v2.home-v2-site-header:not(.home-v2-site-header--transparent) {
   background-color: var(--hv2-sticky-bg);
   color: var(--hv2-hero-fg);
 }
 
 .home-v2.home-v2-site-header.home-v2-site-header--transparent {
-  background-color: transparent;
+  /* Override `.home-v2 { background: var(--hv2-page) }` shorthand — must be fully clear. */
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Soft lift centered on the sticky lockup sun (not viewport-left). */
@@ -455,7 +458,8 @@
   z-index: 5;
 }
 
-.home-v2-hero > .home-v2-hero-sun-glow {
+/* Shared TopChrome sun radial — hero + field shells. */
+.home-v2-hero-sun-glow {
   position: absolute;
   inset-inline: 0;
   top: 0;
@@ -532,12 +536,17 @@
   mask-mode: alpha;
 }
 
-.home-v2-field > *:not(.home-v2-site-header):not(.home-v2-reading-progress) {
+.home-v2-field
+  > *:not(.home-v2-site-header):not(.home-v2-reading-progress):not(
+    .home-v2-hero-sun-glow
+  ):not(.home-v2-hero-chrome) {
   position: relative;
   z-index: 1;
 }
 
+.home-v2-field > .home-v2-hero-chrome,
 .home-v2-field > .home-v2-site-header {
+  position: relative;
   z-index: 40;
 }
 

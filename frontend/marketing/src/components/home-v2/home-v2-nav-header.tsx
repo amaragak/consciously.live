@@ -16,6 +16,7 @@ import {
   type HomeV2SiteHeaderSecondaryId,
 } from "@/components/home-v2/home-v2-site-header";
 import { HomeV2ToolIcon } from "@/components/home-v2/home-v2-tool-icon";
+import { smoothScrollToId } from "@/components/home-v2/use-home-v2-scroll";
 
 function sectionActive(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
@@ -78,26 +79,55 @@ function resolveNav(pathname: string): {
 }
 
 /**
- * Site-wide marketing header matching homepage-v2 chrome.
- * Used on every Next marketing page except `/` (hero owns that), `/read`
- * (field owns transparent chrome), and `/legacy/*`.
+ * Shared SiteHeader wiring for marketing pages.
+ * `home` uses in-page tool anchors; otherwise path-based tool routes.
  */
 export function HomeV2NavHeader({
   tone = "solid",
   position = "sticky",
+  home = false,
+  activeTool: activeToolOverride,
 }: {
   tone?: "solid" | "transparent";
   position?: "fixed" | "sticky" | "static";
+  /** Homepage: tool links scroll to `#tool-*` sections. */
+  home?: boolean;
+  /** Homepage sticky: highlight the section in view. */
+  activeTool?: HomeV2ToolId | null;
 } = {}) {
   const pathname = usePathname() || "/";
-  const { verbLabel, activeTool, activeSecondary, ctaHref, ctaLabel } =
-    resolveNav(pathname);
+  const resolved = resolveNav(pathname);
+  const activeTool = home
+    ? (activeToolOverride ?? null)
+    : resolved.activeTool;
+  const verbLabel = home
+    ? HOME_V2_TOOLS.find((t) => t.id === activeTool)?.label ?? null
+    : resolved.verbLabel;
+  const activeSecondary = home ? null : resolved.activeSecondary;
+  const tool = HOME_V2_TOOLS.find((t) => t.id === activeTool);
+  const ctaHref = home
+    ? tool
+      ? `/login?mode=signup&next=${encodeURIComponent(tool.href)}`
+      : HOME_V2_START_FREE_HREF
+    : resolved.ctaHref;
+  const ctaLabel = home
+    ? (tool?.stickyCta ?? "Start free →")
+    : resolved.ctaLabel;
 
-  const toolLinks = HOME_V2_TOOLS.map((t) => ({
-    id: t.id,
-    label: t.label,
-    href: t.href,
-  }));
+  const toolLinks = HOME_V2_TOOLS.map((t) =>
+    home
+      ? {
+          id: t.id,
+          label: t.label,
+          href: `#tool-${t.id}`,
+          onClick: () => smoothScrollToId(`tool-${t.id}`),
+        }
+      : {
+          id: t.id,
+          label: t.label,
+          href: t.href,
+        },
+  );
   const ctaIcon = activeTool ? (
     <HomeV2ToolIcon tool={activeTool} />
   ) : undefined;

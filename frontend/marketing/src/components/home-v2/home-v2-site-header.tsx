@@ -86,28 +86,32 @@ export function HomeV2SiteHeader({
 
   return (
     <header
-      className={`home-v2 home-v2-site-header z-40 border-b border-[var(--hv2-hero-hairline)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${
+      className={`home-v2 home-v2-site-header z-40 text-[var(--hv2-hero-fg)] ${
         isTransparent
           ? "home-v2-site-header--transparent overflow-visible bg-transparent"
-          : "overflow-hidden bg-[var(--hv2-sticky-bg)]"
+          : "overflow-hidden border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 md:px-6"
       } ${positionClass} ${className}`.trim()}
-      style={isFixed ? { position: "fixed" } : undefined}
+      style={
+        isTransparent
+          ? {
+              background: "transparent",
+              ...(isFixed ? { position: "fixed" as const } : null),
+            }
+          : isFixed
+            ? { position: "fixed" }
+            : undefined
+      }
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 px-5 md:px-6"
-      >
-        <div className="relative mx-auto h-full w-full max-w-[1200px]">
-          {/* Align glow with nav lockup sun (40px → 20px center). */}
-          <span
-            className={`absolute left-[20px] top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-              isTransparent
-                ? "home-v2-hero-chrome-glow-sun size-[160px] blur-2xl md:size-[200px]"
-                : "home-v2-site-header-sun-glow size-[180px]"
-            }`}
-          />
+      {!isTransparent ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 px-5 md:px-6"
+        >
+          <div className="relative mx-auto h-full w-full max-w-[1200px]">
+            <span className="home-v2-site-header-sun-glow absolute left-[20px] top-1/2 size-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="relative mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 md:h-[72px]">
         <div className="relative shrink-0">
           <Lockup
