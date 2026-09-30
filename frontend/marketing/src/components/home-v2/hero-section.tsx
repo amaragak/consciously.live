@@ -139,7 +139,7 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
         </nav>
       </div>
 
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 pt-7 md:gap-9 md:pt-[72px]">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 pt-7 md:gap-6 md:pt-[72px]">
         <h1
           className={`home-v2-display m-0 text-[40px] font-[350] leading-none tracking-[-1px] md:text-[clamp(52px,6vw,88px)] md:tracking-[-2px] ${h1.className}`}
           style={h1.style}
@@ -153,7 +153,16 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           className={`m-0 max-w-none text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5] ${sub.className}`}
           style={sub.style}
         >
-          With our all inclusive mind reprogramming suite
+          <em className="home-v2-display text-[19px] italic text-[var(--hv2-gold)] md:text-[26px]">
+            Live consciously
+          </em>{" "}
+          with our all-inclusive{" "}
+          <strong className="font-bold text-[var(--hv2-hero-fg)]">
+            mind reprogramming
+          </strong>{" "}
+          suite: Personalised AI-guided meditations, vision boarding, a goal
+          planner, your personal manifesto and focus sessions — everything you
+          need to turn the dream into your daily life.
         </p>
         <div className={form.className} style={form.style}>
           <HeroPrompt />

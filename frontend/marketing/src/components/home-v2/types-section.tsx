@@ -5,12 +5,12 @@ import { HOME_V2_START_ELSEWHERE } from "@/components/home-v2/constants";
 export function TypesSection({ motionReady }: { motionReady: boolean }) {
   return (
     <div
-      className={`mt-8 flex flex-col gap-4 md:mt-10 ${
+      className={`mt-3 flex flex-col gap-4 md:mt-4 ${
         motionReady ? "home-v2-hero-anim is-ready" : "home-v2-hero-anim"
       }`}
       style={motionReady ? { animationDelay: "450ms" } : undefined}
     >
-      <p className="home-v2-display text-center text-[19px] font-bold text-[var(--hv2-hero-fg)] md:text-[26px]">
+      <p className="text-center text-[11px] font-bold uppercase tracking-[1.6px] text-[var(--hv2-hero-fg)] md:text-[13px] md:tracking-[2px]">
         Or start somewhere else
       </p>
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">

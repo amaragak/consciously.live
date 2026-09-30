@@ -20,7 +20,7 @@ const dmSans = DM_Sans({
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const fraunces = Fraunces({

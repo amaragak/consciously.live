@@ -57,7 +57,7 @@ export function HeroPrompt() {
   }
 
   return (
-    <div className="flex w-full flex-col gap-3.5 pt-2">
+    <div className="flex w-full flex-col gap-3.5">
       <form
         onSubmit={(e) => void onSubmit(e)}
         className="home-v2-prompt-shell home-v2-hero-glass flex w-full flex-col gap-2.5 md:flex-row md:items-center md:gap-2 md:rounded-full md:border md:border-[rgb(var(--hv2-gold-rgb)/0.45)] md:bg-[var(--hv2-hero-input-bg)] md:py-1.5 md:pl-[28px] md:pr-1.5 md:shadow-[var(--hv2-hero-elev)] md:transition-[border-color,box-shadow] md:duration-200 md:ease-out md:hover:border-[var(--hv2-gold)] md:hover:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.35)] md:focus-within:border-[var(--hv2-gold)] md:focus-within:shadow-[0_0_0_1px_rgb(var(--hv2-gold-rgb)/0.45)]"
@@ -89,10 +89,6 @@ export function HeroPrompt() {
           )}
         </button>
       </form>
-      <p className="px-0 text-center text-[13px] text-[var(--hv2-hero-nav-muted)] md:px-[30px] md:text-left md:text-[15px]">
-        Any intention, any moment: a guided meditation written and voiced just for
-        you.
-      </p>
       {error ? (
         <p className="px-[30px] text-sm text-red-300" role="alert">
           {error}

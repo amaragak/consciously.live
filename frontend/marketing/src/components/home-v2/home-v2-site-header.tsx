@@ -68,14 +68,15 @@ export function HomeV2SiteHeader({
   className = "",
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const positionClass =
-    position === "fixed"
-      ? "home-v2-sticky-enter fixed inset-x-0 top-0"
-      : "sticky top-0";
+  const isFixed = position === "fixed";
+  const positionClass = isFixed
+    ? "home-v2-sticky-enter inset-x-0 top-0"
+    : "sticky top-0";
 
   return (
     <header
-      className={`home-v2 home-v2-site-header relative z-40 overflow-hidden border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${positionClass} ${className}`.trim()}
+      className={`home-v2 home-v2-site-header z-40 overflow-hidden border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)] px-5 text-[var(--hv2-hero-fg)] md:px-6 ${positionClass} ${className}`.trim()}
+      style={isFixed ? { position: "fixed" } : undefined}
     >
       <div
         aria-hidden
