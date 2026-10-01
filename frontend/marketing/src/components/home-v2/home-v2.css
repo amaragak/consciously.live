@@ -721,6 +721,35 @@
   z-index: 45;
 }
 
+/* Under overlay header: only after shrink, same 260ms ease as the bar. */
+.home-v2-reading-progress--under-sticky {
+  /* Match .is-scrolled bar height — only visible once compact. */
+  top: 3rem;
+  opacity: 0;
+  transform: scaleY(0);
+  transform-origin: top center;
+  transition:
+    opacity 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (min-width: 768px) {
+  .home-v2-reading-progress--under-sticky {
+    top: 3.5rem;
+  }
+}
+
+.home-v2-reading-progress--under-sticky.is-visible {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-v2-reading-progress--under-sticky {
+    transition: none;
+  }
+}
+
 .home-v2 a:focus-visible,
 .home-v2 button:focus-visible:not(.accent-fill-gradient),
 .home-v2 input:focus-visible:not(.home-v2-prompt-input) {

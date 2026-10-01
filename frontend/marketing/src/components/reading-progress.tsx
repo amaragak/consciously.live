@@ -27,15 +27,20 @@ function getScrollParent(el: HTMLElement): HTMLElement | Window {
 /**
  * Decorative reading progress bar pinned under the sticky site header.
  * Fills left→right with scroll through the article body container.
+ * On Read posts it only appears once the overlay header has shrunk,
+ * animating in with that compact transition.
  * Listens on the real scrollport (MainShell), not `window` — the document
  * itself does not scroll on this site.
  */
 export function ReadingProgress({
   containerId = "read-article-body",
   underStickyHeader = false,
+  visible = true,
 }: Props & {
   /** Sit under homepage-v2 sticky chrome (Read / home scroll header). */
   underStickyHeader?: boolean;
+  /** False until the overlay header is in its shrunk/filled state. */
+  visible?: boolean;
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -102,12 +107,14 @@ export function ReadingProgress({
   return (
     <div
       aria-hidden
-      className="home-v2-reading-progress pointer-events-none fixed inset-x-0 z-[45] h-1"
-      style={{
-        top: underStickyHeader
-          ? "var(--hv2-sticky-header-h, 3.5rem)"
-          : "var(--site-header-h)",
-      }}
+      className={`home-v2-reading-progress pointer-events-none fixed inset-x-0 z-[45] h-1${
+        underStickyHeader ? " home-v2-reading-progress--under-sticky" : ""
+      }${visible ? " is-visible" : ""}`}
+      style={
+        underStickyHeader
+          ? undefined
+          : { top: "var(--site-header-h)" }
+      }
     >
       <div className="relative h-full w-full bg-[color-mix(in_srgb,var(--hv2-gold)_30%,transparent)]">
         <div

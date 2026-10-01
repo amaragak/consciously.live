@@ -142,7 +142,7 @@ export function HomeV2ScrollChrome({
       <HomeV2ScrolledContext.Provider value={scrolled}>
         {children}
         {showReadingProgress ? (
-          <ReadingProgress underStickyHeader />
+          <ReadingProgress underStickyHeader visible={scrolled} />
         ) : null}
       </HomeV2ScrolledContext.Provider>
     </div>

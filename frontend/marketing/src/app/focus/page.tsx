@@ -1,11 +1,11 @@
-import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
+import { FocusMarketingPage } from "@/components/home-v2/focus-marketing-page";
 
 export const metadata = {
   title: "Focus",
   description:
-    "Goal-linked focus sessions with distraction blocking — give your hours to the next step in Manifest, not another blank timer.",
+    "Goal-linked focus sessions — pick the next To Do from Manifest, set the tone, and give it twenty-five minutes.",
 };
 
 export default function FocusPage() {
-  return <ToolMarketingPage tool="focus" />;
+  return <FocusMarketingPage />;
 }
