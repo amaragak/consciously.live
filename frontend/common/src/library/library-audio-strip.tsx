@@ -889,16 +889,16 @@ export function LibraryAudioStrip({
             ? ({
                 colorScheme: "dark",
                 // Match home-v2 sticky / band navy so the bar sits on dark heroes.
-                ["--background"]: "#161a22",
-                ["--foreground"]: "#f6f1e7",
-                ["--muted"]: "rgba(246, 241, 231, 0.55)",
-                ["--card"]: "#1e232e",
-                ["--border"]: "rgba(246, 241, 231, 0.14)",
-                ["--accent-soft"]:
+                "--background": "#161a22",
+                "--foreground": "#f6f1e7",
+                "--muted": "rgba(246, 241, 231, 0.55)",
+                "--card": "#1e232e",
+                "--border": "rgba(246, 241, 231, 0.14)",
+                "--accent-soft":
                   "color-mix(in srgb, #c8a46a 22%, transparent)",
-                ["--overlay"]: "rgb(0 0 0 / 0.55)",
-                ["--gold"]: "#c8a46a",
-              } satisfies CSSProperties)
+                "--overlay": "rgb(0 0 0 / 0.55)",
+                "--gold": "#c8a46a",
+              } as CSSProperties)
             : null),
         }}
         role="region"
