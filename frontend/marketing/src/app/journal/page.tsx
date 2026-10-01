@@ -1,4 +1,4 @@
-import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
+import { JournalMarketingPage } from "@/components/home-v2/journal-marketing-page";
 
 export const metadata = {
   title: "Journal",
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function JournalPage() {
-  return <ToolMarketingPage tool="journal" />;
+  return <JournalMarketingPage />;
 }

@@ -1,4 +1,4 @@
-import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
+import { MeditateMarketingPage } from "@/components/home-v2/meditate-marketing-page";
 
 export const metadata = {
   title: "Meditate",
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function MeditatePage() {
-  return <ToolMarketingPage tool="meditate" />;
+  return <MeditateMarketingPage />;
 }

@@ -164,10 +164,10 @@ export function JournalVignette() {
             I can picture the studio so clearly
           </span>
           . But{" "}
-          <span className="border-b-2 border-[var(--hv2-gold)]">
+          <span className="border-b-2 border-[#C4878F]">
             who am I to charge for this?
           </span>{" "}
-          <span className="border-b-2 border-[var(--hv2-gold)]">
+          <span className="border-b-2 border-[#c3d2e8]">
             Grateful for a quiet morning
           </span>{" "}
           to dream.”
@@ -177,18 +177,15 @@ export function JournalVignette() {
       <AskCard label="Patterns this month">
         {(
           [
-            ["Vision", "78%", true],
-            ["Self-doubt", "52%", false],
-            ["Gratitude", "36%", false],
+            ["Vision", "78%", "bg-[var(--hv2-gold)]"],
+            ["Self-doubt", "52%", "bg-[#C4878F]"],
+            ["Gratitude", "36%", "bg-[#c3d2e8]"],
           ] as const
-        ).map(([label, width, gold]) => (
+        ).map(([label, width, bar]) => (
           <div key={label} className="flex flex-col gap-2">
             <span className="text-[15px]">{label}</span>
             <div className="h-2 rounded-full bg-[var(--hv2-card-track)]">
-              <div
-                className={`h-2 rounded-full ${gold ? "bg-[var(--hv2-gold)]" : "bg-[var(--hv2-navy)]"}`}
-                style={{ width }}
-              />
+              <div className={`h-2 rounded-full ${bar}`} style={{ width }} />
             </div>
           </div>
         ))}
@@ -323,11 +320,8 @@ function MeditateByTypeVignette() {
           <Chip active>Manifestation</Chip>
           <Chip>Visualization</Chip>
           <Chip>Sleep</Chip>
-          <Chip>Breath</Chip>
+          <Chip>Breath-led</Chip>
         </div>
-        <p className="m-0 text-sm text-[var(--hv2-muted)]">
-          Answer a few questions shaped around what you need today
-        </p>
         <p className="home-v2-display m-0 text-lg italic leading-snug">
           “Opening night at the studio — I want to feel already there.”
         </p>
@@ -351,17 +345,23 @@ function MeditateFromChatVignette() {
           Free flow chat
         </p>
         <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
-          I keep circling the same doubt.
+          I keep circling the same doubt before I price anything.
         </div>
         <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
-          Let’s sit with that — I’ll write a session from this thread.
+          What’s under that — fear of charging too much, or of being seen?
+        </div>
+        <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+          Both. I want to feel already worth it — studio open, first sale done.
+        </div>
+        <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+          Got it. I’ll write a session from this exact thread.
         </div>
       </div>
       <ArrowDown />
       <GetCard>
         <PlayRow
-          title="Out of the loop"
-          meta="From chat · Grounded voice · No ambience"
+          title="Already worth it"
+          meta="From chat · Warm voice · Soft rain"
         />
       </GetCard>
     </Stack>
@@ -488,29 +488,66 @@ function MeditateProgramsVignette() {
 function JournalWriteSpeakVignette() {
   return (
     <Stack>
-      <AskCard label="Write">
-        <p className="home-v2-display m-0 text-lg italic leading-snug">
-          “I can picture the studio so clearly…”
+      <GetCard label="Tonight’s entry">
+        <p className="home-v2-display m-0 text-[19px] italic leading-relaxed">
+          “I can picture the studio so clearly. But who am I to charge for this?
+          Grateful for a quiet morning to dream.”
         </p>
-        <p className="m-0 text-sm text-[var(--hv2-muted)]">Text entry · kept exactly</p>
-      </AskCard>
-      <div className="flex items-center justify-center gap-3 text-[var(--hv2-tan-text)]" aria-hidden>
-        <span className="text-xs uppercase tracking-[1.2px]">or</span>
-      </div>
-      <GetCard label="Speak">
-        <div className="flex items-center gap-4">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[rgba(246,241,231,0.3)]">
-            <span className="h-3 w-3 rounded-full bg-[var(--hv2-gold)]" />
-          </span>
-          <div>
-            <p className="home-v2-display m-0 text-[20px] font-medium">
-              Voice note · 1:42
-            </p>
-            <p className="m-0 text-[13px] text-[rgba(246,241,231,0.6)]">
-              Clip saved with the entry
-            </p>
-          </div>
+        <p className="m-0 text-[13px] text-[rgba(246,241,231,0.6)]">
+          Typed · or spoken and transcribed
+        </p>
+      </GetCard>
+      <AskCard label="Same page">
+        <div className="flex flex-wrap gap-2">
+          <Chip active>Text</Chip>
+          <Chip>Voice → text</Chip>
         </div>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          Clip kept with the entry when you speak it in
+        </p>
+      </AskCard>
+    </Stack>
+  );
+}
+
+function JournalImportVignette() {
+  return (
+    <Stack>
+      <AskCard label="Handwritten photos">
+        <div className="grid grid-cols-3 gap-2">
+          {(["#E8DFC8", "#D9CCB2", "#C4B49A"] as const).map((c, i) => (
+            <div
+              key={c}
+              className="flex h-[72px] items-end rounded-[10px] px-2 pb-2"
+              style={{ background: c }}
+            >
+              <span className="font-display text-[11px] italic leading-tight text-[var(--hv2-navy)]/70">
+                {i === 0 ? "page 1" : i === 1 ? "page 2" : "page 3"}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="m-0 text-sm text-[var(--hv2-muted)]">
+          AI reads the handwriting · you review before save
+        </p>
+      </AskCard>
+      <ArrowDown />
+      <GetCard label="Or import">
+        <div className="flex flex-wrap gap-2">
+          <Chip active>Day One</Chip>
+          <span className="rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]">
+            Markdown
+          </span>
+          <span className="rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]">
+            CSV
+          </span>
+          <span className="rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]">
+            PDF notes
+          </span>
+        </div>
+        <p className="home-v2-display m-0 text-lg leading-snug">
+          Your past writing, ready in Consciously
+        </p>
       </GetCard>
     </Stack>
   );
@@ -911,6 +948,7 @@ export type ToolMarketingVignetteId =
   | "meditate-goal"
   | "meditate-programs"
   | "journal-write"
+  | "journal-import"
   | "journal-patterns"
   | "journal-gratitudes"
   | "journal-meditate"
@@ -938,6 +976,7 @@ export const TOOL_MARKETING_VIGNETTES: Record<
   "meditate-goal": <MeditateFromGoalVignette />,
   "meditate-programs": <MeditateProgramsVignette />,
   "journal-write": <JournalWriteSpeakVignette />,
+  "journal-import": <JournalImportVignette />,
   "journal-patterns": <JournalPatternsVignette />,
   "journal-gratitudes": <JournalGratitudesVignette />,
   "journal-meditate": <JournalToMeditateVignette />,

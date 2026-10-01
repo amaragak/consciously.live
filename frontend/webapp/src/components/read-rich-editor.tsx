@@ -46,6 +46,37 @@ export type ReadEditorLinkPost = {
   published: boolean;
 };
 
+type AppLinkPreset = {
+  id: string;
+  label: string;
+  href: string;
+  hint: string;
+};
+
+/** Same-origin pages useful in Read CTAs (marketing Next app). */
+const APP_LINK_PRESETS: AppLinkPreset[] = [
+  {
+    id: "signup",
+    label: "Sign up",
+    href: "/login?mode=signup",
+    hint: "Create account",
+  },
+  {
+    id: "signin",
+    label: "Sign in",
+    href: "/login",
+    hint: "Existing account",
+  },
+  { id: "home", label: "Home", href: "/", hint: "/" },
+  { id: "meditate", label: "Meditate", href: "/meditate", hint: "/meditate" },
+  { id: "journal", label: "Journal", href: "/journal", hint: "/journal" },
+  { id: "manifest", label: "Manifest", href: "/manifest", hint: "/manifest" },
+  { id: "focus", label: "Focus", href: "/focus", hint: "/focus" },
+  { id: "chat", label: "Chat", href: "/chat", hint: "/chat" },
+  { id: "pricing", label: "Pricing", href: "/pricing", hint: "/pricing" },
+  { id: "read", label: "Read", href: "/read", hint: "/read" },
+];
+
 type Props = {
   /** Remount / reseed key when switching posts. */
   docId: string;
@@ -60,6 +91,17 @@ function postHref(slug: string): string {
   return `/read/${encodeURIComponent(slug.trim())}`;
 }
 
+/** Allow app-relative paths and http(s)/mailto links. */
+function normalizeEditorHref(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  if (/^(https?:\/\/|mailto:)/i.test(t)) return t;
+  if (t.startsWith("/")) return t;
+  // Bare path or query string typed without leading slash.
+  if (/^[a-z0-9][\w./?&=%-]*$/i.test(t)) return `/${t}`;
+  return null;
+}
+
 export function ReadRichEditor({
   docId,
   initialHtml,
@@ -72,6 +114,7 @@ export function ReadRichEditor({
   const onHtmlChangeRef = useRef(onHtmlChange);
   onHtmlChangeRef.current = onHtmlChange;
   const [linkMenuOpen, setLinkMenuOpen] = useState(false);
+  const [customHref, setCustomHref] = useState("");
   const linkMenuRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const pendingLayoutRef = useRef<ReadImageLayout>("inline");
@@ -89,7 +132,13 @@ export function ReadRichEditor({
         defaultProtocol: "https",
         HTMLAttributes: {
           class: "text-accent-link underline underline-offset-2",
+          // App paths (signup, tools) should stay in the same tab.
+          target: null,
+          rel: null,
         },
+        // TipTap defaults reject relative URLs; we need /login?mode=signup etc.
+        isAllowedUri: (url, ctx) =>
+          url.startsWith("/") || ctx.defaultValidate(url),
       }),
       Subscript,
       Superscript,
@@ -141,17 +190,15 @@ export function ReadRichEditor({
     );
   }
 
-  function applyPostLink(post: ReadEditorLinkPost) {
+  function applyHref(href: string, emptySelectionLabel: string) {
     if (!editor) return;
-    const href = postHref(post.slug);
-    const label = post.title.trim() || post.slug;
     if (editor.state.selection.empty) {
       editor
         .chain()
         .focus()
         .insertContent({
           type: "text",
-          text: label,
+          text: emptySelectionLabel,
           marks: [{ type: "link", attrs: { href } }],
         })
         .run();
@@ -159,6 +206,33 @@ export function ReadRichEditor({
       editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
     }
     setLinkMenuOpen(false);
+    setCustomHref("");
+  }
+
+  function applyPostLink(post: ReadEditorLinkPost) {
+    applyHref(postHref(post.slug), post.title.trim() || post.slug);
+  }
+
+  function applyAppLink(preset: AppLinkPreset) {
+    applyHref(preset.href, preset.label);
+  }
+
+  function applyCustomLink() {
+    const href = normalizeEditorHref(customHref);
+    if (!href) return;
+    if (
+      !(
+        href.startsWith("/") ||
+        /^https?:\/\//i.test(href) ||
+        /^mailto:/i.test(href)
+      )
+    ) {
+      return;
+    }
+    const label =
+      APP_LINK_PRESETS.find((p) => p.href === href)?.label ??
+      (href.startsWith("/") ? href : "Link");
+    applyHref(href, label);
   }
 
   function unlink() {
@@ -304,14 +378,64 @@ export function ReadRichEditor({
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
         <div ref={linkMenuRef} className="relative">
           <ToolbarBtn
-            label="Link to another post"
+            label="Insert link"
             active={editor.isActive("link") || linkMenuOpen}
             onClick={() => setLinkMenuOpen((o) => !o)}
           >
             <Link2 className="size-3.5" aria-hidden />
           </ToolbarBtn>
           {linkMenuOpen ? (
-            <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg">
+            <div className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg">
+              <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                App pages
+              </p>
+              <ul className="max-h-44 overflow-y-auto border-b border-border pb-1">
+                {APP_LINK_PRESETS.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => applyAppLink(p)}
+                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-accent-soft/50"
+                    >
+                      <span className="text-sm font-medium text-foreground">
+                        {p.label}
+                      </span>
+                      <span className="text-[11px] text-muted">
+                        {p.hint}
+                        {p.href !== p.hint ? ` · ${p.href}` : null}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-b border-border px-3 py-2">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Custom URL
+                </p>
+                <form
+                  className="flex gap-1.5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    applyCustomLink();
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={customHref}
+                    onChange={(e) => setCustomHref(e.target.value)}
+                    placeholder="/path or https://…"
+                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                    aria-label="Custom link URL"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!normalizeEditorHref(customHref)}
+                    className="shrink-0 rounded-md bg-accent-soft px-2.5 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                  >
+                    Add
+                  </button>
+                </form>
+              </div>
               <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                 Link to post
               </p>
@@ -320,7 +444,7 @@ export function ReadRichEditor({
                   No other posts yet.
                 </p>
               ) : (
-                <ul className="max-h-56 overflow-y-auto">
+                <ul className="max-h-40 overflow-y-auto">
                   {sortedLinkPosts.map((p) => (
                     <li key={p.id}>
                       <button

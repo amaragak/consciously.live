@@ -1,11 +1,16 @@
 import type { HomeV2ToolId } from "@/components/home-v2/constants";
 import type { ToolMarketingVignetteId } from "@/components/home-v2/tool-vignettes";
+import { MEDITATION_STYLE_LABELS } from "@/lib/meditation-style-intake";
+
+const MEDITATION_STYLE_COUNT = MEDITATION_STYLE_LABELS.length;
 
 /** One full-bleed band on a tool marketing page. */
 export type ToolMarketingStrip = {
   headline: string;
   support: string;
   vignette: ToolMarketingVignetteId;
+  /** Compact tags (e.g. meditation styles) instead of title/body points. */
+  examples?: readonly string[];
   points: readonly { title: string; body: string }[];
 };
 
@@ -23,50 +28,41 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
     support: "Try it for yourself",
     strips: [
       {
-        headline: "Pick a meditation style.",
-        support:
-          "By type: choose a type, then answer a few questions shaped around what you need today — manifestation, visualisation, sleep, and more.",
+        headline: `Pick from ${MEDITATION_STYLE_COUNT} meditation styles.`,
+        support: "Choose a type, answer a few questions, generate.",
         vignette: "meditate-bytype",
-        points: [
-          {
-            title: "By type",
-            body: "Start from the form of practice you want. The intake keeps the script inside that style while still sounding like you.",
-          },
-          {
-            title: "Then generate",
-            body: "Questions → script → voice and mix. Same Generate meditation finish as every other Create path.",
-          },
-        ],
+        examples: MEDITATION_STYLE_LABELS,
+        points: [],
       },
       {
         headline: "Free flow chat.",
         support:
-          "Start from mood and what’s on your mind — open, journal-style questions. No style chip forced up front.",
+          "When you want to get really specific — talk it through first, then generate a session from the thread.",
         vignette: "meditate-chat",
         points: [
           {
-            title: "Chat",
-            body: "Talk it through. The meditation grows out of the conversation, not a form you filled for someone else’s use case.",
+            title: "Go deep on the detail",
+            body: "Name the doubt, the decision, the exact knot. No style chip forced up front.",
           },
           {
-            title: "When you’re circling",
-            body: "Doubt, decision, or restless energy — name it in dialogue, then sit with a script that heard you first.",
+            title: "Then sit with what you said",
+            body: "The meditation grows out of the conversation — not a form you filled for someone else’s use case.",
           },
         ],
       },
       {
         headline: "Make a program your own.",
         support:
-          "Programs are curated guided courses — one lesson at a time. Take Chakra Cleanse: explore the ready audio from root to crown, or Make it your own and generate a fresh meditation shaped around you.",
+          "Curated guided courses — one lesson at a time. Explore the ready audio, or Make it your own and generate a fresh meditation shaped around you.",
         vignette: "meditate-programs",
         points: [
           {
             title: "Explore course",
-            body: "In Library → Programs, listen to Chakra Cleanse as published — Introduction, then Root through Crown — each lesson with its own ready audio, color, and theme.",
+            body: "In Library → Programs, listen to each lesson as published — ordered sessions with their own ready audio.",
           },
           {
             title: "Make it your own",
-            body: "Create → By Program: pick Chakra Cleanse, choose sessions (e.g. Root, Heart), answer the customization intake in chat — what’s unsteady, what’s weighing on the heart — then generate new meditation(s) for you.",
+            body: "Create → By Program: pick a course, choose sessions, answer the customization intake in chat, then generate new meditation(s) for you.",
           },
         ],
       },
@@ -122,46 +118,60 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
   },
   journal: {
     eyebrow: "Journal",
-    headline: "A private notebook that notices what you keep repeating.",
-    support:
-      "Three tabs under Journal: your entries, Gratitudes, and Insights. Write or speak; when a page asks for more than ink, Generate meditation into Create.",
+    headline: "Hear what you’ve been telling yourself.",
+    support: "Write freely — or bring the pages you already have.",
     strips: [
       {
-        headline: "Write when you need precision. Speak when you don’t.",
+        headline: "A private page for what’s actually going on.",
         support:
-          "Same journal, two inputs — type the careful paragraph, or dump the day out loud when your hands are full.",
+          "Write when the words need care. Speak when it’s faster — we transcribe so the tone isn’t lost. Same journal either way.",
         vignette: "journal-write",
         points: [
           {
-            title: "New entry",
+            title: "Text entries",
             body: "A quiet page for the sentences you want to keep exactly as they landed.",
           },
           {
-            title: "Voice when it’s faster",
-            body: "Talk it in; keep the clip with the entry so the tone isn’t lost in a summary.",
+            title: "Voice transcription",
+            body: "Talk the day in; the clip stays with the entry, and the words are there when you need them.",
           },
         ],
       },
       {
-        headline: "Insights, not just pages.",
+        headline: "Bring the journal you already keep.",
         support:
-          "Insights surfaces the loops — weekly letter, mood, pattern cards — so “I’ve been here before” is visible without homework.",
+          "Photograph handwritten pages and let AI turn them into text you can edit — or import Day One, Markdown, CSV, and PDF annotations.",
+        vignette: "journal-import",
+        points: [
+          {
+            title: "Handwritten photos",
+            body: "Snap pages from a paper notebook. We read the handwriting; you review the words before anything is saved.",
+          },
+          {
+            title: "Day One and more",
+            body: "Import a Day One export, Markdown or text files, CSV, or PDF highlights — then keep writing in one place.",
+          },
+        ],
+      },
+      {
+        headline: "Insights over weeks.",
+        support:
+          "The doubts that keep returning, and the dreams that won’t go away — made visible.",
         vignette: "journal-patterns",
         points: [
           {
             title: "Patterns this month",
-            body: "Theme and mood views built from your own writing — private, for you, not a feed.",
+            body: "Theme and mood views built from your own writing — private, for you.",
           },
           {
             title: "Make a meditation for this thought",
-            body: "Thought cards and the weekly reflection can hand you into Create with a one-shot prompt already filled.",
+            body: "Thought cards and the weekly letter can hand you into Create with a prompt already filled.",
           },
         ],
       },
       {
         headline: "Gratitudes beside the hard days.",
-        support:
-          "Daily gratitudes live as their own tab next to Journal — not a separate app you forget.",
+        support: "What’s good, logged next to everything else — same practice, same timeline.",
         vignette: "journal-gratitudes",
         points: [
           {
@@ -170,23 +180,23 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
           },
           {
             title: "Same history",
-            body: "When you look back, the thanks and the struggles share one practice.",
+            body: "When you look back, the thanks and the struggles share one thread.",
           },
         ],
       },
       {
-        headline: "Generate meditation from an entry.",
+        headline: "From entry to guided session.",
         support:
-          "From the entry chrome, or Create → Reflect on a journal entry — use a saved page as context for the session.",
+          "When a page is heavy or hopeful, generate a meditation written from that entry.",
         vignette: "journal-meditate",
         points: [
           {
             title: "Generate meditation",
-            body: "Don’t re-explain yourself to a blank prompt. The session already has the context of the page.",
+            body: "Don’t re-explain yourself to a blank prompt. The session already has the page.",
           },
           {
             title: "Connect to life area",
-            body: "Tie an entry to Manifest when the writing belongs to a goal you’re already tracking.",
+            body: "Tie an entry to Manifest when the writing belongs to a goal you’re tracking.",
           },
         ],
       },
@@ -194,51 +204,47 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
   },
   manifest: {
     eyebrow: "Manifest",
-    headline: "Vision, manifesto, and next steps — not vision alone.",
-    support:
-      "Vision board, Manifesto, and your life areas with goals and To Dos. From a goal: Plan next steps, Generate meditation, or Start focus session on these To Dos.",
+    headline: "Know exactly who you’re becoming.",
+    support: "Picture it. Name the standards. Take the next step.",
     strips: [
       {
         headline: "Vision board.",
-        support:
-          "Images and captions for the life you’re building — so the future isn’t a vague mood.",
+        support: "Scenes of the life you’re building — concrete enough to feel.",
         vignette: "manifest-board",
         points: [
           {
             title: "Collect what you’re becoming",
-            body: "Pin the scenes that make the goal visceral. Revisit when motivation is thin.",
+            body: "Pin the images that make the goal visceral. Revisit when motivation is thin.",
           },
           {
             title: "Beside the plan",
-            body: "It lives next to Manifesto and life-area goals, so the picture and the plan stay attached.",
+            body: "It lives next to your manifesto and goals, so the picture and the plan stay attached.",
           },
         ],
       },
       {
         headline: "Manifesto.",
-        support:
-          "Name the standards you’re living by — the north star for decisions when the week gets noisy.",
+        support: "The lines you’ll recognise when the week gets noisy.",
         vignette: "manifest-manifesto",
         points: [
           {
             title: "Principles in your voice",
-            body: "Write the lines you’ll recognise when you’re about to compromise what you said mattered.",
+            body: "Write the standards you’ll feel when you’re about to compromise what mattered.",
           },
           {
             title: "Values and quotes too",
-            body: "Home also holds Values, Meaningful quotes, and Questions to yourself — the quieter layer under the goals.",
+            body: "Values, meaningful quotes, and questions to yourself — the quieter layer under the goals.",
           },
         ],
       },
       {
-        headline: "Goals and To Dos in your life areas.",
-        support:
-          "Break ambitions into moves you can actually start — and name what’s blocking you underneath.",
+        headline: "Goals and To Dos.",
+        support: "Break the ambition into moves small enough to begin today.",
         vignette: "manifest-goals",
         points: [
           {
             title: "Plan next steps",
-            body: "Each goal opens into To Dos small enough to begin today.",
+            body: "Each goal opens into To Dos you can actually start.",
           },
           {
             title: "Obstacles named",
@@ -247,18 +253,18 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
         ],
       },
       {
-        headline: "Generate meditation. Start focus.",
+        headline: "Feel it. Then do it.",
         support:
-          "From a goal: Generate meditation into Create, or Start focus session on these To Dos — same aspiration, different container.",
+          "Generate a visualisation from a goal, or start a Focus session on the To Dos.",
         vignette: "manifest-handoff",
         points: [
           {
             title: "Generate meditation",
-            body: "A visualisation grounded in the dream and blockers — or Free flow chat when you hand off from a life area.",
+            body: "A visualisation grounded in the dream and blockers.",
           },
           {
             title: "Start focus session",
-            body: "Protect an hour on the To Dos. Optionally set the tone first with a short visualisation before the timer.",
+            body: "Protect an hour for the next step. Optionally set the tone first with a short visualisation.",
           },
         ],
       },
@@ -266,19 +272,17 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
   },
   focus: {
     eyebrow: "Focus",
-    headline: "A timer attached to the goal — not a blank Pomodoro.",
-    support:
-      "Start from Manifest To Dos, run the timer with Focus sounds, and keep distracting sites blocked until the session ends. Optionally set the tone first with a short visualisation.",
+    headline: "Give your hours to your dream.",
+    support: "Pick the step. Start the timer. Stay with it.",
     strips: [
       {
         headline: "Start from the To Dos that matter.",
-        support:
-          "Focus isn’t “work somehow.” It’s the next concrete move on a goal you already set in Manifest.",
+        support: "The next concrete move on a goal you already set in Manifest.",
         vignette: "focus-step",
         points: [
           {
-            title: "Start focus session on these To Dos",
-            body: "Choose the tasks, then start. When the bell rings, you’re still inside that goal thread.",
+            title: "Goal-linked sessions",
+            body: "Choose the tasks, then start. When the bell rings, you’re still inside that goal.",
           },
           {
             title: "No hunting for what to do",
@@ -289,28 +293,28 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
       {
         headline: "Distraction blocking for the session.",
         support:
-          "With the browser extension, sites that pull you away stay blocked for the length of the block — the container is real.",
+          "Sites that pull you away stay blocked until the timer ends.",
         vignette: "focus-blocking",
         points: [
           {
             title: "breath+work for Chrome",
-            body: "Block the usual traps while the timer runs. The boundary is the product.",
+            body: "Block the usual traps while the session runs.",
           },
           {
             title: "Until the session ends",
-            body: "Not a gentle suggestion — the block lasts as long as you asked the clock to hold.",
+            body: "The boundary lasts as long as you asked the clock to hold.",
           },
         ],
       },
       {
         headline: "Set the tone first?",
         support:
-          "Before deep work, you can generate a short visualisation meditation — then sit down to the timer with Focus sounds.",
+          "Optional short visualisation before the block — then Focus sounds while you work.",
         vignette: "focus-lengths",
         points: [
           {
             title: "Yes, generate 2‑min meditation",
-            body: "Optional preflight from the goal — feel the outcome, then protect the hour.",
+            body: "Feel the outcome, then protect the hour.",
           },
           {
             title: "Focus sounds",
@@ -320,17 +324,16 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
       },
       {
         headline: "Close the loop on the goal.",
-        support:
-          "Finish the block, note progress on the Manifest step, and line up the next session while the thread is still warm.",
+        support: "Note the progress. Queue the next block while it’s still warm.",
         vignette: "focus-close",
         points: [
           {
             title: "Progress on the goal",
-            body: "The timer isn’t the win — movement on the To Dos is.",
+            body: "The win is movement on the To Dos — not the timer alone.",
           },
           {
             title: "Ready for tomorrow",
-            body: "Leave the next block queued so starting again costs less willpower.",
+            body: "Leave the next session queued so starting again costs less willpower.",
           },
         ],
       },
@@ -338,14 +341,13 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
   },
   chat: {
     eyebrow: "Chat",
-    headline: "A coach that can also run Consciously.",
-    support:
-      "Think out loud in New chat. Get reflection grounded in your journal and goals — then navigate into Create, Journal, Manifest, or Focus without opening five other screens.",
+    headline: "Never stuck in your own head.",
+    support: "Think out loud. It listens — and it acts.",
     strips: [
       {
         headline: "Conversation with context.",
         support:
-          "Bring the doubt or the decision. The coach answers against the life you’re already tracking — not a generic pep talk.",
+          "Answers grounded in your journal and goals — not a generic pep talk.",
         vignette: "chat-context",
         points: [
           {
@@ -361,7 +363,7 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
       {
         headline: "Actions, not only advice.",
         support:
-          "From the same chat: log a gratitude, add a Manifest step, or open Create Meditation from-chat for the knot you just named.",
+          "Log a gratitude, add a Manifest step, or start a meditation from the same chat.",
         vignette: "chat-actions",
         points: [
           {
@@ -370,19 +372,18 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
           },
           {
             title: "Open Create Meditation",
-            body: "When sitting would help more than more talk, hand off into Free flow chat with the thread already warm.",
+            body: "When sitting would help more than more talk, hand off into Free flow chat.",
           },
         ],
       },
       {
         headline: "One doorway when you don’t know which tool.",
-        support:
-          "Unsure whether to journal, plan, or sit? Start in Chat and let it route you — then hand off into the right practice.",
+        support: "Start here. Then go to Journal, Manifest, Focus, or Meditate.",
         vignette: "chat-doorway",
         points: [
           {
             title: "Orient first",
-            body: "Say what’s stuck. Get options that map to Journal, Manifest, Focus, or Meditate Create.",
+            body: "Say what’s stuck. Get options that map to the right practice.",
           },
           {
             title: "Then go deep",
@@ -392,8 +393,7 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
       },
       {
         headline: "Stay with the long arc.",
-        support:
-          "Threads you can return to — mid-doubt or mid-celebration — tied to the same goals and pages you use elsewhere.",
+        support: "Pick up mid-doubt or mid-celebration. The thread remembers.",
         vignette: "chat-arc",
         points: [
           {
@@ -402,7 +402,7 @@ export const TOOL_MARKETING: Record<HomeV2ToolId, ToolMarketingCopy> = {
           },
           {
             title: "New chat anytime",
-            body: "Pick up mid-doubt or mid-celebration. The thread is part of the practice, not a side chat.",
+            body: "The conversation is part of the practice — not a side chatbot you abandon.",
           },
         ],
       },

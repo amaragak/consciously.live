@@ -747,6 +747,30 @@
   outline: none !important;
 }
 
+/** Mist border breathe on life-source chips (encourage flip-through). */
+@keyframes home-v2-life-chip-border-pulse {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, #c3d2e8 28%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, #c3d2e8 0%, transparent);
+  }
+  50% {
+    border-color: color-mix(in srgb, #c3d2e8 92%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, #c3d2e8 18%, transparent);
+  }
+}
+
+.home-v2-life-chip-pulse {
+  animation: home-v2-life-chip-border-pulse 1.7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-v2-life-chip-pulse {
+    animation: none;
+    border-color: color-mix(in srgb, #c3d2e8 70%, transparent);
+  }
+}
+
 /** Mist border breathe while the prompt is idle (not focused). */
 @keyframes home-v2-prompt-border-pulse {
   0%,

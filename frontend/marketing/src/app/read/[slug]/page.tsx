@@ -75,7 +75,10 @@ export default async function ReadPostPage({ params }: Props) {
       <p className="mt-3 text-xs text-[var(--hv2-hero-nav-muted)]">
         {formatBlogDate(post.publishedAt || post.updatedAt)}
       </p>
-      <div id="read-article-body" className="mt-6 text-[var(--hv2-hero-fg)]">
+      <div
+        id="read-article-body"
+        className="mt-6 w-full max-w-[680px] text-[var(--hv2-hero-fg)]"
+      >
         {post.hasBody ? (
           <ReadBody source={post.body} />
         ) : (

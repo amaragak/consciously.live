@@ -1,4 +1,4 @@
-import { ToolMarketingPage } from "@/components/home-v2/tool-marketing-page";
+import { ManifestMarketingPage } from "@/components/home-v2/manifest-marketing-page";
 
 export const metadata = {
   title: "Manifest",
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function ManifestPage() {
-  return <ToolMarketingPage tool="manifest" />;
+  return <ManifestMarketingPage />;
 }
