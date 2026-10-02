@@ -400,13 +400,13 @@ function PersonalByDesign() {
           Personal by design
         </span>
         <h2
-          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          className={`home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
         >
           Made from your life, not a library.
         </h2>
         <p className={`m-0 mb-1 text-[15px] leading-[1.55] ${MUTED}`}>
-          Type a thought, talk it through, start from last night’s entry or the
-          studio you’re building. Every session is written for you, for today.
+          Type a thought, talk it through, start from last night’s entry or a
+          Manifest goal. Every session is written for you, for today.
         </p>
         {chips}
         <div
@@ -439,9 +439,8 @@ function PersonalByDesign() {
           <p
             className={`m-0 max-w-[420px] text-[19px] leading-[1.6] ${MUTED}`}
           >
-            Type a thought, talk it through, start from last night’s entry or
-            the studio you’re building. Every session is written for you, for
-            today.
+            Type a thought, talk it through, start from last night’s entry or a
+            Manifest goal. Every session is written for you, for today.
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-[18px]" data-hv2-reveal>
@@ -498,7 +497,7 @@ function StylesGrid() {
               Styles
             </span>
             <h2
-              className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}
+              className={`home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}
             >
               Twelve ways to sit.
             </h2>
@@ -506,8 +505,7 @@ function StylesGrid() {
           <p
             className={`m-0 mb-1 max-w-[440px] text-[15px] leading-[1.55] ${MUTED} md:mb-0 md:text-[19px] md:leading-[1.6]`}
           >
-            Pick a style for the kind of practice you want — tap play to hear a
-            sample first.
+            Pick a style for the kind of practice you want.
           </p>
         </div>
         <ul
@@ -531,19 +529,19 @@ function StylesGrid() {
                 {!sample ? (
                   <Link
                     href={createHref}
-                    className="flex w-full flex-col gap-[3px] rounded-xl border border-[var(--hv2-card-border)] px-3 py-[11px] text-left md:hidden"
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-[var(--hv2-card-border)] px-3 py-3 text-left md:hidden"
                     style={{ background: styleCardBackground(style) }}
                   >
-                    <span className="flex items-center justify-between gap-1.5">
-                      <span className={`home-v2-display text-[15px] leading-snug ${IVORY}`}>
-                        {displayName}
-                      </span>
-                      <span className={`text-[9px] ${GOLD}`} aria-hidden>
-                        ▶
-                      </span>
+                    <span className={`home-v2-display text-[15px] leading-snug ${IVORY}`}>
+                      {displayName}
                     </span>
-                    <span className={`text-[12px] leading-[1.35] ${FAINT}`}>
-                      {blurb}
+                    <span
+                      className="accent-fill-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--hv2-navy)]"
+                      aria-hidden
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
                     </span>
                   </Link>
                 ) : (
@@ -558,19 +556,25 @@ function StylesGrid() {
                       if (isActive) toggleCurrent();
                       else playItem(sample);
                     }}
-                    className="flex w-full flex-col gap-[3px] rounded-xl border border-[var(--hv2-card-border)] px-3 py-[11px] text-left md:hidden"
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-[var(--hv2-card-border)] px-3 py-3 text-left md:hidden"
                     style={{ background: styleCardBackground(style) }}
                   >
-                    <span className="flex items-center justify-between gap-1.5">
-                      <span className={`home-v2-display text-[15px] leading-snug ${IVORY}`}>
-                        {displayName}
-                      </span>
-                      <span className={`text-[9px] ${GOLD}`} aria-hidden>
-                        {isPlaying ? "❚❚" : "▶"}
-                      </span>
+                    <span className={`home-v2-display text-[15px] leading-snug ${IVORY}`}>
+                      {displayName}
                     </span>
-                    <span className={`text-[12px] leading-[1.35] ${FAINT}`}>
-                      {blurb}
+                    <span
+                      className="accent-fill-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--hv2-navy)]"
+                      aria-hidden
+                    >
+                      {isPlaying ? (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                        </svg>
+                      ) : (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      )}
                     </span>
                   </button>
                 )}
@@ -635,7 +639,7 @@ function ProgramsSection() {
 
   const toggle = (
     <div
-      className="flex self-start rounded-full bg-[var(--hv2-page)] p-[3px] text-[12px] md:bg-[var(--hv2-sticky-bg)] md:p-0.5 md:text-[13px]"
+      className="flex self-start rounded-full bg-[var(--hv2-sticky-bg)] p-[3px] text-[12px] md:p-0.5 md:text-[13px]"
       role="group"
       aria-label="Program mode"
     >
@@ -681,7 +685,7 @@ function ProgramsSection() {
           Programs
         </span>
         <h2
-          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          className={`home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
         >
           Curated multi-session journeys, made personal.
         </h2>
@@ -886,6 +890,32 @@ function SoundSection() {
   const [voice, setVoice] = useState<(typeof voices)[number]>(voices[0]);
   const [bed, setBed] = useState<(typeof beds)[number]>(beds[0]);
 
+  const chipClass = (selected: boolean) =>
+    `flex shrink-0 cursor-pointer items-center gap-2 rounded-full border-2 px-3 py-2 text-left transition-colors ${
+      selected
+        ? "border-[var(--accent-button)] bg-[var(--hv2-sticky-bg)]"
+        : "border-[color-mix(in_srgb,var(--hv2-ivory)_16%,transparent)] bg-[var(--hv2-sticky-bg)]"
+    }`;
+  const chipIconClass = (selected: boolean) =>
+    `flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+      selected
+        ? "bg-[var(--accent-button)] text-[var(--hv2-navy)]"
+        : "bg-[color-mix(in_srgb,var(--accent-button)_20%,transparent)] text-[var(--accent-link)]"
+    }`;
+  const chipLabelClass = (selected: boolean) =>
+    `whitespace-nowrap text-[13px] leading-none md:text-sm ${
+      selected
+        ? `font-semibold ${IVORY}`
+        : `font-normal ${IVORY}`
+    }`;
+  const moreClass = `self-center whitespace-nowrap px-1.5 text-[13px] ${FAINT} md:text-sm`;
+
+  const playGlyph = (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+
   const mixer = (
     <div
       className={`flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-3.5 md:gap-[18px] md:rounded-[18px] md:p-6`}
@@ -896,25 +926,25 @@ function SoundSection() {
         >
           Voice
         </span>
-        <div className="flex flex-wrap gap-1.5 md:gap-2">
-          {voices.map((name) => (
-            <button
-              key={name}
-              type="button"
-              aria-pressed={voice === name}
-              onClick={() => setVoice(name)}
-              className={`whitespace-nowrap rounded-full px-[13px] py-[7px] text-[13px] ${
-                voice === name
-                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)] md:border md:border-[var(--hv2-hero-card-border)] md:bg-[var(--hv2-card-track)] md:font-normal md:text-[var(--hv2-ink)]"
-                  : "border border-[rgba(246,241,231,0.22)] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]"
-              }`}
-            >
-              {name}
-            </button>
-          ))}
-          <span className="whitespace-nowrap rounded-full border border-[rgba(246,241,231,0.22)] px-[13px] py-[7px] text-[13px] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]">
-            + more
-          </span>
+        <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+          {voices.map((name) => {
+            const selected = voice === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setVoice(name)}
+                className={chipClass(selected)}
+              >
+                <span className={chipIconClass(selected)} aria-hidden>
+                  {playGlyph}
+                </span>
+                <span className={chipLabelClass(selected)}>{name}</span>
+              </button>
+            );
+          })}
+          <span className={moreClass}>+ more</span>
         </div>
       </div>
       <div className="flex flex-col gap-2.5">
@@ -924,25 +954,25 @@ function SoundSection() {
           <span className="md:hidden">Background</span>
           <span className="hidden md:inline">Soundscape</span>
         </span>
-        <div className="flex flex-wrap gap-1.5 md:gap-2">
-          {beds.map((name) => (
-            <button
-              key={name}
-              type="button"
-              aria-pressed={bed === name}
-              onClick={() => setBed(name)}
-              className={`whitespace-nowrap rounded-full px-[13px] py-[7px] text-[13px] ${
-                bed === name
-                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)] md:border md:border-[var(--hv2-hero-card-border)] md:bg-[var(--hv2-card-track)] md:font-normal md:text-[var(--hv2-ink)]"
-                  : "border border-[rgba(246,241,231,0.22)] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]"
-              }`}
-            >
-              {name}
-            </button>
-          ))}
-          <span className="whitespace-nowrap rounded-full border border-[rgba(246,241,231,0.22)] px-[13px] py-[7px] text-[13px] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]">
-            + more
-          </span>
+        <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+          {beds.map((name) => {
+            const selected = bed === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setBed(name)}
+                className={chipClass(selected)}
+              >
+                <span className={chipIconClass(selected)} aria-hidden>
+                  {playGlyph}
+                </span>
+                <span className={chipLabelClass(selected)}>{name}</span>
+              </button>
+            );
+          })}
+          <span className={moreClass}>+ more</span>
         </div>
       </div>
       <div className="flex flex-col gap-3 pt-1 md:gap-3">
@@ -992,7 +1022,7 @@ function SoundSection() {
           Sound
         </span>
         <h2
-          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          className={`home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
         >
           Voices and soundscapes worth closing your eyes for.
         </h2>
@@ -1057,7 +1087,7 @@ function ShareSection() {
           Share
         </span>
         <h2
-          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          className={`home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
         >
           Made for someone you love.
         </h2>
@@ -1074,7 +1104,7 @@ function ShareSection() {
             hear it.
           </span>
           <div
-            className={`flex items-center gap-2 rounded-full border border-[var(--hv2-card-border)] bg-[var(--hv2-page)] py-1.5 pl-3 pr-1.5`}
+            className={`flex items-center gap-2 rounded-full ${INSET} py-1.5 pl-3 pr-1.5`}
           >
             <span className={`min-w-0 flex-1 truncate text-[12px] ${FAINT}`}>
               {exampleLink}
@@ -1197,7 +1227,7 @@ export function MeditateMarketingPage() {
         <HomeV2Chrome />
 
         <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-10 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
-          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-stretch gap-4 text-left md:items-center md:gap-[22px] md:pt-14 md:text-center">
+          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center gap-4 text-center md:gap-[22px] md:pt-14">
             <h1
               className={`home-v2-display m-0 w-full text-[40px] font-normal leading-[1.06] tracking-[-0.6px] text-[var(--hv2-hero-fg)] md:text-[clamp(44px,5vw,68px)] md:font-[350] md:tracking-[-1px] ${h1.className}`}
               style={h1.style}
@@ -1238,7 +1268,7 @@ export function MeditateMarketingPage() {
           >
             <div className="flex flex-col gap-3.5 md:gap-2.5">
               <h2
-                className={`home-v2-display m-0 text-[32px] font-normal leading-[1.1] tracking-tight ${IVORY} md:text-[46px]`}
+                className={`home-v2-display m-0 text-[28px] font-normal leading-[1.1] tracking-tight ${IVORY} md:text-[46px]`}
               >
                 Ready when you are.
               </h2>

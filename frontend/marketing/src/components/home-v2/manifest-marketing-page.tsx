@@ -24,6 +24,10 @@ const GOLD = "text-[var(--hv2-gold)]";
 const CARD = "bg-[var(--hv2-navy)] border border-[var(--hv2-card-border)]";
 const INSET =
   "bg-[var(--hv2-sticky-bg)] border border-[var(--hv2-card-border)]";
+const MOBILE_CARD =
+  `flex flex-col gap-2.5 overflow-hidden rounded-[14px] ${CARD} px-4 py-3.5`;
+const CARD_LABEL = `m-0 text-[10px] font-normal uppercase tracking-[1.4px] ${GOLD}`;
+const HAIRLINE = "h-px bg-[var(--hv2-card-border)]";
 
 const CTA_HREF = `/login?mode=signup&next=${encodeURIComponent("/manifest")}`;
 
@@ -48,8 +52,13 @@ function SectionCopy({
   points: { title: string; body: ReactNode }[];
 }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-[18px]" data-hv2-reveal>
-      <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+    <div
+      className="flex min-w-0 flex-1 flex-col gap-3 md:gap-[18px]"
+      data-hv2-reveal
+    >
+      <span
+        className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${GOLD} md:text-xs`}
+      >
         {eyebrow}
       </span>
       <h2
@@ -58,19 +67,21 @@ function SectionCopy({
         {title}
       </h2>
       <p
-        className={`m-0 max-w-[520px] text-base leading-relaxed ${MUTED} md:text-[19px] md:leading-[1.6]`}
+        className={`m-0 mb-1 max-w-[520px] text-[15px] leading-[1.55] ${MUTED} md:mb-0 md:text-[19px] md:leading-[1.6]`}
       >
         {lead}
       </p>
-      <ul className="m-0 flex list-none flex-col gap-5 p-0">
+      <ul className="m-0 flex list-none flex-col gap-2.5 p-0 pb-1 md:gap-5 md:pb-0">
         {points.map((p) => (
-          <li key={p.title} className="min-w-0">
+          <li key={p.title} className="flex min-w-0 flex-col gap-0.5 md:block">
             <h3
-              className={`home-v2-display m-0 text-lg font-medium tracking-tight ${IVORY} md:text-xl`}
+              className={`home-v2-display m-0 text-[17px] font-normal ${IVORY} md:text-xl md:font-medium md:tracking-tight`}
             >
               {p.title}
             </h3>
-            <p className={`mt-1.5 m-0 text-[15px] leading-relaxed ${MUTED} md:text-base`}>
+            <p
+              className={`m-0 text-[14px] leading-[1.5] text-[var(--hv2-muted)] md:mt-1.5 md:text-base md:leading-relaxed md:text-[var(--hv2-body)]`}
+            >
               {p.body}
             </p>
           </li>
@@ -94,9 +105,11 @@ function Strip({
   graphicClassName?: string;
 }) {
   return (
-    <section className={`${band} w-full px-5 py-16 md:px-6 md:py-24`}>
+    <section
+      className={`${band} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
       <div
-        className={`mx-auto flex w-full max-w-[1200px] flex-col items-stretch gap-10 md:items-center md:gap-16 ${
+        className={`mx-auto flex w-full max-w-[1200px] flex-col items-stretch gap-3 md:items-center md:gap-16 ${
           visualLeft ? "md:flex-row-reverse" : "md:flex-row"
         }`}
       >
@@ -114,75 +127,140 @@ function Strip({
 
 function VisionBoardGraphic() {
   return (
-    <div
-      className={`relative overflow-hidden rounded-[18px] ${CARD} p-3 md:h-[340px]`}
-      aria-hidden
-    >
-      <div className="grid h-full grid-cols-2 gap-1.5 sm:grid-cols-3">
-        {VISION_IMAGES.map((src) => (
-          <div key={src} className="relative min-h-[100px] overflow-hidden rounded-[10px] md:min-h-0">
-            <Image
-              src={src}
-              alt=""
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 50vw, 170px"
-            />
-          </div>
-        ))}
-      </div>
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-        <div className="max-w-[90%] rounded-2xl border border-[rgba(246,241,231,0.16)] bg-[rgba(15,27,45,0.78)] px-5 py-4 text-center backdrop-blur-[6px] md:px-7 md:py-5">
-          <p className={`home-v2-display m-0 text-[17px] italic leading-snug ${IVORY} md:text-[20px]`}>
+    <>
+      {/* Mobile: compact collage, not a card */}
+      <div
+        className="relative h-[200px] overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] md:hidden"
+        aria-hidden
+      >
+        <div className="box-border grid h-full grid-cols-3 grid-rows-2 gap-1 bg-[var(--hv2-navy)] p-1">
+          {VISION_IMAGES.map((src) => (
+            <div key={src} className="relative min-h-0 overflow-hidden rounded-lg">
+              <Image
+                src={src}
+                alt=""
+                fill
+                className="object-cover"
+                sizes="110px"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="pointer-events-none absolute left-1/2 top-1/2 flex w-[82%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 rounded-xl bg-[rgba(15,27,45,0.8)] px-3.5 py-3 text-center">
+          <p className={`home-v2-display m-0 text-[15px] italic leading-[1.4] ${IVORY}`}>
             “I make things with my hands, and I charge what they’re worth.”
           </p>
-          <p className={`m-0 mt-2 text-[12px] ${FAINT}`}>
+          <p className={`m-0 text-[11px] ${FAINT}`}>
             Your manifesto line, over your board
           </p>
         </div>
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div
+        className={`relative hidden overflow-hidden rounded-[18px] ${CARD} p-3 md:block md:h-[340px]`}
+        aria-hidden
+      >
+        <div className="grid h-full grid-cols-3 gap-1.5">
+          {VISION_IMAGES.map((src) => (
+            <div key={src} className="relative min-h-0 overflow-hidden rounded-[10px]">
+              <Image
+                src={src}
+                alt=""
+                fill
+                className="object-cover"
+                sizes="170px"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+          <div className="max-w-[90%] rounded-2xl border border-[rgba(246,241,231,0.16)] bg-[rgba(15,27,45,0.78)] px-7 py-5 text-center backdrop-blur-[6px]">
+            <p className={`home-v2-display m-0 text-[20px] italic leading-snug ${IVORY}`}>
+              “I make things with my hands, and I charge what they’re worth.”
+            </p>
+            <p className={`m-0 mt-2 text-[12px] ${FAINT}`}>
+              Your manifesto line, over your board
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
 function ManifestoGraphic() {
   const values = ["Craft", "Courage", "Family", "Freedom"] as const;
+
   return (
-    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:h-[260px]">
-      <div className={`flex flex-col rounded-[18px] ${CARD} px-5 py-5`}>
-        <p className={`m-0 mb-3 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-          Values
-        </p>
-        <ul className="m-0 flex list-none flex-col p-0">
+    <>
+      {/* Mobile: one card */}
+      <div className={`${MOBILE_CARD} md:hidden`} aria-hidden>
+        <p className={CARD_LABEL}>Values</p>
+        <div>
           {values.map((v, i) => (
-            <li
+            <div
               key={v}
-              className={`flex items-baseline gap-3 py-2.5 ${
-                i > 0 ? "border-t border-[var(--hv2-card-border)]" : ""
-              }`}
+              className="flex items-baseline gap-3 border-t border-[var(--hv2-card-border)] py-1.5"
             >
-              <span className={`text-[12px] tabular-nums ${FAINT}`}>
+              <span className={`text-[11px] tabular-nums ${FAINT}`}>
                 {String(i + 1).padStart(2, "0")}
               </span>
-              <span className={`home-v2-display text-lg ${IVORY}`}>{v}</span>
-            </li>
+              <span className={`home-v2-display text-[18px] ${IVORY}`}>{v}</span>
+            </div>
           ))}
-        </ul>
-      </div>
-      <div className={`flex flex-col gap-3 rounded-[18px] ${CARD} px-5 py-5`}>
-        <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-          A question to yourself
-        </p>
-        <p className={`home-v2-display m-0 text-[18px] italic leading-snug ${IVORY}`}>
+        </div>
+        <div className={HAIRLINE} />
+        <p className={CARD_LABEL}>A question to yourself</p>
+        <p
+          className={`home-v2-display m-0 text-[15px] italic leading-[1.45] ${IVORY}`}
+        >
           What would you regret not trying?
         </p>
-        <div className="mt-auto border-l-2 border-[var(--hv2-gold)] pl-3.5">
-          <p className={`home-v2-display m-0 text-[15px] italic leading-snug ${MUTED}`}>
+        <div className="border-l-2 border-[var(--hv2-gold)] pl-3">
+          <p className={`m-0 text-[14px] leading-[1.5] ${MUTED}`}>
             Never opening the studio. Never finding out.
           </p>
         </div>
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div className="hidden grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid md:h-[260px]">
+        <div className={`flex flex-col rounded-[18px] ${CARD} px-5 py-5`}>
+          <p className={`m-0 mb-3 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
+            Values
+          </p>
+          <ul className="m-0 flex list-none flex-col p-0">
+            {values.map((v, i) => (
+              <li
+                key={v}
+                className={`flex items-baseline gap-3 py-2.5 ${
+                  i > 0 ? "border-t border-[var(--hv2-card-border)]" : ""
+                }`}
+              >
+                <span className={`text-[12px] tabular-nums ${FAINT}`}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className={`home-v2-display text-lg ${IVORY}`}>{v}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className={`flex flex-col gap-3 rounded-[18px] ${CARD} px-5 py-5`}>
+          <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
+            A question to yourself
+          </p>
+          <p className={`home-v2-display m-0 text-[18px] italic leading-snug ${IVORY}`}>
+            What would you regret not trying?
+          </p>
+          <div className="mt-auto border-l-2 border-[var(--hv2-gold)] pl-3.5">
+            <p className={`home-v2-display m-0 text-[15px] italic leading-snug ${MUTED}`}>
+              Never opening the studio. Never finding out.
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -267,51 +345,89 @@ function LifeAreasGraphic() {
   }));
   const bands = LIFE_AREA_EXAMPLES[area].bands;
 
+  const chipRow = (compact: boolean) => (
+    <div
+      className={`flex flex-wrap ${compact ? "gap-1.5" : "gap-2"}`}
+      role="group"
+      aria-label="Life areas"
+    >
+      {chips.map((c) => {
+        const on = c.id === area;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => setArea(c.id)}
+            className={`whitespace-nowrap rounded-full text-[13px] transition-colors ${
+              compact ? "px-[13px] py-[7px]" : "px-3.5 py-1.5"
+            } ${
+              on
+                ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
+                : `home-v2-life-chip-pulse border border-[var(--hv2-line)] ${FAINT}`
+            }`}
+          >
+            {c.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className={`flex flex-col gap-3.5 rounded-[18px] ${CARD} p-5 md:h-[330px]`}>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Life areas">
-        {chips.map((c) => {
-          const on = c.id === area;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setArea(c.id)}
-              className={`rounded-full px-3.5 py-1.5 text-[13px] transition-colors ${
-                on
-                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-                  : `home-v2-life-chip-pulse border border-[var(--hv2-line)] ${FAINT}`
-              }`}
-            >
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden">
+    <>
+      {/* Mobile: one card, transparent bands */}
+      <div className={`${MOBILE_CARD} md:hidden`}>
+        {chipRow(true)}
         {bands.map((b, i) => {
           const highlight = i === bands.length - 1;
           return (
             <div
               key={`${area}-${b.label}`}
-              className={`rounded-xl px-3.5 py-3 ${
+              className={`flex flex-col gap-1 rounded-[10px] px-3 py-2.5 ${
                 highlight
                   ? "border border-[rgb(var(--hv2-gold-rgb)/0.45)] bg-[rgb(var(--hv2-gold-rgb)/0.08)]"
-                  : INSET
+                  : "border border-[var(--hv2-card-border)] bg-transparent"
               }`}
             >
-              <p className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}>
-                {b.label}
-              </p>
-              <p className={`home-v2-display m-0 mt-1 text-[15px] italic leading-snug ${IVORY}`}>
+              <p className={CARD_LABEL}>{b.label}</p>
+              <p
+                className={`home-v2-display m-0 text-[15px] italic leading-[1.45] ${IVORY}`}
+              >
                 {b.body}
               </p>
             </div>
           );
         })}
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div className={`hidden flex-col gap-3.5 rounded-[18px] ${CARD} p-5 md:flex md:h-[330px]`}>
+        {chipRow(false)}
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden">
+          {bands.map((b, i) => {
+            const highlight = i === bands.length - 1;
+            return (
+              <div
+                key={`${area}-${b.label}`}
+                className={`rounded-xl px-3.5 py-3 ${
+                  highlight
+                    ? "border border-[rgb(var(--hv2-gold-rgb)/0.45)] bg-[rgb(var(--hv2-gold-rgb)/0.08)]"
+                    : INSET
+                }`}
+              >
+                <p className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}>
+                  {b.label}
+                </p>
+                <p className={`home-v2-display m-0 mt-1 text-[15px] italic leading-snug ${IVORY}`}>
+                  {b.body}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -324,75 +440,161 @@ function GoalsGraphic() {
   ] as const;
 
   return (
-    <div className={`flex flex-col gap-3.5 rounded-[18px] ${CARD} p-5`}>
-      <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-        Studio · Goal
-      </p>
-      <p className={`home-v2-display m-0 text-[22px] ${IVORY}`}>
-        Sell the first collection
-      </p>
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {todos.map((t) => (
-          <li
-            key={t.text}
-            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${
-              t.next
-                ? "border border-[rgb(var(--hv2-gold-rgb)/0.5)] bg-[rgb(var(--hv2-gold-rgb)/0.08)]"
-                : INSET
-            }`}
-          >
-            <span
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] ${
-                t.done
-                  ? "border-[var(--hv2-gold)] bg-[var(--hv2-gold)] text-[var(--hv2-navy)]"
-                  : "border-[var(--hv2-line)] text-transparent"
-              }`}
-              aria-hidden
-            >
-              ✓
-            </span>
-            <span
-              className={`min-w-0 flex-1 text-[14px] ${
+    <>
+      {/* Mobile: one card, compact checklist */}
+      <div className={`${MOBILE_CARD} md:hidden`} aria-hidden>
+        <p className={CARD_LABEL}>Studio · Goal</p>
+        <p className={`home-v2-display m-0 text-[17px] ${IVORY}`}>
+          Sell the first collection
+        </p>
+        <div className="flex flex-col gap-[9px]">
+          {todos.map((t) => (
+            <div
+              key={t.text}
+              className={`flex items-center gap-2.5 text-[14px] ${
                 t.done ? `line-through ${FAINT}` : IVORY
               }`}
             >
-              {t.text}
-            </span>
-            {t.next ? (
-              <span className={`text-[11px] font-semibold uppercase tracking-[1px] ${GOLD}`}>
-                Next
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      <div className={`rounded-xl ${INSET} px-3.5 py-3`}>
-        <p className={`m-0 text-[12px] ${FAINT}`}>
-          What’s getting in the way of the next step?
-        </p>
-        <p className={`home-v2-display m-0 mt-1 text-[15px] italic ${IVORY}`}>
-          Naming a number out loud.
-        </p>
+              <span
+                className={`box-border h-3.5 w-3.5 shrink-0 rounded ${
+                  t.done
+                    ? "bg-[var(--hv2-gold)]"
+                    : t.next
+                      ? "border-[1.5px] border-[var(--hv2-gold)]"
+                      : "border-[1.5px] border-[var(--hv2-line)]"
+                }`}
+                aria-hidden
+              />
+              <span className="min-w-0">{t.text}</span>
+              {t.next ? (
+                <span className={`ml-auto text-[11px] ${GOLD}`}>Next</span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-[3px] rounded-[10px] border border-[var(--hv2-card-border)] px-3 py-2.5">
+          <p className={`m-0 text-[12px] ${FAINT}`}>
+            What’s getting in the way of the next step?
+          </p>
+          <p
+            className={`home-v2-display m-0 text-[15px] italic leading-[1.45] ${IVORY}`}
+          >
+            Naming a number out loud.
+          </p>
+        </div>
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div className={`hidden flex-col gap-3.5 rounded-[18px] ${CARD} p-5 md:flex`}>
+        <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
+          Studio · Goal
+        </p>
+        <p className={`home-v2-display m-0 text-[22px] ${IVORY}`}>
+          Sell the first collection
+        </p>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {todos.map((t) => (
+            <li
+              key={t.text}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${
+                t.next
+                  ? "border border-[rgb(var(--hv2-gold-rgb)/0.5)] bg-[rgb(var(--hv2-gold-rgb)/0.08)]"
+                  : INSET
+              }`}
+            >
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] ${
+                  t.done
+                    ? "border-[var(--hv2-gold)] bg-[var(--hv2-gold)] text-[var(--hv2-navy)]"
+                    : "border-[var(--hv2-line)] text-transparent"
+                }`}
+                aria-hidden
+              >
+                ✓
+              </span>
+              <span
+                className={`min-w-0 flex-1 text-[14px] ${
+                  t.done ? `line-through ${FAINT}` : IVORY
+                }`}
+              >
+                {t.text}
+              </span>
+              {t.next ? (
+                <span className={`text-[11px] font-semibold uppercase tracking-[1px] ${GOLD}`}>
+                  Next
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        <div className={`rounded-xl ${INSET} px-3.5 py-3`}>
+          <p className={`m-0 text-[12px] ${FAINT}`}>
+            What’s getting in the way of the next step?
+          </p>
+          <p className={`home-v2-display m-0 mt-1 text-[15px] italic ${IVORY}`}>
+            Naming a number out loud.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function FocusRing({ size = 64 }: { size?: number }) {
+  const r = (size / 2) - 5;
+  const c = 2 * Math.PI * r;
+  const progress = 0.736; // ~18:24 remaining of a 25:00 session
+  return (
+    <span
+      className="relative flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+      aria-hidden
+    >
+      <svg
+        width={size}
+        height={size}
+        className="absolute inset-0 -rotate-90"
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--hv2-line-soft)"
+          strokeWidth="4"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--hv2-gold)"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={`${c * progress} ${c}`}
+        />
+      </svg>
+      <span className={`home-v2-display relative text-[17px] ${IVORY}`}>
+        18:24
+      </span>
+    </span>
   );
 }
 
 function MeditateFocusGraphic() {
   return (
-    <div className="flex flex-col gap-3.5">
-      <div className={`flex flex-col gap-3.5 rounded-[18px] ${CARD} p-5`}>
-        <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-          consciously <span className="italic">Meditate</span>
-        </p>
-        <div className="flex items-center gap-3.5">
-          <span className="accent-fill-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[var(--hv2-navy)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <>
+      {/* Mobile: one card */}
+      <div className={`${MOBILE_CARD} md:hidden`} aria-hidden>
+        <p className={CARD_LABEL}>consciously Meditate</p>
+        <div className="flex items-center gap-3">
+          <span className="accent-fill-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M8 5v14l11-7z" />
             </svg>
           </span>
-          <div className="min-w-0">
-            <p className={`home-v2-display m-0 text-[20px] leading-snug ${IVORY}`}>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className={`home-v2-display m-0 text-[16px] ${IVORY}`}>
               Opening night
             </p>
             <p className={`m-0 text-[12px] ${FAINT}`}>
@@ -400,93 +602,310 @@ function MeditateFocusGraphic() {
             </p>
           </div>
         </div>
-        <div className="w-full [&_.home-v2-wave]:w-full [&_.home-v2-wave]:justify-between">
-          <WaveBars count={48} />
+        <div className={HAIRLINE} />
+        <p className={CARD_LABEL}>consciously Focus</p>
+        <div className="flex items-center gap-3.5">
+          <FocusRing />
+          <div className="flex min-w-0 flex-col gap-[3px]">
+            <p className={`home-v2-display m-0 text-[16px] ${IVORY}`}>
+              Price the collection
+            </p>
+            <p className={`m-0 text-[12px] ${FAINT}`}>
+              Next To Do · Studio
+            </p>
+          </div>
         </div>
       </div>
-      <div className={`flex items-center gap-5 rounded-[18px] ${CARD} p-5`}>
-        <span
-          className={`home-v2-display flex h-[108px] w-[108px] shrink-0 items-center justify-center rounded-full border-[6px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-[26px] ${IVORY}`}
-          aria-hidden
-        >
-          25:00
-        </span>
-        <div className="flex min-w-0 flex-col gap-1.5">
+
+      {/* Desktop */}
+      <div className="hidden flex-col gap-3.5 md:flex">
+        <div className={`flex flex-col gap-3.5 rounded-[18px] ${CARD} p-5`}>
           <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-            consciously <span className="italic">Focus</span>
+            consciously <span className="italic">Meditate</span>
           </p>
-          <p className={`home-v2-display m-0 text-[20px] leading-snug ${IVORY}`}>
-            Price the collection
-          </p>
-          <p className={`m-0 text-[12px] ${FAINT}`}>
-            Next To Do · Studio
-          </p>
-          <p className={`m-0 pt-0.5 text-[12px] text-[var(--hv2-tan-text)]`}>
-            Distracting sites blocked
-          </p>
+          <div className="flex items-center gap-3.5">
+            <span className="accent-fill-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[var(--hv2-navy)]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className={`home-v2-display m-0 text-[20px] leading-snug ${IVORY}`}>
+                Opening night
+              </p>
+              <p className={`m-0 text-[12px] ${FAINT}`}>
+                From your Studio dream · 8 min
+              </p>
+            </div>
+          </div>
+          <div className="w-full [&_.home-v2-wave]:w-full [&_.home-v2-wave]:justify-between">
+            <WaveBars count={48} />
+          </div>
+        </div>
+        <div className={`flex items-center gap-5 rounded-[18px] ${CARD} p-5`}>
+          <span
+            className={`home-v2-display flex h-[108px] w-[108px] shrink-0 items-center justify-center rounded-full border-[6px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-[26px] ${IVORY}`}
+            aria-hidden
+          >
+            18:24
+          </span>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
+              consciously <span className="italic">Focus</span>
+            </p>
+            <p className={`home-v2-display m-0 text-[20px] leading-snug ${IVORY}`}>
+              Price the collection
+            </p>
+            <p className={`m-0 text-[12px] ${FAINT}`}>
+              Next To Do · Studio
+            </p>
+            <p className={`m-0 pt-0.5 text-[12px] text-[var(--hv2-tan-text)]`}>
+              Distracting sites blocked
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+const SPARK_POINTS =
+  "0.0,30 22.2,26 44.4,32 66.7,24 88.9,22 111.1,18 133.3,20 155.6,14 177.8,12 200.0,8";
+
+function FeelingSparkline({
+  className,
+  showMidline,
+  showDot,
+}: {
+  className: string;
+  showMidline?: boolean;
+  showDot?: boolean;
+}) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 200 40"
+      preserveAspectRatio="none"
+      className={className}
+    >
+      {showMidline ? (
+        <line
+          x1="0"
+          x2="200"
+          y1="20"
+          y2="20"
+          stroke="var(--hv2-line-soft)"
+          strokeDasharray="3 3"
+          strokeWidth="1"
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
+      <polyline
+        fill="none"
+        points={SPARK_POINTS}
+        stroke="var(--hv2-gold)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      {showDot ? (
+        <circle cx="200" cy="8" r="3" fill="var(--hv2-gold)" />
+      ) : null}
+    </svg>
+  );
+}
+
+function TopicChip({
+  topic,
+  mood,
+  accent,
+}: {
+  topic: string;
+  mood: string;
+  accent?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex gap-[5px] whitespace-nowrap rounded-full border px-2.5 py-[5px] text-[12px] ${IVORY} ${
+        accent
+          ? "border-[rgba(var(--hv2-gold-rgb),0.5)]"
+          : "border-[rgba(243,237,226,0.2)]"
+      }`}
+    >
+      {topic}
+      <span className={accent ? GOLD : FAINT}>{mood}</span>
+    </span>
   );
 }
 
 function ThoughtsInsightsGraphic() {
-  const thoughts = [
-    { date: "22 Sept", text: "Priced the first piece.", tag: "Win" },
-    { date: "24 Sept", text: "Put off the photos again.", tag: "Resistance" },
-    { date: "26 Sept", text: "Kiln booked till Friday.", tag: "Hard blocker" },
+  const doneRows = [
+    { text: "Finished twelve pieces", date: "18 Sept" },
+    { text: "Confirmed the date", date: "24 Sept" },
+    { text: "Photographed the first six", date: "29 Sept" },
   ] as const;
 
   return (
-    <div className="flex flex-col items-stretch gap-3.5 md:h-[250px] md:flex-row md:items-stretch">
-      <div className={`flex min-w-0 flex-1 flex-col gap-2.5 rounded-[18px] ${CARD} p-5`}>
-        <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-          Thoughts
+    <>
+      {/* Mobile */}
+      <div
+        className={`flex flex-col gap-3.5 overflow-hidden rounded-[14px] ${CARD} px-4 py-3.5 md:hidden`}
+      >
+        <p className={`home-v2-display m-0 text-[16px] ${IVORY}`}>
+          Studio{" "}
+          <span className={`text-[13px] ${FAINT}`}>· last 30 days</span>
         </p>
-        {thoughts.map((t) => (
-          <div key={t.date} className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className={`m-0 text-[11px] ${FAINT}`}>{t.date}</p>
-              <p className={`m-0 text-[14px] leading-snug ${IVORY}`}>{t.text}</p>
-            </div>
-            <span className={`shrink-0 rounded-full border border-[var(--hv2-line)] px-2.5 py-1 text-[11px] ${FAINT}`}>
-              {t.tag}
+        <div className="flex flex-col gap-1.5">
+          <div
+            className={`flex items-baseline justify-between text-[13px] ${IVORY}`}
+          >
+            <span>5 of 9 steps</span>
+            <span>
+              1.5 a week <span className={GOLD}>↑</span>
             </span>
           </div>
-        ))}
-      </div>
-      <span
-        className="hidden shrink-0 self-center text-[22px] text-[var(--hv2-gold)] md:inline"
-        aria-hidden
-      >
-        →
-      </span>
-      <span
-        className="flex justify-center text-[22px] text-[var(--hv2-gold)] md:hidden"
-        aria-hidden
-      >
-        ↓
-      </span>
-      <div className={`flex min-w-0 flex-1 flex-col gap-3 rounded-[18px] ${CARD} p-5`}>
-        <div>
-          <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-            What’s not
-          </p>
-          <p className={`m-0 mt-1 text-[13px] leading-snug ${MUTED}`}>
-            You’ve stalled on the step after pricing three times. The doubt
-            shows up before anyone has seen the work.
+          <div
+            className="h-1.5 rounded-full bg-[var(--hv2-line-soft)]"
+            role="img"
+            aria-label="5 of 9 steps done"
+          >
+            <div
+              className="h-1.5 rounded-full bg-[var(--hv2-gold)]"
+              style={{ width: "55.6%" }}
+            />
+          </div>
+          <p className={`m-0 text-[12px] ${FAINT}`}>
+            3 done · 11h Focus · 4 visualisations
           </p>
         </div>
-        <div className="mt-auto">
-          <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-            What’s working
+        <div className={HAIRLINE} />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className={CARD_LABEL}>Feeling</span>
+            <span className={`flex items-center gap-1.5 text-[11px] ${FAINT}`}>
+              <FeelingSparkline className="block h-[18px] w-16 shrink-0" />
+              more hopeful
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <TopicChip topic="Making" mood="hopeful" accent />
+            <TopicChip topic="Pricing" mood="steadier" />
+            <TopicChip topic="Showing work" mood="anxious" />
+          </div>
+        </div>
+        <p
+          className={`home-v2-display m-0 text-[14px] italic leading-[1.4] ${IVORY}`}
+        >
+          Moving faster since the visualisations; pricing feels steadier.
+        </p>
+      </div>
+
+      {/* Desktop */}
+      <div
+        className={`hidden flex-col gap-[18px] rounded-2xl ${CARD} px-[26px] py-6 md:flex`}
+      >
+        <div className="flex flex-wrap items-baseline justify-between gap-2.5">
+          <p className={`home-v2-display m-0 text-[18px] ${IVORY}`}>
+            Studio{" "}
+            <span className={`text-[14px] ${FAINT}`}>· last 30 days</span>
           </p>
-          <p className={`m-0 mt-1 text-[13px] leading-snug ${MUTED}`}>
-            Twelve pieces finished. The making was never the problem.
+          <p className={`m-0 text-[12px] ${FAINT}`}>
+            From 14 To Dos, 9 thoughts, 3 entries
           </p>
         </div>
+
+        <div className="flex flex-col gap-2">
+          <p
+            className={`m-0 text-[11px] font-normal uppercase tracking-[1.4px] ${GOLD}`}
+          >
+            Pace
+          </p>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className={`text-[15px] ${IVORY}`}>5 of 9 steps</span>
+            <span className={`text-[13px] ${IVORY}`}>
+              1.5 a week <span className={GOLD}>↑</span>{" "}
+              <span className={FAINT}>from 0.8</span>
+            </span>
+          </div>
+          <div
+            className="h-2 rounded-full bg-[var(--hv2-line-soft)]"
+            role="img"
+            aria-label="5 of 9 steps done"
+          >
+            <div
+              className="h-2 rounded-full bg-[var(--hv2-gold)]"
+              style={{ width: "55.6%" }}
+            />
+          </div>
+          <p className={`m-0 text-[13px] ${FAINT}`}>
+            At this pace, about 3 months to opening night
+          </p>
+        </div>
+
+        <div className={HAIRLINE} />
+
+        <div className="grid grid-cols-2 gap-6">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <p
+              className={`m-0 text-[11px] font-normal uppercase tracking-[1.4px] ${GOLD}`}
+            >
+              Done
+            </p>
+            <div>
+              {doneRows.map((row) => (
+                <div
+                  key={row.text}
+                  className={`flex items-baseline gap-2.5 border-t border-[var(--hv2-card-border)] py-1.5 text-[14px] ${IVORY}`}
+                >
+                  <span className={`text-[12px] ${GOLD}`}>✓</span>
+                  <span className="min-w-0 flex-1">{row.text}</span>
+                  <span className={`shrink-0 whitespace-nowrap text-[12px] ${FAINT}`}>
+                    {row.date}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className={`m-0 text-[12px] ${FAINT}`}>
+              11h Focus · 4 visualisations · 2 wins
+            </p>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-2">
+            <p
+              className={`m-0 text-[11px] font-normal uppercase tracking-[1.4px] ${GOLD}`}
+            >
+              How you feel about it
+            </p>
+            <FeelingSparkline
+              className="block h-11 w-full"
+              showMidline
+              showDot
+            />
+            <div
+              className={`flex justify-between text-[11px] ${FAINT}`}
+            >
+              <span>2 Sept</span>
+              <span>Today · more hopeful</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <TopicChip topic="Making" mood="hopeful" accent />
+              <TopicChip topic="Pricing" mood="tense → steadier" />
+              <TopicChip topic="Showing work" mood="anxious" />
+            </div>
+          </div>
+        </div>
+
+        <div className={HAIRLINE} />
+
+        <p
+          className={`home-v2-display m-0 text-[17px] italic leading-[1.45] ${IVORY}`}
+        >
+          You’re moving faster since you started the visualisations, and
+          pricing feels less tense than in August.
+        </p>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -514,24 +933,24 @@ export function ManifestMarketingPage() {
       <div className="relative">
         <HomeV2Chrome />
 
-        <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-16 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
-          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center gap-5 pt-10 text-center md:gap-[22px] md:pt-14">
+        <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-11 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
+          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center gap-4 pt-10 text-center md:gap-[22px] md:pt-14">
             <h1
-              className={`home-v2-display m-0 w-full max-w-[16ch] text-[34px] font-[350] leading-[1.08] tracking-[-0.8px] text-[var(--hv2-hero-fg)] sm:text-[44px] md:max-w-none md:text-[clamp(44px,5vw,64px)] md:tracking-[-1px] ${h1.className}`}
+              className={`home-v2-display m-0 w-full max-w-[16ch] text-[40px] font-normal leading-[1.06] tracking-[-0.6px] text-[var(--hv2-hero-fg)] md:max-w-none md:text-[clamp(44px,5vw,64px)] md:font-[350] md:tracking-[-1px] ${h1.className}`}
               style={h1.style}
             >
               Know exactly who you’re becoming.
             </h1>
             <p
-              className={`m-0 max-w-[34rem] text-base text-[var(--hv2-hero-muted)] sm:text-lg md:text-[21px] md:leading-[1.5] ${sub.className}`}
+              className={`m-0 max-w-[34rem] text-center text-[16px] leading-[1.5] text-[var(--hv2-hero-muted)] md:text-[21px] ${sub.className}`}
               style={sub.style}
             >
               Picture it. Name what’s in the way. Take the next step.
             </p>
-            <div className={cta.className} style={cta.style}>
+            <div className={`w-full md:w-auto ${cta.className}`} style={cta.style}>
               <Link
                 href={CTA_HREF}
-                className="accent-fill-gradient inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-[17px] font-semibold text-[var(--hv2-navy)] transition-opacity hover:opacity-90"
+                className="accent-fill-gradient mt-1.5 inline-flex h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-full px-7 text-[16px] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 md:mt-0 md:h-auto md:w-auto md:py-3.5 md:text-[17px] md:text-[var(--hv2-navy)]"
               >
                 <HomeV2ToolIcon tool="manifest" />
                 Build your vision board
@@ -656,19 +1075,20 @@ export function ManifestMarketingPage() {
         <Strip
           band={BANDS[1]}
           visualLeft
+          graphicClassName="md:w-[min(100%,560px)]"
           text={
             <SectionCopy
               eyebrow="Thoughts and insights"
               title="It notices what you don’t."
-              lead="Jot thoughts as they come: wins, blockers, resistance. Insights reads them back."
+              lead="Jot thoughts as they come: wins, blockers, resistance. Insights shows how fast you’re moving, what you’ve done, and how you feel about it."
               points={[
                 {
-                  title: "What’s working, what’s not",
-                  body: "A plain read on each area, from your goals, thoughts and progress.",
+                  title: "Pace and progress",
+                  body: "How quickly you’re moving, and what you’ve finished this month.",
                 },
                 {
-                  title: "Patterns",
-                  body: "Where you keep stalling, named before it costs another month.",
+                  title: "How you feel about it",
+                  body: "The mood of your thoughts on each topic, and how it’s shifting.",
                 },
               ]}
             />
@@ -676,24 +1096,26 @@ export function ManifestMarketingPage() {
           graphic={<ThoughtsInsightsGraphic />}
         />
 
-        <section className={`${BANDS[2]} w-full px-5 py-14 md:px-6 md:py-20`}>
+        <section
+          className={`${BANDS[2]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-11 md:border-t-0 md:px-6 md:py-20`}
+        >
           <div
-            className="mx-auto flex max-w-[1200px] flex-col items-start gap-6 md:flex-row md:items-center md:justify-between"
+            className="mx-auto flex max-w-[1200px] flex-col items-stretch gap-3.5 text-center md:flex-row md:items-center md:justify-between md:gap-6 md:text-left"
             data-hv2-reveal
           >
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-3.5 md:gap-2.5">
               <h2
-                className={`home-v2-display m-0 text-[30px] font-normal tracking-tight ${IVORY} md:text-[46px]`}
+                className={`home-v2-display m-0 text-[32px] font-normal leading-[1.1] tracking-tight ${IVORY} md:text-[46px]`}
               >
                 Who are you becoming?
               </h2>
-              <p className={`m-0 text-base ${MUTED} md:text-lg`}>
+              <p className={`m-0 text-[15px] ${MUTED} md:text-lg`}>
                 Put it on the board.
               </p>
             </div>
             <Link
               href={CTA_HREF}
-              className="accent-fill-gradient inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-[17px] font-semibold text-[var(--hv2-navy)] transition-opacity hover:opacity-90"
+              className="accent-fill-gradient mt-1.5 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-full px-7 text-[16px] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 md:mt-0 md:h-auto md:w-auto md:py-3.5 md:text-[17px] md:text-[var(--hv2-navy)]"
             >
               <HomeV2ToolIcon tool="manifest" />
               Build your vision board

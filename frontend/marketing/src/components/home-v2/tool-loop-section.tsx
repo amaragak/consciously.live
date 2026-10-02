@@ -199,7 +199,7 @@ export function ToolLoopSection() {
                 className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-[5px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-sm"
                 aria-hidden
               >
-                25:00
+                18:24
               </span>
               <p className="home-v2-display m-0 text-lg leading-snug">
                 Price the first collection

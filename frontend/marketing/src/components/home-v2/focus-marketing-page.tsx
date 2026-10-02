@@ -22,6 +22,12 @@ const GOLD = "text-[var(--hv2-gold)]";
 const CARD = "bg-[var(--hv2-navy)] border border-[var(--hv2-card-border)]";
 const INSET =
   "bg-[var(--hv2-sticky-bg)] border border-[var(--hv2-card-border)]";
+const MOBILE_CARD =
+  `flex flex-col gap-2.5 overflow-hidden rounded-[14px] ${CARD} px-4 py-3.5`;
+const CARD_LABEL = `m-0 text-[10px] font-normal uppercase tracking-[1.4px] ${GOLD}`;
+const HAIRLINE = "h-px bg-[var(--hv2-card-border)]";
+const CHECK =
+  "h-3.5 w-3.5 shrink-0 rounded border-[1.5px] border-[var(--hv2-line)] box-border";
 
 const CTA_HREF = `/login?mode=signup&next=${encodeURIComponent("/focus")}`;
 
@@ -48,6 +54,53 @@ function WaveBars() {
   );
 }
 
+function ProgressRing({
+  size,
+  timeClass,
+}: {
+  size: 72 | 64;
+  timeClass: string;
+}) {
+  const r = size === 72 ? 31 : 27;
+  const c = 2 * Math.PI * r;
+  const progress = 0.74; // ~18:24 of 25:00
+  return (
+    <span
+      className="relative flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+      aria-hidden
+    >
+      <svg
+        width={size}
+        height={size}
+        className="absolute inset-0 -rotate-90"
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--hv2-line-soft)"
+          strokeWidth="4"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--hv2-gold)"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={`${c * progress} ${c}`}
+        />
+      </svg>
+      <span className={`home-v2-display relative ${IVORY} ${timeClass}`}>
+        18:24
+      </span>
+    </span>
+  );
+}
+
 function SectionCopy({
   eyebrow,
   title,
@@ -62,13 +115,18 @@ function SectionCopy({
   comingSoon?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-[18px]" data-hv2-reveal>
+    <div
+      className="flex min-w-0 flex-1 flex-col gap-3 md:gap-[18px]"
+      data-hv2-reveal
+    >
       {comingSoon ? (
-        <span className="inline-flex w-fit rounded-full border border-[rgb(var(--hv2-gold-rgb)/0.45)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[1.4px] text-[var(--hv2-gold)]">
+        <span className="inline-flex w-fit rounded-full border border-[rgb(var(--hv2-gold-rgb)/0.45)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[1.2px] text-[var(--hv2-gold)] md:px-3 md:tracking-[1.4px]">
           Coming soon · Chrome
         </span>
       ) : eyebrow ? (
-        <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${GOLD} md:text-xs`}
+        >
           {eyebrow}
         </span>
       ) : null}
@@ -78,15 +136,23 @@ function SectionCopy({
         {title}
       </h2>
       <p
-        className={`m-0 max-w-[520px] text-base leading-relaxed ${MUTED} md:text-[19px] md:leading-[1.6]`}
+        className={`m-0 mb-1 max-w-[520px] text-[15px] leading-[1.55] ${MUTED} md:mb-0 md:text-[19px] md:leading-[1.6]`}
       >
         {lead}
       </p>
-      <ul className="m-0 flex list-none flex-col gap-4 p-0">
+      <ul className="m-0 flex list-none flex-col gap-2.5 p-0 pb-1 md:gap-4 md:pb-0">
         {points.map((p) => (
-          <li key={p.title} className="flex flex-col gap-1">
-            <p className={`home-v2-display m-0 text-lg ${IVORY}`}>{p.title}</p>
-            <p className={`m-0 text-[15px] leading-relaxed ${MUTED}`}>{p.body}</p>
+          <li key={p.title} className="flex flex-col gap-0.5 md:gap-1">
+            <p
+              className={`home-v2-display m-0 text-[17px] font-normal ${IVORY} md:text-lg`}
+            >
+              {p.title}
+            </p>
+            <p
+              className={`m-0 text-[14px] leading-[1.5] ${FAINT} md:text-[15px] md:leading-relaxed md:text-[var(--hv2-body)]`}
+            >
+              {p.body}
+            </p>
           </li>
         ))}
       </ul>
@@ -108,9 +174,11 @@ function Strip({
   graphicClassName?: string;
 }) {
   return (
-    <section className={`${band} w-full px-5 py-16 md:px-6 md:py-24`}>
+    <section
+      className={`${band} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
       <div
-        className={`mx-auto flex w-full max-w-[1200px] flex-col items-stretch gap-10 md:items-center md:gap-16 ${
+        className={`mx-auto flex w-full max-w-[1200px] flex-col items-stretch gap-3 md:items-center md:gap-16 ${
           visualLeft ? "md:flex-row-reverse" : "md:flex-row"
         }`}
       >
@@ -151,58 +219,100 @@ function TimerGraphic() {
   const upNext = [
     { text: "Photograph every piece", source: "Studio" },
     { text: "Reply to the gallery", source: "Your To Do" },
-    { text: "Book the kiln", source: "Your To Do" },
+    { text: "Open the online shop", source: "Your To Do" },
   ] as const;
 
   return (
-    <div
-      className={`flex flex-col gap-5 rounded-[18px] ${CARD} p-5 sm:flex-row sm:items-center md:h-[290px]`}
-      aria-hidden
-    >
-      <div className="flex flex-col items-center gap-2 sm:shrink-0">
-        <TimerRing
-          time="18:24"
-          sizeClass="h-[128px] w-[128px]"
-          borderClass="border-[7px]"
-          timeClass="text-[28px]"
-        />
-        <p className={`m-0 text-[12px] ${FAINT}`}>Focus · 25 min</p>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3.5">
-        <div>
-          <p className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}>
-            Now
-          </p>
-          <p className={`home-v2-display m-0 mt-1 text-[18px] leading-snug ${IVORY}`}>
-            Price the collection
-          </p>
-          <p className={`m-0 mt-0.5 text-[12px] ${FAINT}`}>
-            From Manifest · Studio
-          </p>
+    <>
+      {/* Mobile */}
+      <div className={`${MOBILE_CARD} md:hidden`} aria-hidden>
+        <div className="flex items-center gap-3.5">
+          <ProgressRing size={72} timeClass="text-[19px]" />
+          <div className="flex min-w-0 flex-col gap-[3px]">
+            <p className={CARD_LABEL}>Now</p>
+            <p className={`home-v2-display m-0 text-[17px] ${IVORY}`}>
+              Price the collection
+            </p>
+            <p className={`m-0 text-[12px] ${FAINT}`}>
+              From Manifest · Studio · Round 2 of 4
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <p className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}>
-            Up next
-          </p>
+        <div className={HAIRLINE} />
+        <p className={CARD_LABEL}>Up next</p>
+        <div>
           {upNext.map((t) => (
             <div
               key={t.text}
-              className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${INSET}`}
+              className={`flex items-center gap-2.5 border-t border-[var(--hv2-card-border)] py-2 text-[14px] ${IVORY}`}
             >
-              <span
-                className="flex h-4 w-4 shrink-0 rounded border border-[var(--hv2-line)]"
-                aria-hidden
-              />
-              <span className={`min-w-0 flex-1 truncate text-[13px] ${IVORY}`}>
-                {t.text}
+              <span className={CHECK} aria-hidden />
+              <span className="min-w-0 flex-1">{t.text}</span>
+              <span className={`shrink-0 whitespace-nowrap text-[11px] ${FAINT}`}>
+                {t.source}
               </span>
-              <span className={`shrink-0 text-[11px] ${FAINT}`}>{t.source}</span>
             </div>
           ))}
-          <p className={`m-0 pl-1 pt-0.5 text-[12px] ${FAINT}`}>+ Add a To Do</p>
+        </div>
+        <p className={`m-0 text-[13px] ${FAINT}`}>+ Add a To Do</p>
+      </div>
+
+      {/* Desktop */}
+      <div
+        className={`hidden flex-col gap-5 rounded-[18px] ${CARD} p-5 sm:flex-row sm:items-center md:flex md:h-[290px]`}
+        aria-hidden
+      >
+        <div className="flex flex-col items-center gap-2 sm:shrink-0">
+          <TimerRing
+            time="18:24"
+            sizeClass="h-[128px] w-[128px]"
+            borderClass="border-[7px]"
+            timeClass="text-[28px]"
+          />
+          <p className={`m-0 text-[12px] ${FAINT}`}>Focus · 25 min</p>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-3.5">
+          <div>
+            <p
+              className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}
+            >
+              Now
+            </p>
+            <p
+              className={`home-v2-display m-0 mt-1 text-[18px] leading-snug ${IVORY}`}
+            >
+              Price the collection
+            </p>
+            <p className={`m-0 mt-0.5 text-[12px] ${FAINT}`}>
+              From Manifest · Studio
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p
+              className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}
+            >
+              Up next
+            </p>
+            {upNext.map((t) => (
+              <div
+                key={t.text}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${INSET}`}
+              >
+                <span
+                  className="flex h-4 w-4 shrink-0 rounded border border-[var(--hv2-line)]"
+                  aria-hidden
+                />
+                <span className={`min-w-0 flex-1 truncate text-[13px] ${IVORY}`}>
+                  {t.text}
+                </span>
+                <span className={`shrink-0 text-[11px] ${FAINT}`}>{t.source}</span>
+              </div>
+            ))}
+            <p className={`m-0 pl-1 pt-0.5 text-[12px] ${FAINT}`}>+ Add a To Do</p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -214,45 +324,31 @@ function BeforeStartGraphic() {
   ] as const;
 
   return (
-    <div className="flex flex-col items-stretch gap-3.5 md:h-[200px] md:flex-row md:items-center">
-      <div className={`flex min-w-0 flex-1 flex-col gap-2.5 rounded-[18px] ${CARD} p-5`}>
-        <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-          This session
-        </p>
-        {tasks.map((t) => (
-          <div key={t} className="flex items-center gap-2.5">
-            <span
-              className="flex h-4 w-4 shrink-0 rounded border border-[var(--hv2-line)]"
-              aria-hidden
-            />
-            <span className={`text-[14px] leading-snug ${IVORY}`}>{t}</span>
-          </div>
-        ))}
-      </div>
-      <span
-        className="hidden shrink-0 text-[22px] text-[var(--hv2-gold)] md:inline"
-        aria-hidden
-      >
-        →
-      </span>
-      <span
-        className="flex justify-center text-[22px] text-[var(--hv2-gold)] md:hidden"
-        aria-hidden
-      >
-        ↓
-      </span>
-      <div className={`flex min-w-0 flex-1 flex-col gap-3 rounded-[18px] ${CARD} p-5`}>
-        <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-          Before you start
-        </p>
-        <div className="flex items-center gap-3.5">
-          <span className="accent-fill-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--hv2-navy)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <>
+      {/* Mobile: one card */}
+      <div className={`${MOBILE_CARD} md:hidden`} aria-hidden>
+        <p className={CARD_LABEL}>This session</p>
+        <div>
+          {tasks.map((t) => (
+            <div
+              key={t}
+              className={`flex items-center gap-2.5 border-t border-[var(--hv2-card-border)] py-[7px] text-[14px] ${IVORY}`}
+            >
+              <span className={CHECK} aria-hidden />
+              {t}
+            </div>
+          ))}
+        </div>
+        <div className={HAIRLINE} />
+        <p className={CARD_LABEL}>Before you start</p>
+        <div className="flex items-center gap-3">
+          <span className="accent-fill-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M8 5v14l11-7z" />
             </svg>
           </span>
-          <div className="min-w-0">
-            <p className={`home-v2-display m-0 text-[18px] leading-snug ${IVORY}`}>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className={`home-v2-display m-0 text-[16px] ${IVORY}`}>
               Steady hands
             </p>
             <p className={`m-0 text-[12px] ${FAINT}`}>
@@ -260,66 +356,169 @@ function BeforeStartGraphic() {
             </p>
           </div>
         </div>
-        <WaveBars />
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div className="hidden flex-col items-stretch gap-3.5 md:flex md:h-[200px] md:flex-row md:items-center">
+        <div className={`flex min-w-0 flex-1 flex-col gap-2.5 rounded-[18px] ${CARD} p-5`}>
+          <p
+            className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}
+          >
+            This session
+          </p>
+          {tasks.map((t) => (
+            <div key={t} className="flex items-center gap-2.5">
+              <span
+                className="flex h-4 w-4 shrink-0 rounded border border-[var(--hv2-line)]"
+                aria-hidden
+              />
+              <span className={`text-[14px] leading-snug ${IVORY}`}>{t}</span>
+            </div>
+          ))}
+        </div>
+        <span
+          className="hidden shrink-0 text-[22px] text-[var(--hv2-gold)] md:inline"
+          aria-hidden
+        >
+          →
+        </span>
+        <div className={`flex min-w-0 flex-1 flex-col gap-3 rounded-[18px] ${CARD} p-5`}>
+          <p
+            className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}
+          >
+            Before you start
+          </p>
+          <div className="flex items-center gap-3.5">
+            <span className="accent-fill-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--hv2-navy)]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className={`home-v2-display m-0 text-[18px] leading-snug ${IVORY}`}>
+                Steady hands
+              </p>
+              <p className={`m-0 text-[12px] ${FAINT}`}>
+                2 min · made from this session
+              </p>
+            </div>
+          </div>
+          <WaveBars />
+        </div>
+      </div>
+    </>
   );
 }
 
 function SoundGraphic() {
-  const chips = [
+  const desktopChips = [
     { label: "Music", on: true },
     { label: "Ambience", on: true },
     { label: "Drums", on: false },
     { label: "Noise", on: false },
     { label: "Soundscape", on: false },
   ] as const;
-  const levels = [
+  const desktopLevels = [
     { label: "Music", pct: 55 },
     { label: "Ambience", pct: 40 },
   ] as const;
 
+  const mobileChips = [
+    { label: "Rain", on: true },
+    { label: "Brown noise", on: true },
+    { label: "Café", on: false },
+    { label: "Low piano", on: false },
+    { label: "From the library", on: false },
+  ] as const;
+  const mobileLevels = [
+    { label: "Rain", pct: 70 },
+    { label: "Brown noise", pct: 40 },
+  ] as const;
+
   return (
-    <div className={`flex flex-col gap-4 rounded-[18px] ${CARD} p-5 md:h-[190px]`} aria-hidden>
-      <p className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}>
-        Playing while you work
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {chips.map((c) => (
-          <span
-            key={c.label}
-            className={`rounded-full px-3.5 py-1.5 text-[13px] ${
-              c.on
-                ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-                : `border border-[var(--hv2-line)] ${FAINT}`
-            }`}
-          >
-            {c.label}
-          </span>
-        ))}
-      </div>
-      <div className="flex flex-col gap-2.5">
-        {levels.map((l) => (
-          <div key={l.label} className="flex items-center gap-3">
-            <span className={`w-16 shrink-0 text-[12px] ${FAINT}`}>{l.label}</span>
-            <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[rgba(246,241,231,0.12)]">
-              <span
-                className="block h-full rounded-full bg-[var(--hv2-gold)]"
-                style={{ width: `${l.pct}%` }}
-              />
+    <>
+      {/* Mobile */}
+      <div className={`${MOBILE_CARD} md:hidden`} aria-hidden>
+        <p className={CARD_LABEL}>Playing while you work</p>
+        <div className="flex flex-wrap gap-1.5">
+          {mobileChips.map((c) => (
+            <span
+              key={c.label}
+              className={`whitespace-nowrap rounded-full px-[13px] py-[7px] text-[13px] ${
+                c.on
+                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
+                  : `border border-[var(--hv2-line)] ${MUTED}`
+              }`}
+            >
+              {c.label}
             </span>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className="flex gap-4">
+          {mobileLevels.map((l) => (
+            <div key={l.label} className="flex min-w-0 flex-1 flex-col gap-[5px]">
+              <span className={`text-[12px] ${MUTED}`}>{l.label}</span>
+              <div className="h-1.5 rounded-full bg-[var(--hv2-line-soft)]">
+                <div
+                  className="h-1.5 rounded-full bg-[var(--hv2-gold)]"
+                  style={{ width: `${l.pct}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className={`m-0 text-[12px] ${FAINT}`}>
+          Keeps playing through breaks, if you like
+        </p>
       </div>
-      <p className={`m-0 text-[12px] ${FAINT}`}>
-        Mix the room while the clock runs
-      </p>
-    </div>
+
+      {/* Desktop */}
+      <div
+        className={`hidden flex-col gap-4 rounded-[18px] ${CARD} p-5 md:flex md:h-[190px]`}
+        aria-hidden
+      >
+        <p
+          className={`m-0 text-[11px] font-semibold uppercase tracking-[1.4px] ${GOLD}`}
+        >
+          Playing while you work
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {desktopChips.map((c) => (
+            <span
+              key={c.label}
+              className={`rounded-full px-3.5 py-1.5 text-[13px] ${
+                c.on
+                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
+                  : `border border-[var(--hv2-line)] ${FAINT}`
+              }`}
+            >
+              {c.label}
+            </span>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2.5">
+          {desktopLevels.map((l) => (
+            <div key={l.label} className="flex items-center gap-3">
+              <span className={`w-16 shrink-0 text-[12px] ${FAINT}`}>{l.label}</span>
+              <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[rgba(246,241,231,0.12)]">
+                <span
+                  className="block h-full rounded-full bg-[var(--hv2-gold)]"
+                  style={{ width: `${l.pct}%` }}
+                />
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className={`m-0 text-[12px] ${FAINT}`}>
+          Mix the room while the clock runs
+        </p>
+      </div>
+    </>
   );
 }
 
 function ExpectStrip() {
-  const tiles = [
+  const desktopTiles = [
     { title: "15", body: "Minutes" },
     { title: "25", body: "Default" },
     { title: "50", body: "Longer block" },
@@ -327,21 +526,52 @@ function ExpectStrip() {
     { title: "Long break", body: "15 minutes" },
   ] as const;
 
+  const mobileTiles = [
+    { title: "Pomodoro", body: "25 on, 5 off" },
+    { title: "Deep work", body: "50 on, 10 off" },
+    { title: "Custom", body: "Any length" },
+    { title: "Long breaks", body: "After every four" },
+    { title: "Rounds", body: "Set how many" },
+    { title: "Today", body: "Sessions and time" },
+  ] as const;
+
   return (
-    <section className={`${BANDS[3]} w-full px-5 py-14 md:px-6 md:py-[72px]`}>
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8" data-hv2-reveal>
+    <section
+      className={`${BANDS[3]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-[72px]`}
+    >
+      <div
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 md:gap-8"
+        data-hv2-reveal
+      >
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between md:gap-10">
           <h2
             className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}
           >
             The timer you’d expect.
           </h2>
-          <p className={`m-0 max-w-[420px] text-base leading-relaxed ${MUTED} md:text-right md:text-[17px]`}>
+          <p
+            className={`m-0 mb-1 max-w-[420px] text-[15px] leading-[1.55] ${MUTED} md:mb-0 md:text-right md:text-[17px] md:leading-relaxed`}
+          >
             Focus lengths and breaks, without leaving your goals.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          {tiles.map((t) => (
+
+        {/* Mobile: 2×3 */}
+        <div className="grid grid-cols-2 gap-2 md:hidden">
+          {mobileTiles.map((t) => (
+            <div
+              key={t.title}
+              className={`flex flex-col gap-0.5 rounded-xl ${CARD} px-3 py-[11px]`}
+            >
+              <p className={`home-v2-display m-0 text-[15px] ${IVORY}`}>{t.title}</p>
+              <p className={`m-0 text-[12px] ${FAINT}`}>{t.body}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop: 5 tiles */}
+        <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-5">
+          {desktopTiles.map((t) => (
             <div key={t.title} className={`rounded-[18px] ${CARD} px-4 py-5`}>
               <p className={`home-v2-display m-0 text-xl ${IVORY}`}>{t.title}</p>
               <p className={`m-0 mt-1 text-[13px] ${FAINT}`}>{t.body}</p>
@@ -357,52 +587,101 @@ function ChromeGraphic() {
   const blocked = ["Social feeds", "News", "Shopping"] as const;
 
   return (
-    <div
-      className={`flex flex-col overflow-hidden rounded-[18px] ${CARD} md:h-[280px]`}
-      aria-hidden
-    >
-      <div className="flex items-center gap-2 border-b border-[var(--hv2-card-border)] px-4 py-2.5">
-        <span className="flex gap-1.5" aria-hidden>
-          <i className="block h-2.5 w-2.5 rounded-full bg-[rgba(246,241,231,0.25)]" />
-          <i className="block h-2.5 w-2.5 rounded-full bg-[rgba(246,241,231,0.25)]" />
-          <i className="block h-2.5 w-2.5 rounded-full bg-[rgba(246,241,231,0.25)]" />
-        </span>
-        <span
-          className={`rounded-t-md border border-b-0 border-[var(--hv2-card-border)] bg-[var(--hv2-sticky-bg)] px-3 py-1 text-[11px] ${FAINT}`}
-        >
-          New tab
-        </span>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 p-5 sm:flex-row sm:items-center">
-        <div className="flex flex-col items-center gap-2 sm:shrink-0">
-          <TimerRing
-            time="18:24"
-            sizeClass="h-24 w-24"
-            borderClass="border-[5px]"
-            timeClass="text-[20px]"
-          />
-          <p className={`home-v2-display m-0 max-w-[9rem] text-center text-[15px] leading-snug ${IVORY}`}>
-            Price the collection
-          </p>
+    <>
+      {/* Mobile */}
+      <div
+        className={`overflow-hidden rounded-[14px] ${CARD} md:hidden`}
+        aria-hidden
+      >
+        <div className="flex h-[30px] items-center gap-2 border-b border-[var(--hv2-card-border)] px-3">
+          <span className="flex gap-1.5" aria-hidden>
+            <i className="block h-2 w-2 rounded-full bg-[var(--hv2-line-soft)]" />
+            <i className="block h-2 w-2 rounded-full bg-[var(--hv2-line-soft)]" />
+            <i className="block h-2 w-2 rounded-full bg-[var(--hv2-line-soft)]" />
+          </span>
+          <span
+            className={`rounded-[5px] bg-[var(--hv2-sticky-bg)] px-2.5 py-[3px] text-[11px] ${FAINT}`}
+          >
+            New tab
+          </span>
         </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-          <p className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}>
-            Blocked until the bell
-          </p>
-          {blocked.map((b) => (
-            <div
-              key={b}
-              className={`flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 ${INSET}`}
-            >
-              <span className={`text-[14px] ${IVORY}`}>{b}</span>
-              <span className={`text-[11px] font-semibold uppercase tracking-[1px] ${GOLD}`}>
-                Blocked
-              </span>
+        <div className="flex items-start gap-3.5 px-4 py-3.5">
+          <ProgressRing size={64} timeClass="text-[17px]" />
+          <div className="min-w-0 flex-1">
+            <p className={CARD_LABEL}>Blocked until the bell</p>
+            <div className="mt-1.5">
+              {blocked.map((b) => (
+                <div
+                  key={b}
+                  className={`flex items-center justify-between border-t border-[var(--hv2-card-border)] py-[7px] text-[13px] ${IVORY}`}
+                >
+                  <span>{b}</span>
+                  <span
+                    className={`text-[10px] uppercase tracking-[1.3px] ${GOLD}`}
+                  >
+                    BLOCKED
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div
+        className={`hidden flex-col overflow-hidden rounded-[18px] ${CARD} md:flex md:h-[280px]`}
+        aria-hidden
+      >
+        <div className="flex items-center gap-2 border-b border-[var(--hv2-card-border)] px-4 py-2.5">
+          <span className="flex gap-1.5" aria-hidden>
+            <i className="block h-2.5 w-2.5 rounded-full bg-[rgba(246,241,231,0.25)]" />
+            <i className="block h-2.5 w-2.5 rounded-full bg-[rgba(246,241,231,0.25)]" />
+            <i className="block h-2.5 w-2.5 rounded-full bg-[rgba(246,241,231,0.25)]" />
+          </span>
+          <span
+            className={`rounded-t-md border border-b-0 border-[var(--hv2-card-border)] bg-[var(--hv2-sticky-bg)] px-3 py-1 text-[11px] ${FAINT}`}
+          >
+            New tab
+          </span>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-5 p-5 sm:flex-row sm:items-center">
+          <div className="flex flex-col items-center gap-2 sm:shrink-0">
+            <TimerRing
+              time="18:24"
+              sizeClass="h-24 w-24"
+              borderClass="border-[5px]"
+              timeClass="text-[20px]"
+            />
+            <p
+              className={`home-v2-display m-0 max-w-[9rem] text-center text-[15px] leading-snug ${IVORY}`}
+            >
+              Price the collection
+            </p>
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+            <p
+              className={`m-0 text-[10px] font-semibold uppercase tracking-[1.3px] ${GOLD}`}
+            >
+              Blocked until the bell
+            </p>
+            {blocked.map((b) => (
+              <div
+                key={b}
+                className={`flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 ${INSET}`}
+              >
+                <span className={`text-[14px] ${IVORY}`}>{b}</span>
+                <span
+                  className={`text-[11px] font-semibold uppercase tracking-[1px] ${GOLD}`}
+                >
+                  Blocked
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -430,24 +709,24 @@ export function FocusMarketingPage() {
       <div className="relative">
         <HomeV2Chrome />
 
-        <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-16 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
-          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center gap-5 pt-10 text-center md:gap-[22px] md:pt-14">
+        <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-11 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
+          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center gap-4 pt-10 text-center md:gap-[22px] md:pt-14">
             <h1
-              className={`home-v2-display m-0 w-full max-w-[16ch] text-[34px] font-[350] leading-[1.08] tracking-[-0.8px] text-[var(--hv2-hero-fg)] sm:text-[44px] md:max-w-none md:text-[clamp(44px,5vw,64px)] md:tracking-[-1px] ${h1.className}`}
+              className={`home-v2-display m-0 w-full max-w-[16ch] text-[40px] font-normal leading-[1.06] tracking-[-0.6px] text-[var(--hv2-hero-fg)] md:max-w-none md:text-[clamp(44px,5vw,64px)] md:font-[350] md:tracking-[-1px] ${h1.className}`}
               style={h1.style}
             >
               Give your hours to your dream.
             </h1>
             <p
-              className={`m-0 max-w-[34rem] text-base text-[var(--hv2-hero-muted)] sm:text-lg md:text-[21px] md:leading-[1.5] ${sub.className}`}
+              className={`m-0 max-w-[34rem] text-center text-[16px] leading-[1.5] text-[var(--hv2-hero-muted)] md:text-[21px] ${sub.className}`}
               style={sub.style}
             >
               Pick the step. Start the timer. Stay with it.
             </p>
-            <div className={cta.className} style={cta.style}>
+            <div className={`w-full md:w-auto ${cta.className}`} style={cta.style}>
               <Link
                 href={CTA_HREF}
-                className="accent-fill-gradient inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-[17px] font-semibold text-[var(--hv2-navy)] transition-opacity hover:opacity-90"
+                className="accent-fill-gradient mt-1.5 inline-flex h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-full px-7 text-[16px] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 md:mt-0 md:h-auto md:w-auto md:py-3.5 md:text-[17px] md:text-[var(--hv2-navy)]"
               >
                 <HomeV2ToolIcon tool="focus" />
                 Start a focus session
@@ -549,24 +828,26 @@ export function FocusMarketingPage() {
           graphic={<ChromeGraphic />}
         />
 
-        <section className={`${BANDS[1]} w-full px-5 py-14 md:px-6 md:py-20`}>
+        <section
+          className={`${BANDS[1]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-11 md:border-t-0 md:px-6 md:py-20`}
+        >
           <div
-            className="mx-auto flex max-w-[1200px] flex-col items-start gap-6 md:flex-row md:items-center md:justify-between"
+            className="mx-auto flex max-w-[1200px] flex-col items-stretch gap-3.5 text-center md:flex-row md:items-center md:justify-between md:gap-6 md:text-left"
             data-hv2-reveal
           >
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-3.5 md:gap-2.5">
               <h2
-                className={`home-v2-display m-0 text-[30px] font-normal tracking-tight ${IVORY} md:text-[46px]`}
+                className={`home-v2-display m-0 text-[32px] font-normal leading-[1.1] tracking-tight ${IVORY} md:text-[46px]`}
               >
                 What’s the next step?
               </h2>
-              <p className={`m-0 text-base ${MUTED} md:text-lg`}>
+              <p className={`m-0 text-[15px] ${MUTED} md:text-lg`}>
                 Give it twenty-five minutes.
               </p>
             </div>
             <Link
               href={CTA_HREF}
-              className="accent-fill-gradient inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-[17px] font-semibold text-[var(--hv2-navy)] transition-opacity hover:opacity-90"
+              className="accent-fill-gradient mt-1.5 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-full px-7 text-[16px] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 md:mt-0 md:h-auto md:w-auto md:py-3.5 md:text-[17px] md:text-[var(--hv2-navy)]"
             >
               <HomeV2ToolIcon tool="focus" />
               Start a focus session

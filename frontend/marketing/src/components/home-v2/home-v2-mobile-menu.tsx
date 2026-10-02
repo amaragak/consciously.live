@@ -7,6 +7,14 @@ import {
   HOME_V2_START_FREE_HREF,
   type HomeV2ToolId,
 } from "@/components/home-v2/constants";
+import {
+  getMedimadeSessionJwt,
+  isMedimadeSessionActive,
+} from "@/lib/medimade-api";
+
+function hasSession(): boolean {
+  return isMedimadeSessionActive() && Boolean(getMedimadeSessionJwt());
+}
 
 const TOOL_BLURBS: Record<string, string> = {
   meditate: "Meditations made from your life",
@@ -49,11 +57,20 @@ export function HomeV2MobileMenu({
   panelId,
 }: Props) {
   const [mounted, setMounted] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  const [dashboardBusy, setDashboardBusy] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setSignedIn(hasSession());
+    sync();
+    window.addEventListener("medimade-session-changed", sync);
+    return () => window.removeEventListener("medimade-session-changed", sync);
   }, []);
 
   // Scroll lock + move focus into the panel while open
@@ -259,22 +276,67 @@ export function HomeV2MobileMenu({
           </div>
 
           <div className="mt-auto flex flex-col items-stretch gap-1.5 pt-4">
-            <Link
-              href={HOME_V2_START_FREE_HREF}
-              tabIndex={open ? undefined : -1}
-              className="accent-fill-gradient inline-flex h-[52px] w-full items-center justify-center rounded-full text-[16px] font-semibold text-[var(--hv2-navy)]"
-              onClick={() => closeWithNav()}
-            >
-              Start free
-            </Link>
-            <Link
-              href="/login"
-              tabIndex={open ? undefined : -1}
-              className="inline-flex h-11 items-center justify-center text-[15px] text-[var(--hv2-on-navy)]"
-              onClick={() => closeWithNav()}
-            >
-              Sign in
-            </Link>
+            {signedIn ? (
+              <>
+                <button
+                  type="button"
+                  tabIndex={open ? undefined : -1}
+                  disabled={dashboardBusy}
+                  className="accent-fill-gradient inline-flex h-[52px] w-full items-center justify-center rounded-full text-[16px] font-semibold text-[var(--hv2-navy)] disabled:opacity-50"
+                  onClick={() => {
+                    setDashboardBusy(true);
+                    closeWithNav(() => {
+                      void import("@/lib/spa-handoff")
+                        .then(({ navigateToSpa }) => navigateToSpa("/"))
+                        .finally(() => setDashboardBusy(false));
+                    });
+                  }}
+                >
+                  {dashboardBusy ? "Opening…" : "Dashboard →"}
+                </button>
+                <Link
+                  href="/profile"
+                  tabIndex={open ? undefined : -1}
+                  className="inline-flex h-11 items-center justify-center text-[15px] text-[var(--hv2-on-navy)]"
+                  onClick={() => closeWithNav()}
+                >
+                  Profile
+                </Link>
+                <button
+                  type="button"
+                  tabIndex={open ? undefined : -1}
+                  className="inline-flex h-11 items-center justify-center text-[15px] text-[var(--hv2-muted)]"
+                  onClick={() =>
+                    closeWithNav(() => {
+                      void import("@/lib/medimade-api").then((m) =>
+                        m.clearMedimadeSession(),
+                      );
+                    })
+                  }
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href={HOME_V2_START_FREE_HREF}
+                  tabIndex={open ? undefined : -1}
+                  className="accent-fill-gradient inline-flex h-[52px] w-full items-center justify-center rounded-full text-[16px] font-semibold text-[var(--hv2-navy)]"
+                  onClick={() => closeWithNav()}
+                >
+                  Start free
+                </Link>
+                <Link
+                  href="/login"
+                  tabIndex={open ? undefined : -1}
+                  className="inline-flex h-11 items-center justify-center text-[15px] text-[var(--hv2-on-navy)]"
+                  onClick={() => closeWithNav()}
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
           </div>
         </nav>
       </div>

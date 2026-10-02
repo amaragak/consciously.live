@@ -61,7 +61,7 @@ export function ToolMarketingPage({ tool }: { tool: HomeV2ToolId }) {
               className="flex min-w-0 flex-1 basis-0 flex-col gap-[22px]"
               data-hv2-reveal
             >
-              <h2 className="home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] text-[var(--hv2-ink)] md:text-[44px] md:tracking-[-1px]">
+              <h2 className="home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] text-[var(--hv2-ink)] md:text-[44px] md:tracking-[-1px]">
                 {strip.headline}
               </h2>
               <p className="m-0 text-base leading-relaxed text-[var(--hv2-body)] md:text-[19px] md:leading-[1.6]">

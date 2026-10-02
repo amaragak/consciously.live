@@ -964,8 +964,8 @@ function FocusLengthsVignette() {
     >
       {(
         [
-          ["25:00", "Pomodoro", "Price the first collection", true],
-          ["50:00", "Deep work", "Draft the shop copy", false],
+          ["18:24", "Pomodoro", "Price the first collection", true],
+          ["36:40", "Deep work", "Draft the shop copy", false],
         ] as const
       ).map(([time, kind, task, on]) => (
         <div
