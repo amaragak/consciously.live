@@ -28,111 +28,108 @@ function ArrowRight() {
   );
 }
 
-function ArrowDown() {
-  return (
-    <svg width="20" height="22" viewBox="0 0 20 22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M10 2v16" />
-      <path d="M4 12l6 6 6-6" />
-    </svg>
-  );
-}
-
 export function ToolLoopSection() {
   return (
     <section
       id="tool-home-loop"
-      className="home-v2-band home-v2-band--a mb-0 flex flex-col gap-6 px-5 py-12 md:gap-14 md:px-[min(120px,8vw)] md:py-32"
+      className="home-v2-band home-v2-band--a mb-0 flex flex-col gap-3.5 border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:gap-14 md:border-t-0 md:px-[min(120px,8vw)] md:py-32"
     >
       <div
         className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-20"
         data-hv2-reveal
       >
-        <h2 className="home-v2-display m-0 text-[34px] font-normal leading-[1.05] tracking-[-0.6px] md:text-[60px] md:tracking-[-1.2px]">
+        <h2 className="home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] md:text-[60px] md:leading-[1.05] md:tracking-[-1.2px]">
           Five tools. One direction.
         </h2>
-        <p className="m-0 max-w-[460px] text-base leading-relaxed text-[var(--hv2-body)] md:text-[19px] md:leading-[1.6]">
+        <p className="m-0 mb-1.5 max-w-[460px] text-[15px] leading-[1.55] text-[var(--hv2-body)] md:mb-0 md:text-[19px] md:leading-[1.6]">
           Every entry, session and conversation moves you towards the same place:
           the life you&apos;ve chosen.
         </p>
       </div>
 
-      {/* Mobile diagram */}
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-2.5 md:hidden">
-        <div className="grid grid-cols-2 gap-2.5">
-          <Link
-            href="/journal"
-            className="flex flex-col gap-1.5 rounded-2xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-4"
-            data-hv2-reveal
-          >
-            <Lockup tool="Journal" size="card" onNavy />
-            <span className="home-v2-display text-sm italic leading-snug">
-              “I can see the business so clearly. Why do I keep waiting?”
-            </span>
-          </Link>
-          <Link
-            href="/manifest"
-            className="flex flex-col gap-1.5 rounded-2xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-4"
-            data-hv2-reveal
-          >
-            <Lockup tool="Manifest" size="card" onNavy />
-            <span className="home-v2-display text-sm leading-snug">
-              Someone living the life they designed.
-            </span>
-          </Link>
-        </div>
-        <div className="flex justify-center text-[var(--hv2-tan-text)]" aria-hidden>
-          <ArrowDown />
-        </div>
-        <Link
-          href="/meditate"
-          className="flex items-center gap-3.5 rounded-[18px] bg-[var(--hv2-navy)] p-[18px] text-[var(--hv2-ivory)]"
-          data-hv2-reveal
-        >
+      {/* Mobile diagram: compact vertical timeline */}
+      <div
+        className="mx-auto flex w-full max-w-[1200px] flex-col md:hidden"
+        data-hv2-reveal
+      >
+        <div className="relative rounded-[14px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 pb-3 pt-2.5">
           <span
+            className="absolute bottom-[82px] left-5 top-[30px] w-px bg-[rgb(var(--hv2-gold-rgb)/0.45)]"
             aria-hidden
-            className="accent-fill-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-          </span>
-          <span className="flex flex-col gap-1">
-            <Lockup tool="Meditate" size="card" onNavy />
-            <span className="home-v2-display text-base leading-snug">
-              Manifesting your business: living as its successful owner, today
-            </span>
-          </span>
-        </Link>
-        <div className="flex justify-center text-[var(--hv2-tan-text)]" aria-hidden>
-          <ArrowDown />
+          />
+          <ol className="relative m-0 flex list-none flex-col p-0">
+            {(
+              [
+                {
+                  verb: "Journal",
+                  href: "/journal",
+                  line: (
+                    <em className="home-v2-display italic">
+                      “Why do I keep waiting?”
+                    </em>
+                  ),
+                },
+                {
+                  verb: "Manifest",
+                  href: "/manifest",
+                  line: <span>Open my own studio</span>,
+                },
+                {
+                  verb: "Meditate",
+                  href: "/meditate",
+                  line: (
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="accent-fill-gradient flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
+                        aria-hidden
+                      >
+                        <svg
+                          width="8"
+                          height="8"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </span>
+                      <span className="home-v2-display text-[15px]">
+                        Opening night
+                      </span>
+                    </span>
+                  ),
+                },
+                {
+                  verb: "Focus",
+                  href: "/focus",
+                  line: <span>25:00 · Pricing</span>,
+                },
+              ] as const
+            ).map((row) => (
+              <li key={row.verb} className="relative min-h-10 pl-[22px]">
+                <span
+                  className="absolute left-0 top-1/2 size-[9px] -translate-y-1/2 rounded-full bg-[var(--hv2-gold)]"
+                  aria-hidden
+                />
+                <Link
+                  href={row.href}
+                  className="flex min-h-10 items-center gap-2.5 py-0 text-[14px] leading-snug text-[var(--hv2-ink)]"
+                >
+                  <em className="home-v2-display w-[70px] shrink-0 italic text-[var(--hv2-tan-text)]">
+                    {row.verb}
+                  </em>
+                  <span className="min-w-0 truncate">{row.line}</span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-2 border-t border-[var(--hv2-card-border)] pt-2.5 text-[13px] leading-[1.45] text-[var(--hv2-body)]">
+            <span className="home-v2-display text-[var(--hv2-muted)]">
+              consciously{" "}
+              <em className="italic text-[var(--hv2-tan-text)]">Chat</em>
+            </span>{" "}
+            runs through all of it: ask, reflect, and it moves the app for you.
+          </div>
         </div>
-        <Link
-          href="/focus"
-          className="flex items-center gap-3.5 rounded-[18px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] p-[18px]"
-          data-hv2-reveal
-        >
-          <span
-            className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border-[4px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-xs"
-            aria-hidden
-          >
-            25:00
-          </span>
-          <span className="flex flex-col gap-1">
-            <Lockup tool="Focus" size="card" onNavy />
-            <span className="home-v2-display text-base">Price the first collection</span>
-            <span className="text-xs text-[var(--hv2-muted)]">
-              Focus timer · from your Manifest goal
-            </span>
-          </span>
-        </Link>
-        <Link
-          href="/chat"
-          className="mt-1.5 flex flex-col gap-1.5 rounded-[18px] bg-[var(--hv2-navy)] p-[18px] text-[var(--hv2-ivory)]"
-          data-hv2-reveal
-        >
-          <Lockup tool="Chat" size="card" onNavy />
-          <span className="text-sm leading-snug text-[rgba(246,241,231,0.8)]">
-            Runs through all of it: ask, reflect, and it moves the app for you.
-          </span>
-        </Link>
       </div>
 
       {/* Desktop diagram */}

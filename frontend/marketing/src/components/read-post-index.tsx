@@ -25,20 +25,17 @@ function matchesFilters(
   return matchesQuery(post, q);
 }
 
-/** Content first, then most recently updated — mirrors backend sort. */
+/** Most recently updated first (index already excludes empty bodies). */
 function comparePosts(
   a: PublicBlogPostSummary,
   b: PublicBlogPostSummary,
 ): number {
-  const aHas = a.hasBody ? 0 : 1;
-  const bHas = b.hasBody ? 0 : 1;
-  if (aHas !== bHas) return aHas - bHas;
   return (b.updatedAt || "").localeCompare(a.updatedAt || "");
 }
 
 /**
  * Unified list order: pinned → My picks (topPicks, not pinned) → the rest.
- * Within each band, content-first then recently updated.
+ * Within each band, most recently updated first.
  */
 function compareListOrder(
   a: PublicBlogPostSummary,

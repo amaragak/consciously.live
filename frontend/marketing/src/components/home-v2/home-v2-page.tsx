@@ -10,6 +10,7 @@ import {
 } from "@/components/home-v2/home-v2-scroll-chrome";
 import { ToolLoopSection } from "@/components/home-v2/tool-loop-section";
 import { ToolSection } from "@/components/home-v2/tool-section";
+import { TypesSection } from "@/components/home-v2/types-section";
 import { useHomeV2Scroll } from "@/components/home-v2/use-home-v2-scroll";
 
 export function HomeV2Page() {
@@ -21,6 +22,9 @@ export function HomeV2Page() {
     <div ref={rootRef} className="home-v2 relative w-full">
       <HomeV2Chrome scrolled={scrolled} />
       <HeroSection motionReady={motionReady} />
+      <section className="home-v2-band home-v2-band--b border-t border-[var(--hv2-hero-hairline)] px-5 pb-8 pt-7 md:hidden">
+        <TypesSection motionReady={motionReady} />
+      </section>
       <ToolLoopSection />
       <section className="home-v2-band home-v2-band--b">
         <ToolSection tool="meditate" />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   HOME_V2_CONNECT_HREF,
   HOME_V2_LISTEN_HREF,
@@ -9,6 +9,7 @@ import {
   type HomeV2ToolId,
 } from "@/components/home-v2/constants";
 import { HomeV2AuthActions } from "@/components/home-v2/hero-prompt";
+import { HomeV2MobileMenu } from "@/components/home-v2/home-v2-mobile-menu";
 import { Lockup } from "@/components/home-v2/lockup";
 
 type SecondaryId = "listen" | "read" | "connect";
@@ -47,11 +48,11 @@ type Props = {
   position?: "fixed" | "sticky" | "static";
   /**
    * `solid` = always filled sticky.
-   * `overlay` = transparent at top; fades to solid when `scrolled`.
+   * `overlay` = hero paisley plate; `scrolled` only compacts chrome (no solid fill swap).
    * `transparent` = always clear (legacy; prefer overlay).
    */
   tone?: "solid" | "transparent" | "overlay";
-  /** With `tone="overlay"`: solid fill + full-bleed hairline when true. */
+  /** With `tone="overlay"`: compact chrome when true; paisley stays. */
   scrolled?: boolean;
   className?: string;
   children?: ReactNode;
@@ -78,11 +79,16 @@ export function HomeV2SiteHeader({
   className = "",
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerId = useId();
+  const menuPanelId = useId();
   const isFixed = position === "fixed";
   const isOverlay = tone === "overlay";
-  const isTransparent = tone === "transparent" || (isOverlay && !scrolled);
+  const isTransparent = tone === "transparent";
   const isFilled = tone === "solid" || (isOverlay && scrolled);
   const compactChrome = isOverlay && scrolled;
+
+  const closeMenu = () => setMenuOpen(false);
+
   const positionClass = isFixed
     ? "inset-x-0 top-0"
     : position === "sticky"
@@ -95,27 +101,38 @@ export function HomeV2SiteHeader({
 
   return (
     <header
-      className={`home-v2 home-v2-site-header z-40 px-5 text-[var(--hv2-hero-fg)] md:px-6 ${
+      className={`home-v2 home-v2-site-header z-40 pl-5 pr-3 text-[var(--hv2-hero-fg)] md:px-6 ${
         isOverlay
           ? `home-v2-site-header--overlay${scrolled ? " is-scrolled" : ""}`
           : isTransparent
             ? "home-v2-site-header--transparent bg-transparent"
             : "home-v2-site-header--solid border-b border-[var(--hv2-hero-hairline)] bg-[var(--hv2-sticky-bg)]"
-      } ${isFilled ? "overflow-hidden" : "overflow-visible"} ${positionClass} ${className}`.trim()}
+      } ${
+        isOverlay || (isFilled && !menuOpen)
+          ? "overflow-hidden"
+          : "overflow-visible"
+      } ${positionClass} ${className}`.trim()}
       style={isFixed ? { position: "fixed" } : undefined}
     >
+      {/* Paisley plate — hero or field tokens (via CSS) so fade matches the page. */}
+      {isOverlay ? (
+        <div
+          aria-hidden
+          className="home-v2-site-header-hero-plate pointer-events-none absolute inset-0 z-0"
+        />
+      ) : null}
       {/* Soft sun radial over hero/field — owned by the shared header (not a page sibling). */}
-      {isOverlay || tone === "transparent" ? (
+      {isOverlay || isTransparent ? (
         <div
           aria-hidden
           className="home-v2-site-header-soft-sun pointer-events-none absolute inset-x-0 top-0 z-0"
         >
           <div className="relative mx-auto h-full max-w-[1200px]">
-            <span className="home-v2-hero-chrome-glow-sun absolute left-[20px] top-[28px] size-[160px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl md:top-[36px] md:size-[200px]" />
+            <span className="home-v2-hero-chrome-glow-sun absolute left-[20px] top-[28px] size-[56px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-xl md:top-[36px] md:size-[64px]" />
           </div>
         </div>
       ) : null}
-      {isFilled ? (
+      {tone === "solid" ? (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 z-0 px-5 md:px-6"
@@ -216,118 +233,35 @@ export function HomeV2SiteHeader({
         </div>
 
         <div className="ml-auto flex items-center gap-2 md:hidden">
-          <Link
-            href={ctaHref}
-            className="home-v2-header-cta-mobile accent-fill-gradient inline-flex items-center gap-2 rounded-full text-sm font-semibold"
-          >
-            {ctaIcon}
-            {ctaLabel}
-          </Link>
           <button
+            id={menuTriggerId}
             type="button"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
             aria-expanded={menuOpen}
+            aria-controls={menuPanelId}
             onClick={() => setMenuOpen((o) => !o)}
-            className="home-v2-site-header-menu-btn inline-flex items-center justify-center text-[var(--hv2-hero-fg)]"
+            className={`home-v2-site-header-menu-btn inline-flex h-11 w-11 items-center justify-center text-[var(--hv2-hero-fg)]${
+              menuOpen ? " is-open" : ""
+            }`}
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              aria-hidden
-            >
-              {menuOpen ? (
-                <>
-                  <path d="M6 6l12 12" />
-                  <path d="M18 6L6 18" />
-                </>
-              ) : (
-                <>
-                  <path d="M4 8h16" />
-                  <path d="M4 16h16" />
-                </>
-              )}
-            </svg>
+            <span className="home-v2-site-header-menu-icon" aria-hidden>
+              <span />
+              <span />
+            </span>
           </button>
         </div>
       </div>
 
-      {menuOpen ? (
-        <div className="border-t border-[var(--hv2-hero-hairline)] bg-[var(--hv2-hero-menu-bg)] py-4 md:hidden">
-          <div className="mx-auto flex max-w-[1200px] flex-col gap-1 text-[var(--hv2-hero-nav)]">
-            {mobileToolLinks.map((t) =>
-              t.onClick ? (
-                <a
-                  key={t.id}
-                  href={t.href}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setMenuOpen(false);
-                    t.onClick?.();
-                  }}
-                  className={`rounded-lg px-3 py-3 ${
-                    activeTool === t.id ? "text-[var(--hv2-gold)]" : ""
-                  }`}
-                >
-                  {t.label}
-                </a>
-              ) : (
-                <Link
-                  key={t.id}
-                  href={t.href}
-                  onClick={() => setMenuOpen(false)}
-                  className={`rounded-lg px-3 py-3 ${
-                    activeTool === t.id ? "text-[var(--hv2-gold)]" : ""
-                  }`}
-                >
-                  {t.label}
-                </Link>
-              ),
-            )}
-            <div className="my-2 border-t border-[var(--hv2-hero-hairline)]" />
-            {mobileSecondaryLinks.map((s) =>
-              s.onClick ? (
-                <a
-                  key={s.id}
-                  href={s.href}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setMenuOpen(false);
-                    s.onClick?.();
-                  }}
-                  className={`px-3 py-3 ${
-                    activeSecondary === s.id ? "text-[var(--hv2-gold)]" : ""
-                  }`}
-                >
-                  {s.label}
-                </a>
-              ) : (
-                <Link
-                  key={s.id}
-                  href={s.href}
-                  className={`px-3 py-3 ${
-                    activeSecondary === s.id ? "text-[var(--hv2-gold)]" : ""
-                  }`}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  {s.label}
-                </Link>
-              ),
-            )}
-            <Link
-              href="/login"
-              className="px-3 py-3"
-              onClick={() => setMenuOpen(false)}
-            >
-              Sign in
-            </Link>
-          </div>
-        </div>
-      ) : null}
+      <HomeV2MobileMenu
+        open={menuOpen}
+        onClose={closeMenu}
+        toolLinks={mobileToolLinks}
+        secondaryLinks={mobileSecondaryLinks}
+        activeTool={activeTool}
+        activeSecondary={activeSecondary}
+        triggerId={menuTriggerId}
+        panelId={menuPanelId}
+      />
     </header>
   );
 }

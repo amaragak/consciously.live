@@ -43,13 +43,17 @@ function ArrowDown() {
 function AskCard({
   label = "You ask",
   children,
+  className = "",
 }: {
   label?: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-7 py-7">
-      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-tan-text)]">
+    <div
+      className={`flex flex-col gap-3 rounded-2xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 py-4 md:gap-4 md:rounded-3xl md:px-7 md:py-7 ${className}`}
+    >
+      <p className="m-0 text-[11px] uppercase tracking-[1.3px] text-[var(--hv2-tan-text)] md:text-xs">
         {label}
       </p>
       {children}
@@ -60,13 +64,17 @@ function AskCard({
 function GetCard({
   label = "You get",
   children,
+  className = "",
 }: {
   label?: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col gap-[18px] rounded-3xl bg-[var(--hv2-navy)] px-7 py-7 text-[var(--hv2-ivory)]">
-      <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+    <div
+      className={`flex flex-col gap-3 rounded-2xl bg-[var(--hv2-navy)] px-4 py-4 text-[var(--hv2-ivory)] md:gap-[18px] md:rounded-3xl md:px-7 md:py-7 ${className}`}
+    >
+      <p className="m-0 text-[11px] uppercase tracking-[1.3px] text-[var(--hv2-gold)] md:text-xs">
         {label}
       </p>
       {children}
@@ -77,24 +85,43 @@ function GetCard({
 function PlayRow({
   title,
   meta,
+  compact = false,
 }: {
   title: string;
   meta: string;
+  compact?: boolean;
 }) {
   return (
     <>
-      <div className="flex items-center gap-4">
-        <span className="accent-fill-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <div className={`flex items-center ${compact ? "gap-3" : "gap-4"}`}>
+        <span
+          className={`accent-fill-gradient flex shrink-0 items-center justify-center rounded-full ${
+            compact ? "h-10 w-10" : "h-14 w-14"
+          }`}
+        >
+          <svg
+            width={compact ? 14 : 18}
+            height={compact ? 14 : 18}
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
             <path d="M8 5v14l11-7z" />
           </svg>
         </span>
-        <div>
-          <p className="home-v2-display m-0 text-[22px] font-medium">{title}</p>
-          <p className="m-0 text-[13px] text-[rgba(246,241,231,0.6)]">{meta}</p>
+        <div className="min-w-0">
+          <p
+            className={`home-v2-display m-0 font-medium leading-snug ${
+              compact ? "text-[16px]" : "text-[22px]"
+            }`}
+          >
+            {title}
+          </p>
+          <p className="m-0 truncate text-[12px] text-[rgba(246,241,231,0.6)] md:text-[13px]">
+            {meta}
+          </p>
         </div>
       </div>
-      <WaveBars />
+      {compact ? null : <WaveBars />}
     </>
   );
 }
@@ -133,23 +160,57 @@ function Stack({ children }: { children: ReactNode }) {
 export function MeditateVignette() {
   return (
     <Stack>
-      <AskCard>
-        <p className="home-v2-display m-0 text-xl italic leading-snug">
+      {/* Mobile: single compact card matching design HTML */}
+      <div className="flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 py-3.5 text-[var(--hv2-ink)] md:hidden">
+        <p className="m-0 text-[10px] font-normal uppercase tracking-[1.4px] text-[var(--hv2-gold)]">
+          You ask
+        </p>
+        <p className="home-v2-display m-0 text-[15px] italic leading-snug">
           “I want to manifest opening my new studio.”
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Chip active>Manifestation</Chip>
-          <Chip>Visualization</Chip>
-          <Chip>Sleep</Chip>
+        <div className="h-px bg-[var(--hv2-card-border)]" />
+        <p className="m-0 text-[10px] font-normal uppercase tracking-[1.4px] text-[var(--hv2-gold)]">
+          You get
+        </p>
+        <div className="flex items-center gap-3">
+          <span
+            className="accent-fill-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+            aria-hidden
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </span>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="home-v2-display text-[16px] leading-snug">
+              Opening day at your new studio
+            </span>
+            <span className="truncate text-[12px] text-[var(--hv2-muted)]">
+              Manifestation · Warm voice · Soft rain
+            </span>
+          </span>
         </div>
-      </AskCard>
-      <ArrowDown />
-      <GetCard>
-        <PlayRow
-          title="Opening day at your new studio"
-          meta="Manifestation · Warm voice · Soft rain"
-        />
-      </GetCard>
+      </div>
+      {/* Desktop */}
+      <div className="hidden flex-col gap-3 md:flex">
+        <AskCard>
+          <p className="home-v2-display m-0 text-xl italic leading-snug">
+            “I want to manifest opening my new studio.”
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Chip active>Manifestation</Chip>
+            <Chip>Visualization</Chip>
+            <Chip>Sleep</Chip>
+          </div>
+        </AskCard>
+        <ArrowDown />
+        <GetCard>
+          <PlayRow
+            title="Opening day at your new studio"
+            meta="Manifestation · Warm voice · Soft rain"
+          />
+        </GetCard>
+      </div>
     </Stack>
   );
 }
@@ -157,126 +218,260 @@ export function MeditateVignette() {
 export function JournalVignette() {
   return (
     <Stack>
-      <GetCard label="Today's entry">
-        <p className="home-v2-display m-0 text-[19px] italic leading-relaxed">
-          “
-          <span className="border-b-2 border-[var(--hv2-gold)]">
-            I can picture the studio so clearly
-          </span>
-          . But{" "}
-          <span className="border-b-2 border-[#C4878F]">
-            who am I to charge for this?
-          </span>{" "}
-          <span className="border-b-2 border-[#c3d2e8]">
-            Grateful for a quiet morning
-          </span>{" "}
-          to dream.”
+      <div className="flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 py-3.5 text-[var(--hv2-ink)] md:hidden">
+        <p className="m-0 text-[10px] uppercase tracking-[1.4px] text-[var(--hv2-gold)]">
+          Today&apos;s entry
         </p>
-      </GetCard>
-      <ArrowDown />
-      <AskCard label="Patterns this month">
-        {(
-          [
-            ["Vision", "78%", "bg-[var(--hv2-gold)]"],
-            ["Self-doubt", "52%", "bg-[#C4878F]"],
-            ["Gratitude", "36%", "bg-[#c3d2e8]"],
-          ] as const
-        ).map(([label, width, bar]) => (
-          <div key={label} className="flex flex-col gap-2">
-            <span className="text-[15px]">{label}</span>
-            <div className="h-2 rounded-full bg-[var(--hv2-card-track)]">
-              <div className={`h-2 rounded-full ${bar}`} style={{ width }} />
+        <p className="home-v2-display m-0 text-[15px] italic leading-[1.45]">
+          “I can picture{" "}
+          <span className="underline decoration-dotted decoration-[var(--hv2-gold)] underline-offset-[3px]">
+            the studio
+          </span>{" "}
+          so clearly. But{" "}
+          <span className="underline decoration-dotted decoration-[var(--hv2-gold)] underline-offset-[3px]">
+            who am I to charge
+          </span>{" "}
+          for this?”
+        </p>
+        <div className="flex gap-3 pt-0.5">
+          {(
+            [
+              ["Vision", "78%", "bg-[var(--hv2-gold)]"],
+              ["Self-doubt", "52%", "bg-[var(--hv2-muted)]"],
+              ["Gratitude", "36%", "bg-[var(--hv2-muted)]"],
+            ] as const
+          ).map(([label, width, bar]) => (
+            <div key={label} className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-[12px] text-[var(--hv2-body)]">{label}</span>
+              <div className="h-1.5 rounded-full bg-[var(--hv2-card-track)]">
+                <div className={`h-1.5 rounded-full ${bar}`} style={{ width }} />
+              </div>
             </div>
-          </div>
-        ))}
-        <span className="pt-1 text-[15px] font-semibold text-[var(--hv2-tan-text)]">
+          ))}
+        </div>
+        <span className="text-[13px] font-semibold text-[var(--hv2-gold)]">
           Turn into a meditation →
         </span>
-      </AskCard>
+      </div>
+      <div className="hidden flex-col gap-3 md:flex">
+        <GetCard label="Today's entry">
+          <p className="home-v2-display m-0 text-[19px] italic leading-relaxed">
+            “
+            <span className="border-b-2 border-[var(--hv2-gold)]">
+              I can picture the studio so clearly
+            </span>
+            . But{" "}
+            <span className="border-b-2 border-[#C4878F]">
+              who am I to charge for this?
+            </span>{" "}
+            <span className="border-b-2 border-[#c3d2e8]">
+              Grateful for a quiet morning
+            </span>{" "}
+            to dream.”
+          </p>
+        </GetCard>
+        <ArrowDown />
+        <AskCard label="Patterns this month">
+          {(
+            [
+              ["Vision", "78%", "bg-[var(--hv2-gold)]"],
+              ["Self-doubt", "52%", "bg-[#C4878F]"],
+              ["Gratitude", "36%", "bg-[#c3d2e8]"],
+            ] as const
+          ).map(([label, width, bar]) => (
+            <div key={label} className="flex flex-col gap-2">
+              <span className="text-[15px]">{label}</span>
+              <div className="h-2 rounded-full bg-[var(--hv2-card-track)]">
+                <div className={`h-2 rounded-full ${bar}`} style={{ width }} />
+              </div>
+            </div>
+          ))}
+          <span className="pt-1 text-[15px] font-semibold text-[var(--hv2-tan-text)]">
+            Turn into a meditation →
+          </span>
+        </AskCard>
+      </div>
     </Stack>
   );
 }
 
 export function ManifestVignette() {
   return (
-    <div
-      className="flex w-full max-w-[540px] flex-col gap-6 rounded-3xl bg-[var(--hv2-navy)] p-10 text-[var(--hv2-ivory)]"
-      aria-hidden
-    >
-      <div className="flex flex-col gap-2.5">
-        <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+    <>
+      <div
+        className="flex w-full max-w-[540px] flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 py-3.5 text-[var(--hv2-ink)] md:hidden"
+        aria-hidden
+      >
+        <p className="m-0 text-[10px] uppercase tracking-[1.4px] text-[var(--hv2-gold)]">
           Vision board
         </p>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="flex gap-1.5">
           {["var(--hv2-gold)", "#3A4E6E", "#EFE6D3", "#8A6A34"].map((c) => (
             <div
               key={c}
-              className="h-[72px] rounded-[10px]"
+              className="h-11 min-w-0 flex-1 rounded-lg"
               style={{ background: c }}
             />
           ))}
         </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
-          Manifesto
-        </p>
-        <p className="home-v2-display m-0 text-xl italic leading-snug">
+        <p className="home-v2-display m-0 text-[15px] italic leading-snug">
           “I trust my vision and act on it every day.”
         </p>
-      </div>
-      <div className="flex flex-col gap-2.5 border-t border-[rgba(246,241,231,0.14)] pt-5">
-        <p className="home-v2-display m-0 text-[22px]">Open my own studio</p>
-        <div className="flex flex-col gap-2 text-[15px]">
+        <div className="h-px bg-[var(--hv2-card-border)]" />
+        <p className="home-v2-display m-0 text-[15px]">Open my own studio</p>
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[13px]">
           <span>● Price the first collection</span>
-          <span className="text-[rgba(246,241,231,0.7)]">○ Find a studio space</span>
-          <span className="text-[rgba(246,241,231,0.7)]">○ Open the online shop</span>
+          <span className="text-[var(--hv2-body)]">○ Find a studio space</span>
+          <span className="text-[var(--hv2-body)]">○ Open the online shop</span>
         </div>
       </div>
-    </div>
+      <div
+        className="hidden w-full max-w-[540px] flex-col gap-6 rounded-3xl bg-[var(--hv2-navy)] p-10 text-[var(--hv2-ivory)] md:flex"
+        aria-hidden
+      >
+        <div className="flex flex-col gap-2.5">
+          <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+            Vision board
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {["var(--hv2-gold)", "#3A4E6E", "#EFE6D3", "#8A6A34"].map((c) => (
+              <div
+                key={c}
+                className="h-[72px] rounded-[10px]"
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <p className="m-0 text-xs uppercase tracking-[1.3px] text-[var(--hv2-gold)]">
+            Manifesto
+          </p>
+          <p className="home-v2-display m-0 text-xl italic leading-snug">
+            “I trust my vision and act on it every day.”
+          </p>
+        </div>
+        <div className="flex flex-col gap-2.5 border-t border-[rgba(246,241,231,0.14)] pt-5">
+          <p className="home-v2-display m-0 text-[22px]">Open my own studio</p>
+          <div className="flex flex-col gap-2 text-[15px]">
+            <span>● Price the first collection</span>
+            <span className="text-[rgba(246,241,231,0.7)]">
+              ○ Find a studio space
+            </span>
+            <span className="text-[rgba(246,241,231,0.7)]">
+              ○ Open the online shop
+            </span>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
 export function FocusVignette() {
   return (
-    <div
-      className="flex w-full max-w-[540px] items-center gap-8 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-10 py-12"
-      aria-hidden
-    >
-      <span className="home-v2-display flex h-[140px] w-[140px] shrink-0 items-center justify-center rounded-full border-[7px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-[34px]">
-        18:24
-      </span>
-      <div className="flex flex-col gap-2">
-        <p className="home-v2-display m-0 text-2xl leading-snug">
-          Price the first collection
-        </p>
-        <p className="m-0 text-sm text-[var(--hv2-muted)]">
-          From Manifest · Open my own studio · step 1 of 3
-        </p>
-        <p className="m-0 pt-1 text-[13px] text-[var(--hv2-tan-text)]">
-          Distracting sites blocked
-        </p>
+    <>
+      <div
+        className="flex w-full max-w-[540px] flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 py-3.5 md:hidden"
+        aria-hidden
+      >
+        <div className="flex items-center gap-3.5">
+          <span className="relative flex h-16 w-16 shrink-0 items-center justify-center">
+            <svg
+              width="64"
+              height="64"
+              className="absolute inset-0 -rotate-90"
+              aria-hidden
+            >
+              <circle
+                cx="32"
+                cy="32"
+                r="27"
+                fill="none"
+                stroke="var(--hv2-card-track)"
+                strokeWidth="4"
+              />
+              <circle
+                cx="32"
+                cy="32"
+                r="27"
+                fill="none"
+                stroke="var(--hv2-gold)"
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeDasharray="125.5 169.6"
+              />
+            </svg>
+            <span className="home-v2-display relative text-[17px]">18:24</span>
+          </span>
+          <span className="flex min-w-0 flex-col gap-[3px]">
+            <span className="home-v2-display text-[16px] leading-snug">
+              Price the first collection
+            </span>
+            <span className="text-[12px] text-[var(--hv2-muted)]">
+              From Manifest · step 1 of 3
+            </span>
+            <span className="text-[12px] text-[var(--hv2-gold)]">
+              Distracting sites blocked
+            </span>
+          </span>
+        </div>
       </div>
-    </div>
+      <div
+        className="hidden w-full max-w-[540px] items-center gap-8 rounded-3xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-10 py-12 md:flex"
+        aria-hidden
+      >
+        <span className="home-v2-display flex h-[140px] w-[140px] shrink-0 items-center justify-center rounded-full border-[7px] border-[var(--hv2-line-soft)] border-r-[var(--hv2-gold)] border-t-[var(--hv2-gold)] text-[34px]">
+          18:24
+        </span>
+        <div className="flex flex-col gap-2">
+          <p className="home-v2-display m-0 text-2xl leading-snug">
+            Price the first collection
+          </p>
+          <p className="m-0 text-sm text-[var(--hv2-muted)]">
+            From Manifest · Open my own studio · step 1 of 3
+          </p>
+          <p className="m-0 pt-1 text-[13px] text-[var(--hv2-tan-text)]">
+            Distracting sites blocked
+          </p>
+        </div>
+      </div>
+    </>
   );
 }
 
 export function ChatVignette() {
   return (
-    <div
-      className="flex w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-10"
-      aria-hidden
-    >
-      <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
-        I keep doubting myself.
+    <>
+      <div
+        className="flex w-full max-w-[540px] flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] bg-[var(--hv2-card)] px-4 py-3.5 md:hidden"
+        aria-hidden
+      >
+        <div className="ml-auto max-w-[82%] rounded-[12px_12px_4px_12px] bg-[var(--hv2-gold)] px-[13px] py-[9px] text-[14px] leading-[1.4] text-[var(--hv2-navy)]">
+          I keep doubting myself.
+        </div>
+        <div className="mr-auto max-w-[88%] rounded-[12px_12px_12px_4px] border border-[var(--hv2-card-border)] bg-[var(--hv2-sticky-bg)] px-[13px] py-[9px] text-[14px] leading-[1.4] text-[var(--hv2-ink)]">
+          Want a meditation for that?
+        </div>
+        <span className="self-start rounded-full border border-[rgba(246,241,231,0.22)] px-3 py-1.5 text-[13px] text-[var(--hv2-ink)]">
+          ▸ Start meditation
+        </span>
       </div>
-      <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
-        Want a meditation for that?
+      <div
+        className="hidden w-full max-w-[540px] flex-col gap-3.5 rounded-3xl bg-[var(--hv2-navy)] p-10 md:flex"
+        aria-hidden
+      >
+        <div className="self-end rounded-[18px_18px_4px_18px] bg-[var(--hv2-gold)] px-[18px] py-3.5 text-base text-[var(--hv2-navy)]">
+          I keep doubting myself.
+        </div>
+        <div className="self-start rounded-[18px_18px_18px_4px] bg-[rgba(246,241,231,0.08)] px-[18px] py-3.5 text-base text-[var(--hv2-ivory)]">
+          Want a meditation for that?
+        </div>
+        <span className="self-start rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]">
+          ▸ Start meditation
+        </span>
       </div>
-      <span className="self-start rounded-full border border-[rgba(246,241,231,0.3)] px-3.5 py-2 text-sm text-[var(--hv2-ivory)]">
-        ▸ Start meditation
-      </span>
-    </div>
+    </>
   );
 }
 

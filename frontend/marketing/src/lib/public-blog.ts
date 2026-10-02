@@ -169,13 +169,10 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
       authorPhotoEnabled: data.authorPhotoEnabled === true,
       posts: (data.posts ?? [])
         .map(coerceSummary)
-        .filter((p): p is PublicBlogPostSummary => Boolean(p))
-        .sort((a, b) => {
-          const aHas = a.hasBody ? 0 : 1;
-          const bHas = b.hasBody ? 0 : 1;
-          if (aHas !== bHas) return aHas - bHas;
-          return (b.updatedAt || "").localeCompare(a.updatedAt || "");
-        }),
+        .filter((p): p is PublicBlogPostSummary => p != null && p.hasBody)
+        .sort((a, b) =>
+          (b.updatedAt || "").localeCompare(a.updatedAt || ""),
+        ),
     };
   } catch {
     return {
@@ -219,7 +216,9 @@ export async function fetchPublishedBlogPost(
           .replace(/\s+/g, " ")
           .trim(),
       );
-    return { ...summary, body, hasBody };
+    // Public Read never surfaces published shells with no article body.
+    if (!hasBody) return null;
+    return { ...summary, body, hasBody: true };
   } catch {
     return null;
   }

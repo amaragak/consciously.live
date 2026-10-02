@@ -177,14 +177,14 @@ const LIFE_EXAMPLES: Record<
   },
   conversation: {
     input: (
-      <div className="flex h-full flex-col justify-center gap-2.5">
-        <div className="self-end max-w-[85%] rounded-[14px] bg-[var(--hv2-gold)] px-3.5 py-2.5 text-sm text-[var(--hv2-on-gold)]">
+      <div className="flex flex-col gap-2.5">
+        <div className="ml-auto max-w-[82%] rounded-[12px_12px_4px_12px] bg-[var(--hv2-gold)] px-[13px] py-[9px] text-[14px] leading-[1.4] text-[var(--hv2-navy)]">
           I keep circling the same doubt before I price anything.
         </div>
-        <div className="max-w-[85%] rounded-[14px] bg-[var(--hv2-card-track)] px-3.5 py-2.5 text-sm text-[var(--hv2-ink)]">
+        <div className="mr-auto max-w-[88%] rounded-[12px_12px_12px_4px] border border-[var(--hv2-card-border)] bg-[var(--hv2-sticky-bg)] px-[13px] py-[9px] text-[14px] leading-[1.4] text-[var(--hv2-ink)]">
           What’s under it: charging too much, or being seen?
         </div>
-        <div className="self-end max-w-[85%] rounded-[14px] bg-[var(--hv2-gold)] px-3.5 py-2.5 text-sm text-[var(--hv2-on-gold)]">
+        <div className="ml-auto max-w-[82%] rounded-[12px_12px_4px_12px] bg-[var(--hv2-gold)] px-[13px] py-[9px] text-[14px] leading-[1.4] text-[var(--hv2-navy)]">
           Both. I want to feel already worth it.
         </div>
       </div>
@@ -309,6 +309,27 @@ function WaveBars() {
   );
 }
 
+function CompactPlayerRow({ title, meta }: { title: string; meta: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className="accent-fill-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]"
+        aria-hidden
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className={`home-v2-display text-[16px] leading-snug ${IVORY}`}>
+          {title}
+        </span>
+        <span className={`truncate text-[12px] ${FAINT}`}>{meta}</span>
+      </span>
+    </div>
+  );
+}
+
 function PlayerCard({ title, meta }: { title: string; meta: string }) {
   return (
     <div
@@ -338,63 +359,104 @@ function PlayerCard({ title, meta }: { title: string; meta: string }) {
 }
 
 function PersonalByDesign() {
-  const [chip, setChip] = useState<LifeChip>("conversation");
+  const [chip, setChip] = useState<LifeChip>("sentence");
   const ex = LIFE_EXAMPLES[chip];
 
+  const chips = (
+    <div className="flex flex-wrap gap-2" role="group" aria-label="How you arrive">
+      {LIFE_CHIPS.map((c) => {
+        const on = c.id === chip;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => setChip(c.id)}
+            className={`whitespace-nowrap rounded-full px-[13px] py-[7px] text-[13px] transition-colors md:px-4 md:py-2 md:text-sm ${
+              on
+                ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
+                : "home-v2-life-chip-pulse border border-[rgba(246,241,231,0.22)] text-[var(--hv2-body)] md:border-[var(--hv2-line)]"
+            }`}
+          >
+            {c.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <section className={`${BANDS[0]} w-full px-5 py-16 md:px-6 md:py-24`}>
-      <div className="mx-auto grid w-full max-w-[1200px] gap-10 md:grid-cols-[minmax(0,420px)_minmax(0,1fr)] md:items-center md:gap-16">
+    <section
+      className={`${BANDS[0]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
+      {/* Mobile: stacked copy + chips + one compact card */}
+      <div
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 md:hidden"
+        data-hv2-reveal
+      >
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+        >
+          Personal by design
+        </span>
+        <h2
+          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+        >
+          Made from your life, not a library.
+        </h2>
+        <p className={`m-0 mb-1 text-[15px] leading-[1.55] ${MUTED}`}>
+          Type a thought, talk it through, start from last night’s entry or the
+          studio you’re building. Every session is written for you, for today.
+        </p>
+        {chips}
+        <div
+          className={`flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-3.5`}
+        >
+          {ex.input}
+          <div className="h-px bg-[var(--hv2-card-border)]" />
+          <span
+            className={`text-[10px] font-normal uppercase tracking-[1.4px] ${GOLD}`}
+          >
+            You get
+          </span>
+          <CompactPlayerRow title={ex.title} meta={ex.meta} />
+        </div>
+      </div>
+
+      {/* Desktop */}
+      <div className="mx-auto hidden w-full max-w-[1200px] gap-10 md:grid md:grid-cols-[minmax(0,420px)_minmax(0,1fr)] md:items-center md:gap-16">
         <div className="flex flex-col gap-[18px]" data-hv2-reveal>
-          <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+          <span
+            className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+          >
             Personal by design
           </span>
-          <h2 className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}>
+          <h2
+            className={`home-v2-display m-0 text-[46px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          >
             Made from your life, not a library.
           </h2>
-          <p className={`m-0 max-w-[420px] text-base leading-relaxed ${MUTED} md:text-[19px] md:leading-[1.6]`}>
+          <p
+            className={`m-0 max-w-[420px] text-[19px] leading-[1.6] ${MUTED}`}
+          >
             Type a thought, talk it through, start from last night’s entry or
             the studio you’re building. Every session is written for you, for
             today.
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-[18px]" data-hv2-reveal>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="How you arrive">
-            {LIFE_CHIPS.map((c) => {
-              const on = c.id === chip;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => setChip(c.id)}
-                  className={`rounded-full px-4 py-2 text-sm transition-colors ${
-                    on
-                      ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-                      : "home-v2-life-chip-pulse border border-[var(--hv2-line)] text-[var(--hv2-body)]"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-col items-stretch gap-4 md:flex-row md:items-center md:gap-[18px]">
+          {chips}
+          <div className="flex flex-row items-center gap-[18px]">
             <div
               className={`flex ${LIFE_GRAPHIC_H} min-h-0 flex-1 flex-col gap-2.5 self-stretch overflow-hidden rounded-2xl ${CARD} px-5 py-[18px]`}
             >
               {ex.input}
             </div>
             <span
-              className="hidden shrink-0 text-[22px] text-[var(--hv2-gold)] md:inline"
+              className="shrink-0 text-[22px] text-[var(--hv2-gold)]"
               aria-hidden
             >
               →
-            </span>
-            <span
-              className="flex justify-center text-[22px] text-[var(--hv2-gold)] md:hidden"
-              aria-hidden
-            >
-              ↓
             </span>
             <PlayerCard title={ex.title} meta={ex.meta} />
           </div>
@@ -421,27 +483,35 @@ function StylesGrid() {
   const createHref = createMeditationHref({ path: "style" });
 
   return (
-    <section className={`${BANDS[1]} w-full px-5 py-16 md:px-6 md:py-24`}>
+    <section
+      className={`${BANDS[1]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
       <div className="mx-auto w-full max-w-[1200px]">
         <div
-          className="mb-9 flex flex-col gap-4 md:mb-9 md:flex-row md:items-end md:justify-between md:gap-12"
+          className="mb-3 flex flex-col gap-3 md:mb-9 md:flex-row md:items-end md:justify-between md:gap-12"
           data-hv2-reveal
         >
-          <div className="flex flex-col gap-[18px]">
-            <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+          <div className="flex flex-col gap-3 md:gap-[18px]">
+            <span
+              className={`text-[11px] font-semibold uppercase tracking-[1.6px] md:text-xs ${GOLD}`}
+            >
               Styles
             </span>
-            <h2 className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}>
+            <h2
+              className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}
+            >
               Twelve ways to sit.
             </h2>
           </div>
-          <p className={`m-0 max-w-[440px] text-base leading-relaxed ${MUTED} md:text-[19px] md:leading-[1.6]`}>
+          <p
+            className={`m-0 mb-1 max-w-[440px] text-[15px] leading-[1.55] ${MUTED} md:mb-0 md:text-[19px] md:leading-[1.6]`}
+          >
             Pick a style for the kind of practice you want — tap play to hear a
             sample first.
           </p>
         </div>
         <ul
-          className="m-0 grid list-none grid-cols-2 gap-3.5 p-0 md:grid-cols-4"
+          className="m-0 grid list-none grid-cols-2 gap-2 p-0 md:gap-3.5 md:grid-cols-4"
           data-hv2-reveal
         >
           {MEDITATION_STYLE_LABELS.map((style) => {
@@ -458,18 +528,68 @@ function StylesGrid() {
 
             return (
               <li key={style} className="min-w-0">
+                {!sample ? (
+                  <Link
+                    href={createHref}
+                    className="flex w-full flex-col gap-[3px] rounded-xl border border-[var(--hv2-card-border)] px-3 py-[11px] text-left md:hidden"
+                    style={{ background: styleCardBackground(style) }}
+                  >
+                    <span className="flex items-center justify-between gap-1.5">
+                      <span className={`home-v2-display text-[15px] leading-snug ${IVORY}`}>
+                        {displayName}
+                      </span>
+                      <span className={`text-[9px] ${GOLD}`} aria-hidden>
+                        ▶
+                      </span>
+                    </span>
+                    <span className={`text-[12px] leading-[1.35] ${FAINT}`}>
+                      {blurb}
+                    </span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={
+                      isPlaying
+                        ? `Pause sample of ${displayName}`
+                        : `Play a sample of ${displayName}`
+                    }
+                    onClick={() => {
+                      if (isActive) toggleCurrent();
+                      else playItem(sample);
+                    }}
+                    className="flex w-full flex-col gap-[3px] rounded-xl border border-[var(--hv2-card-border)] px-3 py-[11px] text-left md:hidden"
+                    style={{ background: styleCardBackground(style) }}
+                  >
+                    <span className="flex items-center justify-between gap-1.5">
+                      <span className={`home-v2-display text-[15px] leading-snug ${IVORY}`}>
+                        {displayName}
+                      </span>
+                      <span className={`text-[9px] ${GOLD}`} aria-hidden>
+                        {isPlaying ? "❚❚" : "▶"}
+                      </span>
+                    </span>
+                    <span className={`text-[12px] leading-[1.35] ${FAINT}`}>
+                      {blurb}
+                    </span>
+                  </button>
+                )}
+
+                {/* Desktop */}
                 <div
-                  className="flex h-full items-start gap-3.5 rounded-[14px] border border-[var(--hv2-card-border)] px-5 py-[18px]"
+                  className="hidden h-full items-start gap-3.5 rounded-[14px] border border-[var(--hv2-card-border)] px-5 py-[18px] md:flex"
                   style={{ background: styleCardBackground(style) }}
                 >
                   <Link
                     href={createHref}
                     className="flex min-w-0 flex-1 flex-col gap-1.5"
                   >
-                    <span className={`home-v2-display text-[18px] leading-snug ${IVORY} md:text-[21px]`}>
+                    <span
+                      className={`home-v2-display text-[21px] leading-snug ${IVORY}`}
+                    >
                       {displayName}
                     </span>
-                    <span className={`text-[13px] leading-[1.45] ${FAINT} md:text-sm`}>
+                    <span className={`text-sm leading-[1.45] ${FAINT}`}>
                       {blurb}
                     </span>
                   </Link>
@@ -513,17 +633,134 @@ function StylesGrid() {
 function ProgramsSection() {
   const [madeForMe, setMadeForMe] = useState(true);
 
+  const toggle = (
+    <div
+      className="flex self-start rounded-full bg-[var(--hv2-page)] p-[3px] text-[12px] md:bg-[var(--hv2-sticky-bg)] md:p-0.5 md:text-[13px]"
+      role="group"
+      aria-label="Program mode"
+    >
+      <button
+        type="button"
+        aria-pressed={!madeForMe}
+        onClick={() => setMadeForMe(false)}
+        className={`rounded-full px-[11px] py-[5px] md:px-3 md:py-1.5 ${
+          !madeForMe
+            ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
+            : FAINT
+        }`}
+      >
+        As written
+      </button>
+      <button
+        type="button"
+        aria-pressed={madeForMe}
+        onClick={() => setMadeForMe(true)}
+        className={`rounded-full px-[11px] py-[5px] md:px-3 md:py-1.5 ${
+          madeForMe
+            ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
+            : FAINT
+        }`}
+      >
+        Made for me
+      </button>
+    </div>
+  );
+
   return (
-    <section className={`${BANDS[2]} w-full px-5 py-16 md:px-6 md:py-24`}>
-      <div className="mx-auto grid w-full max-w-[1200px] gap-10 md:grid-cols-[1fr_minmax(0,520px)] md:items-center md:gap-16">
+    <section
+      className={`${BANDS[2]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
+      {/* Mobile compact */}
+      <div
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 md:hidden"
+        data-hv2-reveal
+      >
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+        >
+          Programs
+        </span>
+        <h2
+          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+        >
+          Curated multi-session journeys, made personal.
+        </h2>
+        <p className={`m-0 mb-1 text-[15px] leading-[1.55] ${MUTED}`}>
+          Follow a course session by session, as it’s written. Or have each one
+          rewritten around what’s going on for you that day.
+        </p>
+        <div
+          className={`flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-3.5`}
+        >
+          <span className={`home-v2-display text-[20px] ${IVORY}`}>
+            Chakra Cleanse
+          </span>
+          {toggle}
+          <span className={`text-[13px] leading-[1.45] ${MUTED}`}>
+            Seven energy centres, root to crown, one session at a time.
+          </span>
+          {madeForMe ? (
+            <>
+              <p className={`m-0 text-[13px] italic leading-snug ${MUTED}`}>
+                “I’ve been feeling unrooted at work — need to land before the
+                week.”
+              </p>
+              <CompactPlayerRow
+                title="Grounded before Monday"
+                meta="Root theme · your words · Warm voice"
+              />
+            </>
+          ) : (
+            <div>
+              {(
+                [
+                  ["Day 1", "Root Chakra", true],
+                  ["Day 4", "Heart Chakra", false],
+                ] as const
+              ).map(([day, title, on]) => (
+                <div
+                  key={title}
+                  className="flex items-center gap-3 border-t border-[var(--hv2-card-border)] py-[9px]"
+                >
+                  <span className={`w-10 shrink-0 text-[12px] ${FAINT}`}>
+                    {day}
+                  </span>
+                  <span className={`home-v2-display min-w-0 flex-1 text-[15px] ${IVORY}`}>
+                    {title}
+                  </span>
+                  {on ? (
+                    <span
+                      className="accent-fill-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]"
+                      aria-hidden
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop */}
+      <div className="mx-auto hidden w-full max-w-[1200px] gap-10 md:grid md:grid-cols-[1fr_minmax(0,520px)] md:items-center md:gap-16">
         <div className="flex flex-col gap-[18px]" data-hv2-reveal>
-          <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+          <span
+            className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+          >
             Programs
           </span>
-          <h2 className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}>
+          <h2
+            className={`home-v2-display m-0 text-[46px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          >
             Curated multi-session journeys, made personal.
           </h2>
-          <p className={`m-0 max-w-[520px] text-base leading-relaxed ${MUTED} md:text-[19px] md:leading-[1.6]`}>
+          <p
+            className={`m-0 max-w-[520px] text-[19px] leading-[1.6] ${MUTED}`}
+          >
             Follow a course session by session, as it’s written. Or have each
             one rewritten around what’s going on for you that day.
           </p>
@@ -536,39 +773,9 @@ function ProgramsSection() {
             <span className={`home-v2-display text-2xl ${IVORY}`}>
               Chakra Cleanse
             </span>
-            <div
-              className="flex rounded-full bg-[var(--hv2-sticky-bg)] p-0.5 text-[13px]"
-              role="group"
-              aria-label="Program mode"
-            >
-              <button
-                type="button"
-                aria-pressed={!madeForMe}
-                onClick={() => setMadeForMe(false)}
-                className={`rounded-full px-3 py-1.5 ${
-                  !madeForMe
-                    ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-                    : FAINT
-                }`}
-              >
-                As written
-              </button>
-              <button
-                type="button"
-                aria-pressed={madeForMe}
-                onClick={() => setMadeForMe(true)}
-                className={`rounded-full px-3 py-1.5 ${
-                  madeForMe
-                    ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-                    : FAINT
-                }`}
-              >
-                Made for me
-              </button>
-            </div>
+            {toggle}
           </div>
 
-          {/* Stack both modes so height follows Made for me; As written keeps dead space. */}
           <div className="grid">
             <div
               className={`col-start-1 row-start-1 flex flex-col gap-2.5 ${
@@ -580,7 +787,9 @@ function ProgramsSection() {
                 Day 1 · Root — rewritten from what you share.
               </p>
               <div className={`rounded-xl ${INSET} px-3.5 py-3`}>
-                <p className={`m-0 text-[10px] font-semibold uppercase tracking-[1.2px] ${GOLD}`}>
+                <p
+                  className={`m-0 text-[10px] font-semibold uppercase tracking-[1.2px] ${GOLD}`}
+                >
                   You say
                 </p>
                 <p className="home-v2-display m-0 mt-1 text-[15px] italic leading-snug text-[var(--hv2-ink)]">
@@ -653,7 +862,9 @@ function ProgramsSection() {
                       {day}
                       {on ? ` · ready audio · ${mins}` : ` · ${mins}`}
                     </p>
-                    <p className={`home-v2-display m-0 text-lg ${IVORY}`}>{title}</p>
+                    <p className={`home-v2-display m-0 text-lg ${IVORY}`}>
+                      {title}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -675,98 +886,137 @@ function SoundSection() {
   const [voice, setVoice] = useState<(typeof voices)[number]>(voices[0]);
   const [bed, setBed] = useState<(typeof beds)[number]>(beds[0]);
 
-  return (
-    <section className={`${BANDS[3]} w-full px-5 py-16 md:px-6 md:py-24`}>
-      <div className="mx-auto grid w-full max-w-[1200px] gap-10 md:grid-cols-[minmax(0,520px)_1fr] md:items-center md:gap-16">
-        <div
-          className={`${CARD} flex flex-col gap-[18px] rounded-[18px] p-6`}
-          data-hv2-reveal
+  const mixer = (
+    <div
+      className={`flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-3.5 md:gap-[18px] md:rounded-[18px] md:p-6`}
+    >
+      <div className="flex flex-col gap-2.5">
+        <span
+          className={`text-[10px] font-normal uppercase tracking-[1.4px] md:text-[11px] md:font-semibold md:tracking-[1.5px] ${GOLD}`}
         >
-          <div className="flex flex-col gap-2.5">
-            <span className={`text-[11px] font-semibold uppercase tracking-[1.5px] ${GOLD}`}>
-              Voice
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {voices.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  aria-pressed={voice === name}
-                  onClick={() => setVoice(name)}
-                  className={`rounded-full px-3.5 py-1.5 text-[13px] ${
-                    voice === name
-                      ? "border border-[var(--hv2-hero-card-border)] bg-[var(--hv2-card-track)] text-[var(--hv2-ink)]"
-                      : "border border-[var(--hv2-card-border)] text-[var(--hv2-body)]"
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
-              <span className="rounded-full border border-[var(--hv2-card-border)] px-3.5 py-1.5 text-[13px] text-[var(--hv2-body)]">
-                + more
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            <span className={`text-[11px] font-semibold uppercase tracking-[1.5px] ${GOLD}`}>
-              Soundscape
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {beds.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  aria-pressed={bed === name}
-                  onClick={() => setBed(name)}
-                  className={`rounded-full px-3.5 py-1.5 text-[13px] ${
-                    bed === name
-                      ? "border border-[var(--hv2-hero-card-border)] bg-[var(--hv2-card-track)] text-[var(--hv2-ink)]"
-                      : "border border-[var(--hv2-card-border)] text-[var(--hv2-body)]"
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
-              <span className="rounded-full border border-[var(--hv2-card-border)] px-3.5 py-1.5 text-[13px] text-[var(--hv2-body)]">
-                + more
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-3 pt-1">
-            <label className={`flex items-center gap-3.5 text-[13px] ${FAINT}`}>
-              <span className="w-[90px] shrink-0">Voice</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={voiceGain}
-                onChange={(e) => setVoiceGain(Number(e.target.value))}
-                aria-label="Voice mix level"
-                className="h-1 w-full accent-[var(--hv2-body)]"
-              />
-            </label>
-            <label className={`flex items-center gap-3.5 text-[13px] ${FAINT}`}>
-              <span className="w-[90px] shrink-0">Soundscape</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={bedGain}
-                onChange={(e) => setBedGain(Number(e.target.value))}
-                aria-label="Soundscape mix level"
-                className="h-1 w-full accent-[var(--hv2-body)]"
-              />
-            </label>
-          </div>
+          Voice
+        </span>
+        <div className="flex flex-wrap gap-1.5 md:gap-2">
+          {voices.map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={voice === name}
+              onClick={() => setVoice(name)}
+              className={`whitespace-nowrap rounded-full px-[13px] py-[7px] text-[13px] ${
+                voice === name
+                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)] md:border md:border-[var(--hv2-hero-card-border)] md:bg-[var(--hv2-card-track)] md:font-normal md:text-[var(--hv2-ink)]"
+                  : "border border-[rgba(246,241,231,0.22)] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+          <span className="whitespace-nowrap rounded-full border border-[rgba(246,241,231,0.22)] px-[13px] py-[7px] text-[13px] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]">
+            + more
+          </span>
         </div>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        <span
+          className={`text-[10px] font-normal uppercase tracking-[1.4px] md:text-[11px] md:font-semibold md:tracking-[1.5px] ${GOLD}`}
+        >
+          <span className="md:hidden">Background</span>
+          <span className="hidden md:inline">Soundscape</span>
+        </span>
+        <div className="flex flex-wrap gap-1.5 md:gap-2">
+          {beds.map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={bed === name}
+              onClick={() => setBed(name)}
+              className={`whitespace-nowrap rounded-full px-[13px] py-[7px] text-[13px] ${
+                bed === name
+                  ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)] md:border md:border-[var(--hv2-hero-card-border)] md:bg-[var(--hv2-card-track)] md:font-normal md:text-[var(--hv2-ink)]"
+                  : "border border-[rgba(246,241,231,0.22)] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+          <span className="whitespace-nowrap rounded-full border border-[rgba(246,241,231,0.22)] px-[13px] py-[7px] text-[13px] text-[var(--hv2-body)] md:border-[var(--hv2-card-border)]">
+            + more
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-3 pt-1 md:gap-3">
+        <label className={`flex items-center gap-3 text-[12px] ${FAINT} md:gap-3.5 md:text-[13px]`}>
+          <span className="w-[74px] shrink-0 md:w-[90px]">Voice</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={voiceGain}
+            onChange={(e) => setVoiceGain(Number(e.target.value))}
+            aria-label="Voice mix level"
+            className="h-1 w-full accent-[var(--hv2-body)]"
+          />
+        </label>
+        <label className={`flex items-center gap-3 text-[12px] ${FAINT} md:gap-3.5 md:text-[13px]`}>
+          <span className="w-[74px] shrink-0 md:w-[90px]">
+            <span className="md:hidden">Background</span>
+            <span className="hidden md:inline">Soundscape</span>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={bedGain}
+            onChange={(e) => setBedGain(Number(e.target.value))}
+            aria-label="Soundscape mix level"
+            className="h-1 w-full accent-[var(--hv2-body)]"
+          />
+        </label>
+      </div>
+    </div>
+  );
+
+  return (
+    <section
+      className={`${BANDS[3]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
+      {/* Mobile: copy then card */}
+      <div
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 md:hidden"
+        data-hv2-reveal
+      >
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+        >
+          Sound
+        </span>
+        <h2
+          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+        >
+          Voices and soundscapes worth closing your eyes for.
+        </h2>
+        <p className={`m-0 mb-1 text-[15px] leading-[1.55] ${MUTED}`}>
+          Natural voices, rich background sound, mixed the way you like it.
+        </p>
+        {mixer}
+      </div>
+
+      {/* Desktop */}
+      <div className="mx-auto hidden w-full max-w-[1200px] gap-10 md:grid md:grid-cols-[minmax(0,520px)_1fr] md:items-center md:gap-16">
+        <div data-hv2-reveal>{mixer}</div>
         <div className="flex flex-col gap-[18px]" data-hv2-reveal>
-          <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+          <span
+            className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+          >
             Sound
           </span>
-          <h2 className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}>
+          <h2
+            className={`home-v2-display m-0 text-[46px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          >
             Voices and soundscapes worth closing your eyes for.
           </h2>
-          <p className={`m-0 max-w-[500px] text-base leading-relaxed ${MUTED} md:text-[19px] md:leading-[1.6]`}>
+          <p className={`m-0 max-w-[500px] text-[19px] leading-[1.6] ${MUTED}`}>
             Natural voices, rich background sound, mixed the way you like it.
           </p>
         </div>
@@ -779,38 +1029,110 @@ function ShareSection() {
   const [copied, setCopied] = useState(false);
   const exampleLink = "consciously.live/listen/…";
 
+  const copyBtn = (
+    <button
+      type="button"
+      className="accent-fill-gradient shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[var(--hv2-on-gold)] md:px-3.5 md:text-[13px]"
+      onClick={() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? "Copied" : "Copy link"}
+    </button>
+  );
+
   return (
-    <section className={`${BANDS[0]} w-full px-5 py-16 md:px-6 md:py-24`}>
-      <div className="mx-auto w-full max-w-[1200px]">
-        <div className="mb-10 flex max-w-[760px] flex-col gap-[18px]" data-hv2-reveal>
-          <span className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}>
+    <section
+      className={`${BANDS[0]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
+    >
+      {/* Mobile: one card, no lead */}
+      <div
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 md:hidden"
+        data-hv2-reveal
+      >
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+        >
+          Share
+        </span>
+        <h2
+          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+        >
+          Made for someone you love.
+        </h2>
+        <div
+          className={`flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-3.5`}
+        >
+          <span
+            className={`text-[10px] uppercase tracking-[1.4px] ${GOLD}`}
+          >
+            Pass it on
+          </span>
+          <span className={`text-[14px] ${MUTED}`}>
+            Found one that landed? Send a listen link — no account needed to
+            hear it.
+          </span>
+          <div
+            className={`flex items-center gap-2 rounded-full border border-[var(--hv2-card-border)] bg-[var(--hv2-page)] py-1.5 pl-3 pr-1.5`}
+          >
+            <span className={`min-w-0 flex-1 truncate text-[12px] ${FAINT}`}>
+              {exampleLink}
+            </span>
+            {copyBtn}
+          </div>
+          <div className="h-px bg-[var(--hv2-card-border)]" />
+          <span
+            className={`text-[10px] uppercase tracking-[1.4px] ${GOLD}`}
+          >
+            Make one for them
+          </span>
+          <span className={`text-[14px] ${MUTED}`}>
+            Write it for someone you love, then share the listen link.
+          </span>
+          <span className={`home-v2-display text-[15px] italic ${IVORY}`}>
+            “For Sam, the night before his first marathon.”
+          </span>
+          <CompactPlayerRow
+            title="Sam, you’re ready"
+            meta="For Sam · Warm voice"
+          />
+        </div>
+      </div>
+
+      {/* Desktop */}
+      <div className="mx-auto hidden w-full max-w-[1200px] md:block">
+        <div
+          className="mb-10 flex max-w-[760px] flex-col gap-[18px]"
+          data-hv2-reveal
+        >
+          <span
+            className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}
+          >
             Share
           </span>
-          <h2 className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY} md:text-[46px]`}>
+          <h2
+            className={`home-v2-display m-0 text-[46px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          >
             Made for someone you love.
           </h2>
         </div>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2" data-hv2-reveal>
+        <div className="grid grid-cols-2 gap-6" data-hv2-reveal>
           <div className={`${CARD} flex flex-col gap-4 rounded-[18px] p-[26px]`}>
-            <p className={`home-v2-display m-0 text-[26px] ${IVORY}`}>Pass it on</p>
+            <p className={`home-v2-display m-0 text-[26px] ${IVORY}`}>
+              Pass it on
+            </p>
             <p className={`m-0 text-base ${MUTED}`}>
               Found one that landed? Send a listen link — no account needed to
               hear it.
             </p>
-            <div className={`flex items-center gap-2.5 rounded-full ${INSET} py-2.5 pl-4 pr-2.5`}>
+            <div
+              className={`flex items-center gap-2.5 rounded-full ${INSET} py-2.5 pl-4 pr-2.5`}
+            >
               <span className={`min-w-0 flex-1 truncate text-sm ${FAINT}`}>
                 {exampleLink}
               </span>
-              <button
-                type="button"
-                className="accent-fill-gradient shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold text-[var(--hv2-on-gold)]"
-                onClick={() => {
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1500);
-                }}
-              >
-                {copied ? "Copied" : "Copy link"}
-              </button>
+              {copyBtn}
             </div>
           </div>
           <div className={`${CARD} flex flex-col gap-4 rounded-[18px] p-[26px]`}>
@@ -820,14 +1142,18 @@ function ShareSection() {
             <p className={`m-0 text-base ${MUTED}`}>
               Write it for someone you love, then share the listen link.
             </p>
-            <div className="flex flex-col items-stretch gap-3.5 md:flex-row md:items-center">
-              <div className={`home-v2-display flex-1 rounded-xl ${INSET} px-4 py-3.5 text-base italic text-[var(--hv2-ink)]`}>
+            <div className="flex flex-row items-center gap-3.5">
+              <div
+                className={`home-v2-display flex-1 rounded-xl ${INSET} px-4 py-3.5 text-base italic text-[var(--hv2-ink)]`}
+              >
                 “For Sam, the night before his first marathon.”
               </div>
-              <span className="hidden text-[22px] text-[var(--hv2-gold)] md:inline" aria-hidden>
+              <span className="text-[22px] text-[var(--hv2-gold)]" aria-hidden>
                 →
               </span>
-              <div className={`flex flex-1 items-center gap-2.5 rounded-xl ${INSET} px-3.5 py-3`}>
+              <div
+                className={`flex flex-1 items-center gap-2.5 rounded-xl ${INSET} px-3.5 py-3`}
+              >
                 <span className="accent-fill-gradient flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                     <path d="M8 5v14l11-7z" />
@@ -870,25 +1196,26 @@ export function MeditateMarketingPage() {
       <div className="relative">
         <HomeV2Chrome />
 
-        <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-16 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
-          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-center gap-5 pt-10 text-center md:gap-[22px] md:pt-14">
+        <section className="home-v2-hero home-v2-hero--under-chrome flex w-full flex-col px-5 pb-10 text-[var(--hv2-hero-fg)] md:px-6 md:pb-24">
+          <div className="relative z-[1] mx-auto flex w-full max-w-[1200px] flex-col items-stretch gap-4 text-left md:items-center md:gap-[22px] md:pt-14 md:text-center">
             <h1
-              className={`home-v2-display m-0 w-full text-[34px] font-[350] leading-[1.08] tracking-[-0.8px] text-[var(--hv2-hero-fg)] sm:text-[44px] md:text-[clamp(44px,5vw,68px)] md:tracking-[-1px] ${h1.className}`}
+              className={`home-v2-display m-0 w-full text-[40px] font-normal leading-[1.06] tracking-[-0.6px] text-[var(--hv2-hero-fg)] md:text-[clamp(44px,5vw,68px)] md:font-[350] md:tracking-[-1px] ${h1.className}`}
               style={h1.style}
             >
               Personalised guided meditations
-              <br />
+              <br className="hidden md:block" />
+              {" "}
               that sound{" "}
               <em className="italic text-[var(--hv2-gold)]">great</em>.
             </h1>
             <p
-              className={`m-0 text-base text-[var(--hv2-hero-muted)] sm:text-lg md:text-[21px] ${sub.className}`}
+              className={`m-0 text-[16px] leading-[1.5] text-[var(--hv2-hero-muted)] md:text-[21px] ${sub.className}`}
               style={sub.style}
             >
               Say what’s on your mind. Press play.
             </p>
             <div
-              className={`mt-2 w-full max-w-[1000px] text-left md:mt-[18px] ${form.className}`}
+              className={`w-full max-w-[1000px] pt-1.5 text-left md:mt-[18px] md:pt-0 ${form.className}`}
               style={form.style}
             >
               <HeroPrompt />
@@ -902,22 +1229,26 @@ export function MeditateMarketingPage() {
         <SoundSection />
         <ShareSection />
 
-        <section className={`${BANDS[1]} w-full px-5 py-14 md:px-6 md:py-20`}>
+        <section
+          className={`${BANDS[1]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-11 md:border-t-0 md:px-6 md:py-20`}
+        >
           <div
-            className="mx-auto flex max-w-[1200px] flex-col items-start gap-6 md:flex-row md:items-center md:justify-between"
+            className="mx-auto flex max-w-[1200px] flex-col items-stretch gap-3.5 text-center md:flex-row md:items-center md:justify-between md:gap-6 md:text-left"
             data-hv2-reveal
           >
-            <div className="flex flex-col gap-2.5">
-              <h2 className={`home-v2-display m-0 text-[30px] font-normal tracking-tight ${IVORY} md:text-[46px]`}>
+            <div className="flex flex-col gap-3.5 md:gap-2.5">
+              <h2
+                className={`home-v2-display m-0 text-[32px] font-normal leading-[1.1] tracking-tight ${IVORY} md:text-[46px]`}
+              >
                 Ready when you are.
               </h2>
-              <p className={`m-0 text-base ${MUTED} md:text-lg`}>
+              <p className={`m-0 text-[15px] ${MUTED} md:text-lg`}>
                 Your first meditation takes one sentence.
               </p>
             </div>
             <Link
               href={createHref}
-              className="accent-fill-gradient inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-[17px] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90"
+              className="accent-fill-gradient mt-1.5 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-full px-7 text-[16px] font-semibold text-[var(--hv2-on-gold)] transition-opacity hover:opacity-90 md:mt-0 md:h-auto md:w-auto md:py-3.5 md:text-[17px]"
             >
               <HomeV2ToolIcon tool="meditate" />
               Create a meditation

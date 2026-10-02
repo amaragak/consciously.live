@@ -28,7 +28,9 @@ export async function handler(
     const slug = event.pathParameters?.slug?.trim();
     if (slug) {
       const post = await getBlogPostBySlug(slug, { publishedOnly: true });
-      if (!post) return json(404, { error: "Not found" });
+      if (!post || !blogBodyHasContent(post.body)) {
+        return json(404, { error: "Not found" });
+      }
       // Allowlist — omit admin-only fields (notes, audio progress, etc.).
       return json(200, {
         post: {
@@ -42,7 +44,7 @@ export async function handler(
           series: post.series,
           part: post.part,
           body: post.body,
-          hasBody: blogBodyHasContent(post.body),
+          hasBody: true,
           published: post.published,
           pinned: post.pinned,
           topPicks: post.topPicks,
@@ -57,28 +59,30 @@ export async function handler(
       listPublishedBlogPosts(),
       getBlogSettings(),
     ]);
-    // Index payload omits full body for bandwidth.
+    // Index payload omits full body for bandwidth; skip empty published drafts.
     return json(200, {
       indexSummary: settings.indexSummary,
       authorPhotoUrl: settings.authorPhotoUrl,
       authorPhotoEnabled: settings.authorPhotoEnabled,
-      posts: posts.map((p) => ({
-        id: p.id,
-        slug: p.slug,
-        title: p.title,
-        subheader: p.subheader,
-        excerpt: p.excerpt,
-        tags: p.tags,
-        category: p.category,
-        series: p.series,
-        part: p.part,
-        hasBody: blogBodyHasContent(p.body),
-        audioUrl: p.audioUrl,
-        pinned: p.pinned,
-        topPicks: p.topPicks,
-        publishedAt: p.publishedAt,
-        updatedAt: p.updatedAt,
-      })),
+      posts: posts
+        .filter((p) => blogBodyHasContent(p.body))
+        .map((p) => ({
+          id: p.id,
+          slug: p.slug,
+          title: p.title,
+          subheader: p.subheader,
+          excerpt: p.excerpt,
+          tags: p.tags,
+          category: p.category,
+          series: p.series,
+          part: p.part,
+          hasBody: true,
+          audioUrl: p.audioUrl,
+          pinned: p.pinned,
+          topPicks: p.topPicks,
+          publishedAt: p.publishedAt,
+          updatedAt: p.updatedAt,
+        })),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Public blog failed";

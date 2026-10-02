@@ -55,7 +55,7 @@ export function ReadPostCard({ post }: { post: PublicBlogPostSummary }) {
             {formatBlogDate(post.publishedAt || post.updatedAt)}
           </p>
           <span className="inline-flex items-center gap-1 text-sm font-medium text-[color:var(--hv2-field-card-link)]">
-            {post.hasBody ? "Continue" : "Coming soon"}
+            Continue
             <span
               aria-hidden
               className="inline-block transition-transform duration-200 group-hover:translate-x-0.5"

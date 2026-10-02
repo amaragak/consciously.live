@@ -14,9 +14,9 @@ import { ReadingProgress } from "@/components/reading-progress";
 
 const HomeV2ScrolledContext = createContext<boolean | null>(null);
 
-/** Become compact/filled when scrolled past this. */
+/** Compact chrome when scrolled past this (px). */
 const SCROLL_FILL_ENTER = 24;
-/** Return to transparent only when back below this (hysteresis). */
+/** Return to top chrome only when back below this (hysteresis). */
 const SCROLL_FILL_EXIT = 8;
 
 function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -66,8 +66,8 @@ export function useHomeV2HeaderScrolled(
 }
 
 /**
- * Single page header: sticky overlay that fills on scroll.
- * Sun glow / compact states live in SiteHeader.
+ * Single page header: sticky overlay that compacts on scroll (paisley stays).
+ * Soft-sun / compact states live in SiteHeader.
  */
 export function HomeV2Chrome({
   scrolled: scrolledProp,

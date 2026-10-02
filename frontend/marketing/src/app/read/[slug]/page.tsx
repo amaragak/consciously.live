@@ -79,13 +79,7 @@ export default async function ReadPostPage({ params }: Props) {
         id="read-article-body"
         className="mt-6 w-full max-w-[680px] text-[var(--hv2-hero-fg)]"
       >
-        {post.hasBody ? (
-          <ReadBody source={post.body} />
-        ) : (
-          <p className="text-base italic leading-relaxed text-[var(--hv2-hero-muted)] sm:text-lg">
-            Coming soon...
-          </p>
-        )}
+        <ReadBody source={post.body} />
       </div>
     </article>
   );

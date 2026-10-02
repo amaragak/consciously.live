@@ -19,11 +19,11 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
   return (
     <section
       id="tool-home"
-      className="home-v2-hero home-v2-hero--under-chrome flex flex-col px-5 pb-14 text-[var(--hv2-hero-fg)] md:px-6 md:pb-[140px]"
+      className="home-v2-hero home-v2-hero--under-chrome flex flex-col px-5 pb-10 text-[var(--hv2-hero-fg)] md:px-6 md:pb-[140px]"
     >
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 pt-7 md:gap-6 md:pt-[72px]">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 md:gap-6 md:pt-[72px]">
         <h1
-          className={`home-v2-display m-0 text-[40px] font-[350] leading-none tracking-[-1px] md:text-[clamp(52px,6vw,88px)] md:tracking-[-2px] ${h1.className}`}
+          className={`home-v2-display m-0 text-[40px] font-normal leading-[1.06] tracking-[-0.6px] md:text-[clamp(52px,6vw,88px)] md:font-[350] md:leading-none md:tracking-[-2px] ${h1.className}`}
           style={h1.style}
         >
           Become who you{" "}
@@ -32,25 +32,40 @@ export function HeroSection({ motionReady }: { motionReady: boolean }) {
           you&apos;d be.
         </h1>
         <div className={sub.className} style={sub.style}>
-          <p className="m-0 max-w-none text-center text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:text-[22px] md:leading-[1.5]">
-            <em className="home-v2-display text-[19px] font-normal italic text-[var(--hv2-ivory)] md:text-[26px]">
+          <p className="m-0 max-w-none text-[16px] leading-[1.5] text-[var(--hv2-hero-muted)] md:hidden">
+            <em className="home-v2-display text-[16px] font-normal italic text-[var(--hv2-ivory)]">
               Live consciously
             </em>{" "}
-            with our all-inclusive{" "}
+            with our{" "}
             <strong className="font-bold text-[var(--hv2-hero-fg)]">
               mind reprogramming
             </strong>{" "}
-            suite:
+            suite.
           </p>
-          <p className="m-0 mt-2 max-w-none text-center text-[17px] leading-relaxed text-[var(--hv2-hero-muted)] md:mt-2.5 md:text-[22px] md:leading-[1.5]">
-            Personalised AI-guided meditations · Vision board · Goal planner ·
-            Personal Manifesto · Focus sessions
-          </p>
+          <div className="hidden md:block">
+            <p className="m-0 max-w-none text-center text-[22px] leading-[1.5] text-[var(--hv2-hero-muted)]">
+              <em className="home-v2-display text-[26px] font-normal italic text-[var(--hv2-ivory)]">
+                Live consciously
+              </em>{" "}
+              with our all-inclusive{" "}
+              <strong className="font-bold text-[var(--hv2-hero-fg)]">
+                mind reprogramming
+              </strong>{" "}
+              suite:
+            </p>
+            <p className="m-0 mt-2.5 max-w-none text-center text-[22px] leading-[1.5] text-[var(--hv2-hero-muted)]">
+              Personalised AI-guided meditations · Vision board · Goal planner ·
+              Personal Manifesto · Focus sessions
+            </p>
+          </div>
         </div>
-        <div className={form.className} style={form.style}>
+        <div className={`pt-1.5 md:pt-0 ${form.className}`} style={form.style}>
           <HeroPrompt />
         </div>
-        <TypesSection motionReady={motionReady} />
+        {/* Desktop only — mobile “start elsewhere” is its own band section */}
+        <div className="hidden md:block">
+          <TypesSection motionReady={motionReady} />
+        </div>
       </div>
     </section>
   );

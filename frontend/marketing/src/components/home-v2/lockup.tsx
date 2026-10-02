@@ -26,7 +26,7 @@ type Props = {
 const sizeClass: Record<NonNullable<Props["size"]>, string> = {
   nav: "text-2xl font-medium tracking-tight md:text-[28px] md:tracking-[-0.5px]",
   sticky: "text-[26px] font-medium tracking-[-0.4px]",
-  eyebrow: "text-[22px]",
+  eyebrow: "text-[15px] md:text-[22px]",
   card: "text-[15px]",
 };
 
