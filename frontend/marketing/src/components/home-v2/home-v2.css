@@ -387,16 +387,22 @@
   backdrop-filter: none !important;
 }
 
-/* Overlay header: opaque plate matching the page underneath (hero or field).
- * Scroll only compacts chrome — no solid sticky-bg swap.
- * `.is-scrolled` drives size / soft-sun; paisley tokens stay. */
+/* Overlay header: paisley plate over page bg at top; scroll fills to sticky navy
+ * (same as mobile menu / SPA `NAV_HEADER` `#1E232E`) — fade from paisley, not transparent.
+ * Fill uses the same duration/easing as the vertical compress so it reads as one motion. */
 .home-v2.home-v2-site-header.home-v2-site-header--overlay {
-  background: var(--hv2-hero-bg) !important;
+  /* Use background-color (not shorthand) so the fill can interpolate. */
+  background-color: var(--hv2-hero-bg) !important;
+  background-image: none !important;
   border-bottom: none;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  transition: none;
+  transition: background-color 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
   isolation: isolate;
+}
+
+.home-v2.home-v2-site-header.home-v2-site-header--overlay.is-scrolled {
+  background-color: var(--hv2-sticky-bg) !important;
 }
 
 /* Same paisley + L/R fade as `.home-v2-hero::before`. */
@@ -406,6 +412,7 @@
   background-size: var(--hv2-hero-pattern-size);
   background-position: 0 0;
   opacity: var(--hv2-hero-pattern-opacity);
+  transition: opacity 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
   -webkit-mask-image: var(--hv2-hero-pattern-mask);
   mask-image: var(--hv2-hero-pattern-mask);
   -webkit-mask-repeat: no-repeat;
@@ -416,9 +423,18 @@
   mask-mode: alpha;
 }
 
+.home-v2-site-header--overlay.is-scrolled .home-v2-site-header-hero-plate {
+  opacity: 0;
+}
+
 /* Read / field shells — quieter flat paisley (matches `.home-v2-field::before`). */
 .home-v2-field .home-v2.home-v2-site-header.home-v2-site-header--overlay {
-  background: var(--hv2-field-bg) !important;
+  background-color: var(--hv2-field-bg) !important;
+}
+
+.home-v2-field
+  .home-v2.home-v2-site-header.home-v2-site-header--overlay.is-scrolled {
+  background-color: var(--hv2-sticky-bg) !important;
 }
 
 .home-v2-field .home-v2-site-header-hero-plate {
@@ -429,14 +445,34 @@
   mask-image: var(--hv2-field-pattern-mask);
 }
 
-/* Compact bar + CTA after scroll — size only; paisley plate stays.
- * Hairline sits on the content column (max 1200px), not full viewport. */
+.home-v2-field
+  .home-v2-site-header--overlay.is-scrolled
+  .home-v2-site-header-hero-plate {
+  opacity: 0;
+}
+
+/* Compact bar + CTA after scroll. Hairline grows content→full-bleed with height. */
 .home-v2-site-header--overlay .home-v2-site-header-bar {
   height: 60px;
   padding-left: 0;
   padding-right: 0;
-  border-bottom: 1px solid var(--hv2-hero-hairline);
+  border-bottom: none;
   transition: height 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-v2-site-header--overlay .home-v2-site-header-bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 100%;
+  height: 1px;
+  background: var(--hv2-hero-hairline);
+  pointer-events: none;
+  transition:
+    left 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 @media (min-width: 768px) {
@@ -447,6 +483,11 @@
 
 .home-v2-site-header--overlay.is-scrolled .home-v2-site-header-bar {
   height: 60px;
+}
+
+.home-v2-site-header--overlay.is-scrolled .home-v2-site-header-bar::after {
+  left: calc(50% - 50vw);
+  width: 100vw;
 }
 
 @media (min-width: 768px) {
@@ -533,7 +574,7 @@
 .home-v2-site-header-soft-sun {
   height: 96px;
   opacity: 1;
-  transition: none;
+  transition: opacity 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .home-v2-site-header--overlay.is-scrolled .home-v2-site-header-soft-sun {
@@ -1124,8 +1165,10 @@
   }
 
   .home-v2.home-v2-site-header.home-v2-site-header--overlay,
+  .home-v2-site-header-hero-plate,
   .home-v2-site-header-soft-sun,
   .home-v2-site-header--overlay .home-v2-site-header-bar,
+  .home-v2-site-header--overlay .home-v2-site-header-bar::after,
   .home-v2-header-cta,
   .home-v2-site-header--overlay .home-v2-site-header-menu-btn,
   .home-v2-site-header--overlay .home-v2-header-cta-mobile,

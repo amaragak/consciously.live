@@ -48,11 +48,11 @@ type Props = {
   position?: "fixed" | "sticky" | "static";
   /**
    * `solid` = always filled sticky.
-   * `overlay` = hero paisley plate; `scrolled` only compacts chrome (no solid fill swap).
+   * `overlay` = page paisley at top; `scrolled` fades plate → sticky navy + compact chrome.
    * `transparent` = always clear (legacy; prefer overlay).
    */
   tone?: "solid" | "transparent" | "overlay";
-  /** With `tone="overlay"`: compact chrome when true; paisley stays. */
+  /** With `tone="overlay"`: solid sticky fill + compact chrome when true. */
   scrolled?: boolean;
   className?: string;
   children?: ReactNode;
@@ -114,7 +114,7 @@ export function HomeV2SiteHeader({
       } ${positionClass} ${className}`.trim()}
       style={isFixed ? { position: "fixed" } : undefined}
     >
-      {/* Paisley plate — hero or field tokens (via CSS) so fade matches the page. */}
+      {/* Paisley plate — matches page fade; snaps off on scroll to sticky base. */}
       {isOverlay ? (
         <div
           aria-hidden

@@ -66,7 +66,7 @@ export function useHomeV2HeaderScrolled(
 }
 
 /**
- * Single page header: sticky overlay that compacts on scroll (paisley stays).
+ * Single page header: sticky overlay that fills to sticky navy + compacts on scroll.
  * Soft-sun / compact states live in SiteHeader.
  */
 export function HomeV2Chrome({
