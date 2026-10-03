@@ -14,7 +14,10 @@ import {
   normalizeTtsProvider,
   type TtsProvider,
 } from "./_shared/orpheus-voices";
-import { coerceClaudeModel } from "./_shared/anthropic-pricing";
+import {
+  CLAUDE_SONNET_45_MODEL_ID,
+  coerceClaudeModel,
+} from "./_shared/anthropic-pricing";
 import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
 import { sanitizeMeditationCreationProvenance } from "./_shared/meditation-creation-provenance";
 
@@ -175,7 +178,10 @@ export async function handler(
     body.creationProvenance,
   );
 
-  const claudeModel = coerceClaudeModel(body.claudeModel);
+  // Script + metadata default to Sonnet; create UI may still A/B Haiku in dev.
+  const claudeModel = coerceClaudeModel(
+    body.claudeModel ?? CLAUDE_SONNET_45_MODEL_ID,
+  );
 
   const rawFishModel =
     typeof body.fishTtsModel === "string" ? body.fishTtsModel.trim() : "";

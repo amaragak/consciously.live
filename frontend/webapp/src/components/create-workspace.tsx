@@ -1268,9 +1268,9 @@ export function CreateWorkspace({
    * Default off — standard guided density.
    */
   const [longerBreaks, setLongerBreaks] = useState(false);
-  /** Dev-only Claude A/B for coach chat + script generation. */
+  /** Dev-only Claude A/B for coach chat + script generation (prod default Sonnet). */
   const [claudeModelChoice, setClaudeModelChoice] = useState<string>(
-    CLAUDE_HAIKU_45_MODEL_ID,
+    CLAUDE_SONNET_45_MODEL_ID,
   );
   /** Dev: Fish qualitative tags vs our ffmpeg silence chunks (default). */
   const [fishPauseMode, setFishPauseMode] = useState<FishPauseMode>("segmented");
@@ -4401,7 +4401,7 @@ export function CreateWorkspace({
         fishTtsModel: "s2.1-pro-free",
         claudeModel: showCreateAudioDevControls
           ? claudeModelChoice
-          : CLAUDE_HAIKU_45_MODEL_ID,
+          : CLAUDE_SONNET_45_MODEL_ID,
         fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
         ...(isLocalDevHost() &&
         speechifyEmotionVariants &&
@@ -5085,12 +5085,12 @@ export function CreateWorkspace({
               className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
               role="group"
               aria-label="Claude model"
-              title="Dev-only A/B for script generation. Production always uses Haiku. Cost per meditation shows in the library flyover."
+              title="Dev-only A/B for script generation. Production defaults to Sonnet. Cost per meditation shows in the library flyover."
             >
               {(
                 [
-                  [CLAUDE_HAIKU_45_MODEL_ID, "Haiku"],
                   [CLAUDE_SONNET_45_MODEL_ID, "Sonnet"],
+                  [CLAUDE_HAIKU_45_MODEL_ID, "Haiku"],
                 ] as const
               ).map(([value, label]) => (
                 <button

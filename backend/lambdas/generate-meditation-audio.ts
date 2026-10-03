@@ -181,8 +181,16 @@ export type GenerationPhaseTimings = {
   /** encode+upload dry/wet AAC (.m4a) stems after bounce. */
   fxStemEncodeMs?: number;
   uploadMs?: number;
-  /** gpt-image cover after audio upload. */
+  /**
+   * gpt-image cover wall (starts after metadata, overlaps voice build).
+   * Full OpenAI call duration — not necessarily additive on the critical path.
+   */
   coverMs?: number;
+  /**
+   * Residual wait for cover after audio upload (0 when cover finished during
+   * voice). Used for accounted/gap; coverMs stays the full gen time for the flyout.
+   */
+  coverWaitMs?: number;
   /** Analytics/library Dynamo Put. */
   libraryWriteMs?: number;
   /** Sum of known in-worker phases (excludes workerWaitMs). */
@@ -219,6 +227,12 @@ function finalizeGenerationTimings(
     Number.isFinite(p.ttsPipelineMs) &&
     p.ttsPipelineMs > 0;
 
+  // Cover runs in parallel with voice; only residual wait is on the critical path.
+  const coverOnCriticalPath =
+    typeof p.coverWaitMs === "number" && Number.isFinite(p.coverWaitMs)
+      ? p.coverWaitMs
+      : p.coverMs;
+
   const internal = pcmPipeline
     ? [
         p.scriptMs,
@@ -226,7 +240,7 @@ function finalizeGenerationTimings(
         p.ttsPipelineMs,
         p.fxStemEncodeMs,
         p.uploadMs,
-        p.coverMs,
+        coverOnCriticalPath,
         p.libraryWriteMs,
       ]
     : [
@@ -239,7 +253,7 @@ function finalizeGenerationTimings(
         p.fxFailedMs,
         p.fxStemEncodeMs,
         p.uploadMs,
-        p.coverMs,
+        coverOnCriticalPath,
         p.libraryWriteMs,
       ];
   let accounted = 0;
@@ -1940,6 +1954,41 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     console.warn("job metadata update failed", { jobId: event.jobId, msg });
   }
 
+  // Cover needs title/description only — start now so gpt-image overlaps TTS/FX.
+  const libraryMeditationId = randomUUID();
+  const coverBucket = mediaBucketName;
+  const coverPromise: Promise<string | null> =
+    !excludeFromLibrary && coverBucket
+      ? (async () => {
+          const coverStarted = Date.now();
+          try {
+            return await generateAndStoreMeditationCover({
+              s3,
+              bucket: coverBucket,
+              userId: jobUserId,
+              meditationId: libraryMeditationId,
+              input: {
+                title: libraryTitle,
+                description: libraryDescription,
+                meditationStyle: isJournalCatalog ? null : styleTrimmed || null,
+                meditationType: libraryMeditationType,
+                createPrompt: createPromptFromProvenance(creationProvenance),
+              },
+            });
+          } finally {
+            generationTimings.phases.coverMs = elapsedMs(coverStarted);
+          }
+        })()
+      : Promise.resolve(null);
+  /** Await in-flight cover on failure paths so Lambda does not stall on exit. */
+  const drainCover = async () => {
+    try {
+      await coverPromise;
+    } catch {
+      /* generateAndStoreMeditationCover already best-effort */
+    }
+  };
+
   let fishKey: string | undefined;
   let speechifyKey: string | undefined;
   const speechifyLoudnessNormalization = body.skipSpeechifyLoudnorm !== true;
@@ -1971,6 +2020,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
             : "Fish secret lookup failed";
     console.error("tts secret lookup failed", { msg, ttsProvider });
     await markJobFailed(event.jobId, msg);
+    await drainCover();
     return json(500, { error: msg });
   }
 
@@ -2133,6 +2183,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           const msg = e instanceof Error ? e.message : "loudnorm failed";
           console.error("loudnorm failed", { msg });
           await markJobFailed(event.jobId, msg);
+          await drainCover();
           return json(500, { error: msg });
         }
       } else {
@@ -2154,6 +2205,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     const kind = /voice-fx/i.test(msg) ? "voice-fx" : "TTS";
     console.error(`${kind} failed`, { msg, ttsProvider });
     await markJobFailed(event.jobId, msg);
+    await drainCover();
     return json(500, { error: msg });
   }
 
@@ -2192,6 +2244,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       const msg = e instanceof Error ? e.message : "final loudnorm failed";
       console.error("final loudnorm failed", { msg });
       await markJobFailed(event.jobId, msg);
+      await drainCover();
       return json(500, { error: msg });
     }
   }
@@ -2512,6 +2565,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     const msg = e instanceof Error ? e.message : "S3 PutObject failed";
     console.error("S3 PutObject failed", { msg });
     await markJobFailed(event.jobId, msg);
+    await drainCover();
     return json(500, { error: msg });
   }
 
@@ -2538,31 +2592,18 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   if (!excludeFromLibrary) {
   try {
     const createdAt = new Date().toISOString();
-    const id = randomUUID();
+    const id = libraryMeditationId;
     const jobCreatedAt =
       typeof jobItem.createdAt === "string" && jobItem.createdAt.trim()
         ? jobItem.createdAt.trim()
         : null;
     const jobStartedMs = jobCreatedAt ? Date.parse(jobCreatedAt) : NaN;
-    const coverStarted = Date.now();
-    const coverImageKey = mediaBucketName
-      ? await generateAndStoreMeditationCover({
-          s3,
-          bucket: mediaBucketName,
-          userId: jobUserId,
-          meditationId: id,
-          input: {
-            title: libraryTitle,
-            description: libraryDescription,
-            meditationStyle: isJournalCatalog ? null : styleTrimmed || null,
-            meditationType: libraryMeditationType,
-            createPrompt: createPromptFromProvenance(creationProvenance),
-          },
-        })
-      : null;
-    generationTimings.phases.coverMs = elapsedMs(coverStarted);
+    const coverAwaitStarted = Date.now();
+    const coverImageKey = await coverPromise;
+    generationTimings.phases.coverWaitMs = elapsedMs(coverAwaitStarted);
     console.log("cover timing", {
       coverMs: generationTimings.phases.coverMs,
+      coverWaitMs: generationTimings.phases.coverWaitMs,
       coverImageKey,
     });
     const librarySk = `${createdAt}#${id}`;

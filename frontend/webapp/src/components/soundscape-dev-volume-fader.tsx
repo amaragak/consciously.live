@@ -15,7 +15,7 @@ export function SoundscapeDevVolumeFader({
   return (
     <div
       className={`flex min-w-0 max-w-[14rem] flex-1 items-center gap-2 ${className}`}
-      title="Dev: 100% = current soundscape playback level. Reductive only — find an optimal quieter level."
+      title="Dev: 100% = production soundscape level (locked from 67% A/B of the old peak). Reductive only."
     >
       <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-accent-link">
         Vol

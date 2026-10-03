@@ -48,6 +48,7 @@ export {
 } from "./library/library-audio-strip";
 
 export { CoverArtThumb } from "./library/cover-art-thumb";
+export { TypewriterReveal } from "./library/typewriter-reveal";
 
 export { PublicMeditationPlayer } from "./library/public-meditation-player";
 

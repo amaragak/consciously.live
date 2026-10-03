@@ -165,6 +165,7 @@ type OutItem = {
       fxStemEncodeMs?: number;
       uploadMs?: number;
       coverMs?: number;
+      coverWaitMs?: number;
       libraryWriteMs?: number;
       accountedMs?: number;
       gapMs?: number;
@@ -262,6 +263,7 @@ function parseGenerationTimings(raw: unknown): OutItem["generationTimings"] {
       "fxStemEncodeMs",
       "uploadMs",
       "coverMs",
+      "coverWaitMs",
       "libraryWriteMs",
       "accountedMs",
       "gapMs",

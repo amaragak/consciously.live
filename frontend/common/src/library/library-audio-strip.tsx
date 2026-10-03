@@ -15,12 +15,15 @@ import {
 } from "../audio/background-audio-keys";
 import {
   releaseGaplessBed,
+  seekGaplessBed,
   setGaplessBedVolume,
   syncGaplessBed,
 } from "../audio/gapless-bed-loop";
 import {
   applySpeechElementVolume,
   bedElementVolume,
+  BED_OUTRO_FADE_SECONDS,
+  BED_OUTRO_HOLD_SECONDS,
   BED_VOICE_INTRO_SECONDS,
   SOUNDSCAPE_ELEMENT_VOLUME,
   soundscapeListenVolume,
@@ -319,6 +322,13 @@ export function LibraryAudioStrip({
   autoplayRef.current = autoplay;
   const lastReportedTimeRef = useRef<number>(-Infinity);
   const voiceIntroTimerRef = useRef<number | null>(null);
+  /** 1 → 0 during post-voice bed outro fade (music + other live beds). */
+  const bedOutroGainRef = useRef(1);
+  const bedOutroRef = useRef<{
+    active: boolean;
+    holdTimer: number | null;
+    fadeRaf: number | null;
+  }>({ active: false, holdTimer: null, fadeRaf: null });
   const liveBedGainsRef = useRef({
     nature: track?.natureGain ?? 0,
     music: track?.musicGain ?? 0,
@@ -385,12 +395,104 @@ export function LibraryAudioStrip({
     }
   }
 
+  function bedChannelVolume(channel: BedVolumeChannel, gain: number): number {
+    const base =
+      soundscapeActiveRef.current && channel === "music"
+        ? soundscapeListenVolume(gain)
+        : bedElementVolume(gain);
+    return base * Math.min(1, Math.max(0, bedOutroGainRef.current));
+  }
+
+  function applyLiveBedVolumes() {
+    const gains = liveBedGainsRef.current;
+    const beds: Array<{ channel: BedVolumeChannel; el: HTMLAudioElement | null }> =
+      [
+        { channel: "nature", el: natureRef.current },
+        { channel: "music", el: musicRef.current },
+        { channel: "drums", el: drumsRef.current },
+        { channel: "noise", el: noiseRef.current },
+      ];
+    for (const bed of beds) {
+      setGaplessBedVolume(
+        bed.el,
+        bedChannelVolume(bed.channel, gains[bed.channel]),
+      );
+    }
+  }
+
+  /** Soundscapes/compositions only — scrub music bed to the voice clock. */
+  function syncSoundscapeToVoice(voiceSeconds: number) {
+    if (!soundscapeActiveRef.current) return;
+    seekGaplessBed(musicRef.current, voiceSeconds);
+  }
+
+  function clearBedOutro() {
+    const o = bedOutroRef.current;
+    if (o.holdTimer != null) {
+      window.clearTimeout(o.holdTimer);
+      o.holdTimer = null;
+    }
+    if (o.fadeRaf != null) {
+      window.cancelAnimationFrame(o.fadeRaf);
+      o.fadeRaf = null;
+    }
+    o.active = false;
+    bedOutroGainRef.current = 1;
+  }
+
+  /** Hold beds, then fade out after the voice stem ends. */
+  function beginBedOutro() {
+    if (!track) return;
+    if (!trackHasLiveBeds()) {
+      setPlaying(false);
+      onPlayingChange?.(track.s3Key, false);
+      if (!ambientSoundscape) onDismiss();
+      return;
+    }
+    clearBedOutro();
+    clearVoiceIntro();
+    bedOutroRef.current.active = true;
+    bedOutroGainRef.current = 1;
+    // Keep beds running; voice has already stopped in DualStemPlayer / <audio>.
+    setPlaying(true);
+    onPlayingChange?.(track.s3Key, true);
+    applyLiveBedVolumes();
+
+    const s3Key = track.s3Key;
+    bedOutroRef.current.holdTimer = window.setTimeout(() => {
+      bedOutroRef.current.holdTimer = null;
+      if (!bedOutroRef.current.active) return;
+      const started = performance.now();
+      const fadeMs = BED_OUTRO_FADE_SECONDS * 1000;
+      const tick = (now: number) => {
+        if (!bedOutroRef.current.active) return;
+        const t = Math.min(1, (now - started) / fadeMs);
+        // Equal-power-ish ease: stay fuller early, settle quietly at the end.
+        bedOutroGainRef.current = Math.cos((t * Math.PI) / 2);
+        applyLiveBedVolumes();
+        if (t < 1) {
+          bedOutroRef.current.fadeRaf = window.requestAnimationFrame(tick);
+          return;
+        }
+        bedOutroRef.current.active = false;
+        bedOutroRef.current.fadeRaf = null;
+        bedOutroGainRef.current = 1;
+        setPlaying(false);
+        onPlayingChange?.(s3Key, false);
+        if (!ambientSoundscape) onDismiss();
+      };
+      bedOutroRef.current.fadeRaf = window.requestAnimationFrame(tick);
+    }, BED_OUTRO_HOLD_SECONDS * 1000);
+  }
+
   function shouldDelayVoice(atSeconds: number): boolean {
     return trackHasLiveBeds() && atSeconds < 0.08;
   }
 
   function startOrResumePlayback() {
     if (!track) return;
+    clearBedOutro();
+    applyLiveBedVolumes();
     if (ambientMix) {
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
@@ -402,6 +504,7 @@ export function LibraryAudioStrip({
       clearVoiceIntro();
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
+      syncSoundscapeToVoice(dual.currentTime);
       void dual.play().catch(() => {
         setPlaying(false);
         onPlayingChange?.(track.s3Key, false);
@@ -430,15 +533,20 @@ export function LibraryAudioStrip({
       voiceIntroTimerRef.current = window.setTimeout(() => {
         voiceIntroTimerRef.current = null;
         applySpeechElementVolume(el);
+        // Align composition to voice start after the bed-only intro.
+        syncSoundscapeToVoice(0);
         void el.play().catch(() => {});
       }, BED_VOICE_INTRO_SECONDS * 1000);
       return;
     }
+    syncSoundscapeToVoice(el.currentTime);
     void el.play().catch(() => {});
   }
 
   function pausePlayback() {
     clearVoiceIntro();
+    clearBedOutro();
+    applyLiveBedVolumes();
     // Always pause voice — beds follow `playing` via syncGaplessBed. Skipping
     // dual/audio when ambientMix left live-mix voice running after pause.
     audioRef.current?.pause();
@@ -486,12 +594,7 @@ export function LibraryAudioStrip({
               : channel === "drums"
                 ? drumsRef.current
                 : noiseRef.current;
-        setGaplessBedVolume(
-          el,
-          soundscapeActiveRef.current && channel === "music"
-            ? soundscapeListenVolume(gain)
-            : bedElementVolume(gain),
-        );
+        setGaplessBedVolume(el, bedChannelVolume(channel, gain));
       },
       setVoiceFxDial(dial) {
         dualRef.current?.setDial(dial);
@@ -505,6 +608,7 @@ export function LibraryAudioStrip({
   useEffect(() => {
     const beds = [natureRef, musicRef, drumsRef, noiseRef];
     return () => {
+      clearBedOutro();
       for (const ref of beds) releaseGaplessBed(ref.current);
     };
   }, []);
@@ -516,9 +620,11 @@ export function LibraryAudioStrip({
   useEffect(() => {
     if (!track) {
       clearVoiceIntro();
+      clearBedOutro();
       dualRef.current?.stop();
       return;
     }
+    clearBedOutro();
     seekingRef.current = false;
     lastReportedTimeRef.current = -Infinity;
     const shouldPlay = autoplayRef.current;
@@ -539,9 +645,7 @@ export function LibraryAudioStrip({
       const dual = dualRef.current;
       dual.onEnded = () => {
         if (cancelled) return;
-        setPlaying(false);
-        onPlayingChange?.(track.s3Key, false);
-        if (!ambientSoundscape) onDismiss();
+        beginBedOutro();
       };
       if (track.durationSeconds) setDuration(track.durationSeconds);
       if (dual.isPlaying) {
@@ -627,7 +731,6 @@ export function LibraryAudioStrip({
   }, []);
 
   useEffect(() => {
-    const soundscape = soundscapeActive;
     const beds: Array<{
       channel: BedVolumeChannel;
       el: HTMLAudioElement | null;
@@ -661,10 +764,10 @@ export function LibraryAudioStrip({
     for (const bed of beds) {
       const el = bed.el;
       if (!el) continue;
-      const volume =
-        soundscape && bed.channel === "music"
-          ? soundscapeListenVolume(liveBedGainsRef.current[bed.channel])
-          : bedElementVolume(liveBedGainsRef.current[bed.channel]);
+      const volume = bedChannelVolume(
+        bed.channel,
+        liveBedGainsRef.current[bed.channel],
+      );
       if (!mediaBase || !bed.key.trim()) {
         syncGaplessBed(el, { url: null, volume, playing: false });
         continue;
@@ -736,10 +839,8 @@ export function LibraryAudioStrip({
       onPlayingChange?.(track.s3Key, false);
     };
     const onEnded = () => {
-      setPlaying(false);
-      onPlayingChange?.(track.s3Key, false);
-      // Focus soundscapes keep the strip (seekable piece ended); meditations dismiss.
-      if (!ambientSoundscape) onDismiss();
+      // Live beds: hold then fade. Focus soundscapes / no beds: dismiss (or keep strip).
+      beginBedOutro();
     };
 
     el.addEventListener("timeupdate", onTime);
@@ -819,6 +920,7 @@ export function LibraryAudioStrip({
             : max;
       const next = Math.min(end, Math.max(0, dual.currentTime + delta));
       dual.seek(next);
+      syncSoundscapeToVoice(next);
       setCurrent(next);
       reportTime(next);
       if (!playing && voiceIntroTimerRef.current == null) return;
@@ -841,6 +943,7 @@ export function LibraryAudioStrip({
           : max;
     const next = Math.min(end, Math.max(0, el.currentTime + delta));
     el.currentTime = next;
+    syncSoundscapeToVoice(next);
     setCurrent(next);
     if (!playing && voiceIntroTimerRef.current == null) return;
     clearVoiceIntro();
@@ -1047,6 +1150,7 @@ export function LibraryAudioStrip({
                       const dual = dualRef.current;
                       if (!dual) return;
                       dual.seek(v);
+                      syncSoundscapeToVoice(v);
                       setCurrent(v);
                       reportTime(v);
                       if (!playing && voiceIntroTimerRef.current == null) return;
@@ -1062,6 +1166,7 @@ export function LibraryAudioStrip({
                     const el = audioRef.current;
                     if (!el) return;
                     el.currentTime = v;
+                    syncSoundscapeToVoice(v);
                     setCurrent(v);
                     reportTime(v);
                     if (!playing && voiceIntroTimerRef.current == null) return;

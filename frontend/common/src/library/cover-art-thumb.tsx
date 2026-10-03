@@ -1,6 +1,6 @@
 /** Square cover thumb for library cards + now-playing strip. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type CoverArtThumbProps = {
   src?: string | null;
@@ -71,6 +71,9 @@ function CoverPlaceholder({
  * Eager load: the app scrolls inside `<main overflow-y-auto>`, and native
  * `loading="lazy"` often never fetches images in that nested scrollport —
  * leaving empty `bg-surface-2` squares in My Creations.
+ *
+ * When a URL arrives, keep the placeholder underneath and fade the image in
+ * once decoded so library rows that were open during generation feel smooth.
  */
 export function CoverArtThumb({
   src,
@@ -90,23 +93,46 @@ export function CoverArtThumb({
   };
   const box = `shrink-0 overflow-hidden rounded-xl ${className}`;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const broken = Boolean(url) && failedUrl === url;
+  const shown = Boolean(url) && !broken && loadedUrl === url;
 
-  if (url && !broken) {
-    return (
+  useEffect(() => {
+    if (!url) setLoadedUrl(null);
+  }, [url]);
+
+  if (!url || broken) {
+    return <CoverPlaceholder dim={dim} box={box} alt={alt} />;
+  }
+
+  return (
+    <div
+      style={dim}
+      className={`relative ${box}`}
+      role={alt ? "img" : undefined}
+      aria-label={alt || undefined}
+    >
+      <div
+        aria-hidden
+        className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br from-accent/35 via-accent-soft/50 to-selected/25 text-accent/70 transition-opacity duration-500 ease-out ${
+          shown ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        <PlaceholderMark className="h-[45%] w-[45%] opacity-80" />
+      </div>
       <img
         src={url}
         alt={alt}
         width={px}
         height={px}
-        style={dim}
-        className={`${box} object-cover bg-surface-2`}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ease-out ${
+          shown ? "opacity-100" : "opacity-0"
+        }`}
         loading="eager"
         decoding="async"
+        onLoad={() => setLoadedUrl(url)}
         onError={() => setFailedUrl(url)}
       />
-    );
-  }
-
-  return <CoverPlaceholder dim={dim} box={box} alt={alt} />;
+    </div>
+  );
 }

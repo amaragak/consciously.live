@@ -150,6 +150,8 @@ export type GenerationPhaseTimings = {
   fxStemEncodeMs?: number;
   uploadMs?: number;
   coverMs?: number;
+  /** Residual wait after audio when cover overlapped voice (0 = fully hidden). */
+  coverWaitMs?: number;
   libraryWriteMs?: number;
   accountedMs?: number;
   gapMs?: number;
@@ -302,7 +304,19 @@ export function generationTimingsFlyoverLines(
   }
 
   pushMsLine(lines, "Upload", p.uploadMs);
-  pushMsLine(lines, "Cover", p.coverMs, "← gpt-image");
+  {
+    const wait =
+      typeof p.coverWaitMs === "number" && Number.isFinite(p.coverWaitMs)
+        ? p.coverWaitMs
+        : null;
+    const note =
+      wait == null
+        ? "← gpt-image"
+        : wait <= 50
+          ? "← gpt-image · overlapped voice"
+          : `← gpt-image · ${formatStepMs(wait)} on critical path`;
+    pushMsLine(lines, "Cover", p.coverMs, note);
+  }
   pushMsLine(lines, "Library write", p.libraryWriteMs);
 
   if (sections.length > 0) {

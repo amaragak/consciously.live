@@ -22,8 +22,18 @@ import {
 } from "@/lib/meditation-type-pill";
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
-import { CoverArtThumb } from "@consciously/common";
+import { CoverArtThumb, TypewriterReveal } from "@consciously/common";
 import { isLocalDevHost } from "@/lib/dev-ui-settings";
+
+function isPendingMetaReady(raw: string | null | undefined): boolean {
+  const t = (raw ?? "").trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return (
+    lower !== "generating meditation…" &&
+    lower !== "generating meditation..."
+  );
+}
 
 export type SpeechifyEmotionPlayback = "neutral" | "warm" | "calm";
 
@@ -375,8 +385,8 @@ export function LibraryMeditationCard({
 
   if (isPendingRow(item)) {
     const isFailed = item.status === "failed";
-    const titleReady = Boolean(item.title.trim());
-    const descReady = Boolean((item.description ?? "").trim());
+    const titleReady = isPendingMetaReady(item.title);
+    const descReady = isPendingMetaReady(item.description);
     const coverEdge = LIST_COVER_EDGE_DESKTOP_PX;
     const spinner = (
       <svg
@@ -422,9 +432,13 @@ export function LibraryMeditationCard({
     );
     const titleSlot =
       titleReady ? (
-        <h2 className="font-display text-lg font-medium leading-snug">
-          {item.title}
-        </h2>
+        <TypewriterReveal
+          as="h2"
+          text={item.title.trim()}
+          className="font-display text-lg font-medium leading-snug"
+          charMs={32}
+          maxMs={1200}
+        />
       ) : isFailed ? (
         <h2 className="font-display text-lg font-medium leading-snug">
           Generation failed
@@ -436,12 +450,14 @@ export function LibraryMeditationCard({
         />
       );
     const descSlot = descReady ? (
-      <p
+      <TypewriterReveal
+        as="p"
+        text={(item.description ?? "").trim()}
         className="text-sm leading-5 text-muted"
         style={{ minHeight: DESC_BLOCK_MIN_PX }}
-      >
-        {item.description}
-      </p>
+        charMs={18}
+        maxMs={1600}
+      />
     ) : isFailed ? (
       <div style={{ minHeight: DESC_BLOCK_MIN_PX }} />
     ) : (

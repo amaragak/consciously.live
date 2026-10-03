@@ -325,6 +325,47 @@ export function setGaplessBedVolume(el: HTMLAudioElement | null, volume: number)
   if (!controller.handingOver) active(controller).volume = volume;
 }
 
+/**
+ * Scrub the active bed element to `seconds` (wrapped for looping beds).
+ * Used to lock soundscape/composition beds to the voice transport.
+ */
+export function seekGaplessBed(
+  el: HTMLAudioElement | null,
+  seconds: number,
+): void {
+  if (!el) return;
+  const tRaw = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const controller = controllers.get(el);
+  if (!controller) {
+    const d = el.duration;
+    try {
+      el.currentTime =
+        Number.isFinite(d) && d > 0.05
+          ? ((tRaw % d) + d) % d
+          : tRaw;
+    } catch {
+      /* ignore seek before metadata */
+    }
+    return;
+  }
+  if (controller.handingOver) {
+    const next = idle(controller);
+    next.pause();
+    next.volume = 0;
+    controller.handingOver = false;
+  }
+  const cur = active(controller);
+  const d = cur.duration;
+  const t =
+    Number.isFinite(d) && d > 0.05 ? ((tRaw % d) + d) % d : tRaw;
+  try {
+    cur.currentTime = t;
+  } catch {
+    /* ignore seek before metadata */
+  }
+  cur.volume = controller.state.volume;
+}
+
 /** Stop and release both elements for a bed. Call on unmount. */
 export function releaseGaplessBed(el: HTMLAudioElement | null): void {
   if (!el) return;

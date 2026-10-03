@@ -3,15 +3,23 @@ export const BED_GAIN_PEAK_VOLUME = 0.5;
 
 /**
  * Ready-made soundscapes are a whole produced bed rather than one mixer
- * channel. Create audio preview and library play them at 0.75; speech stays at 1.0.
+ * channel. Tuned via the reductive dev fader at 67% of the prior 0.75 peak
+ * (speech stays at 1.0).
  */
-export const SOUNDSCAPE_ELEMENT_VOLUME = 0.75;
+export const SOUNDSCAPE_ELEMENT_VOLUME = 0.75 * 0.67;
 
 /** Narration / voice sample level — always full scale in preview and bake. */
 export const SPEECH_ELEMENT_VOLUME = 1;
 
 /** Bed-only lead-in before speech starts (live mix and baked mix). */
 export const BED_VOICE_INTRO_SECONDS = 1.5;
+
+/**
+ * After the voice stem ends: hold beds at level, then fade them out before
+ * dismissing the player. Music (and other live beds) otherwise cut or run on.
+ */
+export const BED_OUTRO_HOLD_SECONDS = 10;
+export const BED_OUTRO_FADE_SECONDS = 10;
 
 export function bedElementVolume(gain: number): number {
   const g = Math.min(100, Math.max(0, Number.isFinite(gain) ? gain : 0));

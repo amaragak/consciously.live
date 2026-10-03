@@ -3,9 +3,10 @@ export const BED_GAIN_PEAK_VOLUME = 0.5;
 
 /**
  * Ready-made soundscapes are a whole produced bed rather than one mixer
- * channel. Create audio preview and library play them at 0.75; speech stays at 1.0.
+ * channel. Tuned via the reductive dev fader at 67% of the prior 0.75 peak
+ * (speech stays at 1.0).
  */
-export const SOUNDSCAPE_ELEMENT_VOLUME = 0.75;
+export const SOUNDSCAPE_ELEMENT_VOLUME = 0.75 * 0.67;
 
 /** Narration / voice sample level — always full scale in preview and bake. */
 export const SPEECH_ELEMENT_VOLUME = 1;

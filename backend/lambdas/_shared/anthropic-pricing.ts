@@ -15,7 +15,7 @@ export const CLAUDE_HAIKU_45_DATED_MODEL_ID = "claude-haiku-4-5-20251001";
 export const CLAUDE_HAIKU_45_USD_PER_INPUT_TOKEN = 1 / 1_000_000;
 export const CLAUDE_HAIKU_45_USD_PER_OUTPUT_TOKEN = 5 / 1_000_000;
 
-/** Models the create flow may request. Anything else falls back to Haiku. */
+/** Models the create flow may request. Unknown ids fall back to Haiku. */
 export const CLAUDE_MODEL_RATES: Record<
   string,
   { usdPerInputToken: number; usdPerOutputToken: number; label: string }
