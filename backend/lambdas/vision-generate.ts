@@ -112,17 +112,9 @@ type ExtraRefInput = {
 
 type LoadedRefImage = { b64: string; mime: string };
 
-/**
- * Polish a vision-board scene prompt for Gemini image gen (Haiku).
- * Always runs on first pass; optional changeRequest merges a refine note.
- */
-async function polishVisionPromptWithHaiku(
-  basePrompt: string,
-  changeRequest?: string,
-  extraDescriptions?: string[],
-): Promise<string> {
-  const apiKey = await getClaudeApiKey();
-  const system = [
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function visionBoardPolishSystemPrompt(): string {
+  return [
     "You write image prompts for a personal vision board.",
     "A self-reference photo of the real person is attached to the image model — your job is the TEXT prompt only.",
     "Optional supporting reference photos may also be attached (people, pets, places) — each has a user description.",
@@ -161,6 +153,19 @@ async function polishVisionPromptWithHaiku(
     "",
     "Reply with ONLY the prompt text — no quotes, labels, or explanation.",
   ].join("\n");
+}
+
+/**
+ * Polish a vision-board scene prompt for Gemini image gen (Haiku).
+ * Always runs on first pass; optional changeRequest merges a refine note.
+ */
+async function polishVisionPromptWithHaiku(
+  basePrompt: string,
+  changeRequest?: string,
+  extraDescriptions?: string[],
+): Promise<string> {
+  const apiKey = await getClaudeApiKey();
+  const system = visionBoardPolishSystemPrompt();
 
   const userParts = [`User's scene idea:\n${basePrompt}`];
   if (extraDescriptions?.length) {

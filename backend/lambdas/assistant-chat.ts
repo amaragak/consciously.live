@@ -4,23 +4,14 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { buildAssistantChatSystemPrompt } from "./_shared/assistant-chat-system-prompt";
+import { ASSISTANT_CHAT_TITLE_SYSTEM } from "./_shared/assistant-chat-title-system";
 import { buildCachedMessagesRequestBody } from "./_shared/anthropic-prompt-cache";
 import { coerceClaudeModel } from "./_shared/anthropic-pricing";
 import { recordClaudeUsage } from "./_shared/ai-usage";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const TITLE_MODEL = "claude-haiku-4-5";
-const TITLE_SYSTEM = [
-  "You name chat conversation threads.",
-  "Given the user's first message, reply with ONLY a short title.",
-  "Rules:",
-  "- 3 to 7 words",
-  "- Capture the topic or intent; do not copy the message verbatim",
-  "- Never echo typos or the full user sentence — paraphrase (e.g. user “list my graitudes” → “Recent gratitudes”)",
-  "- No quotation marks, no emoji, no trailing punctuation",
-  "- Prefer a concise noun phrase (e.g. \"Morning anxiety before meeting\")",
-  "- Output the title alone — nothing else",
-].join("\n");
+const TITLE_SYSTEM = ASSISTANT_CHAT_TITLE_SYSTEM;
 
 const secrets = new SecretsManagerClient({});
 let cachedKey: string | undefined;

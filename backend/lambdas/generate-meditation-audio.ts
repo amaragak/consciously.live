@@ -1,6 +1,5 @@
 import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import {
   S3Client,
   PutObjectCommand,
@@ -46,19 +45,32 @@ import {
   replacePauseMarkersWithFishNative,
   stripPauseMarkers as spokenPlainWithoutPauses,
   sumPauseMarkerSeconds,
+  withSpokenMeditationTitleIntro,
 } from "./_shared/script-pause-bands";
+import {
+  AAC_CONTENT_TYPE,
+  AAC_EXTENSION,
+  aacAdtsToMp3Buffer,
+  bufferToAacM4a,
+} from "./_shared/audio-aac";
 import {
   getSpeechifyApiKey,
   speechifyRateToSsml,
   speechifyTtsMp3,
+  type SpeechifyEmotionTag,
 } from "./_shared/speechify-tts";
+import {
+  synthesizeSpeechifyPcmFxOla,
+  type SpeechifyDryPcmChunk,
+} from "./_shared/speechify-pcm-fx-ola";
+import { VOICE_FX_PCM_SR } from "./_shared/voice-fx-ffmpeg-chain";
 import { getVoiceSpeaker, loadPauseBandSeconds } from "./_shared/voice-admin";
 import {
   VOICE_FX_WET_PRESET,
   clampVoiceFxDial,
   voiceFxDialGains,
 } from "./_shared/voice-fx-dial";
-import { putVoiceStemStreams } from "./_shared/voice-stem-stream";
+import { applyCommittedVoiceFx } from "./_shared/voice-fx-apply";
 import {
   createPromptFromProvenance,
   generateAndStoreMeditationCover,
@@ -107,7 +119,7 @@ export type GenerationSectionTiming = {
   fxFfmpegMs?: number;
   /** S3 put + VoiceFx invoke + S3 get, i.e. fxMs minus the local ffmpeg work. */
   fxInvokeMs?: number;
-  /** Pedalboard's own processing, as reported by the FX Lambda. */
+  /** Worker ffmpeg delay→afir (legacy field name; not Pedalboard). */
   fxBoardMs?: number;
   /** True when that section's FX Lambda had to start a fresh container. */
   fxColdStart?: boolean;
@@ -116,21 +128,66 @@ export type GenerationSectionTiming = {
 };
 
 export type GenerationPhaseTimings = {
+  /**
+   * Job `createdAt` → worker handler entry (async Invoke lag + worker
+   * cold start). Outside `workerMs`.
+   */
+  workerWaitMs?: number;
+  /** Handler entry → library row written (or worker finish). */
+  workerMs?: number;
   scriptMs?: number;
   metadataMs?: number;
+  /** Sum of per-section TTS API waits (not wall when pipelined with FX). */
+  ttsTotalMs?: number;
+  /**
+   * Speechify PCM path wall: FX load → TTS∥FX → OLA → AAC. When set, accounted
+   * uses this instead of ttsTotal+fx+ola+aac (those overlap / nest).
+   */
+  ttsPipelineMs?: number;
+  /** PCM path: load IR/settings before the TTS∥FX loop. */
+  fxLoadMs?: number;
+  /** PCM path: wall for TTS∥FX loop (excludes FX load, OLA, AAC). */
+  ttsFxLoopMs?: number;
   concatMs?: number;
-  /** Single FX pass over the assembled track: loudnorm + Pedalboard. */
-  fxMs?: number;
-  /** Worker-side ffmpeg inside fxMs: loudnorm + the two format conversions. */
-  fxFfmpegMs?: number;
-  /** S3 put + VoiceFx invoke + S3 get, i.e. fxMs minus the local ffmpeg work. */
-  fxInvokeMs?: number;
-  /** Pedalboard's own processing, as reported by the FX Lambda. */
-  fxBoardMs?: number;
-  /** True when the FX Lambda had to start a fresh container. */
-  fxColdStart?: boolean;
+  /** Speechify PCM: float-bus finalize + dial mix. */
+  olaMs?: number;
+  /** Final 24 kHz PCM → AAC @ 44.1 kHz encode. */
+  aacEncodeMs?: number;
   loudnormMs?: number;
+  /** Full wet bounce wall (success). */
+  fxMs?: number;
+  /** Dev skipVoiceFx — bounce never started. */
+  fxSkipped?: boolean;
+  /** Bounce threw; see fxFailedMs. */
+  fxFailed?: boolean;
+  /** Wall spent in FX try before failure (when fxFailed). */
+  fxFailedMs?: number;
+  /** Worker mp3→wav before FX Lambda. */
+  fxMp3ToWavMs?: number;
+  /** Worker wav→mp3 after FX Lambda. */
+  fxWavToMp3Ms?: number;
+  /** Legacy: fxMp3ToWavMs + fxWavToMp3Ms (and old loudnorm-in-fx). */
+  fxFfmpegMs?: number;
+  /** S3 put of FX input. */
+  fxS3PutMs?: number;
+  /** FX apply wall in the worker (was VoiceFx Lambda invoke). */
+  fxInvokeMs?: number;
+  /** S3 get of FX wet+dry outputs. */
+  fxS3GetMs?: number;
+  /** ffmpeg delay→afir chain (legacy fxBoardMs name). */
+  fxBoardMs?: number;
+  fxColdStart?: boolean;
+  /** encode+upload dry/wet AAC (.m4a) stems after bounce. */
+  fxStemEncodeMs?: number;
   uploadMs?: number;
+  /** gpt-image cover after audio upload. */
+  coverMs?: number;
+  /** Analytics/library Dynamo Put. */
+  libraryWriteMs?: number;
+  /** Sum of known in-worker phases (excludes workerWaitMs). */
+  accountedMs?: number;
+  /** workerMs − accountedMs (untimed gaps inside the handler). */
+  gapMs?: number;
 };
 
 export type GenerationTimings = {
@@ -142,27 +199,102 @@ function elapsedMs(start: number): number {
   return Math.max(0, Date.now() - start);
 }
 
+/** Roll up TTS total + accounted/gap after all phases are filled. */
+function finalizeGenerationTimings(
+  timings: GenerationTimings,
+  workerStarted: number,
+): void {
+  const p = timings.phases;
+  const ttsTotal = timings.sections.reduce(
+    (sum, s) => sum + (Number.isFinite(s.ttsMs) ? s.ttsMs : 0),
+    0,
+  );
+  if (ttsTotal > 0) p.ttsTotalMs = Math.round(ttsTotal);
+  p.workerMs = elapsedMs(workerStarted);
+
+  // PCM pipeline wall already includes TTS + overlapped FX + OLA + AAC.
+  const pcmPipeline =
+    typeof p.ttsPipelineMs === "number" &&
+    Number.isFinite(p.ttsPipelineMs) &&
+    p.ttsPipelineMs > 0;
+
+  const internal = pcmPipeline
+    ? [
+        p.scriptMs,
+        p.metadataMs,
+        p.ttsPipelineMs,
+        p.fxStemEncodeMs,
+        p.uploadMs,
+        p.coverMs,
+        p.libraryWriteMs,
+      ]
+    : [
+        p.scriptMs,
+        p.metadataMs,
+        p.ttsTotalMs,
+        p.concatMs,
+        p.loudnormMs,
+        p.fxMs,
+        p.fxFailedMs,
+        p.fxStemEncodeMs,
+        p.uploadMs,
+        p.coverMs,
+        p.libraryWriteMs,
+      ];
+  let accounted = 0;
+  for (const n of internal) {
+    if (typeof n === "number" && Number.isFinite(n) && n > 0) accounted += n;
+  }
+  p.accountedMs = Math.round(accounted);
+  p.gapMs = Math.max(0, Math.round((p.workerMs ?? 0) - accounted));
+}
+
+/** Human labels for localhost create-audio Dev · toggles (flyover). */
+function buildDevToggleLabels(params: {
+  speechifyEmotionVariants?: boolean;
+  skipVoiceFx?: boolean;
+  skipSpeechifyLoudnorm?: boolean;
+  speechifyRate?: number;
+}): string[] {
+  const labels: string[] = [];
+  if (params.speechifyEmotionVariants === true) labels.push("×3 emotions");
+  if (
+    typeof params.speechifyRate === "number" &&
+    Number.isFinite(params.speechifyRate)
+  ) {
+    const n = Math.round(params.speechifyRate);
+    labels.push(`rate ${n > 0 ? "+" : ""}${n}%`);
+  }
+  if (params.skipVoiceFx === true) labels.push("skip FX");
+  if (params.skipSpeechifyLoudnorm === true) {
+    labels.push("no Speechify loudnorm");
+  }
+  return labels;
+}
+
 const secrets = new SecretsManagerClient({});
 const s3 = new S3Client({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
-const lambdaClient = new LambdaClient({});
 const execFileAsync = promisify(execFile);
 
+/**
+ * Committed admin FX: compressed in → AAC out (no voice WAV encode).
+ */
 async function voiceFxWavViaS3(params: {
-  /** Prefers WAV — Pedalboard MP3-from-buffer often truncates mid-phrase. */
   audio: Buffer;
-  inputFormat: "wav" | "mp3";
+  inputFormat: "wav" | "mp3" | "aac" | "m4a";
   preset: string;
   bucket: string;
   jobId: string;
-  /** Mixer reverb pad; omit for the preset default (2s). */
   tailPadSeconds?: number;
 }): Promise<{
+  /** AAC-in-MP4 FX stem */
   wav: Buffer;
+  /** AAC-in-MP4 dry stem */
   dryWav: Buffer;
-  /** Split of the round trip, plus whatever the FX Lambda reported about itself. */
+  format: "m4a";
   timings: {
     s3PutMs: number;
     invokeMs: number;
@@ -171,136 +303,100 @@ async function voiceFxWavViaS3(params: {
     coldStart?: boolean;
   };
 }> {
-  // One invoke over the joined stem (IAM). HTTP remains for short preview clips.
-  const functionName = process.env.VOICE_FX_FUNCTION_NAME?.trim();
-  const apiBase = process.env.CONSCIOUSLY_API_URL?.trim().replace(/\/$/, "");
-  if (!functionName && !apiBase) {
-    throw new Error(
-      "VOICE_FX_FUNCTION_NAME or CONSCIOUSLY_API_URL is required for voice-fx",
-    );
-  }
-
-  const ext = params.inputFormat === "wav" ? "wav" : "mp3";
-  const inKey = `tmp/voice-fx/${params.jobId}/in.${ext}`;
-  const outKey = `tmp/voice-fx/${params.jobId}/out.wav`;
-  const dryOutKey = `tmp/voice-fx/${params.jobId}/dry.wav`;
-  const requestBody: Record<string, unknown> = {
-    bucket: params.bucket,
-    s3KeyIn: inKey,
-    s3KeyOut: outKey,
-    s3KeyDryOut: dryOutKey,
-    preset: params.preset,
-    inputFormat: params.inputFormat,
-  };
-  if (params.tailPadSeconds !== undefined) {
-    requestBody.tailPadSeconds = params.tailPadSeconds;
-  }
-
-  const putStarted = Date.now();
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: params.bucket,
-      Key: inKey,
-      Body: params.audio,
-      ContentType: params.inputFormat === "wav" ? "audio/wav" : "audio/mpeg",
-      CacheControl: "no-store",
-    }),
-  );
-  const s3PutMs = elapsedMs(putStarted);
-
-  let statusCode = 0;
-  let responseBody = "";
+  void params.preset;
+  void params.jobId;
+  void params.tailPadSeconds;
+  const inputExt =
+    params.inputFormat === "wav"
+      ? ".wav"
+      : params.inputFormat === "mp3"
+        ? ".mp3"
+        : params.inputFormat === "m4a"
+          ? ".m4a"
+          : ".aac";
   const invokeStarted = Date.now();
-
-  if (functionName) {
-    // RequestResponse so errors come back to the worker (Event cannot).
-    const invoke = await lambdaClient.send(
-      new InvokeCommand({
-        FunctionName: functionName,
-        InvocationType: "RequestResponse",
-        Payload: Buffer.from(
-          JSON.stringify({
-            body: JSON.stringify(requestBody),
-          }),
-        ),
-      }),
-    );
-    const rawPayload = invoke.Payload
-      ? Buffer.from(invoke.Payload).toString("utf8")
-      : "";
-    if (invoke.FunctionError) {
-      throw new Error(
-        `voice-fx Lambda ${invoke.FunctionError}: ${rawPayload.slice(0, 2000)}`,
-      );
-    }
-    let parsed: { statusCode?: number; body?: string } | null = null;
-    try {
-      parsed = JSON.parse(rawPayload) as { statusCode?: number; body?: string };
-    } catch {
-      throw new Error(
-        `voice-fx Lambda returned non-JSON: ${rawPayload.slice(0, 2000)}`,
-      );
-    }
-    statusCode = Number(parsed.statusCode ?? 500);
-    responseBody =
-      typeof parsed.body === "string" ? parsed.body : rawPayload;
-  } else {
-    const res = await fetch(`${apiBase}/audio/voice-fx`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-    statusCode = res.status;
-    responseBody = await res.text();
-  }
+  const result = await applyCommittedVoiceFx({
+    s3,
+    bucket: params.bucket,
+    dryAudio: params.audio,
+    inputExt,
+  });
   const invokeMs = elapsedMs(invokeStarted);
-
-  type VoiceFxResponse = {
-    s3KeyOut?: string;
-    error?: string;
-    timingsMs?: Record<string, number>;
-    coldStart?: boolean;
-  };
-  let data: VoiceFxResponse | null = null;
-  try {
-    data = JSON.parse(responseBody) as VoiceFxResponse;
-  } catch {
-    data = null;
-  }
-  if (statusCode < 200 || statusCode >= 300) {
-    const detail = data?.error ?? responseBody.slice(0, 2000);
-    throw new Error(`voice-fx failed (${statusCode}): ${detail}`);
-  }
-
-  const getStarted = Date.now();
-  const fxObj = await s3.send(
-    new GetObjectCommand({ Bucket: params.bucket, Key: outKey }),
-  );
-  const wav = Buffer.from(await fxObj.Body!.transformToByteArray());
-  const dryObj = await s3.send(
-    new GetObjectCommand({ Bucket: params.bucket, Key: dryOutKey }),
-  );
-  const dryWav = Buffer.from(await dryObj.Body!.transformToByteArray());
   return {
-    wav,
-    dryWav,
+    wav: result.fxAudio,
+    dryWav: result.dryAudio,
+    format: "m4a",
     timings: {
-      s3PutMs,
+      s3PutMs: 0,
       invokeMs,
-      s3GetMs: elapsedMs(getStarted),
-      lambda: data?.timingsMs,
-      coldStart: data?.coldStart,
+      s3GetMs: 0,
+      lambda: {
+        irMs: result.timings.irMs,
+        wetMs: result.timings.wetMs,
+        mixMs: result.timings.mixMs,
+        // Stored as fxBoardMs for older flyouts — this is ffmpeg afir, not Pedalboard.
+        boardProcessMs: result.timings.totalMs,
+      },
+      coldStart: false,
     },
   };
 }
 
-async function mp3ToWavBuffer(mp3Buf: Buffer): Promise<Buffer> {
+/** Dial-bake two AAC stems → AAC (no WAV). */
+async function mixDryWetAac(params: {
+  dryAac: Buffer;
+  wetAac: Buffer;
+  dryGain: number;
+  wetGain: number;
+}): Promise<Buffer> {
   const id = randomUUID();
-  const inPath = `/tmp/mp3wav-in-${id}.mp3`;
-  const outPath = `/tmp/mp3wav-out-${id}.wav`;
+  const dryPath = `/tmp/mix-dry-${id}.m4a`;
+  const wetPath = `/tmp/mix-wet-${id}.m4a`;
+  const outPath = `/tmp/mix-out-${id}.m4a`;
   try {
-    fs.writeFileSync(inPath, mp3Buf);
-    // Same 44.1 kHz mono as pause files and the joined stem we send through FX.
+    fs.writeFileSync(dryPath, params.dryAac);
+    fs.writeFileSync(wetPath, params.wetAac);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-y",
+      "-i",
+      dryPath,
+      "-i",
+      wetPath,
+      "-filter_complex",
+      `[0:a]volume=${params.dryGain.toFixed(4)}[d];[1:a]volume=${params.wetGain.toFixed(4)}[w];[d][w]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0`,
+      "-ac",
+      "1",
+      "-ar",
+      "44100",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "160k",
+      outPath,
+    ]);
+    return fs.readFileSync(outPath);
+  } finally {
+    for (const p of [dryPath, wetPath, outPath]) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* */
+      }
+    }
+  }
+}
+
+/** ffmpeg-decode any compressed stem (AAC ADTS / m4a / mp3) → 44.1 kHz mono WAV. */
+async function compressedToWavBuffer(
+  buf: Buffer,
+  inputExt: ".aac" | ".m4a" | ".mp3",
+): Promise<Buffer> {
+  const id = randomUUID();
+  const inPath = `/tmp/fxwav-in-${id}${inputExt}`;
+  const outPath = `/tmp/fxwav-out-${id}.wav`;
+  try {
+    fs.writeFileSync(inPath, buf);
     await execFileAsync("ffmpeg", [
       "-hide_banner",
       "-y",
@@ -324,6 +420,22 @@ async function mp3ToWavBuffer(mp3Buf: Buffer): Promise<Buffer> {
   }
 }
 
+function sniffCompressedExt(buf: Buffer): ".aac" | ".m4a" | ".mp3" {
+  if (
+    buf.length >= 8 &&
+    buf[4] === 0x66 &&
+    buf[5] === 0x74 &&
+    buf[6] === 0x79 &&
+    buf[7] === 0x70
+  ) {
+    return ".m4a";
+  }
+  if (buf.length >= 2 && buf[0] === 0xff && (buf[1]! & 0xf0) === 0xf0) {
+    return ".aac";
+  }
+  return ".mp3";
+}
+
 async function loudnormThenVoiceFxMp3(params: {
   mp3: Buffer;
   preset: string;
@@ -342,23 +454,20 @@ async function loudnormThenVoiceFxMp3(params: {
   const loudStarted = Date.now();
   const loud = await loudnormMp3Buffer(params.mp3);
   const loudnormMs = elapsedMs(loudStarted);
-  // Decode with ffmpeg first — Pedalboard MP3 decode was clipping phrases short.
-  const toWavStarted = Date.now();
-  const wavIn = await mp3ToWavBuffer(loud);
-  const mp3ToWavMs = elapsedMs(toWavStarted);
   const fx = await voiceFxWavViaS3({
-    audio: wavIn,
-    inputFormat: "wav",
+    audio: loud,
+    inputFormat: "mp3",
     preset: params.preset,
     bucket: params.bucket,
     jobId: params.jobId,
     tailPadSeconds: params.tailPadSeconds,
   });
+  // FX returns AAC; catalog path still wants MPEG for some callers.
   const toMp3Started = Date.now();
-  const mp3 = await wavToMp3Buffer(fx.wav);
+  const mp3 = await aacAdtsToMp3Buffer(fx.wav);
   const wavToMp3Ms = elapsedMs(toMp3Started);
   const split = {
-    fxFfmpegMs: loudnormMs + mp3ToWavMs + wavToMp3Ms,
+    fxFfmpegMs: loudnormMs + wavToMp3Ms,
     fxInvokeMs:
       fx.timings.s3PutMs + fx.timings.invokeMs + fx.timings.s3GetMs,
     ...(fx.timings.lambda?.boardProcessMs != null
@@ -459,15 +568,43 @@ let cachedFishKey: string | undefined;
 let cachedRunpodApiKey: string | undefined;
 let cachedRunpodUpstreamUrl: string | undefined;
 
-async function getMp3DurationSeconds(buf: Buffer): Promise<number | null> {
+/** Duration for MP3 / AAC-ADTS / AAC-in-MP4 (post-FX stems are usually .m4a). */
+async function getAudioDurationSeconds(buf: Buffer): Promise<number | null> {
+  const ext = sniffCompressedExt(buf);
+  const mimeType =
+    ext === ".mp3" ? "audio/mpeg" : ext === ".m4a" ? "audio/mp4" : "audio/aac";
   try {
-    const m = await parseBuffer(buf, { mimeType: "audio/mpeg", size: buf.byteLength });
+    const m = await parseBuffer(buf, { mimeType, size: buf.byteLength });
     const d = m.format.duration;
     if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
-    return null;
   } catch {
-    return null;
+    /* fall through to ffprobe */
   }
+  const id = randomUUID();
+  const tmp = `/tmp/dur-${id}${ext}`;
+  try {
+    fs.writeFileSync(tmp, buf);
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      tmp,
+    ]);
+    const d = Number(String(stdout).trim());
+    if (Number.isFinite(d) && d > 0) return d;
+  } catch {
+    /* */
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* */
+    }
+  }
+  return null;
 }
 
 function clampGain(n: unknown): number {
@@ -828,6 +965,10 @@ async function synthesizeSegmentMp3(params: {
   fishApiKey?: string;
   speechifyApiKey?: string;
   speechifyRate?: string;
+  /** Speechify only — omit for neutral. */
+  emotion?: SpeechifyEmotionTag | null;
+  /** Speechify only — default true (~−14 LUFS). */
+  speechifyLoudnessNormalization?: boolean;
   runpod?: { apiKey: string; upstreamUrl: string };
   text: string;
   voiceId: string;
@@ -853,6 +994,10 @@ async function synthesizeSegmentMp3(params: {
       text: params.text,
       voiceId: params.voiceId,
       rate: params.speechifyRate,
+      emotion: params.emotion,
+      loudnessNormalization: params.speechifyLoudnessNormalization,
+      // Chunk first (caller), then per-chunk sentence pauses in SSML.
+      sentenceBreakMs: 777,
     });
   }
   if (!params.runpod) throw new Error("RunPod TTS is not configured");
@@ -871,6 +1016,10 @@ async function synthesizeScriptWithPauses(params: {
   fishApiKey?: string;
   speechifyApiKey?: string;
   speechifyRate?: string;
+  /** Speechify only — omit for neutral. */
+  emotion?: SpeechifyEmotionTag | null;
+  /** Speechify only — default true (~−14 LUFS). */
+  speechifyLoudnessNormalization?: boolean;
   runpod?: { apiKey: string; upstreamUrl: string };
   script: string;
   voiceId: string;
@@ -879,7 +1028,7 @@ async function synthesizeScriptWithPauses(params: {
   pauseBands?: Awaited<ReturnType<typeof loadPauseBandSeconds>>;
   /** Multiply band seconds at render (default PAUSE_RENDER_SCALE). */
   pauseScale?: number;
-  /** When set, loudnorm + Pedalboard run once over the assembled track. */
+  /** When set, loudnorm + ffmpeg IR FX run once over the assembled track. */
   voiceFx?: { preset: string; bucket: string; jobId: string };
 }): Promise<{
   audio: Buffer;
@@ -898,6 +1047,8 @@ async function synthesizeScriptWithPauses(params: {
     fishTtsModel: params.fishTtsModel,
     speechifyApiKey: params.speechifyApiKey,
     speechifyRate: params.speechifyRate,
+    emotion: params.emotion,
+    speechifyLoudnessNormalization: params.speechifyLoudnessNormalization,
   };
   const voiceFx = params.voiceFx;
   const sectionTimings: GenerationSectionTiming[] = [];
@@ -909,20 +1060,51 @@ async function synthesizeScriptWithPauses(params: {
   /**
    * FX after the join only. Per-chunk FX cuts every reverb tail at the
    * segment edge; silence in the assembled stem is where those tails decay.
+   * Uses in-worker ffmpeg echo→afir (committed IR), not Pedalboard.
    */
-  async function applyVoiceFx(mp3: Buffer): Promise<Buffer> {
-    if (!voiceFx) return mp3;
-    const fx = await loudnormThenVoiceFxMp3({
-      mp3,
+  async function applyVoiceFx(
+    audio: Buffer,
+    inputFormat: "mp3" | "aac" | "m4a",
+  ): Promise<Buffer> {
+    if (!voiceFx) return audio;
+    if (inputFormat === "mp3") {
+      const fx = await loudnormThenVoiceFxMp3({
+        mp3: audio,
+        preset: voiceFx.preset,
+        bucket: voiceFx.bucket,
+        jobId: `${voiceFx.jobId}-full`,
+        tailPadSeconds: 2,
+      });
+      fxPhase.fxMs = fx.ms;
+      Object.assign(fxPhase, fx.split);
+      return fx.mp3;
+    }
+    // Speechify: already loudness-normalized — skip ffmpeg loudnorm.
+    // AAC in → FX → AAC out (no WAV hop).
+    const started = Date.now();
+    const fx = await voiceFxWavViaS3({
+      audio,
+      inputFormat: inputFormat === "m4a" ? "m4a" : "aac",
       preset: voiceFx.preset,
       bucket: voiceFx.bucket,
       jobId: `${voiceFx.jobId}-full`,
       tailPadSeconds: 2,
     });
-    fxPhase.fxMs = fx.ms;
-    Object.assign(fxPhase, fx.split);
-    return fx.mp3;
+    const m4a = fx.wav;
+    fxPhase.fxMs = elapsedMs(started);
+    fxPhase.fxFfmpegMs = 0;
+    fxPhase.fxInvokeMs =
+      fx.timings.s3PutMs + fx.timings.invokeMs + fx.timings.s3GetMs;
+    if (fx.timings.lambda?.boardProcessMs != null) {
+      fxPhase.fxBoardMs = fx.timings.lambda.boardProcessMs;
+    }
+    if (fx.timings.coldStart != null) {
+      fxPhase.fxColdStart = fx.timings.coldStart;
+    }
+    return m4a;
   }
+
+  const speechify = params.provider === "speechify";
 
   if (segments.length === 0) {
     const clean = sanitizeScriptForTts(params.script);
@@ -941,7 +1123,14 @@ async function synthesizeScriptWithPauses(params: {
       ttsMs: elapsedMs(ttsStarted),
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
     });
-    audio = await applyVoiceFx(audio);
+    if (speechify) {
+      // Keep Speechify AAC; remux ADTS → m4a for delivery when FX is skipped.
+      audio = voiceFx
+        ? await applyVoiceFx(audio, "aac")
+        : await bufferToAacM4a(audio, ".aac");
+    } else {
+      audio = await applyVoiceFx(audio, "mp3");
+    }
     return {
       audio,
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
@@ -958,48 +1147,85 @@ async function synthesizeScriptWithPauses(params: {
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const clean = sanitizeScriptForTts(seg.text);
-    if (!clean) continue;
-    const utf8Bytes = Buffer.byteLength(clean, "utf8");
-    totalBytes += utf8Bytes;
 
-    const ttsStarted = Date.now();
-    const segBuf = await synthesizeSegmentMp3({
-      provider: params.provider,
-      fishApiKey: params.fishApiKey,
-      runpod: params.runpod,
-      text: clean,
-      voiceId: params.voiceId,
-      speed: params.speed,
-      ...ttsOpts,
-    });
-    sectionTimings.push({
-      i: sectionTimings.length,
-      ttsMs: elapsedMs(ttsStarted),
-      utf8Bytes,
-      pauseSec: seg.pauseSeconds > 0 ? seg.pauseSeconds * pauseScale : undefined,
-    });
-    const segPath = `/tmp/seg-${id}-${i}.mp3`;
-    fs.writeFileSync(segPath, segBuf);
-    files.push(segPath);
-    speechPaths.push(segPath);
+    if (clean) {
+      const utf8Bytes = Buffer.byteLength(clean, "utf8");
+      totalBytes += utf8Bytes;
+
+      const ttsStarted = Date.now();
+      const segBuf = await synthesizeSegmentMp3({
+        provider: params.provider,
+        fishApiKey: params.fishApiKey,
+        runpod: params.runpod,
+        text: clean,
+        voiceId: params.voiceId,
+        speed: params.speed,
+        ...ttsOpts,
+      });
+      sectionTimings.push({
+        i: sectionTimings.length,
+        ttsMs: elapsedMs(ttsStarted),
+        utf8Bytes,
+        pauseSec: seg.pauseSeconds > 0 ? seg.pauseSeconds * pauseScale : undefined,
+      });
+      // Speechify returns AAC-LC ADTS; Fish/Orpheus paths still return MP3.
+      const segExt = params.provider === "speechify" ? "aac" : "mp3";
+      const segPath = `/tmp/seg-${id}-${i}.${segExt}`;
+      fs.writeFileSync(segPath, segBuf);
+      files.push(segPath);
+      speechPaths.push(segPath);
+    }
 
     if (seg.pauseSeconds > 0) {
-      const pausePath = `/tmp/pause-${id}-${i}.mp3`;
-      await execFileAsync("ffmpeg", [
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "anullsrc=channel_layout=mono:sample_rate=44100",
-        "-t",
-        (seg.pauseSeconds * pauseScale).toFixed(2),
-        "-q:a",
-        "9",
-        "-acodec",
-        "libmp3lame",
-        pausePath,
-      ]);
+      // Speechify speech is AAC-LC ADTS @ 24 kHz — pauses must match (MP3
+      // silence made concat demuxer drop speech into digital quiet).
+      // Fish/Orpheus still use MP3 pauses.
+      const pausePath = speechify
+        ? `/tmp/pause-${id}-${i}.aac`
+        : `/tmp/pause-${id}-${i}.mp3`;
+      const pauseSec = (seg.pauseSeconds * pauseScale).toFixed(2);
+      if (speechify) {
+        await execFileAsync("ffmpeg", [
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "anullsrc=channel_layout=mono:sample_rate=24000",
+          "-t",
+          pauseSec,
+          "-c:a",
+          "aac",
+          "-b:a",
+          "24k",
+          "-f",
+          "adts",
+          pausePath,
+        ]);
+      } else {
+        await execFileAsync("ffmpeg", [
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "anullsrc=channel_layout=mono:sample_rate=44100",
+          "-t",
+          pauseSec,
+          "-q:a",
+          "9",
+          "-acodec",
+          "libmp3lame",
+          pausePath,
+        ]);
+      }
       files.push(pausePath);
+      if (!clean) {
+        sectionTimings.push({
+          i: sectionTimings.length,
+          ttsMs: 0,
+          utf8Bytes: 0,
+          pauseSec: seg.pauseSeconds * pauseScale,
+        });
+      }
     }
   }
 
@@ -1020,7 +1246,13 @@ async function synthesizeScriptWithPauses(params: {
       ttsMs: elapsedMs(ttsStarted),
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
     });
-    audio = await applyVoiceFx(audio);
+    if (speechify) {
+      audio = voiceFx
+        ? await applyVoiceFx(audio, "aac")
+        : await bufferToAacM4a(audio, ".aac");
+    } else {
+      audio = await applyVoiceFx(audio, "mp3");
+    }
     return {
       audio,
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
@@ -1030,26 +1262,39 @@ async function synthesizeScriptWithPauses(params: {
   }
 
   if (files.length === 1) {
-    const only = await applyVoiceFx(fs.readFileSync(files[0]));
+    let onlyBuf: Buffer = fs.readFileSync(files[0]!);
+    if (speechify && files[0]!.endsWith(".aac")) {
+      onlyBuf = voiceFx
+        ? await applyVoiceFx(onlyBuf, "aac")
+        : await bufferToAacM4a(onlyBuf, ".aac");
+    } else {
+      onlyBuf = await applyVoiceFx(onlyBuf, "mp3");
+    }
     return {
-      audio: only,
+      audio: onlyBuf,
       utf8Bytes: totalBytes,
       voiceFxApplied: Boolean(voiceFx),
       timings: { sections: sectionTimings, phases: { ...fxPhase } },
     };
   }
 
+  // Speechify → AAC-in-MP4; Fish/Orpheus → MP3. One re-encode into a single
+  // 44.1 kHz stem (Speechify speech + pauses are both AAC ADTS @ 24 kHz).
+  const outPath = speechify
+    ? `/tmp/concat-out-${id}${AAC_EXTENSION}`
+    : `/tmp/concat-out-${id}.mp3`;
+
   const listPath = `/tmp/concat-${id}.txt`;
   fs.writeFileSync(
     listPath,
     files.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
   );
-  const outPath = `/tmp/concat-out-${id}.mp3`;
 
   const concatStarted = Date.now();
-  // Speechify is 24 kHz; pause files are 44.1 kHz. Stream-copy concat left a
-  // broken timeline, so FX tails died at every chunk seam. Resample into one
-  // 44.1 kHz stem, then apply FX on that joined file.
+  const speechBytes = speechPaths.reduce(
+    (n, p) => n + fs.statSync(p).size,
+    0,
+  );
   await execFileAsync("ffmpeg", [
     "-y",
     "-f",
@@ -1062,15 +1307,34 @@ async function synthesizeScriptWithPauses(params: {
     "1",
     "-ar",
     "44100",
-    "-c:a",
-    "libmp3lame",
-    "-q:a",
-    "2",
+    ...(speechify
+      ? (["-c:a", "aac", "-b:a", "160k"] as const)
+      : (["-c:a", "libmp3lame", "-q:a", "2"] as const)),
     outPath,
   ]);
   const concatMs = elapsedMs(concatStarted);
 
-  const outBuf = await applyVoiceFx(fs.readFileSync(outPath));
+  const joined = fs.readFileSync(outPath);
+  // Joined stem must retain most of the speech payload. Silence-compressed
+  // AAC for a multi-minute sit is ~20–40KB; real speech is far larger.
+  if (
+    speechify &&
+    speechPaths.length > 0 &&
+    joined.byteLength < Math.max(12_000, Math.floor(speechBytes * 0.35))
+  ) {
+    throw new Error(
+      `Speechify concat produced suspiciously small audio (${joined.byteLength} bytes from ${speechBytes} speech-segment bytes, ${files.length} parts)`,
+    );
+  }
+  console.log("TTS concat", {
+    provider: params.provider,
+    parts: files.length,
+    speechSegments: speechPaths.length,
+    speechBytes,
+    joinedBytes: joined.byteLength,
+    concatMs,
+  });
+  const outBuf = await applyVoiceFx(joined, speechify ? "m4a" : "mp3");
   return {
     audio: outBuf,
     utf8Bytes: totalBytes,
@@ -1085,7 +1349,7 @@ async function synthesizeScriptWithPauses(params: {
 /**
  * Single Fish TTS request: convert `[[PAUSE …]]` → Fish qualitative tags
  * (`[break]` / `[short pause]` / `[long pause]` / `[long-break]`), synthesize
- * the whole script, then one loudnorm + Pedalboard pass. No ffmpeg segmentation.
+ * the whole script, then one loudnorm + ffmpeg IR FX pass. No ffmpeg segmentation.
  */
 async function synthesizeScriptWithFishNativePauses(params: {
   fishApiKey: string;
@@ -1215,8 +1479,10 @@ async function markJobFailed(jobId: string, errorMessage: string): Promise<void>
 }
 
 export async function handler(event: JobBody): Promise<APIGatewayProxyStructuredResultV2> {
+  const workerStarted = Date.now();
   console.log("meditation-audio worker start", {
     jobId: event.jobId,
+    workerStartedAt: new Date(workerStarted).toISOString(),
   });
 
   const jobsTableName = process.env.MEDITATION_JOBS_TABLE_NAME;
@@ -1260,6 +1526,14 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     creationProvenance?: unknown;
     /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
     longerBreaks?: boolean;
+    /** Dev: also render Speechify warm + calm emotion stems (serial). */
+    speechifyEmotionVariants?: boolean;
+    /** Dev: skip wet Voice FX bounce entirely (dry stem only). */
+    skipVoiceFx?: boolean;
+    /** Dev: disable Speechify API loudness_normalization (raw volume A/B). */
+    skipSpeechifyLoudnorm?: boolean;
+    /** Dev override for Speechify SSML rate percent (admin voice when omitted). */
+    speechifyRate?: number;
   };
 
   let jobItem: JobItem | null = null;
@@ -1320,6 +1594,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     backgroundDrumsGain?: number;
     backgroundNoiseGain?: number;
     longerBreaks?: boolean;
+    speechifyEmotionVariants?: boolean;
+    skipVoiceFx?: boolean;
+    skipSpeechifyLoudnorm?: boolean;
+    speechifyRate?: number;
   } = {
     transcript: jobItem.transcript,
     meditationStyle: jobItem.meditationStyle,
@@ -1346,6 +1624,18 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     backgroundDrumsGain: jobItem.backgroundDrumsGain,
     backgroundNoiseGain: jobItem.backgroundNoiseGain,
     longerBreaks: jobItem.longerBreaks === true,
+    speechifyEmotionVariants: jobItem.speechifyEmotionVariants === true,
+    skipVoiceFx: jobItem.skipVoiceFx === true,
+    skipSpeechifyLoudnorm: jobItem.skipSpeechifyLoudnorm === true,
+    ...(typeof jobItem.speechifyRate === "number" &&
+    Number.isFinite(jobItem.speechifyRate)
+      ? {
+          speechifyRate: Math.max(
+            -50,
+            Math.min(50, Math.round(jobItem.speechifyRate)),
+          ),
+        }
+      : {}),
   };
 
   const requestedProvider = normalizeTtsProvider(
@@ -1486,6 +1776,23 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   let claudeWorkerInputTokens = 0;
   let claudeWorkerOutputTokens = 0;
   const generationTimings: GenerationTimings = { phases: {}, sections: [] };
+  {
+    const jobCreatedAt =
+      typeof jobItem.createdAt === "string" && jobItem.createdAt.trim()
+        ? jobItem.createdAt.trim()
+        : null;
+    const jobCreatedMs = jobCreatedAt ? Date.parse(jobCreatedAt) : NaN;
+    if (Number.isFinite(jobCreatedMs) && jobCreatedMs > 0) {
+      generationTimings.phases.workerWaitMs = Math.max(
+        0,
+        workerStarted - jobCreatedMs,
+      );
+      console.log("worker wait (job create → handler)", {
+        workerWaitMs: generationTimings.phases.workerWaitMs,
+        jobCreatedAt,
+      });
+    }
+  }
   try {
     if (shouldGenerateScript) {
       console.log("generating script from Claude", {
@@ -1634,7 +1941,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
 
   let fishKey: string | undefined;
   let speechifyKey: string | undefined;
-  const speechifyRate = speechifyRateToSsml(speaker?.speechifyRate);
+  const speechifyLoudnessNormalization = body.skipSpeechifyLoudnorm !== true;
+  const speechifyRate = speechifyRateToSsml(
+    typeof body.speechifyRate === "number" && Number.isFinite(body.speechifyRate)
+      ? body.speechifyRate
+      : speaker?.speechifyRate,
+  );
   let runpodCreds: { apiKey: string; upstreamUrl: string } | undefined;
   try {
     if (ttsProvider === "orpheus") {
@@ -1667,9 +1979,15 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   let pauseSecondsTotal = 0;
   let spokenUtf8Bytes = 0;
   let spokenWordCount = 0;
+  /** Speechify PCM pipeline: dry chunks archived async (not served). */
+  let dryPcmChunks: SpeechifyDryPcmChunk[] = [];
+  let speechifyPcmPipeline = false;
   try {
-    // Script already includes the spoken title when the writer put one in.
-    const ttsScript = scriptTextUsed;
+    // Spoken title after a short lead-in, then a beat before the script body.
+    const ttsScript = withSpokenMeditationTitleIntro(
+      scriptTextUsed,
+      libraryTitle,
+    );
     const pauseBands = await loadPauseBandSeconds().catch(() => undefined);
     const spokenPlain = spokenPlainWithoutPauses(ttsScript);
     spokenUtf8Bytes = Buffer.byteLength(spokenPlain, "utf8");
@@ -1677,101 +1995,151 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       ? spokenPlain.split(/\s+/).filter(Boolean).length
       : 0;
 
-    // Dry joined speech only — wet bounce + live mix happen after this.
-
     pauseSecondsTotal =
       sumPauseMarkerSeconds(ttsScript, pauseBands) * pauseRenderScale;
 
-    const fishPauseMode = normalizeFishPauseMode(jobItem.fishPauseMode);
-    // Open / timed multi-minute sits need ffmpeg silence — Fish native tags cannot hold 60–120s.
-    const useFishNative =
-      !longerBreaks &&
-      fishPauseMode === "native" &&
-      ttsProvider === "fish" &&
-      Boolean(fishKey);
+    const skipVoiceFxEarly =
+      body.skipVoiceFx === true ||
+      (ttsProvider === "speechify" && body.skipSpeechifyLoudnorm === true);
 
-    let audio: Buffer;
-    let utf8Bytes: number;
-    let synthTimings: Awaited<
-      ReturnType<typeof synthesizeScriptWithPauses>
-    >["timings"];
-
-    if (useFishNative) {
-      console.log("calling TTS with Fish-native pauses (single request)", {
+    // Speechify: pcm_24000 → per-segment FX → OLA → AAC (dial baked).
+    if (ttsProvider === "speechify" && speechifyKey) {
+      speechifyPcmPipeline = true;
+      console.log("calling Speechify PCM + per-segment FX OLA", {
         reference_id: referenceId,
-        ttsProvider,
-        fishTtsModel,
-        pauseTagStyle: fishPauseTagStyleForModel(fishTtsModel),
-        fishPauseMode,
-        pauseSecondsTotal,
-      });
-      const result = await synthesizeScriptWithFishNativePauses({
-        fishApiKey: fishKey!,
-        script: ttsScript,
-        voiceId: referenceId,
-        speed: speechSpeed,
-        fishTtsModel,
-        pauseBands,
-        pauseScale: pauseRenderScale,
-      });
-      audio = result.audio;
-      utf8Bytes = result.utf8Bytes;
-      voiceFxApplied = false;
-      synthTimings = result.timings;
-    } else {
-      console.log("calling TTS with pause-aware synthesis", {
-        reference_id: referenceId,
-        ttsProvider,
-        fishTtsModel,
-        longerBreaks,
+        applyFx: !skipVoiceFxEarly,
+        voiceFxDial,
         pauseRenderScale,
       });
-      const result = await synthesizeScriptWithPauses({
-        provider: ttsProvider,
-        fishApiKey: fishKey,
-        speechifyApiKey: speechifyKey,
-        speechifyRate,
-        runpod: runpodCreds,
+      const result = await synthesizeSpeechifyPcmFxOla({
+        s3,
+        bucket: mediaBucketName,
+        apiKey: speechifyKey,
         script: ttsScript,
         voiceId: referenceId,
-        speed: speechSpeed,
-        fishTtsModel,
+        speechifyRate,
+        speechifyLoudnessNormalization,
         pauseBands,
         pauseScale: pauseRenderScale,
+        applyFx: !skipVoiceFxEarly,
+        voiceFxDial,
       });
-      audio = result.audio;
-      utf8Bytes = result.utf8Bytes;
-      voiceFxApplied = false;
-      synthTimings = result.timings;
-    }
+      mp3Buf = result.deliveryAac;
+      dryPcmChunks = result.dryChunks;
+      voiceFxApplied = result.voiceFxApplied;
+      scriptUtf8Bytes = result.utf8Bytes;
+      generationTimings.sections = result.timings.sections;
+      Object.assign(generationTimings.phases, result.timings.phases);
+      if (skipVoiceFxEarly) {
+        generationTimings.phases.fxSkipped = true;
+      }
+      console.log("TTS+FX PCM OLA success", {
+        bytes: mp3Buf.byteLength,
+        dryChunks: dryPcmChunks.length,
+        voiceFxApplied,
+        ttsPipelineMs: generationTimings.phases.ttsPipelineMs,
+        fxLoadMs: generationTimings.phases.fxLoadMs,
+        ttsFxLoopMs: generationTimings.phases.ttsFxLoopMs,
+        ttsTotalMs: generationTimings.sections.reduce(
+          (s, x) => s + (x.ttsMs || 0),
+          0,
+        ),
+        fxMs: generationTimings.phases.fxMs,
+        olaMs: generationTimings.phases.olaMs,
+        aacEncodeMs: generationTimings.phases.aacEncodeMs,
+      });
+    } else {
+      const fishPauseMode = normalizeFishPauseMode(jobItem.fishPauseMode);
+      const useFishNative =
+        !longerBreaks &&
+        fishPauseMode === "native" &&
+        ttsProvider === "fish" &&
+        Boolean(fishKey);
 
-    generationTimings.sections = synthTimings.sections;
-    Object.assign(generationTimings.phases, synthTimings.phases);
-    mp3Buf = audio;
-    scriptUtf8Bytes = utf8Bytes;
-    console.log("TTS success", {
-      bytes: mp3Buf.byteLength,
-      ttsProvider,
-      voiceFxApplied,
-      path: useFishNative ? "fish-native-pauses" : "segmented-pauses",
-    });
-    if (!voiceFxApplied) {
-      try {
-        mp3Buf = await loudnormMp3Buffer(mp3Buf);
-        console.log("loudnorm -16 LUFS applied to speech", {
+      let audio: Buffer;
+      let utf8Bytes: number;
+      let synthTimings: Awaited<
+        ReturnType<typeof synthesizeScriptWithPauses>
+      >["timings"];
+
+      if (useFishNative) {
+        console.log("calling TTS with Fish-native pauses (single request)", {
+          reference_id: referenceId,
+          ttsProvider,
+          fishTtsModel,
+          pauseTagStyle: fishPauseTagStyleForModel(fishTtsModel),
+          fishPauseMode,
+          pauseSecondsTotal,
+        });
+        const result = await synthesizeScriptWithFishNativePauses({
+          fishApiKey: fishKey!,
+          script: ttsScript,
+          voiceId: referenceId,
+          speed: speechSpeed,
+          fishTtsModel,
+          pauseBands,
+          pauseScale: pauseRenderScale,
+        });
+        audio = result.audio;
+        utf8Bytes = result.utf8Bytes;
+        voiceFxApplied = false;
+        synthTimings = result.timings;
+      } else {
+        console.log("calling TTS with pause-aware synthesis", {
+          reference_id: referenceId,
+          ttsProvider,
+          fishTtsModel,
+          longerBreaks,
+          pauseRenderScale,
+        });
+        const result = await synthesizeScriptWithPauses({
+          provider: ttsProvider,
+          fishApiKey: fishKey,
+          speechifyApiKey: speechifyKey,
+          speechifyRate,
+          speechifyLoudnessNormalization,
+          runpod: runpodCreds,
+          script: ttsScript,
+          voiceId: referenceId,
+          speed: speechSpeed,
+          fishTtsModel,
+          pauseBands,
+          pauseScale: pauseRenderScale,
+        });
+        audio = result.audio;
+        utf8Bytes = result.utf8Bytes;
+        voiceFxApplied = false;
+        synthTimings = result.timings;
+      }
+
+      generationTimings.sections = synthTimings.sections;
+      Object.assign(generationTimings.phases, synthTimings.phases);
+      mp3Buf = audio;
+      scriptUtf8Bytes = utf8Bytes;
+      console.log("TTS success", {
+        bytes: mp3Buf.byteLength,
+        ttsProvider,
+        voiceFxApplied,
+        path: useFishNative ? "fish-native-pauses" : "segmented-pauses",
+      });
+      if (!voiceFxApplied) {
+        try {
+          mp3Buf = await loudnormMp3Buffer(mp3Buf);
+          console.log("loudnorm -16 LUFS applied to speech", {
+            bytes: mp3Buf.byteLength,
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "loudnorm failed";
+          console.error("loudnorm failed", { msg });
+          await markJobFailed(event.jobId, msg);
+          return json(500, { error: msg });
+        }
+      } else {
+        console.log("voice-fx already applied to full TTS output", {
+          preset: voiceFxPreset,
           bytes: mp3Buf.byteLength,
         });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "loudnorm failed";
-        console.error("loudnorm failed", { msg });
-        await markJobFailed(event.jobId, msg);
-        return json(500, { error: msg });
       }
-    } else {
-      console.log("voice-fx already applied to full TTS output", {
-        preset: voiceFxPreset,
-        bytes: mp3Buf.byteLength,
-      });
     }
   } catch (e) {
     const msg =
@@ -1792,114 +2160,312 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const prefix = excludeFromLibrary
     ? `programs/${jobUserId}/${stemId}`
     : `meditations/${jobUserId}/${stemId}`;
-  const dryKey = `${prefix}-dry.wav`;
-  const wetKey = `${prefix}-wet.wav`;
   const key = `${prefix}.mp3`;
-  let dryAudioKey: string | null = dryKey;
+  // Baked mix only — no dry/wet locked stems for live dial crossfade.
+  // Preview keeps DualStem dry↔wet; generate bakes `voiceFxDial` into the file.
+  let dryAudioKey: string | null = null;
   let wetAudioKey: string | null = null;
 
-  try {
-    const loudnormStarted = Date.now();
-    mp3Buf = await loudnormMp3Buffer(mp3Buf);
-    generationTimings.phases.loudnormMs = elapsedMs(loudnormStarted);
-    console.log("loudnorm -16 LUFS applied to dry stem", {
+  // Speechify PCM pipeline already loudnorm'd (API) + FX/dial + AAC.
+  if (speechifyPcmPipeline) {
+    console.log("skip post-TTS loudnorm/FX — Speechify PCM OLA path", {
       bytes: mp3Buf.byteLength,
-      loudnormMs: generationTimings.phases.loudnormMs,
+      voiceFxApplied,
     });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "final loudnorm failed";
-    console.error("final loudnorm failed", { msg });
-    await markJobFailed(event.jobId, msg);
-    return json(500, { error: msg });
+    wetAudioKey = null;
+    dryAudioKey = null;
+  } else if (ttsProvider === "speechify") {
+    console.log("skip final ffmpeg loudnorm — Speechify loudness_normalization", {
+      bytes: mp3Buf.byteLength,
+    });
+  } else {
+    try {
+      const loudnormStarted = Date.now();
+      mp3Buf = await loudnormMp3Buffer(mp3Buf);
+      generationTimings.phases.loudnormMs = elapsedMs(loudnormStarted);
+      console.log("loudnorm -16 LUFS applied to dry stem", {
+        bytes: mp3Buf.byteLength,
+        loudnormMs: generationTimings.phases.loudnormMs,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "final loudnorm failed";
+      console.error("final loudnorm failed", { msg });
+      await markJobFailed(event.jobId, msg);
+      return json(500, { error: msg });
+    }
   }
 
   const dryBuf = mp3Buf;
-  try {
-    // Pedalboard's MP3 decoder can return the right duration as all-zero PCM
-    // (Speechify/long joins). Decode with ffmpeg first, same as section FX.
-    const wavIn = await mp3ToWavBuffer(dryBuf);
-    const fx = await voiceFxWavViaS3({
-      audio: wavIn,
-      inputFormat: "wav",
-      preset: VOICE_FX_WET_PRESET,
-      bucket: mediaBucketName,
-      jobId: `${event.jobId}-wet`,
-      tailPadSeconds: 2,
+  const skipVoiceFx =
+    speechifyPcmPipeline ||
+    body.skipVoiceFx === true ||
+    (ttsProvider === "speechify" && body.skipSpeechifyLoudnorm === true);
+  if (speechifyPcmPipeline) {
+    // FX already handled in PCM OLA pipeline.
+  } else if (skipVoiceFx) {
+    generationTimings.phases.fxSkipped = true;
+    console.log("skip wet Voice FX bounce", {
+      jobId: event.jobId,
+      bytes: dryBuf.byteLength,
+      reason:
+        body.skipVoiceFx === true
+          ? "skipVoiceFx"
+          : "skipSpeechifyLoudnorm (also skips FX)",
     });
-    const { dry: dryGain, wet: wetGain } = voiceFxDialGains(voiceFxDial);
-    mp3Buf =
-      wetGain >= 1
-        ? await wavToMp3Buffer(fx.wav)
-        : dryGain >= 1
-          ? await wavToMp3Buffer(fx.dryWav)
-          : await mixDryWetMp3({
-              dryMp3: fx.dryWav,
-              wetWav: fx.wav,
-              dryGain,
-              wetGain,
-            });
-    wetAudioKey = wetKey;
-    voiceFxApplied = true;
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: mediaBucketName,
-        Key: wetKey,
-        Body: fx.wav,
-        ContentType: "audio/wav",
-        CacheControl: "no-store",
-      }),
-    );
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: mediaBucketName,
-        Key: dryKey,
-        Body: fx.dryWav,
-        ContentType: "audio/wav",
-        CacheControl: "no-store",
-      }),
-    );
-    await putVoiceStemStreams({
-      s3,
-      bucket: mediaBucketName,
-      wavKey: dryKey,
-      wavBuf: fx.dryWav,
-      cacheControl: "no-store",
-    });
-    await putVoiceStemStreams({
-      s3,
-      bucket: mediaBucketName,
-      wavKey: wetKey,
-      wavBuf: fx.wav,
-      cacheControl: "no-store",
-    });
-    console.log("locked stems uploaded", {
-      dryKey,
-      wetKey,
-      dryBytes: fx.dryWav.byteLength,
-      wetBytes: fx.wav.byteLength,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "wet bounce failed";
-    console.warn("wet bounce failed; storing dry only", { msg });
     wetAudioKey = null;
-    mp3Buf = dryBuf;
+    voiceFxApplied = false;
+  } else {
+    const wetFxStarted = Date.now();
+    try {
+      // AAC/mp3 in → delay→IR → AAC out (no voice WAV hop).
+      const inExt = sniffCompressedExt(dryBuf);
+      const fx = await voiceFxWavViaS3({
+        audio: dryBuf,
+        inputFormat:
+          inExt === ".m4a" ? "m4a" : inExt === ".aac" ? "aac" : "mp3",
+        preset: VOICE_FX_WET_PRESET,
+        bucket: mediaBucketName,
+        jobId: `${event.jobId}-wet`,
+        tailPadSeconds: 2,
+      });
+      const { dry: dryGain, wet: wetGain } = voiceFxDialGains(voiceFxDial);
+      const dialStarted = Date.now();
+      mp3Buf =
+        wetGain >= 1
+          ? fx.wav
+          : dryGain >= 1
+            ? fx.dryWav
+            : await mixDryWetAac({
+                dryAac: fx.dryWav,
+                wetAac: fx.wav,
+                dryGain,
+                wetGain,
+              });
+      const dialMs = elapsedMs(dialStarted);
+      generationTimings.phases.fxMs = elapsedMs(wetFxStarted);
+      generationTimings.phases.fxMp3ToWavMs = 0;
+      generationTimings.phases.fxWavToMp3Ms = dialMs;
+      generationTimings.phases.fxFfmpegMs = dialMs;
+      generationTimings.phases.fxS3PutMs = fx.timings.s3PutMs;
+      generationTimings.phases.fxInvokeMs = fx.timings.invokeMs;
+      generationTimings.phases.fxS3GetMs = fx.timings.s3GetMs;
+      if (fx.timings.lambda?.boardProcessMs != null) {
+        generationTimings.phases.fxBoardMs = fx.timings.lambda.boardProcessMs;
+      }
+      if (fx.timings.coldStart != null) {
+        generationTimings.phases.fxColdStart = fx.timings.coldStart;
+      }
+      console.log("wet bounce FX timing", {
+        fxMs: generationTimings.phases.fxMs,
+        voiceFxDial,
+        fxInputExt: inExt,
+        fxToWavMs: 0,
+        fxDialBakeMs: dialMs,
+        fxS3PutMs: generationTimings.phases.fxS3PutMs,
+        fxInvokeMs: generationTimings.phases.fxInvokeMs,
+        fxS3GetMs: generationTimings.phases.fxS3GetMs,
+        fxBoardMs: generationTimings.phases.fxBoardMs,
+        fxColdStart: generationTimings.phases.fxColdStart,
+      });
+      dryAudioKey = null;
+      wetAudioKey = null;
+      voiceFxApplied = true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "wet bounce failed";
+      generationTimings.phases.fxFailed = true;
+      generationTimings.phases.fxFailedMs = elapsedMs(wetFxStarted);
+      console.warn("wet bounce failed; storing dry only", {
+        msg,
+        fxFailedMs: generationTimings.phases.fxFailedMs,
+      });
+      wetAudioKey = null;
+      const dryLooksM4a =
+        dryBuf[4] === 0x66 &&
+        dryBuf[5] === 0x74 &&
+        dryBuf[6] === 0x79 &&
+        dryBuf[7] === 0x70;
+      const dryLooksAdts =
+        dryBuf[0] === 0xff && (dryBuf[1]! & 0xf0) === 0xf0;
+      mp3Buf =
+        dryLooksM4a || dryLooksAdts
+          ? await aacAdtsToMp3Buffer(dryBuf)
+          : dryBuf;
+    }
   }
 
-  const durationSeconds = await getMp3DurationSeconds(mp3Buf);
+  /** Dev: serial Speechify warm/calm stems (rate limits make concurrent risky). */
+  type EmotionStemKeys = {
+    dryAudioKey: string;
+    wetAudioKey: string | null;
+  };
+  const speechifyEmotionStems: Partial<
+    Record<"warm" | "calm", EmotionStemKeys>
+  > = {};
+  const wantEmotionVariants =
+    body.speechifyEmotionVariants === true &&
+    ttsProvider === "speechify" &&
+    Boolean(speechifyKey);
+
+  if (wantEmotionVariants) {
+    const pauseBandsForVariants = await loadPauseBandSeconds().catch(
+      () => undefined,
+    );
+    for (const emotion of ["warm", "calm"] as const) {
+      try {
+        console.log("Speechify emotion variant — starting", { emotion });
+        const variantStarted = Date.now();
+        const variantSynth = await synthesizeScriptWithPauses({
+          provider: "speechify",
+          speechifyApiKey: speechifyKey,
+          speechifyRate,
+          speechifyLoudnessNormalization,
+          emotion,
+          script: withSpokenMeditationTitleIntro(scriptTextUsed, libraryTitle),
+          voiceId: referenceId,
+          speed: speechSpeed,
+          pauseBands: pauseBandsForVariants,
+          pauseScale: pauseRenderScale,
+        });
+        // Bake dial into one file — no dry/wet stems (same as main generate).
+        let variantMp3 = variantSynth.audio;
+        const variantKey = `${prefix}-${emotion}${AAC_EXTENSION}`;
+        try {
+          const vExt = sniffCompressedExt(variantMp3);
+          const fx = await voiceFxWavViaS3({
+            audio: variantMp3,
+            inputFormat:
+              vExt === ".m4a" ? "m4a" : vExt === ".aac" ? "aac" : "mp3",
+            preset: VOICE_FX_WET_PRESET,
+            bucket: mediaBucketName,
+            jobId: `${event.jobId}-${emotion}-wet`,
+            tailPadSeconds: 2,
+          });
+          const { dry: dryGain, wet: wetGain } = voiceFxDialGains(voiceFxDial);
+          const baked =
+            wetGain >= 1
+              ? fx.wav
+              : dryGain >= 1
+                ? fx.dryWav
+                : await mixDryWetAac({
+                    dryAac: fx.dryWav,
+                    wetAac: fx.wav,
+                    dryGain,
+                    wetGain,
+                  });
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: mediaBucketName,
+              Key: variantKey,
+              Body: baked,
+              ContentType: AAC_CONTENT_TYPE,
+              CacheControl: "no-store",
+            }),
+          );
+          speechifyEmotionStems[emotion] = {
+            dryAudioKey: variantKey,
+            wetAudioKey: null,
+          };
+        } catch (fxErr) {
+          const msg =
+            fxErr instanceof Error ? fxErr.message : "variant wet bounce failed";
+          console.warn("emotion variant FX failed; uploading dry aac", {
+            emotion,
+            msg,
+          });
+          const dryAac = await bufferToAacM4a(
+            variantMp3,
+            sniffCompressedExt(variantMp3),
+          );
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: mediaBucketName,
+              Key: variantKey,
+              Body: dryAac,
+              ContentType: AAC_CONTENT_TYPE,
+              CacheControl: "no-store",
+            }),
+          );
+          speechifyEmotionStems[emotion] = {
+            dryAudioKey: variantKey,
+            wetAudioKey: null,
+          };
+        }
+        console.log("Speechify emotion variant — done", {
+          emotion,
+          ms: Date.now() - variantStarted,
+          stems: speechifyEmotionStems[emotion],
+        });
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "emotion variant TTS failed";
+        console.warn("Speechify emotion variant failed", { emotion, msg });
+      }
+    }
+  }
+
+  const durationSeconds = await getAudioDurationSeconds(mp3Buf);
 
   try {
     const uploadStarted = Date.now();
-    if (!wetAudioKey) {
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: mediaBucketName,
-          Key: dryKey,
-          Body: dryBuf,
-          ContentType: "audio/mpeg",
-          CacheControl: "no-store",
+
+    // Dry PCM chunks in parallel with wet upload (not served; no dry AAC).
+    if (dryPcmChunks.length > 0) {
+      const chunkPrefix = `${prefix}/dry-pcm`;
+      const manifest = {
+        sampleRate: VOICE_FX_PCM_SR,
+        encoding: "s16le",
+        channels: 1,
+        chunks: dryPcmChunks.map((c) => ({
+          i: c.i,
+          startSample: c.startSample,
+          bytes: c.pcm.byteLength,
+          key: `${chunkPrefix}/${String(c.i).padStart(4, "0")}.s16le`,
+        })),
+      };
+      const dryPuts = [
+        ...dryPcmChunks.map((c) => {
+          const keyChunk = `${chunkPrefix}/${String(c.i).padStart(4, "0")}.s16le`;
+          return s3
+            .send(
+              new PutObjectCommand({
+                Bucket: mediaBucketName,
+                Key: keyChunk,
+                Body: c.pcm,
+                ContentType: "application/octet-stream",
+                CacheControl: "no-store",
+              }),
+            )
+            .catch((e) => {
+              const msg =
+                e instanceof Error ? e.message : "dry PCM chunk put failed";
+              console.warn("dry PCM chunk archive failed", { keyChunk, msg });
+            });
         }),
-      );
+        s3
+          .send(
+            new PutObjectCommand({
+              Bucket: mediaBucketName,
+              Key: `${chunkPrefix}/manifest.json`,
+              Body: Buffer.from(JSON.stringify(manifest)),
+              ContentType: "application/json",
+              CacheControl: "no-store",
+            }),
+          )
+          .catch((e) => {
+            const msg =
+              e instanceof Error ? e.message : "dry PCM manifest put failed";
+            console.warn("dry PCM manifest archive failed", { msg });
+          }),
+      ];
+      void Promise.allSettled(dryPuts).then(() => {
+        console.log("async dry PCM chunk archive done", {
+          chunkPrefix,
+          chunks: dryPcmChunks.length,
+        });
+      });
     }
+
+    // Catalog key stays `.mp3` for Dynamo; always upload Safari-safe `.m4a` sibling.
     await s3.send(
       new PutObjectCommand({
         Bucket: mediaBucketName,
@@ -1909,11 +2475,36 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         CacheControl: "no-store",
       }),
     );
+    const bakedAacKey = `${prefix}${AAC_EXTENSION}`;
+    const bakedIsM4a =
+      mp3Buf[4] === 0x66 &&
+      mp3Buf[5] === 0x74 &&
+      mp3Buf[6] === 0x79 &&
+      mp3Buf[7] === 0x70;
+    const bakedAac = bakedIsM4a
+      ? mp3Buf
+      : await bufferToAacM4a(
+          mp3Buf,
+          mp3Buf[0] === 0xff && (mp3Buf[1]! & 0xf0) === 0xf0
+            ? ".aac"
+            : ".mp3",
+        );
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: mediaBucketName,
+        Key: bakedAacKey,
+        Body: bakedAac,
+        ContentType: AAC_CONTENT_TYPE,
+        CacheControl: "no-store",
+      }),
+    );
     generationTimings.phases.uploadMs = elapsedMs(uploadStarted);
     console.log("S3 PutObject success", {
       key,
-      dryKey,
-      wetKey: wetAudioKey,
+      bakedAacKey,
+      dryAudioKey,
+      wetAudioKey,
+      voiceFxDial,
       uploadMs: generationTimings.phases.uploadMs,
     });
   } catch (e) {
@@ -1952,10 +2543,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         ? jobItem.createdAt.trim()
         : null;
     const jobStartedMs = jobCreatedAt ? Date.parse(jobCreatedAt) : NaN;
-    const generationElapsedMs =
-      Number.isFinite(jobStartedMs) && jobStartedMs > 0
-        ? Math.max(0, Date.parse(createdAt) - jobStartedMs)
-        : null;
+    const coverStarted = Date.now();
     const coverImageKey = mediaBucketName
       ? await generateAndStoreMeditationCover({
           s3,
@@ -1971,7 +2559,23 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           },
         })
       : null;
+    generationTimings.phases.coverMs = elapsedMs(coverStarted);
+    console.log("cover timing", {
+      coverMs: generationTimings.phases.coverMs,
+      coverImageKey,
+    });
     const librarySk = `${createdAt}#${id}`;
+    finalizeGenerationTimings(generationTimings, workerStarted);
+    const devToggles = buildDevToggleLabels({
+      speechifyEmotionVariants: body.speechifyEmotionVariants === true,
+      skipVoiceFx: body.skipVoiceFx === true,
+      skipSpeechifyLoudnorm: body.skipSpeechifyLoudnorm === true,
+      ...(typeof body.speechifyRate === "number" &&
+      Number.isFinite(body.speechifyRate)
+        ? { speechifyRate: Math.round(body.speechifyRate) }
+        : {}),
+    });
+    const libraryWriteStarted = Date.now();
     await ddb.send(
       new PutCommand({
         TableName: analyticsTableName,
@@ -1981,20 +2585,20 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           id,
           createdAt,
           ...(jobCreatedAt ? { jobCreatedAt } : {}),
-          ...(generationElapsedMs != null ? { generationElapsedMs } : {}),
           ...(generationTimings.sections.length > 0 ||
-          generationTimings.phases.scriptMs != null ||
-          generationTimings.phases.metadataMs != null ||
-          generationTimings.phases.concatMs != null ||
-          generationTimings.phases.loudnormMs != null ||
-          generationTimings.phases.uploadMs != null
+          Object.keys(generationTimings.phases).length > 0
             ? { generationTimings }
             : {}),
+          // Always write (even []) so the flyover can show "none" vs missing.
+          devToggles,
           ...(event.jobId ? { jobId: event.jobId } : {}),
           s3Key: key,
           audioUrl,
           dryAudioKey,
           wetAudioKey,
+          ...(Object.keys(speechifyEmotionStems).length > 0
+            ? { speechifyEmotionStems }
+            : {}),
           ...(coverImageKey ? { coverImageKey } : {}),
           voiceFxDial,
           createdVoiceFxDial: voiceFxDial,
@@ -2079,6 +2683,43 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         },
       }),
     );
+    generationTimings.phases.libraryWriteMs = elapsedMs(libraryWriteStarted);
+    finalizeGenerationTimings(generationTimings, workerStarted);
+    // Job create → library row ready (includes cover + Dynamo put).
+    const generationElapsedMs =
+      Number.isFinite(jobStartedMs) && jobStartedMs > 0
+        ? Math.max(0, Date.now() - jobStartedMs)
+        : null;
+    console.log("generation timing summary", {
+      wallMs: generationElapsedMs,
+      ...generationTimings.phases,
+      sections: generationTimings.sections.length,
+    });
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: analyticsTableName,
+          Key: {
+            pk: meditationUserPk(jobUserId),
+            sk: librarySk,
+          },
+          UpdateExpression:
+            generationElapsedMs != null
+              ? "SET generationTimings = :gt, generationElapsedMs = :ge"
+              : "SET generationTimings = :gt",
+          ExpressionAttributeValues: {
+            ":gt": generationTimings,
+            ...(generationElapsedMs != null
+              ? { ":ge": generationElapsedMs }
+              : {}),
+          },
+        }),
+      );
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "generationTimings update failed";
+      console.warn("generationTimings update failed", { msg });
+    }
     scheduleIndexMeditation({
       email: jobUserEmail,
       sk: librarySk,

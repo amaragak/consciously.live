@@ -1,7 +1,6 @@
 import {
   backgroundAudioStreamingKey,
   createMeditationAudioJob,
-  getMeditationAudioJobStatus,
   listBackgroundAudio,
   listFishSpeakers,
   ttsProviderForSpeaker,
@@ -89,36 +88,6 @@ export async function pickRandomSoundBed(): Promise<MixerPresetMix> {
   }
 }
 
-async function waitForLibraryMeta(jobId: string): Promise<{
-  title: string;
-  description: string;
-}> {
-  const deadlineMs = 5 * 60_000;
-  const start = Date.now();
-  while (Date.now() - start < deadlineMs) {
-    let st: Awaited<ReturnType<typeof getMeditationAudioJobStatus>>;
-    try {
-      st = await getMeditationAudioJobStatus(jobId);
-    } catch {
-      await new Promise((r) => setTimeout(r, 400));
-      continue;
-    }
-    if (st.status === "failed") {
-      throw new Error(st.error ?? "Generation failed");
-    }
-    const scriptOk = (st.scriptTextUsed ?? "").trim().length > 0;
-    const title = (st.title ?? "").trim();
-    const description = (st.description ?? "").trim();
-    if (scriptOk && title && description) {
-      return { title, description };
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  throw new Error(
-    "Timed out waiting for your meditation. Open Library to check if it finished.",
-  );
-}
-
 export type HomepageOneShotResult = {
   libraryHref: string;
   jobId: string;
@@ -126,8 +95,8 @@ export type HomepageOneShotResult = {
 
 /**
  * Creates a one-shot meditation from the homepage: random factory sound bed,
- * chosen (or random) Fish speaker, waits for library metadata, then returns
- * the Library focus URL. Skips the create/mix UI.
+ * chosen (or random) Fish speaker, then returns the Library focus URL.
+ * Title/description fill in on the pending Library card via poll.
  */
 export async function startHomepageOneShotGeneration(opts: {
   prompt: string;
@@ -196,13 +165,13 @@ export async function startHomepageOneShotGeneration(opts: {
       : {}),
   });
 
-  const meta = await waitForLibraryMeta(jobId);
+  await new Promise((r) => setTimeout(r, 1000));
 
   const pending: PendingLibraryGeneration = {
     jobId,
     createdAt: new Date().toISOString(),
-    title: meta.title,
-    description: meta.description,
+    title: "",
+    description: null,
     meditationStyle: "General",
     speakerName: speaker?.name ?? null,
     speakerModelId,

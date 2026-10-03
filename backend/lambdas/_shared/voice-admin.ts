@@ -437,6 +437,9 @@ export async function listPickerFishSpeakers(): Promise<FishSpeaker[]> {
       ...(s.description ? { description: s.description } : {}),
       ...(s.goodFor.length > 0 ? { goodFor: s.goodFor } : {}),
       ...(s.gender ? { gender: s.gender } : {}),
+      // Always surface admin rate for Speechify so Create can seed the same
+      // value the generate worker would use (null = Speechify default).
+      ...(s.brand === "speechify" ? { speechifyRate: s.speechifyRate } : {}),
     }));
 }
 

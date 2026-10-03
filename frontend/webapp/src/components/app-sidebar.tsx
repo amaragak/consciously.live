@@ -5,27 +5,45 @@ import {
   BookOpen,
   Focus,
   MessageSquare,
+  Settings,
+  Shield,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ColorSchemePicker } from "@consciously/common";
 import {
   APP_NAV_MAIN,
   APP_SIDEBAR_WIDTH_TRANSITION_MS,
   activeNavSectionId,
-  defaultSidebarExpandState,
+  clampMobileSidebarExpandState,
+  isOwnerAdminAccount,
   isSubItemActive,
   resolveSidebarExpandState,
   saveSidebarExpandState,
+  sidebarExpandableSectionIds,
   type AppNavSection,
   type AppNavSubItem,
 } from "@/lib/app-nav";
-import { isMedimadeSessionActive } from "@/lib/auth-session";
+import {
+  clearMedimadeSession,
+  getMedimadeSessionDisplayName,
+  getMedimadeSessionEmail,
+  isMedimadeSessionActive,
+} from "@/lib/auth-session";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import {
   pullIdeateStoreFromCloud,
   subscribeIdeateCloud,
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+
+function accountLabelFromSession(): string {
+  return (
+    getMedimadeSessionDisplayName()?.trim() ||
+    getMedimadeSessionEmail()?.trim() ||
+    "Guest"
+  );
+}
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -261,15 +279,39 @@ export function AppSidebar({
   const pathname = usePathname() || "/";
   const [hash, setHash] = useState("");
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    defaultSidebarExpandState,
-  );
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    const path =
+      typeof window !== "undefined" ? window.location.pathname || "/" : "/";
+    const next = resolveSidebarExpandState(path);
+    const mobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches;
+    return mobile ? clampMobileSidebarExpandState(next, path) : next;
+  });
   const [lifeAreas, setLifeAreas] = useState<
     { id: string; title: string }[]
   >([]);
+  const [accountLabel, setAccountLabel] = useState(accountLabelFromSession);
+  const [showAdmin, setShowAdmin] = useState(() =>
+    isOwnerAdminAccount(getMedimadeSessionEmail()),
+  );
+  /** Below md the drawer is always the expanded panel so open/close is a pure slide. */
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 767px)").matches
+      : false,
+  );
 
-  // Mobile drawer always shows the full tree.
-  const railCollapsed = collapsed && !mobileOpen;
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobileLayout(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // Icon rail is desktop-only. Mobile drawer stays expanded (matches marketing slide).
+  const railCollapsed = collapsed && !isMobileLayout;
   /**
    * Nested nav rows wait until the rail finishes widening. During the open
    * transition parents stay one line with ellipsis; children mount after.
@@ -282,7 +324,7 @@ export function AppSidebar({
       return;
     }
     // Mobile drawer is already full-width (slides in); show children immediately.
-    if (mobileOpen || (typeof window !== "undefined" && window.innerWidth < 768)) {
+    if (isMobileLayout || mobileOpen) {
       setChildrenReady(true);
       return;
     }
@@ -291,7 +333,7 @@ export function AppSidebar({
       APP_SIDEBAR_WIDTH_TRANSITION_MS,
     );
     return () => window.clearTimeout(id);
-  }, [railCollapsed, mobileOpen]);
+  }, [railCollapsed, mobileOpen, isMobileLayout]);
 
   useEffect(() => {
     setHash(window.location.hash || "");
@@ -319,27 +361,78 @@ export function AppSidebar({
         })),
       );
     };
+    const syncAccount = () => {
+      setAccountLabel(accountLabelFromSession());
+      setShowAdmin(isOwnerAdminAccount(getMedimadeSessionEmail()));
+    };
     syncLifeAreas();
+    syncAccount();
     const unsub = subscribeIdeateCloud(syncLifeAreas);
     if (isMedimadeSessionActive()) {
       void pullIdeateStoreFromCloud().finally(syncLifeAreas);
     }
     window.addEventListener("medimade-session-changed", syncLifeAreas);
+    window.addEventListener("medimade-session-changed", syncAccount);
     return () => {
       unsub();
       window.removeEventListener("medimade-session-changed", syncLifeAreas);
+      window.removeEventListener("medimade-session-changed", syncAccount);
     };
   }, []);
 
   useEffect(() => {
-    setExpanded(resolveSidebarExpandState(pathname));
-  }, [pathname]);
+    const next = resolveSidebarExpandState(pathname);
+    setExpanded(
+      isMobileLayout ? clampMobileSidebarExpandState(next, pathname) : next,
+    );
+  }, [pathname, isMobileLayout]);
 
   function toggleSection(id: string) {
     setExpanded((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      saveSidebarExpandState(next);
-      return next;
+      if (!isMobileLayout) {
+        const next = { ...prev, [id]: !prev[id] };
+        saveSidebarExpandState(next);
+        return next;
+      }
+
+      const expandable = sidebarExpandableSectionIds();
+      if (!expandable.includes(id)) {
+        const next = { ...prev, [id]: !prev[id] };
+        saveSidebarExpandState(next);
+        return next;
+      }
+
+      const active = activeNavSectionId(pathname);
+      const activePinned =
+        active && expandable.includes(active) ? active : null;
+      const willOpen = !prev[id];
+
+      // Active tool section stays open on mobile.
+      if (!willOpen && activePinned === id) {
+        return prev;
+      }
+
+      const next: Record<string, boolean> = { ...prev };
+
+      if (willOpen) {
+        if (activePinned) {
+          for (const sid of expandable) {
+            if (sid !== activePinned && sid !== id) next[sid] = false;
+          }
+          next[activePinned] = true;
+          next[id] = true;
+        } else {
+          for (const sid of expandable) {
+            next[sid] = sid === id;
+          }
+        }
+      } else {
+        next[id] = false;
+      }
+
+      const clamped = clampMobileSidebarExpandState(next, pathname);
+      saveSidebarExpandState(clamped);
+      return clamped;
     });
   }
 
@@ -360,27 +453,27 @@ export function AppSidebar({
   const asideClass = useMemo(
     () =>
       [
-        "flex shrink-0 flex-col overflow-x-hidden border-r-[0.5px] border-sidebar-border bg-surface-2",
+        "app-sidebar-drawer flex shrink-0 flex-col overflow-x-hidden border-r-[0.5px] border-sidebar-border bg-surface-2",
         railCollapsed ? "w-14" : "w-[200px]",
-        "fixed bottom-0 left-0 top-14 z-[120] transition-[width,transform] duration-200 ease-out motion-reduce:transition-none",
-        // Mobile: off-canvas until hamburger opens. Desktop: always visible.
-        mobileOpen ? "translate-x-0" : "-translate-x-full",
-        "md:translate-x-0",
+        mobileOpen ? "is-open" : "",
         "shadow-[var(--sidebar-shadow)]",
-      ].join(" "),
+      ]
+        .filter(Boolean)
+        .join(" "),
     [mobileOpen, railCollapsed],
   );
 
   return (
     <>
-      {mobileOpen ? (
-        <button
-          type="button"
-          aria-label="Close menu"
-          className="fixed inset-0 top-14 z-[110] bg-black/30 md:hidden"
-          onClick={onCloseMobile}
-        />
-      ) : null}
+      <button
+        type="button"
+        aria-label="Close menu"
+        tabIndex={mobileOpen ? undefined : -1}
+        className={`app-sidebar-mobile-scrim fixed inset-0 top-14 z-[110] md:hidden${
+          mobileOpen ? " is-open" : ""
+        }`}
+        onClick={onCloseMobile}
+      />
       <aside className={asideClass} aria-label="App">
         {railCollapsed ? (
           <>
@@ -463,6 +556,67 @@ export function AppSidebar({
         </nav>
 
         <div className="mt-auto shrink-0 border-t border-border px-2 py-3">
+          {/* Mobile drawer: appearance, settings, admin, account (header keeps these on md+). */}
+          <div className="mb-3 flex flex-col gap-0.5 md:hidden">
+            <div className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2">
+              <span className="text-[13px] text-muted">Appearance</span>
+              <ColorSchemePicker variant="sidebar" />
+            </div>
+            <Link
+              href="/settings/account"
+              onClick={onNavigate}
+              aria-current={
+                pathname.startsWith("/settings") ? "page" : undefined
+              }
+              className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] transition-colors ${
+                pathname.startsWith("/settings")
+                  ? "bg-nav-active font-medium text-foreground"
+                  : "text-muted hover:bg-background hover:text-foreground"
+              }`}
+            >
+              <Settings
+                aria-hidden
+                className="size-[18px] shrink-0"
+                strokeWidth={1.75}
+              />
+              Settings
+            </Link>
+            {showAdmin ? (
+              <Link
+                href="/admin"
+                onClick={onNavigate}
+                aria-current={
+                  pathname.startsWith("/admin") ? "page" : undefined
+                }
+                className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] transition-colors ${
+                  pathname.startsWith("/admin")
+                    ? "bg-nav-active font-medium text-foreground"
+                    : "text-muted hover:bg-background hover:text-foreground"
+                }`}
+              >
+                <Shield
+                  aria-hidden
+                  className="size-[18px] shrink-0"
+                  strokeWidth={1.75}
+                />
+                Admin
+              </Link>
+            ) : null}
+            <p className="truncate px-2.5 pt-2 text-[12px] text-muted">
+              Signed in as{" "}
+              <span className="font-medium text-foreground">{accountLabel}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate?.();
+                clearMedimadeSession();
+              }}
+              className="flex cursor-pointer items-center rounded-xl px-2.5 py-2 text-left text-[13px] text-muted transition-colors hover:bg-background hover:text-foreground"
+            >
+              Sign out
+            </button>
+          </div>
           <div className="mb-1 flex items-center justify-end gap-1 px-1 md:justify-start">
             <button
               type="button"

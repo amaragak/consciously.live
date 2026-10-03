@@ -360,7 +360,8 @@ function assembleBeats(params: {
   return beats;
 }
 
-function reviewSystemPrompt(): string {
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function reviewSystemPrompt(): string {
   return [
     "You review meditation script chunks against library segment variants.",
     "For substitution candidates: decide substitute:variantId or keep_custom.",
@@ -372,6 +373,23 @@ function reviewSystemPrompt(): string {
     "Different wording of the same instruction → discard. Genuinely new content → promote.",
     "Include a brief reasoning string for promote, discard, and borderline keep_custom decisions.",
   ].join("\n");
+}
+
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function scriptLabV3Pass1SystemPrompt(): string {
+  return [
+    "You write excellent guided meditation scripts as continuous spoken prose.",
+    "Do not use segment tags, beat schemas, JSON, markdown headings, or tool calls.",
+    "Personalize naturally from the user's transcript and context.",
+    GENDER_NEUTRAL_SCRIPT_RULES,
+    SCRIPT_PAUSE_PROMPT_RULES,
+    "Output only the spoken script with [[PAUSE …]] markers — nothing else.",
+  ].join("\n");
+}
+
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function scriptLabV3ClassifySystemPrompt(): string {
+  return "Classify each script chunk. personalized = references anything specific to this user's input. generic = would read identically for any user in any meditation of this type. uncertain = borderline (mixed generic framing with user-specific detail, or genuinely unclear). Use uncertain sparingly.";
 }
 
 function parseReviewDecisions(params: {
@@ -491,14 +509,7 @@ export async function generateScriptLabScriptV3(params: {
   const pass1 = await callAnthropic({
     apiKey: params.apiKey,
     model: SCRIPT_LAB_SONNET_MODEL,
-    system: [
-      "You write excellent guided meditation scripts as continuous spoken prose.",
-      "Do not use segment tags, beat schemas, JSON, markdown headings, or tool calls.",
-      "Personalize naturally from the user's transcript and context.",
-      GENDER_NEUTRAL_SCRIPT_RULES,
-      SCRIPT_PAUSE_PROMPT_RULES,
-      "Output only the spoken script with [[PAUSE …]] markers — nothing else.",
-    ].join("\n"),
+    system: scriptLabV3Pass1SystemPrompt(),
     userContent: [
       `Meditation type: ${params.journalMode ? "Journal / open" : params.meditationStyle}`,
       `Target duration: ~${params.targetMinutes} minutes (speech speed ${params.speechSpeed}).`,
@@ -539,8 +550,7 @@ export async function generateScriptLabScriptV3(params: {
   const pass3 = await callAnthropic({
     apiKey: params.apiKey,
     model: SCRIPT_LAB_HAIKU_MODEL,
-    system:
-      "Classify each script chunk. personalized = references anything specific to this user's input. generic = would read identically for any user in any meditation of this type. uncertain = borderline (mixed generic framing with user-specific detail, or genuinely unclear). Use uncertain sparingly.",
+    system: scriptLabV3ClassifySystemPrompt(),
     userContent: [
       "User transcript:",
       params.transcript,

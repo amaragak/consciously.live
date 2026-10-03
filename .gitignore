@@ -20,3 +20,9 @@ audio/voice-test-audio/*
 !audio/voice-test-audio/run-pedalboard-fx
 audio/voice-test-audio/.venv
 audio/bg-audio
+
+# Accidental nested unzip path (real design refs live under docs/design/)
+docs/docs/
+
+# Duplicate HomeMobile dumps — canonical copies are in docs/design/marketing/
+docs/design/homepage-v2/HomeMobile*

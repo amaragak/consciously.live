@@ -163,14 +163,13 @@ Or via the helper (writes frontend `.env` from stack outputs; always deploys Lon
 
 ```bash
 ./scripts/deploy-back --require-approval never --profile mm
-# same as: ConsciouslyBackend -c consciouslyStack=true
+# deploys ConsciouslyBackend only
 ```
 
-Legacy MedimadeBackend only when named explicitly:
-
-```bash
-./scripts/deploy-back MedimadeBackend --require-approval never --profile mm
-```
+**Do not deploy `MedimadeBackend` for product work.** That stack is legacy, over the
+CloudFormation 500-resource limit, and is not instantiated by CDK unless
+`LEGACY_MEDIMADE_STACK=1` is set. Put new API/admin changes under
+`lib/consciously/` instead.
 
 ### Repo deploy helper (`scripts/deploy-back`)
 

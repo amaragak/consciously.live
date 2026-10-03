@@ -246,6 +246,19 @@ export function siblingOpusKey(key: string): string | null {
   return `${key.slice(0, -4)}.opus`;
 }
 
+/** Safari-safe AAC sibling. Catalog stays keyed on MP3. */
+export function siblingAacKey(key: string): string | null {
+  const lower = key.toLowerCase();
+  if (
+    !lower.endsWith(".mp3") &&
+    !lower.endsWith(".wav") &&
+    !lower.endsWith(".opus")
+  ) {
+    return null;
+  }
+  return `${key.slice(0, key.lastIndexOf("."))}.m4a`;
+}
+
 export function publicKeysForCategoryMove(
   fromKey: string,
   toCategory: BgAudioCategory,

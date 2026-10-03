@@ -19,10 +19,14 @@ import {
   BG_AUDIO_PREFIX,
   originalKeyForPublicKey,
   parseBgAudioKey,
-  siblingOpusKey,
   siblingWavKey,
 } from "./_shared/background-audio-keys";
-import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "./_shared/bg-audio-opus";
+import {
+  AAC_CONTENT_TYPE,
+  AAC_EXTENSION,
+  aacEncodeArgs,
+  siblingAacKey,
+} from "./_shared/audio-aac";
 import { listAllSoundRows, putSoundRow, soundEnabledFromStatus, type SoundCatalogRow } from "./_shared/sound-catalog";
 
 const s3 = new S3Client({});
@@ -176,7 +180,7 @@ export async function handler(
 
   const mp3Key = key.toLowerCase().endsWith(".wav") ? `${key.slice(0, -4)}.mp3` : key;
   const wavKey = siblingWavKey(mp3Key) ?? `${mp3Key.slice(0, -4)}.wav`;
-  const opusKey = siblingOpusKey(mp3Key) ?? `${mp3Key.slice(0, -4)}.opus`;
+  const aacKey = siblingAacKey(mp3Key) ?? `${mp3Key.slice(0, -4)}${AAC_EXTENSION}`;
   const origMp3 = originalKeyForPublicKey(mp3Key);
   const origWav = originalKeyForPublicKey(wavKey);
 
@@ -184,7 +188,7 @@ export async function handler(
   const inPath = `/tmp/trim-in-${id}`;
   const outWav = `/tmp/trim-out-${id}.wav`;
   const outMp3 = `/tmp/trim-out-${id}.mp3`;
-  const outOpus = `/tmp/trim-out-${id}.opus`;
+  const outAac = `/tmp/trim-out-${id}${AAC_EXTENSION}`;
   const origMp3Path = `/tmp/trim-orig-${id}.mp3`;
 
   try {
@@ -261,14 +265,12 @@ export async function handler(
       "2",
       outMp3,
     ]);
-    // Opus is an optimisation (gapless loops); a build without libopus must not
-    // fail the trim, since playback falls back to MP3.
-    let opusBuf: Buffer | null = null;
+    let aacBuf: Buffer | null = null;
     try {
-      await execFfmpeg(opusEncodeArgs(outWav, outOpus));
-      opusBuf = fs.readFileSync(outOpus);
+      await execFfmpeg(aacEncodeArgs(outWav, outAac));
+      aacBuf = fs.readFileSync(outAac);
     } catch (e) {
-      console.warn("opus encode skipped", e instanceof Error ? e.message : e);
+      console.warn("aac encode skipped", e instanceof Error ? e.message : e);
     }
 
     const wavBuf = fs.readFileSync(outWav);
@@ -291,13 +293,13 @@ export async function handler(
         CacheControl: "public, max-age=31536000, immutable",
       }),
     );
-    if (opusBuf) {
+    if (aacBuf) {
       await s3.send(
         new PutObjectCommand({
           Bucket: bucket,
-          Key: opusKey,
-          Body: opusBuf,
-          ContentType: OPUS_CONTENT_TYPE,
+          Key: aacKey,
+          Body: aacBuf,
+          ContentType: AAC_CONTENT_TYPE,
           CacheControl: "public, max-age=31536000, immutable",
         }),
       );
@@ -352,7 +354,7 @@ export async function handler(
       `${inPath}.mp3`,
       outWav,
       outMp3,
-      outOpus,
+      outAac,
       origMp3Path,
     ]) {
       try {

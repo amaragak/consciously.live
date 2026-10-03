@@ -243,7 +243,7 @@ export function MeditationTypeCardGrid({
       aria-label={includeAll ? "Community categories" : "Meditation types"}
       className={`${
         className ||
-        "grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6"
+        "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6"
       }${!isPicker ? " p-1.5" : ""}`}
     >
       {cards.map((card, i) => {
@@ -365,7 +365,7 @@ function CategoryCoverCard({
       style={
         active && pulseDelay ? { animationDelay: pulseDelay } : undefined
       }
-      className={`relative aspect-square w-full min-w-0 rounded-md border-[3px] border-solid bg-transparent sm:rounded-lg ${
+      className={`relative flex w-full min-w-0 flex-row items-center gap-3 overflow-hidden rounded-md border-[3px] border-solid bg-card p-1.5 text-left sm:aspect-square sm:block sm:bg-transparent sm:p-0 sm:rounded-lg ${
         reveal
           ? active
             ? "create-audio-selected-pulse cursor-pointer border-accent-button"
@@ -373,9 +373,9 @@ function CategoryCoverCard({
           : "pointer-events-none border-transparent"
       }`}
     >
-      {/* Image clipped to the pad inside the border so the pulse rim stays visible. */}
+      {/* Mobile: square thumb. sm+: full-bleed cover clipped inside the border pad. */}
       <div
-        className={`absolute inset-0 overflow-hidden rounded-[3px] transition-opacity ease-out sm:rounded-[5px] ${
+        className={`relative size-14 shrink-0 overflow-hidden rounded-[3px] transition-opacity ease-out sm:absolute sm:inset-0 sm:size-auto sm:h-full sm:w-full sm:rounded-[5px] ${
           reveal ? "opacity-100" : "opacity-0"
         }`}
         style={{
@@ -394,12 +394,23 @@ function CategoryCoverCard({
             }}
           />
         ) : null}
-        <span className="absolute inset-x-0 bottom-0 flex min-h-[2.5rem] items-center justify-center bg-black/55 px-2 py-1 sm:min-h-[2.75rem] sm:px-2.5 sm:py-1.5">
+        <span className="absolute inset-x-0 bottom-0 hidden min-h-[2.5rem] items-center justify-center bg-black/55 px-2 py-1 sm:flex sm:min-h-[2.75rem] sm:px-2.5 sm:py-1.5">
           <span className="line-clamp-2 text-center font-display text-sm font-medium leading-tight text-white sm:text-base">
             {label}
           </span>
         </span>
       </div>
+      <span
+        className={`min-w-0 flex-1 truncate font-display text-sm font-medium leading-tight text-foreground transition-opacity ease-out sm:hidden ${
+          reveal ? "opacity-100" : "opacity-0"
+        }`}
+        style={{
+          transitionDuration: `${COVER_FADE_MS}ms`,
+          transitionDelay: reveal ? `${staggerIndex * COVER_STAGGER_MS}ms` : "0ms",
+        }}
+      >
+        {label}
+      </span>
     </button>
   );
 }
@@ -493,8 +504,8 @@ export function CommunityCategoryGrid({
       className={
         className ??
         (includeAll
-          ? "mt-8 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
-          : "grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
+          ? "mt-8 grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
+          : "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
       }
     />
   );

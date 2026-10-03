@@ -2118,6 +2118,8 @@ export type FishSpeaker = {
   gender?: VoiceGender;
   /** TTS vendor. Live `/fish/speakers` includes this; hardcoded fallbacks are Fish. */
   brand?: "fish" | "speechify";
+  /** Speechify SSML prosody rate percent from admin. Null/omit = Speechify default. */
+  speechifyRate?: number | null;
   /** Admin row timestamp — Create/mixer append this to bust cached samples. */
   updatedAt?: string;
 };
@@ -2414,6 +2416,14 @@ export async function createMeditationAudioJob(params: {
   claudeModel?: string;
   /** Dev: Fish qualitative tags vs ffmpeg silence chunks. Default segmented. */
   fishPauseMode?: FishPauseMode;
+  /** Dev: also render Speechify warm + calm emotion stems (serial). */
+  speechifyEmotionVariants?: boolean;
+  /** Dev: skip wet Voice FX bounce entirely (dry stem only). */
+  skipVoiceFx?: boolean;
+  /** Dev: disable Speechify API loudness_normalization (raw volume A/B). */
+  skipSpeechifyLoudnorm?: boolean;
+  /** Dev override for Speechify SSML rate percent (admin voice default when omitted). */
+  speechifyRate?: number | null;
   /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
   longerBreaks?: boolean;
   /** Program shelf audio — keep off My Creations. */
@@ -2472,6 +2482,22 @@ export async function createMeditationAudioJob(params: {
     ...(params.claudeModel ? { claudeModel: params.claudeModel } : {}),
     ...(params.fishPauseMode === "native" || params.fishPauseMode === "segmented"
       ? { fishPauseMode: params.fishPauseMode }
+      : {}),
+    ...(params.speechifyEmotionVariants === true
+      ? { speechifyEmotionVariants: true }
+      : {}),
+    ...(params.skipVoiceFx === true ? { skipVoiceFx: true } : {}),
+    ...(params.skipSpeechifyLoudnorm === true
+      ? { skipSpeechifyLoudnorm: true }
+      : {}),
+    ...(typeof params.speechifyRate === "number" &&
+    Number.isFinite(params.speechifyRate)
+      ? {
+          speechifyRate: Math.max(
+            -50,
+            Math.min(50, Math.round(params.speechifyRate)),
+          ),
+        }
       : {}),
     ...(params.longerBreaks === true ? { longerBreaks: true } : {}),
     meditationTargetMinutes,
@@ -2977,6 +3003,8 @@ export async function trimAdminSound(body: {
 
 export type VoiceSpeakerBrand = "fish" | "speechify";
 
+export type SpeechifyEmotionSampleTag = "neutral" | "warm" | "calm";
+
 export type AdminVoiceSpeaker = {
   name: string;
   modelId: string;
@@ -2990,6 +3018,8 @@ export type AdminVoiceSpeaker = {
   speechifyRate?: number | null;
   hasSample?: boolean;
   sampleUrl?: string | null;
+  /** Speechify emotion audition clips (neutral / warm / calm). */
+  emotionSampleUrls?: Partial<Record<SpeechifyEmotionSampleTag, string>> | null;
 };
 
 export type AdminPauseBands = {
@@ -3061,6 +3091,50 @@ export async function fetchDevUiSettings(): Promise<DevUiSettings> {
   } catch {
     return defaultDevUiSettings();
   }
+}
+
+export type ClaudePrepromptRow = {
+  id: string;
+  title: string;
+  feature: string;
+  kind: string;
+  sourcePath: string;
+  text: string;
+  sortOrder: number;
+  deployedAt?: string;
+};
+
+export async function fetchAdminClaudePreprompts(): Promise<{
+  prompts: ClaudePrepromptRow[];
+  meta: { deployedAt: string; count: number; ids: string[] } | null;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/preprompts`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as {
+    prompts?: ClaudePrepromptRow[];
+    meta?: { deployedAt?: string; count?: number; ids?: string[] } | null;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const prompts = Array.isArray(data.prompts) ? data.prompts : [];
+  const meta =
+    data.meta && typeof data.meta.deployedAt === "string"
+      ? {
+          deployedAt: data.meta.deployedAt,
+          count:
+            typeof data.meta.count === "number"
+              ? data.meta.count
+              : prompts.length,
+          ids: Array.isArray(data.meta.ids) ? data.meta.ids : [],
+        }
+      : null;
+  return { prompts, meta };
 }
 
 export async function patchDevUiSettings(
@@ -3370,6 +3444,37 @@ export async function generateAdminVoiceSample(
   });
   const data = (await res.json()) as {
     sampleUrl?: string | null;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return data;
+}
+
+export async function generateAdminVoiceEmotionSamples(
+  modelId: string,
+  opts?: { force?: boolean; emotion?: SpeechifyEmotionSampleTag | "all" },
+): Promise<{
+  emotionSampleUrls?: Partial<Record<SpeechifyEmotionSampleTag, string>> | null;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const emotion =
+    opts?.emotion && opts.emotion !== "all" ? opts.emotion : undefined;
+  const res = await medimadeFetch(`${base}/admin/voice`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "emotion-samples",
+      modelId,
+      force: opts?.force === true,
+      ...(emotion ? { emotion } : {}),
+    }),
+  });
+  const data = (await res.json()) as {
+    emotionSampleUrls?: Partial<Record<SpeechifyEmotionSampleTag, string>> | null;
     error?: string;
     detail?: string;
   };
@@ -4693,6 +4798,18 @@ export type LibraryMeditationItem = {
   wetAudioKey?: string | null;
   dryAudioUrl?: string | null;
   wetAudioUrl?: string | null;
+  /** Dev: Speechify warm/calm locked stems (neutral uses dry/wet above). */
+  speechifyEmotionStems?: Partial<
+    Record<
+      "warm" | "calm",
+      {
+        dryAudioKey: string;
+        wetAudioKey: string | null;
+        dryAudioUrl: string;
+        wetAudioUrl: string | null;
+      }
+    >
+  > | null;
   coverImageKey?: string | null;
   coverImageUrl?: string | null;
   voiceFxDial?: number | null;
@@ -4732,6 +4849,8 @@ export type LibraryMeditationItem = {
   claudeHaiku45ChatEstOutputTokens?: number | null;
   /** Per-phase + per speech-section worker timings (dev flyover). */
   generationTimings?: GenerationTimings | null;
+  /** Localhost create-audio Dev · toggles active at generate time. */
+  devToggles?: string[] | null;
   /** Create-path snapshot for “How this was made” (when saved at generate time). */
   creationProvenance?: MeditationCreationProvenance | null;
 };

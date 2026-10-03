@@ -1155,7 +1155,8 @@ function formatChatsForPrompt(chats: MeditationChatSource[]): string {
     .join("\n\n---\n\n");
 }
 
-function buildSystemPrompt(
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function buildSystemPrompt(
   selection: WeeklyGenerateSelection,
   periodPhrase: string,
 ): string {

@@ -1,7 +1,16 @@
 #!/usr/bin/env npx tsx
+/**
+ * CDK app entry (filename is historical — do not treat as Medimade).
+ *
+ * Default: ConsciouslyBackend only.
+ *
+ * MedimadeBackend is LEGACY. It is NOT instantiated unless you explicitly set
+ *   LEGACY_MEDIMADE_STACK=1
+ * Do not add new routes/resources there — it is already at/over the CFN 500
+ * resource limit and is not the live consciously.live stack.
+ */
 import * as cdk from "aws-cdk-lib";
 import { ConsciouslyStack } from "../lib/consciously-stack";
-import { MedimadeStack } from "../lib/medimade-stack";
 
 const app = new cdk.App();
 
@@ -11,26 +20,24 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION ?? "eu-west-2",
 };
 
-new MedimadeStack(app, "MedimadeBackend", {
+new ConsciouslyStack(app, "ConsciouslyBackend", {
   env,
-  description: "Legacy medimade.io backend (kept until fully retired)",
+  description:
+    "consciously.live backend (nested Config/Auth/Database/Media/Api)",
 });
 
 /**
- * Live ConsciouslyBackend — default stack for deploy-back / CI.
- * Also enabled with CONSCIOUSLY_STACK=1 or `-c consciouslyStack=true`.
- * MedimadeBackend remains defined so legacy deploys still synth.
+ * LEGACY ONLY — opt-in. Never enable during normal deploys.
+ * File: lib/medimade-stack.ts — do not extend for new features.
  */
-const enableConsciously =
-  process.env.CONSCIOUSLY_STACK === "1" ||
-  app.node.tryGetContext("consciouslyStack") === true ||
-  app.node.tryGetContext("consciouslyStack") === "true";
-
-if (enableConsciously) {
-  new ConsciouslyStack(app, "ConsciouslyBackend", {
+if (process.env.LEGACY_MEDIMADE_STACK === "1") {
+  // Lazy require so normal synth never loads the oversized legacy stack module.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { MedimadeStack } = require("../lib/medimade-stack") as typeof import("../lib/medimade-stack");
+  new MedimadeStack(app, "MedimadeBackend", {
     env,
     description:
-      "consciously.live backend (nested Config/Auth/Database/Media/Api)",
+      "LEGACY medimade.io backend — DO NOT MODIFY; use ConsciouslyBackend",
   });
 }
 

@@ -685,3 +685,47 @@ export function saveSidebarExpandState(state: Record<string, boolean>): void {
     /* ignore */
   }
 }
+
+/** Section ids that have expandable children in the main nav. */
+export function sidebarExpandableSectionIds(): string[] {
+  return APP_NAV_MAIN.filter((s) => (s.children?.length ?? 0) > 0).map(
+    (s) => s.id,
+  );
+}
+
+/**
+ * Mobile sidebar: keep enough vertical space by limiting open parents.
+ * - On a tool section (e.g. Meditate): that section stays open; at most one
+ *   other parent may be open (opening another closes the previous “other”).
+ * - On the dashboard (no active tool section): at most one parent open.
+ */
+export function clampMobileSidebarExpandState(
+  state: Record<string, boolean>,
+  pathname: string,
+): Record<string, boolean> {
+  const expandable = sidebarExpandableSectionIds();
+  const next: Record<string, boolean> = { ...state };
+  const active = activeNavSectionId(pathname);
+  const activePinned =
+    active && expandable.includes(active) ? active : null;
+
+  if (activePinned) {
+    next[activePinned] = true;
+    const othersOpen = expandable.filter(
+      (id) => id !== activePinned && next[id],
+    );
+    // At most one non-pinned parent. If several are open (e.g. all-expanded
+    // defaults from resolve), collapse them all — only an explicit toggle
+    // should open a second parent.
+    if (othersOpen.length > 1) {
+      for (const id of othersOpen) next[id] = false;
+    }
+    return next;
+  }
+
+  const open = expandable.filter((id) => next[id]);
+  for (let i = 1; i < open.length; i++) {
+    next[open[i]!] = false;
+  }
+  return next;
+}

@@ -1,5 +1,8 @@
 import { voiceFxDialGains } from "./voice-fx-dial";
-import { voiceStemPlaybackUrl } from "./voice-stem-keys";
+import {
+  voiceStemPlaybackCandidates,
+  voiceStemPlaybackUrl,
+} from "./voice-stem-keys";
 
 const bufferCache = new Map<string, AudioBuffer>();
 const BUFFER_CACHE_MAX = 24;
@@ -93,7 +96,9 @@ export class DualStemPlayer {
   ): Promise<void> {
     const dry = voiceStemPlaybackUrl(dryUrl);
     const wet = wetUrl ? voiceStemPlaybackUrl(wetUrl) : "";
-    const baked = (bakedUrl ?? "").trim();
+    // Prefer AAC for baked mix too (catalog may still point at `.mp3`).
+    const bakedRaw = (bakedUrl ?? "").trim();
+    const baked = bakedRaw ? voiceStemPlaybackUrl(bakedRaw) : "";
     const key = `${dry}\n${wet}\n${baked}`;
     this.dial = dial;
     this.bakedUrl = baked;
@@ -295,7 +300,10 @@ export class DualStemPlayer {
 
   private prepareBaked() {
     const el = this.ensureBakedEl();
-    if (el.src !== this.bakedUrl) el.src = this.bakedUrl;
+    const candidates = voiceStemPlaybackCandidates(this.bakedUrl || this.dryUrl);
+    const first = candidates[0] ?? this.bakedUrl;
+    if (first && el.src !== first) el.src = first;
+    this.bakedUrl = first;
     this.notifyDuration();
   }
 
@@ -305,7 +313,12 @@ export class DualStemPlayer {
     this.stopSources();
     if (epoch !== this.playEpoch) return;
     this.ignoreEnded = false;
-    if (el.src !== this.bakedUrl) el.src = this.bakedUrl;
+    const candidates = voiceStemPlaybackCandidates(this.bakedUrl || this.dryUrl);
+    const first = candidates[0] ?? this.bakedUrl;
+    if (first && el.src !== first) {
+      el.src = first;
+      this.bakedUrl = first;
+    }
     try {
       el.currentTime = this.offset;
     } catch {
@@ -321,6 +334,16 @@ export class DualStemPlayer {
         }
       })
       .catch(() => {
+        // Prefer AAC; if missing, fall back to MP3 sibling once.
+        const fallback = candidates.find((c) => c !== el.src);
+        if (fallback && epoch === this.playEpoch) {
+          el.src = fallback;
+          this.bakedUrl = fallback;
+          void el.play().catch(() => {
+            if (epoch === this.playEpoch) this.playing = false;
+          });
+          return;
+        }
         if (epoch === this.playEpoch) this.playing = false;
       });
     this.armEndTimer();
@@ -334,6 +357,14 @@ export class DualStemPlayer {
     el.style.display = "none";
     el.addEventListener("ended", () => this.finishNatural());
     el.addEventListener("loadedmetadata", () => this.notifyDuration());
+    el.addEventListener("error", () => {
+      const candidates = voiceStemPlaybackCandidates(this.bakedUrl || this.dryUrl);
+      const fallback = candidates.find((c) => c && c !== el.currentSrc && c !== el.src);
+      if (fallback) {
+        el.src = fallback;
+        this.bakedUrl = fallback;
+      }
+    });
     document.body.appendChild(el);
     this.bakedEl = el;
     return el;
@@ -418,19 +449,30 @@ function finiteDuration(el: HTMLAudioElement): number {
 }
 
 async function decodeStem(ctx: AudioContext, url: string): Promise<AudioBuffer> {
-  const hit = bufferCache.get(url);
-  if (hit) return hit;
-  const res = await fetch(url, { mode: "cors" });
-  if (!res.ok) throw new Error(`stem HTTP ${res.status}`);
-  const raw = await res.arrayBuffer();
-  const copy = raw.slice(0);
-  const buf = await ctx.decodeAudioData(copy);
-  if (bufferCache.size >= BUFFER_CACHE_MAX) {
-    const first = bufferCache.keys().next().value;
-    if (first) bufferCache.delete(first);
+  const candidates = voiceStemPlaybackCandidates(url);
+  let lastErr: unknown;
+  for (const candidate of candidates) {
+    const hit = bufferCache.get(candidate);
+    if (hit) return hit;
+    try {
+      const res = await fetch(candidate, { mode: "cors" });
+      if (!res.ok) throw new Error(`stem HTTP ${res.status}`);
+      const raw = await res.arrayBuffer();
+      const copy = raw.slice(0);
+      const buf = await ctx.decodeAudioData(copy);
+      if (bufferCache.size >= BUFFER_CACHE_MAX) {
+        const first = bufferCache.keys().next().value;
+        if (first) bufferCache.delete(first);
+      }
+      bufferCache.set(candidate, buf);
+      return buf;
+    } catch (e) {
+      lastErr = e;
+    }
   }
-  bufferCache.set(url, buf);
-  return buf;
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("stem decode failed");
 }
 
 let libraryVoice: DualStemPlayer | null = null;

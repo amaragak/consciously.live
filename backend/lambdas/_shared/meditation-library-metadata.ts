@@ -195,6 +195,21 @@ export function scrubLibraryFacingCopy(text: string): string {
     .trim();
 }
 
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function libraryMetadataSystemPrompt(): string {
+  return [
+    "You output exactly one JSON object and nothing else: keys title, meditationType, description.",
+    'Field "meditationType" MUST be identical to one string in the ALLOWED_MEDITATION_TYPES JSON array from the user message — copy it character-for-character (including spaces and hyphens).',
+    "Pick the **single best-matching** category for this meditation; if several fit, choose the strongest overall fit.",
+    "Never invent labels: no synonyms or paraphrases (e.g. not Mindfulness, Zen, Guided meditation, Calm, General).",
+    "Title: ~10 words, evocative, listener-facing — same quality as a published meditation card. Description: what the listener will experience across the whole practice.",
+    "If the practice weaves multiple themes, centers, sessions, or phases, title and description MUST reflect the full journey — never name only the opening section (e.g. do not title a full chakra journey as a Root-only piece).",
+    "Never invent themes (grief, heartbreak, etc.) that are not supported by the script or chat.",
+    "Never quote or paraphrase system/instructions (e.g. “Please write a complete guided meditation script”, “one-shot request”).",
+    "No markdown code fences.",
+  ].join(" ");
+}
+
 export async function deriveLibraryMetadataFromClaude(params: {
   apiKey: string;
   model: string;
@@ -218,17 +233,7 @@ export async function deriveLibraryMetadataFromClaude(params: {
     params.createIntent,
   );
 
-  const system = [
-    "You output exactly one JSON object and nothing else: keys title, meditationType, description.",
-    'Field "meditationType" MUST be identical to one string in the ALLOWED_MEDITATION_TYPES JSON array from the user message — copy it character-for-character (including spaces and hyphens).',
-    "Pick the **single best-matching** category for this meditation; if several fit, choose the strongest overall fit.",
-    "Never invent labels: no synonyms or paraphrases (e.g. not Mindfulness, Zen, Guided meditation, Calm, General).",
-    "Title: ~10 words, evocative, listener-facing — same quality as a published meditation card. Description: what the listener will experience across the whole practice.",
-    "If the practice weaves multiple themes, centers, sessions, or phases, title and description MUST reflect the full journey — never name only the opening section (e.g. do not title a full chakra journey as a Root-only piece).",
-    "Never invent themes (grief, heartbreak, etc.) that are not supported by the script or chat.",
-    "Never quote or paraphrase system/instructions (e.g. “Please write a complete guided meditation script”, “one-shot request”).",
-    "No markdown code fences.",
-  ].join(" ");
+  const system = libraryMetadataSystemPrompt();
 
   const modeBlock = params.journalMode
     ? [

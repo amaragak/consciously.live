@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import "@/components/home-v2/home-v2.css";
@@ -13,6 +14,14 @@ import { useLibraryPlayer } from "@/components/library-player-provider";
 import { createMeditationHref } from "@/lib/create-meditation-path";
 import type { LibraryMeditationItem } from "@/lib/medimade-api";
 import { MEDITATION_STYLE_LABELS } from "@/lib/meditation-style-intake";
+
+export type MeditateFeaturedProgram = {
+  id: string;
+  title: string;
+  lessonCount: number;
+  coverImageUrl: string | null;
+  href: string;
+};
 
 /** Same subtle sticky-navy steps as other tool marketing pages. */
 const BANDS = [
@@ -634,47 +643,122 @@ function StylesGrid() {
   );
 }
 
-function ProgramsSection() {
-  const [madeForMe, setMadeForMe] = useState(true);
+function ProgramsSection({
+  programs,
+}: {
+  programs: MeditateFeaturedProgram[];
+}) {
+  const libraryHref = "/meditate/library/programs";
 
-  const toggle = (
-    <div
-      className="flex self-start rounded-full bg-[var(--hv2-sticky-bg)] p-[3px] text-[12px] md:p-0.5 md:text-[13px]"
-      role="group"
-      aria-label="Program mode"
-    >
-      <button
-        type="button"
-        aria-pressed={!madeForMe}
-        onClick={() => setMadeForMe(false)}
-        className={`rounded-full px-[11px] py-[5px] md:px-3 md:py-1.5 ${
-          !madeForMe
-            ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-            : FAINT
-        }`}
-      >
-        As written
-      </button>
-      <button
-        type="button"
-        aria-pressed={madeForMe}
-        onClick={() => setMadeForMe(true)}
-        className={`rounded-full px-[11px] py-[5px] md:px-3 md:py-1.5 ${
-          madeForMe
-            ? "bg-[var(--hv2-gold)] font-semibold text-[var(--hv2-on-gold)]"
-            : FAINT
-        }`}
-      >
-        Made for me
-      </button>
+  const makeOwnPoint = (
+    <div className="flex flex-col gap-0.5 pb-1 md:gap-1 md:pb-0 md:pt-1.5">
+      <span className={`home-v2-display text-[17px] ${IVORY} md:text-[21px]`}>
+        Make it your own
+      </span>
+      <span className={`max-w-[520px] text-[14px] leading-[1.5] ${FAINT} md:text-[16px] md:leading-[1.55]`}>
+        Pick a program, say what’s going on in a quick chat, and every session
+        after that is shaped around it.
+      </span>
     </div>
   );
+
+  const desktopCards =
+    programs.length === 0 ? (
+      <p className={`m-0 text-sm ${MUTED}`}>Programs loading soon.</p>
+    ) : (
+      <div className="flex flex-col gap-3.5">
+        <div className="flex flex-col gap-3.5">
+          {programs.map((p) => (
+            <Link
+              key={p.id}
+              href={p.href}
+              className={`flex min-w-0 items-stretch overflow-hidden rounded-[17px] border border-[var(--hv2-card-border)] ${CARD} transition-opacity hover:opacity-95`}
+            >
+              <span className="relative h-[115px] w-[115px] shrink-0 bg-[var(--hv2-sticky-bg)]">
+                {p.coverImageUrl ? (
+                  <Image
+                    src={p.coverImageUrl}
+                    alt=""
+                    fill
+                    sizes="115px"
+                    className="object-cover"
+                  />
+                ) : null}
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-6 py-4">
+                <span
+                  className={`home-v2-display text-[24px] leading-[1.2] tracking-[-0.25px] ${IVORY}`}
+                >
+                  {p.title}
+                </span>
+                <span className={`text-[16px] ${FAINT}`}>
+                  {p.lessonCount} lesson{p.lessonCount === 1 ? "" : "s"}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+        <Link
+          href={libraryHref}
+          className={`self-end text-[14px] font-semibold ${GOLD} transition-opacity hover:opacity-90`}
+        >
+          And more in the library →
+        </Link>
+      </div>
+    );
+
+  const mobileCard =
+    programs.length === 0 ? (
+      <p className={`m-0 text-sm ${MUTED}`}>Programs loading soon.</p>
+    ) : (
+      <div
+        className={`flex flex-col overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-1`}
+      >
+        {programs.map((p, i) => (
+          <Link
+            key={p.id}
+            href={p.href}
+            className={`flex items-center gap-3.5 py-3 ${
+              i > 0 ? "border-t border-[var(--hv2-card-border)]" : ""
+            }`}
+          >
+            <span className="relative h-[58px] w-[58px] shrink-0 overflow-hidden rounded-[11px] bg-[var(--hv2-sticky-bg)]">
+              {p.coverImageUrl ? (
+                <Image
+                  src={p.coverImageUrl}
+                  alt=""
+                  fill
+                  sizes="58px"
+                  className="object-cover"
+                />
+              ) : null}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span
+                className={`home-v2-display text-[18px] leading-[1.25] ${IVORY}`}
+              >
+                {p.title}
+              </span>
+              <span className={`text-[14px] ${FAINT}`}>
+                {p.lessonCount} lesson{p.lessonCount === 1 ? "" : "s"}
+              </span>
+            </span>
+          </Link>
+        ))}
+        <Link
+          href={libraryHref}
+          className={`border-t border-[var(--hv2-card-border)] py-3 pb-2.5 text-[13px] font-semibold ${GOLD}`}
+        >
+          And more in the library →
+        </Link>
+      </div>
+    );
 
   return (
     <section
       className={`${BANDS[2]} w-full border-t border-[var(--hv2-hero-hairline)] px-5 py-10 md:border-t-0 md:px-6 md:py-24`}
     >
-      {/* Mobile compact */}
+      {/* Mobile */}
       <div
         className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 md:hidden"
         data-hv2-reveal
@@ -685,72 +769,21 @@ function ProgramsSection() {
           Programs
         </span>
         <h2
-          className={`home-v2-display m-0 text-[26px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
+          className={`home-v2-display m-0 text-[30px] font-normal leading-[1.1] ${IVORY}`}
         >
-          Curated multi-session journeys, made personal.
+          Guided journeys, made personal.
         </h2>
         <p className={`m-0 mb-1 text-[15px] leading-[1.55] ${MUTED}`}>
-          Follow a course session by session, as it’s written. Or have each one
-          rewritten around what’s going on for you that day.
+          Follow a course session by session, as it’s written. Or make it your
+          own, and each session is rewritten around what’s going on for you that
+          day.
         </p>
-        <div
-          className={`flex flex-col gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hv2-card-border)] ${CARD} px-4 py-3.5`}
-        >
-          <span className={`home-v2-display text-[20px] ${IVORY}`}>
-            Chakra Cleanse
-          </span>
-          {toggle}
-          <span className={`text-[13px] leading-[1.45] ${MUTED}`}>
-            Seven energy centres, root to crown, one session at a time.
-          </span>
-          {madeForMe ? (
-            <>
-              <p className={`m-0 text-[13px] italic leading-snug ${MUTED}`}>
-                “I’ve been feeling unrooted at work — need to land before the
-                week.”
-              </p>
-              <CompactPlayerRow
-                title="Grounded before Monday"
-                meta="Root theme · your words · Warm voice"
-              />
-            </>
-          ) : (
-            <div>
-              {(
-                [
-                  ["Day 1", "Root Chakra", true],
-                  ["Day 4", "Heart Chakra", false],
-                ] as const
-              ).map(([day, title, on]) => (
-                <div
-                  key={title}
-                  className="flex items-center gap-3 border-t border-[var(--hv2-card-border)] py-[9px]"
-                >
-                  <span className={`w-10 shrink-0 text-[12px] ${FAINT}`}>
-                    {day}
-                  </span>
-                  <span className={`home-v2-display min-w-0 flex-1 text-[15px] ${IVORY}`}>
-                    {title}
-                  </span>
-                  {on ? (
-                    <span
-                      className="accent-fill-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]"
-                      aria-hidden
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {makeOwnPoint}
+        {mobileCard}
       </div>
 
       {/* Desktop */}
-      <div className="mx-auto hidden w-full max-w-[1200px] gap-10 md:grid md:grid-cols-[1fr_minmax(0,520px)] md:items-center md:gap-16">
+      <div className="mx-auto hidden w-full max-w-[1200px] gap-10 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:items-center md:gap-14">
         <div className="flex flex-col gap-[18px]" data-hv2-reveal>
           <span
             className={`text-xs font-semibold uppercase tracking-[1.6px] ${GOLD}`}
@@ -760,121 +793,18 @@ function ProgramsSection() {
           <h2
             className={`home-v2-display m-0 text-[46px] font-normal leading-[1.1] tracking-[-0.6px] ${IVORY}`}
           >
-            Curated multi-session journeys, made personal.
+            Guided journeys, made personal.
           </h2>
           <p
             className={`m-0 max-w-[520px] text-[19px] leading-[1.6] ${MUTED}`}
           >
-            Follow a course session by session, as it’s written. Or have each
-            one rewritten around what’s going on for you that day.
+            Follow a course session by session, as it’s written. Or make it your
+            own, and each session is rewritten around what’s going on for you
+            that day.
           </p>
+          {makeOwnPoint}
         </div>
-        <div
-          className={`${CARD} flex flex-col gap-3 rounded-[18px] p-6`}
-          data-hv2-reveal
-        >
-          <div className="flex shrink-0 items-center justify-between gap-3">
-            <span className={`home-v2-display text-2xl ${IVORY}`}>
-              Chakra Cleanse
-            </span>
-            {toggle}
-          </div>
-
-          <div className="grid">
-            <div
-              className={`col-start-1 row-start-1 flex flex-col gap-2.5 ${
-                madeForMe ? "visible" : "invisible pointer-events-none"
-              }`}
-              aria-hidden={!madeForMe}
-            >
-              <p className={`m-0 text-sm ${FAINT}`}>
-                Day 1 · Root — rewritten from what you share.
-              </p>
-              <div className={`rounded-xl ${INSET} px-3.5 py-3`}>
-                <p
-                  className={`m-0 text-[10px] font-semibold uppercase tracking-[1.2px] ${GOLD}`}
-                >
-                  You say
-                </p>
-                <p className="home-v2-display m-0 mt-1 text-[15px] italic leading-snug text-[var(--hv2-ink)]">
-                  “I’ve been feeling unrooted at work — need to land before the
-                  week.”
-                </p>
-              </div>
-              <span
-                className="flex justify-center text-[18px] text-[var(--hv2-gold)]"
-                aria-hidden
-              >
-                ↓
-              </span>
-              <div className="flex items-center gap-3.5 rounded-xl border border-[var(--hv2-card-border)] bg-[var(--hv2-card-track)] px-3.5 py-3">
-                <span className="accent-fill-gradient flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-[var(--hv2-on-gold)]">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </span>
-                <div className="min-w-0">
-                  <p className={`m-0 text-[11px] uppercase tracking-[1.3px] ${GOLD}`}>
-                    Day 1 · for you
-                  </p>
-                  <p className={`home-v2-display m-0 text-lg ${IVORY}`}>
-                    Grounded before Monday
-                  </p>
-                  <p className={`m-0 text-[12px] ${FAINT}`}>
-                    Root theme · your words · Warm voice
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div
-              className={`col-start-1 row-start-1 flex flex-col gap-2.5 ${
-                !madeForMe ? "visible" : "invisible pointer-events-none"
-              }`}
-              aria-hidden={madeForMe}
-            >
-              <p className={`m-0 text-sm ${FAINT}`}>
-                Seven energy centres, root to crown — ready audio, as published.
-              </p>
-              {(
-                [
-                  ["Day 1", "Root Chakra", "10 min", true],
-                  ["Day 4", "Heart Chakra", "10 min", false],
-                ] as const
-              ).map(([day, title, mins, on]) => (
-                <div
-                  key={title}
-                  className={`flex items-center gap-3.5 rounded-xl px-3.5 py-3 ${
-                    on
-                      ? "border border-[var(--hv2-card-border)] bg-[var(--hv2-card-track)]"
-                      : "border border-[var(--hv2-card-border)]"
-                  }`}
-                >
-                  <span
-                    className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full ${
-                      on
-                        ? "accent-fill-gradient text-[var(--hv2-on-gold)]"
-                        : "bg-[var(--hv2-card-track)] text-[var(--hv2-body)]"
-                    }`}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0">
-                    <p className={`m-0 text-[11px] uppercase tracking-[1.3px] ${GOLD}`}>
-                      {day}
-                      {on ? ` · ready audio · ${mins}` : ` · ${mins}`}
-                    </p>
-                    <p className={`home-v2-display m-0 text-lg ${IVORY}`}>
-                      {title}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <div data-hv2-reveal>{desktopCards}</div>
       </div>
     </section>
   );
@@ -1201,7 +1131,11 @@ function ShareSection() {
   );
 }
 
-export function MeditateMarketingPage() {
+export function MeditateMarketingPage({
+  featuredPrograms,
+}: {
+  featuredPrograms: MeditateFeaturedProgram[];
+}) {
   const createHref = createMeditationHref({ path: "oneShot" });
   const [motionReady, setMotionReady] = useState(false);
 
@@ -1255,7 +1189,7 @@ export function MeditateMarketingPage() {
 
         <PersonalByDesign />
         <StylesGrid />
-        <ProgramsSection />
+        <ProgramsSection programs={featuredPrograms} />
         <SoundSection />
         <ShareSection />
 

@@ -17,15 +17,24 @@ import {
 import {
   SPEAKER_PREVIEW_TEXT,
   generateFishSpeakerPreview,
+  generateSpeechifyEmotionSample,
   generateSpeechifyLetterIntroSample,
   letterIntroSampleText,
   speakerPreviewReady,
+  speechifyEmotionSampleUrls,
 } from "./_shared/fish-speaker-preview";
+import { aacAdtsToMp3Buffer } from "./_shared/audio-aac";
 import {
   getSpeechifyApiKey,
   speechifyRateToSsml,
   speechifyTtsMp3,
+  type SpeechifyEmotionTag,
 } from "./_shared/speechify-tts";
+import {
+  coerceSpeechifyEmotionSampleTag,
+  SPEECHIFY_EMOTION_SAMPLE_TAGS,
+  type SpeechifyEmotionSampleTag,
+} from "./_shared/speaker-sample-speed";
 import {
   deleteVoiceSpeaker,
   loadPauseBandSeconds,
@@ -140,10 +149,29 @@ async function handleGet() {
         s.brand,
       );
       const bust = encodeURIComponent(s.updatedAt || String(Date.now()));
+      const sampleUrl =
+        hasSample && baseUrl ? `${baseUrl}/${sampleKey}?v=${bust}` : null;
+      let emotionSampleUrls: Partial<
+        Record<SpeechifyEmotionSampleTag, string>
+      > | null = null;
+      if (s.brand === "speechify" && bucket) {
+        try {
+          emotionSampleUrls = await speechifyEmotionSampleUrls({
+            s3,
+            bucket,
+            modelId: s.modelId,
+            baseUrl,
+            bust,
+          });
+        } catch {
+          emotionSampleUrls = {};
+        }
+      }
       return {
         ...s,
         hasSample,
-        sampleUrl: hasSample && baseUrl ? `${baseUrl}/${sampleKey}?v=${bust}` : null,
+        sampleUrl,
+        emotionSampleUrls,
       };
     }),
   );
@@ -239,12 +267,14 @@ async function handlePost(event: APIGatewayProxyEventV2) {
             apiBase,
             force,
             synthesize: async () =>
-              speechifyTtsMp3({
-                apiKey: await getSpeechifyApiKey(),
-                text: SPEAKER_PREVIEW_TEXT,
-                voiceId: modelId,
-                rate: speechifyRateToSsml(existing?.speechifyRate ?? null),
-              }),
+              aacAdtsToMp3Buffer(
+                await speechifyTtsMp3({
+                  apiKey: await getSpeechifyApiKey(),
+                  text: SPEAKER_PREVIEW_TEXT,
+                  voiceId: modelId,
+                  rate: speechifyRateToSsml(existing?.speechifyRate ?? null),
+                }),
+              ),
           })
         : await generateFishSpeakerPreview({
             s3,
@@ -265,12 +295,16 @@ async function handlePost(event: APIGatewayProxyEventV2) {
         speakerName: existing?.name?.trim() || "your narrator",
         force,
         synthesize: async () =>
-          speechifyTtsMp3({
-            apiKey: await getSpeechifyApiKey(),
-            text: letterIntroSampleText(existing?.name?.trim() || "your narrator"),
-            voiceId: modelId,
-            rate: speechifyRateToSsml(existing?.speechifyRate ?? null),
-          }),
+          aacAdtsToMp3Buffer(
+            await speechifyTtsMp3({
+              apiKey: await getSpeechifyApiKey(),
+              text: letterIntroSampleText(
+                existing?.name?.trim() || "your narrator",
+              ),
+              voiceId: modelId,
+              rate: speechifyRateToSsml(existing?.speechifyRate ?? null),
+            }),
+          ),
       });
       letterIntroKey = intro.key;
       letterIntroWrote = intro.skipped !== true;
@@ -304,6 +338,76 @@ async function handlePost(event: APIGatewayProxyEventV2) {
       ...(letterIntroKey ? { letterIntroKey } : {}),
       sampleUrl,
     });
+  }
+  if (action === "emotion-samples") {
+    const modelId = String(body.modelId ?? "").trim();
+    if (!modelId) return json(400, { error: "modelId is required" });
+    const existing = (await listVoiceSpeakers()).find((s) => s.modelId === modelId);
+    if (!existing || existing.brand !== "speechify") {
+      return json(400, { error: "Emotion samples are Speechify-only" });
+    }
+    const force = body.force === true;
+    const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
+    if (!bucket) return json(500, { error: "MEDIA_BUCKET_NAME is not set" });
+    const one = coerceSpeechifyEmotionSampleTag(body.emotion);
+    const tags: SpeechifyEmotionSampleTag[] = one
+      ? [one]
+      : [...SPEECHIFY_EMOTION_SAMPLE_TAGS];
+    const apiKey = await getSpeechifyApiKey();
+    const rate = speechifyRateToSsml(existing.speechifyRate ?? null);
+    const results: Array<{
+      tag: SpeechifyEmotionSampleTag;
+      key: string;
+      skipped?: boolean;
+    }> = [];
+    for (const tag of tags) {
+      const emotion: SpeechifyEmotionTag | null =
+        tag === "neutral" ? null : tag;
+      const out = await generateSpeechifyEmotionSample({
+        s3,
+        bucket,
+        modelId,
+        tag,
+        force,
+        synthesize: async () =>
+          aacAdtsToMp3Buffer(
+            await speechifyTtsMp3({
+              apiKey,
+              text: SPEAKER_PREVIEW_TEXT,
+              voiceId: modelId,
+              rate,
+              emotion,
+            }),
+          ),
+      });
+      results.push({ tag, key: out.key, skipped: out.skipped });
+    }
+    const wrote = results.some((r) => r.skipped !== true);
+    let updatedAt = existing.updatedAt;
+    if (wrote) {
+      const saved = await putVoiceSpeaker({
+        modelId,
+        name: existing.name,
+        brand: existing.brand,
+        hidden: existing.hidden,
+        sort: existing.sort,
+        description: existing.description,
+        goodFor: existing.goodFor,
+        gender: existing.gender,
+        speechifyRate: existing.speechifyRate,
+      });
+      updatedAt = saved.updatedAt;
+    }
+    const domain = (process.env.MEDIA_CLOUDFRONT_DOMAIN || "").trim();
+    const bust = encodeURIComponent(updatedAt || String(Date.now()));
+    const emotionSampleUrls = await speechifyEmotionSampleUrls({
+      s3,
+      bucket,
+      modelId,
+      baseUrl: domain ? `https://${domain}` : undefined,
+      bust,
+    });
+    return json(200, { ok: true, results, emotionSampleUrls });
   }
   return json(400, { error: "Unknown action" });
 }

@@ -18,6 +18,18 @@ export function bedElementVolume(gain: number): number {
   return (g / 100) * BED_GAIN_PEAK_VOLUME;
 }
 
+/**
+ * Dev listen trim for ready-made soundscapes.
+ * 100% = current production playback (`SOUNDSCAPE_ELEMENT_VOLUME`); only reductive.
+ */
+export function soundscapeListenVolume(faderPercent = 100): number {
+  const f = Math.min(
+    100,
+    Math.max(0, Number.isFinite(faderPercent) ? faderPercent : 100),
+  );
+  return SOUNDSCAPE_ELEMENT_VOLUME * (f / 100);
+}
+
 /** Apply after src/load — browsers reset HTMLMediaElement.volume to 1 on load(). */
 export function applyBedElementVolume(
   el: HTMLMediaElement | null,

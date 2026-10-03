@@ -19,10 +19,10 @@ export default async function ReadIndexPage() {
   return (
     <div className="mx-auto w-full max-w-[1200px] px-5 py-12 md:px-6 sm:py-16">
       <div className="w-full min-w-0">
-        <h1 className="home-v2-display m-0 text-2xl font-normal leading-relaxed text-[var(--hv2-ivory)] sm:text-[28px]">
+        <h1 className="home-v2-display m-0 text-[1.75rem] font-normal leading-relaxed text-[var(--hv2-ivory)] sm:text-[2.125rem]">
           Essays on consciousness, travel and practice, written by hand.
         </h1>
-        <div className="mt-6 flex items-center gap-3.5">
+        <div className="mt-6 flex items-center gap-3.5 sm:gap-4">
           {showPhoto ? (
             <img
               key={authorPhotoUrl!}
@@ -30,16 +30,16 @@ export default async function ReadIndexPage() {
               alt=""
               width={112}
               height={112}
-              className="size-28 shrink-0 rounded-full border-2 border-[color-mix(in_srgb,var(--hv2-gold)_45%,transparent)] object-cover"
+              className="size-28 shrink-0 rounded-full border-2 border-[color-mix(in_srgb,var(--hv2-gold)_45%,transparent)] object-cover sm:size-32"
             />
           ) : (
             <span
               aria-hidden
-              className="size-28 shrink-0 rounded-full border-2 border-[color-mix(in_srgb,var(--hv2-gold)_45%,transparent)] bg-[rgba(246,241,231,0.12)]"
+              className="size-28 shrink-0 rounded-full border-2 border-[color-mix(in_srgb,var(--hv2-gold)_45%,transparent)] bg-[rgba(246,241,231,0.12)] sm:size-32"
             />
           )}
           <div className="min-w-0">
-            <p className="m-0 text-base leading-snug sm:text-[17px]">
+            <p className="m-0 text-lg leading-snug sm:text-[1.25rem]">
               <span className="font-semibold text-[var(--hv2-hero-fg)]">
                 Alex Maragakis
               </span>
@@ -54,7 +54,7 @@ export default async function ReadIndexPage() {
                 </Link>
               </span>
             </p>
-            <p className="m-0 mt-0.5 text-base leading-snug text-[var(--hv2-hero-muted)] sm:text-[17px]">
+            <p className="m-0 mt-1 text-lg leading-snug text-[var(--hv2-hero-muted)] sm:text-[1.25rem]">
               Some of this leans into ideas science hasn&apos;t caught up with.
               You&apos;re welcome to disagree.
             </p>

@@ -33,6 +33,16 @@ function extractJsonObject(text: string): Record<string, unknown> {
   return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>;
 }
 
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function programDayDescriptionSystemPrompt(): string {
+  return [
+    "You write short listener-facing descriptions for guided meditations in a multi-lesson program.",
+    "Return exactly one JSON object: {\"description\":\"...\"}. No markdown fences.",
+    "The description should be about 50 words (roughly 40–60), warm, concrete, and spoiler-light — what the listener will experience, not how it was made.",
+    "Do not start with \"This meditation\" or \"In this session\". No emoji.",
+  ].join(" ");
+}
+
 /**
  * ~50-word shelf blurb for a program meditation, derived from the one-shot prompt.
  */
@@ -45,12 +55,7 @@ export async function generateProgramDayDescription(params: {
   if (!prompt) throw new Error("prompt is required");
 
   const apiKey = await getClaudeApiKey();
-  const system = [
-    "You write short listener-facing descriptions for guided meditations in a multi-lesson program.",
-    "Return exactly one JSON object: {\"description\":\"...\"}. No markdown fences.",
-    "The description should be about 50 words (roughly 40–60), warm, concrete, and spoiler-light — what the listener will experience, not how it was made.",
-    "Do not start with \"This meditation\" or \"In this session\". No emoji.",
-  ].join(" ");
+  const system = programDayDescriptionSystemPrompt();
 
   const user = [
     params.programTitle?.trim()

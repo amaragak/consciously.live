@@ -5,6 +5,7 @@ export function FinalCta() {
   return (
     <section
       id="tool-home-cta"
+      data-marketing-strip
       className="flex w-full flex-col items-center gap-3.5 border-t border-[var(--hv2-hero-hairline)] bg-[var(--hv2-navy)] px-5 py-11 text-[var(--hv2-ivory)] md:gap-9 md:border-t-0 md:px-6 md:py-24"
       data-hv2-reveal
     >

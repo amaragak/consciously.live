@@ -40,6 +40,7 @@ import { useMobileOrTouchChrome } from "@/hooks/use-mobile-or-touch-chrome";
 import {
   shouldRenderDevUi,
   useDevUiSettings,
+  isLocalDevHost,
 } from "@/lib/dev-ui-settings";
 import {
   estimateFishBillableUtf8Bytes,
@@ -81,6 +82,7 @@ import {
   LibraryMeditationCard,
   pendingGenerationToRow,
   type LibraryMeditationRow,
+  type SpeechifyEmotionPlayback,
 } from "@/components/library-meditation-card";
 
 function formatGenerationElapsed(ms: number | null | undefined): string | null {
@@ -174,6 +176,25 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
   });
   const perMillion = fishUsdPerMillionForModel(model);
   const lines: string[] = [];
+  // Timing first — max-h scroll used to hide Total/TTS/FX under cost lines.
+  const timingLines = generationTimingsFlyoverLines(m.generationTimings, {
+    wallMs: m.generationElapsedMs,
+  });
+  if (timingLines.length > 0) {
+    lines.push(...timingLines);
+  } else {
+    const elapsed = formatGenerationElapsed(m.generationElapsedMs);
+    if (elapsed) lines.push(`Timing:`, `  Total ${elapsed}`, "");
+  }
+  if (m.devToggles != null) {
+    lines.push("Dev toggles:");
+    if (m.devToggles.length === 0) {
+      lines.push("  (none)");
+    } else {
+      for (const label of m.devToggles) lines.push(`  ${label}`);
+    }
+    lines.push("");
+  }
   lines.push(`Length: ${formatDuration(m.durationSeconds)}`);
   let fishUsd = 0;
   if (est) {
@@ -194,15 +215,6 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
   if (est || claude.totalUsd > 0) {
     lines.push("", `Total ≈ ${formatUsd(fishUsd + claude.totalUsd)} (voice + Claude)`);
   }
-  lines.push("");
-  const elapsed = formatGenerationElapsed(m.generationElapsedMs);
-  if (elapsed) {
-    lines.push(`Generate → library: ${elapsed}`);
-  }
-  const timingLines = generationTimingsFlyoverLines(m.generationTimings);
-  if (timingLines.length > 0) {
-    lines.push("", ...timingLines);
-  }
   return lines.join("\n");
 }
 
@@ -220,15 +232,15 @@ function FishCostDevTooltip({ text }: { text: string }) {
   }
 
   return (
-    // Outer box includes pb-2 as a hover bridge into the card so the mouse can
-    // reach Copy without dropping group-hover (mb-2 alone left a dead gap).
+    // Outer box includes pt-2 as a hover bridge into the card so the mouse can
+    // reach Copy without dropping group-hover (mt-2 alone left a dead gap).
     <div
       role="tooltip"
-      className="pointer-events-none absolute bottom-full right-0 z-40 hidden max-w-[21rem] pb-2 group-hover:pointer-events-auto group-hover:block group-focus-within:pointer-events-auto group-focus-within:block"
+      className="pointer-events-none absolute top-full right-0 z-40 hidden max-w-[21rem] pt-2 group-hover:pointer-events-auto group-hover:block group-focus-within:pointer-events-auto group-focus-within:block"
     >
       <div className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-foreground shadow-md">
         <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 max-h-52 flex-1 overflow-y-auto whitespace-pre-line">{text}</p>
+          <p className="min-w-0 max-h-[28rem] flex-1 overflow-y-auto whitespace-pre-line">{text}</p>
           <button
             type="button"
             onClick={(e) => {
@@ -816,6 +828,9 @@ export default function LibraryView({
   } | null>(null);
   const [showFishCostTooltip, setShowFishCostTooltip] = useState(false);
   const [devRefreshBusySk, setDevRefreshBusySk] = useState<string | null>(null);
+  const [speechifyEmotionBySk, setSpeechifyEmotionBySk] = useState<
+    Record<string, SpeechifyEmotionPlayback>
+  >({});
   const [devRefreshBusyAction, setDevRefreshBusyAction] = useState<
     "cover" | "metadata" | null
   >(null);
@@ -1539,9 +1554,12 @@ export default function LibraryView({
     // - slow: refresh library list to pick up completed audio rows
     const needMeta = () =>
       loadPendingGenerations().some((p) => {
-        const t = (p.title ?? "").trim().toLowerCase();
-        const looksFallback = t === "generating meditation…" || t === "generating meditation...";
-        return looksFallback || !(p.description ?? "").trim();
+        const t = (p.title ?? "").trim();
+        const tLower = t.toLowerCase();
+        const looksFallback =
+          tLower === "generating meditation…" ||
+          tLower === "generating meditation...";
+        return !t || looksFallback || !(p.description ?? "").trim();
       });
 
     void tick({ refreshLibraryOnChange: false });
@@ -1894,6 +1912,51 @@ export default function LibraryView({
     setMixAnchorEl(null);
     setMixError(null);
   }
+
+  function itemWithSpeechifyEmotion(
+    m: LibraryMeditationItem,
+  ): LibraryMeditationItem {
+    if (!isLocalDevHost() || !m.sk) return m;
+    const emotion = speechifyEmotionBySk[m.sk] ?? "neutral";
+    if (emotion === "neutral") return m;
+    const stem = m.speechifyEmotionStems?.[emotion];
+    if (!stem?.dryAudioUrl) return m;
+    return {
+      ...m,
+      dryAudioUrl: stem.dryAudioUrl,
+      wetAudioUrl: stem.wetAudioUrl ?? m.wetAudioUrl,
+      dryAudioKey: stem.dryAudioKey,
+      wetAudioKey: stem.wetAudioKey,
+    };
+  }
+
+  function playLibraryItem(m: LibraryMeditationItem) {
+    playItem(itemWithSpeechifyEmotion(m));
+  }
+
+  function setSpeechifyEmotionForItem(
+    m: LibraryMeditationItem,
+    emotion: SpeechifyEmotionPlayback,
+  ) {
+    if (!m.sk) return;
+    setSpeechifyEmotionBySk((prev) => ({ ...prev, [m.sk!]: emotion }));
+    if (nowPlaying?.s3Key !== m.s3Key) return;
+    const next: LibraryMeditationItem =
+      emotion === "neutral"
+        ? m
+        : m.speechifyEmotionStems?.[emotion]?.dryAudioUrl
+          ? {
+              ...m,
+              dryAudioUrl: m.speechifyEmotionStems[emotion]!.dryAudioUrl,
+              wetAudioUrl:
+                m.speechifyEmotionStems[emotion]!.wetAudioUrl ?? m.wetAudioUrl,
+              dryAudioKey: m.speechifyEmotionStems[emotion]!.dryAudioKey,
+              wetAudioKey: m.speechifyEmotionStems[emotion]!.wetAudioKey,
+            }
+          : m;
+    playItem(next);
+  }
+
   function renderItem(m: LibraryMeditationRow) {
     const rowKey = isPendingRow(m) ? m.pendingKey : m.s3Key;
     const isCommunity = libraryTab === "community";
@@ -1936,8 +1999,17 @@ export default function LibraryView({
         isSelected={nowPlaying?.s3Key === m.s3Key}
         isPlaying={playingS3Key === m.s3Key}
         playingTimeSeconds={playingTimeSeconds}
-        onPlay={() => playItem(m)}
+        onPlay={() => playLibraryItem(m)}
         onTogglePlay={() => toggleCurrent()}
+        speechifyEmotion={
+          m.sk ? speechifyEmotionBySk[m.sk] ?? "neutral" : "neutral"
+        }
+        onSpeechifyEmotionChange={
+          isLocalDevHost() &&
+          (m.speechifyEmotionStems?.warm || m.speechifyEmotionStems?.calm)
+            ? (emotion) => setSpeechifyEmotionForItem(m, emotion)
+            : undefined
+        }
         scriptExpanded={m.sk != null && expandedSk === m.sk}
         onToggleScript={() =>
           setExpandedSk((v) => (v === m.sk ? null : (m.sk ?? null)))

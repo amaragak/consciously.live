@@ -8,6 +8,7 @@ import {
   HomeV2Chrome,
   useHomeV2HeaderScrolled,
 } from "@/components/home-v2/home-v2-scroll-chrome";
+import { MarketingNextStripButton } from "@/components/home-v2/marketing-next-strip-button";
 import { ToolLoopSection } from "@/components/home-v2/tool-loop-section";
 import { ToolSection } from "@/components/home-v2/tool-section";
 import { TypesSection } from "@/components/home-v2/types-section";
@@ -42,6 +43,7 @@ export function HomeV2Page() {
         <ToolSection tool="chat" />
       </section>
       <FinalCta />
+      <MarketingNextStripButton rootRef={rootRef} />
     </div>
   );
 }

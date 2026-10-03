@@ -29,6 +29,8 @@ function getScrollParent(el: HTMLElement): HTMLElement | Window {
  * Fills left→right with scroll through the article body container.
  * On Read posts it only appears once the overlay header has shrunk,
  * animating in with that compact transition.
+ * Sticky (not viewport-fixed) so it matches the scrollport width and does
+ * not paint over the scrollbar.
  * Listens on the real scrollport (MainShell), not `window` — the document
  * itself does not scroll on this site.
  */
@@ -107,7 +109,7 @@ export function ReadingProgress({
   return (
     <div
       aria-hidden
-      className={`home-v2-reading-progress pointer-events-none fixed inset-x-0 z-[45] h-1${
+      className={`home-v2-reading-progress pointer-events-none sticky z-[45] h-0 w-full overflow-visible${
         underStickyHeader ? " home-v2-reading-progress--under-sticky" : ""
       }${visible ? " is-visible" : ""}`}
       style={
@@ -116,7 +118,9 @@ export function ReadingProgress({
           : { top: "var(--site-header-h)" }
       }
     >
-      <div className="relative h-full w-full bg-[color-mix(in_srgb,var(--hv2-gold)_30%,transparent)]">
+      {/* Track sits in a zero-height sticky slot so it doesn't shift page flow,
+          and stays within the scrollport (not viewport-fixed over the scrollbar). */}
+      <div className="relative h-1 w-full bg-[color-mix(in_srgb,var(--hv2-gold)_30%,transparent)]">
         <div
           ref={fillRef}
           className="absolute inset-y-0 left-0 w-full origin-left bg-[var(--hv2-gold)] transition-transform duration-150 ease-out motion-reduce:transition-none"

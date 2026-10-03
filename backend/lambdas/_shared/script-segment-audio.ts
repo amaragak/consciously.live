@@ -17,8 +17,18 @@ function fishTtsModel(): string {
 }
 
 export async function getMp3DurationSeconds(buf: Buffer): Promise<number | null> {
+  const mimeType =
+    buf.length >= 8 &&
+    buf[4] === 0x66 &&
+    buf[5] === 0x74 &&
+    buf[6] === 0x79 &&
+    buf[7] === 0x70
+      ? "audio/mp4"
+      : buf.length >= 2 && buf[0] === 0xff && (buf[1]! & 0xf0) === 0xf0
+        ? "audio/aac"
+        : "audio/mpeg";
   try {
-    const m = await parseBuffer(buf, { mimeType: "audio/mpeg", size: buf.byteLength });
+    const m = await parseBuffer(buf, { mimeType, size: buf.byteLength });
     const d = m.format.duration;
     if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
     return null;

@@ -70,13 +70,13 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search title or tags…"
-            className="h-11 w-full rounded-[12px] border border-[color:var(--hv2-field-card-border)] bg-[color:var(--hv2-field-card-bg)] px-3.5 text-[15px] text-[color:var(--hv2-field-card-fg)] outline-none placeholder:text-[color:var(--hv2-field-card-muted)] focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+            className="h-12 w-full rounded-[12px] border border-[color:var(--hv2-field-card-border)] bg-[color:var(--hv2-field-card-bg)] px-4 text-base text-[color:var(--hv2-field-card-fg)] outline-none placeholder:text-[color:var(--hv2-field-card-muted)] focus:border-accent/50 focus:ring-2 focus:ring-accent/20 sm:text-[17px]"
           />
         </label>
         <div
           role="group"
           aria-label="Category"
-          className="flex max-w-full flex-wrap items-center gap-1.5"
+          className="flex max-w-full flex-wrap items-center gap-2"
         >
           {(["All", ...BLOG_CATEGORIES] as const).map((c) => {
             const active = category === c;
@@ -86,7 +86,7 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
                 type="button"
                 aria-pressed={active}
                 onClick={() => setCategory(c)}
-                className={`cursor-pointer rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                className={`cursor-pointer rounded-full px-4 py-2 text-[15px] font-medium transition-colors ${
                   active
                     ? "bg-[color:var(--hv2-field-card-link)] text-[color:var(--hv2-on-gold,#1a2330)]"
                     : "border border-[color:var(--hv2-field-card-border)] bg-[color:var(--hv2-field-card-bg)] text-[color:var(--hv2-field-card-muted)] hover:border-accent/40 hover:text-[color:var(--hv2-field-card-fg)]"
@@ -100,7 +100,7 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="mt-10 text-sm text-[color:var(--hv2-field-card-muted)]">
+        <p className="mt-10 text-base text-[color:var(--hv2-field-card-muted)] sm:text-[17px]">
           {posts.length === 0
             ? "No posts yet — check back soon."
             : "No posts match that search."}

@@ -30,7 +30,40 @@ export const SCRIPT_PAUSE_BAND_SECONDS: Record<ScriptPauseBand, number> = {
 /** Hard cap on timed `[[PAUSE Ns]]` markers (safety). */
 export const SCRIPT_PAUSE_TIMED_MAX_SECONDS = 180;
 
-export const TITLE_PAUSE_MARKER = "[[PAUSE medium]]";
+/** Timed silence before the spoken meditation title (exact seconds). */
+export const TITLE_INTRO_LEAD_PAUSE_MARKER = "[[PAUSE 1s]]";
+/** Timed silence after the spoken title before the script body. */
+export const TITLE_INTRO_TRAIL_PAUSE_MARKER = "[[PAUSE 3s]]";
+
+/**
+ * Library titles are Title Case; TTS reads those as headlines.
+ * Sentence-case + terminal period encourages natural falling intonation.
+ * Display/library title is unchanged — this is spoken form only.
+ */
+export function spokenTitleForTts(title: string | null | undefined): string {
+  let t = (title ?? "").trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  t = t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+  if (!/[.!?…]$/.test(t)) t = `${t}.`;
+  return t;
+}
+
+/**
+ * Prefixed TTS stem: 1s silence → title → 3s silence → script.
+ * Does not mutate the library script — apply only to the TTS input.
+ */
+export function withSpokenMeditationTitleIntro(
+  script: string,
+  title: string | null | undefined,
+): string {
+  const spoken = spokenTitleForTts(title);
+  const body = (script ?? "").trim();
+  if (!spoken) return body;
+  if (!body) {
+    return `${TITLE_INTRO_LEAD_PAUSE_MARKER} ${spoken}`;
+  }
+  return `${TITLE_INTRO_LEAD_PAUSE_MARKER} ${spoken} ${TITLE_INTRO_TRAIL_PAUSE_MARKER}\n\n${body}`;
+}
 
 const BAND_ALIASES: Record<string, ScriptPauseBand> = {
   xs: "extra-short",
@@ -211,8 +244,13 @@ export function parseScriptIntoSegments(
         text,
         pauseSeconds: pause > 0 ? pause : 0,
       });
-    } else if (pause > 0 && segments.length > 0) {
-      segments[segments.length - 1]!.pauseSeconds += pause;
+    } else if (pause > 0) {
+      if (segments.length > 0) {
+        segments[segments.length - 1]!.pauseSeconds += pause;
+      } else {
+        // Leading silence before the first spoken words (e.g. title intro).
+        segments.push({ text: "", pauseSeconds: pause });
+      }
     }
     lastIndex = match.index + match[0].length;
   }

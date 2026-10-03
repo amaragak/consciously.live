@@ -11,6 +11,7 @@ import { MeditationLengthSelect } from "@/components/meditation-length-select";
 import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
 import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
 import {
+  isLocalDevHost,
   shouldRenderDevUi,
   useDevUiSettings,
 } from "@/lib/dev-ui-settings";
@@ -65,7 +66,6 @@ import {
   streamMedimadeChat,
   streamMeditationScript,
   createMeditationAudioJob,
-  getMeditationAudioJobStatus,
   getMeditationDraft,
   getMedimadeApiBase,
   getMedimadeMediaBaseUrl,
@@ -170,8 +170,9 @@ import {
   applySpeechElementVolume,
   bedElementVolume,
   BED_VOICE_INTRO_SECONDS,
-  SOUNDSCAPE_ELEMENT_VOLUME,
+  soundscapeListenVolume,
 } from "@/lib/bed-volume";
+import { SoundscapeDevVolumeFader } from "@/components/soundscape-dev-volume-fader";
 import {
   pauseGaplessBed,
   releaseGaplessBed,
@@ -245,15 +246,27 @@ const DEV_RANDOM_SCRIPT_SEEDS: readonly { style: string; user: string }[] = [
   },
 ];
 
-function pickDevRandomScriptSeed(): { style: string; transcript: string } {
-  const seed =
-    DEV_RANDOM_SCRIPT_SEEDS[
-      Math.floor(Math.random() * DEV_RANDOM_SCRIPT_SEEDS.length)
-    ]!;
-  return {
-    style: seed.style,
-    transcript: `User: ${seed.user}\n\nGuide: Let's shape a short practice around that.`,
+function pickDevRandomScriptSeed(avoidTranscript?: string | null): {
+  style: string;
+  transcript: string;
+} {
+  const n = DEV_RANDOM_SCRIPT_SEEDS.length;
+  const build = (i: number) => {
+    const seed = DEV_RANDOM_SCRIPT_SEEDS[i]!;
+    return {
+      style: seed.style,
+      transcript: `User: ${seed.user}\n\nGuide: Let's shape a short practice around that.`,
+    };
   };
+  let picked = build(Math.floor(Math.random() * n));
+  // Re-Generate in Random mode must not stick on the same seed (same title).
+  if (avoidTranscript?.trim() && n > 1) {
+    const avoid = avoidTranscript.trim();
+    for (let t = 0; t < 16 && picked.transcript === avoid; t++) {
+      picked = build(Math.floor(Math.random() * n));
+    }
+  }
+  return picked;
 }
 
 const parseMeditationTargetMinutes = coerceMeditationTargetMinutes;
@@ -1203,6 +1216,19 @@ export function CreateWorkspace({
   );
   /** Dev: Fish qualitative tags vs our ffmpeg silence chunks (default). */
   const [fishPauseMode, setFishPauseMode] = useState<FishPauseMode>("segmented");
+  /** Dev: Speechify — also generate warm + calm emotion stems (serial). */
+  const [speechifyEmotionVariants, setSpeechifyEmotionVariants] =
+    useState(false);
+  /** Dev: skip wet Voice FX bounce (dry only) to A/B gen speed. */
+  const [skipVoiceFx, setSkipVoiceFx] = useState(false);
+  /** Dev: Speechify without API loudness_normalization (raw volume A/B). */
+  const [skipSpeechifyLoudnorm, setSkipSpeechifyLoudnorm] = useState(false);
+  /**
+   * Dev: Speechify SSML rate percent (−50…50). Seeded from that speaker’s
+   * admin voice rate (same value the worker uses when no override is sent).
+   * Empty = Speechify default (admin unset).
+   */
+  const [speechifyRateInput, setSpeechifyRateInput] = useState("");
   /**
    * Minutes the latest chat `variant: "script"` bubble was written for.
    * Audio generate reuses that script only when Length still matches; otherwise
@@ -1236,6 +1262,9 @@ export function CreateWorkspace({
   const [soundMode, setSoundMode] = useState<SoundBedMode>("soundscape");
   const [compositionKey, setCompositionKey] = useState<string>("");
   const [compositionPlaying, setCompositionPlaying] = useState(false);
+  /** Dev: 100% = SOUNDSCAPE_ELEMENT_VOLUME; only reductive for A/B. */
+  const [soundscapeDevFader, setSoundscapeDevFader] = useState(100);
+  const soundscapeDevFaderRef = useRef(100);
   const compositionAudioRef = useRef<HTMLAudioElement | null>(null);
   const [voiceCardStopNonce, setVoiceCardStopNonce] = useState(0);
   const [backgroundNatureKey, setBackgroundNatureKey] = useState<string>("");
@@ -2290,6 +2319,17 @@ export function CreateWorkspace({
         fishSpeakers[0]!.modelId
       );
     });
+  }, [fishSpeakers, speakerModelId]);
+
+  useEffect(() => {
+    const speaker = fishSpeakers.find((s) => s.modelId === speakerModelId);
+    if (!speaker) return;
+    setSpeechifyRateInput(
+      typeof speaker.speechifyRate === "number" &&
+        Number.isFinite(speaker.speechifyRate)
+        ? String(Math.round(speaker.speechifyRate))
+        : "",
+    );
   }, [fishSpeakers, speakerModelId]);
 
   useEffect(() => {
@@ -3714,6 +3754,7 @@ export function CreateWorkspace({
     // Stop all preview audio while generating.
     stopAllAudioPreview();
     setAudioLoading(true);
+    const generateStartedAt = Date.now();
     try {
       const last = messages[messages.length - 1];
       const existingScript =
@@ -3732,10 +3773,12 @@ export function CreateWorkspace({
           ? existingScript
           : "";
 
+      // Fresh seed every Generate — sticky seed made back-to-back Random gens
+      // share the same prompt (e.g. "presentation tomorrow") and thus title.
       const randomSeed = randomScript
-        ? (devRandomSeedRef.current ?? pickDevRandomScriptSeed())
+        ? pickDevRandomScriptSeed(devRandomSeedRef.current?.transcript)
         : null;
-      if (randomScript && !devRandomSeedRef.current && randomSeed) {
+      if (randomScript && randomSeed) {
         devRandomSeedRef.current = randomSeed;
       }
       const styleForJob = randomScript
@@ -3836,6 +3879,26 @@ export function CreateWorkspace({
           ? claudeModelChoice
           : CLAUDE_HAIKU_45_MODEL_ID,
         fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
+        ...(isLocalDevHost() &&
+        speechifyEmotionVariants &&
+        ttsProvider !== "orpheus"
+          ? { speechifyEmotionVariants: true }
+          : {}),
+        ...(isLocalDevHost() && skipVoiceFx ? { skipVoiceFx: true } : {}),
+        ...(isLocalDevHost() &&
+        skipSpeechifyLoudnorm &&
+        ttsProvider !== "orpheus"
+          ? { skipSpeechifyLoudnorm: true }
+          : {}),
+        ...(isLocalDevHost() && ttsProvider !== "orpheus"
+          ? (() => {
+              const n = Number(speechifyRateInput.trim());
+              if (!Number.isFinite(n)) return {};
+              return {
+                speechifyRate: Math.max(-50, Math.min(50, Math.round(n))),
+              };
+            })()
+          : {}),
         speed: speechSpeed,
         voiceFxPreset: voiceFxOn ? "mixer" : null,
         voiceFxDial,
@@ -3883,38 +3946,10 @@ export function CreateWorkspace({
           : {}),
       });
 
-      // Do not redirect until the worker has finished script + library metadata (title/description).
-      // Audio synthesis continues after that; the Library card should show real copy from the job, not client guesses.
-      const metaDeadlineMs = 5 * 60_000;
-      const metaStart = Date.now();
-      let metaTitle = "";
-      let metaDesc = "";
-      while (Date.now() - metaStart < metaDeadlineMs) {
-        let st: Awaited<ReturnType<typeof getMeditationAudioJobStatus>>;
-        try {
-          st = await getMeditationAudioJobStatus(jobId);
-        } catch {
-          await new Promise((r) => setTimeout(r, 400));
-          continue;
-        }
-        if (st.status === "failed") {
-          throw new Error(st.error ?? "Generation failed");
-        }
-        const scriptOk = (st.scriptTextUsed ?? "").trim().length > 0;
-        const t = (st.title ?? "").trim();
-        const d = (st.description ?? "").trim();
-        if (scriptOk && t && d) {
-          metaTitle = t;
-          metaDesc = d;
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 400));
-      }
-
-      if (!metaTitle || !metaDesc) {
-        throw new Error(
-          "Timed out waiting for script and library details. Your job may still be running — open Library to check progress.",
-        );
+      // Keep Generate spinner for a fixed 1s, then Library — meta fills in via poll.
+      const remainingMs = Math.max(0, 1000 - (Date.now() - generateStartedAt));
+      if (remainingMs > 0) {
+        await new Promise((r) => setTimeout(r, remainingMs));
       }
 
       const speakerName =
@@ -3923,8 +3958,8 @@ export function CreateWorkspace({
       const pending: PendingLibraryGeneration = {
         jobId,
         createdAt: new Date().toISOString(),
-        title: metaTitle,
-        description: metaDesc,
+        title: "",
+        description: null,
         meditationStyle: styleForJob,
         speakerName,
         speakerModelId,
@@ -4148,9 +4183,17 @@ export function CreateWorkspace({
       el.load();
     }
     // load() resets volume, so this has to be set after it.
-    el.volume = SOUNDSCAPE_ELEMENT_VOLUME;
+    el.volume = soundscapeListenVolume(soundscapeDevFaderRef.current);
     setCompositionPlaying(true);
     void playWithLeadBuffer(el).catch(() => setCompositionPlaying(false));
+  }
+
+  function applySoundscapeDevFader(percent: number) {
+    const n = Math.min(100, Math.max(0, percent));
+    soundscapeDevFaderRef.current = n;
+    setSoundscapeDevFader(n);
+    const el = compositionAudioRef.current;
+    if (el) el.volume = soundscapeListenVolume(n);
   }
 
   function stopAllAudioPreview() {
@@ -5490,6 +5533,98 @@ export function CreateWorkspace({
         {workspaceSectionStep === 2 ? (
         <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-4 sm:gap-3 sm:px-6">
+          {isLocalDevHost() ? (
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+              {ttsProvider !== "orpheus" ? (
+                <>
+                  <label
+                    className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-accent/50 bg-accent-soft/30 px-3 py-2 text-sm text-foreground"
+                    title="Localhost only. Off by default. When on, also renders warm and calm Speechify stems (serial). Switch in the library ⋯ menu after generate."
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-accent-button,#c4a574)]"
+                      checked={speechifyEmotionVariants}
+                      disabled={audioLoading}
+                      onChange={(e) =>
+                        setSpeechifyEmotionVariants(e.target.checked)
+                      }
+                    />
+                    <span className="min-w-0">
+                      <span className="font-semibold">Dev · ×3 emotions</span>
+                      <span className="text-muted">
+                        {" "}
+                        — also generate warm + calm (slower)
+                      </span>
+                    </span>
+                  </label>
+                  <label
+                    className="flex shrink-0 items-center gap-2 rounded-xl border border-dashed border-accent/50 bg-accent-soft/30 px-3 py-2 text-sm text-foreground"
+                    title="Localhost only. Speechify SSML rate percent (−50…50). Seeded from this speaker’s admin voice rate (empty = Speechify default)."
+                  >
+                    <span className="font-semibold whitespace-nowrap">
+                      Dev · rate
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={-50}
+                      max={50}
+                      step={1}
+                      className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                      value={speechifyRateInput}
+                      disabled={audioLoading}
+                      onChange={(e) => setSpeechifyRateInput(e.target.value)}
+                      aria-label="Speechify rate percent"
+                    />
+                    <span className="text-muted">%</span>
+                  </label>
+                </>
+              ) : null}
+              <label
+                className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-accent/50 bg-accent-soft/30 px-3 py-2 text-sm text-foreground"
+                title="Localhost only. Skips the wet Pedalboard Voice FX bounce + stem uploads. Dry MP3 only."
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-accent-button,#c4a574)]"
+                  checked={skipVoiceFx}
+                  disabled={audioLoading}
+                  onChange={(e) => setSkipVoiceFx(e.target.checked)}
+                />
+                <span className="min-w-0">
+                  <span className="font-semibold">Dev · skip FX</span>
+                  <span className="text-muted">
+                    {" "}
+                    — no wet bounce (faster A/B)
+                  </span>
+                </span>
+              </label>
+              {ttsProvider !== "orpheus" ? (
+                <label
+                  className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-accent/50 bg-accent-soft/30 px-3 py-2 text-sm text-foreground"
+                  title="Localhost only. Sets Speechify options.loudness_normalization=false so you hear raw voice volume (~−14 LUFS off)."
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-accent-button,#c4a574)]"
+                    checked={skipSpeechifyLoudnorm}
+                    disabled={audioLoading}
+                    onChange={(e) =>
+                      setSkipSpeechifyLoudnorm(e.target.checked)
+                    }
+                  />
+                  <span className="min-w-0">
+                    <span className="font-semibold">Dev · no Speechify loudnorm</span>
+                    <span className="text-muted">
+                      {" "}
+                      — raw volume check
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
           {/* Voice | equal pad | Pacing | equal pad | Sound — dividers frame pacing evenly */}
           <div className="flex shrink-0 flex-col">
             <VoiceCardRow
@@ -5561,6 +5696,15 @@ export function CreateWorkspace({
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
                 Sound
               </span>
+              {showCreateAudioDevControls && soundMode === "soundscape" ? (
+                <SoundscapeDevVolumeFader
+                  value={soundscapeDevFader}
+                  onChange={applySoundscapeDevFader}
+                  className="mx-2"
+                />
+              ) : (
+                <span className="min-w-0 flex-1" />
+              )}
               <SegmentedPillTabs
                 aria-label="Sound bed"
                 value={soundMode}

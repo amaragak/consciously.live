@@ -76,6 +76,14 @@ export async function handler(
     backgroundNoiseGain?: number;
     /** Snapshot of create-path inputs for Library “How this was made”. */
     creationProvenance?: unknown;
+    /** Dev: also render Speechify warm + calm emotion stems. */
+    speechifyEmotionVariants?: boolean;
+    /** Dev: skip wet Voice FX bounce entirely (dry stem only). */
+    skipVoiceFx?: boolean;
+    /** Dev: disable Speechify API loudness_normalization (raw volume A/B). */
+    skipSpeechifyLoudnorm?: boolean;
+    /** Dev override for Speechify SSML rate percent. */
+    speechifyRate?: number;
   };
   try {
     body = JSON.parse(event.body || "{}");
@@ -209,6 +217,22 @@ export async function handler(
         fishPauseMode:
           body.fishPauseMode === "native" ? "native" : "segmented",
         ...(body.longerBreaks === true ? { longerBreaks: true } : {}),
+        ...(body.speechifyEmotionVariants === true
+          ? { speechifyEmotionVariants: true }
+          : {}),
+        ...(body.skipVoiceFx === true ? { skipVoiceFx: true } : {}),
+        ...(body.skipSpeechifyLoudnorm === true
+          ? { skipSpeechifyLoudnorm: true }
+          : {}),
+        ...(typeof body.speechifyRate === "number" &&
+        Number.isFinite(body.speechifyRate)
+          ? {
+              speechifyRate: Math.max(
+                -50,
+                Math.min(50, Math.round(body.speechifyRate)),
+              ),
+            }
+          : {}),
         ...(voiceFxPreset ? { voiceFxPreset } : {}),
         voiceFxDial:
           typeof body.voiceFxDial === "number" && Number.isFinite(body.voiceFxDial)

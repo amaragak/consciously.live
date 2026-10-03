@@ -119,6 +119,33 @@ export function speakerLetterIntroSampleKey(modelId: string): string {
   return `speaker-samples/${modelId}/letter-intro.mp3`;
 }
 
+/** Speechify emotion audition clips (admin): neutral / warm / calm. */
+export const SPEECHIFY_EMOTION_SAMPLE_TAGS = [
+  "neutral",
+  "warm",
+  "calm",
+] as const;
+
+export type SpeechifyEmotionSampleTag =
+  (typeof SPEECHIFY_EMOTION_SAMPLE_TAGS)[number];
+
+export function coerceSpeechifyEmotionSampleTag(
+  raw: unknown,
+): SpeechifyEmotionSampleTag | null {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "neutral" || s === "warm" || s === "calm") return s;
+  return null;
+}
+
+export function speakerEmotionSampleKey(
+  modelId: string,
+  tag: SpeechifyEmotionSampleTag,
+): string {
+  return `speaker-samples/${modelId}/emotion-${tag}.mp3`;
+}
+
 /** Orpheus preview samples: S3 keys `orpheus-speaker-samples/<voiceId>/<stem>.mp3`. */
 export function orpheusSpeakerPreviewSampleKey(
   voiceId: string,

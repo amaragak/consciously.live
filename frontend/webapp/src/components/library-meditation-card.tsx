@@ -23,6 +23,9 @@ import {
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
 import { CoverArtThumb } from "@consciously/common";
+import { isLocalDevHost } from "@/lib/dev-ui-settings";
+
+export type SpeechifyEmotionPlayback = "neutral" | "warm" | "calm";
 
 /** Exactly 3 rows of text-sm / leading-5 (line-height 1.25rem × 3). */
 const DESC_BLOCK_MIN_PX = 60;
@@ -272,6 +275,8 @@ export type LibraryMeditationCardProps = {
   /** Community tab hides stars entirely; program shelf shows disabled stars. */
   showRating?: boolean;
   ratingDisabled?: boolean;
+  /** Hide the date · speaker footer (program lesson rows). */
+  hideDateLine?: boolean;
   allowShare?: boolean;
   alwaysShowRowChrome?: boolean;
   isSelected?: boolean;
@@ -302,6 +307,9 @@ export type LibraryMeditationCardProps = {
   onDevRegenCover?: () => void;
   onDevRederiveTitle?: () => void;
   devRefreshBusy?: "cover" | "metadata" | null;
+  /** Dev: selected Speechify emotion stem (neutral = default dry/wet). */
+  speechifyEmotion?: SpeechifyEmotionPlayback;
+  onSpeechifyEmotionChange?: (emotion: SpeechifyEmotionPlayback) => void;
 };
 
 export function LibraryMeditationCard({
@@ -310,6 +318,7 @@ export function LibraryMeditationCard({
   hideOwnerActions = false,
   showRating = true,
   ratingDisabled = false,
+  hideDateLine = false,
   allowShare = false,
   alwaysShowRowChrome = false,
   isSelected = false,
@@ -339,6 +348,8 @@ export function LibraryMeditationCard({
   onDevRegenCover,
   onDevRederiveTitle,
   devRefreshBusy = null,
+  speechifyEmotion = "neutral",
+  onSpeechifyEmotionChange,
 }: LibraryMeditationCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [howMadeOpen, setHowMadeOpen] = useState(false);
@@ -364,6 +375,9 @@ export function LibraryMeditationCard({
 
   if (isPendingRow(item)) {
     const isFailed = item.status === "failed";
+    const titleReady = Boolean(item.title.trim());
+    const descReady = Boolean((item.description ?? "").trim());
+    const coverEdge = LIST_COVER_EDGE_DESKTOP_PX;
     const spinner = (
       <svg
         className="h-5 w-5 animate-spin"
@@ -392,9 +406,61 @@ export function LibraryMeditationCard({
         <path d="M12 17h.01" />
       </svg>
     );
+    const coverSlot = isFailed ? (
+      <CoverArtThumb src={null} alt="" edgePx={coverEdge} className="self-start" />
+    ) : (
+      <div
+        aria-hidden
+        className="mm-skeleton shrink-0 self-start rounded-xl"
+        style={{
+          width: coverEdge,
+          height: coverEdge,
+          minWidth: coverEdge,
+          minHeight: coverEdge,
+        }}
+      />
+    );
+    const titleSlot =
+      titleReady ? (
+        <h2 className="font-display text-lg font-medium leading-snug">
+          {item.title}
+        </h2>
+      ) : isFailed ? (
+        <h2 className="font-display text-lg font-medium leading-snug">
+          Generation failed
+        </h2>
+      ) : (
+        <div
+          aria-hidden
+          className="mm-skeleton h-5 w-[72%] max-w-[16rem] rounded-md"
+        />
+      );
+    const descSlot = descReady ? (
+      <p
+        className="text-sm leading-5 text-muted"
+        style={{ minHeight: DESC_BLOCK_MIN_PX }}
+      >
+        {item.description}
+      </p>
+    ) : isFailed ? (
+      <div style={{ minHeight: DESC_BLOCK_MIN_PX }} />
+    ) : (
+      <div className="space-y-2" style={{ minHeight: DESC_BLOCK_MIN_PX }} aria-hidden>
+        <div className="mm-skeleton h-3.5 w-full max-w-md rounded-md" />
+        <div className="mm-skeleton h-3.5 w-[82%] max-w-sm rounded-md" />
+      </div>
+    );
     return (
       <li
         ref={itemRef}
+        aria-busy={!isFailed}
+        aria-label={
+          isFailed
+            ? "Generation failed"
+            : titleReady
+              ? `Generating ${item.title}`
+              : "Generating meditation"
+        }
         className={`relative min-w-0 overflow-hidden rounded-[6px] border p-4 shadow-sm ${
           isFailed
             ? "border-danger/35 bg-danger/5"
@@ -416,20 +482,24 @@ export function LibraryMeditationCard({
           </>
         ) : null}
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-medium leading-snug">
-              {item.title}
-            </h2>
-            <p className="mt-1 text-sm text-muted">{item.description ?? "—"}</p>
-            {isFailed ? (
-              <p className="mt-2 text-sm text-danger">
-                {item.error ?? "Generation failed."}
+          <div className="flex min-w-0 flex-1 items-start gap-3.5">
+            {coverSlot}
+            <div
+              className="flex min-w-0 flex-1 flex-col"
+              style={{ minHeight: coverEdge }}
+            >
+              {titleSlot}
+              <div className="mt-1">{descSlot}</div>
+              {isFailed ? (
+                <p className="mt-2 text-sm text-danger">
+                  {item.error ?? "Generation failed."}
+                </p>
+              ) : null}
+              <p className="mt-auto pt-2 text-xs text-muted">
+                {formatWhen(item.createdAt)}
+                {item.speakerName ? ` · ${item.speakerName}` : ""}
               </p>
-            ) : null}
-            <p className="mt-2 text-xs text-muted">
-              {formatWhen(item.createdAt)}
-              {item.speakerName ? ` · ${item.speakerName}` : ""}
-            </p>
+            </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <div
@@ -532,8 +602,11 @@ export function LibraryMeditationCard({
           key={star}
           type="button"
           disabled={!m.sk || ratingBusy || ratingDisabled}
-          onClick={() => onRating?.(m.rating === star ? null : star)}
-          className={`rounded px-0.5 text-[13px] leading-none ${
+          onClick={(e) => {
+            e.stopPropagation();
+            onRating?.(m.rating === star ? null : star);
+          }}
+          className={`rounded px-0.5 text-[11px] leading-none sm:text-[13px] ${
             m.rating != null && star <= m.rating
               ? "text-star-filled"
               : "text-star-idle"
@@ -573,6 +646,14 @@ export function LibraryMeditationCard({
     !isPendingRow(item) &&
     Boolean(m.sk) &&
     (Boolean(onDevRegenCover) || Boolean(onDevRederiveTitle));
+  const emotionStems =
+    !isPendingRow(item) && !hideOwnerActions
+      ? item.speechifyEmotionStems
+      : null;
+  const canSpeechifyEmotion =
+    isLocalDevHost() &&
+    Boolean(onSpeechifyEmotionChange) &&
+    Boolean(emotionStems?.warm || emotionStems?.calm);
   const howMadeProvenance = !isPendingRow(item)
     ? parseMeditationCreationProvenance(item.creationProvenance) ??
       item.creationProvenance ??
@@ -586,7 +667,8 @@ export function LibraryMeditationCard({
     canShare ||
     canScript ||
     canHowMade ||
-    canDevRefresh;
+    canDevRefresh ||
+    canSpeechifyEmotion;
 
   const playControl = isPlaying ? (
     <div className="flex items-center gap-2">
@@ -759,6 +841,48 @@ export function LibraryMeditationCard({
                 : "Re-derive title"}
             </button>
           ) : null}
+          {canSpeechifyEmotion ? (
+            <>
+              <div
+                role="separator"
+                className="my-1 border-t border-border"
+                aria-hidden
+              />
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Dev · emotion
+              </div>
+              {(
+                [
+                  ["neutral", "Neutral"],
+                  ["warm", "Warm"],
+                  ["calm", "Calm"],
+                ] as const
+              ).map(([value, label]) => {
+                const available =
+                  value === "neutral" || Boolean(emotionStems?.[value]);
+                const selected = speechifyEmotion === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    disabled={!available}
+                    onClick={() => {
+                      onSpeechifyEmotionChange?.(value);
+                      setMenuOpen(false);
+                    }}
+                    className={menuItemClass}
+                  >
+                    <span className="w-3 tabular-nums text-accent-link">
+                      {selected ? "✓" : ""}
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </>
+          ) : null}
           {canShare ? (
             <button
               type="button"
@@ -818,8 +942,8 @@ export function LibraryMeditationCard({
     </div>
   ) : null;
 
-  const dateLine = (
-    <span className="text-xs text-muted">
+  const dateLine = hideDateLine ? null : (
+    <span className="text-[11px] text-muted sm:text-xs">
       {formatWhen(m.createdAt)}
       {m.speakerName ? ` · ${m.speakerName}` : ""}
     </span>
@@ -847,34 +971,46 @@ export function LibraryMeditationCard({
       </div>
     ) : null;
 
+  /** Mobile library: full-bleed row matching LibraryMobile design. */
+  const mobileBleedRow = (
+    <button
+      type="button"
+      onClick={() => (isSelected ? onTogglePlay?.() : onPlay?.())}
+      className="flex w-full cursor-pointer items-start gap-3 bg-transparent p-0 text-left"
+    >
+      <CoverArtThumb
+        src={m.coverImageUrl}
+        alt=""
+        edgePx={64}
+        className="shrink-0 self-start [&_img]:rounded-[10px] [&]:!rounded-[10px]"
+      />
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="font-display text-[15px] font-normal leading-[1.3] text-foreground line-clamp-2">
+          {m.title}
+        </span>
+        <span className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+          <span className="tabular-nums">{lengthLine}</span>
+          {styleLine ? (
+            <MeditationTypePill
+              label={styleLine}
+              className="!px-2 !py-0.5 !text-[11px] max-w-[140px] truncate"
+            />
+          ) : null}
+        </span>
+        <span className="line-clamp-2 text-[13px] leading-[1.45] text-muted">
+          {m.description?.trim() || "—"}
+        </span>
+        <span className="flex items-center justify-between gap-2">
+          {dateLine ?? <span />}
+          {stars}
+        </span>
+      </span>
+    </button>
+  );
+
   const mobileCardBody = (
     <div className="sm:hidden">
-      <div className="flex items-start gap-3">
-        <CoverArtThumb
-          src={m.coverImageUrl}
-          alt=""
-          edgePx={LIST_COVER_EDGE_MOBILE_PX}
-          className="self-start"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2 pr-9">
-            <h2 className="min-w-0 flex-1 font-display text-lg font-medium leading-snug">
-              {m.title}
-            </h2>
-            <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
-              {lengthLine}
-            </span>
-          </div>
-          <MeditationTypePill label={styleLine} className="mt-2" />
-          <LibraryCardDescription
-            text={m.description ?? "—"}
-            expanded={descExpanded}
-            onExpandedChange={setDescExpanded}
-          />
-          <div className="mt-3 flex items-center gap-2">{playControl}</div>
-          {metaRow}
-        </div>
-      </div>
+      {mobileBleedRow}
       {scriptBlock ? <div className="mt-3">{scriptBlock}</div> : null}
     </div>
   );
@@ -885,7 +1021,7 @@ export function LibraryMeditationCard({
       <li
         ref={itemRef}
         className={`group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
-          menuOpen ? "z-50" : "z-0"
+          menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
         } ${
           isPlaying
             ? "border-accent hybrid:!border-surface-2-edge"
@@ -946,23 +1082,23 @@ export function LibraryMeditationCard({
     <>
     <li
       ref={itemRef}
-      className={`group relative min-w-0 overflow-visible rounded-[6px] border bg-card p-4 shadow-sm ${
-        menuOpen ? "z-50" : "z-0"
-      } ${
+      className={`group relative min-w-0 overflow-visible bg-card ${
+        menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
+      } max-sm:rounded-none max-sm:border-x-0 max-sm:border-y max-sm:border-border max-sm:-mb-px max-sm:px-4 max-sm:py-3 max-sm:shadow-none sm:rounded-[6px] sm:border sm:p-4 sm:shadow-sm ${
         isPlaying
-          ? "border-accent hybrid:!border-surface-2-edge"
-          : "border-border hover:border-accent/80 hybrid:hover:!border-surface-2-edge transition-colors"
+          ? "sm:border-accent hybrid:sm:!border-surface-2-edge"
+          : "sm:border-border sm:hover:border-accent/80 hybrid:sm:hover:!border-surface-2-edge sm:transition-colors"
       }`}
     >
       {devOverlay}
       {isPlaying ? (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-accent border-accent-pulse hybrid:!border-surface-2-edge"
+          className="pointer-events-none absolute inset-0 hidden rounded-[6px] border-2 border-accent border-accent-pulse hybrid:!border-surface-2-edge sm:block"
         />
       ) : null}
       {cardMenu ? (
-        <div className="absolute right-2 top-2 z-20 sm:hidden">{cardMenu}</div>
+        <div className="absolute right-2 top-2 z-20 hidden sm:hidden">{cardMenu}</div>
       ) : null}
       {mobileCardBody}
       {/* Desktop: play at card center; menu flush to card-edge inset. */}

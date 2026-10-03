@@ -513,7 +513,8 @@ function formatRenderedSkeletonForPass2(beats: ScriptLabBeat[]): string {
     .join("\n");
 }
 
-function buildPassOnePrompt(params: {
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function buildPassOnePrompt(params: {
   transcript: string;
   meditationStyle: string;
   journalMode: boolean;
@@ -598,7 +599,8 @@ export function extractAdditionalContextFromTranscript(transcript: string): stri
   return (userMatch?.[1] ?? "").trim();
 }
 
-function buildPassTwoPrompt(params: {
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function buildPassTwoPrompt(params: {
   transcript: string;
   meditationStyle: string;
   journalMode: boolean;

@@ -109,7 +109,7 @@ export type GenerationSectionTiming = {
   fxFfmpegMs?: number;
   /** S3 put + VoiceFx invoke + S3 get, i.e. fxMs minus the local ffmpeg work. */
   fxInvokeMs?: number;
-  /** Pedalboard's own processing, as reported by the FX Lambda. */
+  /** In-process ffmpeg delay→afir chain (legacy field name fxBoardMs). */
   fxBoardMs?: number;
   /** True when that section's FX Lambda had to start a fresh container. */
   fxColdStart?: boolean;
@@ -118,17 +118,41 @@ export type GenerationSectionTiming = {
 };
 
 export type GenerationPhaseTimings = {
+  workerWaitMs?: number;
+  workerMs?: number;
   scriptMs?: number;
   metadataMs?: number;
+  ttsTotalMs?: number;
+  /** Speechify PCM wall (FX load → TTS∥FX → OLA → AAC); used for Accounted. */
+  ttsPipelineMs?: number;
+  /** PCM: load IR/settings. */
+  fxLoadMs?: number;
+  /** PCM: wall for TTS∥FX loop only. */
+  ttsFxLoopMs?: number;
   concatMs?: number;
-  /** Single FX pass over the assembled track: loudnorm + Pedalboard. */
+  /** PCM: float-bus finalize + dial mix. */
+  olaMs?: number;
+  /** Final PCM → AAC encode. */
+  aacEncodeMs?: number;
+  loudnormMs?: number;
   fxMs?: number;
+  fxSkipped?: boolean;
+  fxFailed?: boolean;
+  fxFailedMs?: number;
+  fxMp3ToWavMs?: number;
+  fxWavToMp3Ms?: number;
   fxFfmpegMs?: number;
+  fxS3PutMs?: number;
   fxInvokeMs?: number;
+  fxS3GetMs?: number;
   fxBoardMs?: number;
   fxColdStart?: boolean;
-  loudnormMs?: number;
+  fxStemEncodeMs?: number;
   uploadMs?: number;
+  coverMs?: number;
+  libraryWriteMs?: number;
+  accountedMs?: number;
+  gapMs?: number;
 };
 
 export type GenerationTimings = {
@@ -141,73 +165,160 @@ export function formatStepMs(ms: number | null | undefined): string | null {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
   if (ms < 1000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const m = Math.floor(ms / 60_000);
-  const s = Math.round((ms % 60_000) / 1000);
-  return `${m}m ${s}s`;
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
+function pushMsLine(
+  lines: string[],
+  label: string,
+  ms: number | null | undefined,
+  note?: string,
+): void {
+  const formatted = formatStepMs(ms);
+  if (!formatted) return;
+  lines.push(note ? `  ${label}: ${formatted} ${note}` : `  ${label}: ${formatted}`);
 }
 
 /** Dev flyover lines for per-section / phase generation timings. */
 export function generationTimingsFlyoverLines(
   timings: GenerationTimings | null | undefined,
-  opts?: { maxSections?: number },
+  opts?: { maxSections?: number; wallMs?: number | null },
 ): string[] {
-  if (!timings) return [];
-  const maxSections = opts?.maxSections ?? 14;
+  const wallMs =
+    typeof opts?.wallMs === "number" && Number.isFinite(opts.wallMs) && opts.wallMs >= 0
+      ? opts.wallMs
+      : null;
+  if (!timings && wallMs == null) return [];
+  const maxSections = opts?.maxSections ?? Number.POSITIVE_INFINITY;
   const lines: string[] = [];
-  const p = timings.phases ?? {};
+  const p = timings?.phases ?? {};
+  const sections = timings?.sections ?? [];
 
-  type PhaseMsKey = Extract<
-    keyof GenerationPhaseTimings,
-    "scriptMs" | "metadataMs" | "concatMs" | "fxMs" | "loudnormMs" | "uploadMs"
-  >;
-  const phaseLabels: Array<[PhaseMsKey, string]> = [
-    ["scriptMs", "Script"],
-    ["metadataMs", "Metadata"],
-    ["concatMs", "Concat"],
-    ["fxMs", "FX"],
-    ["loudnormMs", "Loudnorm"],
-    ["uploadMs", "Upload"],
-  ];
-  for (const [key, label] of phaseLabels) {
-    const formatted = formatStepMs(p[key]);
-    if (formatted) lines.push(`${label}: ${formatted}`);
-    // Where the single FX pass went: worker ffmpeg, the round trip, the reverb.
-    if (key === "fxMs" && formatted) {
-      const fxParts: string[] = [];
-      const ffmpeg = formatStepMs(p.fxFfmpegMs);
-      if (ffmpeg) fxParts.push(`ffmpeg ${ffmpeg}`);
-      const invoke = formatStepMs(p.fxInvokeMs);
-      if (invoke) fxParts.push(`call ${invoke}`);
-      const board = formatStepMs(p.fxBoardMs);
-      if (board) fxParts.push(`board ${board}`);
-      if (p.fxColdStart) fxParts.push("cold");
-      if (fxParts.length > 0) lines.push(`  ${fxParts.join(" · ")}`);
+  const ttsTotalMs =
+    typeof p.ttsTotalMs === "number" && Number.isFinite(p.ttsTotalMs)
+      ? p.ttsTotalMs
+      : sections.reduce(
+          (sum, s) => sum + (Number.isFinite(s.ttsMs) ? s.ttsMs : 0),
+          0,
+        );
+
+  lines.push("Timing:");
+  if (wallMs != null) {
+    lines.push(`  Total ${formatStepMs(wallMs) ?? "—"}  (job create → library)`);
+  }
+  pushMsLine(
+    lines,
+    "Wait",
+    p.workerWaitMs,
+    "← async invoke / worker cold",
+  );
+  pushMsLine(lines, "Worker", p.workerMs, "← handler wall");
+  if (typeof p.accountedMs === "number" || typeof p.gapMs === "number") {
+    const acc = formatStepMs(p.accountedMs) ?? "—";
+    const gap = formatStepMs(p.gapMs) ?? "—";
+    lines.push(`  Accounted ${acc} · gap ${gap}`);
+  }
+  lines.push("");
+
+  if (!timings) return lines;
+
+  lines.push("Phases:");
+  pushMsLine(lines, "Script", p.scriptMs);
+  pushMsLine(lines, "Metadata", p.metadataMs);
+
+  const pcmPipeline =
+    typeof p.ttsPipelineMs === "number" &&
+    Number.isFinite(p.ttsPipelineMs) &&
+    p.ttsPipelineMs > 0;
+  const spokenSegs = sections.filter((s) => s.ttsMs > 0).length;
+
+  if (pcmPipeline) {
+    // Speechify PCM path — nested breakdown; Accounted uses ttsPipelineMs only.
+    pushMsLine(
+      lines,
+      "PCM pipeline",
+      p.ttsPipelineMs,
+      "← wall (load → TTS∥FX → OLA → AAC)",
+    );
+    pushMsLine(lines, "  FX load", p.fxLoadMs, "← IR + settings");
+    pushMsLine(lines, "  TTS∥FX loop", p.ttsFxLoopMs, "← wall");
+    if (ttsTotalMs > 0 || spokenSegs > 0) {
+      lines.push(
+        `    TTS sum: ${formatStepMs(ttsTotalMs) ?? "0ms"} · ${spokenSegs} spoken`,
+      );
     }
+    if (p.fxSkipped) {
+      lines.push("    FX: skipped (dev)");
+    } else if (typeof p.fxMs === "number" && p.fxMs > 0) {
+      lines.push(
+        `    FX sum: ${formatStepMs(p.fxMs) ?? "—"} ← overlapped in loop`,
+      );
+    }
+    pushMsLine(lines, "  OLA", p.olaMs, "← bus finalize + dial");
+    pushMsLine(lines, "  AAC encode", p.aacEncodeMs, "← 24k PCM → 44.1");
+  } else {
+    // Legacy / Fish / concat path.
+    if (ttsTotalMs > 0 || sections.length > 0) {
+      lines.push(
+        `  TTS: ${formatStepMs(ttsTotalMs) ?? "0ms"} · ${spokenSegs || sections.length} segment${(spokenSegs || sections.length) === 1 ? "" : "s"}`,
+      );
+    }
+    pushMsLine(lines, "Concat", p.concatMs);
+    pushMsLine(lines, "Loudnorm", p.loudnormMs);
+
+    if (p.fxSkipped) {
+      lines.push("  FX: skipped (dev)");
+    } else if (p.fxFailed) {
+      lines.push(
+        `  FX: FAILED after ${formatStepMs(p.fxFailedMs) ?? "—"}`,
+      );
+    } else if (typeof p.fxMs === "number" && p.fxMs > 0) {
+      lines.push(
+        `  FX: ${formatStepMs(p.fxMs) ?? "—"}${p.fxColdStart ? " · COLD START" : ""}`,
+      );
+      pushMsLine(lines, "  mp3→wav", p.fxMp3ToWavMs);
+      pushMsLine(lines, "  S3 put", p.fxS3PutMs);
+      pushMsLine(
+        lines,
+        "  FX apply",
+        p.fxInvokeMs,
+        p.fxColdStart ? "← includes cold" : "← ffmpeg+IR",
+      );
+      pushMsLine(lines, "  ffmpeg", p.fxBoardMs, "← delay→afir");
+      pushMsLine(lines, "  S3 get", p.fxS3GetMs);
+      pushMsLine(lines, "  dial bake", p.fxWavToMp3Ms);
+    } else {
+      lines.push("  FX: — (not recorded)");
+    }
+    pushMsLine(lines, "Stem encode", p.fxStemEncodeMs, "← dry/wet AAC");
   }
 
-  const sections = timings.sections ?? [];
+  pushMsLine(lines, "Upload", p.uploadMs);
+  pushMsLine(lines, "Cover", p.coverMs, "← gpt-image");
+  pushMsLine(lines, "Library write", p.libraryWriteMs);
+
   if (sections.length > 0) {
-    lines.push(`Speech sections (${sections.length}):`);
+    lines.push("");
+    lines.push(`Segments (${sections.length}):`);
     const show = sections.slice(0, maxSections);
     for (const s of show) {
-      const parts: string[] = [`#${s.i + 1} TTS ${formatStepMs(s.ttsMs) ?? "—"}`];
-      if (s.fxMs != null) parts.push(`FX ${formatStepMs(s.fxMs) ?? "—"}`);
+      const parts: string[] = [
+        `#${s.i + 1}`,
+        s.ttsMs > 0
+          ? `TTS ${formatStepMs(s.ttsMs) ?? "—"}`
+          : "TTS —",
+      ];
+      if (s.fxMs != null && s.fxMs > 0) {
+        parts.push(`FX ${formatStepMs(s.fxMs) ?? "—"}`);
+      }
       if (s.utf8Bytes != null) parts.push(`${s.utf8Bytes.toLocaleString()} B`);
       if (s.pauseSec != null && s.pauseSec > 0) {
         parts.push(`pause ${s.pauseSec.toFixed(1)}s`);
       }
       lines.push(`  ${parts.join(" · ")}`);
-      // Where that FX figure actually went — ffmpeg on the worker, the round
-      // trip to the FX Lambda, and the reverb itself.
-      const fxParts: string[] = [];
-      const ffmpeg = formatStepMs(s.fxFfmpegMs);
-      if (ffmpeg) fxParts.push(`ffmpeg ${ffmpeg}`);
-      const invoke = formatStepMs(s.fxInvokeMs);
-      if (invoke) fxParts.push(`call ${invoke}`);
-      const board = formatStepMs(s.fxBoardMs);
-      if (board) fxParts.push(`board ${board}`);
-      if (s.fxColdStart) fxParts.push("cold");
-      if (fxParts.length > 0) lines.push(`      ${fxParts.join(" · ")}`);
     }
     if (sections.length > maxSections) {
       lines.push(`  … +${sections.length - maxSections} more`);

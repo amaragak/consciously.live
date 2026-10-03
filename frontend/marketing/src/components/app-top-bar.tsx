@@ -579,7 +579,10 @@ export function AppTopBar({
           ) : null}
         </div>
         <div className="flex items-center gap-0.5 md:gap-2">
-          <AppGlobalSearch />
+          {/* +10px matches bell’s +5px nudge so search↔bell == bell↔menu on mobile. */}
+          <span className="relative translate-x-[10px] md:translate-x-0">
+            <AppGlobalSearch />
+          </span>
           <ColorSchemePicker variant="header" />
           <Link
             href="/settings/account"

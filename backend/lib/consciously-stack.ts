@@ -30,7 +30,8 @@ import {
 } from "./consciously/secret-names";
 
 /**
- * New Consciously backend root stack (parallel to MedimadeBackend).
+ * Live consciously.live backend root stack.
+ * Do not add product features to legacy MedimadeBackend (`lib/medimade-stack.ts`).
  *
  * Nested declaration order (dependency direction):
  *   Config → Auth → Database → layers → Media(with normalize) → HttpApi → Api*
@@ -232,6 +233,11 @@ export class ConsciouslyStack extends cdk.Stack {
       value: this.media.bucket.bucketName,
       // Distinct from MedimadeBackend's MediaBucketName until cutover.
       exportName: "ConsciouslyMediaBucketName",
+    });
+    new cdk.CfnOutput(this, "VoiceAdminTableName", {
+      description:
+        "DynamoDB table for voice admin, pause bands, FX, Dev UI, Claude preprompts",
+      value: this.database.voiceAdmin.tableName,
     });
     new cdk.CfnOutput(this, "BlogRevalidateSecretArn", {
       description:

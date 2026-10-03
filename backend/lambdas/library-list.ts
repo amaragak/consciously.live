@@ -7,6 +7,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { listVoiceSpeakers } from "./_shared/voice-admin";
 import { meditationPlaybackS3Key } from "./_shared/playback-keys";
+import { siblingAacKey } from "./_shared/audio-aac";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
 import { mixListenerPk } from "./_shared/meditation-listener-mix";
 import {
@@ -19,6 +20,13 @@ import { listProgramOwnedAudioKeys } from "./_shared/programs";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
+
+/** Prefer AAC sibling for stem playback URLs (`.wav`/`.mp3` → `.m4a`). */
+function stemPlaybackUrl(cfDomain: string, key: string | null): string | null {
+  if (!key) return null;
+  const playKey = siblingAacKey(key) ?? key;
+  return `https://${cfDomain}/${playKey}`;
+}
 
 function json(
   statusCode: number,
@@ -76,6 +84,16 @@ type OutItem = {
   wetAudioKey: string | null;
   dryAudioUrl: string | null;
   wetAudioUrl: string | null;
+  /** Dev: Speechify warm/calm locked stems (neutral = dry/wet above). */
+  speechifyEmotionStems: Record<
+    string,
+    {
+      dryAudioKey: string;
+      wetAudioKey: string | null;
+      dryAudioUrl: string;
+      wetAudioUrl: string | null;
+    }
+  > | null;
   coverImageKey: string | null;
   coverImageUrl: string | null;
   voiceFxDial: number | null;
@@ -114,18 +132,40 @@ type OutItem = {
   claudeHaiku45ChatEstInputTokens: number | null;
   claudeHaiku45ChatEstOutputTokens: number | null;
   creationProvenance: unknown | null;
+  /** Localhost create-audio Dev · toggles active at generate time. */
+  devToggles: string[] | null;
   generationTimings: {
     phases: {
+      workerWaitMs?: number;
+      workerMs?: number;
       scriptMs?: number;
       metadataMs?: number;
+      ttsTotalMs?: number;
+      ttsPipelineMs?: number;
+      fxLoadMs?: number;
+      ttsFxLoopMs?: number;
       concatMs?: number;
+      olaMs?: number;
+      aacEncodeMs?: number;
+      loudnormMs?: number;
       fxMs?: number;
+      fxSkipped?: boolean;
+      fxFailed?: boolean;
+      fxFailedMs?: number;
+      fxMp3ToWavMs?: number;
+      fxWavToMp3Ms?: number;
       fxFfmpegMs?: number;
+      fxS3PutMs?: number;
       fxInvokeMs?: number;
+      fxS3GetMs?: number;
       fxBoardMs?: number;
       fxColdStart?: boolean;
-      loudnormMs?: number;
+      fxStemEncodeMs?: number;
       uploadMs?: number;
+      coverMs?: number;
+      libraryWriteMs?: number;
+      accountedMs?: number;
+      gapMs?: number;
     };
     sections: Array<{
       i: number;
@@ -145,6 +185,28 @@ function optTrimKey(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
+function parseSpeechifyEmotionStems(
+  raw: unknown,
+  cfDomain: string,
+): OutItem["speechifyEmotionStems"] {
+  if (!raw || typeof raw !== "object") return null;
+  const out: NonNullable<OutItem["speechifyEmotionStems"]> = {};
+  for (const tag of ["warm", "calm"] as const) {
+    const pair = (raw as Record<string, unknown>)[tag];
+    if (!pair || typeof pair !== "object") continue;
+    const dryKey = optTrimKey((pair as Record<string, unknown>).dryAudioKey);
+    if (!dryKey) continue;
+    const wetKey = optTrimKey((pair as Record<string, unknown>).wetAudioKey);
+    out[tag] = {
+      dryAudioKey: dryKey,
+      wetAudioKey: wetKey,
+      dryAudioUrl: stemPlaybackUrl(cfDomain, dryKey)!,
+      wetAudioUrl: stemPlaybackUrl(cfDomain, wetKey),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 function optGain(v: unknown): number | null {
   if (typeof v !== "number" || !Number.isFinite(v)) return null;
   return Math.min(100, Math.max(0, v));
@@ -155,6 +217,16 @@ function optMs(v: unknown): number | undefined {
   return Math.round(v);
 }
 
+function parseDevToggles(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const labels = raw
+    .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    .map((x) => x.trim())
+    .slice(0, 16);
+  // Distinguish missing (null) from explicitly empty ([]).
+  return labels;
+}
+
 function parseGenerationTimings(raw: unknown): OutItem["generationTimings"] {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -163,25 +235,42 @@ function parseGenerationTimings(raw: unknown): OutItem["generationTimings"] {
   const phases: NonNullable<OutItem["generationTimings"]>["phases"] = {};
   if (phasesRaw && typeof phasesRaw === "object") {
     const p = phasesRaw as Record<string, unknown>;
-    const scriptMs = optMs(p.scriptMs);
-    const metadataMs = optMs(p.metadataMs);
-    const concatMs = optMs(p.concatMs);
-    const loudnormMs = optMs(p.loudnormMs);
-    const uploadMs = optMs(p.uploadMs);
-    if (scriptMs != null) phases.scriptMs = scriptMs;
-    if (metadataMs != null) phases.metadataMs = metadataMs;
-    if (concatMs != null) phases.concatMs = concatMs;
-    if (loudnormMs != null) phases.loudnormMs = loudnormMs;
-    if (uploadMs != null) phases.uploadMs = uploadMs;
-    const fxMs = optMs(p.fxMs);
-    if (fxMs != null) phases.fxMs = fxMs;
-    const fxFfmpegMs = optMs(p.fxFfmpegMs);
-    if (fxFfmpegMs != null) phases.fxFfmpegMs = fxFfmpegMs;
-    const fxInvokeMs = optMs(p.fxInvokeMs);
-    if (fxInvokeMs != null) phases.fxInvokeMs = fxInvokeMs;
-    const fxBoardMs = optMs(p.fxBoardMs);
-    if (fxBoardMs != null) phases.fxBoardMs = fxBoardMs;
+    const msKeys = [
+      "workerWaitMs",
+      "workerMs",
+      "scriptMs",
+      "metadataMs",
+      "ttsTotalMs",
+      "ttsPipelineMs",
+      "fxLoadMs",
+      "ttsFxLoopMs",
+      "concatMs",
+      "olaMs",
+      "aacEncodeMs",
+      "loudnormMs",
+      "fxMs",
+      "fxFailedMs",
+      "fxMp3ToWavMs",
+      "fxWavToMp3Ms",
+      "fxFfmpegMs",
+      "fxS3PutMs",
+      "fxInvokeMs",
+      "fxS3GetMs",
+      "fxBoardMs",
+      "fxStemEncodeMs",
+      "uploadMs",
+      "coverMs",
+      "libraryWriteMs",
+      "accountedMs",
+      "gapMs",
+    ] as const;
+    for (const key of msKeys) {
+      const v = optMs(p[key]);
+      if (v != null) phases[key] = v;
+    }
     if (typeof p.fxColdStart === "boolean") phases.fxColdStart = p.fxColdStart;
+    if (typeof p.fxSkipped === "boolean") phases.fxSkipped = p.fxSkipped;
+    if (typeof p.fxFailed === "boolean") phases.fxFailed = p.fxFailed;
   }
   const sections: NonNullable<OutItem["generationTimings"]>["sections"] = [];
   if (Array.isArray(sectionsRaw)) {
@@ -535,12 +624,12 @@ function buildLibraryItems(params: {
       liveMix: row.liveMix === true,
       dryAudioKey: optTrimKey(row.dryAudioKey),
       wetAudioKey: optTrimKey(row.wetAudioKey),
-      dryAudioUrl: optTrimKey(row.dryAudioKey)
-        ? `https://${cfDomain}/${optTrimKey(row.dryAudioKey)}`
-        : null,
-      wetAudioUrl: optTrimKey(row.wetAudioKey)
-        ? `https://${cfDomain}/${optTrimKey(row.wetAudioKey)}`
-        : null,
+      dryAudioUrl: stemPlaybackUrl(cfDomain, optTrimKey(row.dryAudioKey)),
+      wetAudioUrl: stemPlaybackUrl(cfDomain, optTrimKey(row.wetAudioKey)),
+      speechifyEmotionStems: parseSpeechifyEmotionStems(
+        row.speechifyEmotionStems,
+        cfDomain,
+      ),
       coverImageKey: optTrimKey(row.coverImageKey),
       coverImageUrl: optTrimKey(row.coverImageKey)
         ? `https://${cfDomain}/${optTrimKey(row.coverImageKey)}`
@@ -607,6 +696,10 @@ function buildLibraryItems(params: {
         row.creationProvenance && typeof row.creationProvenance === "object"
           ? row.creationProvenance
           : null,
+      // null = field absent (older rows); [] = none clicked at generate time.
+      devToggles: Object.prototype.hasOwnProperty.call(row, "devToggles")
+        ? (parseDevToggles(row.devToggles) ?? [])
+        : null,
       generationTimings: parseGenerationTimings(row.generationTimings),
     });
   }
@@ -649,6 +742,7 @@ function buildLibraryItems(params: {
       wetAudioKey: null,
       dryAudioUrl: null,
       wetAudioUrl: null,
+      speechifyEmotionStems: null,
       coverImageKey: null,
       coverImageUrl: null,
       voiceFxDial: null,
@@ -685,6 +779,7 @@ function buildLibraryItems(params: {
       claudeHaiku45ChatEstInputTokens: null,
       claudeHaiku45ChatEstOutputTokens: null,
       creationProvenance: null,
+      devToggles: null,
       generationTimings: null,
     });
   }

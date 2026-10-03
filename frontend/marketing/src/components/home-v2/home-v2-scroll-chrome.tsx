@@ -10,9 +10,14 @@ import {
   type RefObject,
 } from "react";
 import { HomeV2NavHeader } from "@/components/home-v2/home-v2-nav-header";
-import { ReadingProgress } from "@/components/reading-progress";
+import { MarketingNextStripButton } from "@/components/home-v2/marketing-next-strip-button";
 
 const HomeV2ScrolledContext = createContext<boolean | null>(null);
+
+/** Compact/filled header state from the nearest `HomeV2ScrollChrome`. */
+export function useHomeV2Scrolled(): boolean {
+  return useContext(HomeV2ScrolledContext) ?? false;
+}
 
 /** Compact chrome when scrolled past this (px). */
 const SCROLL_FILL_ENTER = 24;
@@ -88,16 +93,10 @@ export function HomeV2Chrome({
 }
 
 /**
- * Page shell: scroll-fill context for `HomeV2Chrome` + optional reading progress
+ * Page shell: scroll-fill context for `HomeV2Chrome`
  * + reveal animations for `[data-hv2-reveal]`.
  */
-export function HomeV2ScrollChrome({
-  children,
-  showReadingProgress = false,
-}: {
-  children: ReactNode;
-  showReadingProgress?: boolean;
-}) {
+export function HomeV2ScrollChrome({ children }: { children: ReactNode }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrolled = useHomeV2HeaderScrolled(rootRef);
 
@@ -141,9 +140,7 @@ export function HomeV2ScrollChrome({
     <div ref={rootRef} className="home-v2 min-h-full">
       <HomeV2ScrolledContext.Provider value={scrolled}>
         {children}
-        {showReadingProgress ? (
-          <ReadingProgress underStickyHeader visible={scrolled} />
-        ) : null}
+        <MarketingNextStripButton rootRef={rootRef} />
       </HomeV2ScrolledContext.Provider>
     </div>
   );

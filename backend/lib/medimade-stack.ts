@@ -1,3 +1,18 @@
+/**
+ * =============================================================================
+ * LEGACY STACK — DO NOT MODIFY FOR NEW FEATURES
+ * =============================================================================
+ * Live product stack is ConsciouslyBackend (`lib/consciously-stack.ts` + nested
+ * stacks under `lib/consciously/`).
+ *
+ * This file remains only for rare emergency ops on the old medimade.io stack.
+ * It is NOT loaded by `bin/medimade.ts` unless LEGACY_MEDIMADE_STACK=1.
+ * Adding routes/lambdas here will blow the CloudFormation 500-resource limit
+ * and break CDK synth of the whole app if you opt it back in.
+ *
+ * Put new admin/API work in `lib/consciously/api-*-nested-stack.ts` instead.
+ * =============================================================================
+ */
 import * as fs from "fs";
 import * as path from "path";
 import * as cdk from "aws-cdk-lib";
@@ -35,6 +50,7 @@ export const RUNPODS_URL_SECRET_NAME = "medimade/RUNPODS_URL";
 /** Algolia credentials JSON: { appId, adminApiKey, searchApiKey, indexName? }. */
 export const ALGOLIA_SECRET_NAME = "medimade/ALGOLIA";
 
+/** @deprecated LEGACY — use ConsciouslyBackend. Do not add resources here. */
 export class MedimadeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -2163,6 +2179,8 @@ export class MedimadeStack extends cdk.Stack {
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../lambdas-python/voice-fx"),
       ),
+      // Pedalboard layer is ~246MB — cannot also attach ffmpeg (250MB cap).
+      // Worker ffmpeg-decodes AAC/MP3 → WAV before invoke.
       layers: [pedalboardLayer],
       timeout: cdk.Duration.minutes(5),
       memorySize: 3008,

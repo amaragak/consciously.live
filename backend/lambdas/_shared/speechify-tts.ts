@@ -51,16 +51,55 @@ function stripPauseMarkersForSpeechify(script: string): string {
     .trim();
 }
 
-/** Wrap spoken text + admin rate. Pause tags are stripped, not turned into SSML breaks. */
+/**
+ * After each sentence-ending `.` (period + space/end), insert a Speechify SSML break.
+ * Runs on already-escaped text so break tags are not escaped.
+ * Skips decimals like `3.14` (digit before the period).
+ */
+export function insertSpeechifyBreaksAfterPeriods(
+  escapedText: string,
+  breakMs: number,
+): string {
+  const ms = Math.round(breakMs);
+  if (!Number.isFinite(ms) || ms <= 0) return escapedText;
+  const tag = `<break time="${ms}ms"/>`;
+  // Period not preceded by a digit, followed by whitespace or end of string.
+  return escapedText.replace(/(?<!\d)\.(?=\s|$)/g, `.${tag}`);
+}
+
+/** Speechify `<speechify:style emotion="…">` values used in admin samples. */
+export type SpeechifyEmotionTag = "warm" | "calm";
+
+/**
+ * Wrap spoken text + admin rate. Pause markers are stripped (ffmpeg silence).
+ * Optional emotion via `<speechify:style emotion="…">`.
+ * Optional `sentenceBreakMs`: after chunking, insert `<break time="Nms"/>` after
+ * each `.` inside this chunk (meditation path uses 777).
+ */
 export function scriptToSpeechifySsml(
   script: string,
-  opts?: { rate?: string },
+  opts?: {
+    rate?: string;
+    emotion?: SpeechifyEmotionTag | null;
+    sentenceBreakMs?: number;
+  },
 ): string {
-  const body = escapeSsmlText(stripPauseMarkersForSpeechify(script));
+  let inner = escapeSsmlText(stripPauseMarkersForSpeechify(script));
+  if (
+    typeof opts?.sentenceBreakMs === "number" &&
+    Number.isFinite(opts.sentenceBreakMs) &&
+    opts.sentenceBreakMs > 0
+  ) {
+    inner = insertSpeechifyBreaksAfterPeriods(inner, opts.sentenceBreakMs);
+  }
+  const emotion = opts?.emotion?.trim().toLowerCase();
+  if (emotion === "warm" || emotion === "calm") {
+    inner = `<speechify:style emotion="${emotion}">${inner}</speechify:style>`;
+  }
   const rate = opts?.rate?.trim();
-  const inner = rate
-    ? `<prosody rate="${escapeSsmlText(rate)}">${body}</prosody>`
-    : body;
+  if (rate) {
+    inner = `<prosody rate="${escapeSsmlText(rate)}">${inner}</prosody>`;
+  }
   return `<speak>${inner}</speak>`;
 }
 
@@ -94,23 +133,56 @@ function speechifyRetryDelayMs(res: Response, attempt: number): number {
   return Math.min(3_000, Math.max(250, base)) + Math.floor(Math.random() * 150);
 }
 
-export async function speechifyTtsMp3(params: {
+export type SpeechifyTtsParams = {
   apiKey: string;
   text: string;
   voiceId?: string;
-  /** Fallback only when this voice has no admin rate stored. */
+  /**
+   * SSML rate like `-7%`. When provided, overrides admin voice rate.
+   * When omitted, uses the admin rate for this voice (Speechify default if unset).
+   */
   rate?: string;
-}): Promise<Buffer> {
+  /** When set, wraps spoken text in `<speechify:style emotion="…">`. */
+  emotion?: SpeechifyEmotionTag | null;
+  /**
+   * When false, disables Speechify’s ~−14 LUFS loudness_normalization
+   * (dev A/B for raw volume). Default true.
+   */
+  loudnessNormalization?: boolean;
+  /**
+   * When set, after the spoken chunk is prepared, insert
+   * `<break time="{n}ms"/>` after each sentence-ending `.`.
+   */
+  sentenceBreakMs?: number;
+};
+
+async function speechifyTtsStream(
+  params: SpeechifyTtsParams,
+  opts: {
+    outputFormat: "aac_24000" | "pcm_24000";
+    accept: "audio/aac" | "audio/pcm";
+  },
+): Promise<Buffer> {
   const voiceId = params.voiceId || speechifyVoiceId();
-  const storedRate = await speechifyRateSsmlForVoice(voiceId);
-  const rate = storedRate ?? params.rate?.trim();
-  const ssml = scriptToSpeechifySsml(params.text, { rate });
+  const rate =
+    typeof params.rate === "string"
+      ? params.rate.trim() || undefined
+      : await speechifyRateSsmlForVoice(voiceId);
+  const ssml = scriptToSpeechifySsml(params.text, {
+    rate,
+    emotion: params.emotion,
+    sentenceBreakMs: params.sentenceBreakMs,
+  });
+  const loudnessNormalization = params.loudnessNormalization !== false;
   const body = JSON.stringify({
     input: ssml,
     voice_id: voiceId,
     model: speechifyTtsModel(),
-    output_format: "mp3_24000_128",
-    text_normalization: true,
+    output_format: opts.outputFormat,
+    options: {
+      loudness_normalization: loudnessNormalization,
+      text_normalization: true,
+    },
   });
   const maxAttempts = 5;
   let lastErr = "Speechify TTS failed";
@@ -120,7 +192,7 @@ export async function speechifyTtsMp3(params: {
       headers: {
         Authorization: `Bearer ${params.apiKey}`,
         "Content-Type": "application/json",
-        Accept: "audio/mpeg",
+        Accept: opts.accept,
       },
       body,
     });
@@ -144,9 +216,36 @@ export async function speechifyTtsMp3(params: {
     console.warn("Speechify transient failure, retrying", {
       attempt,
       status: upstream.status,
+      outputFormat: opts.outputFormat,
       backoffMs,
     });
     await new Promise((r) => setTimeout(r, backoffMs));
   }
   throw new Error(lastErr);
+}
+
+/**
+ * Speechify stream → AAC-LC ADTS (`aac_24000`).
+ * (Kept name `speechifyTtsMp3` for call-site compatibility.)
+ */
+export async function speechifyTtsMp3(
+  params: SpeechifyTtsParams,
+): Promise<Buffer> {
+  return speechifyTtsStream(params, {
+    outputFormat: "aac_24000",
+    accept: "audio/aac",
+  });
+}
+
+/**
+ * Speechify stream → raw 16-bit LE mono PCM @ 24 kHz (`pcm_24000`).
+ * Used for per-segment FX + overlap-add before AAC encode.
+ */
+export async function speechifyTtsPcm24k(
+  params: SpeechifyTtsParams,
+): Promise<Buffer> {
+  return speechifyTtsStream(params, {
+    outputFormat: "pcm_24000",
+    accept: "audio/pcm",
+  });
 }

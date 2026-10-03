@@ -14,7 +14,6 @@ import { AppNotificationsBell } from "@/components/app-notifications-bell";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
   AppBreadcrumb,
-  AppBreadcrumbBack,
 } from "@/components/app-breadcrumb";
 import {
   resolveAppHeaderLocation,
@@ -87,7 +86,7 @@ function AccountMenu({ accountLabel }: { accountLabel: string }) {
         aria-label={`Account: ${accountLabel}`}
         title={accountLabel}
         onClick={() => setOpen((v) => !v)}
-        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-gold text-xs font-semibold text-on-accent transition-opacity hover:opacity-90"
+        className="header-gold-sunlit-fill flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold text-on-accent transition-opacity hover:opacity-90"
       >
         {initial}
       </button>
@@ -224,33 +223,43 @@ function BrandPhrase({
   verb,
   size,
   className,
+  showWordmark = true,
 }: {
   verb: string;
   size: "desktop" | "mobile";
   className?: string;
+  /** When false, only the sun mark (mobile header). */
+  showWordmark?: boolean;
 }) {
   const markSize = size === "desktop" ? 28 : 22;
   const textPx = size === "desktop" ? 22 : 19;
+  const sunOnly = !showWordmark;
   return (
     <span
-      className={`inline-flex shrink-0 items-baseline ${className ?? ""}`}
+      className={`inline-flex shrink-0 ${
+        sunOnly ? "items-center" : "items-baseline"
+      } ${className ?? ""}`}
     >
       <Link
         href="/"
         title="consciously"
         aria-label="consciously home"
-        className="inline-flex items-baseline"
+        className={`inline-flex ${sunOnly ? "items-center" : "items-baseline"}`}
       >
         <LogoMark
           size={markSize}
-          className="app-header-brand-sun relative top-[0.12em] mr-2 shrink-0 self-center"
+          className={`app-header-brand-sun relative shrink-0 self-center${
+            showWordmark ? " top-[0.12em] mr-2" : " -top-px"
+          }`}
         />
-        <span
-          className="brand-wordmark relative shrink-0 font-display font-normal lowercase tracking-tight text-nav-foreground"
-          style={{ fontSize: textPx }}
-        >
-          consciously
-        </span>
+        {showWordmark ? (
+          <span
+            className="brand-wordmark relative shrink-0 font-display font-normal lowercase tracking-tight text-nav-foreground"
+            style={{ fontSize: textPx }}
+          >
+            consciously
+          </span>
+        ) : null}
       </Link>
       {verb ? (
         <span
@@ -290,6 +299,7 @@ export function AppTopBar({
   const phraseRef = useRef<HTMLDivElement | null>(null);
   const tabsSlotRef = useRef<HTMLDivElement | null>(null);
   const [leftMaxPx, setLeftMaxPx] = useState<number | undefined>(undefined);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => {
@@ -370,17 +380,22 @@ export function AppTopBar({
   }, [location.trail.length, location.verb, pathname]);
 
   const trail = location.trail;
-  const parentCrumb =
-    trail.length >= 2
-      ? trail[trail.length - 2]!
-      : trail.length === 1
-        ? { label: location.verb, href: location.href }
-        : null;
+  /**
+   * Mobile: no italic section verb in the brand phrase — that width is for the
+   * trail. Mirror desktop’s post-divider crumbs; only surface the section name
+   * when there is no deeper trail (e.g. Focus home).
+   */
+  const mobileCrumbs =
+    trail.length > 0
+      ? trail
+      : location.verb
+        ? [{ label: location.verb, href: null as string | null }]
+        : [];
 
   return (
     <header
       ref={headerRef}
-      className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)]"
+      className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)]"
     >
       <div
         aria-hidden
@@ -420,10 +435,33 @@ export function AppTopBar({
         </div>
       </div>
 
-      {/* Mobile: back link on the left when deeper than a sidebar item. */}
-      <div className="relative z-10 flex min-w-0 flex-1 items-center px-3 md:hidden">
-        {trail.length > 0 && parentCrumb ? (
-          <AppBreadcrumbBack parent={parentCrumb} />
+      {/* Mobile: sun only; divider + breadcrumb trail use the remaining width.
+          Expanding search pushes this cluster fully off to the left. */}
+      <div
+        className={`relative z-10 flex min-w-0 flex-1 items-center py-0 pl-3 pr-[7.25rem] transition-transform duration-200 ease-out md:hidden ${
+          mobileSearchOpen
+            ? "pointer-events-none -translate-x-full"
+            : "translate-x-0"
+        }`}
+        aria-hidden={mobileSearchOpen}
+      >
+        <BrandPhrase
+          verb=""
+          size="mobile"
+          showWordmark={false}
+          className="shrink-0"
+        />
+        {mobileCrumbs.length > 0 ? (
+          <>
+            <span
+              className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center"
+              aria-hidden
+            />
+            <AppBreadcrumb
+              crumbs={mobileCrumbs}
+              className="min-w-0 flex-1 text-[13px]"
+            />
+          </>
         ) : null}
       </div>
 
@@ -431,12 +469,6 @@ export function AppTopBar({
       <div className="hidden min-w-0 flex-1 md:block" aria-hidden />
 
       <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2 sm:right-4">
-        {/* Mobile brand phrase sits to the left of the icon cluster. */}
-        <BrandPhrase
-          verb={location.verb}
-          size="mobile"
-          className="md:hidden"
-        />
         <AppTopBarTrailingSlot className="flex max-w-[min(100vw-11rem,28rem)] items-center justify-end overflow-x-auto" />
         <div className="hidden md:contents">
           {isCrossOriginApp() ? (
@@ -451,15 +483,20 @@ export function AppTopBar({
           ) : null}
         </div>
         <div className="flex items-center gap-0.5 md:gap-2">
-          <AppGlobalSearch />
-          <ColorSchemePicker variant="header" />
+          {/* +10px matches bell’s +5px nudge so search↔bell == bell↔hamburger on mobile. */}
+          <span className="relative translate-x-[10px] md:translate-x-0">
+            <AppGlobalSearch onOpenChange={setMobileSearchOpen} />
+          </span>
+          <div className="hidden md:contents">
+            <ColorSchemePicker variant="header" />
+          </div>
           <Link
             href="/settings/account"
             aria-label="Settings"
             aria-current={
               pathname.startsWith("/settings") ? "page" : undefined
             }
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+            className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors md:inline-flex ${
               pathname.startsWith("/settings")
                 ? "bg-nav-active text-nav-foreground"
                 : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
@@ -474,7 +511,7 @@ export function AppTopBar({
               aria-current={
                 pathname.startsWith("/admin") ? "page" : undefined
               }
-              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+              className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors md:inline-flex ${
                 pathname.startsWith("/admin")
                   ? "bg-nav-active text-nav-foreground"
                   : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
@@ -492,30 +529,19 @@ export function AppTopBar({
               aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileSidebarOpen}
               onClick={onToggleSidebar}
-              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground md:hidden"
+              className={`app-top-bar-menu-btn inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground md:hidden${
+                mobileSidebarOpen ? " is-open" : ""
+              }`}
             >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                aria-hidden
-              >
-                {mobileSidebarOpen ? (
-                  <>
-                    <path d="M6 6l12 12" />
-                    <path d="M18 6L6 18" />
-                  </>
-                ) : (
-                  <path d="M4 6h16M4 12h16M4 18h16" />
-                )}
-              </svg>
+              <span className="app-top-bar-menu-icon" aria-hidden>
+                <span />
+                <span />
+              </span>
             </button>
           ) : null}
-          <AccountMenu accountLabel={accountLabel} />
+          <div className="hidden md:block">
+            <AccountMenu accountLabel={accountLabel} />
+          </div>
         </div>
       </div>
 

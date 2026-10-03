@@ -5,6 +5,7 @@
     "exclude": ["README.md", "cdk.out", "node_modules", "lambdas/**/*.js"],
     "command": "npx tsx bin/medimade.ts"
   },
+  "//": "App entry filename is historical. Default stack is ConsciouslyBackend only. MedimadeBackend requires LEGACY_MEDIMADE_STACK=1 — do not enable for normal deploys.",
   "context": {
     "@aws-cdk/core:newStyleStackSynthesis": true,
     "@aws-cdk/aws-apigateway:usagePlanKeyOrderInsensitiveId": true

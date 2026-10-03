@@ -2938,6 +2938,8 @@ export type FishSpeaker = {
   gender?: VoiceGender;
   /** TTS vendor. Live `/fish/speakers` includes this; hardcoded fallbacks are Fish. */
   brand?: "fish" | "speechify";
+  /** Speechify SSML prosody rate percent from admin. Null/omit = Speechify default. */
+  speechifyRate?: number | null;
   /** Admin row timestamp — Create/mixer append this to bust cached samples. */
   updatedAt?: string;
 };
@@ -2999,7 +3001,7 @@ export async function applyVoiceFx(params: {
   return data;
 }
 
-const FISH_SPEAKERS_CACHE_KEY = "mm_fish_speakers_v1";
+const FISH_SPEAKERS_CACHE_KEY = "mm_fish_speakers_v2";
 const HIDDEN_FISH_SPEAKER_MODEL_ID = "8d797adca9af48ca9e8a1c7284db1d6c";
 
 type FishSpeakersClientCache = {
@@ -3022,6 +3024,7 @@ function fishSpeakersCacheVersion(speakers: FishSpeaker[]): string {
         s.gender ?? "",
         s.description ?? "",
         (s.goodFor ?? []).join(","),
+        s.speechifyRate == null ? "" : String(s.speechifyRate),
       ].join("\0"),
     )
     .sort()
@@ -3421,6 +3424,14 @@ export async function createMeditationAudioJob(params: {
   claudeModel?: string;
   /** Dev: Fish qualitative tags vs ffmpeg silence chunks. Default segmented. */
   fishPauseMode?: FishPauseMode;
+  /** Dev: also render Speechify warm + calm emotion stems (serial). */
+  speechifyEmotionVariants?: boolean;
+  /** Dev: skip wet Voice FX bounce entirely (dry stem only). */
+  skipVoiceFx?: boolean;
+  /** Dev: disable Speechify API loudness_normalization (raw volume A/B). */
+  skipSpeechifyLoudnorm?: boolean;
+  /** Dev override for Speechify SSML rate percent (admin voice default when omitted). */
+  speechifyRate?: number | null;
   /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
   longerBreaks?: boolean;
   /** Program shelf audio — keep off My Creations. */
@@ -3479,6 +3490,22 @@ export async function createMeditationAudioJob(params: {
     ...(params.claudeModel ? { claudeModel: params.claudeModel } : {}),
     ...(params.fishPauseMode === "native" || params.fishPauseMode === "segmented"
       ? { fishPauseMode: params.fishPauseMode }
+      : {}),
+    ...(params.speechifyEmotionVariants === true
+      ? { speechifyEmotionVariants: true }
+      : {}),
+    ...(params.skipVoiceFx === true ? { skipVoiceFx: true } : {}),
+    ...(params.skipSpeechifyLoudnorm === true
+      ? { skipSpeechifyLoudnorm: true }
+      : {}),
+    ...(typeof params.speechifyRate === "number" &&
+    Number.isFinite(params.speechifyRate)
+      ? {
+          speechifyRate: Math.max(
+            -50,
+            Math.min(50, Math.round(params.speechifyRate)),
+          ),
+        }
       : {}),
     ...(params.longerBreaks === true ? { longerBreaks: true } : {}),
     meditationTargetMinutes,
@@ -4254,6 +4281,8 @@ export async function trimAdminSound(body: {
 
 export type VoiceSpeakerBrand = "fish" | "speechify";
 
+export type SpeechifyEmotionSampleTag = "neutral" | "warm" | "calm";
+
 export type AdminVoiceSpeaker = {
   name: string;
   modelId: string;
@@ -4267,6 +4296,8 @@ export type AdminVoiceSpeaker = {
   speechifyRate?: number | null;
   hasSample?: boolean;
   sampleUrl?: string | null;
+  /** Speechify emotion audition clips (neutral / warm / calm). */
+  emotionSampleUrls?: Partial<Record<SpeechifyEmotionSampleTag, string>> | null;
 };
 
 export type AdminPauseBands = {
@@ -4338,6 +4369,47 @@ export async function fetchDevUiSettings(): Promise<DevUiSettings> {
   } catch {
     return defaultDevUiSettings();
   }
+}
+
+export type ClaudePrepromptRow = {
+  id: string;
+  title: string;
+  feature: string;
+  kind: string;
+  sourcePath: string;
+  text: string;
+  sortOrder: number;
+  deployedAt?: string;
+};
+
+export async function fetchAdminClaudePreprompts(): Promise<{
+  prompts: ClaudePrepromptRow[];
+  meta: { deployedAt: string; count: number; ids: string[] } | null;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/preprompts`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as {
+    prompts?: ClaudePrepromptRow[];
+    meta?: { deployedAt?: string; count?: number; ids?: string[] } | null;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const prompts = Array.isArray(data.prompts) ? data.prompts : [];
+  const meta =
+    data.meta && typeof data.meta.deployedAt === "string"
+      ? {
+          deployedAt: data.meta.deployedAt,
+          count: typeof data.meta.count === "number" ? data.meta.count : prompts.length,
+          ids: Array.isArray(data.meta.ids) ? data.meta.ids : [],
+        }
+      : null;
+  return { prompts, meta };
 }
 
 export async function patchDevUiSettings(
@@ -4582,6 +4654,153 @@ export async function restoreAdminLibraryCategoryImage(params: {
   });
 }
 
+export type AdminVoiceFxSettings = {
+  delayMs: number;
+  delayMs2: number;
+  delayMs3: number;
+  delayDecay: number;
+  delayDecay2: number;
+  delayDecay3: number;
+  irLengthSec: number;
+  soxReverberance: number;
+  soxHfDamping: number;
+  soxRoomScale: number;
+  soxStereoDepth: number;
+  soxPredelayMs: number;
+  soxWetGain: number;
+  wetGain: number;
+  tailPadSec: number;
+  updatedAt?: string;
+  irFingerprint?: string;
+};
+
+export type AdminVoiceFxState = {
+  baseUrl?: string;
+  draft: AdminVoiceFxSettings;
+  committed: AdminVoiceFxSettings;
+  draftDirty: boolean;
+  irDraftUrl?: string | null;
+  irCommittedUrl?: string | null;
+  previewSpeakerModelId?: string;
+  previewDryKey?: string;
+};
+
+export async function listAdminVoiceFx(): Promise<AdminVoiceFxState> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/voice-fx`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as AdminVoiceFxState & {
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return data;
+}
+
+export async function patchAdminVoiceFx(settings: Partial<AdminVoiceFxSettings>): Promise<{
+  draft: AdminVoiceFxSettings;
+  irRegenerated?: boolean;
+  irDraftUrl?: string | null;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/voice-fx`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ settings }),
+  });
+  const data = (await res.json()) as {
+    draft?: AdminVoiceFxSettings;
+    irRegenerated?: boolean;
+    irDraftUrl?: string | null;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  if (!data.draft) throw new Error("Missing draft in response");
+  return {
+    draft: data.draft,
+    irRegenerated: data.irRegenerated,
+    irDraftUrl: data.irDraftUrl,
+  };
+}
+
+export async function previewAdminVoiceFx(
+  settings?: Partial<AdminVoiceFxSettings>,
+): Promise<{
+  previewUrl: string | null;
+  wetOnlyUrl: string | null;
+  settings: AdminVoiceFxSettings;
+  irRegenerated?: boolean;
+  timings?: Record<string, number>;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/voice-fx`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "preview", settings }),
+  });
+  const data = (await res.json()) as {
+    previewUrl?: string | null;
+    wetOnlyUrl?: string | null;
+    settings?: AdminVoiceFxSettings;
+    irRegenerated?: boolean;
+    timings?: Record<string, number>;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  if (!data.settings) throw new Error("Missing settings in preview response");
+  return {
+    previewUrl: data.previewUrl ?? null,
+    wetOnlyUrl: data.wetOnlyUrl ?? null,
+    settings: data.settings,
+    irRegenerated: data.irRegenerated,
+    timings: data.timings,
+  };
+}
+
+export async function commitAdminVoiceFx(
+  settings?: Partial<AdminVoiceFxSettings>,
+): Promise<{
+  committed: AdminVoiceFxSettings;
+  samplesRebuilt: number;
+  failed: Array<{ key: string; error: string }>;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/voice-fx`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "commit", settings }),
+  });
+  const data = (await res.json()) as {
+    committed?: AdminVoiceFxSettings;
+    samplesRebuilt?: number;
+    failed?: Array<{ key: string; error: string }>;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  if (!data.committed) throw new Error("Missing committed settings");
+  return {
+    committed: data.committed,
+    samplesRebuilt: data.samplesRebuilt ?? 0,
+    failed: data.failed ?? [],
+  };
+}
+
 export async function patchAdminVoice(body: {
   pauses?: Partial<AdminPauseBands>;
   speaker?: {
@@ -4649,6 +4868,38 @@ export async function generateAdminVoiceSample(
   });
   const data = (await res.json()) as {
     sampleUrl?: string | null;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  invalidateFishSpeakersClientCache();
+  return data;
+}
+
+export async function generateAdminVoiceEmotionSamples(
+  modelId: string,
+  opts?: { force?: boolean; emotion?: SpeechifyEmotionSampleTag | "all" },
+): Promise<{
+  emotionSampleUrls?: Partial<Record<SpeechifyEmotionSampleTag, string>> | null;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const emotion =
+    opts?.emotion && opts.emotion !== "all" ? opts.emotion : undefined;
+  const res = await medimadeFetch(`${base}/admin/voice`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "emotion-samples",
+      modelId,
+      force: opts?.force === true,
+      ...(emotion ? { emotion } : {}),
+    }),
+  });
+  const data = (await res.json()) as {
+    emotionSampleUrls?: Partial<Record<SpeechifyEmotionSampleTag, string>> | null;
     error?: string;
     detail?: string;
   };
@@ -6035,6 +6286,18 @@ export type LibraryMeditationItem = {
   wetAudioKey?: string | null;
   dryAudioUrl?: string | null;
   wetAudioUrl?: string | null;
+  /** Dev: Speechify warm/calm locked stems (neutral uses dry/wet above). */
+  speechifyEmotionStems?: Partial<
+    Record<
+      "warm" | "calm",
+      {
+        dryAudioKey: string;
+        wetAudioKey: string | null;
+        dryAudioUrl: string;
+        wetAudioUrl: string | null;
+      }
+    >
+  > | null;
   coverImageKey?: string | null;
   coverImageUrl?: string | null;
   voiceFxDial?: number | null;
@@ -6074,6 +6337,8 @@ export type LibraryMeditationItem = {
   claudeHaiku45ChatEstOutputTokens?: number | null;
   /** Per-phase + per speech-section worker timings (dev flyover). */
   generationTimings?: GenerationTimings | null;
+  /** Localhost create-audio Dev · toggles active at generate time. */
+  devToggles?: string[] | null;
   /** Create-path snapshot for “How this was made” (when saved at generate time). */
   creationProvenance?: MeditationCreationProvenance | null;
 };

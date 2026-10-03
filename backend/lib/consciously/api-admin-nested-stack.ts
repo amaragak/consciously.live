@@ -549,6 +549,69 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const adminVoiceFx = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminVoiceFxFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-voice-fx.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(900),
+        memorySize: 2048,
+        ephemeralStorageSize: cdk.Size.mebibytes(1024),
+        layers: [ffmpegLayer],
+        role,
+        environment: {
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminVoiceFxRoute",
+      path: "/admin/voice-fx",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminVoiceFxIntegration",
+        adminVoiceFx,
+      ),
+    });
+
+    const adminPreprompts = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminPrepromptsFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-preprompts.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
+        role,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminPrepromptsRoute",
+      path: "/admin/preprompts",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminPrepromptsIntegration",
+        adminPreprompts,
+      ),
+    });
+
     const adminAppSettingsFn = new lambda_nodejs.NodejsFunction(
       this,
       "DevUiSettingsFunction",
@@ -731,6 +794,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../lambdas-python/voice-fx"),
       ),
+      // Pedalboard layer is ~246MB — cannot also attach ffmpeg (250MB cap).
+      // Worker ffmpeg-decodes AAC/MP3 → WAV before invoke.
       layers: [pedalboardLayer],
       timeout: cdk.Duration.minutes(5),
       memorySize: 3008,

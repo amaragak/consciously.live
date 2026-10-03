@@ -4,12 +4,14 @@ import { AdminCompositionCoversPanel } from "./components/admin-composition-cove
 import { AdminAnalyticsPanel } from "./components/admin-analytics-panel";
 import { AdminReadPanel } from "./components/admin-blog-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
+import { AdminPrepromptsPanel } from "./components/admin-preprompts-panel";
 import { AdminLibraryCategoriesPanel } from "./components/admin-library-categories-panel";
 import { AdminProgramsPanel } from "./components/admin-programs-panel";
 import { AdminScriptLabPanel } from "./components/admin-script-lab-panel";
 import { AdminSoundsPanel } from "./components/admin-sounds-panel";
 import { AdminStressTestPanel } from "./components/admin-stress-test-panel";
 import { AdminVoicePanel } from "./components/admin-voice-panel";
+import { AdminVoiceFxPanel } from "./components/admin-voice-fx-panel";
 import { MixerSoundsStudio } from "./components/mixer-sounds-studio";
 import { AppShell } from "./shell/app-shell";
 import { AdminLayout } from "./pages/admin-layout";
@@ -80,6 +82,7 @@ export function App() {
             element={<MixerSoundsStudio variant="admin" />}
           />
           <Route path="voice" element={<AdminVoicePanel />} />
+          <Route path="fx" element={<AdminVoiceFxPanel />} />
           <Route path="programs" element={<AdminProgramsPanel />} />
           <Route path="blog" element={<AdminReadPanel />} />
           <Route path="read" element={<AdminReadPanel />} />
@@ -88,6 +91,7 @@ export function App() {
           <Route path="script-lab" element={<AdminScriptLabPanel />} />
           <Route path="stress-test" element={<AdminStressTestPanel />} />
           <Route path="dev-ui" element={<AdminDevUiPanel />} />
+          <Route path="preprompts" element={<AdminPrepromptsPanel />} />
           <Route
             path="category-images"
             element={<AdminLibraryCategoriesPanel />}

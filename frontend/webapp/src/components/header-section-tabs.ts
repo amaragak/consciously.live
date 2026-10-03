@@ -4,4 +4,4 @@ export const HEADER_SECTION_TABS_TRACK =
 export const HEADER_SECTION_TABS_IDLE =
   "py-1 text-[#E6E0D4] hover:text-nav-foreground hybrid:text-muted hybrid:hover:text-foreground";
 export const HEADER_SECTION_TABS_SELECTED =
-  "bg-selected py-1 text-on-selected hybrid:!bg-[#ecf0ec] hybrid:!text-foreground";
+  "header-gold-sunlit-fill py-1 text-on-selected hybrid:!bg-[#ecf0ec] hybrid:![background-image:none] hybrid:!text-foreground";

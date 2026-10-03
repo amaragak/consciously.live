@@ -8,9 +8,10 @@
 #   backend/scripts/deploy-back
 #   backend/scripts/deploy-back --profile mm
 #   backend/scripts/deploy-back ConsciouslyBackend --require-approval never --profile mm
-#   backend/scripts/deploy-back MedimadeBackend --require-approval never   # legacy only
 #
 # Defaults to ConsciouslyBackend (live). Primary region is London (eu-west-2).
+# MedimadeBackend is LEGACY — refused unless LEGACY_MEDIMADE_STACK=1 (do not use
+# for product work; put changes under lib/consciously/ instead).
 # AWS profile: defaults to AWS_PROFILE=mm when unset and no --profile in arguments.
 set -euo pipefail
 
@@ -106,11 +107,12 @@ if [[ "$stack_named" -eq 0 ]]; then
   target_stack="$DEFAULT_STACK"
 fi
 
-# ConsciouslyBackend is only in the CDK app when enabled via env or context.
-if [[ "$target_stack" == "ConsciouslyBackend" ]]; then
-  export CONSCIOUSLY_STACK=1
-  if ! has_context "consciouslyStack" "$@"; then
-    extra_args+=(-c "consciouslyStack=true")
+if [[ "$target_stack" == "MedimadeBackend" ]]; then
+  if [[ "${LEGACY_MEDIMADE_STACK:-}" != "1" ]]; then
+    echo "Refusing MedimadeBackend deploy: that stack is LEGACY." >&2
+    echo "Live stack is ConsciouslyBackend. New work goes in lib/consciously/." >&2
+    echo "Emergency only: LEGACY_MEDIMADE_STACK=1 $0 MedimadeBackend ..." >&2
+    exit 1
   fi
 fi
 
@@ -136,3 +138,23 @@ node "$BACKEND_ROOT/scripts/write-webapp-env-from-outputs.mjs" \
   "$MOBILE_ENV" \
   "$EXT_ENV" \
   "$WEBAPP_ENV"
+
+# Push codebase Claude preprompts into Dynamo (admin Pre-prompts is read-only).
+if [[ "$target_stack" == "ConsciouslyBackend" ]]; then
+  voice_admin_table="$(python3 -c '
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    o = json.load(f)
+stack = o.get("ConsciouslyBackend") or (next(iter(o.values())) if o else {})
+print((stack or {}).get("VoiceAdminTableName") or "")
+' "$OUTPUTS" 2>/dev/null || true)"
+  if [[ -n "${voice_admin_table}" ]]; then
+    echo "Seeding Claude preprompts into ${voice_admin_table}…"
+    VOICE_ADMIN_TABLE_NAME="$voice_admin_table" \
+      npx tsx "$BACKEND_ROOT/scripts/seed-claude-preprompts.ts" --table "$voice_admin_table"
+  else
+    echo "Seeding Claude preprompts (resolve table from stack)…"
+    npx tsx "$BACKEND_ROOT/scripts/seed-claude-preprompts.ts" --stack ConsciouslyBackend
+  fi
+fi

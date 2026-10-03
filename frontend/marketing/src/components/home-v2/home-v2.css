@@ -858,10 +858,15 @@
   z-index: 45;
 }
 
-/* Under overlay header: only after shrink, same 260ms ease as the bar. */
+/* Under overlay header: only after shrink, same 260ms ease as the bar.
+ * Sticky (not fixed) so width matches the scrollport and stops before the
+ * scrollbar. Animate the inner track — transform on the sticky node itself
+ * would break sticking. */
 .home-v2-reading-progress--under-sticky {
-  /* Match .is-scrolled / mobile bar height — only visible once compact. */
   top: 60px;
+}
+
+.home-v2-reading-progress--under-sticky > div {
   opacity: 0;
   transform: scaleY(0);
   transform-origin: top center;
@@ -876,13 +881,13 @@
   }
 }
 
-.home-v2-reading-progress--under-sticky.is-visible {
+.home-v2-reading-progress--under-sticky.is-visible > div {
   opacity: 1;
   transform: scaleY(1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-v2-reading-progress--under-sticky {
+  .home-v2-reading-progress--under-sticky > div {
     transition: none;
   }
 }

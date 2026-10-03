@@ -37,11 +37,14 @@ export function SegmentedPillTabs<T extends string>({
 }: SegmentedPillTabsProps<T>) {
   const overridesTrackBorder = /\bborder-/.test(className);
   const overridesTrackBg = /\bbg-/.test(className);
+  const overridesRadius = /\brounded-/.test(className);
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={`inline-flex max-w-full flex-nowrap overflow-hidden rounded-full border p-1 ${
+      className={`inline-flex max-w-full flex-nowrap overflow-hidden p-1 ${
+        overridesRadius ? "" : "rounded-full"
+      } ${overridesTrackBorder ? "" : "border"} ${
         overridesTrackBorder ? "" : "border-border"
       } ${overridesTrackBg ? "" : "bg-background"} ${
         equalWidth ? "w-full" : "shrink-0"
@@ -49,11 +52,16 @@ export function SegmentedPillTabs<T extends string>({
     >
       {options.map((opt) => {
         const selected = opt.id === value;
-        const tabPad = /\bpy-/.test(
-          selected ? selectedClassName : idleClassName,
-        )
+        const activeClass = selected ? selectedClassName : idleClassName;
+        const tabPad = /\bpy-/.test(activeClass) ? "" : "py-1.5";
+        const tabPx = /\bpx-/.test(activeClass)
           ? ""
-          : "py-1.5";
+          : equalWidth
+            ? "px-1.5"
+            : "px-3.5";
+        const tabRadius = /\brounded-/.test(activeClass) ? "" : "rounded-full";
+        const tabText = /\btext-/.test(activeClass) ? "" : "text-sm";
+        const tabWeight = /\bfont-/.test(activeClass) ? "" : "font-semibold";
         return (
           <button
             key={opt.id}
@@ -65,9 +73,11 @@ export function SegmentedPillTabs<T extends string>({
               if (disabled || opt.id === value) return;
               onChange(opt.id);
             }}
-            className={`cursor-pointer rounded-full px-3.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${tabPad} ${
-              equalWidth ? "min-w-0 flex-1" : "shrink-0"
-            } ${selected ? selectedClassName : idleClassName}`}
+            className={`cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${tabWeight} ${tabText} ${tabRadius} ${tabPad} ${tabPx} ${
+              equalWidth
+                ? "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+                : "shrink-0"
+            } ${activeClass}`}
           >
             {opt.label}
           </button>

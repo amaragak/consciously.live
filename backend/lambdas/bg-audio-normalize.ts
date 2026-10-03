@@ -7,7 +7,11 @@ import type { Readable } from "stream";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { OPUS_CONTENT_TYPE, opusEncodeArgs } from "./_shared/bg-audio-opus";
+import {
+  AAC_CONTENT_TYPE,
+  AAC_EXTENSION,
+  aacEncodeArgs,
+} from "./_shared/audio-aac";
 import { updateSoundProcessing } from "./_shared/sound-catalog";
 
 const s3 = new S3Client({});
@@ -28,14 +32,13 @@ function isAudioKey(key: string): boolean {
 }
 
 /**
- * Normalized outputs sharing one stem: PCM WAV (pro / archival), MP3 (streaming
- * fallback), and Ogg Opus (streaming default — gapless, so looped beds have no
- * encoder padding at the seam).
+ * Normalized outputs sharing one stem: PCM WAV (pro / archival), MP3 (legacy
+ * fallback), and AAC-in-MP4 (.m4a) — Safari-safe streaming default.
  */
 function outKeysFromRawKey(key: string): {
   wavKey: string;
   mp3Key: string;
-  opusKey: string;
+  aacKey: string;
 } {
   if (!key.startsWith(RAW_PREFIX)) {
     throw new Error(`key does not start with ${RAW_PREFIX}`);
@@ -49,7 +52,7 @@ function outKeysFromRawKey(key: string): {
   return {
     wavKey: OUT_PREFIX + stem + ".wav",
     mp3Key: OUT_PREFIX + stem + ".mp3",
-    opusKey: OUT_PREFIX + stem + ".opus",
+    aacKey: OUT_PREFIX + stem + AAC_EXTENSION,
   };
 }
 
@@ -184,8 +187,8 @@ async function wavToMp3(wavPath: string, outputMp3Path: string): Promise<void> {
   ]);
 }
 
-async function wavToOpus(wavPath: string, outputOpusPath: string): Promise<void> {
-  await execFfmpeg(opusEncodeArgs(wavPath, outputOpusPath));
+async function wavToAac(wavPath: string, outputAacPath: string): Promise<void> {
+  await execFfmpeg(aacEncodeArgs(wavPath, outputAacPath));
 }
 
 async function alreadyNormalized(bucket: string, key: string): Promise<boolean> {
@@ -215,14 +218,14 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
     if (!key.startsWith(RAW_PREFIX)) continue;
     if (!isAudioKey(key)) continue;
 
-    const { wavKey, mp3Key, opusKey } = outKeysFromRawKey(key);
+    const { wavKey, mp3Key, aacKey } = outKeysFromRawKey(key);
 
     const id = randomUUID();
     const inExt = key.toLowerCase().endsWith(".mp3") ? "mp3" : "wav";
     const inPath = `/tmp/bg-in-${id}.${inExt}`;
     const tmpWav = `/tmp/bg-norm-${id}.wav`;
     const tmpMp3 = `/tmp/bg-out-${id}.mp3`;
-    const tmpOpus = `/tmp/bg-out-${id}.opus`;
+    const tmpAac = `/tmp/bg-out-${id}${AAC_EXTENSION}`;
     const startedAt = Date.now();
     let stage: "downloading" | "normalizing" | "encoding" | "storing" = "downloading";
     let source: SourceInfo | null = null;
@@ -255,14 +258,13 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
       stage = "encoding";
       await updateSoundProcessing(mp3Key, { stage: "encoding", detail: describeSource() });
       await wavToMp3(tmpWav, tmpMp3);
-      // Opus is an optimisation (gapless loops). If the ffmpeg build has no
-      // libopus, keep the WAV + MP3 outputs — playback falls back to MP3.
-      let hasOpus = false;
+      // AAC is the Safari-safe streaming default. Keep MP3 as legacy fallback.
+      let hasAac = false;
       try {
-        await wavToOpus(tmpWav, tmpOpus);
-        hasOpus = true;
+        await wavToAac(tmpWav, tmpAac);
+        hasAac = true;
       } catch (e) {
-        console.warn("opus encode skipped", {
+        console.warn("aac encode skipped", {
           key,
           msg: e instanceof Error ? e.message : String(e),
         });
@@ -272,8 +274,8 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
       await updateSoundProcessing(mp3Key, { stage: "storing", detail: describeSource() });
       const wavBytes = await uploadFile(bucket, wavKey, tmpWav, "audio/wav");
       const mp3Bytes = await uploadFile(bucket, mp3Key, tmpMp3, "audio/mpeg");
-      const opusBytes = hasOpus
-        ? await uploadFile(bucket, opusKey, tmpOpus, OPUS_CONTENT_TYPE)
+      const aacBytes = hasAac
+        ? await uploadFile(bucket, aacKey, tmpAac, AAC_CONTENT_TYPE)
         : null;
 
       await updateSoundProcessing(mp3Key, { stage: "done", detail: describeSource() });
@@ -282,11 +284,11 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
         key,
         wavKey,
         mp3Key,
-        opusKey: hasOpus ? opusKey : null,
+        aacKey: hasAac ? aacKey : null,
         rawBytes,
         wavBytes,
         mp3Bytes,
-        opusBytes,
+        aacBytes,
         sampleRate,
         durationSec: source.durationSec,
         elapsedMs: Date.now() - startedAt,
@@ -308,7 +310,7 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
       console.error("bg audio normalize failed", { bucket, key, mp3Key, stage, detail, msg });
       throw e;
     } finally {
-      for (const p of [inPath, tmpWav, tmpMp3, tmpOpus]) {
+      for (const p of [inPath, tmpWav, tmpMp3, tmpAac]) {
         try {
           fs.unlinkSync(p);
         } catch {

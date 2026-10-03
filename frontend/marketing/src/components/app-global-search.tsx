@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   isMedimadeSessionActive,
   listLibraryPrograms,
@@ -147,6 +149,11 @@ export function AppGlobalSearch() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
   const programsLoaded = useRef(false);
   const panelId = useId();
   const signedIn = isMedimadeSessionActive();
@@ -156,6 +163,28 @@ export function AppGlobalSearch() {
     if (!open) return;
     const t = window.setTimeout(() => inputRef.current?.focus(), 80);
     return () => window.clearTimeout(t);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelPos(null);
+      return;
+    }
+    const update = () => {
+      const r = rootRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setPanelPos({
+        top: r.bottom + 7,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -186,9 +215,9 @@ export function AppGlobalSearch() {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -299,13 +328,15 @@ export function AppGlobalSearch() {
   }
 
   return (
-    <div ref={rootRef} className="relative flex items-center justify-end">
+    // Root width is always the icon button — the field expands left out of
+    // flow so search↔bell spacing stays identical to bell↔menu.
+    <div ref={rootRef} className="relative flex shrink-0 items-center">
       <form
         onSubmit={onSubmit}
-        className={`relative flex items-center overflow-hidden transition-[max-width,opacity,margin] duration-200 ease-out ${
+        className={`absolute right-full top-1/2 mr-1 flex -translate-y-1/2 items-center overflow-hidden transition-[width,opacity] duration-200 ease-out ${
           open
-            ? "mr-1 max-w-[min(52vw,16.5rem)] opacity-100 sm:max-w-[18rem]"
-            : "mr-0 max-w-0 opacity-0"
+            ? "w-[min(52vw,16.5rem)] opacity-100 sm:w-[18rem]"
+            : "pointer-events-none w-0 opacity-0"
         }`}
         aria-hidden={!open}
       >
@@ -319,7 +350,7 @@ export function AppGlobalSearch() {
           aria-controls={panelId}
           aria-expanded={open}
           tabIndex={open ? 0 : -1}
-          className="app-search-input h-9 w-[min(52vw,16.5rem)] min-w-[10rem] rounded-full border border-[rgb(246_241_231_/_0.18)] bg-white/[0.08] py-0 pl-3.5 pr-9 text-sm text-nav-foreground outline-none placeholder:text-nav-muted focus:border-[rgb(246_241_231_/_0.35)] focus:bg-white/[0.12] sm:w-[18rem] hybrid:border-border hybrid:bg-background hybrid:text-foreground hybrid:placeholder:text-muted hybrid:focus:border-accent/40"
+          className="app-search-input h-9 w-full min-w-0 rounded-full border border-[rgb(246_241_231_/_0.18)] bg-white/[0.08] py-0 pl-3.5 pr-9 text-sm text-nav-foreground outline-none placeholder:text-nav-muted focus:border-[rgb(246_241_231_/_0.35)] focus:bg-white/[0.12] hybrid:border-border hybrid:bg-background hybrid:text-foreground hybrid:placeholder:text-muted hybrid:focus:border-accent/40"
         />
         {open && q ? (
           <button
@@ -363,13 +394,20 @@ export function AppGlobalSearch() {
         <IconSearch />
       </button>
 
-      {open ? (
-        <div
-          id={panelId}
-          role="listbox"
-          aria-label="Search results"
-          className="absolute right-0 top-[calc(100%+0.45rem)] z-[220] w-[min(calc(100vw-1.25rem),22rem)] overflow-hidden rounded-2xl border border-border bg-background shadow-xl"
-        >
+      {open && panelPos && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={panelRef}
+              id={panelId}
+              role="listbox"
+              aria-label="Search results"
+              style={{
+                position: "fixed",
+                top: panelPos.top,
+                right: panelPos.right,
+              }}
+              className="z-[300] w-[min(calc(100vw-1.25rem),22rem)] overflow-hidden rounded-2xl border border-border bg-background shadow-xl"
+            >
           <div className="max-h-[min(70vh,26rem)] overflow-y-auto p-2">
             {filteredActions.length > 0 ? (
               <div className="mb-1">
@@ -456,8 +494,10 @@ export function AppGlobalSearch() {
               </p>
             )}
           </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

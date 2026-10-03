@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: marketingRoot,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "d3k8rq6eqba40d.cloudfront.net",
+        pathname: "/**",
+      },
+    ],
+  },
   async headers() {
     return [
       {

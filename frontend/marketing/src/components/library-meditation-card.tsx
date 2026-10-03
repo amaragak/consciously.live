@@ -25,6 +25,9 @@ import {
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
 import { CoverArtThumb } from "@consciously/common";
+import { isLocalDevHost } from "@/lib/dev-ui-settings";
+
+export type SpeechifyEmotionPlayback = "neutral" | "warm" | "calm";
 
 /** Exactly 3 rows of text-sm / leading-5 (line-height 1.25rem × 3). */
 const DESC_BLOCK_MIN_PX = 60;
@@ -304,6 +307,9 @@ export type LibraryMeditationCardProps = {
   onDevRegenCover?: () => void;
   onDevRederiveTitle?: () => void;
   devRefreshBusy?: "cover" | "metadata" | null;
+  /** Dev: selected Speechify emotion stem (neutral = default dry/wet). */
+  speechifyEmotion?: SpeechifyEmotionPlayback;
+  onSpeechifyEmotionChange?: (emotion: SpeechifyEmotionPlayback) => void;
 };
 
 export function LibraryMeditationCard({
@@ -341,6 +347,8 @@ export function LibraryMeditationCard({
   onDevRegenCover,
   onDevRederiveTitle,
   devRefreshBusy = null,
+  speechifyEmotion = "neutral",
+  onSpeechifyEmotionChange,
 }: LibraryMeditationCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [howMadeOpen, setHowMadeOpen] = useState(false);
@@ -366,6 +374,9 @@ export function LibraryMeditationCard({
 
   if (isPendingRow(item)) {
     const isFailed = item.status === "failed";
+    const titleReady = Boolean(item.title.trim());
+    const descReady = Boolean((item.description ?? "").trim());
+    const coverEdge = LIST_COVER_EDGE_DESKTOP_PX;
     const spinner = (
       <svg
         className="h-5 w-5 animate-spin"
@@ -394,9 +405,61 @@ export function LibraryMeditationCard({
         <path d="M12 17h.01" />
       </svg>
     );
+    const coverSlot = isFailed ? (
+      <CoverArtThumb src={null} alt="" edgePx={coverEdge} className="self-start" />
+    ) : (
+      <div
+        aria-hidden
+        className="mm-skeleton shrink-0 self-start rounded-xl"
+        style={{
+          width: coverEdge,
+          height: coverEdge,
+          minWidth: coverEdge,
+          minHeight: coverEdge,
+        }}
+      />
+    );
+    const titleSlot =
+      titleReady ? (
+        <h2 className="font-display text-lg font-medium leading-snug">
+          {item.title}
+        </h2>
+      ) : isFailed ? (
+        <h2 className="font-display text-lg font-medium leading-snug">
+          Generation failed
+        </h2>
+      ) : (
+        <div
+          aria-hidden
+          className="mm-skeleton h-5 w-[72%] max-w-[16rem] rounded-md"
+        />
+      );
+    const descSlot = descReady ? (
+      <p
+        className="text-sm leading-5 text-muted"
+        style={{ minHeight: DESC_BLOCK_MIN_PX }}
+      >
+        {item.description}
+      </p>
+    ) : isFailed ? (
+      <div style={{ minHeight: DESC_BLOCK_MIN_PX }} />
+    ) : (
+      <div className="space-y-2" style={{ minHeight: DESC_BLOCK_MIN_PX }} aria-hidden>
+        <div className="mm-skeleton h-3.5 w-full max-w-md rounded-md" />
+        <div className="mm-skeleton h-3.5 w-[82%] max-w-sm rounded-md" />
+      </div>
+    );
     return (
       <li
         ref={itemRef}
+        aria-busy={!isFailed}
+        aria-label={
+          isFailed
+            ? "Generation failed"
+            : titleReady
+              ? `Generating ${item.title}`
+              : "Generating meditation"
+        }
         className={`relative min-w-0 overflow-hidden rounded-[6px] border p-4 shadow-sm ${
           isFailed
             ? "border-danger/35 bg-danger/5"
@@ -418,20 +481,24 @@ export function LibraryMeditationCard({
           </>
         ) : null}
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-medium leading-snug">
-              {item.title}
-            </h2>
-            <p className="mt-1 text-sm text-muted">{item.description ?? "—"}</p>
-            {isFailed ? (
-              <p className="mt-2 text-sm text-danger">
-                {item.error ?? "Generation failed."}
+          <div className="flex min-w-0 flex-1 items-start gap-3.5">
+            {coverSlot}
+            <div
+              className="flex min-w-0 flex-1 flex-col"
+              style={{ minHeight: coverEdge }}
+            >
+              {titleSlot}
+              <div className="mt-1">{descSlot}</div>
+              {isFailed ? (
+                <p className="mt-2 text-sm text-danger">
+                  {item.error ?? "Generation failed."}
+                </p>
+              ) : null}
+              <p className="mt-auto pt-2 text-xs text-muted">
+                {formatWhen(item.createdAt)}
+                {item.speakerName ? ` · ${item.speakerName}` : ""}
               </p>
-            ) : null}
-            <p className="mt-2 text-xs text-muted">
-              {formatWhen(item.createdAt)}
-              {item.speakerName ? ` · ${item.speakerName}` : ""}
-            </p>
+            </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <div
@@ -571,6 +638,14 @@ export function LibraryMeditationCard({
     !isPendingRow(item) &&
     Boolean(m.sk) &&
     (Boolean(onDevRegenCover) || Boolean(onDevRederiveTitle));
+  const emotionStems =
+    !isPendingRow(item) && !hideOwnerActions
+      ? item.speechifyEmotionStems
+      : null;
+  const canSpeechifyEmotion =
+    isLocalDevHost() &&
+    Boolean(onSpeechifyEmotionChange) &&
+    Boolean(emotionStems?.warm || emotionStems?.calm);
   const howMadeProvenance = !isPendingRow(item)
     ? parseMeditationCreationProvenance(item.creationProvenance) ??
       item.creationProvenance ??
@@ -584,7 +659,8 @@ export function LibraryMeditationCard({
     canShare ||
     canScript ||
     canHowMade ||
-    canDevRefresh;
+    canDevRefresh ||
+    canSpeechifyEmotion;
 
   const playControl = isPlaying ? (
     <div className="flex items-center gap-2">
@@ -757,6 +833,48 @@ export function LibraryMeditationCard({
                 : "Re-derive title"}
             </button>
           ) : null}
+          {canSpeechifyEmotion ? (
+            <>
+              <div
+                role="separator"
+                className="my-1 border-t border-border"
+                aria-hidden
+              />
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Dev · emotion
+              </div>
+              {(
+                [
+                  ["neutral", "Neutral"],
+                  ["warm", "Warm"],
+                  ["calm", "Calm"],
+                ] as const
+              ).map(([value, label]) => {
+                const available =
+                  value === "neutral" || Boolean(emotionStems?.[value]);
+                const selected = speechifyEmotion === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    disabled={!available}
+                    onClick={() => {
+                      onSpeechifyEmotionChange?.(value);
+                      setMenuOpen(false);
+                    }}
+                    className={menuItemClass}
+                  >
+                    <span className="w-3 tabular-nums text-accent-link">
+                      {selected ? "✓" : ""}
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </>
+          ) : null}
           {canShare ? (
             <button
               type="button"
@@ -883,7 +1001,7 @@ export function LibraryMeditationCard({
       <li
         ref={itemRef}
         className={`group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
-          menuOpen ? "z-50" : "z-0"
+          menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
         } ${
           isPlaying
             ? "border-accent hybrid:!border-surface-2-edge"
@@ -945,7 +1063,7 @@ export function LibraryMeditationCard({
     <li
       ref={itemRef}
       className={`group relative min-w-0 overflow-visible rounded-[6px] border bg-card p-4 shadow-sm ${
-        menuOpen ? "z-50" : "z-0"
+        menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
       } ${
         isPlaying
           ? "border-accent hybrid:!border-surface-2-edge"

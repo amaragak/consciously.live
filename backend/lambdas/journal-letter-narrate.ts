@@ -21,6 +21,7 @@ import { loudnormMp3Buffer } from "./_shared/ffmpeg-loudnorm";
 import { htmlToBlogNarrationScript } from "./_shared/blog";
 import { insightSortKey } from "./_shared/insight-period";
 import { stripLetterGreetingForNarration } from "./_shared/letter-markdown";
+import { aacAdtsToMp3Buffer } from "./_shared/audio-aac";
 import {
   getSpeechifyApiKey,
   speechifyTtsMp3,
@@ -268,11 +269,13 @@ export async function handler(
         letterAudioProgress: `Speechify (${voiceName}): synthesizing ${i + 1} of ${chunks.length}…`,
       });
       rawParts.push(
-        await speechifyTtsMp3({
-          apiKey,
-          text: chunks[i]!,
-          voiceId,
-        }),
+        await aacAdtsToMp3Buffer(
+          await speechifyTtsMp3({
+            apiKey,
+            text: chunks[i]!,
+            voiceId,
+          }),
+        ),
       );
     }
 

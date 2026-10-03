@@ -112,18 +112,9 @@ function withBinauralBandPrefix(name: string, filename: string): string {
   return bare ? `(${prefix}) ${bare}` : `(${prefix})`;
 }
 
-/**
- * Suggest mixer category, subcategory, and a short human-readable title from filenames.
- */
-export async function suggestSoundCategories(
-  items: Array<{ id: string; filename: string }>,
-): Promise<Map<string, { category: BgAudioCategory; subcategory: string; name: string }>> {
-  const out = new Map<string, { category: BgAudioCategory; subcategory: string; name: string }>();
-  if (items.length === 0) return out;
-
-  const filenameById = new Map(items.map((i) => [i.id, i.filename]));
-  const apiKey = await getClaudeApiKey();
-  const system = [
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function soundCategorySuggestSystemPrompt(): string {
+  return [
     "You classify meditation background audio stems from Splice sample packs and filenames.",
     "Use only the filename / relative path (BPM, key, pack folders, descriptive tokens).",
     "Pick exactly one category: music, ambience, drums, noise.",
@@ -141,6 +132,20 @@ export async function suggestSoundCategories(
     "Do not include the word Binaural in the name when category is ambience, drums, or noise.",
     "Return ONLY a JSON array of {\"id\",\"category\",\"subcategory\",\"name\"} using the same id strings you were given. For noise, set subcategory to an empty string.",
   ].join(" ");
+}
+
+/**
+ * Suggest mixer category, subcategory, and a short human-readable title from filenames.
+ */
+export async function suggestSoundCategories(
+  items: Array<{ id: string; filename: string }>,
+): Promise<Map<string, { category: BgAudioCategory; subcategory: string; name: string }>> {
+  const out = new Map<string, { category: BgAudioCategory; subcategory: string; name: string }>();
+  if (items.length === 0) return out;
+
+  const filenameById = new Map(items.map((i) => [i.id, i.filename]));
+  const apiKey = await getClaudeApiKey();
+  const system = soundCategorySuggestSystemPrompt();
 
   const user = `Classify these files:\n${JSON.stringify(items, null, 2)}`;
 

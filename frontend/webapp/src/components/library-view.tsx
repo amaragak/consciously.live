@@ -5,7 +5,6 @@ import {
 } from "@/components/library-player-provider";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  IconAdjustmentsHorizontal,
   IconSparkles,
 } from "@tabler/icons-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -39,6 +38,7 @@ import { useMobileOrTouchChrome } from "@/hooks/use-mobile-or-touch-chrome";
 import {
   shouldRenderDevUi,
   useDevUiSettings,
+  isLocalDevHost,
 } from "@/lib/dev-ui-settings";
 import {
   estimateFishBillableUtf8Bytes,
@@ -86,6 +86,7 @@ import {
   LibraryMeditationCard,
   pendingGenerationToRow,
   type LibraryMeditationRow,
+  type SpeechifyEmotionPlayback,
 } from "@/components/library-meditation-card";
 
 function formatGenerationElapsed(ms: number | null | undefined): string | null {
@@ -179,6 +180,25 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
   });
   const perMillion = fishUsdPerMillionForModel(model);
   const lines: string[] = [];
+  // Timing first — max-h scroll used to hide Total/TTS/FX under cost lines.
+  const timingLines = generationTimingsFlyoverLines(m.generationTimings, {
+    wallMs: m.generationElapsedMs,
+  });
+  if (timingLines.length > 0) {
+    lines.push(...timingLines);
+  } else {
+    const elapsed = formatGenerationElapsed(m.generationElapsedMs);
+    if (elapsed) lines.push(`Timing:`, `  Total ${elapsed}`, "");
+  }
+  if (m.devToggles != null) {
+    lines.push("Dev toggles:");
+    if (m.devToggles.length === 0) {
+      lines.push("  (none)");
+    } else {
+      for (const label of m.devToggles) lines.push(`  ${label}`);
+    }
+    lines.push("");
+  }
   lines.push(`Length: ${formatDuration(m.durationSeconds)}`);
   let fishUsd = 0;
   if (est) {
@@ -199,15 +219,6 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
   if (est || claude.totalUsd > 0) {
     lines.push("", `Total ≈ ${formatUsd(fishUsd + claude.totalUsd)} (voice + Claude)`);
   }
-  lines.push("");
-  const elapsed = formatGenerationElapsed(m.generationElapsedMs);
-  if (elapsed) {
-    lines.push(`Generate → library: ${elapsed}`);
-  }
-  const timingLines = generationTimingsFlyoverLines(m.generationTimings);
-  if (timingLines.length > 0) {
-    lines.push("", ...timingLines);
-  }
   return lines.join("\n");
 }
 
@@ -225,15 +236,15 @@ function FishCostDevTooltip({ text }: { text: string }) {
   }
 
   return (
-    // Outer box includes pb-2 as a hover bridge into the card so the mouse can
-    // reach Copy without dropping group-hover (mb-2 alone left a dead gap).
+    // Outer box includes pt-2 as a hover bridge into the card so the mouse can
+    // reach Copy without dropping group-hover (mt-2 alone left a dead gap).
     <div
       role="tooltip"
-      className="pointer-events-none absolute bottom-full right-0 z-40 hidden max-w-[21rem] pb-2 group-hover:pointer-events-auto group-hover:block group-focus-within:pointer-events-auto group-focus-within:block"
+      className="pointer-events-none absolute top-full right-0 z-40 hidden max-w-[21rem] pt-2 group-hover:pointer-events-auto group-hover:block group-focus-within:pointer-events-auto group-focus-within:block"
     >
       <div className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-foreground shadow-md">
         <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 max-h-52 flex-1 overflow-y-auto whitespace-pre-line">{text}</p>
+          <p className="min-w-0 max-h-[28rem] flex-1 overflow-y-auto whitespace-pre-line">{text}</p>
           <button
             type="button"
             onClick={(e) => {
@@ -745,6 +756,20 @@ export default function LibraryView({
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 767px)").matches
+      : false,
+  );
+  const [programDescExpanded, setProgramDescExpanded] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobileLayout(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const [libraryTab, setLibraryTab] = useState<LibraryMainTab>(() =>
     libraryTabFromPath(pathSegs.tab),
   );
@@ -771,6 +796,10 @@ export default function LibraryView({
     () => pathSegs.programSlug,
   );
   const PAGE_SIZE = 24;
+
+  useEffect(() => {
+    setProgramDescExpanded(false);
+  }, [exploringProgramId]);
 
   function goToLibraryTab(
     tab: LibraryMainTab,
@@ -821,6 +850,9 @@ export default function LibraryView({
   } | null>(null);
   const [showFishCostTooltip, setShowFishCostTooltip] = useState(false);
   const [devRefreshBusySk, setDevRefreshBusySk] = useState<string | null>(null);
+  const [speechifyEmotionBySk, setSpeechifyEmotionBySk] = useState<
+    Record<string, SpeechifyEmotionPlayback>
+  >({});
   const [devRefreshBusyAction, setDevRefreshBusyAction] = useState<
     "cover" | "metadata" | null
   >(null);
@@ -1544,9 +1576,12 @@ export default function LibraryView({
     // - slow: refresh library list to pick up completed audio rows
     const needMeta = () =>
       loadPendingGenerations().some((p) => {
-        const t = (p.title ?? "").trim().toLowerCase();
-        const looksFallback = t === "generating meditation…" || t === "generating meditation...";
-        return looksFallback || !(p.description ?? "").trim();
+        const t = (p.title ?? "").trim();
+        const tLower = t.toLowerCase();
+        const looksFallback =
+          tLower === "generating meditation…" ||
+          tLower === "generating meditation...";
+        return !t || looksFallback || !(p.description ?? "").trim();
       });
 
     void tick({ refreshLibraryOnChange: false });
@@ -1899,6 +1934,51 @@ export default function LibraryView({
     setMixAnchorEl(null);
     setMixError(null);
   }
+
+  function itemWithSpeechifyEmotion(
+    m: LibraryMeditationItem,
+  ): LibraryMeditationItem {
+    if (!isLocalDevHost() || !m.sk) return m;
+    const emotion = speechifyEmotionBySk[m.sk] ?? "neutral";
+    if (emotion === "neutral") return m;
+    const stem = m.speechifyEmotionStems?.[emotion];
+    if (!stem?.dryAudioUrl) return m;
+    return {
+      ...m,
+      dryAudioUrl: stem.dryAudioUrl,
+      wetAudioUrl: stem.wetAudioUrl ?? m.wetAudioUrl,
+      dryAudioKey: stem.dryAudioKey,
+      wetAudioKey: stem.wetAudioKey,
+    };
+  }
+
+  function playLibraryItem(m: LibraryMeditationItem) {
+    playItem(itemWithSpeechifyEmotion(m));
+  }
+
+  function setSpeechifyEmotionForItem(
+    m: LibraryMeditationItem,
+    emotion: SpeechifyEmotionPlayback,
+  ) {
+    if (!m.sk) return;
+    setSpeechifyEmotionBySk((prev) => ({ ...prev, [m.sk!]: emotion }));
+    if (nowPlaying?.s3Key !== m.s3Key) return;
+    const next: LibraryMeditationItem =
+      emotion === "neutral"
+        ? m
+        : m.speechifyEmotionStems?.[emotion]?.dryAudioUrl
+          ? {
+              ...m,
+              dryAudioUrl: m.speechifyEmotionStems[emotion]!.dryAudioUrl,
+              wetAudioUrl:
+                m.speechifyEmotionStems[emotion]!.wetAudioUrl ?? m.wetAudioUrl,
+              dryAudioKey: m.speechifyEmotionStems[emotion]!.dryAudioKey,
+              wetAudioKey: m.speechifyEmotionStems[emotion]!.wetAudioKey,
+            }
+          : m;
+    playItem(next);
+  }
+
   function renderItem(m: LibraryMeditationRow) {
     const rowKey = isPendingRow(m) ? m.pendingKey : m.s3Key;
     const isCommunity = libraryTab === "community";
@@ -1910,7 +1990,7 @@ export default function LibraryView({
         <LibraryMeditationCard
           key={rowKey}
           item={m}
-          viewMode={viewMode}
+          viewMode={isMobileLayout ? "list" : viewMode}
           onRemovePending={removePendingJob}
           itemRef={(el) => {
             if (el) itemElsRef.current.set(m.pendingKey, el);
@@ -1928,8 +2008,9 @@ export default function LibraryView({
       <LibraryMeditationCard
         key={rowKey}
         item={m}
-        viewMode={viewMode}
+        viewMode={isMobileLayout ? "list" : viewMode}
         hideOwnerActions={hideOwnerActions}
+        hideDateLine={isProgramShelf}
         showRating={!isCommunity}
         ratingDisabled={isProgramShelf}
         allowShare={
@@ -1943,8 +2024,17 @@ export default function LibraryView({
         isSelected={nowPlaying?.s3Key === m.s3Key}
         isPlaying={playingS3Key === m.s3Key}
         playingTimeSeconds={playingTimeSeconds}
-        onPlay={() => playItem(m)}
+        onPlay={() => playLibraryItem(m)}
         onTogglePlay={() => toggleCurrent()}
+        speechifyEmotion={
+          m.sk ? speechifyEmotionBySk[m.sk] ?? "neutral" : "neutral"
+        }
+        onSpeechifyEmotionChange={
+          isLocalDevHost() &&
+          (m.speechifyEmotionStems?.warm || m.speechifyEmotionStems?.calm)
+            ? (emotion) => setSpeechifyEmotionForItem(m, emotion)
+            : undefined
+        }
         scriptExpanded={m.sk != null && expandedSk === m.sk}
         onToggleScript={() =>
           setExpandedSk((v) => (v === m.sk ? null : (m.sk ?? null)))
@@ -2220,10 +2310,8 @@ export default function LibraryView({
             />
   );
 
-  const mobileToolbarChrome =
-    "h-[38px] rounded-[9px] border border-border bg-card shadow-sm";
-  const mobileFilterActive =
-    sortBy !== "newest" || categoryFilter !== "all";
+  const mobileFilterPillClass =
+    "inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-3 text-[13px] text-foreground";
 
   const exploringProgram =
     libraryTab === "programs" && exploringProgramId
@@ -2237,59 +2325,151 @@ export default function LibraryView({
       "linear-gradient(145deg, color-mix(in srgb, var(--accent-button) 82%, white), var(--accent-button) 52%, color-mix(in srgb, var(--accent-button) 88%, black))",
   } as const;
 
-  const mobileSearchFilterRow = (
-    <div className="flex items-center gap-2 md:hidden">
-      <SearchInput
-        className="min-w-0 flex-1"
-        inputRef={mobileSearchRef}
-        inputClassName={`${mobileToolbarChrome} py-0 pl-9 pr-3 text-sm leading-[38px] placeholder:text-muted`}
-        value={searchQuery}
-        onChange={setSearchQuery}
-        placeholder="Search"
-        aria-label="Search library"
-      />
-      <button
-        type="button"
-        onClick={() => setMobileFilterOpen(true)}
-        aria-label="Sort and filter"
-        aria-haspopup="dialog"
-        aria-expanded={mobileFilterOpen}
-        className={`relative flex w-[38px] shrink-0 cursor-pointer items-center justify-center text-foreground ${mobileToolbarChrome}`}
-      >
-        <IconAdjustmentsHorizontal size={20} stroke={1.75} aria-hidden />
-        {mobileFilterActive ? (
-          <span
-            className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-accent"
-            aria-hidden
-          />
-        ) : null}
-      </button>
+  const mobileFilterPills = (
+    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {libraryTab === "meditations" ? (
         <button
           type="button"
           onClick={() => setFavouritesOnly((v) => !v)}
           aria-pressed={favouritesOnly}
-          aria-label={
-            favouritesOnly ? "Show all meditations" : "Show favourites only"
-          }
-          className={`flex w-[38px] shrink-0 cursor-pointer items-center justify-center ${mobileToolbarChrome} ${
+          aria-label="Favourites"
+          title="Favourites"
+          className={`${mobileFilterPillClass} px-2.5 ${
             favouritesOnly
               ? "border-selected/50 bg-selected/15 text-selected"
-              : "text-foreground"
+              : ""
           }`}
         >
-          <IconHeart filled={favouritesOnly} />
+          {favouritesOnly ? "★" : "☆"}
         </button>
       ) : null}
+      <div ref={sortDropdownRef} className="relative shrink-0">
+        <button
+          type="button"
+          ref={sortButtonRef}
+          aria-haspopup="listbox"
+          aria-expanded={sortDropdownOpen}
+          onClick={() => setSortDropdownOpen((v) => !v)}
+          className={mobileFilterPillClass}
+        >
+          {selectedSortLabel} ▾
+        </button>
+        {sortDropdownOpen ? (
+          <div
+            role="listbox"
+            aria-label="Sort library"
+            className="absolute left-0 z-20 mt-2 min-w-[10rem] overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+          >
+            {sortItems.map((it) => {
+              const selected = sortBy === it.value;
+              return (
+                <button
+                  key={it.value}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    setSortBy(it.value);
+                    setSortDropdownOpen(false);
+                  }}
+                  className={`w-full cursor-pointer px-3 py-2 text-left text-sm font-semibold ${
+                    selected
+                      ? "cursor-default bg-selected/10 text-foreground"
+                      : "bg-transparent text-foreground/80 hover:bg-selected/10"
+                  }`}
+                >
+                  {it.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+      {libraryTab === "meditations" ? (
+        <div ref={categoryDropdownRef} className="relative shrink-0">
+          <button
+            type="button"
+            ref={categoryButtonRef}
+            aria-haspopup="listbox"
+            aria-expanded={categoryDropdownOpen}
+            onClick={() => setCategoryDropdownOpen((v) => !v)}
+            className={mobileFilterPillClass}
+          >
+            {selectedCategoryLabel} ▾
+          </button>
+          {categoryDropdownOpen ? (
+            <div
+              role="listbox"
+              aria-label="Filter category"
+              className="absolute left-0 z-20 mt-2 max-h-64 min-w-[12rem] overflow-y-auto rounded-xl border border-border bg-card shadow-lg"
+            >
+              {categoryItems.map((it) => {
+                const selected = categoryFilter === it.value;
+                return (
+                  <button
+                    key={it.value}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => {
+                      setCategoryFilter(it.value);
+                      setCategoryDropdownOpen(false);
+                    }}
+                    className={`w-full cursor-pointer px-3 py-2 text-left text-sm font-semibold ${
+                      selected
+                        ? "cursor-default bg-selected/10 text-foreground"
+                        : "bg-transparent text-foreground hover:bg-selected/10"
+                    }`}
+                  >
+                    {it.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
+  );
+
+  const mobileSearchBlock = (
+    <div className="flex flex-col gap-3.5">
+      <SearchInput
+        className="w-full"
+        inputRef={mobileSearchRef}
+        inputClassName="h-11 rounded-xl border border-border bg-card py-0 pl-10 pr-3.5 text-[14px] leading-[44px] shadow-none placeholder:text-muted"
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search title, description, type"
+        aria-label="Search library"
+      />
+      {mobileFilterPills}
+    </div>
+  );
+
+  const mobileTabs = (
+    <SegmentedPillTabs
+      equalWidth
+      aria-label="Library section"
+      value={libraryTab}
+      onChange={(id) => goToLibraryTab(id)}
+      className="w-full gap-0.5 rounded-[14px] border-0 bg-border/70 p-1"
+      idleClassName="rounded-[10px] border border-transparent px-0.5 py-2 text-[13px] font-normal tracking-tight text-muted"
+      selectedClassName="rounded-[10px] border border-border bg-card px-0.5 py-2 text-[13px] font-semibold tracking-tight text-foreground"
+      options={[
+        { id: "meditations" as const, label: "Mine" },
+        { id: "programs" as const, label: "Programs" },
+        { id: "community" as const, label: "Community" },
+      ]}
+    />
   );
 
   return (
     <>
     <div
-      className="mx-auto w-full max-w-6xl min-w-0 px-4 pt-3 pb-10 sm:px-6 sm:pt-4 sm:pb-10 [scrollbar-gutter:stable]"
+      className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 [scrollbar-gutter:stable] max-md:px-0"
     >
-      <header className="w-full min-w-0">
+      <header className="w-full min-w-0 max-md:px-4 max-md:pb-1 max-md:pt-2.5">
         <AppPrimaryTabsDesktop>
           <SegmentedPillTabs
             aria-label="Library section"
@@ -2304,55 +2484,103 @@ export default function LibraryView({
             }))}
           />
         </AppPrimaryTabsDesktop>
-        {/* Mobile: compact tabs + icon create on one row */}
-        <div className="flex items-center gap-2 md:hidden">
-          <SegmentedPillTabs
-            className="min-w-0 flex-1"
-            equalWidth
-            aria-label="Library section"
-            value={libraryTab}
-            onChange={(id) => goToLibraryTab(id)}
-            selectedClassName="bg-selected text-on-selected hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
-            options={LIBRARY_MAIN_TABS.map((tab) => ({
-              id: tab.id,
-              label: tab.shortLabel,
-            }))}
-          />
-          <PrimaryCreateButton
-            variant="compact"
-            to="/meditate/create"
-            aria-label="Create new meditation"
-            className="h-[38px] w-[38px] shadow-sm"
-          />
+
+        {/* Mobile top block */}
+        <div className="flex flex-col gap-3.5 md:hidden">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">{mobileTabs}</div>
+            <PrimaryCreateButton
+              to="/meditate/create"
+              variant="compact"
+              aria-label="Create"
+              className="h-10 w-10 rounded-[14px] shadow-sm"
+            />
+          </div>
+          {libraryTab === "programs" && exploringProgram ? (
+            <>
+              <button
+                type="button"
+                onClick={closeProgram}
+                className="cursor-pointer self-start pt-1 text-[13px] font-semibold text-muted"
+              >
+                ← All programs
+              </button>
+              <h1 className="font-display text-[clamp(1.375rem,5.5vw,1.625rem)] font-normal leading-[1.15] text-foreground">
+                {exploringProgram.title}
+              </h1>
+              {exploringProgram.description ? (
+                <div className="flex flex-col gap-1">
+                  <p
+                    className={`text-[14px] leading-[1.55] text-muted ${
+                      programDescExpanded ? "" : "line-clamp-4"
+                    }`}
+                  >
+                    {exploringProgram.description}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setProgramDescExpanded((v) => !v)}
+                    className="cursor-pointer self-start text-[13px] font-semibold text-accent-link"
+                  >
+                    {programDescExpanded ? "Show less" : "Read more"}
+                  </button>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[12px] text-muted">
+                  {exploringProgram.days.length} lesson
+                  {exploringProgram.days.length === 1 ? "" : "s"}
+                </span>
+                <Link
+                  to="/meditate/create/from-program"
+                  className="inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-[14px] font-semibold text-on-accent shadow-sm"
+                  style={makeItYourOwnStyle}
+                >
+                  ✦ Make it your own
+                </Link>
+              </div>
+            </>
+          ) : (
+            <h1 className="font-display text-[clamp(1.25rem,5vw,1.5rem)] font-normal leading-[1.15] text-foreground">
+              {libraryTab === "community"
+                ? "Quiet practices, openly shared"
+                : libraryTab === "programs"
+                  ? "Guided courses, one lesson at a time"
+                  : "A library for your inner life"}
+            </h1>
+          )}
+          {libraryTab === "meditations" ? mobileSearchBlock : null}
         </div>
+
+        {/* Desktop titles */}
         {libraryTab === "meditations" ? (
-          <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
+          <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">
             <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
               A library for your inner life
             </h1>
             <PrimaryCreateButton
               to="/meditate/create"
-              className="hidden shrink-0 shadow-sm md:inline-flex"
+              className="shrink-0 shadow-sm"
             >
               Create new
             </PrimaryCreateButton>
           </div>
         ) : null}
         {libraryTab === "community" ? (
-          <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
+          <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">
             <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
               Quiet practices, openly shared
             </h1>
             <PrimaryCreateButton
               to="/meditate/create"
-              className="hidden shrink-0 shadow-sm md:inline-flex"
+              className="shrink-0 shadow-sm"
             >
               Create new
             </PrimaryCreateButton>
           </div>
         ) : null}
         {libraryTab === "programs" ? (
-          <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
+          <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">
             <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
               {exploringProgram
                 ? exploringProgram.title
@@ -2361,7 +2589,7 @@ export default function LibraryView({
             {exploringProgram ? (
               <Link
                 to="/meditate/create/from-program"
-                className={`hidden shrink-0 px-3 py-2.5 md:inline-flex ${makeItYourOwnClassName}`}
+                className={`shrink-0 px-3 py-2.5 ${makeItYourOwnClassName}`}
                 style={makeItYourOwnStyle}
               >
                 <IconSparkles size={16} stroke={2} aria-hidden />
@@ -2370,7 +2598,7 @@ export default function LibraryView({
             ) : (
               <PrimaryCreateButton
                 to="/meditate/create"
-                className={`hidden shrink-0 md:inline-flex ${makeItYourOwnClassName}`}
+                className={`shrink-0 ${makeItYourOwnClassName}`}
                 style={makeItYourOwnStyle}
               >
                 Create new
@@ -2379,11 +2607,8 @@ export default function LibraryView({
           </div>
         ) : null}
         {libraryTab === "meditations" ? (
-          <>
-            <div className="mt-6 md:hidden">{mobileSearchFilterRow}</div>
-            <div className="mt-6 hidden w-full flex-wrap items-center gap-3 md:flex">
+          <div className="mt-6 hidden w-full flex-wrap items-center gap-3 md:flex">
             <div className="flex shrink-0 items-center gap-3">
-              {libraryTab === "meditations" ? (
               <button
                 type="button"
                 onClick={() => setFavouritesOnly((v) => !v)}
@@ -2397,9 +2622,7 @@ export default function LibraryView({
                 <IconHeart filled={favouritesOnly} />
                 <span className="hidden sm:inline">Favourites</span>
               </button>
-              ) : null}
               {sortDropdown}
-              {libraryTab === "meditations" ? (
               <div ref={categoryDropdownRef} className="relative shrink-0">
                 <button
                   type="button"
@@ -2465,31 +2688,24 @@ export default function LibraryView({
                   </div>
                 ) : null}
               </div>
-              ) : null}
             </div>
             {searchInput}
             <div className="ml-auto shrink-0">{layoutToggle}</div>
           </div>
-          </>
         ) : null}
       </header>
 
       {libraryTab === "community" ? (
         <>
-          <p className="mt-6 font-display text-lg font-medium tracking-tight text-foreground sm:text-xl">
+          <p className="mt-6 px-4 font-display text-lg font-medium tracking-tight text-foreground max-md:mt-4 max-md:text-base sm:text-xl md:px-0">
             Pick a category
           </p>
           <CommunityCategoryGrid
             selected={categoryFilter}
             onSelect={setCategoryFilter}
-            className="mt-3 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
+            className="mt-3 grid w-full grid-cols-1 gap-1.5 px-4 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 md:px-0 lg:grid-cols-7"
           />
-          <div
-            className="md:hidden"
-            style={{ height: 40, minHeight: 40, width: "100%" }}
-            aria-hidden
-          />
-          {mobileSearchFilterRow}
+          <div className="mt-6 px-4 md:hidden">{mobileSearchBlock}</div>
           <div className="mt-8 hidden w-full flex-wrap items-center gap-3 md:flex">
             <div className="shrink-0">{sortDropdown}</div>
             {searchInput}
@@ -2550,16 +2766,16 @@ export default function LibraryView({
           }
           if (exploring) {
             return (
-              <div className="mt-8 w-full min-w-0">
+              <div className="mt-2 w-full min-w-0 max-md:mt-2 md:mt-8">
                 <button
                   type="button"
                   onClick={closeProgram}
-                  className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-muted hover:text-foreground"
+                  className="mb-4 hidden cursor-pointer items-center gap-1.5 text-sm font-semibold text-muted hover:text-foreground md:inline-flex"
                 >
                   <span aria-hidden>←</span> All programs
                 </button>
                 {(exploring.description || exploring.days.length > 0) ? (
-                  <header className="mb-6">
+                  <header className="mb-6 hidden md:block">
                     {exploring.description ? (
                       <p className="w-full text-sm leading-relaxed text-muted sm:text-base">
                         {exploring.description}
@@ -2574,9 +2790,9 @@ export default function LibraryView({
                   </header>
                 ) : null}
                 {exploring.days.length === 0 ? (
-                  <p className="text-sm text-muted">No lessons ready yet.</p>
+                  <p className="px-4 text-sm text-muted md:px-0">No lessons ready yet.</p>
                 ) : (
-                  <ul className="mt-2 flex w-full min-w-0 max-w-full flex-col gap-3">
+                  <ul className="mt-2 flex w-full min-w-0 max-w-full flex-col max-md:gap-0 md:gap-3">
                     {exploring.days.map((day) =>
                       renderItem(libraryItemFromProgramDay(day, exploring)),
                     )}
@@ -2586,21 +2802,22 @@ export default function LibraryView({
             );
           }
           return (
-            <ul className="mt-10 flex w-full min-w-0 max-w-full flex-col gap-4">
+            <ul className="mt-3.5 flex w-full min-w-0 max-w-full flex-col gap-3 px-4 max-md:pt-3.5 md:mt-10 md:gap-4 md:px-0">
               {programs.map((program) => {
                 const lessonCount = program.days.length;
                 return (
                   <li
                     key={program.id}
-                    className="flex w-full min-w-0 items-start gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:gap-5 sm:p-5"
+                    className="flex w-full min-w-0 flex-col gap-2.5 rounded-[14px] border border-border bg-card p-3.5 md:flex-row md:items-start md:gap-4 md:rounded-2xl md:p-4 md:shadow-sm sm:md:gap-5 sm:md:p-5"
                   >
+                    <div className="flex gap-3 md:contents">
                     <div
-                      className="shrink-0 overflow-hidden rounded-xl bg-background"
+                      className="shrink-0 overflow-hidden rounded-[10px] bg-background md:rounded-xl"
                       style={{
-                        width: PROGRAM_COVER_EDGE_PX,
-                        height: PROGRAM_COVER_EDGE_PX,
-                        minWidth: PROGRAM_COVER_EDGE_PX,
-                        minHeight: PROGRAM_COVER_EDGE_PX,
+                        width: isMobileLayout ? 72 : PROGRAM_COVER_EDGE_PX,
+                        height: isMobileLayout ? 72 : PROGRAM_COVER_EDGE_PX,
+                        minWidth: isMobileLayout ? 72 : PROGRAM_COVER_EDGE_PX,
+                        minHeight: isMobileLayout ? 72 : PROGRAM_COVER_EDGE_PX,
                       }}
                       aria-hidden
                     >
@@ -2608,8 +2825,8 @@ export default function LibraryView({
                         <img
                           src={program.coverImageUrl}
                           alt=""
-                          width={PROGRAM_COVER_EDGE_PX}
-                          height={PROGRAM_COVER_EDGE_PX}
+                          width={isMobileLayout ? 72 : PROGRAM_COVER_EDGE_PX}
+                          height={isMobileLayout ? 72 : PROGRAM_COVER_EDGE_PX}
                           className="h-full w-full object-cover"
                           loading="eager"
                           decoding="async"
@@ -2630,29 +2847,36 @@ export default function LibraryView({
                         </div>
                       )}
                     </div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <h2 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1 md:gap-0">
+                      <h2 className="font-display text-[18px] font-normal leading-[1.25] tracking-tight text-foreground md:text-xl md:font-medium sm:md:text-2xl">
                         {program.title}
                       </h2>
+                      <span className="text-[12px] text-muted md:hidden">
+                        {lessonCount} lesson{lessonCount === 1 ? "" : "s"}
+                      </span>
                       {program.description ? (
                         <p
-                          className="mt-1.5 line-clamp-3 text-sm leading-5 text-muted"
-                          style={{ minHeight: PROGRAM_DESC_BLOCK_MIN_PX }}
+                          className="line-clamp-3 text-[13px] leading-[1.5] text-muted md:mt-1.5 md:text-sm md:leading-5"
+                          style={
+                            isMobileLayout
+                              ? undefined
+                              : { minHeight: PROGRAM_DESC_BLOCK_MIN_PX }
+                          }
                         >
                           {program.description}
                         </p>
                       ) : (
                         <p
-                          className="mt-1.5 text-sm leading-5 text-muted"
+                          className="mt-1.5 hidden text-sm leading-5 text-muted md:block"
                           style={{ minHeight: PROGRAM_DESC_BLOCK_MIN_PX }}
                         >
                           {lessonCount} lesson{lessonCount === 1 ? "" : "s"}
                           {lessonCount === 0 ? " · audio coming soon" : ""}
                         </p>
                       )}
-                      <div className="mt-auto flex flex-wrap items-center gap-3 pt-3">
+                      <div className="mt-auto flex items-center gap-2 pt-1 md:flex-wrap md:gap-3 md:pt-3">
                         {program.description ? (
-                          <span className="text-xs text-muted">
+                          <span className="hidden text-xs text-muted md:inline">
                             {lessonCount} lesson
                             {lessonCount === 1 ? "" : "s"}
                           </span>
@@ -2660,19 +2884,26 @@ export default function LibraryView({
                         <button
                           type="button"
                           onClick={() => openProgram(program)}
-                          className="cursor-pointer rounded-full accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 hybrid:!bg-surface-2 hybrid:!text-foreground"
+                          className="h-[38px] flex-1 cursor-pointer whitespace-nowrap rounded-full accent-fill-gradient px-2 text-[12px] font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 hybrid:!bg-surface-2 hybrid:!text-foreground md:flex-none md:px-4 md:py-2 md:text-sm"
                         >
                           Explore course →
                         </button>
                         <Link
                           to="/meditate/create/from-program"
-                          className={`px-4 py-2 ${makeItYourOwnClassName}`}
-                          style={makeItYourOwnStyle}
+                          className={
+                            isMobileLayout
+                              ? "inline-flex h-[38px] flex-1 items-center justify-center whitespace-nowrap rounded-full border border-border bg-card px-2 text-[12px] font-semibold text-foreground"
+                              : `px-4 py-2 ${makeItYourOwnClassName}`
+                          }
+                          style={isMobileLayout ? undefined : makeItYourOwnStyle}
                         >
-                          <IconSparkles size={16} stroke={2} aria-hidden />
+                          {!isMobileLayout ? (
+                            <IconSparkles size={16} stroke={2} aria-hidden />
+                          ) : null}
                           Make it your own
                         </Link>
                       </div>
+                    </div>
                     </div>
                   </li>
                 );
@@ -2708,9 +2939,9 @@ export default function LibraryView({
       ) : libraryTab !== "programs" ? (
         <ul
           className={
-            viewMode === "grid"
+            viewMode === "grid" && !isMobileLayout
               ? `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-4 lg:grid-cols-3`
-              : `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col gap-3`
+              : `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col max-md:mt-2 max-md:gap-0 md:gap-3`
           }
         >
           {pagedVisibleItems.map((m, i) => {
@@ -2729,11 +2960,11 @@ export default function LibraryView({
               <Fragment key={rowKey}>
                 {insertMarker && marker ? (
                   <li
-                    className={`col-span-full list-none ${
-                      i === 0 ? "" : "pt-2"
+                    className={`col-span-full list-none max-md:px-4 max-md:pb-1.5 max-md:pt-[18px] ${
+                      i === 0 ? "" : "md:pt-2"
                     }`}
                   >
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link md:text-xs md:tracking-wide md:text-muted">
                       {marker.label}
                     </h2>
                   </li>

@@ -4,12 +4,26 @@ import { useEffect, useRef, useState } from "react";
 import {
   type AdminVoiceSpeaker,
   deleteAdminVoiceSpeaker,
+  generateAdminVoiceEmotionSamples,
   generateAdminVoiceSample,
   listAdminVoice,
   patchAdminVoice,
+  type SpeechifyEmotionSampleTag,
   type VoiceGender,
   type VoiceSpeakerBrand,
 } from "@/lib/medimade-api";
+
+const SPEECHIFY_EMOTION_TAGS: readonly SpeechifyEmotionSampleTag[] = [
+  "neutral",
+  "warm",
+  "calm",
+];
+
+const EMOTION_TAG_LABEL: Record<SpeechifyEmotionSampleTag, string> = {
+  neutral: "Neutral",
+  warm: "Warm",
+  calm: "Calm",
+};
 
 const ICON_BTN =
   "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-foreground hover:bg-card disabled:cursor-not-allowed disabled:opacity-40";
@@ -364,6 +378,24 @@ function SpeakerRow({
     }
   }
 
+  async function generateEmotionSamples(tag?: SpeechifyEmotionSampleTag) {
+    setBusy(tag ? `emotion-${tag}` : "emotion-all");
+    onError(null);
+    try {
+      await generateAdminVoiceEmotionSamples(speaker.modelId, {
+        force: true,
+        emotion: tag ?? "all",
+      });
+      onChanged();
+    } catch (e) {
+      onError(
+        e instanceof Error ? e.message : "Could not generate emotion samples",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function remove() {
     if (!window.confirm(`Remove ${speaker.name}?`)) return;
     setBusy("delete");
@@ -606,6 +638,119 @@ function SpeakerRow({
           </button>
         </div>
       </div>
+      {brand === "speechify" ? (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted">
+              Emotion samples
+              <span className="ml-1 font-normal">
+                (neutral = no tag; warm / calm = Speechify style tags)
+              </span>
+            </p>
+            <button
+              type="button"
+              disabled={busy !== null || generateDisabled}
+              onClick={() => void generateEmotionSamples()}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50"
+            >
+              {busy === "emotion-all"
+                ? "Generating all…"
+                : "Generate all emotions"}
+            </button>
+          </div>
+          <ul className="mt-2 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
+            {SPEECHIFY_EMOTION_TAGS.map((tag) => {
+              const url = speaker.emotionSampleUrls?.[tag] ?? null;
+              return (
+                <li
+                  key={tag}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 sm:min-w-[10rem] sm:flex-none"
+                >
+                  <EmotionSamplePlayButton
+                    url={url}
+                    label={EMOTION_TAG_LABEL[tag]}
+                  />
+                  <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                    {EMOTION_TAG_LABEL[tag]}
+                    {!url ? (
+                      <span className="ml-1 text-xs font-normal text-muted">
+                        · missing
+                      </span>
+                    ) : null}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy !== null || generateDisabled}
+                    onClick={() => void generateEmotionSamples(tag)}
+                    className="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-background disabled:opacity-50"
+                  >
+                    {busy === `emotion-${tag}` ? "…" : url ? "Regen" : "Gen"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
     </li>
+  );
+}
+
+function EmotionSamplePlayButton({
+  url,
+  label,
+}: {
+  url: string | null;
+  label: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => setPlaying(false);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+    };
+  }, [url]);
+
+  useEffect(() => {
+    setPlaying(false);
+    const el = audioRef.current;
+    if (el) {
+      el.pause();
+      el.currentTime = 0;
+    }
+  }, [url]);
+
+  return (
+    <>
+      {url ? (
+        <audio ref={audioRef} src={url} className="hidden" preload="none" />
+      ) : null}
+      <button
+        type="button"
+        className={ICON_BTN}
+        disabled={!url}
+        aria-label={playing ? `Pause ${label}` : `Play ${label}`}
+        title={url ? (playing ? "Pause" : "Play") : "No sample yet"}
+        onClick={() => {
+          const el = audioRef.current;
+          if (!el) return;
+          if (el.paused) void el.play();
+          else el.pause();
+        }}
+      >
+        {playing ? <IconPause /> : <IconPlay />}
+      </button>
+    </>
   );
 }

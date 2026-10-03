@@ -8,6 +8,8 @@ export type FishSpeaker = {
   gender?: VoiceGender;
   /** TTS vendor. Omitted on the hardcoded Fish fallback list. */
   brand?: "fish" | "speechify";
+  /** Speechify SSML prosody rate percent (admin). Omitted / null = Speechify default. */
+  speechifyRate?: number | null;
   /** When the admin last saved this row — used to bust CDN sample URLs. */
   updatedAt?: string;
 };

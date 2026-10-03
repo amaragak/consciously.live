@@ -69,9 +69,12 @@ export function AppChrome({ children }: Props) {
           sidebarCollapsed={sidebarCollapsed}
         />
         <div className="flex min-h-0 flex-1">
+          {/*
+            Desktop spacer matches the fixed sidebar width so main content
+            slides with the rail collapse/expand (same 200ms as `.app-sidebar-drawer`).
+          */}
           <div
-            className="hidden shrink-0 md:block"
-            style={{ width: "var(--app-sidebar-w, 200px)" }}
+            className="hidden w-[var(--app-sidebar-w,200px)] shrink-0 transition-[width] duration-200 ease-out motion-reduce:transition-none md:block"
             aria-hidden
           />
           <AppSidebar

@@ -39,6 +39,8 @@ type Props = {
   onPlayReadyMeditation?: (() => void) | null;
   /** Next incomplete goal step; when absent, fall back to life-area wording. */
   goalStep?: TodayGoalStep | null;
+  /** Tighter single-column layout for the mobile dashboard. */
+  compact?: boolean;
 };
 
 function emptyStatus(): DailyStatus {
@@ -82,11 +84,14 @@ function HabitCheckbox({
   checked,
   onToggle,
   label,
+  compact = false,
 }: {
   checked: boolean;
   onToggle: () => void;
   label: string;
+  compact?: boolean;
 }) {
+  const size = compact ? "h-[18px] w-[18px] text-[10px]" : "h-5 w-5 text-[11px]";
   return (
     <button
       type="button"
@@ -96,8 +101,8 @@ function HabitCheckbox({
       onClick={onToggle}
       className={
         checked
-          ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold text-[11px] font-semibold leading-none text-on-accent"
-          : "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[color-mix(in_srgb,var(--border)_100%,var(--muted))] bg-transparent"
+          ? `flex ${size} shrink-0 items-center justify-center rounded-full bg-gold font-semibold leading-none text-on-accent`
+          : `flex ${size} shrink-0 items-center justify-center rounded-full border-[1.5px] border-[color-mix(in_srgb,var(--border)_100%,var(--muted))] bg-transparent`
       }
     >
       {checked ? "✓" : null}
@@ -110,6 +115,7 @@ export function DailyHabitTracker({
   readyMeditationTitle = null,
   onPlayReadyMeditation = null,
   goalStep = null,
+  compact = false,
 }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<DailyStatus>(emptyStatus);
@@ -248,6 +254,75 @@ export function DailyHabitTracker({
       onAction: openFocus,
     },
   ];
+
+  if (compact) {
+    return (
+      <section
+        aria-label="Today"
+        className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5"
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <SectionEyebrow className="text-[11px] font-semibold tracking-[1.4px]">
+            Today · {dateLabel}
+          </SectionEyebrow>
+          <p className="shrink-0 text-[12px] text-muted">{streakLine}</p>
+        </div>
+        <ul>
+          {rows.map((row, i) => {
+            const checked = status[row.pillar];
+            const last = i === rows.length - 1;
+            return (
+              <li
+                key={row.pillar}
+                className={`flex items-center gap-3 py-2.5 ${
+                  last ? "" : "border-b border-border"
+                }`}
+              >
+                <HabitCheckbox
+                  checked={checked}
+                  onToggle={() => toggle(row.pillar)}
+                  label={row.name}
+                  compact
+                />
+                <span className="flex min-w-0 flex-1 flex-col gap-px">
+                  <span
+                    className={`text-[14px] ${
+                      checked
+                        ? "text-muted line-through"
+                        : "text-foreground"
+                    }`}
+                  >
+                    {row.name}
+                  </span>
+                  {row.help ? (
+                    <span className="truncate text-[12px] text-muted">
+                      {row.help}
+                    </span>
+                  ) : null}
+                </span>
+                {row.actionAsLink ? (
+                  <Link
+                    href={row.actionAsLink}
+                    className="shrink-0 whitespace-nowrap text-[13px] font-semibold text-accent-link"
+                  >
+                    {row.actionLabel}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={row.onAction}
+                    className="shrink-0 cursor-pointer whitespace-nowrap text-[13px] font-semibold text-accent-link"
+                  >
+                    {row.actionLabel}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    );
+  }
 
   return (
     <section

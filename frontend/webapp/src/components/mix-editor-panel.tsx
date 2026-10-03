@@ -4,7 +4,7 @@ import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
 import { SoundscapePicker } from "@/components/soundscape-picker";
-import { SOUNDSCAPE_ELEMENT_VOLUME } from "@/lib/bed-volume";
+import { soundscapeListenVolume } from "@/lib/bed-volume";
 import { playWithLeadBuffer } from "@/lib/audio-lead-buffer";
 import {
   backgroundAudioStreamingKey,
@@ -14,6 +14,11 @@ import {
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import type { BedVolumeChannel } from "@/components/library-player-provider";
 import { VoiceFxKnob } from "@consciously/common";
+import { SoundscapeDevVolumeFader } from "@/components/soundscape-dev-volume-fader";
+import {
+  shouldRenderDevUi,
+  useDevUiSettings,
+} from "@/lib/dev-ui-settings";
 
 /** Mixer gain persisted for a soundscape; live playback uses its own volume. */
 export const SOUNDSCAPE_MIX_GAIN = 100;
@@ -446,6 +451,13 @@ export function MixEditorPanel({
   const mediaBase = getMedimadeMediaBaseUrl();
   const previewRef = useRef<HTMLAudioElement | null>(null);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const devUi = useDevUiSettings();
+  const showDevSoundscapeFader = shouldRenderDevUi(
+    devUi.createAudioDevControls,
+  );
+  /** Dev: 100% = production listen level; not persisted. */
+  const [soundscapeDevFader, setSoundscapeDevFader] = useState(100);
+  const soundscapeDevFaderRef = useRef(100);
 
   useEffect(
     () => () => {
@@ -463,6 +475,18 @@ export function MixEditorPanel({
     return mediaFileUrl(mediaBase, backgroundAudioStreamingKey(key));
   }
 
+  function applySoundscapeDevFader(percent: number) {
+    const n = Math.min(100, Math.max(0, percent));
+    soundscapeDevFaderRef.current = n;
+    setSoundscapeDevFader(n);
+    const el = previewRef.current;
+    if (el) el.volume = soundscapeListenVolume(n);
+    // Library / Focus strip: treat music gain as reductive fader for soundscapes.
+    if (disableLocalPreview && soundscapeSelected) {
+      onLiveVolume("music", n);
+    }
+  }
+
   function toggleSoundscapePreview(key: string) {
     const el = previewRef.current;
     const url = soundscapePreviewUrl(key);
@@ -477,7 +501,7 @@ export function MixEditorPanel({
       el.load();
     }
     // load() resets volume, so this has to be set after it.
-    el.volume = SOUNDSCAPE_ELEMENT_VOLUME;
+    el.volume = soundscapeListenVolume(soundscapeDevFaderRef.current);
     setPreviewKey(key);
     void playWithLeadBuffer(el).catch(() => setPreviewKey(null));
   }
@@ -621,7 +645,7 @@ export function MixEditorPanel({
           ) : null}
         </div>
       ) : null}
-      <div className="mt-3">
+      <div className="mt-3 flex items-center justify-between gap-2">
         <SegmentedPillTabs
           aria-label="Sound bed"
           value={bedTab}
@@ -649,6 +673,12 @@ export function MixEditorPanel({
             { id: "mixer" as const, label: "Build your own" },
           ]}
         />
+        {showDevSoundscapeFader && bedTab === "soundscape" ? (
+          <SoundscapeDevVolumeFader
+            value={soundscapeDevFader}
+            onChange={applySoundscapeDevFader}
+          />
+        ) : null}
       </div>
       <div className="mt-3 flex items-center gap-3">
         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">

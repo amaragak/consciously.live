@@ -23,6 +23,7 @@ import {
   bedElementVolume,
   BED_VOICE_INTRO_SECONDS,
   SOUNDSCAPE_ELEMENT_VOLUME,
+  soundscapeListenVolume,
 } from "../audio/bed-volume";
 import type { BackgroundAudioItem, LibraryMeditationFields } from "./types";
 import { CoverArtThumb } from "./cover-art-thumb";
@@ -30,6 +31,7 @@ import {
   DualStemPlayer,
   getLibraryVoicePlayer,
 } from "../audio/dual-stem-player";
+import { voiceStemPlaybackUrl } from "../audio/voice-stem-keys";
 import { clampVoiceFxDial } from "../audio/voice-fx-dial";
 
 export type LibraryActiveTrack = {
@@ -89,8 +91,8 @@ function siblingStemUrl(
   if (!src) return undefined;
   try {
     const u = new URL(src);
-    if (!/\.(mp3|wav|opus)$/i.test(u.pathname)) return undefined;
-    u.pathname = u.pathname.replace(/\.(mp3|wav|opus)$/i, `-${kind}.opus`);
+    if (!/\.(mp3|wav|opus|m4a)$/i.test(u.pathname)) return undefined;
+    u.pathname = u.pathname.replace(/\.(mp3|wav|opus|m4a)$/i, `-${kind}.m4a`);
     return u.toString();
   } catch {
     return undefined;
@@ -102,7 +104,7 @@ export function trackFromLibraryItem(
 ): LibraryActiveTrack {
   const cover = m.coverImageUrl?.trim();
   return {
-    url: m.audioUrl,
+    url: voiceStemPlaybackUrl(m.audioUrl),
     title: m.title,
     s3Key: m.s3Key,
     liveMix: m.liveMix === true,
@@ -151,7 +153,7 @@ export function liveMixTrack(
 ): LibraryActiveTrack {
   const cover = m.coverImageUrl?.trim();
   return {
-    url: m.audioUrl,
+    url: voiceStemPlaybackUrl(m.audioUrl),
     title: m.title,
     s3Key: m.s3Key,
     liveMix: true,
@@ -225,7 +227,7 @@ export function trackFromFocusMix(
     return {
       url: mediaFileUrl(
         opts.mediaBase,
-        backgroundAudioStreamingKey(musicKey),
+        backgroundAudioPlaybackKey(musicKey),
       ),
       title: opts.title,
       s3Key: `${FOCUS_AMBIENT_S3_PREFIX}soundscape:${musicKey}`,
@@ -487,7 +489,7 @@ export function LibraryAudioStrip({
         setGaplessBedVolume(
           el,
           soundscapeActiveRef.current && channel === "music"
-            ? SOUNDSCAPE_ELEMENT_VOLUME
+            ? soundscapeListenVolume(gain)
             : bedElementVolume(gain),
         );
       },
@@ -661,7 +663,7 @@ export function LibraryAudioStrip({
       if (!el) continue;
       const volume =
         soundscape && bed.channel === "music"
-          ? SOUNDSCAPE_ELEMENT_VOLUME
+          ? soundscapeListenVolume(liveBedGainsRef.current[bed.channel])
           : bedElementVolume(liveBedGainsRef.current[bed.channel]);
       if (!mediaBase || !bed.key.trim()) {
         syncGaplessBed(el, { url: null, volume, playing: false });
@@ -869,6 +871,14 @@ export function LibraryAudioStrip({
           src={voiceUrl}
           preload="metadata"
           className="hidden"
+          onError={(e) => {
+            const el = e.currentTarget;
+            const mp3 = voiceUrl.replace(/\.m4a(\?|$)/i, ".mp3$1");
+            if (mp3 && mp3 !== el.src && !el.dataset.aacFallback) {
+              el.dataset.aacFallback = "1";
+              el.src = mp3;
+            }
+          }}
         />
       )}
       {/* Looping is scheduled by syncGaplessBed, so these must not set `loop`. */}

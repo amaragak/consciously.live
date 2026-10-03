@@ -53,6 +53,7 @@ export { PublicMeditationPlayer } from "./library/public-meditation-player";
 
 export {
   backgroundAudioPlaybackKey,
+  backgroundAudioPlaybackFallbackKey,
   backgroundAudioStreamingKey,
 } from "./audio/background-audio-keys";
 
@@ -66,6 +67,7 @@ export {
 } from "./audio/dual-stem-player";
 
 export {
+  mediaPlaybackCandidates,
   voiceStemPlaybackCandidates,
   voiceStemPlaybackUrl,
 } from "./audio/voice-stem-keys";

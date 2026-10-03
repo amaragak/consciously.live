@@ -342,7 +342,8 @@ function formatEntriesForModel(entries: JournalEntry[]): string {
   return blocks.join("\n\n---\n\n");
 }
 
-function buildSystemPrompt(): string {
+/** Exported for the deploy-time Claude preprompts catalog (admin read-only). */
+export function buildSystemPrompt(): string {
   return [
     "You are an insightful, careful journaling analyst.",
     "You will be given the user's existing per-topic rolling summaries and a batch of NEW or UPDATED journal entries since the last run.",

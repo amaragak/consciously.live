@@ -24,6 +24,7 @@ import {
 } from "./_shared/blog";
 import { invalidateBlogCache } from "./_shared/blog-revalidate";
 import { fishSpeakersForPicker } from "./_shared/fish-speakers";
+import { aacAdtsToMp3Buffer } from "./_shared/audio-aac";
 import {
   coerceBlogTtsProvider,
   getSpeechifyApiKey,
@@ -259,7 +260,9 @@ export async function handler(
           audioProgress: `Speechify: synthesizing ${i + 1} of ${chunks.length}…`,
         });
         rawParts.push(
-          await speechifyTtsMp3({ apiKey, text: chunks[i]!, voiceId }),
+          await aacAdtsToMp3Buffer(
+            await speechifyTtsMp3({ apiKey, text: chunks[i]!, voiceId }),
+          ),
         );
       }
     } else {

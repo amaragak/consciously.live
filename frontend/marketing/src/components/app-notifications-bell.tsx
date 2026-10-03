@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   APP_NOTIFICATIONS_CHANGED_EVENT,
   clearAppNotifications,
@@ -46,7 +47,12 @@ export function AppNotificationsBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
+    null,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -74,10 +80,34 @@ export function AppNotificationsBell() {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setMenuPos({
+        top: r.bottom + 6,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -92,9 +122,141 @@ export function AppNotificationsBell() {
 
   const unread = unreadAppNotificationCount(items);
 
+  const menu =
+    open && menuPos && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={{
+              position: "fixed",
+              top: menuPos.top,
+              right: menuPos.right,
+            }}
+            className="z-[300] w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
+              <p className="text-sm font-semibold text-foreground">
+                Notifications
+              </p>
+              <div className="flex items-center gap-2">
+                {unread > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => markAllAppNotificationsRead()}
+                    className="cursor-pointer text-[11px] font-medium text-accent-link hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                ) : null}
+                {items.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => clearAppNotifications()}
+                    className="cursor-pointer text-[11px] text-muted hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {pendingCount > 0 ? (
+              <p className="border-b border-border/70 bg-accent-soft/25 px-3.5 py-2 text-xs text-muted">
+                {pendingCount === 1
+                  ? "1 meditation is still generating…"
+                  : `${pendingCount} meditations are still generating…`}
+              </p>
+            ) : null}
+
+            {items.length === 0 ? (
+              <p className="px-3.5 py-6 text-center text-sm text-muted">
+                No notifications yet
+              </p>
+            ) : (
+              <ul className="max-h-[min(60vh,22rem)] overflow-y-auto">
+                {items.map((n) => {
+                  const inner = (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <p
+                          className={`text-sm leading-snug ${
+                            n.read
+                              ? "font-medium text-muted"
+                              : "font-semibold text-foreground"
+                          }`}
+                        >
+                          {n.title}
+                        </p>
+                        {!n.read ? (
+                          <span
+                            className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent"
+                            aria-hidden
+                          />
+                        ) : null}
+                      </div>
+                      {n.body ? (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                          {n.body}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-[10px] text-muted/80">
+                        {formatWhen(n.createdAt)}
+                      </p>
+                    </>
+                  );
+
+                  return (
+                    <li
+                      key={n.id}
+                      className="border-b border-border/60 last:border-b-0"
+                    >
+                      <div className="flex items-stretch gap-1">
+                        {n.href ? (
+                          <Link
+                            href={n.href}
+                            role="menuitem"
+                            onClick={() => {
+                              markAppNotificationRead(n.id);
+                              setOpen(false);
+                            }}
+                            className="min-w-0 flex-1 px-3.5 py-2.5 text-left transition-colors hover:bg-accent-soft/30"
+                          >
+                            {inner}
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => markAppNotificationRead(n.id)}
+                            className="min-w-0 flex-1 cursor-pointer px-3.5 py-2.5 text-left transition-colors hover:bg-accent-soft/30"
+                          >
+                            {inner}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          aria-label="Dismiss"
+                          onClick={() => dismissAppNotification(n.id)}
+                          className="shrink-0 cursor-pointer px-2.5 text-xs text-muted hover:text-foreground"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div ref={rootRef} className="relative shrink-0">
       <button
+        ref={btnRef}
         type="button"
         aria-label={
           unread > 0
@@ -120,127 +282,7 @@ export function AppNotificationsBell() {
           />
         ) : null}
       </button>
-
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-[220] mt-1.5 w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
-            <p className="text-sm font-semibold text-foreground">
-              Notifications
-            </p>
-            <div className="flex items-center gap-2">
-              {unread > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => markAllAppNotificationsRead()}
-                  className="cursor-pointer text-[11px] font-medium text-accent-link hover:underline"
-                >
-                  Mark all read
-                </button>
-              ) : null}
-              {items.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => clearAppNotifications()}
-                  className="cursor-pointer text-[11px] text-muted hover:text-foreground"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {pendingCount > 0 ? (
-            <p className="border-b border-border/70 bg-accent-soft/25 px-3.5 py-2 text-xs text-muted">
-              {pendingCount === 1
-                ? "1 meditation is still generating…"
-                : `${pendingCount} meditations are still generating…`}
-            </p>
-          ) : null}
-
-          {items.length === 0 ? (
-            <p className="px-3.5 py-6 text-center text-sm text-muted">
-              No notifications yet
-            </p>
-          ) : (
-            <ul className="max-h-[min(60vh,22rem)] overflow-y-auto">
-              {items.map((n) => {
-                const inner = (
-                  <>
-                    <div className="flex items-start justify-between gap-2">
-                      <p
-                        className={`text-sm leading-snug ${
-                          n.read
-                            ? "font-medium text-muted"
-                            : "font-semibold text-foreground"
-                        }`}
-                      >
-                        {n.title}
-                      </p>
-                      {!n.read ? (
-                        <span
-                          className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent"
-                          aria-hidden
-                        />
-                      ) : null}
-                    </div>
-                    {n.body ? (
-                      <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-                        {n.body}
-                      </p>
-                    ) : null}
-                    <p className="mt-1 text-[10px] text-muted/80">
-                      {formatWhen(n.createdAt)}
-                    </p>
-                  </>
-                );
-
-                return (
-                  <li
-                    key={n.id}
-                    className="border-b border-border/60 last:border-b-0"
-                  >
-                    <div className="flex items-stretch gap-1">
-                      {n.href ? (
-                        <Link
-                          href={n.href}
-                          role="menuitem"
-                          onClick={() => {
-                            markAppNotificationRead(n.id);
-                            setOpen(false);
-                          }}
-                          className="min-w-0 flex-1 px-3.5 py-2.5 text-left transition-colors hover:bg-accent-soft/30"
-                        >
-                          {inner}
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => markAppNotificationRead(n.id)}
-                          className="min-w-0 flex-1 cursor-pointer px-3.5 py-2.5 text-left transition-colors hover:bg-accent-soft/30"
-                        >
-                          {inner}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        aria-label="Dismiss"
-                        onClick={() => dismissAppNotification(n.id)}
-                        className="shrink-0 cursor-pointer px-2.5 text-xs text-muted hover:text-foreground"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      ) : null}
+      {menu}
     </div>
   );
 }
