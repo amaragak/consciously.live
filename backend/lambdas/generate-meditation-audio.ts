@@ -49,6 +49,7 @@ import {
 } from "./_shared/script-pause-bands";
 import {
   AAC_CONTENT_TYPE,
+  AAC_ENCODER,
   AAC_EXTENSION,
   aacAdtsToMp3Buffer,
   bufferToAacM4a,
@@ -1308,7 +1309,7 @@ async function synthesizeScriptWithPauses(params: {
     "-ar",
     "44100",
     ...(speechify
-      ? (["-c:a", "aac", "-b:a", "160k"] as const)
+      ? (["-c:a", AAC_ENCODER, "-b:a", "160k"] as const)
       : (["-c:a", "libmp3lame", "-q:a", "2"] as const)),
     outPath,
   ]);

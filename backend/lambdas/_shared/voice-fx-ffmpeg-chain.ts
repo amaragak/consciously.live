@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promisify } from "node:util";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { AAC_EXTENSION } from "./audio-aac";
+import { AAC_ENCODER, AAC_EXTENSION } from "./audio-aac";
 import {
   type VoiceFxSettings,
   voiceFxIrFingerprint,
@@ -312,7 +312,7 @@ export async function pcm24kS16leToAac44100(pcm: Buffer): Promise<Buffer> {
         "-ar",
         "44100",
         "-c:a",
-        "aac",
+        AAC_ENCODER,
         "-b:a",
         AAC_BITRATE,
         outPath,
@@ -446,7 +446,7 @@ export async function applyVoiceFxFfmpegChain(params: {
         "-ar",
         "44100",
         "-c:a",
-        "aac",
+        AAC_ENCODER,
         "-b:a",
         AAC_BITRATE,
         fxPath,
@@ -457,7 +457,7 @@ export async function applyVoiceFxFfmpegChain(params: {
         "-ar",
         "44100",
         "-c:a",
-        "aac",
+        AAC_ENCODER,
         "-b:a",
         AAC_BITRATE,
         dryOutPath,
@@ -485,7 +485,7 @@ export async function applyVoiceFxFfmpegChain(params: {
           "-ar",
           "44100",
           "-c:a",
-          "aac",
+          AAC_ENCODER,
           "-b:a",
           AAC_BITRATE,
           wetPath,

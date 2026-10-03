@@ -63,6 +63,8 @@ type OutItem = {
   scriptTruncated: boolean;
   scriptUtf8Bytes: number | null;
   fishTtsModel?: string | null;
+  /** TTS engine used at generate time. */
+  ttsProvider?: "fish" | "orpheus" | "speechify" | null;
   rating: number | null;
   favourite: boolean;
   archived: boolean;
@@ -557,6 +559,14 @@ function buildLibraryItems(params: {
       typeof row.fishTtsModel === "string" && row.fishTtsModel.trim()
         ? row.fishTtsModel.trim()
         : null;
+    const ttsProviderRaw =
+      typeof row.ttsProvider === "string" ? row.ttsProvider.trim() : "";
+    const ttsProvider =
+      ttsProviderRaw === "fish" ||
+      ttsProviderRaw === "orpheus" ||
+      ttsProviderRaw === "speechify"
+        ? ttsProviderRaw
+        : null;
     const claudeModel =
       typeof row.claudeModel === "string" && row.claudeModel.trim()
         ? row.claudeModel.trim()
@@ -602,6 +612,7 @@ function buildLibraryItems(params: {
       scriptTruncated,
       scriptUtf8Bytes,
       fishTtsModel,
+      ttsProvider,
       rating,
       favourite,
       archived,
@@ -724,6 +735,7 @@ function buildLibraryItems(params: {
       scriptTruncated: false,
       scriptUtf8Bytes: null,
       fishTtsModel: null,
+      ttsProvider: null,
       rating: null,
       favourite: false,
       archived: false,

@@ -215,11 +215,11 @@ export function generationTimingsFlyoverLines(
     p.workerWaitMs,
     "← async invoke / worker cold",
   );
-  pushMsLine(lines, "Worker", p.workerMs, "← handler wall");
+  pushMsLine(lines, "Worker", p.workerMs, "← time inside the worker");
   if (typeof p.accountedMs === "number" || typeof p.gapMs === "number") {
     const acc = formatStepMs(p.accountedMs) ?? "—";
     const gap = formatStepMs(p.gapMs) ?? "—";
-    lines.push(`  Accounted ${acc} · gap ${gap}`);
+    lines.push(`  Explained ${acc} · leftover ${gap}`);
   }
   lines.push("");
 
@@ -236,29 +236,34 @@ export function generationTimingsFlyoverLines(
   const spokenSegs = sections.filter((s) => s.ttsMs > 0).length;
 
   if (pcmPipeline) {
-    // Speechify PCM path — nested breakdown; Accounted uses ttsPipelineMs only.
+    // Speechify PCM path — nested breakdown; Accounted counts this block once.
     pushMsLine(
       lines,
-      "PCM pipeline",
+      "Voice build",
       p.ttsPipelineMs,
-      "← wall (load → TTS∥FX → OLA → AAC)",
+      "← TTS, FX, assemble, encode",
     );
-    pushMsLine(lines, "  FX load", p.fxLoadMs, "← IR + settings");
-    pushMsLine(lines, "  TTS∥FX loop", p.ttsFxLoopMs, "← wall");
+    pushMsLine(lines, "  Load FX", p.fxLoadMs, "← reverb settings");
+    pushMsLine(
+      lines,
+      "  Speak + FX",
+      p.ttsFxLoopMs,
+      "← segments (FX runs during next TTS)",
+    );
     if (ttsTotalMs > 0 || spokenSegs > 0) {
       lines.push(
-        `    TTS sum: ${formatStepMs(ttsTotalMs) ?? "0ms"} · ${spokenSegs} spoken`,
+        `    TTS: ${formatStepMs(ttsTotalMs) ?? "0ms"} total · ${spokenSegs} lines`,
       );
     }
     if (p.fxSkipped) {
       lines.push("    FX: skipped (dev)");
     } else if (typeof p.fxMs === "number" && p.fxMs > 0) {
       lines.push(
-        `    FX sum: ${formatStepMs(p.fxMs) ?? "—"} ← overlapped in loop`,
+        `    FX: ${formatStepMs(p.fxMs) ?? "—"} total (mostly hidden under TTS)`,
       );
     }
-    pushMsLine(lines, "  OLA", p.olaMs, "← bus finalize + dial");
-    pushMsLine(lines, "  AAC encode", p.aacEncodeMs, "← 24k PCM → 44.1");
+    pushMsLine(lines, "  Assemble", p.olaMs, "← stitch segments + mix");
+    pushMsLine(lines, "  Encode AAC", p.aacEncodeMs, "← final playable file");
   } else {
     // Legacy / Fish / concat path.
     if (ttsTotalMs > 0 || sections.length > 0) {

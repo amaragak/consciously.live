@@ -4778,6 +4778,8 @@ export type LibraryMeditationItem = {
   scriptUtf8Bytes?: number | null;
   /** Fish TTS model used at generate time (e.g. s2.1-pro-free, s1). */
   fishTtsModel?: string | null;
+  /** TTS engine used at generate time. */
+  ttsProvider?: "fish" | "orpheus" | "speechify" | null;
   rating: number | null;
   favourite: boolean;
   archived: boolean;

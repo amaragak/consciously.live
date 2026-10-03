@@ -175,6 +175,15 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
     scriptTruncated: m.scriptTruncated,
   });
   const perMillion = fishUsdPerMillionForModel(model);
+  const pcmPath = Boolean(m.generationTimings?.phases?.ttsPipelineMs);
+  const ttsProvider =
+    m.ttsProvider === "speechify" ||
+    m.ttsProvider === "fish" ||
+    m.ttsProvider === "orpheus"
+      ? m.ttsProvider
+      : pcmPath
+        ? "speechify"
+        : "fish";
   const lines: string[] = [];
   // Timing first — max-h scroll used to hide Total/TTS/FX under cost lines.
   const timingLines = generationTimingsFlyoverLines(m.generationTimings, {
@@ -196,13 +205,23 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
     lines.push("");
   }
   lines.push(`Length: ${formatDuration(m.durationSeconds)}`);
-  let fishUsd = 0;
-  if (est) {
-    fishUsd = fishCostUsdFromBillableBytes(est.bytes, model);
+  let voiceUsd = 0;
+  if (ttsProvider === "speechify") {
+    const bytes = est?.bytes;
+    lines.push(
+      "Speechify · simba-3.2",
+      bytes != null
+        ? `${bytes.toLocaleString()} UTF-8 bytes (cost not estimated)`
+        : "cost not estimated (no script bytes)",
+    );
+  } else if (ttsProvider === "orpheus") {
+    lines.push("Orpheus · cost not estimated");
+  } else if (est) {
+    voiceUsd = fishCostUsdFromBillableBytes(est.bytes, model);
     const approx = est.approximate ? " ≈" : "";
     lines.push(
       `Fish Audio · ${fishTtsModelLabel(model)}${approx}`,
-      `${formatFishCostUsd(fishUsd)} · ${est.bytes.toLocaleString()} UTF-8 bytes`,
+      `${formatFishCostUsd(voiceUsd)} · ${est.bytes.toLocaleString()} UTF-8 bytes`,
       `$${perMillion} / million UTF-8 bytes`,
     );
   } else {
@@ -212,8 +231,18 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
   }
   const claude = claudeCostFlyover(m);
   lines.push("", ...claude.lines);
-  if (est || claude.totalUsd > 0) {
-    lines.push("", `Total ≈ ${formatUsd(fishUsd + claude.totalUsd)} (voice + Claude)`);
+  if (ttsProvider === "speechify" || ttsProvider === "orpheus") {
+    if (claude.totalUsd > 0) {
+      lines.push(
+        "",
+        `Claude ≈ ${formatUsd(claude.totalUsd)} (voice cost not estimated)`,
+      );
+    }
+  } else if (voiceUsd > 0 || claude.totalUsd > 0) {
+    lines.push(
+      "",
+      `Total ≈ ${formatUsd(voiceUsd + claude.totalUsd)} (voice + Claude)`,
+    );
   }
   return lines.join("\n");
 }
