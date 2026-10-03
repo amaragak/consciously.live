@@ -16,10 +16,10 @@ export const AAC_EXTENSION = ".m4a";
 /** Speech / beds — transparent enough without huge files. */
 const AAC_BITRATE = "160k";
 /**
- * Prefer Fraunhofer FDK when the Lambda ffmpeg layer includes it; otherwise
- * native `aac`. Layer :1 is x86_64 without FDK; FDK builds must be linux/amd64.
+ * Prefer Fraunhofer FDK (layer :3+ amd64). Override with AAC_ENCODER=aac for
+ * the stock ffmpeg encoder. Layer :1 is x86_64 without FDK.
  */
-export const AAC_ENCODER = process.env.AAC_ENCODER?.trim() || "aac";
+export const AAC_ENCODER = process.env.AAC_ENCODER?.trim() || "libfdk_aac";
 
 export function aacEncodeArgs(inputPath: string, outputPath: string): string[] {
   return [

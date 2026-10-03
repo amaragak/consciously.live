@@ -416,7 +416,7 @@ export class MedimadeStack extends cdk.Stack {
     const ffmpegLayerArn =
       process.env.MEDIMADE_FFMPEG_LAYER_ARN?.trim() ||
       process.env.CONSCIOUSLY_FFMPEG_LAYER_ARN?.trim() ||
-      "arn:aws:lambda:eu-west-2:382309212161:layer:medimade-ffmpeg-audio-tools:1";
+      "arn:aws:lambda:eu-west-2:382309212161:layer:medimade-ffmpeg-audio-tools:3";
     const ffmpegLayer = LayerVersion.fromLayerVersionArn(
       this,
       "FfmpegLayer",
