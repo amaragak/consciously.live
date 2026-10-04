@@ -6,6 +6,11 @@ dist/
 .sst/
 *.tsbuildinfo
 
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+
 # env
 .env
 .env.local
