@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SettingsSwitch } from "@/components/settings/settings-primitives";
 import {
   defaultDevUiSettings,
   fetchDevUiSettings,
@@ -79,37 +80,22 @@ export function AdminDevUiPanel() {
             <li className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">
-                  Create audio settings — model / pause / FX
+                  Create audio — model / pause / FX
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-muted">
-                  Header toggles on Create → Audio (Claude Haiku/Sonnet, pause
-                  render path, voice FX on/off).
+                  Dev strip on Create → Sound (Claude Haiku/Sonnet, pause render
+                  path, voice FX on/off, emotion/rate/skip-FX checkboxes, and
+                  the soundscape volume fader).
                 </p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.createAudioDevControls}
+              <SettingsSwitch
+                aria-label="Create audio settings — model / pause / FX"
+                checked={settings.createAudioDevControls}
                 disabled={busy}
-                onClick={() =>
-                  void save({
-                    createAudioDevControls: !settings.createAudioDevControls,
-                  })
+                onCheckedChange={(next) =>
+                  void save({ createAudioDevControls: next })
                 }
-                className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
-                  settings.createAudioDevControls
-                    ? "bg-accent-button"
-                    : "bg-border"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-background shadow transition-transform ${
-                    settings.createAudioDevControls
-                      ? "translate-x-5"
-                      : "translate-x-0.5"
-                  }`}
-                />
-              </button>
+              />
             </li>
             <li className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -121,28 +107,14 @@ export function AdminDevUiPanel() {
                   and UTF-8 byte size.
                 </p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.libraryDevFlyout}
+              <SettingsSwitch
+                aria-label="Library — cost flyout"
+                checked={settings.libraryDevFlyout}
                 disabled={busy}
-                onClick={() =>
-                  void save({
-                    libraryDevFlyout: !settings.libraryDevFlyout,
-                  })
+                onCheckedChange={(next) =>
+                  void save({ libraryDevFlyout: next })
                 }
-                className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
-                  settings.libraryDevFlyout ? "bg-accent-button" : "bg-border"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-background shadow transition-transform ${
-                    settings.libraryDevFlyout
-                      ? "translate-x-5"
-                      : "translate-x-0.5"
-                  }`}
-                />
-              </button>
+              />
             </li>
           </ul>
         )}

@@ -36,7 +36,7 @@ export function PlanResistanceThreadBanner({
         },
       ],
     });
-    navigate("/meditate/create/from-chat?fromDream=1");
+    navigate("/meditate/create?step=shape&fromDream=1&seed=goal");
   }
 
   return (

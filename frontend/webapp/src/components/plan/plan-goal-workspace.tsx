@@ -187,7 +187,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
     };
     writePlanCreateHandoff(handoff);
     patch({ meditationsGenerated: dream.meditationsGenerated + 1 });
-    navigate("/meditate/create/from-chat?fromDream=1");
+    navigate("/meditate/create?step=shape&fromDream=1&seed=goal");
   }
 
   if ((isMedimadeSessionActive() && !cloudReady) || missing || !dream) {

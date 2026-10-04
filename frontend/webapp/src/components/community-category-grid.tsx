@@ -12,7 +12,12 @@ import {
   meditationTypePillSurfaceFromDom,
   type MeditationTypePillSurface,
 } from "@/lib/meditation-type-pill";
-import { fetchLibraryCategoryImages } from "@/lib/medimade-api";
+import {
+  categoryImageUrlForTile,
+  libraryCategoryImagesCached,
+  peekLibraryCategoryImageMap,
+  prefetchLibraryCategoryImages,
+} from "@/lib/library-category-images-cache";
 
 /** Soft elevation for borderless Community cover tiles (shadow-sm is nearly invisible without a border). */
 const CATEGORY_COVER_SHADOW =
@@ -210,7 +215,6 @@ export function MeditationTypeCardGrid({
     .join("\n");
 
   useEffect(() => {
-    if (isPicker) return;
     if (imagesLoading) {
       setCoversReady(false);
       return;
@@ -235,7 +239,7 @@ export function MeditationTypeCardGrid({
     return () => {
       cancelled = true;
     };
-  }, [isPicker, imagesLoading, coverUrlsKey]);
+  }, [imagesLoading, coverUrlsKey]);
 
   return (
     <div
@@ -243,7 +247,9 @@ export function MeditationTypeCardGrid({
       aria-label={includeAll ? "Community categories" : "Meditation types"}
       className={`${
         className ||
-        "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6"
+        (isPicker
+          ? "grid w-full grid-cols-2 gap-2.5 md:grid-cols-3"
+          : "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
       }${!isPicker ? " p-1.5" : ""}`}
     >
       {cards.map((card, i) => {
@@ -253,7 +259,23 @@ export function MeditationTypeCardGrid({
           CATEGORY_CARD_FILLS[fillIndex % CATEGORY_CARD_FILLS.length]!;
         const title = titles?.[card.value];
         const imageUrl = imageUrls?.[card.value]?.trim() || "";
-        const showCoverSlot = !isPicker && (imagesLoading || Boolean(imageUrl));
+
+        if (isPicker) {
+          return (
+            <CreateFlowStyleTile
+              key={card.value}
+              label={card.label}
+              imageUrl={imageUrl}
+              fallbackColor={light}
+              icon={card.icon}
+              active={active}
+              title={title}
+              onSelect={() => onSelect(card.value)}
+            />
+          );
+        }
+
+        const showCoverSlot = imagesLoading || Boolean(imageUrl);
 
         if (showCoverSlot) {
           return (
@@ -279,19 +301,11 @@ export function MeditationTypeCardGrid({
             aria-selected={active}
             title={title}
             onClick={() => onSelect(card.value)}
-            className={
-              isPicker
-                ? `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start overflow-hidden rounded-[6px] bg-[var(--type-card-bg)] px-2.5 py-2 text-left transition-[filter,border-color] dark:bg-[var(--type-card-bg-dark)] sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-3 sm:px-2 sm:py-2.5 sm:text-center ${
-                    active
-                      ? "create-audio-selected-pulse border-[3px] border-solid border-accent-button"
-                      : "border-2 border-solid border-transparent p-px hover:border-card-warm-border hover:brightness-[0.96] dark:hover:brightness-[0.96]"
-                  }`
-                : `flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start rounded-md border-[3px] border-solid px-2.5 py-2 text-left text-[#1E2530] transition-[border-color,box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-lg sm:px-2 sm:py-2.5 sm:text-center ${
-                    active
-                      ? "create-audio-selected-pulse border-accent-button"
-                      : `border-transparent ${CATEGORY_COVER_SHADOW}`
-                  }`
-            }
+            className={`flex w-full min-w-0 min-h-0 cursor-pointer flex-row items-center gap-2.5 self-start rounded-md border-[3px] border-solid px-2.5 py-2 text-left text-[#1E2530] transition-[border-color,box-shadow,filter] bg-[var(--type-card-bg)] hover:brightness-[0.97] dark:bg-[var(--type-card-bg-dark)] dark:hover:brightness-105 sm:aspect-square sm:flex-col sm:items-center sm:justify-center sm:gap-2.5 sm:rounded-lg sm:px-2 sm:py-2.5 sm:text-center ${
+              active
+                ? "create-audio-selected-pulse border-accent-button"
+                : `border-transparent ${CATEGORY_COVER_SHADOW}`
+            }`}
             style={
               {
                 "--type-card-bg": light,
@@ -306,21 +320,91 @@ export function MeditationTypeCardGrid({
               name={card.icon}
               className="h-6 w-6 shrink-0 sm:h-14 sm:w-14"
             />
-            {isPicker ? (
-              <span className="min-w-0 flex-1 truncate font-display text-[14px] font-normal leading-snug text-foreground sm:w-full sm:flex-none sm:overflow-visible sm:whitespace-normal sm:text-center sm:text-[16px] sm:leading-[1.3] sm:text-clip">
+            <span className="flex min-w-0 flex-1 items-center sm:h-[2.5rem] sm:w-full sm:flex-none sm:shrink-0 sm:justify-center md:h-[2.75rem]">
+              <span className="truncate font-display text-sm font-medium leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-center sm:text-base">
                 {card.label}
               </span>
-            ) : (
-              <span className="flex min-w-0 flex-1 items-center sm:h-[2.5rem] sm:w-full sm:flex-none sm:shrink-0 sm:justify-center md:h-[2.75rem]">
-                <span className="truncate font-display text-sm font-medium leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-center sm:text-base">
-                  {card.label}
-                </span>
-              </span>
-            )}
+            </span>
           </button>
         );
       })}
     </div>
+  );
+}
+
+/** Create flow style panel — image strip + label (3-col desktop / 2-col mobile). */
+function CreateFlowStyleTile({
+  label,
+  imageUrl,
+  fallbackColor,
+  icon,
+  active,
+  title,
+  onSelect,
+}: {
+  label: string;
+  imageUrl: string;
+  fallbackColor: string;
+  icon: LibraryMeditationCategory | "all";
+  active: boolean;
+  title?: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={active}
+      title={title}
+      onClick={onSelect}
+      className={`relative flex w-full cursor-pointer flex-col overflow-hidden rounded-xl bg-card text-left transition-[border-color,box-shadow] ${
+        active
+          ? "border-2 border-accent shadow-sm"
+          : "border border-border hover:border-accent/40"
+      }`}
+    >
+      <span className="relative block h-[74px] w-full overflow-hidden bg-accent-soft/40">
+        {imageUrl ? (
+          <img
+            src={categoryImageUrlForTile(imageUrl)}
+            alt=""
+            width={200}
+            height={74}
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <span
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ backgroundColor: fallbackColor }}
+          >
+            <CommunityCategoryIcon
+              name={icon}
+              className="h-8 w-8 text-foreground/70"
+            />
+          </span>
+        )}
+        {active ? (
+          <span
+            className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-on-accent"
+            aria-hidden
+          >
+            <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none">
+              <path
+                d="M3.5 8.5 6.5 11.5 12.5 4.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        ) : null}
+      </span>
+      <span className="px-2.5 py-2 text-[13px] font-semibold leading-snug text-foreground">
+        {label}
+      </span>
+    </button>
   );
 }
 
@@ -453,6 +537,7 @@ export function CommunityCategoryGrid({
   className,
   includeAll = true,
   titles,
+  variant = "default",
 }: {
   selected: string;
   onSelect: (value: string) => void;
@@ -460,26 +545,22 @@ export function CommunityCategoryGrid({
   /** Community library includes an “All” tile; Create › By Type omits it. */
   includeAll?: boolean;
   titles?: Partial<Record<string, string>>;
+  /** `picker` = Create flow style panel (3-col image + label tiles). */
+  variant?: "default" | "picker";
 }) {
   const [imageUrls, setImageUrls] = useState<Partial<Record<string, string>>>(
-    {},
+    () => peekLibraryCategoryImageMap(),
   );
-  const [imagesLoading, setImagesLoading] = useState(true);
+  const [imagesLoading, setImagesLoading] = useState(
+    () => !libraryCategoryImagesCached(),
+  );
 
   useEffect(() => {
     let cancelled = false;
-    setImagesLoading(true);
-    void fetchLibraryCategoryImages()
-      .then((images) => {
+    if (!libraryCategoryImagesCached()) setImagesLoading(true);
+    void prefetchLibraryCategoryImages()
+      .then((map) => {
         if (cancelled) return;
-        const map: Partial<Record<string, string>> = {};
-        for (const img of images) {
-          if (img.category && img.imageUrl) {
-            map[img.category] = img.imageUrl;
-            /* Admin stores "All"; Community grid card value is "all". */
-            if (img.category === "All") map.all = img.imageUrl;
-          }
-        }
         setImageUrls(map);
       })
       .catch(() => {
@@ -501,11 +582,14 @@ export function CommunityCategoryGrid({
       titles={titles}
       imageUrls={imageUrls}
       imagesLoading={imagesLoading}
+      variant={variant}
       className={
         className ??
-        (includeAll
-          ? "mt-8 grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
-          : "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
+        (variant === "picker"
+          ? "grid w-full grid-cols-2 gap-2.5 md:grid-cols-3"
+          : includeAll
+            ? "mt-8 grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
+            : "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
       }
     />
   );

@@ -2819,12 +2819,21 @@ export async function streamMedimadeChat(
     meditationTargetMinutes?: MeditationTargetMinutes;
     /** How to interpret a reflected journal entry; omit when empty. */
     journalGuidance?: string;
+    /**
+     * Stable Create Start → Shape context (prompt-cached). Must stay identical
+     * across turns for cache hits.
+     */
+    systemCachedExtra?: string;
+    /** Uncached Start overrides / mid-session addenda (does not bust the cache). */
+    systemSupplement?: string;
     /** Dev-only Claude A/B; server falls back to Haiku for unknown ids. */
     claudeModel?: string;
   },
   onDelta: (chunk: string) => void,
 ): Promise<string> {
   const guidance = params.journalGuidance?.trim();
+  const cachedExtra = params.systemCachedExtra?.trim();
+  const supplement = params.systemSupplement?.trim();
   return streamChatRequest(
     {
       mode: "chat",
@@ -2833,6 +2842,8 @@ export async function streamMedimadeChat(
       ...(params.journalMode === true ? { journalMode: true } : {}),
       ...(params.fromProgram === true ? { fromProgram: true } : {}),
       ...(guidance ? { journalGuidance: guidance } : {}),
+      ...(cachedExtra ? { systemCachedExtra: cachedExtra } : {}),
+      ...(supplement ? { systemSupplement: supplement } : {}),
       ...(params.claudeModel ? { claudeModel: params.claudeModel } : {}),
       ...(isMeditationTargetMinutes(params.meditationTargetMinutes)
         ? { meditationTargetMinutes: params.meditationTargetMinutes }
@@ -4533,8 +4544,10 @@ export async function fetchLibraryCategoryImages(): Promise<
   const base = getMedimadeApiBase();
   if (!base) return [];
   try {
+    // Bust HTTP cache via query param only — do not set Cache-Control /
+    // cache:"no-store" (those trigger a CORS preflight API Gateway rejects).
     const res = await medimadeFetch(
-      `${base}/dev-ui-settings?categoryImages=1`,
+      `${base}/dev-ui-settings?categoryImages=1&v=2`,
       { headers: { Accept: "application/json" } },
     );
     const data = (await res.json()) as { images?: unknown; error?: string };

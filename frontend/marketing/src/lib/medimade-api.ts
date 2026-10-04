@@ -3258,8 +3258,10 @@ export async function fetchLibraryCategoryImages(): Promise<
   const base = getMedimadeApiBase();
   if (!base) return [];
   try {
+    // Bust HTTP cache via query param only — avoid Cache-Control / no-store
+    // (CORS preflight against API Gateway would fail).
     const res = await medimadeFetch(
-      `${base}/dev-ui-settings?categoryImages=1`,
+      `${base}/dev-ui-settings?categoryImages=1&v=2`,
       { headers: { Accept: "application/json" } },
     );
     const data = (await res.json()) as { images?: unknown; error?: string };

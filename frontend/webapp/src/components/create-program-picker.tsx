@@ -27,7 +27,7 @@ export function CreateProgramPicker({
     );
   }
   return (
-    <ul className="grid w-full list-none grid-cols-1 gap-4 p-0 pb-2 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid w-full list-none grid-cols-2 items-stretch gap-3 p-0 pb-2 sm:gap-4">
       {programs.map((program) => {
         const selected = selectedId === program.id;
         const lessonCount = program.days.length;
@@ -37,21 +37,21 @@ export function CreateProgramPicker({
               type="button"
               aria-pressed={selected}
               onClick={() => onSelect(program.id)}
-              className={`flex w-full cursor-pointer flex-col text-left transition-colors ${SURFACE_CARD_CLASS} ${
+              className={`flex h-full w-full cursor-pointer flex-col text-left transition-colors ${SURFACE_CARD_CLASS} ${
                 selected
                   ? "border-accent bg-accent-soft/30"
                   : "hover:border-accent/40 hover:bg-accent-soft/15"
               }`}
             >
               <div
-                className="h-44 w-full shrink-0 overflow-hidden rounded-t-[11px] bg-background sm:h-48"
+                className="aspect-square w-full shrink-0 overflow-hidden rounded-t-[11px] bg-background"
                 aria-hidden
               >
                 {program.coverImageUrl ? (
                   <img
                     src={program.coverImageUrl}
                     alt=""
-                    className="h-full w-full object-cover"
+                    className="block h-full w-full object-cover object-center"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-muted/40">
@@ -68,16 +68,14 @@ export function CreateProgramPicker({
                   </div>
                 )}
               </div>
-              <div className="min-w-0 px-3.5 py-3 sm:px-4 sm:py-3.5">
-                <p className="font-display text-[16px] font-normal leading-snug text-foreground sm:text-[17px]">
+              <div className="flex min-h-0 flex-1 flex-col px-3.5 py-3 sm:px-4 sm:py-3.5">
+                <p className="line-clamp-2 min-h-[2.5em] font-display text-[16px] font-normal leading-snug text-foreground sm:text-[17px]">
                   {program.title.trim() || "Untitled program"}
                 </p>
-                {program.description.trim() ? (
-                  <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-muted sm:text-[14px]">
-                    {program.description}
-                  </p>
-                ) : null}
-                <p className="mt-1.5 text-[12px] text-muted">
+                <p className="mt-1 line-clamp-2 min-h-[2.6em] text-[13px] leading-snug text-muted sm:text-[14px]">
+                  {program.description.trim() || "\u00a0"}
+                </p>
+                <p className="mt-auto pt-1.5 text-[12px] text-muted">
                   {lessonCount} {lessonCount === 1 ? "lesson" : "lessons"}
                 </p>
               </div>

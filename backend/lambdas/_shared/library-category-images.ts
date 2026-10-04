@@ -18,10 +18,21 @@ export const LIBRARY_CATEGORY_IMAGES_SK = "CATEGORY_IMAGES";
 /** Prior versions kept per category (oldest → newest). */
 export const LIBRARY_CATEGORY_IMAGE_VERSION_CAP = 12;
 
-/** Community grid slots that can have a cover — "All" plus library types. */
+/**
+ * Create-flow Add context tiles (not shown on Community grid — that uses
+ * LIBRARY_MEDITATION_CATEGORIES + All only).
+ */
+export const CREATE_CONTEXT_IMAGE_SLOTS = [
+  "Journal",
+  "Program",
+  "Manifest",
+] as const;
+
+/** Cover slots: Community "All" + library types + Create-flow context tiles. */
 export const LIBRARY_CATEGORY_IMAGE_SLOTS = [
   "All",
   ...KNOWN_MEDITATION_TYPES,
+  ...CREATE_CONTEXT_IMAGE_SLOTS,
 ] as const;
 
 export type LibraryCategoryImageSlot =

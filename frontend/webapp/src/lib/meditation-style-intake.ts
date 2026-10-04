@@ -19,7 +19,11 @@ export type MeditationStyleLabel = (typeof MEDITATION_STYLE_LABELS)[number];
 
 export const STYLE_ANYTHING_ELSE_PROMPT = "Anything else you would like to add?";
 
-/** Three targeted intake questions per preset type (style path; not chat). */
+/**
+ * Three intake themes per preset type.
+ * Form mode still shows these as fields; Shape coach chat treats them as AIM
+ * themes (information to gather naturally), not a rigid Q1→Q2 ladder.
+ */
 export const STYLE_INTAKE_QUESTIONS: Record<MeditationStyleLabel, [string, string, string]> = {
   "Body scan": [
     "Would you like a full head-to-toe scan, or to linger on a few areas?",

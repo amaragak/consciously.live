@@ -2561,7 +2561,7 @@ export default function LibraryView({
                   {exploringProgram.days.length === 1 ? "" : "s"}
                 </span>
                 <Link
-                  to="/meditate/create/from-program"
+                  to="/meditate/create?step=shape&seed=program"
                   className="inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-[14px] font-semibold text-on-accent shadow-sm"
                   style={makeItYourOwnStyle}
                 >
@@ -2617,7 +2617,7 @@ export default function LibraryView({
             </h1>
             {exploringProgram ? (
               <Link
-                to="/meditate/create/from-program"
+                to="/meditate/create?step=shape&seed=program"
                 className={`shrink-0 px-3 py-2.5 ${makeItYourOwnClassName}`}
                 style={makeItYourOwnStyle}
               >
@@ -2918,7 +2918,7 @@ export default function LibraryView({
                           Explore course →
                         </button>
                         <Link
-                          to="/meditate/create/from-program"
+                          to="/meditate/create?step=shape&seed=program"
                           className={
                             isMobileLayout
                               ? "inline-flex h-[38px] flex-1 items-center justify-center whitespace-nowrap rounded-full border border-border bg-card px-2 text-[12px] font-semibold text-foreground"

@@ -11,8 +11,14 @@ import {
   type AdminLibraryCategoryImage,
 } from "@/lib/medimade-api";
 
-/** Admin image slots: Community "All" tile plus each library category. */
-const CATEGORY_IMAGE_SLOTS = ["All", ...LIBRARY_MEDITATION_CATEGORIES] as const;
+/** Admin image slots: Community covers + Create-flow Journal/Program tiles. */
+const CATEGORY_IMAGE_SLOTS = [
+  "All",
+  ...LIBRARY_MEDITATION_CATEGORIES,
+  "Journal",
+  "Program",
+  "Manifest",
+] as const;
 
 async function fileToCompressedJpegDataUrl(file: File): Promise<{
   dataUrl: string;
@@ -200,9 +206,10 @@ export function AdminLibraryCategoriesPanel() {
           Category images
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-          Covers for Library → Community category cards (including All). Upload
-          or generate keeps prior versions so you can switch back. Choose GPT
-          Image 1 Mini or Nano Banana Pro for generate.
+          Covers for Library → Community (including All) and Create → Add
+          context tiles (Journal, Program, Manifest). Upload or generate keeps
+          prior versions so you can switch back. Choose GPT Image 1 Mini or
+          Nano Banana Pro for generate.
         </p>
         <label className="mt-4 flex max-w-xs flex-col gap-1 text-xs font-medium text-muted">
           Image model

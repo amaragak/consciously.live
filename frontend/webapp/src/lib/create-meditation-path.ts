@@ -154,6 +154,10 @@ export function parseCreateMeditationPathname(
   };
 }
 
+/**
+ * Destinations for the one Create flow (Start → Shape → Sound).
+ * Legacy `/by-type` etc. paths still redirect in CreateOneFlow.
+ */
 export function createMeditationHref(opts: {
   path: CreateMeditationPath;
   styleStep?: "type" | "questions";
@@ -161,33 +165,31 @@ export function createMeditationHref(opts: {
   mix?: boolean;
 }): string {
   if (opts.path === "pending") return CREATE_MEDITATE_ROOT;
-  const base =
-    opts.path === "style"
-      ? `${CREATE_MEDITATE_ROOT}/by-type`
-      : opts.path === "freeflow"
-        ? `${CREATE_MEDITATE_ROOT}/from-chat`
-        : opts.path === "journalReflect"
-          ? `${CREATE_MEDITATE_ROOT}/from-journal`
-          : opts.path === "goal"
-            ? `${CREATE_MEDITATE_ROOT}/from-idea`
-            : opts.path === "fromProgram"
-              ? `${CREATE_MEDITATE_ROOT}/from-program`
-              : `${CREATE_MEDITATE_ROOT}/from-prompt`;
-  if (opts.path === "style" && opts.styleStep === "questions") {
-    return opts.mix ? `${base}/questions/mix` : `${base}/questions`;
+  if (opts.mix) return `${CREATE_MEDITATE_ROOT}?step=sound`;
+  if (opts.path === "freeflow") {
+    return `${CREATE_MEDITATE_ROOT}?step=shape&seed=chat`;
+  }
+  if (opts.path === "style") {
+    if (opts.styleStep === "questions") {
+      return `${CREATE_MEDITATE_ROOT}?step=shape&seed=style`;
+    }
+    return `${CREATE_MEDITATE_ROOT}?seed=style`;
+  }
+  if (opts.path === "journalReflect") {
+    return `${CREATE_MEDITATE_ROOT}?fromJournal=1&seed=journal`;
+  }
+  if (opts.path === "goal") {
+    return `${CREATE_MEDITATE_ROOT}?fromDream=1&seed=goal`;
   }
   if (opts.path === "fromProgram") {
     const step = opts.fromProgramStep ?? "pick";
-    if (step === "chat") {
-      return opts.mix ? `${base}/chat/mix` : `${base}/chat`;
+    if (step === "chat" || step === "sessions") {
+      return `${CREATE_MEDITATE_ROOT}?step=shape&seed=program`;
     }
-    if (step === "sessions") {
-      // Mix without chat is invalid — send to chat/mix.
-      return opts.mix ? `${base}/chat/mix` : `${base}/sessions`;
-    }
-    return opts.mix ? `${base}/chat/mix` : base;
+    return `${CREATE_MEDITATE_ROOT}?seed=program`;
   }
-  return opts.mix ? `${base}/mix` : base;
+  // oneShot / prompt
+  return CREATE_MEDITATE_ROOT;
 }
 
 export function createRouteNeedsPriorState(

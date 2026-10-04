@@ -31,13 +31,13 @@ export function SettingsSwitch({
         if (inactive) return;
         onCheckedChange(!checked);
       }}
-      className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-accent-button" : "bg-border"
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "bg-accent-button" : "bg-muted"
       }`}
     >
       <span
-        className={`absolute top-0.5 h-6 w-6 rounded-full bg-background shadow transition-transform ${
-          checked ? "translate-x-5" : "translate-x-0.5"
+        className={`pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${
+          checked ? "translate-x-5" : "translate-x-0"
         }`}
       />
     </button>

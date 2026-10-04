@@ -8,6 +8,7 @@ import { buildMeditationScriptGenerationPrompt } from "./_shared/meditation-scri
 import { coerceClaudeModel } from "./_shared/anthropic-pricing";
 import { recordClaudeUsage } from "./_shared/ai-usage";
 import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
+import { buildCachedMessagesRequestBody } from "./_shared/anthropic-prompt-cache";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
@@ -221,6 +222,14 @@ async function streamHandler(
     const fromProgram = body.fromProgram === true;
     const journalGuidance =
       typeof body.journalGuidance === "string" ? body.journalGuidance.trim() : "";
+    const systemCachedExtra =
+      typeof body.systemCachedExtra === "string"
+        ? body.systemCachedExtra.trim()
+        : "";
+    const systemSupplement =
+      typeof body.systemSupplement === "string"
+        ? body.systemSupplement.trim()
+        : "";
 
     const raw = body.messages;
     if (!Array.isArray(raw) || raw.length === 0) {
@@ -261,11 +270,68 @@ async function streamHandler(
       targetMinutes: meditationTargetMinutes,
       fromProgram,
     });
-    if (journalGuidance) {
+    if (journalGuidance && !systemCachedExtra && !systemSupplement) {
+      // Legacy path: fold guidance into system when caller isn't using cache blocks.
       system += `\n\nThe creator asked you to interpret the journal entry with this guidance (this is not a meditation-style override):\n${journalGuidance}`;
     }
 
     maxTokens = fromProgram ? 512 : 256;
+
+    const cachedExtra = [
+      systemCachedExtra,
+      journalGuidance && (systemCachedExtra || systemSupplement)
+        ? `Journal guidance:\n${journalGuidance}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const upstreamChat = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(
+        buildCachedMessagesRequestBody({
+          model,
+          system,
+          ...(cachedExtra ? { systemCachedExtra: cachedExtra } : {}),
+          ...(systemSupplement ? { systemSupplement } : {}),
+          messages,
+          maxTokens,
+          stream: true,
+        }),
+      ),
+    });
+
+    if (!upstreamChat.ok) {
+      const detail = await upstreamChat.text();
+      writeJsonError(responseStream, upstreamChat.status, {
+        error: "Anthropic request failed",
+        detail: detail.slice(0, 2000),
+      });
+      return;
+    }
+
+    if (!upstreamChat.body) {
+      writeJsonError(responseStream, 502, { error: "Empty body from Anthropic" });
+      return;
+    }
+
+    const outChat = awslambda.HttpResponseStream.from(responseStream, {
+      statusCode: 200,
+      headers: {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+      },
+    });
+    await pipeAnthropicSseToClient(upstreamChat.body, outChat, {
+      model,
+      feature: "claude-chat",
+    });
+    return;
   }
 
   const upstream = await fetch(ANTHROPIC_URL, {

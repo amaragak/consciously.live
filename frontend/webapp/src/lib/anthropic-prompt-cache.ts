@@ -15,7 +15,9 @@ export const ANTHROPIC_EPHEMERAL_CACHE: AnthropicCacheControl = {
 export function buildCachedMessagesRequestBody(params: {
   model: string;
   system: string;
-  /** Uncached add-on (e.g. life-area snapshot). Base `system` stays cacheable. */
+  /** Stable extra system block also cached (must stay identical for hits). */
+  systemCachedExtra?: string;
+  /** Uncached add-on (e.g. life-area snapshot / Start overrides). */
   systemSupplement?: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   maxTokens: number;
@@ -37,6 +39,14 @@ export function buildCachedMessagesRequestBody(params: {
       cache_control: cache,
     },
   ];
+  const cachedExtra = params.systemCachedExtra?.trim();
+  if (cachedExtra) {
+    system.push({
+      type: "text",
+      text: cachedExtra.slice(0, 48_000),
+      cache_control: cache,
+    });
+  }
   const supplement = params.systemSupplement?.trim();
   if (supplement) {
     system.push({

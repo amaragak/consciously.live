@@ -1,12 +1,11 @@
 import { Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CreateWorkspace } from "@/components/create-workspace";
+import { CreateOneFlow } from "@/components/create-one-flow";
 
 function CreateWorkspaceRoute() {
   const [sp] = useSearchParams();
   return (
-    <CreateWorkspace
-      initialDraftSk={sp.get("draftSk")}
+    <CreateOneFlow
       seedJournalContext={sp.get("fromJournal") === "1"}
       seedPlanContext={
         sp.get("fromDream") === "1" ||
@@ -18,8 +17,8 @@ function CreateWorkspaceRoute() {
 }
 
 /**
- * Create Meditation workspace. Nested `/meditate/create/*` paths all mount this
- * same shell so URL/step changes do not remount CreateWorkspace.
+ * Create Meditation — Start → Shape → Sound (one flow).
+ * Nested `/meditate/create/*` paths mount this shell; legacy doors redirect in.
  */
 export function CreatePage() {
   return (

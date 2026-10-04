@@ -405,6 +405,20 @@ export function buildAppBreadcrumbs(
     const crumbs: AppBreadcrumbCrumb[] = [
       { label: "Meditate", href: "/meditate/library/creations" },
     ];
+    // One-flow: Create › Shape / Sound from `?step=`.
+    const createStep = new URLSearchParams(search).get("step")?.toLowerCase();
+    if (
+      (pathname === CREATE_MEDITATE_ROOT ||
+        pathname === `${CREATE_MEDITATE_ROOT}/`) &&
+      (createStep === "shape" || createStep === "sound")
+    ) {
+      crumbs.push({ label: "Create", href: CREATE_MEDITATE_ROOT });
+      crumbs.push({
+        label: createStep === "shape" ? "Shape" : "Sound",
+        href: null,
+      });
+      return crumbs;
+    }
     const parsed =
       pathname.startsWith("/meditate/create")
         ? parseCreateMeditationPathname(pathname)

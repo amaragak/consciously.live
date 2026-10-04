@@ -4403,18 +4403,20 @@ export function CreateWorkspace({
           ? claudeModelChoice
           : CLAUDE_SONNET_45_MODEL_ID,
         fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
-        ...(isLocalDevHost() &&
+        ...(showCreateAudioDevControls &&
         speechifyEmotionVariants &&
         ttsProvider !== "orpheus"
           ? { speechifyEmotionVariants: true }
           : {}),
-        ...(isLocalDevHost() && skipVoiceFx ? { skipVoiceFx: true } : {}),
-        ...(isLocalDevHost() &&
+        ...(showCreateAudioDevControls && skipVoiceFx
+          ? { skipVoiceFx: true }
+          : {}),
+        ...(showCreateAudioDevControls &&
         skipSpeechifyLoudnorm &&
         ttsProvider !== "orpheus"
           ? { skipSpeechifyLoudnorm: true }
           : {}),
-        ...(isLocalDevHost() && ttsProvider !== "orpheus"
+        ...(showCreateAudioDevControls && ttsProvider !== "orpheus"
           ? (() => {
               const n = Number(speechifyRateInput.trim());
               if (!Number.isFinite(n)) return {};
@@ -6128,7 +6130,7 @@ export function CreateWorkspace({
         {workspaceSectionStep === 2 ? (
         <div className="create-audio-scroll flex min-h-0 w-full min-w-0 flex-1 flex-col">
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-4 pb-3 sm:gap-3 sm:px-6 sm:pb-4">
-          {isLocalDevHost() ? (
+          {showCreateAudioDevControls ? (
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
               {ttsProvider !== "orpheus" ? (
                 <>
@@ -6277,9 +6279,9 @@ export function CreateWorkspace({
                           ? "Switch to guided pacing"
                           : "Switch to open sits pacing"
                       }
-                      className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
+                      className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+                      <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
                     </Switch.Root>
                     <span
                       className={`inline-flex items-center gap-1 text-sm font-semibold ${
