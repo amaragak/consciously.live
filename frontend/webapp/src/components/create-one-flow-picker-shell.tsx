@@ -11,6 +11,10 @@ type Props = {
   confirmDisabled?: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  /** Optional secondary action next to the primary confirm (e.g. Use silence). */
+  secondaryLabel?: string;
+  secondaryDisabled?: boolean;
+  onSecondary?: () => void;
   children: ReactNode;
   /** Desktop panel width. Default 520px (Create pickers). */
   panelWidth?: "default" | "voice" | "sound";
@@ -34,6 +38,9 @@ export function CreateOneFlowPickerShell({
   confirmDisabled,
   onClose,
   onConfirm,
+  secondaryLabel,
+  secondaryDisabled,
+  onSecondary,
   children,
   panelWidth = "default",
   bodyClassName,
@@ -147,15 +154,27 @@ export function CreateOneFlowPickerShell({
           <p className="hidden min-w-0 truncate text-[13px] text-foreground md:block">
             {footSummary ?? "\u00a0"}
           </p>
-          <button
-            type="button"
-            disabled={confirmDisabled}
-            onClick={onConfirm}
-            style={PRIMARY_ACCENT_FILL_STYLE}
-            className="h-11 w-full cursor-pointer rounded-full accent-fill-gradient px-5 text-[14px] font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 md:h-[42px] md:w-auto md:min-w-[10rem]"
-          >
-            {confirmLabel}
-          </button>
+          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center">
+            {secondaryLabel && onSecondary ? (
+              <button
+                type="button"
+                disabled={secondaryDisabled}
+                onClick={onSecondary}
+                className="h-11 w-full cursor-pointer rounded-full border border-border bg-card px-5 text-[14px] font-semibold text-foreground transition-opacity hover:bg-background disabled:cursor-not-allowed disabled:opacity-40 md:h-[42px] md:w-auto md:min-w-[8rem]"
+              >
+                {secondaryLabel}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={confirmDisabled}
+              onClick={onConfirm}
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="h-11 w-full cursor-pointer rounded-full accent-fill-gradient px-5 text-[14px] font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 md:h-[42px] md:w-auto md:min-w-[10rem]"
+            >
+              {confirmLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>

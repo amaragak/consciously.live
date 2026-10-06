@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminSoundEqPanel } from "@/components/admin-sound-eq-panel";
 import { SearchInput } from "@/components/search-input";
 import { SoundTrimWaveform } from "@/components/sound-trim-waveform";
 import { playWithLeadBuffer } from "@/lib/audio-lead-buffer";
@@ -1749,6 +1750,9 @@ function SoundRow({
         subcategory: partial.subcategory ?? item.subcategory,
         name: partial.name ?? item.name,
         notes: partial.notes ?? item.notes,
+        ...(partial.adminFavourite !== undefined
+          ? { adminFavourite: partial.adminFavourite }
+          : {}),
       });
       if (res.key !== item.key) onChanged();
     } catch (e) {
@@ -1914,6 +1918,28 @@ function SoundRow({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {item.category === "compositions" ? (
+            <button
+              type="button"
+              disabled={busy !== null}
+              aria-label={
+                item.adminFavourite
+                  ? "Remove from favourites"
+                  : "Mark as favourite"
+              }
+              title="Favourite — shown as Our Picks on the customer picker"
+              onClick={() =>
+                void savePatch({ adminFavourite: !item.adminFavourite })
+              }
+              className={`flex h-9 w-9 items-center justify-center rounded-xl border text-base disabled:opacity-50 ${
+                item.adminFavourite
+                  ? "border-accent bg-accent-soft/60 text-accent-link"
+                  : "border-border bg-background text-muted hover:text-foreground"
+              }`}
+            >
+              {item.adminFavourite ? "★" : "☆"}
+            </button>
+          ) : null}
           <select
             className="rounded-xl border border-border bg-background px-2 py-1.5 text-sm"
             value={item.category}
@@ -2146,6 +2172,22 @@ function SoundRow({
           Trim and fades are previewed live; nothing is written until you apply.
         </span>
       </div>
+      {item.ready && src ? (
+        <AdminSoundEqPanel
+          soundKey={item.key}
+          soundUrl={src}
+          mediaBaseUrl={baseUrl || getMedimadeMediaBaseUrl() || undefined}
+          disabled={busy !== null}
+          onApplied={() => onChanged()}
+          onPreviewStart={() => {
+            const el = audioRef.current;
+            if (el && !el.paused) el.pause();
+            onPlayKeyChange((current) =>
+              current === item.key ? null : current,
+            );
+          }}
+        />
+      ) : null}
       {duration != null ? (
         <p className="mt-1 text-[11px] text-muted">
           {item.originalKey

@@ -81,6 +81,7 @@ import {
 } from "@/lib/meditation-style-intake";
 import {
   createMeditationAudioJob,
+  coerceVoicePrefs,
   fetchLibraryCategoryImages,
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -2317,12 +2318,12 @@ export function CreateOneFlow({
                 programTitle={state.program?.title ?? null}
                 programVoicePrefs={
                   state.program
-                    ? {
-                        energy: state.program.preferredEnergy ?? null,
-                        pitch: state.program.preferredPitch ?? null,
-                        gender: state.program.preferredGender ?? null,
-                        accent: state.program.preferredAccent ?? null,
-                      }
+                    ? coerceVoicePrefs({
+                        energy: state.program.preferredEnergy,
+                        pitch: state.program.preferredPitch,
+                        gender: state.program.preferredGender,
+                        accent: state.program.preferredAccent,
+                      })
                     : null
                 }
                 onPreviewMixPlayingChange={setSoundPreviewPlaying}

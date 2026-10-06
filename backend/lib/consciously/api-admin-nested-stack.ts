@@ -269,6 +269,36 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const adminSoundsEq = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminSoundsEqFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-sounds-eq.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(180),
+        memorySize: 2048,
+        ephemeralStorageSize: cdk.Size.mebibytes(2048),
+        layers: [ffmpegLayer],
+        role,
+        environment: {
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          SOUND_CATALOG_TABLE_NAME: soundCatalogTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminSoundsEqRoute",
+      path: "/admin/sounds/eq",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminSoundsEqIntegration",
+        adminSoundsEq,
+      ),
+    });
+
     const adminFactoryMixes = new lambda_nodejs.NodejsFunction(
       this,
       "AdminFactoryMixesFunction",

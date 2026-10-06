@@ -31,6 +31,7 @@ import {
 } from "./_shared/meditation-cover";
 import { listAllS3Objects } from "./_shared/s3-list-all";
 import {
+  coerceBinauralHz,
   getSoundRow,
   listAllSoundRows,
   normalizeTags,
@@ -40,6 +41,15 @@ import {
   soundIsInCustomerPicker,
   type SoundCatalogRow,
 } from "./_shared/sound-catalog";
+import {
+  loadCompositionTagTypes,
+  saveCompositionTagTypes,
+} from "./_shared/composition-tag-types";
+import {
+  loadCompositionPackNames,
+  normalizeCompositionPackName,
+  saveCompositionPackNames,
+} from "./_shared/composition-pack-names";
 
 const s3 = new S3Client({});
 
@@ -79,6 +89,9 @@ function itemPayload(row: SoundCatalogRow) {
     lastCoverPrompt: row.lastCoverPrompt ?? null,
     coverPromptHistory: row.coverPromptHistory ?? [],
     tags: row.tags ?? [],
+    binauralHz: row.binauralHz ?? null,
+    adminFavourite: row.adminFavourite === true,
+    customPackName: row.customPackName ?? null,
     updatedAt: row.updatedAt || null,
   };
 }
@@ -207,6 +220,9 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
         lastCoverPrompt: null,
         coverPromptHistory: [],
         tags: [],
+        binauralHz: null,
+        adminFavourite: false,
+        customPackName: null,
         updatedAt: null,
       });
     }
@@ -222,9 +238,13 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
   }
 
   items.sort((a, b) => a.name.localeCompare(b.name));
+  const tagTypes = await loadCompositionTagTypes();
+  const packNames = await loadCompositionPackNames();
   return json(200, {
     baseUrl: `https://${cfDomain}`,
     items,
+    tagTypes,
+    packNames,
   });
 }
 
@@ -461,6 +481,20 @@ async function handleClear(
   return json(200, { item: itemPayload(next) });
 }
 
+async function handleSetTagTypes(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const tagTypes = await saveCompositionTagTypes(body.tagTypes);
+  return json(200, { tagTypes });
+}
+
+async function handleSetPackNames(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const packNames = await saveCompositionPackNames(body.packNames);
+  return json(200, { packNames });
+}
+
 async function handleSetTags(
   body: Record<string, unknown>,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -476,6 +510,43 @@ async function handleSetTags(
   const next: SoundCatalogRow = {
     ...row,
     tags: normalizeTags(body.tags),
+    updatedAt: new Date().toISOString(),
+  };
+  await putSoundRow(next);
+  return json(200, { item: itemPayload(next) });
+}
+
+async function handleUpdateMeta(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  if (!key.startsWith("background-audio/")) {
+    return json(400, { error: "key must be a background-audio object" });
+  }
+  const nameRaw = typeof body.name === "string" ? body.name.trim().slice(0, 200) : "";
+  if (!nameRaw) {
+    return json(400, { error: "name is required" });
+  }
+  const row = await ensureCompositionRow(key, nameRaw);
+  const binauralHz =
+    body.binauralHz === undefined
+      ? (row.binauralHz ?? null)
+      : coerceBinauralHz(body.binauralHz);
+  let customPackName = row.customPackName;
+  if (body.customPackName !== undefined) {
+    const n = normalizeCompositionPackName(body.customPackName);
+    customPackName = n || undefined;
+  }
+  const adminFavourite =
+    body.adminFavourite === undefined
+      ? row.adminFavourite === true
+      : body.adminFavourite === true;
+  const next: SoundCatalogRow = {
+    ...row,
+    name: nameRaw,
+    binauralHz,
+    customPackName,
+    adminFavourite: adminFavourite || undefined,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(next);
@@ -505,6 +576,9 @@ export async function handler(
       if (action === "ensure-thumbs") return await handleEnsureThumbs(body);
       if (action === "clear-cover") return await handleClear(body);
       if (action === "set-tags") return await handleSetTags(body);
+      if (action === "update-meta") return await handleUpdateMeta(body);
+      if (action === "set-tag-types") return await handleSetTagTypes(body);
+      if (action === "set-pack-names") return await handleSetPackNames(body);
       return json(400, { error: "Unknown action" });
     }
     return json(405, { error: "Method not allowed" });

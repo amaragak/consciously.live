@@ -9,6 +9,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { normalizeBgAudioCategory, type BgAudioCategory } from "./background-audio-keys";
 import { invalidateBgAudioListCache } from "./bg-audio-list-cache";
+import { normalizeCompositionPackName } from "./composition-pack-names";
 import { coerceSoundSubcategory } from "./sound-taxonomy";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
@@ -149,8 +150,22 @@ export type SoundCatalogRow = {
   lastCoverPrompt?: string;
   /** Prior cover prompts (oldest → newest), used when refining with a change note. */
   coverPromptHistory?: string[];
+  /** Beat / carrier difference frequency in Hz when the bed has a binaural component. */
+  binauralHz?: number | null;
+  /** Admin-curated pick — shown to customers as “Our Picks”. */
+  adminFavourite?: boolean;
+  /** Consumer-facing pack label (not the S3 folder / subcategory). */
+  customPackName?: string;
   updatedAt: string;
 };
+
+export function coerceBinauralHz(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n) || n <= 0 || n > 1000) return null;
+  // Keep one decimal for values like 7.83 Hz; round integers cleanly.
+  return Math.round(n * 10) / 10;
+}
 
 function tableName(): string {
   const n = process.env.SOUND_CATALOG_TABLE_NAME?.trim();
@@ -242,6 +257,12 @@ function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
           .filter(Boolean)
           .slice(-5)
       : undefined,
+    binauralHz: coerceBinauralHz(it.binauralHz),
+    adminFavourite: it.adminFavourite === true ? true : undefined,
+    customPackName: (() => {
+      const n = normalizeCompositionPackName(it.customPackName);
+      return n || undefined;
+    })(),
     updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
   };
 }

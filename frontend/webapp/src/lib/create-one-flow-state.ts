@@ -63,7 +63,7 @@ export type CreateFlowProgramAttachment = {
    */
   sessionLengthOverrides?: Partial<Record<string, MeditationLengthMinutes>>;
   speakerModelId?: string;
-  preferredEnergy?: VoiceEnergy | null;
+  preferredEnergy?: VoiceEnergy[];
   preferredPitch?: VoicePitch | null;
   preferredGender?: VoiceGender | null;
   preferredAccent?: VoiceAccent | null;

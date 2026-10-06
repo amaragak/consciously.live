@@ -2085,6 +2085,8 @@ export type BackgroundAudioItem = {
   /** Normalized WAV sibling for pro-tier / high-quality download when present. */
   wavKey?: string;
   subcategory?: string;
+  /** Catalog tags (lowercase), mainly for compositions / soundscapes. */
+  tags?: string[];
   /** Public CDN URL for composition / soundscape cover art when present. */
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */

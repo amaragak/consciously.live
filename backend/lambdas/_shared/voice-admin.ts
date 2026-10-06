@@ -19,7 +19,7 @@ import {
 import { KNOWN_MEDITATION_TYPES } from "./meditation-types";
 import {
   coerceAccent,
-  coerceEnergy,
+  coerceEnergies,
   coerceGender,
   coercePitch,
   coerceVoicePrefs,
@@ -56,7 +56,7 @@ export type VoiceSpeakerRow = Omit<FishSpeaker, "gender"> & {
   goodFor: string[];
   /** Null when the admin has not specified one. */
   gender: VoiceGender | null;
-  energy: VoiceEnergy | null;
+  energy: VoiceEnergy[];
   pitch: VoicePitch | null;
   accent: VoiceAccent | null;
   /** Speechify SSML rate offset in percent (e.g. -7 → rate="-7%"). Unused for Fish. */
@@ -91,7 +91,7 @@ export function defaultVoiceSpeakers(): VoiceSpeakerRow[] {
     description: "",
     goodFor: [],
     gender: null,
-    energy: null,
+    energy: [],
     pitch: null,
     accent: null,
     speechifyRate: null,
@@ -202,7 +202,7 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
         description: stored.length > 0 ? coerceDescription(it.description) : legacy.description,
         goodFor: stored.length > 0 ? stored : legacy.goodFor,
         gender: coerceGender(it.gender),
-        energy: coerceEnergy(it.energy),
+        energy: coerceEnergies(it.energy),
         pitch: coercePitch(it.pitch),
         accent: coerceAccent(it.accent),
         speechifyRate: coerceSpeechifyRate(it.speechifyRate),
@@ -276,7 +276,7 @@ export async function putVoiceSpeaker(row: {
   description?: string;
   goodFor?: string[] | string;
   gender?: VoiceGender | null;
-  energy?: VoiceEnergy | null;
+  energy?: VoiceEnergy[] | VoiceEnergy | null;
   pitch?: VoicePitch | null;
   accent?: VoiceAccent | null;
   speechifyRate?: number | null;
@@ -309,7 +309,7 @@ export async function putVoiceSpeaker(row: {
     gender:
       row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev?.gender),
     energy:
-      row.energy !== undefined ? coerceEnergy(row.energy) : coerceEnergy(prev?.energy),
+      row.energy !== undefined ? coerceEnergies(row.energy) : coerceEnergies(prev?.energy),
     pitch:
       row.pitch !== undefined ? coercePitch(row.pitch) : coercePitch(prev?.pitch),
     accent:
@@ -368,7 +368,7 @@ export async function renameVoiceSpeaker(
     gender:
       row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev.gender),
     energy:
-      row.energy !== undefined ? coerceEnergy(row.energy) : coerceEnergy(prev.energy),
+      row.energy !== undefined ? coerceEnergies(row.energy) : coerceEnergies(prev.energy),
     pitch:
       row.pitch !== undefined ? coercePitch(row.pitch) : coercePitch(prev.pitch),
     accent:
@@ -527,7 +527,7 @@ export async function listPickerFishSpeakers(): Promise<FishSpeaker[]> {
       ...(s.description ? { description: s.description } : {}),
       ...(s.goodFor.length > 0 ? { goodFor: s.goodFor } : {}),
       ...(s.gender ? { gender: s.gender } : {}),
-      ...(s.energy ? { energy: s.energy } : {}),
+      ...(s.energy.length > 0 ? { energy: s.energy } : {}),
       ...(s.pitch ? { pitch: s.pitch } : {}),
       ...(s.accent ? { accent: s.accent } : {}),
       // Always surface admin rate for Speechify so Create can seed the same

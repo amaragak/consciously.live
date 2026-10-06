@@ -319,6 +319,8 @@ async function handleGet(bucket: string, baseUrl: string | undefined) {
       coverImageKey: meta?.coverImageKey ?? null,
       coverImageUrl: meta?.coverImageUrl ?? null,
       lastCoverPrompt: meta?.lastCoverPrompt ?? null,
+      adminFavourite: meta?.adminFavourite === true,
+      customPackName: meta?.customPackName ?? null,
     };
   }
 
@@ -445,6 +447,14 @@ async function handlePatch(event: APIGatewayProxyEventV2, bucket: string) {
     coverImageThumbUrl: existing?.coverImageThumbUrl,
     lastCoverPrompt: existing?.lastCoverPrompt,
     coverPromptHistory: existing?.coverPromptHistory,
+    binauralHz: existing?.binauralHz,
+    adminFavourite:
+      body.adminFavourite === undefined
+        ? existing?.adminFavourite
+        : body.adminFavourite === true
+          ? true
+          : undefined,
+    customPackName: existing?.customPackName,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(row);

@@ -63,6 +63,8 @@ import {
   listStyleVoicePrefs,
   peekBackgroundAudioCache,
   preloadBackgroundAudioCoverImages,
+  DEFAULT_COMPOSITION_TAG_TYPES,
+  type AdminCompositionTagType,
   type BackgroundAudioItem,
   type FishPauseMode,
   type FishSpeaker,
@@ -73,6 +75,7 @@ import {
 import { FavoriteHeartButton } from "@/components/favorite-heart-button";
 import {
   computeSoundPicks,
+  compositionTagLabel,
   musicLevelToBedGain,
   rankVoicesByPrefs,
   readLastVoiceId,
@@ -88,7 +91,7 @@ import {
   writeLastVoiceId,
 } from "@/lib/create-sound-picks";
 import { useSoundFavorites } from "@/lib/sound-favorites";
-import { isMelodicMusicKey, prettySubcategoryLabel } from "@/lib/sound-taxonomy";
+import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudDrySampleKey,
@@ -147,6 +150,147 @@ type FlowSoundLock = {
   musicLevel: number;
   longerBreaks: boolean;
 };
+
+function SoundscapeCardMeta({
+  item,
+}: {
+  item: BackgroundAudioItem;
+}) {
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1">
+      <span className="inline-flex rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+        {soundscapeCategoryLabel(item)}
+      </span>
+      {item.adminFavourite ? (
+        <span className="inline-flex rounded-full border border-accent/40 bg-accent-soft/50 px-2 py-0.5 text-[11px] font-semibold text-accent-link">
+          Our Picks
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function TagTypeMultiSelect({
+  type,
+  selected,
+  onChange,
+}: {
+  type: AdminCompositionTagType;
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label =
+    selected.length === 0
+      ? type.label
+      : `${type.label} (${selected.length} selected)`;
+
+  function toggle(tag: string) {
+    if (selectedSet.has(tag)) {
+      onChange(selected.filter((t) => t !== tag));
+    } else {
+      onChange([...selected, tag]);
+    }
+  }
+
+  return (
+    <div ref={rootRef} className="relative min-w-0 flex-1 basis-[9.5rem]">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border bg-card px-3 text-left text-[13px] ${
+          selected.length > 0
+            ? "border-accent font-semibold text-foreground"
+            : "border-border font-medium text-muted"
+        }`}
+      >
+        <span className="truncate">{label}</span>
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden
+        >
+          <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          aria-multiselectable
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-56 overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-lg"
+        >
+          {type.tags.length === 0 ? (
+            <p className="px-3 py-2 text-[12px] text-muted">No tags yet</p>
+          ) : (
+            type.tags.map((tag) => {
+              const checked = selectedSet.has(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  role="option"
+                  aria-selected={checked}
+                  onClick={() => toggle(tag)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent-soft/50"
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      checked
+                        ? "border-accent bg-accent text-on-accent"
+                        : "border-border bg-background"
+                    }`}
+                  >
+                    {checked ? (
+                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3">
+                        <path d="M5 12l5 5L20 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : null}
+                  </span>
+                  <span className="truncate">{compositionTagLabel(tag)}</span>
+                </button>
+              );
+            })
+          )}
+          {selected.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="mt-0.5 w-full border-t border-border px-3 py-2 text-left text-[12px] text-muted hover:text-foreground"
+            >
+              Clear {type.label}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 let flowSoundLock: FlowSoundLock | null = null;
 
@@ -210,6 +354,17 @@ export const CreateSoundStep = forwardRef<
   const [voiceFilter, setVoiceFilter] = useState("All");
   const [soundSearch, setSoundSearch] = useState("");
   const [soundCategory, setSoundCategory] = useState("all");
+  /** Selected tags keyed by tag-type id (multi-select within each type). */
+  const [soundTagFilters, setSoundTagFilters] = useState<
+    Record<string, string[]>
+  >({});
+  const [compositionTagTypes, setCompositionTagTypes] = useState<
+    AdminCompositionTagType[]
+  >(
+    () =>
+      peekBackgroundAudioCache()?.compositionTagTypes ??
+      DEFAULT_COMPOSITION_TAG_TYPES,
+  );
   const [soundSort, setSoundSort] = useState<"az" | "recent">("az");
   const [voicePreviewId, setVoicePreviewId] = useState<string | null>(null);
   const [previewMixPlaying, setPreviewMixPlaying] = useState(false);
@@ -331,6 +486,24 @@ export const CreateSoundStep = forwardRef<
     };
   }, []);
 
+  function applyBackgroundAudioData(data: Awaited<ReturnType<typeof listBackgroundAudio>>) {
+    setBackgroundNature(data.nature);
+    setBackgroundMusic(data.music);
+    setCompositions(data.compositions);
+    setBackgroundDrums(data.drums);
+    setBackgroundNoise(data.noise);
+    setFactoryMixes(data.factoryMixes ?? []);
+    setCompositionTagTypes(
+      data.compositionTagTypes?.length
+        ? data.compositionTagTypes
+        : DEFAULT_COMPOSITION_TAG_TYPES,
+    );
+    const fromApi = data.baseUrl?.trim();
+    const envMediaBase = getMedimadeMediaBaseUrl();
+    setMediaBaseUrl(fromApi || envMediaBase || null);
+    preloadBackgroundAudioCoverImages(data);
+  }
+
   useEffect(() => {
     let cancelled = false;
     const envMediaBase = getMedimadeMediaBaseUrl();
@@ -338,15 +511,7 @@ export const CreateSoundStep = forwardRef<
       try {
         const data = await listBackgroundAudio();
         if (cancelled) return;
-        setBackgroundNature(data.nature);
-        setBackgroundMusic(data.music);
-        setCompositions(data.compositions);
-        setBackgroundDrums(data.drums);
-        setBackgroundNoise(data.noise);
-        setFactoryMixes(data.factoryMixes ?? []);
-        const fromApi = data.baseUrl?.trim();
-        setMediaBaseUrl(fromApi || envMediaBase || null);
-        preloadBackgroundAudioCoverImages(data);
+        applyBackgroundAudioData(data);
       } catch {
         if (cancelled) return;
         if (cachedBeds) return;
@@ -1007,30 +1172,60 @@ export const CreateSoundStep = forwardRef<
     : compositionKey
       ? soundscapeCategoryLabel(selectedSound)
       : "Voice only";
-  const soundCategories = useMemo(() => {
-    const ids = new Set<string>();
+  const soundPacks = useMemo(() => {
+    const names = new Set<string>();
     for (const item of compositions) {
-      if (item.subcategory) ids.add(item.subcategory);
+      const pack = item.customPackName?.trim();
+      if (pack) names.add(pack);
     }
-    return [...ids].sort((a, b) =>
-      prettySubcategoryLabel(a).localeCompare(prettySubcategoryLabel(b)),
-    );
+    return [...names].sort((a, b) => a.localeCompare(b));
   }, [compositions]);
+  const soundTagFilterTypes = useMemo(() => {
+    const list =
+      compositionTagTypes.length > 0
+        ? compositionTagTypes
+        : DEFAULT_COMPOSITION_TAG_TYPES;
+    return [...list].sort(
+      (a, b) => a.sort - b.sort || a.label.localeCompare(b.label),
+    );
+  }, [compositionTagTypes]);
+  const activeSoundTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const tags of Object.values(soundTagFilters)) {
+      for (const t of tags) s.add(t);
+    }
+    return s;
+  }, [soundTagFilters]);
+  const hasSoundTagFilters = activeSoundTags.size > 0;
   const recentSoundIds = useMemo(() => readRecentSoundIds(), [changeKind]);
   const filteredSoundscapes = useMemo(() => {
     const q = soundSearch.trim().toLowerCase();
+    const requiredTags = [...activeSoundTags];
     let list = compositions.filter((item) => {
       if (soundCategory === "favourites") {
         if (!favorites.compositionSet.has(item.key)) return false;
-      } else if (soundCategory !== "all" && item.subcategory !== soundCategory) {
+      } else if (soundCategory === "our-picks") {
+        if (!item.adminFavourite) return false;
+      } else if (soundCategory !== "all") {
+        if ((item.customPackName ?? "").trim() !== soundCategory) return false;
+      }
+      const itemTags = item.tags ?? [];
+      // Every selected tag must be present (AND), regardless of type.
+      if (
+        requiredTags.length > 0 &&
+        !requiredTags.every((t) => itemTags.includes(t))
+      ) {
         return false;
       }
       if (!q) return true;
-      const cat = item.subcategory
-        ? prettySubcategoryLabel(item.subcategory)
-        : "";
+      const pack = (item.customPackName ?? "").trim();
+      const tagsBlob = itemTags
+        .flatMap((t) => [t, compositionTagLabel(t).toLowerCase()])
+        .join(" ");
       return (
-        item.name.toLowerCase().includes(q) || cat.toLowerCase().includes(q)
+        item.name.toLowerCase().includes(q) ||
+        pack.toLowerCase().includes(q) ||
+        tagsBlob.includes(q)
       );
     });
     const favRank = (key: string) =>
@@ -1054,12 +1249,28 @@ export const CreateSoundStep = forwardRef<
     compositions,
     soundSearch,
     soundCategory,
+    activeSoundTags,
     soundSort,
     recentSoundIds,
     favorites.compositionSet,
   ]);
   const showSuggestedSounds =
-    !soundSearch.trim() && soundCategory === "all" && soundPanelTab === "library";
+    !soundSearch.trim() &&
+    soundCategory === "all" &&
+    !hasSoundTagFilters &&
+    soundPanelTab === "library";
+
+  function setTypeTagFilter(typeId: string, next: string[]) {
+    setSoundTagFilters((prev) => {
+      if (next.length === 0) {
+        if (!(typeId in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[typeId];
+        return copy;
+      }
+      return { ...prev, [typeId]: next };
+    });
+  }
   const suggestedSoundIds = [
     compositionKey,
     ...soundAlts.filter((id) => id !== SILENCE_SOUND_ID),
@@ -1114,7 +1325,12 @@ export const CreateSoundStep = forwardRef<
     setSoundPanelTab(soundMode === "mixer" ? "mixer" : "library");
     setSoundSearch("");
     setSoundCategory("all");
+    setSoundTagFilters({});
     setChangeKind("sound");
+    // Pull fresh tags / tag types (list payload includes composition tags).
+    void listBackgroundAudio({ refresh: true })
+      .then(applyBackgroundAudioData)
+      .catch(() => undefined);
   }
 
   function commitVoicePanel() {
@@ -1133,6 +1349,13 @@ export const CreateSoundStep = forwardRef<
     rememberRecentSound(
       soundPanelTab === "mixer" ? "mixer" : stagedSoundId,
     );
+    setChangeKind(null);
+    window.setTimeout(() => changeSoundBtnRef.current?.focus(), 0);
+  }
+
+  function commitSilenceFromPanel() {
+    adoptSound(SILENCE_SOUND_ID, false);
+    rememberRecentSound(SILENCE_SOUND_ID);
     setChangeKind(null);
     window.setTimeout(() => changeSoundBtnRef.current?.focus(), 0);
   }
@@ -1645,6 +1868,12 @@ export const CreateSoundStep = forwardRef<
             {filteredVoices.map((v) => {
               const meta = voiceDisplayMeta(v);
               const selected = stagedVoiceId === v.modelId;
+              const prefIdx = (voicePrefs?.speakers ?? []).indexOf(v.modelId);
+              const closestId = filteredVoices.find(
+                (x) =>
+                  x.modelId !== programSpeakerId &&
+                  !(voicePrefs?.speakers ?? []).includes(x.modelId),
+              )?.modelId;
               return (
                 <button
                   key={v.modelId}
@@ -1677,9 +1906,11 @@ export const CreateSoundStep = forwardRef<
                     <span className="rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
                       Program speaker
                     </span>
-                  ) : hasVoicePrefs(voicePrefs) &&
-                    filteredVoices.find((x) => x.modelId !== programSpeakerId)
-                      ?.modelId === v.modelId ? (
+                  ) : prefIdx >= 0 ? (
+                    <span className="rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+                      {prefIdx === 0 ? "Preferred" : `Preferred ${prefIdx + 1}`}
+                    </span>
+                  ) : hasVoicePrefs(voicePrefs) && closestId === v.modelId ? (
                     <span className="rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
                       Closest match
                     </span>
@@ -1715,14 +1946,18 @@ export const CreateSoundStep = forwardRef<
         footSummary={
           soundPanelTab === "mixer"
             ? `${mixerPanelName} · ${mixLayerBits.length} layers`
-            : stagedSoundId === SILENCE_SOUND_ID
-              ? "Silence selected"
-              : compositions.find((c) => c.key === stagedSoundId)?.name
-                ? `${compositions.find((c) => c.key === stagedSoundId)!.name} selected`
-                : undefined
+            : compositions.find((c) => c.key === stagedSoundId)?.name
+              ? `${compositions.find((c) => c.key === stagedSoundId)!.name} selected`
+              : undefined
         }
         confirmLabel={
           soundPanelTab === "mixer" ? "Use this mix" : "Use this sound"
+        }
+        secondaryLabel={
+          soundPanelTab === "library" ? "Use silence" : undefined
+        }
+        onSecondary={
+          soundPanelTab === "library" ? commitSilenceFromPanel : undefined
         }
         onClose={closeChangePanel}
         onConfirm={commitSoundPanel}
@@ -1738,7 +1973,7 @@ export const CreateSoundStep = forwardRef<
               <input
                 value={soundSearch}
                 onChange={(e) => setSoundSearch(e.target.value)}
-                placeholder={`Search ${compositions.length} soundscapes`}
+                placeholder={`Search ${compositions.length} soundscapes by name or tag`}
                 className="min-w-0 flex-1 border-0 bg-transparent text-[14px] outline-none"
               />
             </div>
@@ -1757,18 +1992,19 @@ export const CreateSoundStep = forwardRef<
             ]}
           />
           {soundPanelTab === "library" ? (
-            <div className="flex gap-1.5 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setSoundCategory("all")}
-                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
-                  soundCategory === "all"
-                    ? "border border-accent bg-accent-soft/50 font-semibold"
-                    : "border border-border bg-card"
-                }`}
-              >
-                All
-              </button>
+            <>
+              <div className="flex gap-1.5 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setSoundCategory("all")}
+                  className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                    soundCategory === "all"
+                      ? "border border-accent bg-accent-soft/50 font-semibold"
+                      : "border border-border bg-card"
+                  }`}
+                >
+                  All
+                </button>
               <button
                 type="button"
                 onClick={() => setSoundCategory("favourites")}
@@ -1780,21 +2016,45 @@ export const CreateSoundStep = forwardRef<
               >
                 Favourites
               </button>
-              {soundCategories.map((id) => (
+              <button
+                type="button"
+                onClick={() => setSoundCategory("our-picks")}
+                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                  soundCategory === "our-picks"
+                    ? "border border-accent bg-accent-soft/50 font-semibold"
+                    : "border border-border bg-card"
+                }`}
+              >
+                Our Picks
+              </button>
+              {soundPacks.map((pack) => (
                 <button
-                  key={id}
+                  key={pack}
                   type="button"
-                  onClick={() => setSoundCategory(id)}
+                  onClick={() => setSoundCategory(pack)}
                   className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
-                    soundCategory === id
+                    soundCategory === pack
                       ? "border border-accent bg-accent-soft/50 font-semibold"
                       : "border border-border bg-card"
                   }`}
                 >
-                  {prettySubcategoryLabel(id)}
+                  {pack}
                 </button>
               ))}
             </div>
+              {soundTagFilterTypes.length > 0 ? (
+                <div className="grid grid-cols-2 gap-1.5 md:grid-cols-4">
+                  {soundTagFilterTypes.map((type) => (
+                    <TagTypeMultiSelect
+                      key={type.id}
+                      type={type}
+                      selected={soundTagFilters[type.id] ?? []}
+                      onChange={(next) => setTypeTagFilter(type.id, next)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
         {soundPanelTab === "library" ? (
@@ -1835,9 +2095,7 @@ export const CreateSoundStep = forwardRef<
                           <span className="block truncate font-display text-[15px] leading-[1.25]">
                             {item.name}
                           </span>
-                          <span className="mt-1 inline-flex rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
-                            {soundscapeCategoryLabel(item)}
-                          </span>
+                          <SoundscapeCardMeta item={item} />
                         </span>
                         <FavoriteHeartButton
                           pressed={favorites.compositionSet.has(item.key)}
@@ -1852,7 +2110,7 @@ export const CreateSoundStep = forwardRef<
             ) : null}
             <div className="mb-2 mt-1 flex items-baseline justify-between gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                All soundscapes · {filteredSoundscapes.length + 1}
+                All soundscapes · {filteredSoundscapes.length}
               </p>
               <button
                 type="button"
@@ -1865,26 +2123,6 @@ export const CreateSoundStep = forwardRef<
               </button>
             </div>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setStagedSoundId(SILENCE_SOUND_ID)}
-                className={`flex items-center gap-3 rounded-xl border p-2 text-left ${
-                  stagedSoundId === SILENCE_SOUND_ID
-                    ? "border-2 border-accent p-[7px]"
-                    : "border-border"
-                }`}
-              >
-                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-soft/70 text-accent-link">
-                  <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M11 5 6 9H3v6h3l5 4V5z" />
-                    <path d="m22 9-6 6M16 9l6 6" />
-                  </svg>
-                </span>
-                <span className="min-w-0">
-                  <span className="block font-display text-[15px]">Silence</span>
-                  <span className="text-[12px] text-muted">Voice only</span>
-                </span>
-              </button>
               {filteredSoundscapes.map((item) => {
                 const selected = stagedSoundId === item.key;
                 return (
@@ -1911,9 +2149,7 @@ export const CreateSoundStep = forwardRef<
                       <span className="block truncate font-display text-[15px] leading-[1.25]">
                         {item.name}
                       </span>
-                      <span className="mt-1 inline-flex rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
-                        {soundscapeCategoryLabel(item)}
-                      </span>
+                      <SoundscapeCardMeta item={item} />
                     </span>
                     <FavoriteHeartButton
                       pressed={favorites.compositionSet.has(item.key)}

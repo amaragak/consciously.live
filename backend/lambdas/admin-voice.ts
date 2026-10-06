@@ -35,6 +35,8 @@ import {
   SPEECHIFY_EMOTION_SAMPLE_TAGS,
   type SpeechifyEmotionSampleTag,
 } from "./_shared/speaker-sample-speed";
+import { coerceEnergies } from "./_shared/voice-preferred-traits";
+import type { VoiceEnergy } from "./_shared/fish-speakers";
 import {
   deleteVoiceSpeaker,
   loadPauseBandSeconds,
@@ -206,6 +208,14 @@ function optionalTrait<T>(
   return null;
 }
 
+function optionalEnergies(
+  s: Record<string, unknown>,
+  key: string,
+): VoiceEnergy[] | undefined {
+  if (!Object.prototype.hasOwnProperty.call(s, key)) return undefined;
+  return coerceEnergies(s[key]);
+}
+
 async function handlePatch(event: APIGatewayProxyEventV2) {
   let body: Record<string, unknown> = {};
   try {
@@ -247,7 +257,7 @@ async function handlePatch(event: APIGatewayProxyEventV2) {
           : s.gender === null || s.gender === ""
             ? null
             : undefined,
-      energy: optionalTrait(s, "energy", ["calm", "steady", "bright"] as const),
+      energy: optionalEnergies(s, "energy"),
       pitch: optionalTrait(s, "pitch", ["low", "mid", "high"] as const),
       accent: optionalTrait(s, "accent", ["UK", "US", "African"] as const),
       speechifyRate:

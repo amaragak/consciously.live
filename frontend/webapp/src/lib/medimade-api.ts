@@ -2916,6 +2916,12 @@ export type BackgroundAudioItem = {
   /** Normalized WAV sibling for pro-tier / high-quality download when present. */
   wavKey?: string;
   subcategory?: string;
+  /** Catalog tags (lowercase), mainly for compositions / soundscapes. */
+  tags?: string[];
+  /** Admin-curated pick — “Our Picks” in the soundscape picker. */
+  adminFavourite?: boolean;
+  /** Consumer-facing pack label (not the S3 folder). */
+  customPackName?: string | null;
   /** Public CDN URL for composition / soundscape cover art when present. */
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */
@@ -2937,38 +2943,96 @@ export type BackgroundAudioByCategory = {
   drums: BackgroundAudioItem[];
   noise: BackgroundAudioItem[];
   factoryMixes?: MixerFactoryPreset[];
+  /** Tag type vocabularies for composition / soundscape filters. */
+  compositionTagTypes?: AdminCompositionTagType[];
 };
 
 export type VoiceGender = "male" | "female";
-export type VoiceEnergy = "calm" | "steady" | "bright";
+export const VOICE_ENERGY_VALUES = [
+  "dreamy",
+  "calm",
+  "warm",
+  "steady",
+  "bright",
+  "strong",
+] as const;
+export type VoiceEnergy = (typeof VOICE_ENERGY_VALUES)[number];
 export type VoicePitch = "low" | "mid" | "high";
 export type VoiceAccent = "UK" | "US" | "African";
 
+export const PREFERRED_SPEAKER_SLOT_COUNT = 3;
+
 export type VoicePreferredTraits = {
-  energy: VoiceEnergy | null;
+  energy: VoiceEnergy[];
   pitch: VoicePitch | null;
   gender: VoiceGender | null;
   accent: VoiceAccent | null;
+  /** Ordered speaker model IDs (up to 3). Empty slots omitted. */
+  speakers: string[];
 };
 
 export function emptyVoicePrefs(): VoicePreferredTraits {
-  return { energy: null, pitch: null, gender: null, accent: null };
+  return {
+    energy: [],
+    pitch: null,
+    gender: null,
+    accent: null,
+    speakers: [],
+  };
 }
 
 export function hasVoicePrefs(
   prefs: VoicePreferredTraits | null | undefined,
 ): boolean {
   if (!prefs) return false;
-  return Boolean(prefs.energy || prefs.pitch || prefs.gender || prefs.accent);
+  return Boolean(
+    (prefs.energy && prefs.energy.length > 0) ||
+      prefs.pitch ||
+      prefs.gender ||
+      prefs.accent ||
+      (prefs.speakers && prefs.speakers.length > 0),
+  );
+}
+
+export function coerceEnergy(raw: unknown): VoiceEnergy | null {
+  if (typeof raw !== "string") return null;
+  return (VOICE_ENERGY_VALUES as readonly string[]).includes(raw)
+    ? (raw as VoiceEnergy)
+    : null;
+}
+
+export function coerceEnergies(raw: unknown): VoiceEnergy[] {
+  const found = new Set<VoiceEnergy>();
+  const add = (v: unknown) => {
+    const e = coerceEnergy(v);
+    if (e) found.add(e);
+  };
+  if (Array.isArray(raw)) {
+    for (const v of raw) add(v);
+  } else {
+    add(raw);
+  }
+  return VOICE_ENERGY_VALUES.filter((e) => found.has(e));
+}
+
+export function coercePreferredSpeakers(raw: unknown): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  if (!Array.isArray(raw)) return ids;
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const id = v.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= PREFERRED_SPEAKER_SLOT_COUNT) break;
+  }
+  return ids;
 }
 
 export function coerceVoicePrefs(raw: unknown): VoicePreferredTraits {
   if (!raw || typeof raw !== "object") return emptyVoicePrefs();
   const o = raw as Record<string, unknown>;
-  const energy =
-    o.energy === "calm" || o.energy === "steady" || o.energy === "bright"
-      ? o.energy
-      : null;
   const pitch =
     o.pitch === "low" || o.pitch === "mid" || o.pitch === "high" ? o.pitch : null;
   const gender = o.gender === "male" || o.gender === "female" ? o.gender : null;
@@ -2979,7 +3043,13 @@ export function coerceVoicePrefs(raw: unknown): VoicePreferredTraits {
     else if (n === "us") accent = "US";
     else if (n === "african") accent = "African";
   }
-  return { energy, pitch, gender, accent };
+  return {
+    energy: coerceEnergies(o.energy),
+    pitch,
+    gender,
+    accent,
+    speakers: coercePreferredSpeakers(o.speakers),
+  };
 }
 
 export function coerceStyleVoicePrefsMap(
@@ -3001,7 +3071,7 @@ export type FishSpeaker = {
   goodFor?: string[];
   /** Omitted when not specified. */
   gender?: VoiceGender;
-  energy?: VoiceEnergy;
+  energy?: VoiceEnergy[];
   pitch?: VoicePitch;
   accent?: VoiceAccent;
   /** TTS vendor. Live `/fish/speakers` includes this; hardcoded fallbacks are Fish. */
@@ -3089,7 +3159,7 @@ function fishSpeakersCacheVersion(speakers: FishSpeaker[]): string {
         s.name,
         s.brand ?? "",
         s.gender ?? "",
-        s.energy ?? "",
+        coerceEnergies(s.energy).join(","),
         s.pitch ?? "",
         s.accent ?? "",
         s.description ?? "",
@@ -3102,7 +3172,12 @@ function fishSpeakersCacheVersion(speakers: FishSpeaker[]): string {
 }
 
 function normalizeFishSpeakersList(speakers: FishSpeaker[]): FishSpeaker[] {
-  return speakers.filter((s) => s.modelId !== HIDDEN_FISH_SPEAKER_MODEL_ID);
+  return speakers
+    .filter((s) => s.modelId !== HIDDEN_FISH_SPEAKER_MODEL_ID)
+    .map((s) => {
+      const energy = coerceEnergies(s.energy);
+      return energy.length ? { ...s, energy } : { ...s, energy: undefined };
+    });
 }
 
 function readFishSpeakersLocalCache(): FishSpeakersClientCache | null {
@@ -3743,6 +3818,8 @@ export type AdminSoundItem = {
   coverImageKey?: string | null;
   coverImageUrl?: string | null;
   lastCoverPrompt?: string | null;
+  adminFavourite?: boolean;
+  customPackName?: string | null;
 };
 
 export type AdminSoundsList = {
@@ -3801,6 +3878,62 @@ export async function listAdminSounds(): Promise<AdminSoundsList> {
   };
 }
 
+export type AdminCompositionTagType = {
+  id: string;
+  label: string;
+  tags: string[];
+  sort: number;
+};
+
+/** Fallback when the list API has not returned tag types yet. */
+export const DEFAULT_COMPOSITION_TAG_TYPES: AdminCompositionTagType[] = [
+  {
+    id: "brainwave",
+    label: "Brainwave",
+    tags: ["alpha", "beta", "theta", "delta", "gamma", "binaural"],
+    sort: 0,
+  },
+  {
+    id: "instruments",
+    label: "Instruments",
+    tags: [
+      "bowl",
+      "chime",
+      "gong",
+      "pan flute",
+      "synth pads",
+      "bass",
+      "arpeggios",
+      "drone",
+      "pulse",
+      "white noise",
+      "voice",
+    ],
+    sort: 1,
+  },
+  {
+    id: "nature",
+    label: "Nature",
+    tags: ["birds", "water", "waves", "fire", "animals", "nature", "nature-led"],
+    sort: 2,
+  },
+  {
+    id: "mood",
+    label: "Mood",
+    tags: [
+      "dreamy",
+      "eerie",
+      "majestic",
+      "melodic",
+      "simple",
+      "distant",
+      "retro",
+      "world",
+    ],
+    sort: 3,
+  },
+];
+
 export type AdminCompositionCoverItem = {
   key: string;
   name: string;
@@ -3812,6 +3945,10 @@ export type AdminCompositionCoverItem = {
   lastCoverPrompt: string | null;
   coverPromptHistory: string[];
   tags: string[];
+  /** Beat frequency in Hz when the bed has a binaural component; null if unset. */
+  binauralHz: number | null;
+  adminFavourite: boolean;
+  customPackName: string | null;
   updatedAt: string | null;
 };
 
@@ -3859,6 +3996,20 @@ function parseAdminCompositionCoverItem(
           .map((t) => t.trim().toLowerCase())
           .filter(Boolean)
       : [],
+    binauralHz: (() => {
+      if (o.binauralHz == null || o.binauralHz === "") return null;
+      const n =
+        typeof o.binauralHz === "number"
+          ? o.binauralHz
+          : Number(String(o.binauralHz).trim());
+      if (!Number.isFinite(n) || n <= 0 || n > 1000) return null;
+      return Math.round(n * 10) / 10;
+    })(),
+    adminFavourite: o.adminFavourite === true,
+    customPackName:
+      typeof o.customPackName === "string" && o.customPackName.trim()
+        ? o.customPackName.trim().slice(0, 48)
+        : null,
     updatedAt:
       typeof o.updatedAt === "string" && o.updatedAt.trim()
         ? o.updatedAt.trim()
@@ -3866,9 +4017,32 @@ function parseAdminCompositionCoverItem(
   };
 }
 
+function parseAdminCompositionTagType(
+  raw: unknown,
+): AdminCompositionTagType | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const label = typeof o.label === "string" ? o.label.trim() : "";
+  if (!id || !label) return null;
+  const tags = Array.isArray(o.tags)
+    ? o.tags
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  const sort =
+    typeof o.sort === "number" && Number.isFinite(o.sort)
+      ? Math.floor(o.sort)
+      : 0;
+  return { id, label, tags, sort };
+}
+
 export async function listAdminCompositionCovers(): Promise<{
   baseUrl?: string;
   items: AdminCompositionCoverItem[];
+  tagTypes: AdminCompositionTagType[];
+  packNames: string[];
 }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
@@ -3878,6 +4052,8 @@ export async function listAdminCompositionCovers(): Promise<{
   const data = (await res.json()) as {
     baseUrl?: string;
     items?: unknown[];
+    tagTypes?: unknown[];
+    packNames?: unknown[];
     error?: string;
     detail?: string;
   };
@@ -3889,7 +4065,19 @@ export async function listAdminCompositionCovers(): Promise<{
     const item = parseAdminCompositionCoverItem(raw);
     if (item) items.push(item);
   }
-  return { baseUrl: data.baseUrl, items };
+  const tagTypes: AdminCompositionTagType[] = [];
+  for (const raw of data.tagTypes ?? []) {
+    const t = parseAdminCompositionTagType(raw);
+    if (t) tagTypes.push(t);
+  }
+  tagTypes.sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label));
+  const packNames = Array.isArray(data.packNames)
+    ? data.packNames
+        .filter((n): n is string => typeof n === "string")
+        .map((n) => n.trim().slice(0, 48))
+        .filter(Boolean)
+    : [];
+  return { baseUrl: data.baseUrl, items, tagTypes, packNames };
 }
 
 async function postAdminCompositionCoverAction(
@@ -3952,6 +4140,83 @@ export async function setAdminCompositionCoverTags(params: {
     tags: params.tags,
     title: params.title ?? "",
   });
+}
+
+export async function updateAdminCompositionCoverMeta(params: {
+  key: string;
+  name: string;
+  /** Pass null to clear; omit to leave unchanged on the server. */
+  binauralHz?: number | null;
+  customPackName?: string | null;
+  adminFavourite?: boolean;
+}): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "update-meta",
+    key: params.key,
+    name: params.name,
+    ...(params.binauralHz !== undefined
+      ? { binauralHz: params.binauralHz }
+      : {}),
+    ...(params.customPackName !== undefined
+      ? { customPackName: params.customPackName }
+      : {}),
+    ...(params.adminFavourite !== undefined
+      ? { adminFavourite: params.adminFavourite }
+      : {}),
+  });
+}
+
+export async function saveAdminCompositionTagTypes(
+  tagTypes: AdminCompositionTagType[],
+): Promise<AdminCompositionTagType[]> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "set-tag-types", tagTypes }),
+  });
+  const data = (await res.json()) as {
+    tagTypes?: unknown[];
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const out: AdminCompositionTagType[] = [];
+  for (const raw of data.tagTypes ?? []) {
+    const t = parseAdminCompositionTagType(raw);
+    if (t) out.push(t);
+  }
+  out.sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label));
+  return out;
+}
+
+export async function saveAdminCompositionPackNames(
+  packNames: string[],
+): Promise<string[]> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "set-pack-names", packNames }),
+  });
+  const data = (await res.json()) as {
+    packNames?: unknown[];
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return Array.isArray(data.packNames)
+    ? data.packNames
+        .filter((n): n is string => typeof n === "string")
+        .map((n) => n.trim().slice(0, 48))
+        .filter(Boolean)
+    : [];
 }
 
 /** Resize existing full covers → thumbs. Does not call AI image gen. */
@@ -4096,6 +4361,7 @@ export async function patchAdminSound(body: {
   tags?: string[];
   name?: string;
   notes?: string;
+  adminFavourite?: boolean;
 }): Promise<{ key: string }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
@@ -4380,6 +4646,30 @@ export async function trimAdminSound(body: {
   }
 }
 
+export async function applyAdminSoundEq(body: {
+  key: string;
+  bands: Array<{
+    type: string;
+    frequency: number;
+    Q: number;
+    gain: number;
+    enabled?: boolean;
+  }>;
+}): Promise<void> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/sounds/eq`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as { error?: string; detail?: string };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  invalidateBackgroundAudioClientCache();
+}
+
 export type VoiceSpeakerBrand = "fish" | "speechify";
 
 export type SpeechifyEmotionSampleTag = "neutral" | "warm" | "calm";
@@ -4393,7 +4683,7 @@ export type AdminVoiceSpeaker = {
   description?: string;
   goodFor?: string[];
   gender?: VoiceGender | null;
-  energy?: VoiceEnergy | null;
+  energy?: VoiceEnergy[];
   pitch?: VoicePitch | null;
   accent?: VoiceAccent | null;
   /** Speechify rate offset in percent (e.g. -7). Unused for Fish. */
@@ -4433,6 +4723,7 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
     speakers: (data.speakers ?? []).map((s) => ({
       ...s,
       brand: s.brand === "speechify" ? "speechify" : "fish",
+      energy: coerceEnergies(s.energy),
       speechifyRate:
         typeof s.speechifyRate === "number" && Number.isFinite(s.speechifyRate)
           ? Math.round(s.speechifyRate)
@@ -4924,7 +5215,7 @@ export async function patchAdminVoice(body: {
     description?: string;
     goodFor?: string[];
     gender?: VoiceGender | null;
-    energy?: VoiceEnergy | null;
+    energy?: VoiceEnergy[];
     pitch?: VoicePitch | null;
     accent?: VoiceAccent | null;
     speechifyRate?: number | null;
@@ -4951,7 +5242,13 @@ export async function patchAdminVoice(body: {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
   invalidateFishSpeakersClientCache();
-  return data;
+  return {
+    pauses: data.pauses,
+    styleVoicePrefs: data.styleVoicePrefs,
+    speaker: data.speaker
+      ? { ...data.speaker, energy: coerceEnergies(data.speaker.energy) }
+      : undefined,
+  };
 }
 
 export async function deleteAdminVoiceSpeaker(modelId: string): Promise<void> {
@@ -5370,7 +5667,7 @@ export type AdminProgram = {
   published: boolean;
   /** Fish speaker shared by every lesson. */
   speakerModelId: string;
-  preferredEnergy: VoiceEnergy | null;
+  preferredEnergy: VoiceEnergy[];
   preferredPitch: VoicePitch | null;
   preferredGender: VoiceGender | null;
   preferredAccent: VoiceAccent | null;
@@ -5537,7 +5834,7 @@ export type LibraryProgram = {
   days: LibraryProgramDay[];
   coverImageUrl: string | null;
   speakerModelId: string;
-  preferredEnergy: VoiceEnergy | null;
+  preferredEnergy: VoiceEnergy[];
   preferredPitch: VoicePitch | null;
   preferredGender: VoiceGender | null;
   preferredAccent: VoiceAccent | null;
@@ -6126,7 +6423,7 @@ export async function generateAdminProgramDayDescription(params: {
 /** Treat day descriptions shorter than this as missing (auto-generate). */
 export const PROGRAM_DAY_DESCRIPTION_MIN_CHARS = 100;
 
-const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v1";
+const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v4";
 
 type BgAudioClientCache = {
   version: string;
@@ -6236,20 +6533,52 @@ function parseBackgroundAudioPayload(
     drums?: BackgroundAudioItem[];
     noise?: BackgroundAudioItem[];
     factoryMixes?: unknown[];
+    compositionTagTypes?: unknown[];
   },
 ): BackgroundAudioByCategory {
+  const withTags = (items: BackgroundAudioItem[] | undefined): BackgroundAudioItem[] =>
+    (items ?? []).map((item) => {
+      const tags = Array.isArray(item.tags)
+        ? item.tags
+            .filter((t): t is string => typeof t === "string")
+            .map((t) => t.trim().toLowerCase())
+            .filter(Boolean)
+        : [];
+      const customPackName =
+        typeof item.customPackName === "string" && item.customPackName.trim()
+          ? item.customPackName.trim().slice(0, 48)
+          : null;
+      return {
+        ...item,
+        tags: tags.length > 0 ? tags : undefined,
+        adminFavourite: item.adminFavourite === true ? true : undefined,
+        customPackName: customPackName || undefined,
+      };
+    });
+  const compositionTagTypes: AdminCompositionTagType[] = [];
+  for (const raw of data.compositionTagTypes ?? []) {
+    const t = parseAdminCompositionTagType(raw);
+    if (t) compositionTagTypes.push(t);
+  }
+  compositionTagTypes.sort(
+    (a, b) => a.sort - b.sort || a.label.localeCompare(b.label),
+  );
   return {
     baseUrl: data.baseUrl,
-    nature: data.ambience ?? data.nature ?? [],
-    music: data.music ?? [],
-    compositions: data.compositions ?? [],
-    drums: data.drums ?? [],
-    noise: data.noise ?? [],
+    nature: withTags(data.ambience ?? data.nature),
+    music: withTags(data.music),
+    compositions: withTags(data.compositions),
+    drums: withTags(data.drums),
+    noise: withTags(data.noise),
     factoryMixes: Array.isArray(data.factoryMixes)
       ? data.factoryMixes
           .map(normalizeFactoryPreset)
           .filter((x): x is MixerFactoryPreset => Boolean(x))
       : undefined,
+    compositionTagTypes:
+      compositionTagTypes.length > 0
+        ? compositionTagTypes
+        : DEFAULT_COMPOSITION_TAG_TYPES,
   };
 }
 

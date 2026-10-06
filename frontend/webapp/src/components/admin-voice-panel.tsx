@@ -7,6 +7,7 @@ import {
   generateAdminVoiceSample,
   listAdminVoice,
   patchAdminVoice,
+  coerceEnergies,
   type SpeechifyEmotionSampleTag,
   type VoiceAccent,
   type VoiceEnergy,
@@ -276,7 +277,17 @@ export function AdminVoicePanel() {
                 speaker={s}
                 generateDisabled={sampleBusy}
                 onError={setError}
-                onChanged={() => void load()}
+                onReload={() => void load()}
+                onSpeakerSaved={(row, previousModelId) => {
+                  setSpeakers((prev) =>
+                    prev.map((cur) =>
+                      cur.modelId === previousModelId ||
+                      cur.modelId === row.modelId
+                        ? { ...cur, ...row }
+                        : cur,
+                    ),
+                  );
+                }}
               />
             ))
           )}
@@ -308,12 +319,14 @@ function SpeakerRow({
   speaker,
   generateDisabled,
   onError,
-  onChanged,
+  onReload,
+  onSpeakerSaved,
 }: {
   speaker: AdminVoiceSpeaker;
   generateDisabled?: boolean;
   onError: (msg: string | null) => void;
-  onChanged: () => void;
+  onReload: () => void;
+  onSpeakerSaved: (row: AdminVoiceSpeaker, previousModelId: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [name, setName] = useState(speaker.name);
@@ -325,7 +338,9 @@ function SpeakerRow({
   /** Edited as free text; only split on commas when it is sent. */
   const [goodFor, setGoodFor] = useState(joinGoodFor(speaker.goodFor));
   const [gender, setGender] = useState<VoiceGender | null>(speaker.gender ?? null);
-  const [energy, setEnergy] = useState<VoiceEnergy | null>(speaker.energy ?? null);
+  const [energy, setEnergy] = useState<VoiceEnergy[]>(() =>
+    coerceEnergies(speaker.energy),
+  );
   const [pitch, setPitch] = useState<VoicePitch | null>(speaker.pitch ?? null);
   const [accent, setAccent] = useState<VoiceAccent | null>(speaker.accent ?? null);
   const [speechifyRate, setSpeechifyRate] = useState(
@@ -336,6 +351,7 @@ function SpeakerRow({
   const [playing, setPlaying] = useState(false);
 
   const savedGoodFor = joinGoodFor(speaker.goodFor);
+  const energyKey = coerceEnergies(speaker.energy).join(",");
 
   useEffect(() => {
     setName(speaker.name);
@@ -344,7 +360,7 @@ function SpeakerRow({
     setDescription(speaker.description ?? "");
     setGoodFor(savedGoodFor);
     setGender(speaker.gender ?? null);
-    setEnergy(speaker.energy ?? null);
+    setEnergy(coerceEnergies(speaker.energy));
     setPitch(speaker.pitch ?? null);
     setAccent(speaker.accent ?? null);
     setSpeechifyRate(
@@ -358,7 +374,7 @@ function SpeakerRow({
     speaker.description,
     savedGoodFor,
     speaker.gender,
-    speaker.energy,
+    energyKey,
     speaker.pitch,
     speaker.accent,
     speaker.speechifyRate,
@@ -381,10 +397,32 @@ function SpeakerRow({
     };
   }, [speaker.sampleUrl]);
 
+  function applySavedSpeaker(
+    returned: AdminVoiceSpeaker | undefined,
+    sentEnergy: VoiceEnergy[],
+    previousModelId: string,
+  ) {
+    if (!returned) {
+      onReload();
+      return;
+    }
+    const energyOut = coerceEnergies(returned.energy);
+    onSpeakerSaved(
+      {
+        ...returned,
+        energy:
+          energyOut.length > 0 || sentEnergy.length === 0
+            ? energyOut
+            : sentEnergy,
+      },
+      previousModelId,
+    );
+  }
+
   /** `next` lets a control save the value it just set, ahead of the re-render. */
   async function save(next?: {
     gender?: VoiceGender | null;
-    energy?: VoiceEnergy | null;
+    energy?: VoiceEnergy[];
     pitch?: VoicePitch | null;
     accent?: VoiceAccent | null;
     brand?: VoiceSpeakerBrand;
@@ -394,10 +432,12 @@ function SpeakerRow({
   }) {
     setBusy("save");
     onError(null);
+    const sentEnergy = next?.energy !== undefined ? next.energy : energy;
+    const previousModelId = speaker.modelId;
     try {
-      await patchAdminVoice({
+      const res = await patchAdminVoice({
         speaker: {
-          previousModelId: speaker.modelId,
+          previousModelId,
           modelId: (next?.modelId ?? modelId).trim() || speaker.modelId,
           name: (next?.name ?? name).trim() || speaker.name,
           brand: next?.brand ?? brand,
@@ -406,7 +446,7 @@ function SpeakerRow({
           description,
           goodFor: splitGoodFor(goodFor),
           gender: next?.gender !== undefined ? next.gender : gender,
-          energy: next?.energy !== undefined ? next.energy : energy,
+          energy: sentEnergy,
           pitch: next?.pitch !== undefined ? next.pitch : pitch,
           accent: next?.accent !== undefined ? next.accent : accent,
           speechifyRate:
@@ -415,7 +455,7 @@ function SpeakerRow({
               : parseSpeechifyRate(speechifyRate),
         },
       });
-      onChanged();
+      applySavedSpeaker(res.speaker, sentEnergy, previousModelId);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not save speaker");
     } finally {
@@ -428,7 +468,7 @@ function SpeakerRow({
     onError(null);
     try {
       await generateAdminVoiceSample(speaker.modelId, { force: true });
-      onChanged();
+      onReload();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not generate sample");
     } finally {
@@ -444,7 +484,7 @@ function SpeakerRow({
         force: true,
         emotion: tag ?? "all",
       });
-      onChanged();
+      onReload();
     } catch (e) {
       onError(
         e instanceof Error ? e.message : "Could not generate emotion samples",
@@ -460,7 +500,7 @@ function SpeakerRow({
     onError(null);
     try {
       await deleteAdminVoiceSpeaker(speaker.modelId);
-      onChanged();
+      onReload();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not delete speaker");
     } finally {
@@ -633,7 +673,9 @@ function SpeakerRow({
                     speechifyRate: parseSpeechifyRate(speechifyRate),
                   },
                 })
-                  .then(() => onChanged())
+                  .then((res) =>
+                    applySavedSpeaker(res.speaker, energy, speaker.modelId),
+                  )
                   .catch((err) =>
                     onError(err instanceof Error ? err.message : "Could not update"),
                   );

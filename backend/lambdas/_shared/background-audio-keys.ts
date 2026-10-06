@@ -104,6 +104,12 @@ export type ListedBgItem = {
   size: number | null;
   wavKey?: string;
   subcategory?: string;
+  /** Catalog tags (compositions / beds), lowercase. */
+  tags?: string[];
+  /** Admin-curated pick — “Our Picks” in the customer soundscape picker. */
+  adminFavourite?: boolean;
+  /** Consumer-facing pack label (not the S3 folder). */
+  customPackName?: string | null;
   /** Public CDN URL for composition / soundscape cover art when present. */
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */

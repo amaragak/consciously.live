@@ -1,5 +1,13 @@
 export type VoiceGender = "male" | "female";
-export type VoiceEnergy = "calm" | "steady" | "bright";
+export const VOICE_ENERGY_VALUES = [
+  "dreamy",
+  "calm",
+  "warm",
+  "steady",
+  "bright",
+  "strong",
+] as const;
+export type VoiceEnergy = (typeof VOICE_ENERGY_VALUES)[number];
 export type VoicePitch = "low" | "mid" | "high";
 export type VoiceAccent = "UK" | "US" | "African";
 
@@ -11,7 +19,7 @@ export type FishSpeaker = {
   goodFor?: string[];
   /** Omitted when not specified. */
   gender?: VoiceGender;
-  energy?: VoiceEnergy;
+  energy?: VoiceEnergy | VoiceEnergy[];
   pitch?: VoicePitch;
   accent?: VoiceAccent;
   /** TTS vendor. Omitted on the hardcoded Fish fallback list. */

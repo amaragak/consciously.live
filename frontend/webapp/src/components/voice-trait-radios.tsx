@@ -6,9 +6,12 @@ import type {
 } from "@/lib/medimade-api";
 
 export const VOICE_ENERGY_OPTIONS = [
+  ["dreamy", "Dreamy"],
   ["calm", "Calm"],
+  ["warm", "Warm"],
   ["steady", "Steady"],
   ["bright", "Bright"],
+  ["strong", "Strong"],
 ] as const satisfies ReadonlyArray<readonly [VoiceEnergy, string]>;
 
 export const VOICE_PITCH_OPTIONS = [
@@ -77,6 +80,57 @@ export function VoiceTraitRadios<T extends string>({
   );
 }
 
+export function VoiceTraitChecks<T extends string>({
+  legend,
+  values,
+  options,
+  disabled,
+  onChange,
+}: {
+  legend: string;
+  values: readonly T[];
+  options: ReadonlyArray<readonly [T, string]>;
+  disabled: boolean;
+  onChange: (next: T[]) => void;
+}) {
+  const selected = new Set(values);
+  function toggle(val: T) {
+    const next = options
+      .map(([id]) => id)
+      .filter((id) => (id === val ? !selected.has(id) : selected.has(id)));
+    onChange(next);
+  }
+  return (
+    <fieldset className="text-xs font-medium text-muted">
+      <legend>{legend}</legend>
+      <div className="mt-1 flex flex-wrap gap-3">
+        {options.map(([val, label]) => (
+          <label
+            key={val}
+            className="flex cursor-pointer items-center gap-1.5 font-normal text-foreground"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(val)}
+              disabled={disabled}
+              onChange={() => toggle(val)}
+            />
+            {label}
+          </label>
+        ))}
+        <label className="flex cursor-pointer items-center gap-1.5 font-normal text-foreground">
+          <input
+            type="checkbox"
+            checked={values.length === 0}
+            disabled={disabled}
+            onChange={() => onChange([])}
+          />
+          Not specified
+        </label>
+      </div>
+    </fieldset>
+  );
+}
 export function VoicePreferredTraitFields({
   id,
   energy,
@@ -90,22 +144,21 @@ export function VoicePreferredTraitFields({
   onAccent,
 }: {
   id: string;
-  energy: VoiceEnergy | null;
+  energy: VoiceEnergy[];
   pitch: VoicePitch | null;
   gender: VoiceGender | null;
   accent: VoiceAccent | null;
   disabled: boolean;
-  onEnergy: (next: VoiceEnergy | null) => void;
+  onEnergy: (next: VoiceEnergy[]) => void;
   onPitch: (next: VoicePitch | null) => void;
   onGender: (next: VoiceGender | null) => void;
   onAccent: (next: VoiceAccent | null) => void;
 }) {
   return (
     <fieldset className="space-y-3">
-      <VoiceTraitRadios
+      <VoiceTraitChecks
         legend="Energy"
-        name={`energy-${id}`}
-        value={energy}
+        values={energy}
         options={VOICE_ENERGY_OPTIONS}
         disabled={disabled}
         onChange={onEnergy}

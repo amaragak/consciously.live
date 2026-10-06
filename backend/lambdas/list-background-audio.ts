@@ -11,8 +11,9 @@ import {
   type BgAudioCategory,
   type ListedBgItem,
 } from "./_shared/background-audio-keys";
-import { listAllSoundRows, soundIsInCustomerPicker } from "./_shared/sound-catalog";
+import { listAllSoundRows, normalizeTags, soundIsInCustomerPicker } from "./_shared/sound-catalog";
 import { listFactoryMixes } from "./_shared/factory-mixes";
+import { loadCompositionTagTypes } from "./_shared/composition-tag-types";
 import {
   getBgAudioListCache,
   getBgAudioListCacheVersion,
@@ -164,6 +165,9 @@ async function buildBackgroundAudioPayload(params: {
   const subcategoryOverride = new Map<string, string>();
   const coverUrlByKey = new Map<string, string>();
   const coverThumbUrlByKey = new Map<string, string>();
+  const tagsByKey = new Map<string, string[]>();
+  const adminFavouriteByKey = new Map<string, boolean>();
+  const customPackByKey = new Map<string, string>();
   const catalogConfigured = Boolean(process.env.SOUND_CATALOG_TABLE_NAME);
   const catalogRows = catalogConfigured
     ? await listAllSoundRows().catch((e) => {
@@ -174,6 +178,12 @@ async function buildBackgroundAudioPayload(params: {
   const factoryMixes = catalogConfigured
     ? await listFactoryMixes().catch((e) => {
         console.warn("factory mixes overlay skipped", e);
+        return [];
+      })
+    : [];
+  const compositionTagTypes = catalogConfigured
+    ? await loadCompositionTagTypes().catch((e) => {
+        console.warn("composition tag types overlay skipped", e);
         return [];
       })
     : [];
@@ -218,6 +228,26 @@ async function buildBackgroundAudioPayload(params: {
       coverThumbUrlByKey.set(`${stem}.mp3`, thumbUrl);
       coverThumbUrlByKey.set(`${stem}.wav`, thumbUrl);
     }
+    const tags = normalizeTags(row.tags);
+    if (tags.length > 0) {
+      tagsByKey.set(row.sk, tags);
+      const stem = row.sk.replace(/\.(mp3|wav)$/i, "");
+      tagsByKey.set(`${stem}.mp3`, tags);
+      tagsByKey.set(`${stem}.wav`, tags);
+    }
+    if (row.adminFavourite === true) {
+      adminFavouriteByKey.set(row.sk, true);
+      const stem = row.sk.replace(/\.(mp3|wav)$/i, "");
+      adminFavouriteByKey.set(`${stem}.mp3`, true);
+      adminFavouriteByKey.set(`${stem}.wav`, true);
+    }
+    const pack = (row.customPackName ?? "").trim();
+    if (pack) {
+      customPackByKey.set(row.sk, pack);
+      const stem = row.sk.replace(/\.(mp3|wav)$/i, "");
+      customPackByKey.set(`${stem}.mp3`, pack);
+      customPackByKey.set(`${stem}.wav`, pack);
+    }
   }
 
   function coverForKey(key: string): string | null {
@@ -234,6 +264,34 @@ async function buildBackgroundAudioPayload(params: {
       coverThumbUrlByKey.get(key) ??
       coverThumbUrlByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
       coverThumbUrlByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
+      null
+    );
+  }
+
+  function tagsForKey(key: string): string[] {
+    return (
+      tagsByKey.get(key) ??
+      tagsByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
+      tagsByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
+      []
+    );
+  }
+
+  function adminFavouriteForKey(key: string): boolean {
+    return (
+      adminFavouriteByKey.get(key) === true ||
+      adminFavouriteByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ===
+        true ||
+      adminFavouriteByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ===
+        true
+    );
+  }
+
+  function customPackForKey(key: string): string | null {
+    return (
+      customPackByKey.get(key) ??
+      customPackByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
+      customPackByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
       null
     );
   }
@@ -302,6 +360,9 @@ async function buildBackgroundAudioPayload(params: {
       subcategory:
         subcategoryOverride.get(row.sk) ??
         coerceSoundSubcategory(cat, inferSoundSubcategory(cat, row.packPath || row.sk)),
+      tags: tagsForKey(row.sk),
+      adminFavourite: adminFavouriteForKey(row.sk) || undefined,
+      customPackName: customPackForKey(row.sk),
       coverImageUrl: coverForKey(row.sk),
       coverImageThumbUrl: coverThumbForKey(row.sk),
     });
@@ -316,6 +377,9 @@ async function buildBackgroundAudioPayload(params: {
     }
     buckets[c] = merged.map((it) => {
       const stem = it.key.replace(/\.(mp3|wav)$/i, "");
+      const tags = tagsForKey(it.key);
+      const pack = customPackForKey(it.key);
+      const fav = adminFavouriteForKey(it.key);
       return {
         ...it,
         name:
@@ -326,6 +390,9 @@ async function buildBackgroundAudioPayload(params: {
         subcategory:
           subByStem.get(stem) ??
           coerceSoundSubcategory(c, inferSoundSubcategory(c, it.key)),
+        ...(tags.length > 0 ? { tags } : {}),
+        ...(fav ? { adminFavourite: true } : {}),
+        ...(pack ? { customPackName: pack } : {}),
         coverImageUrl: coverForKey(it.key),
         coverImageThumbUrl: coverThumbForKey(it.key),
       };
@@ -354,6 +421,7 @@ async function buildBackgroundAudioPayload(params: {
     drums: buckets.drums,
     noise: buckets.noise,
     factoryMixes,
+    compositionTagTypes,
     /** @deprecated flat list; prefer nature/music/drums/noise */
     items: [
       ...buckets.ambience,

@@ -27,6 +27,7 @@ import {
   MEDITATION_TARGET_MINUTES,
 } from "@/lib/medimade-api";
 import { VoicePreferredTraitFields } from "@/components/voice-trait-radios";
+import { SpeechifySpeakerSelect } from "@/components/speechify-speaker-select";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { packageOneShotPrompt } from "@/lib/homepage-one-shot-handoff";
@@ -317,6 +318,14 @@ export function AdminProgramsPanel() {
     return coverBusyKeysRef.current.has(key);
   }
   const [speakers, setSpeakers] = useState<FishSpeaker[]>([]);
+  /** Speechify-only options for the program speaker picker. */
+  const speechifySpeakers = useMemo(
+    () =>
+      speakers
+        .filter((s) => s.brand === "speechify")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [speakers],
+  );
   /** Music channel list — compositions already folded in as a subcategory. */
   const [musicItems, setMusicItems] = useState<BackgroundAudioItem[]>([]);
   const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(null);
@@ -1437,52 +1446,42 @@ export function AdminProgramsPanel() {
                   <span className="mb-1 block text-muted">
                     Speaker (all lessons)
                   </span>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={draft.speakerModelId}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        if (playingSpeakerId && playingSpeakerId !== next) {
-                          stopSpeakerPreview();
-                        }
-                        setDraft((cur) =>
-                          cur ? withProgramSpeaker(cur, next) : cur,
+                  <SpeechifySpeakerSelect
+                    value={draft.speakerModelId}
+                    playingId={playingSpeakerId}
+                    options={(() => {
+                      const list = speechifySpeakers.map((s) => ({
+                        modelId: s.modelId,
+                        name: s.name,
+                        brand: s.brand,
+                        canPlay: Boolean(mediaBaseUrl),
+                      }));
+                      if (
+                        draft.speakerModelId &&
+                        !list.some((s) => s.modelId === draft.speakerModelId)
+                      ) {
+                        const legacy = speakers.find(
+                          (s) => s.modelId === draft.speakerModelId,
                         );
-                      }}
-                      className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
-                    >
-                      <option value="">Select speaker…</option>
-                      {speakers.map((s) => (
-                        <option key={s.modelId} value={s.modelId}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={!canPreview || !draft.speakerModelId}
-                      aria-label={
-                        playingSpeakerId === draft.speakerModelId
-                          ? "Pause speaker preview"
-                          : "Play speaker preview"
+                        list.unshift({
+                          modelId: draft.speakerModelId,
+                          name: legacy?.name ?? "Current speaker",
+                          brand: legacy?.brand ?? "fish",
+                          canPlay: Boolean(mediaBaseUrl),
+                        });
                       }
-                      title={
-                        playingSpeakerId === draft.speakerModelId
-                          ? "Pause speaker preview"
-                          : "Play speaker preview"
+                      return list;
+                    })()}
+                    onChange={(next) => {
+                      if (playingSpeakerId && playingSpeakerId !== next) {
+                        stopSpeakerPreview();
                       }
-                      onClick={() =>
-                        void toggleSpeakerPreview(draft.speakerModelId)
-                      }
-                      className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {playingSpeakerId === draft.speakerModelId ? (
-                        <IconPause />
-                      ) : (
-                        <IconPlay />
-                      )}
-                    </button>
-                  </div>
+                      setDraft((cur) =>
+                        cur ? withProgramSpeaker(cur, next) : cur,
+                      );
+                    }}
+                    onTogglePlay={(id) => void toggleSpeakerPreview(id)}
+                  />
                 </div>
                 <div className="block text-sm sm:col-span-2">
                   <span className="mb-1 block text-muted">

@@ -16,9 +16,8 @@ import type {
   VoicePitch,
   VoicePreferredTraits,
 } from "@/lib/medimade-api";
-import { hasVoicePrefs } from "@/lib/medimade-api";
+import { coerceEnergies, hasVoicePrefs, VOICE_ENERGY_VALUES } from "@/lib/medimade-api";
 import { MEDITATION_STYLE_LABELS } from "@/lib/meditation-style-intake";
-import { prettySubcategoryLabel } from "@/lib/sound-taxonomy";
 
 export const LAST_VOICE_STORAGE_KEY = "mm_last_fish_voice_v1";
 const LAST_SOUND_BY_STYLE_KEY = "mm_last_soundscape_by_style_v1";
@@ -32,7 +31,7 @@ export type VoicePickMeta = {
   description: string;
   gender: "male" | "female" | null;
   accent: string;
-  energy: VoiceEnergy;
+  energy: VoiceEnergy[];
   pitch: VoicePitch;
   /** True when description/accent were filled in locally, not from admin. */
   placeholder: boolean;
@@ -104,14 +103,20 @@ function titleEnergy(energy: VoiceEnergy): string {
 
 export function voiceDisplayMeta(speaker: FishSpeaker): VoicePickMeta {
   const ph = VOICE_PLACEHOLDERS[speaker.name];
-  const energy = speaker.energy ?? ph?.energy ?? "calm";
+  const liveEnergies = coerceEnergies(speaker.energy);
+  const energy =
+    liveEnergies.length > 0
+      ? liveEnergies
+      : ph
+        ? [ph.energy]
+        : (["calm"] as VoiceEnergy[]);
   const pitch = speaker.pitch ?? ph?.pitch ?? "mid";
   const accent = speaker.accent ?? ph?.accent ?? "US";
   const gender = speaker.gender ?? ph?.gender ?? null;
   const live =
-    Boolean(speaker.energy) && Boolean(speaker.pitch) && Boolean(speaker.accent);
+    liveEnergies.length > 0 && Boolean(speaker.pitch) && Boolean(speaker.accent);
   return {
-    description: `${titleEnergy(energy)} · ${pitch} · ${accent}`,
+    description: `${energy.map(titleEnergy).join(", ")} · ${pitch} · ${accent}`,
     gender,
     accent,
     energy,
@@ -120,7 +125,7 @@ export function voiceDisplayMeta(speaker: FishSpeaker): VoicePickMeta {
   };
 }
 
-const ENERGY_ORDER: VoiceEnergy[] = ["calm", "steady", "bright"];
+const ENERGY_ORDER: VoiceEnergy[] = [...VOICE_ENERGY_VALUES];
 const PITCH_ORDER: VoicePitch[] = ["low", "mid", "high"];
 
 function ordinalDistance<T extends string>(
@@ -135,6 +140,22 @@ function ordinalDistance<T extends string>(
   return Math.abs(a - b);
 }
 
+function minOrdinalDistance<T extends string>(
+  values: readonly T[],
+  preferred: readonly T[],
+  order: readonly T[],
+): number {
+  if (!preferred.length) return 0;
+  if (!values.length) return 1;
+  let min = Infinity;
+  for (const value of values) {
+    for (const pref of preferred) {
+      min = Math.min(min, ordinalDistance(value, pref, order));
+    }
+  }
+  return Number.isFinite(min) ? min : 1;
+}
+
 export function voiceMatchDistance(
   speaker: FishSpeaker,
   prefs: VoicePreferredTraits | null | undefined,
@@ -142,11 +163,22 @@ export function voiceMatchDistance(
   if (!hasVoicePrefs(prefs)) return 100;
   const t = voiceDisplayMeta(speaker);
   let d = 0;
-  if (prefs!.energy) d += ordinalDistance(t.energy, prefs!.energy, ENERGY_ORDER) * 2;
+  if (prefs!.energy.length > 0) {
+    d += minOrdinalDistance(t.energy, prefs!.energy, ENERGY_ORDER) * 2;
+  }
   if (prefs!.pitch) d += ordinalDistance(t.pitch, prefs!.pitch, PITCH_ORDER) * 2;
   if (prefs!.gender) d += t.gender === prefs!.gender ? 0 : 3;
   if (prefs!.accent) d += t.accent === prefs!.accent ? 0 : 2;
   return d;
+}
+
+function preferredSpeakerIndex(
+  modelId: string,
+  prefs: VoicePreferredTraits | null | undefined,
+): number {
+  const list = prefs?.speakers ?? [];
+  const i = list.findIndex((id) => id === modelId);
+  return i >= 0 ? i : 999;
 }
 
 export function rankVoicesByPrefs(
@@ -163,6 +195,9 @@ export function rankVoicesByPrefs(
     const aPin = pin && a.modelId === pin ? 0 : 1;
     const bPin = pin && b.modelId === pin ? 0 : 1;
     if (aPin !== bPin) return aPin - bPin;
+    const aPref = preferredSpeakerIndex(a.modelId, prefs);
+    const bPref = preferredSpeakerIndex(b.modelId, prefs);
+    if (aPref !== bPref) return aPref - bPref;
     const da = voiceMatchDistance(a, prefs);
     const db = voiceMatchDistance(b, prefs);
     if (da !== db) return da - db;
@@ -321,9 +356,15 @@ export function computeSoundPicks(opts: {
       voiceReason = "This program's speaker";
     } else if (hasVoicePrefs(opts.voicePrefs) && ranked[0]) {
       voiceId = ranked[0].modelId;
-      voiceReason = style
-        ? `Closest match for ${style}`
-        : "Closest match for this practice";
+      const preferred = opts.voicePrefs?.speakers ?? [];
+      voiceReason =
+        preferred[0] === voiceId
+          ? style
+            ? `Preferred voice for ${style}`
+            : "Preferred voice for this practice"
+          : style
+            ? `Closest match for ${style}`
+            : "Closest match for this practice";
     } else if (lastVoice && speakers.some((s) => s.modelId === lastVoice)) {
       voiceId = lastVoice;
       voiceReason = "Your usual voice";
@@ -378,9 +419,14 @@ export function computeSoundPicks(opts: {
       soundId = lastSound;
       soundReason = "Your pick last time";
     } else {
-      const sug = pickSoundscapeForStyle(soundscapes, style);
-      soundId = sug?.key ?? SILENCE_SOUND_ID;
-      soundReason = `Suits ${dayPartArticle(part)} ${part} ${styleLabel}`;
+      const ourPicks = soundscapes.filter((s) => s.adminFavourite);
+      const pool = ourPicks.length > 0 ? ourPicks : soundscapes;
+      const shuffled = shuffleInPlace([...pool]);
+      soundId = shuffled[0]?.key ?? SILENCE_SOUND_ID;
+      soundReason =
+        ourPicks.length > 0
+          ? "One of our picks for this meditation"
+          : `Suits ${dayPartArticle(part)} ${part} ${styleLabel}`;
     }
   } else if (soundId === lastSound && soundId !== SILENCE_SOUND_ID) {
     soundReason = "Your pick last time";
@@ -390,20 +436,20 @@ export function computeSoundPicks(opts: {
     soundReason = `Suits ${dayPartArticle(part)} ${part} ${styleLabel}`;
   }
 
-  const cats = STYLE_SOUND_SUBCATEGORIES[style ?? ""] ?? ["pads-drones", "nature"];
-  const sameCat = soundscapes.filter(
-    (s) => s.key !== soundId && inCategory(s, cats),
+  const ourPicks = soundscapes.filter(
+    (s) => s.adminFavourite && s.key !== soundId,
   );
-  const rest = soundscapes.filter(
-    (s) => s.key !== soundId && !sameCat.some((x) => x.key === s.key),
+  const restPool = soundscapes.filter(
+    (s) => s.key !== soundId && !ourPicks.some((x) => x.key === s.key),
   );
   const soundAlts: string[] = [];
-  for (const it of [...sameCat, ...rest]) {
+  for (const it of shuffleInPlace([...ourPicks])) {
     soundAlts.push(it.key);
     if (soundAlts.length >= 2) break;
   }
-  if (!soundAlts.includes(SILENCE_SOUND_ID) && soundId !== SILENCE_SOUND_ID) {
-    soundAlts.push(SILENCE_SOUND_ID);
+  for (const it of shuffleInPlace([...restPool])) {
+    if (soundAlts.length >= 2) break;
+    soundAlts.push(it.key);
   }
   while (soundAlts.length < 3) {
     const extra = soundscapes.find(
@@ -436,8 +482,29 @@ export function swapAlt(current: string, alts: string[], picked: string): {
 
 export function soundscapeCategoryLabel(item: BackgroundAudioItem | null): string {
   if (!item) return "Voice only";
-  if (item.subcategory) return prettySubcategoryLabel(item.subcategory);
+  const pack = item.customPackName?.trim();
+  if (pack) return pack;
   return "Soundscape";
+}
+
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i]!;
+    arr[i] = arr[j]!;
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
+/** Consumer-facing label for a composition catalog tag (id stays lowercase slug). */
+const COMPOSITION_TAG_LABELS: Record<string, string> = {
+  "nature-led": "nature heavy",
+};
+
+export function compositionTagLabel(tag: string): string {
+  const key = tag.trim().toLowerCase();
+  return COMPOSITION_TAG_LABELS[key] ?? tag;
 }
 
 /** Map Balance 0–100 (50 = today's mix) onto the existing 0–100 bed gain. */
