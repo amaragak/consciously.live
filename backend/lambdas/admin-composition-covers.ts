@@ -33,6 +33,7 @@ import { listAllS3Objects } from "./_shared/s3-list-all";
 import {
   getSoundRow,
   listAllSoundRows,
+  normalizeTags,
   putSoundRow,
   SOUND_PK,
   soundEnabledFromStatus,
@@ -77,6 +78,7 @@ function itemPayload(row: SoundCatalogRow) {
     coverImageThumbUrl: row.coverImageThumbUrl ?? null,
     lastCoverPrompt: row.lastCoverPrompt ?? null,
     coverPromptHistory: row.coverPromptHistory ?? [],
+    tags: row.tags ?? [],
     updatedAt: row.updatedAt || null,
   };
 }
@@ -204,6 +206,7 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
         coverImageThumbUrl: null,
         lastCoverPrompt: null,
         coverPromptHistory: [],
+        tags: [],
         updatedAt: null,
       });
     }
@@ -458,6 +461,27 @@ async function handleClear(
   return json(200, { item: itemPayload(next) });
 }
 
+async function handleSetTags(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  if (!key.startsWith("background-audio/")) {
+    return json(400, { error: "key must be a background-audio object" });
+  }
+  const titleHint =
+    typeof body.title === "string" && body.title.trim()
+      ? body.title.trim().slice(0, 200)
+      : undefined;
+  const row = await ensureCompositionRow(key, titleHint);
+  const next: SoundCatalogRow = {
+    ...row,
+    tags: normalizeTags(body.tags),
+    updatedAt: new Date().toISOString(),
+  };
+  await putSoundRow(next);
+  return json(200, { item: itemPayload(next) });
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -480,6 +504,7 @@ export async function handler(
       if (action === "generate-cover") return await handleGenerate(body);
       if (action === "ensure-thumbs") return await handleEnsureThumbs(body);
       if (action === "clear-cover") return await handleClear(body);
+      if (action === "set-tags") return await handleSetTags(body);
       return json(400, { error: "Unknown action" });
     }
     return json(405, { error: "Method not allowed" });

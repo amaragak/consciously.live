@@ -26,6 +26,7 @@ import {
   type MeditationTargetMinutes,
   MEDITATION_TARGET_MINUTES,
 } from "@/lib/medimade-api";
+import { VoicePreferredTraitFields } from "@/components/voice-trait-radios";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { packageOneShotPrompt } from "@/lib/homepage-one-shot-handoff";
@@ -1482,6 +1483,35 @@ export function AdminProgramsPanel() {
                       )}
                     </button>
                   </div>
+                </div>
+                <div className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block text-muted">
+                    Preferred voice traits
+                  </span>
+                  <p className="mb-2 text-[12px] text-muted">
+                    After the program speaker, Create Sound lists closest matches
+                    using these settings.
+                  </p>
+                  <VoicePreferredTraitFields
+                    id={`program-${draft.id}`}
+                    energy={draft.preferredEnergy}
+                    pitch={draft.preferredPitch}
+                    gender={draft.preferredGender}
+                    accent={draft.preferredAccent}
+                    disabled={saveBusy}
+                    onEnergy={(preferredEnergy) =>
+                      setDraft((cur) => (cur ? { ...cur, preferredEnergy } : cur))
+                    }
+                    onPitch={(preferredPitch) =>
+                      setDraft((cur) => (cur ? { ...cur, preferredPitch } : cur))
+                    }
+                    onGender={(preferredGender) =>
+                      setDraft((cur) => (cur ? { ...cur, preferredGender } : cur))
+                    }
+                    onAccent={(preferredAccent) =>
+                      setDraft((cur) => (cur ? { ...cur, preferredAccent } : cur))
+                    }
+                  />
                 </div>
                 <div className="block text-sm sm:col-span-2">
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-2">

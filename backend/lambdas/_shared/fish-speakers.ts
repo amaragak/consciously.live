@@ -1,3 +1,8 @@
+export type VoiceGender = "male" | "female";
+export type VoiceEnergy = "calm" | "steady" | "bright";
+export type VoicePitch = "low" | "mid" | "high";
+export type VoiceAccent = "UK" | "US" | "African";
+
 export type FishSpeaker = {
   name: string;
   modelId: string;
@@ -6,6 +11,9 @@ export type FishSpeaker = {
   goodFor?: string[];
   /** Omitted when not specified. */
   gender?: VoiceGender;
+  energy?: VoiceEnergy;
+  pitch?: VoicePitch;
+  accent?: VoiceAccent;
   /** TTS vendor. Omitted on the hardcoded Fish fallback list. */
   brand?: "fish" | "speechify";
   /** Speechify SSML prosody rate percent (admin). Omitted / null = Speechify default. */
@@ -13,8 +21,6 @@ export type FishSpeaker = {
   /** When the admin last saved this row — used to bust CDN sample URLs. */
   updatedAt?: string;
 };
-
-export type VoiceGender = "male" | "female";
 
 /**
  * Single source of truth for mapping Fish Audio voice model ids → speaker names.

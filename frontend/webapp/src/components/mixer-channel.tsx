@@ -1,8 +1,16 @@
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import * as Switch from "@radix-ui/react-switch";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import type { SoundCategoryId } from "@/lib/sound-taxonomy";
+import { FavoriteHeartButton } from "@/components/favorite-heart-button";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
 import { FactoryIcon } from "@/components/factory-icons";
 import type { MixerFactoryPreset } from "@/lib/mixer-factory-presets";
@@ -44,10 +52,25 @@ function MixerVoiceIcon() {
 function MixerPlayPauseIcon({
   playing,
   size = 22,
+  stopWhenPlaying = false,
 }: {
   playing: boolean;
   size?: number;
+  stopWhenPlaying?: boolean;
 }) {
+  if (playing && stopWhenPlaying) {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        fill="currentColor"
+        aria-hidden
+      >
+        <rect x="7" y="7" width="10" height="10" rx="1.5" />
+      </svg>
+    );
+  }
   return playing ? (
     <svg
       viewBox="0 0 24 24"
@@ -284,6 +307,8 @@ export function MixerChannel({
   playDisabled,
   playAriaLabel,
   layout = "column",
+  favoriteKeys,
+  onToggleFavorite,
 }: {
   label: string;
   category: SoundCategoryId;
@@ -301,6 +326,8 @@ export function MixerChannel({
   playDisabled?: boolean;
   playAriaLabel: string;
   layout?: MixerLayout;
+  favoriteKeys?: ReadonlySet<string>;
+  onToggleFavorite?: (key: string) => void;
 }) {
   const active = Boolean(value);
   const picker = (
@@ -311,6 +338,8 @@ export function MixerChannel({
       onChange={onChange}
       disabled={disabled}
       compact
+      favoriteKeys={favoriteKeys}
+      onToggleFavorite={onToggleFavorite}
     />
   );
 
@@ -377,12 +406,219 @@ export function MixerChannel({
   );
 }
 
+function MixerDeskFader({
+  label,
+  initialGain,
+  onLiveGainChange,
+  onGainChange,
+  disabled,
+  empty,
+}: {
+  label: string;
+  initialGain: number;
+  onLiveGainChange?: (gain: number) => void;
+  onGainChange: (gain: number) => void;
+  disabled?: boolean;
+  empty?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const gainRef = useRef(initialGain);
+  const liveRef = useRef(onLiveGainChange);
+  const commitRef = useRef(onGainChange);
+  const draggingRef = useRef(false);
+  const shown = empty ? 0 : initialGain;
+
+  liveRef.current = onLiveGainChange;
+  commitRef.current = onGainChange;
+
+  function setFill(el: HTMLInputElement, pct: number, isEmpty: boolean) {
+    el.style.setProperty(
+      "--mixer-desk-fader-fill",
+      isEmpty
+        ? "var(--border)"
+        : `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`,
+    );
+  }
+
+  useEffect(() => {
+    if (draggingRef.current) return;
+    gainRef.current = initialGain;
+    const el = inputRef.current;
+    if (el) {
+      el.value = String(shown);
+      setFill(el, shown, Boolean(empty));
+    }
+    if (labelRef.current) {
+      labelRef.current.textContent = empty ? "—" : `${shown}%`;
+    }
+  }, [empty, initialGain, shown]);
+
+  function onInput(e: FormEvent<HTMLInputElement>) {
+    if (empty) return;
+    draggingRef.current = true;
+    const v = Number(e.currentTarget.value);
+    if (!Number.isFinite(v)) return;
+    gainRef.current = v;
+    if (labelRef.current) labelRef.current.textContent = `${v}%`;
+    setFill(e.currentTarget, v, false);
+    liveRef.current?.(v);
+  }
+
+  function commit() {
+    if (empty) return;
+    draggingRef.current = false;
+    const v = gainRef.current;
+    liveRef.current?.(v);
+    commitRef.current(v);
+  }
+
+  return (
+    <>
+      <div
+        className={`flex h-[18px] w-full min-w-0 items-center ${
+          empty ? "opacity-35" : ""
+        }`}
+      >
+        <input
+          ref={inputRef}
+          aria-label={`${label} level`}
+          type="range"
+          min={0}
+          max={100}
+          defaultValue={shown}
+          disabled={disabled || empty}
+          onInput={onInput}
+          onPointerDown={() => {
+            if (!empty) draggingRef.current = true;
+          }}
+          onPointerUp={commit}
+          onMouseUp={commit}
+          onTouchEnd={commit}
+          onKeyUp={commit}
+          className="mixer-desk-fader w-full min-w-0"
+          style={
+            {
+              "--mixer-desk-fader-fill": empty
+                ? "var(--border)"
+                : `linear-gradient(to right, var(--accent) ${shown}%, var(--border) ${shown}%)`,
+            } as CSSProperties
+          }
+        />
+      </div>
+      <span
+        ref={labelRef}
+        className={`text-right text-[12px] tabular-nums text-muted ${
+          empty ? "opacity-40" : ""
+        }`}
+      >
+        {empty ? "—" : `${shown}%`}
+      </span>
+    </>
+  );
+}
+
+export function MixerDeskRow({
+  label,
+  category,
+  items,
+  value,
+  onChange,
+  gain,
+  onGainChange,
+  onLiveGainChange,
+  disabled,
+  faderDisabled,
+  playing,
+  onTogglePreview,
+  playDisabled,
+  playAriaLabel,
+  last,
+  favoriteKeys,
+  onToggleFavorite,
+}: {
+  label: string;
+  category: SoundCategoryId;
+  items: BackgroundAudioItem[];
+  value: string;
+  onChange: (key: string) => void;
+  gain: number;
+  onGainChange: (gain: number) => void;
+  onLiveGainChange?: (gain: number) => void;
+  disabled?: boolean;
+  faderDisabled?: boolean;
+  playing: boolean;
+  onTogglePreview: () => void;
+  playDisabled?: boolean;
+  playAriaLabel: string;
+  last?: boolean;
+  favoriteKeys?: ReadonlySet<string>;
+  onToggleFavorite?: (key: string) => void;
+}) {
+  const empty = !value.trim();
+  return (
+    <div className={`px-3.5 py-2.5 ${last ? "" : "border-b border-border"}`}>
+      {/*
+        Always a single desk row — this lives in the 640px Change panel, so do not
+        gate on viewport md (that was starving the select of width).
+        Columns: label | sound (flex) | fader | % | play
+      */}
+      <div className="grid grid-cols-[64px_minmax(0,1fr)_100px_32px_32px] items-center gap-2.5 sm:grid-cols-[72px_minmax(0,1fr)_120px_36px_32px] sm:gap-3">
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-[1.4px] ${
+            empty ? "text-muted" : "text-accent-link"
+          }`}
+        >
+          {label}
+        </span>
+        <SoundFolderSelect
+          category={category}
+          items={items}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          desk
+          favoriteKeys={favoriteKeys}
+          onToggleFavorite={onToggleFavorite}
+        />
+        <MixerDeskFader
+          label={label}
+          initialGain={gain}
+          onLiveGainChange={onLiveGainChange}
+          onGainChange={onGainChange}
+          disabled={faderDisabled}
+          empty={empty}
+        />
+        <button
+          type="button"
+          onClick={onTogglePreview}
+          disabled={playDisabled}
+          aria-label={playAriaLabel}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center justify-self-end rounded-full ${
+            empty
+              ? "border border-border bg-transparent text-border"
+              : "accent-fill-gradient cursor-pointer text-on-accent hover:opacity-90"
+          } disabled:cursor-not-allowed`}
+        >
+          <MixerPlayPauseIcon
+            playing={playing}
+            size={11}
+            stopWhenPlaying
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MixerSpeakerSelect({
   voices,
   value,
   onChange,
   disabled,
   previewUrlFor,
+  favoriteIds,
+  onToggleFavorite,
 }: {
   voices: Array<{ modelId: string; name: string }>;
   value: string;
@@ -390,6 +626,8 @@ function MixerSpeakerSelect({
   disabled?: boolean;
   /** Supplied to audition any voice from inside the open list, not just the selected one. */
   previewUrlFor?: (modelId: string) => string | null;
+  favoriteIds?: ReadonlySet<string>;
+  onToggleFavorite?: (modelId: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const optionAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -501,6 +739,13 @@ function MixerSpeakerSelect({
               >
                 {s.name}
               </button>
+              {onToggleFavorite ? (
+                <FavoriteHeartButton
+                  pressed={Boolean(favoriteIds?.has(s.modelId))}
+                  label={s.name}
+                  onToggle={() => onToggleFavorite(s.modelId)}
+                />
+              ) : null}
               {previewUrlFor ? (
                 <button
                   type="button"
@@ -554,6 +799,8 @@ export function MixerVoiceChannel({
   layout = "column",
   previewUrlFor,
   showDescription = true,
+  favoriteIds,
+  onToggleFavorite,
 }: {
   voices: Array<{ modelId: string; name: string; description?: string }>;
   value: string;
@@ -571,6 +818,8 @@ export function MixerVoiceChannel({
   previewUrlFor?: (modelId: string) => string | null;
   /** Off where the row must stay a single compact line. */
   showDescription?: boolean;
+  favoriteIds?: ReadonlySet<string>;
+  onToggleFavorite?: (modelId: string) => void;
 }) {
   const description = showDescription
     ? voices.find((s) => s.modelId === value)?.description?.trim()
@@ -611,6 +860,8 @@ export function MixerVoiceChannel({
             onChange={onChange}
             disabled={disabled}
             previewUrlFor={previewUrlFor}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={onToggleFavorite}
           />
           {fxControl}
           <MixerRowPlayButton
@@ -643,6 +894,8 @@ export function MixerVoiceChannel({
               onChange={onChange}
               disabled={disabled}
               previewUrlFor={previewUrlFor}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={onToggleFavorite}
             />
             {fxControl}
           </div>

@@ -2,8 +2,10 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import type { FishSpeaker } from "./_shared/fish-speakers";
-import { listPickerFishSpeakers } from "./_shared/voice-admin";
+import {
+  listPickerFishSpeakers,
+  loadStyleVoicePrefs,
+} from "./_shared/voice-admin";
 
 function json(
   statusCode: number,
@@ -23,7 +25,10 @@ export async function handler(
     return json(405, { error: "Method not allowed" });
   }
 
-  const speakers: FishSpeaker[] = await listPickerFishSpeakers();
-  return json(200, { speakers });
+  const [speakers, styleVoicePrefs] = await Promise.all([
+    listPickerFishSpeakers(),
+    loadStyleVoicePrefs(),
+  ]);
+  return json(200, { speakers, styleVoicePrefs });
 }
 

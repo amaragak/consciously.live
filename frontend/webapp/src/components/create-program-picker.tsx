@@ -44,14 +44,14 @@ export function CreateProgramPicker({
               }`}
             >
               <div
-                className="aspect-square w-full shrink-0 overflow-hidden rounded-t-[11px] bg-background"
+                className="aspect-[4/3] w-full shrink-0 overflow-hidden rounded-t-[11px] bg-background"
                 aria-hidden
               >
                 {program.coverImageUrl ? (
                   <img
                     src={program.coverImageUrl}
                     alt=""
-                    className="block h-full w-full object-cover object-center"
+                    className="block h-full w-full object-cover object-[center_40%]"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-muted/40">

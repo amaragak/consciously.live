@@ -2939,6 +2939,60 @@ export type BackgroundAudioByCategory = {
   factoryMixes?: MixerFactoryPreset[];
 };
 
+export type VoiceGender = "male" | "female";
+export type VoiceEnergy = "calm" | "steady" | "bright";
+export type VoicePitch = "low" | "mid" | "high";
+export type VoiceAccent = "UK" | "US" | "African";
+
+export type VoicePreferredTraits = {
+  energy: VoiceEnergy | null;
+  pitch: VoicePitch | null;
+  gender: VoiceGender | null;
+  accent: VoiceAccent | null;
+};
+
+export function emptyVoicePrefs(): VoicePreferredTraits {
+  return { energy: null, pitch: null, gender: null, accent: null };
+}
+
+export function hasVoicePrefs(
+  prefs: VoicePreferredTraits | null | undefined,
+): boolean {
+  if (!prefs) return false;
+  return Boolean(prefs.energy || prefs.pitch || prefs.gender || prefs.accent);
+}
+
+export function coerceVoicePrefs(raw: unknown): VoicePreferredTraits {
+  if (!raw || typeof raw !== "object") return emptyVoicePrefs();
+  const o = raw as Record<string, unknown>;
+  const energy =
+    o.energy === "calm" || o.energy === "steady" || o.energy === "bright"
+      ? o.energy
+      : null;
+  const pitch =
+    o.pitch === "low" || o.pitch === "mid" || o.pitch === "high" ? o.pitch : null;
+  const gender = o.gender === "male" || o.gender === "female" ? o.gender : null;
+  let accent: VoiceAccent | null = null;
+  if (typeof o.accent === "string") {
+    const n = o.accent.trim().toLowerCase();
+    if (n === "uk") accent = "UK";
+    else if (n === "us") accent = "US";
+    else if (n === "african") accent = "African";
+  }
+  return { energy, pitch, gender, accent };
+}
+
+export function coerceStyleVoicePrefsMap(
+  raw: unknown,
+): Record<string, VoicePreferredTraits> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, VoicePreferredTraits> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    out[k] = coerceVoicePrefs(v);
+  }
+  return out;
+}
+
 export type FishSpeaker = {
   name: string;
   modelId: string;
@@ -2947,6 +3001,9 @@ export type FishSpeaker = {
   goodFor?: string[];
   /** Omitted when not specified. */
   gender?: VoiceGender;
+  energy?: VoiceEnergy;
+  pitch?: VoicePitch;
+  accent?: VoiceAccent;
   /** TTS vendor. Live `/fish/speakers` includes this; hardcoded fallbacks are Fish. */
   brand?: "fish" | "speechify";
   /** Speechify SSML prosody rate percent from admin. Null/omit = Speechify default. */
@@ -2954,8 +3011,6 @@ export type FishSpeaker = {
   /** Admin row timestamp — Create/mixer append this to bust cached samples. */
   updatedAt?: string;
 };
-
-export type VoiceGender = "male" | "female";
 
 export type OrpheusSpeaker = {
   id: string;
@@ -3021,6 +3076,7 @@ type FishSpeakersClientCache = {
 };
 
 let fishSpeakersMemory: FishSpeakersClientCache | null = null;
+let styleVoicePrefsMemory: Record<string, VoicePreferredTraits> | null = null;
 let fishSpeakersInflight: Promise<FishSpeaker[]> | null = null;
 const preloadedSpeakerSampleUrls = new Set<string>();
 
@@ -3033,6 +3089,9 @@ function fishSpeakersCacheVersion(speakers: FishSpeaker[]): string {
         s.name,
         s.brand ?? "",
         s.gender ?? "",
+        s.energy ?? "",
+        s.pitch ?? "",
+        s.accent ?? "",
         s.description ?? "",
         (s.goodFor ?? []).join(","),
         s.speechifyRate == null ? "" : String(s.speechifyRate),
@@ -3100,6 +3159,7 @@ export function peekFishSpeakersCache(): FishSpeaker[] | null {
 export function invalidateFishSpeakersClientCache(): void {
   fishSpeakersMemory = null;
   fishSpeakersInflight = null;
+  styleVoicePrefsMemory = null;
   preloadedSpeakerSampleUrls.clear();
   if (typeof window === "undefined") return;
   try {
@@ -3171,6 +3231,7 @@ async function fetchFishSpeakersNetwork(): Promise<FishSpeaker[]> {
   });
   const data = (await res.json()) as {
     speakers?: FishSpeaker[];
+    styleVoicePrefs?: unknown;
     error?: string;
     detail?: string;
   };
@@ -3179,12 +3240,21 @@ async function fetchFishSpeakersNetwork(): Promise<FishSpeaker[]> {
     throw new Error(msg);
   }
   const speakers = normalizeFishSpeakersList(data.speakers ?? []);
+  styleVoicePrefsMemory = coerceStyleVoicePrefsMap(data.styleVoicePrefs);
   writeFishSpeakersLocalCache({
     version: fishSpeakersCacheVersion(speakers),
     speakers,
   });
   preloadFishSpeakerSamples(speakers);
   return speakers;
+}
+
+export async function listStyleVoicePrefs(): Promise<
+  Record<string, VoicePreferredTraits>
+> {
+  if (styleVoicePrefsMemory) return styleVoicePrefsMemory;
+  await fetchFishSpeakersNetwork();
+  return styleVoicePrefsMemory ?? {};
 }
 
 export async function listFishSpeakers(opts?: {
@@ -3741,6 +3811,7 @@ export type AdminCompositionCoverItem = {
   coverImageThumbUrl: string | null;
   lastCoverPrompt: string | null;
   coverPromptHistory: string[];
+  tags: string[];
   updatedAt: string | null;
 };
 
@@ -3780,6 +3851,12 @@ function parseAdminCompositionCoverItem(
       ? o.coverPromptHistory
           .filter((p): p is string => typeof p === "string")
           .map((p) => p.trim())
+          .filter(Boolean)
+      : [],
+    tags: Array.isArray(o.tags)
+      ? o.tags
+          .filter((t): t is string => typeof t === "string")
+          .map((t) => t.trim().toLowerCase())
           .filter(Boolean)
       : [],
     updatedAt:
@@ -3861,6 +3938,19 @@ export async function clearAdminCompositionCover(
   return postAdminCompositionCoverAction({
     action: "clear-cover",
     key,
+  });
+}
+
+export async function setAdminCompositionCoverTags(params: {
+  key: string;
+  tags: string[];
+  title?: string;
+}): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "set-tags",
+    key: params.key,
+    tags: params.tags,
+    title: params.title ?? "",
   });
 }
 
@@ -4303,6 +4393,9 @@ export type AdminVoiceSpeaker = {
   description?: string;
   goodFor?: string[];
   gender?: VoiceGender | null;
+  energy?: VoiceEnergy | null;
+  pitch?: VoicePitch | null;
+  accent?: VoiceAccent | null;
   /** Speechify rate offset in percent (e.g. -7). Unused for Fish. */
   speechifyRate?: number | null;
   hasSample?: boolean;
@@ -4324,6 +4417,7 @@ export type AdminVoiceState = {
   baseUrl?: string;
   speakers: AdminVoiceSpeaker[];
   pauses: AdminPauseBands;
+  styleVoicePrefs: Record<string, VoicePreferredTraits>;
 };
 
 export async function listAdminVoice(): Promise<AdminVoiceState> {
@@ -4345,6 +4439,9 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
           : null,
     })),
     pauses: data.pauses,
+    styleVoicePrefs: coerceStyleVoicePrefsMap(
+      (data as { styleVoicePrefs?: unknown }).styleVoicePrefs,
+    ),
   };
 }
 
@@ -4816,6 +4913,7 @@ export async function commitAdminVoiceFx(
 
 export async function patchAdminVoice(body: {
   pauses?: Partial<AdminPauseBands>;
+  styleVoicePrefs?: Record<string, VoicePreferredTraits>;
   speaker?: {
     name: string;
     modelId: string;
@@ -4826,9 +4924,16 @@ export async function patchAdminVoice(body: {
     description?: string;
     goodFor?: string[];
     gender?: VoiceGender | null;
+    energy?: VoiceEnergy | null;
+    pitch?: VoicePitch | null;
+    accent?: VoiceAccent | null;
     speechifyRate?: number | null;
   };
-}): Promise<{ pauses?: AdminPauseBands; speaker?: AdminVoiceSpeaker }> {
+}): Promise<{
+  pauses?: AdminPauseBands;
+  speaker?: AdminVoiceSpeaker;
+  styleVoicePrefs?: Record<string, VoicePreferredTraits>;
+}> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/voice`, {
@@ -5265,6 +5370,10 @@ export type AdminProgram = {
   published: boolean;
   /** Fish speaker shared by every lesson. */
   speakerModelId: string;
+  preferredEnergy: VoiceEnergy | null;
+  preferredPitch: VoicePitch | null;
+  preferredGender: VoiceGender | null;
+  preferredAccent: VoiceAccent | null;
   sort: number;
   days: AdminProgramDay[];
   createdAt: string;
@@ -5350,12 +5459,22 @@ function normalizeAdminProgram(raw: unknown): AdminProgram | null {
       }
     }
   }
+  const prefs = coerceVoicePrefs({
+    energy: o.preferredEnergy,
+    pitch: o.preferredPitch,
+    gender: o.preferredGender,
+    accent: o.preferredAccent,
+  });
   return {
     id,
     title: typeof o.title === "string" ? o.title : "Untitled program",
     description: typeof o.description === "string" ? o.description : "",
     published: o.published === true,
     speakerModelId,
+    preferredEnergy: prefs.energy,
+    preferredPitch: prefs.pitch,
+    preferredGender: prefs.gender,
+    preferredAccent: prefs.accent,
     sort: typeof o.sort === "number" && Number.isFinite(o.sort) ? o.sort : 0,
     days: days.map((d) =>
       speakerModelId ? { ...d, speakerModelId } : d,
@@ -5417,6 +5536,11 @@ export type LibraryProgram = {
   sort: number;
   days: LibraryProgramDay[];
   coverImageUrl: string | null;
+  speakerModelId: string;
+  preferredEnergy: VoiceEnergy | null;
+  preferredPitch: VoicePitch | null;
+  preferredGender: VoiceGender | null;
+  preferredAccent: VoiceAccent | null;
 };
 
 function normalizeLibraryProgramDay(raw: unknown): LibraryProgramDay | null {
@@ -5468,6 +5592,12 @@ function normalizeLibraryProgram(raw: unknown): LibraryProgram | null {
         .map(normalizeLibraryProgramDay)
         .filter((d): d is LibraryProgramDay => Boolean(d))
     : [];
+  const prefs = coerceVoicePrefs({
+    energy: o.preferredEnergy,
+    pitch: o.preferredPitch,
+    gender: o.preferredGender,
+    accent: o.preferredAccent,
+  });
   return {
     id,
     title: typeof o.title === "string" ? o.title : "Untitled program",
@@ -5478,6 +5608,12 @@ function normalizeLibraryProgram(raw: unknown): LibraryProgram | null {
       typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
         ? o.coverImageUrl.trim()
         : null,
+    speakerModelId:
+      typeof o.speakerModelId === "string" ? o.speakerModelId.trim() : "",
+    preferredEnergy: prefs.energy,
+    preferredPitch: prefs.pitch,
+    preferredGender: prefs.gender,
+    preferredAccent: prefs.accent,
   };
 }
 

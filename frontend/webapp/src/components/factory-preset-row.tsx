@@ -1,19 +1,24 @@
 import { IconPlayerPause, IconPlayerPlay } from "@tabler/icons-react";
 import { FactoryIcon } from "@/components/factory-icons";
+import { FavoriteHeartButton } from "@/components/favorite-heart-button";
 import type { MixerFactoryPreset } from "@/lib/mixer-factory-presets";
 
 export function FactoryPresetRow({
   preset,
   loaded,
   previewing,
+  favorite,
   onLoad,
   onPreview,
+  onToggleFavorite,
 }: {
   preset: MixerFactoryPreset;
   loaded: boolean;
   previewing: boolean;
+  favorite?: boolean;
   onLoad: () => void;
   onPreview: () => void;
+  onToggleFavorite?: () => void;
 }) {
   return (
     <div
@@ -50,6 +55,13 @@ export function FactoryPresetRow({
           {preset.description || "No description"}
         </span>
       </span>
+      {onToggleFavorite ? (
+        <FavoriteHeartButton
+          pressed={Boolean(favorite)}
+          label={preset.name}
+          onToggle={onToggleFavorite}
+        />
+      ) : null}
       <button
         type="button"
         aria-label={

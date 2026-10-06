@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { VoicePreferredTraitFields } from "@/components/voice-trait-radios";
 import {
   type AdminVoiceSpeaker,
   deleteAdminVoiceSpeaker,
@@ -7,7 +8,10 @@ import {
   listAdminVoice,
   patchAdminVoice,
   type SpeechifyEmotionSampleTag,
+  type VoiceAccent,
+  type VoiceEnergy,
   type VoiceGender,
+  type VoicePitch,
   type VoiceSpeakerBrand,
 } from "@/lib/medimade-api";
 
@@ -67,13 +71,25 @@ export function AdminVoicePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [speakers, setSpeakers] = useState<AdminVoiceSpeaker[]>([]);
+  const [listBrand, setListBrand] = useState<VoiceSpeakerBrand | "all">(
+    "speechify",
+  );
   const [newName, setNewName] = useState("");
   const [newModelId, setNewModelId] = useState("");
-  const [newBrand, setNewBrand] = useState<VoiceSpeakerBrand>("fish");
+  const [newBrand, setNewBrand] = useState<VoiceSpeakerBrand>("speechify");
   const [newRate, setNewRate] = useState("-7");
   const [addBusy, setAddBusy] = useState(false);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleProgress, setSampleProgress] = useState<string | null>(null);
+
+  const visibleSpeakers =
+    listBrand === "all"
+      ? speakers
+      : speakers.filter((s) =>
+          listBrand === "speechify"
+            ? s.brand === "speechify"
+            : s.brand !== "speechify",
+        );
 
   async function load() {
     setError(null);
@@ -110,8 +126,9 @@ export function AdminVoicePanel() {
       });
       setNewName("");
       setNewModelId("");
-      setNewBrand("fish");
+      setNewBrand("speechify");
       setNewRate("-7");
+      setListBrand(newBrand === "speechify" ? "speechify" : "fish");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add speaker");
@@ -121,13 +138,13 @@ export function AdminVoicePanel() {
   }
 
   async function generateAllSamples() {
-    if (speakers.length === 0) return;
+    if (visibleSpeakers.length === 0) return;
     setSampleBusy(true);
     setError(null);
     try {
-      for (let i = 0; i < speakers.length; i++) {
-        const s = speakers[i];
-        setSampleProgress(`${i + 1}/${speakers.length} ${s.name}`);
+      for (let i = 0; i < visibleSpeakers.length; i++) {
+        const s = visibleSpeakers[i];
+        setSampleProgress(`${i + 1}/${visibleSpeakers.length} ${s.name}`);
         await generateAdminVoiceSample(s.modelId);
       }
       await load();
@@ -162,18 +179,38 @@ export function AdminVoicePanel() {
               rebuild the clip.
             </p>
           </div>
-          <button
-            type="button"
-            disabled={sampleBusy || speakers.length === 0}
-            onClick={() => void generateAllSamples()}
-            className="shrink-0 rounded-xl accent-fill-gradient px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
-          >
-            {sampleBusy
-              ? sampleProgress
-                ? `Generating ${sampleProgress}…`
-                : "Generating…"
-              : "Generate samples"}
-          </button>
+          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted">Provider</span>
+              <select
+                className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                value={listBrand}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setListBrand(
+                    v === "fish" || v === "speechify" ? v : "all",
+                  );
+                }}
+                aria-label="Filter speakers by provider"
+              >
+                <option value="speechify">Speechify</option>
+                <option value="fish">Fish</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={sampleBusy || visibleSpeakers.length === 0}
+              onClick={() => void generateAllSamples()}
+              className="shrink-0 rounded-xl accent-fill-gradient px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
+            >
+              {sampleBusy
+                ? sampleProgress
+                  ? `Generating ${sampleProgress}…`
+                  : "Generating…"
+                : "Generate samples"}
+            </button>
+          </div>
         </div>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <select
@@ -184,8 +221,8 @@ export function AdminVoicePanel() {
             }
             aria-label="Brand"
           >
-            <option value="fish">Fish</option>
             <option value="speechify">Speechify</option>
+            <option value="fish">Fish</option>
           </select>
           <input
             className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
@@ -226,15 +263,23 @@ export function AdminVoicePanel() {
         </div>
 
         <ul className="mt-4 space-y-3">
-          {speakers.map((s) => (
-            <SpeakerRow
-              key={s.modelId}
-              speaker={s}
-              generateDisabled={sampleBusy}
-              onError={setError}
-              onChanged={() => void load()}
-            />
-          ))}
+          {visibleSpeakers.length === 0 && !loading ? (
+            <li className="text-sm text-muted">
+              {listBrand === "all"
+                ? "No speakers yet."
+                : `No ${listBrand === "speechify" ? "Speechify" : "Fish"} speakers.`}
+            </li>
+          ) : (
+            visibleSpeakers.map((s) => (
+              <SpeakerRow
+                key={s.modelId}
+                speaker={s}
+                generateDisabled={sampleBusy}
+                onError={setError}
+                onChanged={() => void load()}
+              />
+            ))
+          )}
         </ul>
       </section>
     </div>
@@ -280,6 +325,9 @@ function SpeakerRow({
   /** Edited as free text; only split on commas when it is sent. */
   const [goodFor, setGoodFor] = useState(joinGoodFor(speaker.goodFor));
   const [gender, setGender] = useState<VoiceGender | null>(speaker.gender ?? null);
+  const [energy, setEnergy] = useState<VoiceEnergy | null>(speaker.energy ?? null);
+  const [pitch, setPitch] = useState<VoicePitch | null>(speaker.pitch ?? null);
+  const [accent, setAccent] = useState<VoiceAccent | null>(speaker.accent ?? null);
   const [speechifyRate, setSpeechifyRate] = useState(
     speaker.speechifyRate != null ? String(speaker.speechifyRate) : "-7",
   );
@@ -296,6 +344,9 @@ function SpeakerRow({
     setDescription(speaker.description ?? "");
     setGoodFor(savedGoodFor);
     setGender(speaker.gender ?? null);
+    setEnergy(speaker.energy ?? null);
+    setPitch(speaker.pitch ?? null);
+    setAccent(speaker.accent ?? null);
     setSpeechifyRate(
       speaker.speechifyRate != null ? String(speaker.speechifyRate) : "-7",
     );
@@ -307,6 +358,9 @@ function SpeakerRow({
     speaker.description,
     savedGoodFor,
     speaker.gender,
+    speaker.energy,
+    speaker.pitch,
+    speaker.accent,
     speaker.speechifyRate,
     speaker.hidden,
   ]);
@@ -330,6 +384,9 @@ function SpeakerRow({
   /** `next` lets a control save the value it just set, ahead of the re-render. */
   async function save(next?: {
     gender?: VoiceGender | null;
+    energy?: VoiceEnergy | null;
+    pitch?: VoicePitch | null;
+    accent?: VoiceAccent | null;
     brand?: VoiceSpeakerBrand;
     speechifyRate?: number | null;
     modelId?: string;
@@ -349,6 +406,9 @@ function SpeakerRow({
           description,
           goodFor: splitGoodFor(goodFor),
           gender: next?.gender !== undefined ? next.gender : gender,
+          energy: next?.energy !== undefined ? next.energy : energy,
+          pitch: next?.pitch !== undefined ? next.pitch : pitch,
+          accent: next?.accent !== undefined ? next.accent : accent,
           speechifyRate:
             next?.speechifyRate !== undefined
               ? next.speechifyRate
@@ -522,35 +582,31 @@ function SpeakerRow({
               Comma separated. Shown as tag pills; any wording is fine.
             </span>
           </label>
-          <fieldset className="text-xs font-medium text-muted">
-            <legend>Voice gender</legend>
-            <div className="mt-1 flex flex-wrap gap-3">
-              {(
-                [
-                  ["male", "Male"],
-                  ["female", "Female"],
-                  ["", "Not specified"],
-                ] as const
-              ).map(([val, label]) => (
-                <label
-                  key={label}
-                  className="flex cursor-pointer items-center gap-1.5 font-normal text-foreground"
-                >
-                  <input
-                    type="radio"
-                    name={`gender-${speaker.modelId}`}
-                    checked={(gender ?? "") === val}
-                    disabled={busy !== null}
-                    onChange={() => {
-                      const next = val === "" ? null : val;
-                      setGender(next);
-                      void save({ gender: next });
-                    }}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
+          <fieldset className="space-y-3">
+            <VoicePreferredTraitFields
+              id={speaker.modelId}
+              energy={energy}
+              pitch={pitch}
+              gender={gender}
+              accent={accent}
+              disabled={busy !== null}
+              onEnergy={(next) => {
+                setEnergy(next);
+                void save({ energy: next });
+              }}
+              onPitch={(next) => {
+                setPitch(next);
+                void save({ pitch: next });
+              }}
+              onGender={(next) => {
+                setGender(next);
+                void save({ gender: next });
+              }}
+              onAccent={(next) => {
+                setAccent(next);
+                void save({ accent: next });
+              }}
+            />
           </fieldset>
           <label className="flex items-center gap-2 text-xs text-muted">
             <input
@@ -571,6 +627,9 @@ function SpeakerRow({
                     description,
                     goodFor: splitGoodFor(goodFor),
                     gender,
+                    energy,
+                    pitch,
+                    accent,
                     speechifyRate: parseSpeechifyRate(speechifyRate),
                   },
                 })

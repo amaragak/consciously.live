@@ -56,6 +56,7 @@ import {
 } from "./_shared/audio-aac";
 import {
   getSpeechifyApiKey,
+  MEDITATION_SPEECHIFY_EMOTION,
   speechifyRateToSsml,
   speechifyTtsMp3,
   type SpeechifyEmotionTag,
@@ -980,7 +981,7 @@ async function synthesizeSegmentMp3(params: {
   fishApiKey?: string;
   speechifyApiKey?: string;
   speechifyRate?: string;
-  /** Speechify only — omit for neutral. */
+  /** Speechify only — default `calm` for meditation. */
   emotion?: SpeechifyEmotionTag | null;
   /** Speechify only — default true (~−14 LUFS). */
   speechifyLoudnessNormalization?: boolean;
@@ -1009,7 +1010,7 @@ async function synthesizeSegmentMp3(params: {
       text: params.text,
       voiceId: params.voiceId,
       rate: params.speechifyRate,
-      emotion: params.emotion,
+      emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
       loudnessNormalization: params.speechifyLoudnessNormalization,
       // Chunk first (caller), then per-chunk sentence pauses in SSML.
       sentenceBreakMs: 777,
@@ -1031,7 +1032,7 @@ async function synthesizeScriptWithPauses(params: {
   fishApiKey?: string;
   speechifyApiKey?: string;
   speechifyRate?: string;
-  /** Speechify only — omit for neutral. */
+  /** Speechify only — default `calm` for meditation. */
   emotion?: SpeechifyEmotionTag | null;
   /** Speechify only — default true (~−14 LUFS). */
   speechifyLoudnessNormalization?: boolean;
@@ -2070,6 +2071,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         voiceId: referenceId,
         speechifyRate,
         speechifyLoudnessNormalization,
+        emotion: MEDITATION_SPEECHIFY_EMOTION,
         pauseBands,
         pauseScale: pauseRenderScale,
         applyFx: !skipVoiceFxEarly,
@@ -2149,6 +2151,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           speechifyApiKey: speechifyKey,
           speechifyRate,
           speechifyLoudnessNormalization,
+          emotion: MEDITATION_SPEECHIFY_EMOTION,
           runpod: runpodCreds,
           script: ttsScript,
           voiceId: referenceId,

@@ -38,10 +38,12 @@ import {
 import {
   deleteVoiceSpeaker,
   loadPauseBandSeconds,
+  loadStyleVoicePrefs,
   listVoiceSpeakers,
   putVoiceSpeaker,
   renameVoiceSpeaker,
   savePauseBandSeconds,
+  saveStyleVoicePrefs,
   seedVoiceSpeakersIfEmpty,
   type PauseBandSeconds,
   type VoiceSpeakerRow,
@@ -129,9 +131,10 @@ async function handleGet() {
   const domain = (process.env.MEDIA_CLOUDFRONT_DOMAIN || "").trim();
   const baseUrl = domain ? `https://${domain}` : undefined;
   const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
-  const [speakers, pauses] = await Promise.all([
+  const [speakers, pauses, styleVoicePrefs] = await Promise.all([
     seedVoiceSpeakersIfEmpty(),
     loadPauseBandSeconds(),
+    loadStyleVoicePrefs(),
   ]);
   const withSamples = await Promise.all(
     speakers.map(async (s) => {
@@ -175,7 +178,32 @@ async function handleGet() {
       };
     }),
   );
-  return json(200, { baseUrl, speakers: withSamples, pauses, pauseBands: SCRIPT_PAUSE_BANDS });
+  return json(200, {
+    baseUrl,
+    speakers: withSamples,
+    pauses,
+    pauseBands: SCRIPT_PAUSE_BANDS,
+    styleVoicePrefs,
+  });
+}
+
+function optionalTrait<T>(
+  s: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+): T | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(s, key)) return undefined;
+  const raw = s[key];
+  if (raw === null || raw === "") return null;
+  if (typeof raw === "string" && (allowed as readonly string[]).includes(raw)) {
+    return raw as T;
+  }
+  if (typeof raw === "string") {
+    const n = raw.trim().toLowerCase();
+    const hit = allowed.find((a) => String(a).toLowerCase() === n);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 async function handlePatch(event: APIGatewayProxyEventV2) {
@@ -189,6 +217,13 @@ async function handlePatch(event: APIGatewayProxyEventV2) {
   let pauses: PauseBandSeconds | undefined;
   if (body.pauses && typeof body.pauses === "object") {
     pauses = await savePauseBandSeconds(body.pauses as Partial<Record<ScriptPauseBand, number>>);
+  }
+
+  let styleVoicePrefs: Awaited<ReturnType<typeof saveStyleVoicePrefs>> | undefined;
+  if (body.styleVoicePrefs && typeof body.styleVoicePrefs === "object") {
+    styleVoicePrefs = await saveStyleVoicePrefs(
+      body.styleVoicePrefs as Record<string, unknown>,
+    );
   }
 
   let speaker: VoiceSpeakerRow | undefined;
@@ -212,6 +247,9 @@ async function handlePatch(event: APIGatewayProxyEventV2) {
           : s.gender === null || s.gender === ""
             ? null
             : undefined,
+      energy: optionalTrait(s, "energy", ["calm", "steady", "bright"] as const),
+      pitch: optionalTrait(s, "pitch", ["low", "mid", "high"] as const),
+      accent: optionalTrait(s, "accent", ["UK", "US", "African"] as const),
       speechifyRate:
         Object.prototype.hasOwnProperty.call(s, "speechifyRate")
           ? (s.speechifyRate as number | null)
@@ -231,7 +269,7 @@ async function handlePatch(event: APIGatewayProxyEventV2) {
     }
   }
 
-  return json(200, { ok: true, pauses, speaker });
+  return json(200, { ok: true, pauses, speaker, styleVoicePrefs });
 }
 
 async function handlePost(event: APIGatewayProxyEventV2) {

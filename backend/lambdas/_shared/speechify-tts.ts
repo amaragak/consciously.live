@@ -67,12 +67,16 @@ export function insertSpeechifyBreaksAfterPeriods(
   return escapedText.replace(/(?<!\d)\.(?=\s|$)/g, `.${tag}`);
 }
 
-/** Speechify `<speechify:style emotion="…">` values used in admin samples. */
+/** Speechify `<speechify:style emotion="…">` values we send. */
 export type SpeechifyEmotionTag = "warm" | "calm";
+
+/** Speechify emotion for meditation renders (supported tag; not `neutral`). */
+export const MEDITATION_SPEECHIFY_EMOTION: SpeechifyEmotionTag = "calm";
 
 /**
  * Wrap spoken text + admin rate. Pause markers are stripped (ffmpeg silence).
- * Optional emotion via `<speechify:style emotion="…">`.
+ * Emotion uses `<speechify:style>` as the **outer** wrap around `<prosody>`
+ * (Speechify: unrecognised emotions are ignored; meditation uses `calm`).
  * Optional `sentenceBreakMs`: after chunking, insert `<break time="Nms"/>` after
  * each `.` inside this chunk (meditation path uses 777).
  */
@@ -92,13 +96,13 @@ export function scriptToSpeechifySsml(
   ) {
     inner = insertSpeechifyBreaksAfterPeriods(inner, opts.sentenceBreakMs);
   }
-  const emotion = opts?.emotion?.trim().toLowerCase();
-  if (emotion === "warm" || emotion === "calm") {
-    inner = `<speechify:style emotion="${emotion}">${inner}</speechify:style>`;
-  }
   const rate = opts?.rate?.trim();
   if (rate) {
     inner = `<prosody rate="${escapeSsmlText(rate)}">${inner}</prosody>`;
+  }
+  const emotion = opts?.emotion?.trim().toLowerCase();
+  if (emotion === "warm" || emotion === "calm") {
+    inner = `<speechify:style emotion="${emotion}">${inner}</speechify:style>`;
   }
   return `<speak>${inner}</speak>`;
 }
@@ -142,7 +146,7 @@ export type SpeechifyTtsParams = {
    * When omitted, uses the admin rate for this voice (Speechify default if unset).
    */
   rate?: string;
-  /** When set, wraps spoken text in `<speechify:style emotion="…">`. */
+  /** When set, wraps `<prosody>` in `<speechify:style emotion="…">`. */
   emotion?: SpeechifyEmotionTag | null;
   /**
    * When false, disables Speechify’s ~−14 LUFS loudness_normalization

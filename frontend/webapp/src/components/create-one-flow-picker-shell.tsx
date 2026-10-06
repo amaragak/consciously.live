@@ -12,6 +12,10 @@ type Props = {
   onClose: () => void;
   onConfirm: () => void;
   children: ReactNode;
+  /** Desktop panel width. Default 520px (Create pickers). */
+  panelWidth?: "default" | "voice" | "sound";
+  /** Override the scrolling body classes. */
+  bodyClassName?: string;
 };
 
 const CLOSE_MS = 300;
@@ -31,6 +35,8 @@ export function CreateOneFlowPickerShell({
   onClose,
   onConfirm,
   children,
+  panelWidth = "default",
+  bodyClassName,
 }: Props) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(open);
@@ -84,7 +90,13 @@ export function CreateOneFlowPickerShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-[18px] bg-background shadow-[0_-8px_32px_rgb(0_0_0_/_0.18)] transition-transform duration-300 ease-out will-change-transform md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[520px] md:rounded-none md:border-l md:border-border md:shadow-[-12px_0_40px_rgb(0_0_0_/_0.12)] ${
+        className={`absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-[18px] bg-background shadow-[0_-8px_32px_rgb(0_0_0_/_0.18)] transition-transform duration-300 ease-out will-change-transform md:inset-y-0 md:left-auto md:right-0 md:max-h-none ${
+          panelWidth === "voice"
+            ? "md:w-[460px]"
+            : panelWidth === "sound"
+              ? "md:w-[640px]"
+              : "md:w-[520px]"
+        } md:rounded-none md:border-l md:border-border md:shadow-[-12px_0_40px_rgb(0_0_0_/_0.12)] ${
           entered
             ? "translate-y-0 md:translate-x-0"
             : "translate-y-full md:translate-x-full md:translate-y-0"
@@ -123,7 +135,12 @@ export function CreateOneFlowPickerShell({
             </svg>
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 md:px-6 md:py-4">
+        <div
+          className={
+            bodyClassName ??
+            "min-h-0 flex-1 overflow-y-auto px-4 py-3 md:px-6 md:py-4"
+          }
+        >
           {children}
         </div>
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2.5 md:px-6 md:py-3.5">

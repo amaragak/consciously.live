@@ -39,6 +39,12 @@ import {
   type MixerFactoryPreset,
 } from "@/lib/mixer-factory-presets";
 import {
+  factoryMixFavoriteId,
+  userMixFavoriteId,
+  useSoundFavorites,
+} from "@/lib/sound-favorites";
+import { FavoriteHeartButton } from "@/components/favorite-heart-button";
+import {
   emptyMixerMix,
   loadMixerPresetStore,
   mixEquals,
@@ -196,6 +202,7 @@ export function MixerSoundsStudio({
   const [speakerModelId, setSpeakerModelId] = useState("");
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
   const [speakerPlaying, setSpeakerPlaying] = useState(false);
+  const favorites = useSoundFavorites();
 
   const [playing, setPlaying] = useState<Record<BedTrack, boolean>>({
     nature: false,
@@ -1206,14 +1213,30 @@ export function MixerSoundsStudio({
                   </p>
                 ) : (
                   <ul className="space-y-2">
-                    {factoryPresets.map((p) => (
+                    {[...factoryPresets]
+                      .sort((a, b) => {
+                        const af = favorites.mixSet.has(factoryMixFavoriteId(a.id))
+                          ? 0
+                          : 1;
+                        const bf = favorites.mixSet.has(factoryMixFavoriteId(b.id))
+                          ? 0
+                          : 1;
+                        return af - bf;
+                      })
+                      .map((p) => (
                       <li key={p.id}>
                         <FactoryPresetRow
                           preset={p}
                           loaded={p.id === loadedFactoryId}
                           previewing={p.id === factoryPreviewId}
+                          favorite={favorites.mixSet.has(
+                            factoryMixFavoriteId(p.id),
+                          )}
                           onLoad={() => applyFactoryPreset(p)}
                           onPreview={() => void toggleFactoryPreview(p)}
+                          onToggleFavorite={() =>
+                            favorites.toggleMix(factoryMixFavoriteId(p.id))
+                          }
                         />
                       </li>
                     ))}
@@ -1221,6 +1244,42 @@ export function MixerSoundsStudio({
                 )
               ) : null}
             </div>
+
+            {isAdmin ? null : (
+              <div className="border-t-[0.5px] border-solid border-border pt-4">
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Voices
+                </h2>
+                {fishSpeakers.length === 0 ? (
+                  <p className="text-sm text-muted">No voices yet.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {[...fishSpeakers]
+                      .sort((a, b) => {
+                        const af = favorites.voiceSet.has(a.modelId) ? 0 : 1;
+                        const bf = favorites.voiceSet.has(b.modelId) ? 0 : 1;
+                        if (af !== bf) return af - bf;
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map((s) => (
+                      <li
+                        key={s.modelId}
+                        className="flex items-center gap-1 rounded-lg px-1"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {s.name}
+                        </span>
+                        <FavoriteHeartButton
+                          pressed={favorites.voiceSet.has(s.modelId)}
+                          label={s.name}
+                          onToggle={() => favorites.toggleVoice(s.modelId)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             {isAdmin ? null : (
               <div className="border-t-[0.5px] border-solid border-border pt-4">
@@ -1247,7 +1306,17 @@ export function MixerSoundsStudio({
                   </p>
                 ) : (
                   <ul className="space-y-2">
-                    {presets.map((p) => {
+                    {[...presets]
+                      .sort((a, b) => {
+                        const af = favorites.mixSet.has(userMixFavoriteId(a.id))
+                          ? 0
+                          : 1;
+                        const bf = favorites.mixSet.has(userMixFavoriteId(b.id))
+                          ? 0
+                          : 1;
+                        return af - bf;
+                      })
+                      .map((p) => {
                       const isActive = p.id === activeId;
                       const menuOpen = mixMenuId === p.id;
                       return (
@@ -1268,6 +1337,15 @@ export function MixerSoundsStudio({
                                 {p.name}
                               </span>
                             </button>
+                            <FavoriteHeartButton
+                              pressed={favorites.mixSet.has(
+                                userMixFavoriteId(p.id),
+                              )}
+                              label={p.name}
+                              onToggle={() =>
+                                favorites.toggleMix(userMixFavoriteId(p.id))
+                              }
+                            />
                             <div className="relative shrink-0">
                               <button
                                 type="button"
@@ -1420,6 +1498,8 @@ export function MixerSoundsStudio({
                     onTogglePreview={() => void toggleSpeakerPreview()}
                     playDisabled={!mediaBaseUrl || !speakerModelId}
                     showDisc={false}
+                    favoriteIds={favorites.voiceSet}
+                    onToggleFavorite={favorites.toggleVoice}
                   />
                 </div>
               ) : null}
@@ -1439,6 +1519,8 @@ export function MixerSoundsStudio({
                   onTogglePreview={() => void toggleRowPreview("music")}
                   playDisabled={!mix.musicKey}
                   playAriaLabel={playing.music ? "Pause music" : "Play music"}
+                  favoriteKeys={favorites.compositionSet}
+                  onToggleFavorite={favorites.toggleComposition}
                 />
                 <MixerChannel
                   layout="row"
@@ -1457,6 +1539,8 @@ export function MixerSoundsStudio({
                   playAriaLabel={
                     playing.nature ? "Pause ambience" : "Play ambience"
                   }
+                  favoriteKeys={favorites.compositionSet}
+                  onToggleFavorite={favorites.toggleComposition}
                 />
                 <DrumsLockedWrap
                   locked={drumsLockedForMelodic}
@@ -1480,6 +1564,8 @@ export function MixerSoundsStudio({
                     playAriaLabel={
                       playing.drums ? "Pause drums" : "Play drums"
                     }
+                    favoriteKeys={favorites.compositionSet}
+                    onToggleFavorite={favorites.toggleComposition}
                   />
                 </DrumsLockedWrap>
                 <MixerChannel
@@ -1497,6 +1583,8 @@ export function MixerSoundsStudio({
                   onTogglePreview={() => void toggleRowPreview("noise")}
                   playDisabled={!mix.noiseKey}
                   playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
+                  favoriteKeys={favorites.compositionSet}
+                  onToggleFavorite={favorites.toggleComposition}
                 />
               </div>
             </div>
@@ -1515,6 +1603,8 @@ export function MixerSoundsStudio({
                   onTogglePreview={() => void toggleSpeakerPreview()}
                   playDisabled={!mediaBaseUrl || !speakerModelId}
                   showDisc={false}
+                  favoriteIds={favorites.voiceSet}
+                  onToggleFavorite={favorites.toggleVoice}
                 />
               ) : null}
               <MixerChannel
@@ -1531,6 +1621,8 @@ export function MixerSoundsStudio({
                 onTogglePreview={() => void toggleRowPreview("music")}
                 playDisabled={!mix.musicKey}
                 playAriaLabel={playing.music ? "Pause music" : "Play music"}
+                favoriteKeys={favorites.compositionSet}
+                onToggleFavorite={favorites.toggleComposition}
               />
               <MixerChannel
                 label="Ambience"
@@ -1548,6 +1640,8 @@ export function MixerSoundsStudio({
                 playAriaLabel={
                   playing.nature ? "Pause ambience" : "Play ambience"
                 }
+                favoriteKeys={favorites.compositionSet}
+                onToggleFavorite={favorites.toggleComposition}
               />
               <DrumsLockedWrap
                 locked={drumsLockedForMelodic}
@@ -1568,6 +1662,8 @@ export function MixerSoundsStudio({
                   onTogglePreview={() => void toggleRowPreview("drums")}
                   playDisabled={drumsLockedForMelodic || !mix.drumsKey}
                   playAriaLabel={playing.drums ? "Pause drums" : "Play drums"}
+                  favoriteKeys={favorites.compositionSet}
+                  onToggleFavorite={favorites.toggleComposition}
                 />
               </DrumsLockedWrap>
               <MixerChannel
@@ -1584,6 +1680,8 @@ export function MixerSoundsStudio({
                 onTogglePreview={() => void toggleRowPreview("noise")}
                 playDisabled={!mix.noiseKey}
                 playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
+                favoriteKeys={favorites.compositionSet}
+                onToggleFavorite={favorites.toggleComposition}
               />
             </div>
           </div>

@@ -11,6 +11,7 @@ import { AdminScriptLabPanel } from "./components/admin-script-lab-panel";
 import { AdminSoundsPanel } from "./components/admin-sounds-panel";
 import { AdminStressTestPanel } from "./components/admin-stress-test-panel";
 import { AdminVoicePanel } from "./components/admin-voice-panel";
+import { AdminStylesPanel } from "./components/admin-styles-panel";
 import { AdminVoiceFxPanel } from "./components/admin-voice-fx-panel";
 import { MixerSoundsStudio } from "./components/mixer-sounds-studio";
 import { AppShell } from "./shell/app-shell";
@@ -82,6 +83,7 @@ export function App() {
             element={<MixerSoundsStudio variant="admin" />}
           />
           <Route path="voice" element={<AdminVoicePanel />} />
+          <Route path="styles" element={<AdminStylesPanel />} />
           <Route path="fx" element={<AdminVoiceFxPanel />} />
           <Route path="programs" element={<AdminProgramsPanel />} />
           <Route path="blog" element={<AdminReadPanel />} />

@@ -5,6 +5,7 @@ import {
   ensureAdminCompositionCoverThumbs,
   generateAdminCompositionCover,
   listAdminCompositionCovers,
+  setAdminCompositionCoverTags,
   type AdminCompositionCoverItem,
   type AdminImageModel,
 } from "@/lib/medimade-api";
@@ -14,6 +15,7 @@ type CoverFilter = "all" | "missing" | "has";
 type RowState = {
   model: AdminImageModel;
   changeRequest: string;
+  tagDraft: string;
   busy: boolean;
   error: string | null;
 };
@@ -22,9 +24,14 @@ function blankRowState(model: AdminImageModel = "gpt-image-1-mini"): RowState {
   return {
     model,
     changeRequest: "",
+    tagDraft: "",
     busy: false,
     error: null,
   };
+}
+
+function normalizeTag(raw: string): string {
+  return raw.trim().toLowerCase().slice(0, 32);
 }
 
 function hasCover(item: AdminCompositionCoverItem): boolean {
@@ -94,7 +101,9 @@ export function AdminCompositionCoversPanel() {
       if (coverFilter === "has" && !hasCover(it)) return false;
       if (!q) return true;
       return (
-        it.name.toLowerCase().includes(q) || it.key.toLowerCase().includes(q)
+        it.name.toLowerCase().includes(q) ||
+        it.key.toLowerCase().includes(q) ||
+        it.tags.some((t) => t.includes(q))
       );
     });
   }, [items, query, coverFilter]);
@@ -216,6 +225,44 @@ export function AdminCompositionCoversPanel() {
     }
   }
 
+  async function persistTags(item: AdminCompositionCoverItem, tags: string[]) {
+    const unique: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of tags) {
+      const t = normalizeTag(raw);
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      unique.push(t);
+      if (unique.length >= 24) break;
+    }
+    patchRow(item.key, { busy: true, error: null });
+    try {
+      const saved = await setAdminCompositionCoverTags({
+        key: item.key,
+        tags: unique,
+        title: item.name,
+      });
+      setItems((prev) =>
+        prev.map((p) => (p.key === saved.key ? { ...p, ...saved } : p)),
+      );
+      patchRow(item.key, { busy: false });
+    } catch (e) {
+      patchRow(item.key, {
+        busy: false,
+        error: e instanceof Error ? e.message : "Could not save tags",
+      });
+    }
+  }
+
+  function addDraftTag(item: AdminCompositionCoverItem) {
+    const state = rows[item.key] ?? blankRowState(defaultModel);
+    const next = normalizeTag(state.tagDraft);
+    if (!next) return;
+    patchRow(item.key, { tagDraft: "" });
+    if (item.tags.includes(next)) return;
+    void persistTags(item, [...item.tags, next]);
+  }
+
   async function generateSelected() {
     const queue = items.filter((it) => selected.has(it.key));
     if (queue.length === 0) return;
@@ -291,6 +338,7 @@ export function AdminCompositionCoversPanel() {
             Soundscape / composition cover art (~1K full + list thumbnail).
             Select rows to generate in bulk, or generate one at a time.
             Thumbnail backfill only resizes existing covers — no AI regen.
+            Tags are for compositions only and live on the catalog row.
           </p>
           <p className="mt-1 text-xs text-muted">
             {counts.total} total · {counts.missing} missing · {counts.withCover}{" "}
@@ -543,6 +591,57 @@ export function AdminCompositionCoversPanel() {
                         {item.key}
                       </p>
                     </div>
+                    <label className="flex flex-col gap-1 text-xs text-muted">
+                      Tags
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {item.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-1 rounded-full border border-border bg-background py-0.5 pl-2.5 pr-1 text-[12px] text-foreground"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              disabled={state.busy || bulkBusy}
+                              aria-label={`Remove tag ${tag}`}
+                              onClick={() =>
+                                void persistTags(
+                                  item,
+                                  item.tags.filter((t) => t !== tag),
+                                )
+                              }
+                              className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-muted hover:text-foreground disabled:opacity-50"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={state.tagDraft}
+                          disabled={state.busy || bulkBusy || item.tags.length >= 24}
+                          onChange={(e) =>
+                            patchRow(item.key, { tagDraft: e.target.value })
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === ",") {
+                              e.preventDefault();
+                              addDraftTag(item);
+                            }
+                          }}
+                          onBlur={() => addDraftTag(item)}
+                          placeholder={
+                            item.tags.length >= 24
+                              ? "Tag limit reached"
+                              : "Add tag…"
+                          }
+                          className="h-8 min-w-[8rem] flex-1 rounded-xl border border-border bg-background px-2.5 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted">
+                        Lowercase, Enter or comma to add · compositions only
+                      </span>
+                    </label>
                     <label className="flex max-w-xs flex-col gap-1 text-xs text-muted">
                       Model
                       <select

@@ -5,6 +5,7 @@ const SECTIONS = [
   { href: "/admin/sounds", label: "Sounds" },
   { href: "/admin/sound-mixes", label: "Sound mixes" },
   { href: "/admin/voice", label: "Voice" },
+  { href: "/admin/styles", label: "Styles" },
   { href: "/admin/fx", label: "FX" },
   { href: "/admin/programs", label: "Programs" },
   { href: "/admin/read", label: "Read" },

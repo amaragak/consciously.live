@@ -12,16 +12,13 @@ import {
   useState,
   forwardRef,
 } from "react";
-import * as Switch from "@radix-ui/react-switch";
-import * as Tooltip from "@radix-ui/react-tooltip";
-import { VOICE_FX_DIAL_DEFAULT, VoiceFxKnob } from "@consciously/common";
+import { DualStemPlayer, VOICE_FX_DIAL_DEFAULT } from "@consciously/common";
 import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
-import { MixerChannel, MixerPresetChannel } from "@/components/mixer-channel";
+import { MixerDeskRow } from "@/components/mixer-channel";
+import { CreateOneFlowPickerShell } from "@/components/create-one-flow-picker-shell";
+import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
-import { SoundscapeDevVolumeFader } from "@/components/soundscape-dev-volume-fader";
-import { SoundscapePicker } from "@/components/soundscape-picker";
-import { VoiceCardRow } from "@/components/voice-card-row";
 import { playWithLeadBuffer } from "@/lib/audio-lead-buffer";
 import { bedElementVolume, soundscapeListenVolume } from "@/lib/bed-volume";
 import {
@@ -30,6 +27,7 @@ import {
 } from "@/lib/claude-pricing";
 import {
   buildCreateMeditationBedJobFields,
+  SOUNDSCAPE_GAIN,
   type CreateSoundBedMode,
 } from "@/lib/create-meditation-bed-payload";
 import { shouldRenderDevUi, useDevUiSettings } from "@/lib/dev-ui-settings";
@@ -62,14 +60,35 @@ import {
   getMedimadeMediaBaseUrl,
   listBackgroundAudio,
   listFishSpeakers,
+  listStyleVoicePrefs,
   peekBackgroundAudioCache,
   preloadBackgroundAudioCoverImages,
   type BackgroundAudioItem,
   type FishPauseMode,
   type FishSpeaker,
+  type VoicePreferredTraits,
   VOICE_FX_PRESET_MEDITATION_MIXER,
+  hasVoicePrefs,
 } from "@/lib/medimade-api";
-import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
+import { FavoriteHeartButton } from "@/components/favorite-heart-button";
+import {
+  computeSoundPicks,
+  musicLevelToBedGain,
+  rankVoicesByPrefs,
+  readLastVoiceId,
+  readRecentSoundIds,
+  rememberRecentSound,
+  SILENCE_SOUND_ID,
+  soundscapeCategoryLabel,
+  swapAlt,
+  voiceDisplayMeta,
+  voiceFilterChips,
+  voiceMatchesFilter,
+  writeLastSoundForStyle,
+  writeLastVoiceId,
+} from "@/lib/create-sound-picks";
+import { useSoundFavorites } from "@/lib/sound-favorites";
+import { isMelodicMusicKey, prettySubcategoryLabel } from "@/lib/sound-taxonomy";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudDrySampleKey,
@@ -103,18 +122,58 @@ export type CreateSoundStepJobExtras = {
 export type CreateSoundStepHandle = {
   stopPreviews: () => void;
   getJobExtras: () => Promise<CreateSoundStepJobExtras>;
+  togglePreviewMix: () => void;
+  previewMixPlaying: boolean;
 };
+
+type CreateSoundStepProps = {
+  disabled?: boolean;
+  meditationStyle?: string | null;
+  programSpeakerModelId?: string | null;
+  programTitle?: string | null;
+  programVoicePrefs?: VoicePreferredTraits | null;
+  onPreviewMixPlayingChange?: (playing: boolean) => void;
+};
+
+type FlowSoundLock = {
+  speakerModelId: string;
+  compositionKey: string;
+  soundMode: CreateSoundBedMode;
+  voiceAlts: string[];
+  soundAlts: string[];
+  showVoiceReason: boolean;
+  showSoundReason: boolean;
+  voiceFxDial: number;
+  musicLevel: number;
+  longerBreaks: boolean;
+};
+
+let flowSoundLock: FlowSoundLock | null = null;
 
 export const CreateSoundStep = forwardRef<
   CreateSoundStepHandle,
-  { disabled?: boolean }
->(function CreateSoundStep({ disabled = false }, ref) {
+  CreateSoundStepProps
+>(function CreateSoundStep(
+  {
+    disabled = false,
+    meditationStyle = null,
+    programSpeakerModelId = null,
+    programTitle: _programTitle = null,
+    programVoicePrefs = null,
+    onPreviewMixPlayingChange,
+  },
+  ref,
+) {
   const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
   const devUi = useDevUiSettings();
   const showCreateAudioDevControls = shouldRenderDevUi(
     devUi.createAudioDevControls,
   );
   const [speakers, setSpeakers] = useState<FishSpeaker[]>([]);
+  const [styleVoicePrefs, setStyleVoicePrefs] = useState<
+    Record<string, VoicePreferredTraits>
+  >({});
+  const favorites = useSoundFavorites();
   const [speakerModelId, setSpeakerModelId] = useState("");
   const [voiceFxDial, setVoiceFxDial] = useState(VOICE_FX_DIAL_DEFAULT);
   const [longerBreaks, setLongerBreaks] = useState(false);
@@ -134,6 +193,36 @@ export const CreateSoundStep = forwardRef<
   const soundscapeDevFaderRef = useRef(100);
   const voiceFxOn = showCreateAudioDevControls ? speakerFxPreviewOn : true;
 
+  const [voiceAlts, setVoiceAlts] = useState<string[]>([]);
+  const [soundAlts, setSoundAlts] = useState<string[]>([]);
+  const [voiceReason, setVoiceReason] = useState("");
+  const [soundReason, setSoundReason] = useState("");
+  const [showVoiceReason, setShowVoiceReason] = useState(true);
+  const [showSoundReason, setShowSoundReason] = useState(true);
+  const [musicLevel, setMusicLevel] = useState(50);
+  const [picksReady, setPicksReady] = useState(false);
+  const [changeKind, setChangeKind] = useState<null | "voice" | "sound">(null);
+  const [stagedVoiceId, setStagedVoiceId] = useState("");
+  const [stagedSoundId, setStagedSoundId] = useState("");
+  const [soundPanelTab, setSoundPanelTab] = useState<"library" | "mixer">(
+    "library",
+  );
+  const [voiceFilter, setVoiceFilter] = useState("All");
+  const [soundSearch, setSoundSearch] = useState("");
+  const [soundCategory, setSoundCategory] = useState("all");
+  const [soundSort, setSoundSort] = useState<"az" | "recent">("az");
+  const [voicePreviewId, setVoicePreviewId] = useState<string | null>(null);
+  const [previewMixPlaying, setPreviewMixPlaying] = useState(false);
+  useEffect(() => {
+    onPreviewMixPlayingChange?.(previewMixPlaying);
+  }, [previewMixPlaying, onPreviewMixPlayingChange]);
+  const voicePlayerRef = useRef<DualStemPlayer | null>(null);
+  if (!voicePlayerRef.current) voicePlayerRef.current = new DualStemPlayer();
+  const previewMixTimerRef = useRef<number | null>(null);
+  const togglePreviewMixRef = useRef<(() => Promise<void>) | null>(null);
+  const changeVoiceBtnRef = useRef<HTMLButtonElement | null>(null);
+  const changeSoundBtnRef = useRef<HTMLButtonElement | null>(null);
+
   const [cachedBeds] = useState(() => peekBackgroundAudioCache());
   const [backgroundNature, setBackgroundNature] = useState<BackgroundAudioItem[]>(
     () => cachedBeds?.nature ?? [],
@@ -150,6 +239,13 @@ export const CreateSoundStep = forwardRef<
   const [compositions, setCompositions] = useState<BackgroundAudioItem[]>(
     () => cachedBeds?.compositions ?? [],
   );
+  const voicePrefs = useMemo<VoicePreferredTraits | null>(() => {
+    if (hasVoicePrefs(programVoicePrefs)) return programVoicePrefs;
+    const styleKey = meditationStyle?.trim();
+    if (!styleKey) return null;
+    const fromStyle = styleVoicePrefs[styleKey];
+    return hasVoicePrefs(fromStyle) ? fromStyle : null;
+  }, [programVoicePrefs, meditationStyle, styleVoicePrefs]);
   const [factoryMixes, setFactoryMixes] = useState<MixerFactoryPreset[]>(
     () => cachedBeds?.factoryMixes ?? [],
   );
@@ -177,6 +273,8 @@ export const CreateSoundStep = forwardRef<
   );
   const [selectedMixKey, setSelectedMixKey] = useState("");
   const [mixBaseline, setMixBaseline] = useState<MixerPresetMix | null>(null);
+  const [mixNaming, setMixNaming] = useState(false);
+  const [mixSaveName, setMixSaveName] = useState("Untitled mix");
 
   const [playing, setPlaying] = useState({
     nature: false,
@@ -221,8 +319,11 @@ export const CreateSoundStep = forwardRef<
         if (cancelled) return;
         const next = speechifySpeakersForPicker(list);
         setSpeakers(next);
-        const pick = pickDefaultSpeechifySpeaker(next);
-        if (pick?.modelId) setSpeakerModelId(pick.modelId);
+      })
+      .catch(() => {});
+    void listStyleVoicePrefs()
+      .then((prefs) => {
+        if (!cancelled) setStyleVoicePrefs(prefs);
       })
       .catch(() => {});
     return () => {
@@ -264,6 +365,82 @@ export const CreateSoundStep = forwardRef<
       cancelled = true;
     };
   }, [cachedBeds]);
+
+  useEffect(() => {
+    if (picksReady) return;
+    if (speakers.length === 0) return;
+    const lock = flowSoundLock;
+    const picks = computeSoundPicks({
+      speakers,
+      soundscapes: compositions,
+      style: meditationStyle,
+      lockedVoiceId: lock?.speakerModelId,
+      lockedSoundId: lock ? lock.compositionKey : null,
+      voicePrefs,
+      programSpeakerId: programSpeakerModelId,
+      favoriteVoiceIds: favorites.voiceSet,
+    });
+    if (lock) {
+      setSpeakerModelId(lock.speakerModelId || picks.voiceId);
+      setCompositionKey(lock.compositionKey);
+      setSoundMode(lock.soundMode);
+      setVoiceAlts(lock.voiceAlts.length ? lock.voiceAlts : picks.voiceAlts);
+      setSoundAlts(lock.soundAlts.length ? lock.soundAlts : picks.soundAlts);
+      setShowVoiceReason(lock.showVoiceReason);
+      setShowSoundReason(lock.showSoundReason);
+      setVoiceFxDial(lock.voiceFxDial);
+      setMusicLevel(lock.musicLevel);
+      setLongerBreaks(lock.longerBreaks);
+      setVoiceReason(picks.voiceReason);
+      setSoundReason(picks.soundReason);
+    } else {
+      setSpeakerModelId(picks.voiceId);
+      setCompositionKey(picks.soundId);
+      setVoiceAlts(picks.voiceAlts);
+      setSoundAlts(picks.soundAlts);
+      setVoiceReason(picks.voiceReason);
+      setSoundReason(picks.soundReason);
+      setShowVoiceReason(true);
+      setShowSoundReason(true);
+    }
+    setPicksReady(true);
+  }, [
+    speakers,
+    compositions,
+    meditationStyle,
+    picksReady,
+    voicePrefs,
+    programSpeakerModelId,
+    favorites.voiceSet,
+  ]);
+
+  useEffect(() => {
+    if (!picksReady) return;
+    flowSoundLock = {
+      speakerModelId,
+      compositionKey,
+      soundMode,
+      voiceAlts,
+      soundAlts,
+      showVoiceReason,
+      showSoundReason,
+      voiceFxDial,
+      musicLevel,
+      longerBreaks,
+    };
+  }, [
+    picksReady,
+    speakerModelId,
+    compositionKey,
+    soundMode,
+    voiceAlts,
+    soundAlts,
+    showVoiceReason,
+    showSoundReason,
+    voiceFxDial,
+    musicLevel,
+    longerBreaks,
+  ]);
 
   const drumsLockedForMelodic = isMelodicMusicKey(
     backgroundMusic,
@@ -332,11 +509,26 @@ export const CreateSoundStep = forwardRef<
     setPlaying({ nature: false, music: false, drums: false, noise: false });
   }
 
-  const stopAllAudioPreview = useCallback(() => {
+  const stopVoicePreview = useCallback(() => {
+    voicePlayerRef.current?.stop();
+    setVoicePreviewId(null);
+  }, []);
+
+  const stopPreviewMix = useCallback(() => {
+    if (previewMixTimerRef.current != null) {
+      window.clearTimeout(previewMixTimerRef.current);
+      previewMixTimerRef.current = null;
+    }
+    setPreviewMixPlaying(false);
+    stopVoicePreview();
     stopCompositionPreview();
     stopMixerBedPreviews();
+  }, [stopVoicePreview]);
+
+  const stopAllAudioPreview = useCallback(() => {
+    stopPreviewMix();
     setVoiceCardStopNonce((n) => n + 1);
-  }, []);
+  }, [stopPreviewMix]);
 
   useEffect(() => {
     const base = mediaBaseUrl;
@@ -444,6 +636,82 @@ export const CreateSoundStep = forwardRef<
     return mediaFileUrl(mediaBaseUrl, backgroundAudioPlaybackKey(key));
   }
 
+  async function startVoicePreview(modelId: string) {
+    const dry = speakerPreviewDryUrl(modelId);
+    if (!dry) return;
+    stopMixerBedPreviews();
+    stopCompositionPreview();
+    const player = voicePlayerRef.current;
+    if (!player) return;
+    setVoicePreviewId(modelId);
+    try {
+      await player.start(dry, speakerPreviewWetUrl(modelId), voiceFxDial);
+    } catch {
+      setVoicePreviewId(null);
+    }
+  }
+
+  function toggleVoicePreview(modelId: string) {
+    if (voicePreviewId === modelId) {
+      stopVoicePreview();
+      return;
+    }
+    void startVoicePreview(modelId);
+  }
+
+  async function runPreviewMix() {
+    if (previewMixPlaying) {
+      stopPreviewMix();
+      return;
+    }
+    stopAllAudioPreview();
+    setPreviewMixPlaying(true);
+    const listen = soundscapeListenVolume(
+      Math.min(100, Math.max(0, musicLevel * 2)),
+    );
+    if (soundMode === "soundscape" && compositionKey) {
+      const el = compositionAudioRef.current;
+      const url = soundscapePreviewUrl(compositionKey);
+      if (el && url) {
+        if (el.src !== url) {
+          el.src = url;
+          el.load();
+        }
+        el.volume = listen;
+        setCompositionPlaying(true);
+        void playWithLeadBuffer(el).catch(() => setCompositionPlaying(false));
+      }
+    } else if (soundMode === "mixer") {
+      setPlaying({
+        music: Boolean(backgroundMusicKey),
+        nature: Boolean(backgroundNatureKey),
+        drums: Boolean(drumsPreviewKey),
+        noise: Boolean(backgroundNoiseKey),
+      });
+    }
+    if (speakerModelId) {
+      const dry = speakerPreviewDryUrl(speakerModelId);
+      if (dry && voicePlayerRef.current) {
+        try {
+          await voicePlayerRef.current.start(
+            dry,
+            speakerPreviewWetUrl(speakerModelId),
+            voiceFxDial,
+          );
+          setVoicePreviewId(speakerModelId);
+        } catch {
+          /* bed-only is still a mix */
+        }
+      }
+    }
+    previewMixTimerRef.current = window.setTimeout(() => {
+      previewMixTimerRef.current = null;
+      stopPreviewMix();
+    }, 15_000);
+  }
+
+  togglePreviewMixRef.current = runPreviewMix;
+
   function toggleCompositionPreview(key: string) {
     const el = compositionAudioRef.current;
     const url = soundscapePreviewUrl(key);
@@ -520,6 +788,7 @@ export const CreateSoundStep = forwardRef<
 
   function onSelectMixPreset(key: string) {
     setSelectedMixKey(key);
+    setMixNaming(false);
     if (!key) {
       setMixBaseline(currentBedMix);
       return;
@@ -560,12 +829,44 @@ export const CreateSoundStep = forwardRef<
     setUserMixPresets(next.presets);
     setSelectedMixKey(`user:${p.id}`);
     setMixBaseline(mixerPresetToMix(p));
+    setMixNaming(false);
+  }
+
+  function updateUserMixPreset() {
+    if (!selectedMixKey.startsWith("user:")) return;
+    const id = selectedMixKey.slice("user:".length);
+    const store = loadMixerPresetStore();
+    const now = new Date().toISOString();
+    const presets = store.presets.map((p) =>
+      p.id === id ? { ...p, ...currentBedMix, updatedAt: now } : p,
+    );
+    saveMixerPresetStore({ version: 1, activeId: id, presets });
+    setUserMixPresets(presets);
+    setMixBaseline(currentBedMix);
+  }
+
+  function deleteUserMixPreset() {
+    if (!selectedMixKey.startsWith("user:")) return;
+    const id = selectedMixKey.slice("user:".length);
+    const store = loadMixerPresetStore();
+    const presets = store.presets.filter((p) => p.id !== id);
+    saveMixerPresetStore({
+      version: 1,
+      activeId: presets[0]?.id ?? null,
+      presets,
+    });
+    setUserMixPresets(presets);
+    setSelectedMixKey("");
   }
 
   useImperativeHandle(
     ref,
     () => ({
       stopPreviews: stopAllAudioPreview,
+      previewMixPlaying,
+      togglePreviewMix: () => {
+        void togglePreviewMixRef.current?.();
+      },
       getJobExtras: async () => {
         let referenceId = speakerModelId.trim();
         if (!referenceId) {
@@ -617,10 +918,22 @@ export const CreateSoundStep = forwardRef<
             backgroundMusicKey,
             backgroundDrumsKey,
             backgroundNoiseKey,
-            backgroundNatureGain,
-            backgroundMusicGain,
-            backgroundDrumsGain,
-            backgroundNoiseGain,
+            backgroundNatureGain: musicLevelToBedGain(
+              musicLevel,
+              backgroundNatureGain,
+            ),
+            backgroundMusicGain: musicLevelToBedGain(
+              musicLevel,
+              soundMode === "soundscape" ? SOUNDSCAPE_GAIN : backgroundMusicGain,
+            ),
+            backgroundDrumsGain: musicLevelToBedGain(
+              musicLevel,
+              backgroundDrumsGain,
+            ),
+            backgroundNoiseGain: musicLevelToBedGain(
+              musicLevel,
+              backgroundNoiseGain,
+            ),
             drumsPreviewKey,
           }),
         };
@@ -651,8 +964,187 @@ export const CreateSoundStep = forwardRef<
       backgroundDrumsGain,
       backgroundNoiseGain,
       drumsPreviewKey,
+      musicLevel,
+      previewMixPlaying,
     ],
   );
+
+  const selectedVoice =
+    speakers.find((s) => s.modelId === speakerModelId) ?? null;
+  const selectedVoiceMeta = selectedVoice
+    ? voiceDisplayMeta(selectedVoice)
+    : null;
+  const selectedSound =
+    compositions.find((c) => c.key === compositionKey) ?? null;
+  const mixLayerBits = [
+    backgroundMusicKey &&
+      (backgroundMusic.find((x) => x.key === backgroundMusicKey)?.name ??
+        "Music"),
+    backgroundNatureKey &&
+      (backgroundNature.find((x) => x.key === backgroundNatureKey)?.name ??
+        "Ambience"),
+    drumsPreviewKey &&
+      (backgroundDrums.find((x) => x.key === drumsPreviewKey)?.name ?? "Drums"),
+    backgroundNoiseKey &&
+      (backgroundNoise.find((x) => x.key === backgroundNoiseKey)?.name ??
+        "Noise"),
+  ].filter((x): x is string => Boolean(x));
+  const usingMix = soundMode === "mixer";
+  const mixerPanelName = selectedMixKey.startsWith("user:")
+    ? (userMixPresets.find((p) => `user:${p.id}` === selectedMixKey)?.name ??
+      "Your mix")
+    : selectedMixKey.startsWith("factory:")
+      ? (factoryMixes.find((p) => `factory:${p.id}` === selectedMixKey)
+          ?.name ?? "Your mix")
+      : "Your mix";
+  const soundTitle = usingMix
+    ? mixerPanelName
+    : compositionKey
+      ? (selectedSound?.name ?? "Soundscape")
+      : "Silence";
+  const soundDescription = usingMix
+    ? mixLayerBits.join(" · ") || "No layers"
+    : compositionKey
+      ? soundscapeCategoryLabel(selectedSound)
+      : "Voice only";
+  const soundCategories = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of compositions) {
+      if (item.subcategory) ids.add(item.subcategory);
+    }
+    return [...ids].sort((a, b) =>
+      prettySubcategoryLabel(a).localeCompare(prettySubcategoryLabel(b)),
+    );
+  }, [compositions]);
+  const recentSoundIds = useMemo(() => readRecentSoundIds(), [changeKind]);
+  const filteredSoundscapes = useMemo(() => {
+    const q = soundSearch.trim().toLowerCase();
+    let list = compositions.filter((item) => {
+      if (soundCategory === "favourites") {
+        if (!favorites.compositionSet.has(item.key)) return false;
+      } else if (soundCategory !== "all" && item.subcategory !== soundCategory) {
+        return false;
+      }
+      if (!q) return true;
+      const cat = item.subcategory
+        ? prettySubcategoryLabel(item.subcategory)
+        : "";
+      return (
+        item.name.toLowerCase().includes(q) || cat.toLowerCase().includes(q)
+      );
+    });
+    const favRank = (key: string) =>
+      favorites.compositionSet.has(key) ? 0 : 1;
+    if (soundSort === "recent") {
+      const rank = new Map(recentSoundIds.map((id, i) => [id, i]));
+      list = [...list].sort((a, b) => {
+        const fav = favRank(a.key) - favRank(b.key);
+        if (fav !== 0) return fav;
+        return (rank.get(a.key) ?? 999) - (rank.get(b.key) ?? 999);
+      });
+    } else {
+      list = [...list].sort((a, b) => {
+        const fav = favRank(a.key) - favRank(b.key);
+        if (fav !== 0) return fav;
+        return a.name.localeCompare(b.name);
+      });
+    }
+    return list;
+  }, [
+    compositions,
+    soundSearch,
+    soundCategory,
+    soundSort,
+    recentSoundIds,
+    favorites.compositionSet,
+  ]);
+  const showSuggestedSounds =
+    !soundSearch.trim() && soundCategory === "all" && soundPanelTab === "library";
+  const suggestedSoundIds = [
+    compositionKey,
+    ...soundAlts.filter((id) => id !== SILENCE_SOUND_ID),
+  ].filter((id, i, a) => id && a.indexOf(id) === i);
+  const voiceFilters = voiceFilterChips(speakers);
+  const filteredVoices = rankVoicesByPrefs(
+    speakers.filter((s) =>
+      voiceMatchesFilter(s, voiceFilter, favorites.voiceSet),
+    ),
+    voicePrefs,
+    {
+      pinModelId: programSpeakerModelId,
+      favoriteIds: favorites.voiceSet,
+    },
+  );
+  const usualVoiceId = readLastVoiceId();
+  const programSpeakerId = programSpeakerModelId?.trim() || "";
+
+  function adoptVoice(id: string, asSuggestion: boolean) {
+    if (!id || id === speakerModelId) return;
+    const swapped = swapAlt(speakerModelId, voiceAlts, id);
+    setSpeakerModelId(swapped.current);
+    setVoiceAlts(swapped.alts);
+    setShowVoiceReason(asSuggestion);
+    writeLastVoiceId(id);
+    stopVoicePreview();
+  }
+
+  function adoptSound(id: string, asSuggestion: boolean) {
+    if (id === compositionKey && soundMode === "soundscape") return;
+    if (id !== SILENCE_SOUND_ID && compositionKey && soundMode === "soundscape") {
+      const swapped = swapAlt(compositionKey, soundAlts, id);
+      setSoundAlts(swapped.alts);
+    }
+    setSoundMode("soundscape");
+    setCompositionKey(id);
+    setShowSoundReason(asSuggestion);
+    writeLastSoundForStyle(meditationStyle ?? "_general", id);
+    stopAllAudioPreview();
+  }
+
+  function openVoicePanel() {
+    setStagedVoiceId(speakerModelId);
+    setVoiceFilter("All");
+    setChangeKind("voice");
+  }
+
+  function openSoundPanel() {
+    setStagedSoundId(
+      soundMode === "mixer" ? "__mix__" : compositionKey,
+    );
+    setSoundPanelTab(soundMode === "mixer" ? "mixer" : "library");
+    setSoundSearch("");
+    setSoundCategory("all");
+    setChangeKind("sound");
+  }
+
+  function commitVoicePanel() {
+    if (stagedVoiceId) adoptVoice(stagedVoiceId, false);
+    setChangeKind(null);
+    window.setTimeout(() => changeVoiceBtnRef.current?.focus(), 0);
+  }
+
+  function commitSoundPanel() {
+    if (soundPanelTab === "mixer" || stagedSoundId === "__mix__") {
+      setSoundMode("mixer");
+      setShowSoundReason(false);
+    } else {
+      adoptSound(stagedSoundId, false);
+    }
+    rememberRecentSound(
+      soundPanelTab === "mixer" ? "mixer" : stagedSoundId,
+    );
+    setChangeKind(null);
+    window.setTimeout(() => changeSoundBtnRef.current?.focus(), 0);
+  }
+
+  function closeChangePanel() {
+    const kind = changeKind;
+    setChangeKind(null);
+    window.setTimeout(() => {
+      if (kind === "voice") changeVoiceBtnRef.current?.focus();
+      else changeSoundBtnRef.current?.focus();
+    }, 0);
+  }
 
   const soundControlsDisabled = disabled;
 
@@ -830,240 +1322,853 @@ export const CreateSoundStep = forwardRef<
         </div>
       ) : null}
 
-      <div className="flex shrink-0 flex-col">
-        <VoiceCardRow
-          voices={speakers.map((s) => ({
-            modelId: s.modelId,
-            name: s.name,
-            description: s.description ?? undefined,
-          }))}
-          value={speakerModelId}
-          onChange={setSpeakerModelId}
-          disabled={soundControlsDisabled}
-          previewDryUrl={speakerPreviewDryUrl}
-          previewWetUrl={speakerPreviewWetUrl}
-          voiceFxDial={voiceFxDial}
-          stopNonce={voiceCardStopNonce}
-          headerEnd={
-            <Tooltip.Provider delayDuration={200} disableHoverableContent>
-              <div
-                className="flex items-center gap-2"
-                role="group"
-                aria-label="Meditation pacing"
-              >
-                <span
-                  className={`inline-flex items-center gap-1 text-sm font-semibold ${
-                    longerBreaks ? "text-muted" : "text-foreground"
-                  }`}
-                >
-                  Guided
-                </span>
-                <Switch.Root
-                  checked={longerBreaks}
-                  onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
+      <div className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3 rounded-[14px] border border-border bg-card px-4 py-3.5 md:px-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+              Voice
+            </p>
+            <div
+              className="hidden rounded-xl bg-background p-[3px] md:flex"
+              role="group"
+              aria-label="Meditation pacing"
+            >
+              {(["guided", "open"] as const).map((id) => {
+                const on = id === "open" ? longerBreaks : !longerBreaks;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={soundControlsDisabled}
+                    onClick={() => setLongerBreaks(id === "open")}
+                    className={`cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
+                      on
+                        ? "border border-border bg-card font-semibold text-foreground"
+                        : "border border-transparent text-muted"
+                    }`}
+                  >
+                    {id === "guided" ? "Guided" : "Open sits"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div
+            className="flex w-full rounded-xl bg-background p-[3px] md:hidden"
+            role="group"
+            aria-label="Meditation pacing"
+          >
+            {(["guided", "open"] as const).map((id) => {
+              const on = id === "open" ? longerBreaks : !longerBreaks;
+              return (
+                <button
+                  key={id}
+                  type="button"
                   disabled={soundControlsDisabled}
-                  aria-label={
-                    longerBreaks
-                      ? "Switch to guided pacing"
-                      : "Switch to open sits pacing"
-                  }
-                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-                </Switch.Root>
-                <span
-                  className={`inline-flex items-center gap-1 text-sm font-semibold ${
-                    longerBreaks ? "text-foreground" : "text-muted"
+                  onClick={() => setLongerBreaks(id === "open")}
+                  className={`min-w-0 flex-1 cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
+                    on
+                      ? "border border-border bg-card font-semibold text-foreground"
+                      : "border border-transparent text-muted"
                   }`}
                 >
-                  Open sits
+                  {id === "guided" ? "Guided" : "Open sits"}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={soundControlsDisabled || !speakerModelId}
+              aria-label={
+                voicePreviewId === speakerModelId
+                  ? "Stop voice preview"
+                  : "Preview voice"
+              }
+              onClick={() =>
+                speakerModelId ? toggleVoicePreview(speakerModelId) : undefined
+              }
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent md:h-11 md:w-11"
+            >
+              {voicePreviewId === speakerModelId ? (
+                <span className="block h-2.5 w-2.5 rounded-[1px] bg-current" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                  <path d="M8 5v14l11-7L8 5z" />
+                </svg>
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[17px] leading-[1.25] text-foreground md:text-[19px]">
+                {selectedVoice?.name ?? "Choose a voice"}
+              </p>
+              {selectedVoiceMeta ? (
+                <p className="text-[13px] text-muted">
+                  {selectedVoiceMeta.description}
+                </p>
+              ) : null}
+              {showVoiceReason && voiceReason ? (
+                <p className="text-[12px] text-accent-link">✦ {voiceReason}</p>
+              ) : null}
+            </div>
+            <button
+              ref={changeVoiceBtnRef}
+              type="button"
+              disabled={soundControlsDisabled}
+              onClick={openVoicePanel}
+              className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
+            >
+              Change
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto md:flex-wrap">
+            <span className="shrink-0 text-[12px] text-muted">Or try</span>
+            {voiceAlts.map((id) => {
+              const v = speakers.find((s) => s.modelId === id);
+              if (!v) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={soundControlsDisabled}
+                  onClick={() => adoptVoice(id, false)}
+                  className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card py-0 pl-1 pr-2.5 text-[13px] text-foreground"
+                >
+                  <span
+                    className="flex h-6 w-6 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
+                    style={PRIMARY_ACCENT_FILL_STYLE}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleVoicePreview(id);
+                    }}
+                    role="presentation"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor">
+                      <path d="M8 5v14l11-7L8 5z" />
+                    </svg>
+                  </span>
+                  {v.name}
+                </button>
+              );
+            })}
+          </div>
+          <div className="h-px bg-border" />
+          <label className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-[13px] font-semibold">Space</span>
+            <span className="shrink-0 text-[12px] text-muted">Dry</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              aria-label="Space"
+              disabled={soundControlsDisabled}
+              value={voiceFxDial}
+              onChange={(e) => setVoiceFxDial(Number(e.target.value))}
+              className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--color-accent)]"
+            />
+            <span className="shrink-0 text-[12px] text-muted">Spacious</span>
+          </label>
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-[14px] border border-border bg-card px-3.5 py-3 md:px-4 md:py-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+            Sound
+          </p>
+          <div className="flex items-center gap-3">
+            {usingMix || !compositionKey ? (
+              <button
+                type="button"
+                disabled={soundControlsDisabled}
+                aria-label={compositionPlaying ? "Stop sound preview" : "Preview sound"}
+                onClick={() => {
+                  if (usingMix) {
+                    void toggleRowPreview("music");
+                    return;
+                  }
+                }}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-accent/35 bg-accent-soft/50 text-accent-link md:h-14 md:w-14"
+              >
+                <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M11 5 6 9H3v6h3l5 4V5z" />
+                  <path d="M16 9.5a4 4 0 0 1 0 5" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg md:h-14 md:w-14"
+                onClick={() => toggleCompositionPreview(compositionKey)}
+                aria-label={compositionPlaying ? "Stop soundscape" : "Preview soundscape"}
+              >
+                {selectedSound?.coverImageThumbUrl || selectedSound?.coverImageUrl ? (
+                  <img
+                    src={
+                      selectedSound.coverImageThumbUrl ||
+                      selectedSound.coverImageUrl ||
+                      ""
+                    }
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="block h-full w-full bg-accent-soft" />
+                )}
+                <span className="absolute left-1/2 top-1/2 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-foreground">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
+                    <path d="M8 5v14l11-7L8 5z" />
+                  </svg>
                 </span>
-              </div>
-            </Tooltip.Provider>
-          }
-        />
-        <div className="flex items-center gap-3 py-3">
-          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-            FX
-          </span>
-          <VoiceFxKnob
-            value={voiceFxDial}
-            disabled={soundControlsDisabled}
-            onChange={setVoiceFxDial}
-          />
-          <span className="text-xs tabular-nums text-muted">{voiceFxDial}</span>
-        </div>
-        <div className="border-t border-border" role="separator" aria-hidden />
+              </button>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[17px] leading-[1.25] text-foreground md:text-[19px]">
+                {soundTitle}
+              </p>
+              <p className="text-[13px] text-muted">{soundDescription}</p>
+              {usingMix ? (
+                <p className="text-[12px] text-accent-link">✦ Your mix</p>
+              ) : showSoundReason && soundReason ? (
+                <p className="text-[12px] text-accent-link">✦ {soundReason}</p>
+              ) : null}
+            </div>
+            <button
+              ref={changeSoundBtnRef}
+              type="button"
+              disabled={soundControlsDisabled}
+              onClick={openSoundPanel}
+              className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
+            >
+              Change
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto md:flex-wrap">
+            <span className="shrink-0 text-[12px] text-muted">Or try</span>
+            {soundAlts.map((id) => {
+              if (id === SILENCE_SOUND_ID) {
+                return (
+                  <button
+                    key="silence"
+                    type="button"
+                    disabled={soundControlsDisabled}
+                    onClick={() => adoptSound(SILENCE_SOUND_ID, false)}
+                    className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card py-0 pl-1 pr-2.5 text-[13px]"
+                  >
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent-soft/70 text-muted">
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M11 5 6 9H3v6h3l5 4V5z" />
+                        <path d="m22 9-6 6M16 9l6 6" />
+                      </svg>
+                    </span>
+                    Silence
+                  </button>
+                );
+              }
+              const item = compositions.find((c) => c.key === id);
+              if (!item) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={soundControlsDisabled}
+                  onClick={() => adoptSound(id, false)}
+                  className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card py-0 pl-1 pr-2.5 text-[13px]"
+                >
+                  <span className="h-6 w-6 overflow-hidden rounded-full bg-accent-soft">
+                    {item.coverImageThumbUrl || item.coverImageUrl ? (
+                      <img
+                        src={item.coverImageThumbUrl || item.coverImageUrl || ""}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : null}
+                  </span>
+                  {item.name}
+                </button>
+              );
+            })}
+          </div>
+          <div className="h-px bg-border" />
+          <label className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-[13px] font-semibold">Balance</span>
+            <span className="shrink-0 text-[12px] text-muted">Voice</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              aria-label="Balance"
+              disabled={soundControlsDisabled}
+              value={musicLevel}
+              onChange={(e) => setMusicLevel(Number(e.target.value))}
+              className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--color-accent)]"
+            />
+            <span className="shrink-0 text-[12px] text-muted">Music</span>
+          </label>
+        </section>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-            Sound
-          </span>
-          {showCreateAudioDevControls && soundMode === "soundscape" ? (
-            <SoundscapeDevVolumeFader
-              value={soundscapeDevFader}
-              onChange={applySoundscapeDevFader}
-              className="mx-2"
-            />
-          ) : (
-            <span className="min-w-0 flex-1" />
-          )}
-          <SegmentedPillTabs<CreateSoundBedMode>
-            aria-label="Sound bed"
-            value={soundMode}
-            onChange={(mode) => {
-              if (soundMode === mode) return;
-              stopAllAudioPreview();
-              setSoundMode(mode);
-            }}
-            selectedClassName="bg-[color-mix(in_srgb,var(--header-gold)_72%,white)] text-on-selected"
+      <CreateOneFlowPickerShell
+        open={changeKind === "voice"}
+        eyebrow="Change · Voice"
+        title="Choose a voice"
+        panelWidth="voice"
+        footSummary={
+          speakers.find((s) => s.modelId === stagedVoiceId)?.name
+            ? `${speakers.find((s) => s.modelId === stagedVoiceId)!.name} selected`
+            : undefined
+        }
+        confirmLabel="Use this voice"
+        confirmDisabled={!stagedVoiceId}
+        onClose={closeChangePanel}
+        onConfirm={commitVoicePanel}
+        bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3 md:px-6 md:py-3.5"
+      >
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-3">
+          {voiceFilters.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => setVoiceFilter(chip)}
+              className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                voiceFilter === chip
+                  ? "border border-accent bg-accent-soft/50 font-semibold"
+                  : "border border-border bg-card"
+              }`}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-0.5">
+            {filteredVoices.map((v) => {
+              const meta = voiceDisplayMeta(v);
+              const selected = stagedVoiceId === v.modelId;
+              return (
+                <button
+                  key={v.modelId}
+                  type="button"
+                  onClick={() => setStagedVoiceId(v.modelId)}
+                  className={`flex min-h-[52px] items-center gap-3 rounded-[10px] px-2.5 text-left ${
+                    selected
+                      ? "border border-accent/40 bg-accent-soft/40"
+                      : "border border-transparent"
+                  }`}
+                >
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
+                    style={PRIMARY_ACCENT_FILL_STYLE}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleVoicePreview(v.modelId);
+                    }}
+                    role="presentation"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
+                      <path d="M8 5v14l11-7L8 5z" />
+                    </svg>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] font-semibold">{v.name}</span>
+                    <span className="block text-[12px] text-muted">{meta.description}</span>
+                  </span>
+                  {programSpeakerId && v.modelId === programSpeakerId ? (
+                    <span className="rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+                      Program speaker
+                    </span>
+                  ) : hasVoicePrefs(voicePrefs) &&
+                    filteredVoices.find((x) => x.modelId !== programSpeakerId)
+                      ?.modelId === v.modelId ? (
+                    <span className="rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+                      Closest match
+                    </span>
+                  ) : usualVoiceId === v.modelId ? (
+                    <span className="rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+                      Your usual
+                    </span>
+                  ) : null}
+                  <FavoriteHeartButton
+                    pressed={favorites.voiceSet.has(v.modelId)}
+                    label={v.name}
+                    onToggle={() => favorites.toggleVoice(v.modelId)}
+                  />
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                    {selected ? (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[11px] text-on-accent">
+                        ✓
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </CreateOneFlowPickerShell>
+
+      <CreateOneFlowPickerShell
+        open={changeKind === "sound"}
+        eyebrow="Change · Sound"
+        title="Choose a soundscape"
+        panelWidth="sound"
+        footSummary={
+          soundPanelTab === "mixer"
+            ? `${mixerPanelName} · ${mixLayerBits.length} layers`
+            : stagedSoundId === SILENCE_SOUND_ID
+              ? "Silence selected"
+              : compositions.find((c) => c.key === stagedSoundId)?.name
+                ? `${compositions.find((c) => c.key === stagedSoundId)!.name} selected`
+                : undefined
+        }
+        confirmLabel={
+          soundPanelTab === "mixer" ? "Use this mix" : "Use this sound"
+        }
+        onClose={closeChangePanel}
+        onConfirm={commitSoundPanel}
+        bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3 md:px-6 md:py-3.5"
+      >
+        <div className="flex shrink-0 flex-col gap-3">
+          {soundPanelTab === "library" ? (
+            <div className="flex h-10 items-center gap-2 rounded-[10px] border border-border bg-card px-3.5">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+              </svg>
+              <input
+                value={soundSearch}
+                onChange={(e) => setSoundSearch(e.target.value)}
+                placeholder={`Search ${compositions.length} soundscapes`}
+                className="min-w-0 flex-1 border-0 bg-transparent text-[14px] outline-none"
+              />
+            </div>
+          ) : null}
+          <SegmentedPillTabs<"library" | "mixer">
+            aria-label="Sound library"
+            value={soundPanelTab}
+            onChange={setSoundPanelTab}
+            equalWidth
+            className="w-full rounded-xl border-0 bg-accent-soft/80 p-[3px]"
+            selectedClassName="rounded-[9px] border border-border bg-card font-semibold text-foreground"
+            idleClassName="rounded-[9px] border border-transparent font-medium text-muted"
             options={[
-              { id: "soundscape", label: "Soundscapes" },
+              { id: "library", label: "Soundscapes" },
               { id: "mixer", label: "Build your own" },
             ]}
           />
+          {soundPanelTab === "library" ? (
+            <div className="flex gap-1.5 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setSoundCategory("all")}
+                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                  soundCategory === "all"
+                    ? "border border-accent bg-accent-soft/50 font-semibold"
+                    : "border border-border bg-card"
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setSoundCategory("favourites")}
+                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                  soundCategory === "favourites"
+                    ? "border border-accent bg-accent-soft/50 font-semibold"
+                    : "border border-border bg-card"
+                }`}
+              >
+                Favourites
+              </button>
+              {soundCategories.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSoundCategory(id)}
+                  className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                    soundCategory === id
+                      ? "border border-accent bg-accent-soft/50 font-semibold"
+                      : "border border-border bg-card"
+                  }`}
+                >
+                  {prettySubcategoryLabel(id)}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
-
-        {soundMode === "soundscape" ? (
-          <SoundscapePicker
-            variant="create"
-            items={compositions}
-            value={compositionKey}
-            onChange={setCompositionKey}
-            previewUrl={soundscapePreviewUrl}
-            playingKey={compositionPlaying ? compositionKey : null}
-            onTogglePreview={(key) => {
-              if (key !== compositionKey) setCompositionKey(key);
-              toggleCompositionPreview(key);
-            }}
-            disabled={soundControlsDisabled}
-            loading={factoryMixesLoading}
-          />
-        ) : (
-          <>
-            <div className="shrink-0 pb-2 pt-0">
-              <div className="flex items-center justify-start gap-3">
-                <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Preset
-                </span>
-                <div className="min-w-0 w-full max-w-sm sm:w-auto sm:max-w-none">
-                  <MixerPresetChannel
-                    layout="toolbar"
-                    factoryPresets={factoryMixes}
-                    userPresets={userMixPresets}
-                    selectedKey={selectedMixKey}
-                    onSelect={onSelectMixPreset}
-                    onSaveNew={saveNewMixPreset}
-                    disabled={soundControlsDisabled}
-                    loading={factoryMixesLoading}
-                    showSave={mixDirty}
-                    modified={mixDirty}
-                    defaultSaveName={
-                      selectedMixKey
-                        ? "Untitled mix (edited)"
-                        : "Untitled mix"
-                    }
-                  />
+        {soundPanelTab === "library" ? (
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+            {showSuggestedSounds ? (
+              <div className="mb-3">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                  Suggested for this meditation
+                </p>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-2">
+                  {suggestedSoundIds.slice(0, 3).map((id) => {
+                    const item = compositions.find((c) => c.key === id);
+                    if (!item) return null;
+                    const selected = stagedSoundId === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setStagedSoundId(id)}
+                        className={`flex items-center gap-3 rounded-xl border p-2 text-left ${
+                          selected
+                            ? "border-2 border-accent p-[7px]"
+                            : "border-border"
+                        }`}
+                      >
+                        <span className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                          {item.coverImageThumbUrl || item.coverImageUrl ? (
+                            <img
+                              src={
+                                item.coverImageThumbUrl || item.coverImageUrl || ""
+                              }
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-display text-[15px] leading-[1.25]">
+                            {item.name}
+                          </span>
+                          <span className="mt-1 inline-flex rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+                            {soundscapeCategoryLabel(item)}
+                          </span>
+                        </span>
+                        <FavoriteHeartButton
+                          pressed={favorites.compositionSet.has(item.key)}
+                          label={item.name}
+                          onToggle={() => favorites.toggleComposition(item.key)}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+            ) : null}
+            <div className="mb-2 mt-1 flex items-baseline justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                All soundscapes · {filteredSoundscapes.length + 1}
+              </p>
+              <button
+                type="button"
+                className="text-[12px] text-muted"
+                onClick={() =>
+                  setSoundSort((s) => (s === "az" ? "recent" : "az"))
+                }
+              >
+                {soundSort === "az" ? "A–Z ▾" : "Recently used ▾"}
+              </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
-              <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
-                <MixerChannel
-                  layout="row"
-                  label="Music"
-                  category="music"
-                  items={backgroundMusic}
-                  value={backgroundMusicKey}
-                  onChange={setBackgroundMusicKey}
-                  gain={backgroundMusicGain}
-                  onGainChange={setBackgroundMusicGain}
-                  onLiveGainChange={(g) => applyLiveBedGain("music", g)}
-                  disabled={soundControlsDisabled}
-                  faderDisabled={soundControlsDisabled || !backgroundMusicKey}
-                  playing={playing.music}
-                  onTogglePreview={() => void toggleRowPreview("music")}
-                  playDisabled={soundControlsDisabled || !backgroundMusicKey}
-                  playAriaLabel={playing.music ? "Pause music" : "Play music"}
-                />
-              </section>
-              <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
-                <MixerChannel
-                  layout="row"
-                  label="Ambience"
-                  category="ambience"
-                  items={backgroundNature}
-                  value={backgroundNatureKey}
-                  onChange={setBackgroundNatureKey}
-                  gain={backgroundNatureGain}
-                  onGainChange={setBackgroundNatureGain}
-                  onLiveGainChange={(g) => applyLiveBedGain("nature", g)}
-                  disabled={soundControlsDisabled}
-                  faderDisabled={soundControlsDisabled || !backgroundNatureKey}
-                  playing={playing.nature}
-                  onTogglePreview={() => void toggleRowPreview("nature")}
-                  playDisabled={soundControlsDisabled || !backgroundNatureKey}
-                  playAriaLabel={
-                    playing.nature ? "Pause ambience" : "Play ambience"
-                  }
-                />
-              </section>
-              <DrumsLockedWrap locked={drumsLockedForMelodic} className="block">
-                <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
-                  <MixerChannel
-                    layout="row"
-                    label="Drums"
-                    category="drums"
-                    items={backgroundDrums}
-                    value={backgroundDrumsKey}
-                    onChange={setBackgroundDrumsKey}
-                    gain={backgroundDrumsGain}
-                    onGainChange={setBackgroundDrumsGain}
-                    onLiveGainChange={(g) => applyLiveBedGain("drums", g)}
-                    disabled={soundControlsDisabled || drumsLockedForMelodic}
-                    faderDisabled={
-                      soundControlsDisabled ||
-                      drumsLockedForMelodic ||
-                      !backgroundDrumsKey
-                    }
-                    playing={playing.drums}
-                    onTogglePreview={() => void toggleRowPreview("drums")}
-                    playDisabled={
-                      soundControlsDisabled ||
-                      drumsLockedForMelodic ||
-                      !backgroundDrumsKey
-                    }
-                    playAriaLabel={
-                      playing.drums ? "Pause drums" : "Play drums"
-                    }
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setStagedSoundId(SILENCE_SOUND_ID)}
+                className={`flex items-center gap-3 rounded-xl border p-2 text-left ${
+                  stagedSoundId === SILENCE_SOUND_ID
+                    ? "border-2 border-accent p-[7px]"
+                    : "border-border"
+                }`}
+              >
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-soft/70 text-accent-link">
+                  <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M11 5 6 9H3v6h3l5 4V5z" />
+                    <path d="m22 9-6 6M16 9l6 6" />
+                  </svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-display text-[15px]">Silence</span>
+                  <span className="text-[12px] text-muted">Voice only</span>
+                </span>
+              </button>
+              {filteredSoundscapes.map((item) => {
+                const selected = stagedSoundId === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setStagedSoundId(item.key)}
+                    className={`flex items-center gap-3 rounded-xl border p-2 text-left ${
+                      selected ? "border-2 border-accent p-[7px]" : "border-border"
+                    }`}
+                  >
+                    <span className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                      {item.coverImageThumbUrl || item.coverImageUrl ? (
+                        <img
+                          src={
+                            item.coverImageThumbUrl || item.coverImageUrl || ""
+                          }
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-display text-[15px] leading-[1.25]">
+                        {item.name}
+                      </span>
+                      <span className="mt-1 inline-flex rounded-full bg-accent-soft/80 px-2 py-0.5 text-[11px] text-accent-link">
+                        {soundscapeCategoryLabel(item)}
+                      </span>
+                    </span>
+                    <FavoriteHeartButton
+                      pressed={favorites.compositionSet.has(item.key)}
+                      label={item.name}
+                      onToggle={() => favorites.toggleComposition(item.key)}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+            <div className="mb-3 flex flex-col gap-2 border-b border-border pb-3 md:flex-row md:items-center md:gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                Preset
+              </span>
+              {mixNaming ? (
+                <>
+                  <input
+                    value={mixSaveName}
+                    onChange={(e) => setMixSaveName(e.target.value)}
+                    disabled={soundControlsDisabled}
+                    placeholder="Untitled mix"
+                    className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 text-[14px] outline-none"
                   />
-                </section>
-              </DrumsLockedWrap>
-              <section className="w-full max-w-xl shrink-0 rounded-2xl border border-border bg-card px-4 py-1">
-                <MixerChannel
-                  layout="row"
-                  label="Noise"
-                  category="noise"
-                  items={backgroundNoise}
-                  value={backgroundNoiseKey}
-                  onChange={setBackgroundNoiseKey}
-                  gain={backgroundNoiseGain}
-                  onGainChange={setBackgroundNoiseGain}
-                  onLiveGainChange={(g) => applyLiveBedGain("noise", g)}
-                  disabled={soundControlsDisabled}
-                  faderDisabled={soundControlsDisabled || !backgroundNoiseKey}
-                  playing={playing.noise}
-                  onTogglePreview={() => void toggleRowPreview("noise")}
-                  playDisabled={soundControlsDisabled || !backgroundNoiseKey}
-                  playAriaLabel={playing.noise ? "Pause noise" : "Play noise"}
-                />
-              </section>
+                  <button
+                    type="button"
+                    disabled={soundControlsDisabled || !mixSaveName.trim()}
+                    onClick={() => saveNewMixPreset(mixSaveName.trim())}
+                    className="h-10 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMixNaming(false)}
+                    className="h-10 shrink-0 cursor-pointer px-2 text-[13px] text-muted"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="relative min-w-0 flex-1">
+                    <select
+                      aria-label="Sound mix preset"
+                      value={selectedMixKey}
+                      disabled={soundControlsDisabled || factoryMixesLoading}
+                      onChange={(e) => onSelectMixPreset(e.target.value)}
+                      className="h-10 w-full appearance-none rounded-[10px] border border-border bg-card px-3 pr-8 text-[14px] outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {factoryMixesLoading ? "Loading…" : "None"}
+                      </option>
+                      {factoryMixes.length > 0 ? (
+                        <optgroup label="Factory">
+                          {factoryMixes.map((p) => (
+                            <option key={p.id} value={`factory:${p.id}`}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {userMixPresets.length > 0 ? (
+                        <optgroup label="Your mixes">
+                          {userMixPresets.map((p) => (
+                            <option key={p.id} value={`user:${p.id}`}>
+                              {p.name} (yours)
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                    <span
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted"
+                      aria-hidden
+                    >
+                      ▾
+                    </span>
+                  </div>
+                  {selectedMixKey.startsWith("user:") ? (
+                    <button
+                      type="button"
+                      disabled={soundControlsDisabled}
+                      onClick={updateUserMixPreset}
+                      className="h-10 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Update
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={soundControlsDisabled}
+                    onClick={() => {
+                      setMixSaveName(
+                        mixerPanelName === "Your mix"
+                          ? "Untitled mix"
+                          : mixerPanelName,
+                      );
+                      setMixNaming(true);
+                    }}
+                    className="h-10 shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold"
+                  >
+                    Save as new
+                  </button>
+                  {selectedMixKey.startsWith("user:") ? (
+                    <button
+                      type="button"
+                      disabled={soundControlsDisabled}
+                      onClick={deleteUserMixPreset}
+                      className="shrink-0 cursor-pointer text-[13px] text-muted hover:text-foreground"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
-          </>
+            <div className="overflow-hidden rounded-[14px] border border-border bg-card">
+              <MixerDeskRow
+                label="Music"
+                category="music"
+                items={backgroundMusic}
+                value={backgroundMusicKey}
+                onChange={setBackgroundMusicKey}
+                gain={backgroundMusicGain}
+                onGainChange={setBackgroundMusicGain}
+                onLiveGainChange={(g) => applyLiveBedGain("music", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundMusicKey}
+                playing={playing.music}
+                onTogglePreview={() => void toggleRowPreview("music")}
+                playDisabled={soundControlsDisabled || !backgroundMusicKey}
+                playAriaLabel={playing.music ? "Stop music" : "Play music"}
+                favoriteKeys={favorites.compositionSet}
+                onToggleFavorite={favorites.toggleComposition}
+              />
+              <MixerDeskRow
+                label="Ambience"
+                category="ambience"
+                items={backgroundNature}
+                value={backgroundNatureKey}
+                onChange={setBackgroundNatureKey}
+                gain={backgroundNatureGain}
+                onGainChange={setBackgroundNatureGain}
+                onLiveGainChange={(g) => applyLiveBedGain("nature", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundNatureKey}
+                playing={playing.nature}
+                onTogglePreview={() => void toggleRowPreview("nature")}
+                playDisabled={soundControlsDisabled || !backgroundNatureKey}
+                playAriaLabel={
+                  playing.nature ? "Stop ambience" : "Play ambience"
+                }
+                favoriteKeys={favorites.compositionSet}
+                onToggleFavorite={favorites.toggleComposition}
+              />
+              <DrumsLockedWrap locked={drumsLockedForMelodic} className="block">
+                <MixerDeskRow
+                  label="Drums"
+                  category="drums"
+                  items={backgroundDrums}
+                  value={backgroundDrumsKey}
+                  onChange={setBackgroundDrumsKey}
+                  gain={backgroundDrumsGain}
+                  onGainChange={setBackgroundDrumsGain}
+                  onLiveGainChange={(g) => applyLiveBedGain("drums", g)}
+                  disabled={soundControlsDisabled || drumsLockedForMelodic}
+                  faderDisabled={
+                    soundControlsDisabled ||
+                    drumsLockedForMelodic ||
+                    !backgroundDrumsKey
+                  }
+                  playing={playing.drums}
+                  onTogglePreview={() => void toggleRowPreview("drums")}
+                  playDisabled={
+                    soundControlsDisabled ||
+                    drumsLockedForMelodic ||
+                    !backgroundDrumsKey
+                  }
+                  playAriaLabel={playing.drums ? "Stop drums" : "Play drums"}
+                  favoriteKeys={favorites.compositionSet}
+                  onToggleFavorite={favorites.toggleComposition}
+                />
+              </DrumsLockedWrap>
+              <MixerDeskRow
+                label="Noise"
+                category="noise"
+                items={backgroundNoise}
+                value={backgroundNoiseKey}
+                onChange={setBackgroundNoiseKey}
+                gain={backgroundNoiseGain}
+                onGainChange={setBackgroundNoiseGain}
+                onLiveGainChange={(g) => applyLiveBedGain("noise", g)}
+                disabled={soundControlsDisabled}
+                faderDisabled={soundControlsDisabled || !backgroundNoiseKey}
+                playing={playing.noise}
+                onTogglePreview={() => void toggleRowPreview("noise")}
+                playDisabled={soundControlsDisabled || !backgroundNoiseKey}
+                playAriaLabel={playing.noise ? "Stop noise" : "Play noise"}
+                favoriteKeys={favorites.compositionSet}
+                onToggleFavorite={favorites.toggleComposition}
+                last
+              />
+            </div>
+            <div className="mt-3 flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const any =
+                    playing.music ||
+                    playing.nature ||
+                    playing.drums ||
+                    playing.noise;
+                  if (any) {
+                    stopMixerBedPreviews();
+                    return;
+                  }
+                  setPlaying({
+                    music: Boolean(backgroundMusicKey),
+                    nature: Boolean(backgroundNatureKey),
+                    drums: Boolean(drumsPreviewKey),
+                    noise: Boolean(backgroundNoiseKey),
+                  });
+                }}
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border border-border bg-card py-0 pl-1 pr-3.5 text-[13px] font-semibold"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-full accent-fill-gradient text-on-accent">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="10"
+                    height="10"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    {playing.music ||
+                    playing.nature ||
+                    playing.drums ||
+                    playing.noise ? (
+                      <rect x="7" y="7" width="10" height="10" rx="1.5" />
+                    ) : (
+                      <path d="M8 5v14l11-7L8 5z" />
+                    )}
+                  </svg>
+                </span>
+                Play mix
+              </button>
+              <span className="text-[12px] text-muted">
+                {mixLayerBits.length} layers
+              </span>
+            </div>
+          </div>
         )}
-      </div>
+      </CreateOneFlowPickerShell>
     </div>
   );
-});
+})

@@ -6,7 +6,7 @@ import {
   parseScriptIntoSegments,
   type ScriptPauseBand,
 } from "./script-pause-bands";
-import { speechifyTtsPcm24k, type SpeechifyEmotionTag } from "./speechify-tts";
+import { MEDITATION_SPEECHIFY_EMOTION, speechifyTtsPcm24k, type SpeechifyEmotionTag } from "./speechify-tts";
 import { loadCommittedVoiceFxContext } from "./voice-fx-apply";
 import { voiceFxDialGains } from "./voice-fx-dial";
 import {
@@ -180,7 +180,7 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
         text: clean,
         voiceId: params.voiceId,
         rate: params.speechifyRate,
-        emotion: params.emotion,
+        emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
         loudnessNormalization: params.speechifyLoudnessNormalization,
         sentenceBreakMs: 777,
       });

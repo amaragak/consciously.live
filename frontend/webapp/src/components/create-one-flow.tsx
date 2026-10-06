@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { IconChevronDown, IconRefresh } from "@tabler/icons-react";
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
@@ -23,10 +24,17 @@ import { CreateProgramPicker } from "@/components/create-program-picker";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
 import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
-import { MeditationLengthSelect } from "@/components/meditation-length-select";
+import {
+  MeditationLengthSelect,
+  SessionLengthPill,
+} from "@/components/meditation-length-select";
 import {
   attachProgramExclusive,
   attachStyleExclusive,
+  coerceMeditationLengthMinutes,
+  effectiveSessionMinutes,
+  footerPerSessionLengthLabel,
+  programDefaultSessionMinutes,
   clearCreateOneFlowState,
   createOneFlowHref,
   emptyCreateOneFlowState,
@@ -39,6 +47,7 @@ import {
   type CreateFlowProgramAttachment,
   type CreateOneFlowState,
   type CreateOneFlowStep,
+  type MeditationLengthMinutes,
 } from "@/lib/create-one-flow-state";
 import { CREATE_MEDITATE_ROOT } from "@/lib/create-meditation-path";
 import {
@@ -57,18 +66,24 @@ import {
   buildShapeOpenUserContent,
   buildShapeStartOverridesSupplement,
   buildShapeTurnApiMessages,
+  buildStyleFormatOpenTurn,
   fingerprintShapeStart,
+  hasShapeStartMaterial,
   parseCoachDisplayText,
+  resolveAimMarkers,
+  collectStyleAimCoverage,
 } from "@/lib/create-one-flow-chat";
 import {
   MEDITATION_STYLE_LABELS,
   STYLE_INTAKE_QUESTIONS,
+  intakeShortTitlesForStyle,
   type MeditationStyleLabel,
 } from "@/lib/meditation-style-intake";
 import {
   createMeditationAudioJob,
   fetchLibraryCategoryImages,
   getMedimadeSessionJwt,
+  isMedimadeSessionActive,
   listLibraryPrograms,
   streamMedimadeChat,
   type LibraryProgram,
@@ -80,7 +95,16 @@ import {
   type JournalEntry,
   type JournalFolder,
 } from "@/lib/journal-storage";
-import { loadIdeateStore } from "@/lib/plan-ideate-store";
+import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import {
+  pullIdeateStoreFromCloud,
+  subscribeIdeateCloud,
+} from "@/lib/ideate-cloud";
+import {
+  loadIdeateStore,
+  sortSubtasks,
+  subtasksForProject,
+} from "@/lib/plan-ideate-store";
 import { appendPendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
@@ -120,6 +144,25 @@ function IconArrowRight({ className }: { className?: string }) {
   );
 }
 
+function IconChevronRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+}
+
 function IconArrowLeft({ className }: { className?: string }) {
   return (
     <svg
@@ -155,11 +198,20 @@ function IconPencil({ className }: { className?: string }) {
   );
 }
 
-function ContextLetterBadge({ letter }: { letter: string }) {
+function IconCheck({ className }: { className?: string }) {
   return (
-    <span className="header-gold-sunlit-fill flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold">
-      {letter}
-    </span>
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5 12.5l4.2 4.2L19 7.5" />
+    </svg>
   );
 }
 
@@ -168,17 +220,25 @@ function ContextToken({
   name,
   detail,
   onRemove,
+  kindLabel,
 }: {
-  visual: ReactNode;
+  visual?: ReactNode;
   name: string;
   detail?: string | null;
   onRemove?: () => void;
+  kindLabel?: string;
 }) {
-  return (
-    <span className="inline-flex h-[34px] max-w-full items-center gap-2 rounded-[10px] border border-accent/40 bg-accent-soft/50 py-0 pl-1.5 pr-1.5 text-[13px]">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md">
-        {visual}
-      </span>
+  const chip = (
+    <span
+      className={`inline-flex h-[34px] max-w-full items-center gap-2 rounded-[10px] border border-accent/40 bg-accent-soft/50 py-0 pr-1.5 text-[13px] ${
+        visual ? "pl-1.5" : "pl-2.5"
+      }`}
+    >
+      {visual ? (
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md">
+          {visual}
+        </span>
+      ) : null}
       <span className="min-w-0 truncate font-semibold text-foreground">{name}</span>
       {detail ? (
         <span className="hidden min-w-0 truncate text-[12px] text-muted sm:inline">
@@ -198,6 +258,39 @@ function ContextToken({
         </button>
       ) : null}
     </span>
+  );
+  if (!kindLabel) return chip;
+  return (
+    <span className="inline-flex min-w-0 max-w-full flex-col gap-0.5">
+      <span className="px-0.5 text-[9px] font-semibold uppercase tracking-[1.4px] text-muted">
+        {kindLabel}
+      </span>
+      {chip}
+    </span>
+  );
+}
+
+function ChatTypingIndicator() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSlow(true), 7000);
+    return () => window.clearTimeout(id);
+  }, []);
+  return (
+    <div
+      className="mb-1 flex w-full items-center justify-start gap-2.5 px-1 py-2.5"
+      aria-live="polite"
+      aria-label={slow ? "Taking longer than usual" : "Guide is typing"}
+    >
+      <div className="flex h-4 items-end gap-1.5">
+        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
+        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
+        <span className="chat-typing-dot h-2 w-2 rounded-full bg-accent" />
+      </div>
+      {slow ? (
+        <span className="text-sm text-muted">Taking longer than usual…</span>
+      ) : null}
+    </div>
   );
 }
 
@@ -230,7 +323,6 @@ export function CreateOneFlow({
   const [draftJournalId, setDraftJournalId] = useState<string | null>(null);
   const [draftLifeAreaId, setDraftLifeAreaId] = useState<string | null>(null);
   const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
-  const [exclusiveNote, setExclusiveNote] = useState<string | null>(null);
 
   const [programs, setPrograms] = useState<LibraryProgram[]>([]);
   const [programsReady, setProgramsReady] = useState(false);
@@ -253,12 +345,13 @@ export function CreateOneFlow({
 
   const [shapeInput, setShapeInput] = useState("");
   const [shapeBusy, setShapeBusy] = useState(false);
-  const [showAsForm, setShowAsForm] = useState(false);
-  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [programHeaderOpen, setProgramHeaderOpen] = useState(false);
   const [briefEditing, setBriefEditing] = useState(false);
   const [briefDraft, setBriefDraft] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [soundSummaryOpen, setSoundSummaryOpen] = useState(false);
+  const [soundPreviewPlaying, setSoundPreviewPlaying] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const briefTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
@@ -391,29 +484,63 @@ export function CreateOneFlow({
   }, []);
 
   useEffect(() => {
-    try {
-      const store = loadIdeateStore();
-      setLifeAreas(
-        store.dreams.map((d) => ({
-          id: d.id,
-          title: d.title?.trim() || "Life area",
-          createdAt: d.createdAt ?? new Date().toISOString(),
-          dreamText: d.dreamText ?? "",
-          obstacleText: d.obstacleText ?? "",
-          visionText: d.visionText ?? "",
-          preview: d.dreamText ?? "",
-          goals: [],
-        })),
-      );
-    } catch {
-      setLifeAreas([]);
+    const syncLifeAreas = () => {
+      try {
+        const store = loadIdeateStore();
+        const dreams = store.dreams.filter((d) => !isDemoIdeateDream(d));
+        setLifeAreas(
+          dreams.map((d) => {
+            const goals = sortSubtasks(
+              subtasksForProject(store, d.id),
+              "updated_desc",
+            ).map((s) => ({
+              id: s.id,
+              title: s.title,
+              preview: (
+                s.dreamText.trim() ||
+                s.visionText.trim() ||
+                s.resistanceText.trim() ||
+                ""
+              ).slice(0, 160),
+              done: s.status === "done",
+            }));
+            return {
+              id: d.id,
+              title: d.title?.trim() || "Life area",
+              createdAt: d.createdAt ?? new Date().toISOString(),
+              dreamText: d.dreamText ?? "",
+              obstacleText: d.obstacleText ?? "",
+              visionText: d.visionText ?? "",
+              preview: d.dreamText ?? "",
+              goals,
+            };
+          }),
+        );
+      } catch {
+        setLifeAreas([]);
+      }
+      setGoalsReady(true);
+    };
+    syncLifeAreas();
+    const unsub = subscribeIdeateCloud(syncLifeAreas);
+    if (isMedimadeSessionActive()) {
+      void pullIdeateStoreFromCloud().finally(syncLifeAreas);
     }
-    setGoalsReady(true);
+    window.addEventListener("medimade-session-changed", syncLifeAreas);
+    return () => {
+      unsub();
+      window.removeEventListener("medimade-session-changed", syncLifeAreas);
+    };
   }, []);
 
   const styleQuestions = useMemo(() => {
     if (!state.style) return [] as string[];
     return [...(STYLE_INTAKE_QUESTIONS[state.style.id] ?? [])];
+  }, [state.style]);
+
+  const styleQuestionShortTitles = useMemo(() => {
+    if (!state.style) return [] as string[];
+    return [...intakeShortTitlesForStyle(state.style.id)];
   }, [state.style]);
 
   /** Skip legacy first user bubble that duplicated the Start brief. */
@@ -429,6 +556,28 @@ export function CreateOneFlow({
     }
     return state.chat;
   }, [state.chat, state.prompt]);
+
+  const styleQuestionStatuses = useMemo(() => {
+    const { covered, ready } = collectStyleAimCoverage(
+      state.chat,
+      styleQuestions,
+      styleQuestionShortTitles,
+    );
+    return styleQuestions.map((_, i) => {
+      if (ready) return true;
+      return Boolean(state.answers[String(i)]?.trim()) || covered.has(i);
+    });
+  }, [styleQuestions, styleQuestionShortTitles, state.answers, state.chat]);
+
+  const styleQuestionDoneCount = styleQuestionStatuses.filter(Boolean).length;
+  const styleQuestionCurrentIndex = styleQuestionStatuses.findIndex((d) => !d);
+  const styleQuestionProgressLabel =
+    styleQuestions.length === 0
+      ? ""
+      : `${styleQuestionDoneCount} of ${styleQuestions.length}`;
+  const shapeCanProceedToSound =
+    state.chat.some((m) => m.role === "assistant" && m.ready) ||
+    (styleQuestions.length > 0 && styleQuestionStatuses.every(Boolean));
 
   useEffect(() => {
     if (!briefEditing) return;
@@ -447,23 +596,90 @@ export function CreateOneFlow({
   }, []);
 
   useEffect(() => {
-    if (step !== "shape" || showAsForm) return;
+    if (step !== "shape") return;
     scrollShapeThreadToBottom();
     const id = window.requestAnimationFrame(() => scrollShapeThreadToBottom());
     return () => window.cancelAnimationFrame(id);
-  }, [visibleChat, state.chat, shapeBusy, step, showAsForm, scrollShapeThreadToBottom]);
+  }, [visibleChat, state.chat, shapeBusy, step, scrollShapeThreadToBottom]);
 
-  /** Context types not yet attached — for Shape "+ Add" chips. */
+  /** Context chips on Shape — format is chosen on Start only. */
   const shapeAddOptions: Array<{
-    kind: "style" | "program" | "journal" | "goal";
+    kind: "journal" | "goal";
     label: string;
-  }> = [];
-  if (!state.style) shapeAddOptions.push({ kind: "style", label: "Style" });
-  if (!state.program) shapeAddOptions.push({ kind: "program", label: "Program" });
-  if (state.journals.length === 0) {
-    shapeAddOptions.push({ kind: "journal", label: "Journal" });
-  }
+  }> = [{ kind: "journal", label: "Journal" }];
   if (!state.goal) shapeAddOptions.push({ kind: "goal", label: "Goal" });
+
+  const attachedProgramDays = useMemo(() => {
+    if (!state.program) return [];
+    return programs.find((p) => p.id === state.program!.id)?.days ?? [];
+  }, [programs, state.program]);
+
+  function sessionDefaultMinutes(sessionId: string): MeditationLengthMinutes {
+    return programDefaultSessionMinutes(attachedProgramDays, sessionId);
+  }
+
+  function sessionEffectiveMinutes(sessionId: string): MeditationLengthMinutes {
+    if (!state.program) return 5;
+    return effectiveSessionMinutes(
+      state.program,
+      sessionId,
+      sessionDefaultMinutes(sessionId),
+    );
+  }
+
+  const programSelectedMinutesSum = useMemo(() => {
+    if (!state.program || state.program.mode !== "perSession") return 0;
+    return state.program.sessionIds.reduce(
+      (sum, id) => sum + sessionEffectiveMinutes(id),
+      0,
+    );
+    // sessionEffectiveMinutes closes over state.program + days
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.program, attachedProgramDays]);
+
+  const perSessionFooterLabel = useMemo(() => {
+    if (!state.program || state.program.mode !== "perSession") return null;
+    const ids = state.program.sessionIds;
+    return footerPerSessionLengthLabel(
+      ids,
+      ids.map((id) => sessionEffectiveMinutes(id)),
+      ids.map((id) => state.program!.sessionLengthOverrides?.[id] == null),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.program, attachedProgramDays]);
+
+  function setSessionLengthOverride(
+    sessionId: string,
+    mins: MeditationLengthMinutes | null,
+  ) {
+    setState((p) => {
+      if (!p.program) return p;
+      const next = { ...(p.program.sessionLengthOverrides ?? {}) };
+      if (mins == null) delete next[sessionId];
+      else next[sessionId] = mins;
+      return { ...p, program: { ...p.program, sessionLengthOverrides: next } };
+    });
+  }
+
+  function applyLengthToAllSessions(mins: MeditationLengthMinutes | null) {
+    setState((p) => {
+      if (!p.program) return p;
+      if (mins == null) {
+        return {
+          ...p,
+          program: { ...p.program, sessionLengthOverrides: {} },
+        };
+      }
+      const overrides: Partial<Record<string, MeditationLengthMinutes>> = {};
+      for (const id of Object.keys(p.program.sessionTitles)) {
+        overrides[id] = mins;
+      }
+      return {
+        ...p,
+        program: { ...p.program, sessionLengthOverrides: overrides },
+      };
+    });
+  }
 
   function shapeLifeAreaFor(s: CreateOneFlowState) {
     if (!s.goal) return null;
@@ -495,9 +711,23 @@ export function CreateOneFlow({
       selectedDayIds: new Set(s.program.sessionIds),
       generateMode: s.program.mode === "perSession" ? "perSession" : "single",
     });
-    if (!opts?.midChat) return base;
+    const lengthLine = s.program.sessionIds
+      .map((id) => {
+        const title = s.program!.sessionTitles[id] || id;
+        const mins = effectiveSessionMinutes(
+          s.program!,
+          id,
+          programDefaultSessionMinutes(src.days, id),
+        );
+        return `${title}: ${mins} min`;
+      })
+      .join("; ");
+    const withLengths = lengthLine
+      ? `${base}\n\nSession lengths (use these for the eventual meditations): ${lengthLine}`
+      : base;
+    if (!opts?.midChat) return withLengths;
     return [
-      base,
+      withLengths,
       "",
       "MID-CHAT ATTACH (overrides OPEN NOW / first-reply): The conversation already has prior turns — keep them. Do NOT welcome from scratch, do NOT use the five-bubble OPEN NOW format, do NOT restart. Acknowledge the program in one short sentence, then ask exactly one concrete question for Ask-item 1 of the first selected session (or one spirit question if there are no Ask-items). Prior brief/chat answers still count.",
     ].join("\n");
@@ -552,7 +782,12 @@ export function CreateOneFlow({
       return { ...prev, chat };
     });
 
-    const writeBubble = (text: string, ready?: boolean) => {
+    const writeBubble = (parsed: {
+      text: string;
+      ready?: boolean;
+      aimCovered?: number[];
+      aimAsking?: number;
+    }) => {
       setState((prev) => {
         const chat = [...prev.chat];
         const idx =
@@ -565,10 +800,23 @@ export function CreateOneFlow({
                 return -1;
               })();
         if (idx < 0) return prev;
+        const resolved = resolveAimMarkers(
+          {
+            text: parsed.text,
+            ready: Boolean(parsed.ready || chat[idx]!.ready),
+            aimCovered: parsed.aimCovered ?? [],
+            aimAsking: parsed.aimAsking,
+          },
+          opts.stateSnapshot.style?.id,
+        );
         chat[idx] = {
           role: "assistant",
-          text,
-          ...(ready ? { ready: true } : {}),
+          text: parsed.text,
+          ...(resolved.ready ? { ready: true } : {}),
+          ...(resolved.aimCovered.length > 0
+            ? { aimCovered: resolved.aimCovered }
+            : {}),
+          ...(resolved.aimAsking != null ? { aimAsking: resolved.aimAsking } : {}),
         };
         return { ...prev, chat };
       });
@@ -584,17 +832,21 @@ export function CreateOneFlow({
           if (requestId !== shapeRequestIdRef.current) return;
           rawSoFar += chunk;
           const parsed = parseCoachDisplayText(rawSoFar);
-          writeBubble(parsed.text, parsed.ready);
+          writeBubble(parsed);
         },
       );
       if (requestId !== shapeRequestIdRef.current) return;
       const parsed = parseCoachDisplayText(raw);
-      writeBubble(parsed.text || rawSoFar, parsed.ready);
+      writeBubble({ ...parsed, text: parsed.text || rawSoFar });
     } catch (e) {
       if (requestId !== shapeRequestIdRef.current) return;
       const msg =
         e instanceof Error ? e.message : "Could not reach the guide.";
-      writeBubble(rawSoFar.trim() ? parseCoachDisplayText(rawSoFar).text : `Sorry — ${msg}`);
+      writeBubble(
+        rawSoFar.trim()
+          ? parseCoachDisplayText(rawSoFar)
+          : { text: `Sorry — ${msg}`, ready: false, aimCovered: [] },
+      );
     } finally {
       if (requestId === shapeRequestIdRef.current) {
         setShapeBusy(false);
@@ -605,6 +857,21 @@ export function CreateOneFlow({
   function openShapeCoach(s: CreateOneFlowState) {
     const hasAssistant = s.chat.some((m) => m.role === "assistant");
     if (hasAssistant) return;
+    if (s.style && !s.program) {
+      const turn = buildStyleFormatOpenTurn(s);
+      setState((prev) => ({ ...prev, chat: [...prev.chat, turn] }));
+      return;
+    }
+    if (!hasShapeStartMaterial(s)) {
+      setState((prev) => ({
+        ...prev,
+        chat: [
+          ...prev.chat,
+          { role: "assistant", text: "What's on your mind today?" },
+        ],
+      }));
+      return;
+    }
     const lean = Boolean(shapeCachedContextRef.current);
     const content = buildShapeOpenUserContent({
       state: s,
@@ -724,7 +991,11 @@ export function CreateOneFlow({
     };
     const apiUserText = `I added ${opts.contextKind} context: ${label}${
       opts.detail?.trim() ? ` (${opts.detail.trim()})` : ""
-    }. Keep the prior conversation; this is not a restart.`;
+    }. Keep the prior conversation; this is not a restart. This is not a spoken answer to your last question unless the attached material clearly addresses that question.`;
+    const pendingAskGuard =
+      s.program && opts.contextKind !== "program"
+        ? " OUTSTANDING PROGRAM ASK: this attach is not a spoken answer to the last Ask-item unless it clearly covers that Ask-item. Do not mark the Ask-item done. Do not emit [[READY]]. Acknowledge the new context by name, then ask ONE question that still serves that Ask-item and, when it fits, ties it to the new context (e.g. how the session's struggle shows up around the attached goal)."
+        : "";
     const messages = buildShapeTurnApiMessages({
       chat: s.chat,
       userText: apiUserText,
@@ -733,7 +1004,7 @@ export function CreateOneFlow({
       programBrief: shapeProgramBriefFor(s, {
         midChat: opts.contextKind === "program",
       }),
-      contextUpdateNote: opts.note,
+      contextUpdateNote: `${opts.note}${pendingAskGuard}`,
       leanUserTurn: Boolean(shapeCachedContextRef.current),
     });
     // Mid-chat attaches update live state; refresh uncached overrides so the
@@ -757,7 +1028,6 @@ export function CreateOneFlow({
   }
 
   function openPicker(kind: Exclude<PickerKind, null>) {
-    setExclusiveNote(null);
     if (kind === "style") setDraftStyle(state.style?.id ?? "");
     if (kind === "program") setDraftProgramId(state.program?.id ?? null);
     if (kind === "journal") {
@@ -778,16 +1048,12 @@ export function CreateOneFlow({
     let contextImageUrl: string | null = null;
     if (picker === "style") {
       if (!isStyleLabel(draftStyle)) return;
-      setState((prev) => {
-        const next = attachStyleExclusive(prev, { id: draftStyle });
-        if (prev.program) {
-          setExclusiveNote("Program removed — a style replaces it.");
-        }
-        return next;
-      });
+      setState((prev) =>
+        attachStyleExclusive({ ...prev, program: null }, { id: draftStyle }),
+      );
       contextKind = "style";
       contextLabel = draftStyle;
-      contextNote = `Style "${draftStyle}" was just attached. If your last question asked what they need, want, or what kind of practice — treat "${draftStyle}" as their answer. Use its intake aims going forward; do not re-ask what they already answered by attaching this style.`;
+      contextNote = `Style "${draftStyle}" was just attached. Acknowledge the style by name. Treat it as their answer only if your last question was about what they need, want, or what kind of practice. Otherwise keep that last question open and ask one question that still gathers it, using the new style if relevant.`;
     } else if (picker === "program") {
       const p = programs.find((x) => x.id === draftProgramId);
       if (!p) return;
@@ -801,12 +1067,14 @@ export function CreateOneFlow({
         mode: "perSession",
         sessionIds,
         sessionTitles: titles,
+        sessionLengthOverrides: {},
+        speakerModelId: p.speakerModelId,
+        preferredEnergy: p.preferredEnergy,
+        preferredPitch: p.preferredPitch,
+        preferredGender: p.preferredGender,
+        preferredAccent: p.preferredAccent,
       };
-      setState((prev) => {
-        const next = attachProgramExclusive(prev, att);
-        if (prev.style) setExclusiveNote("Style removed — a program replaces it.");
-        return next;
-      });
+      setState((prev) => attachProgramExclusive(prev, att));
       contextKind = "program";
       contextLabel = att.title;
       contextImageUrl = att.coverImageUrl ?? null;
@@ -817,27 +1085,36 @@ export function CreateOneFlow({
       const att: CreateFlowJournalAttachment = {
         id: e.id,
         title: e.title?.trim() || "Journal entry",
-        detail: e.mood?.trim() || null,
+        detail: null,
         bodyPlain: journalEntryPlainForHandoff(e.contentHtml),
       };
-      setState((prev) => ({ ...prev, journals: [att] }));
+      setState((prev) => {
+        if (prev.journals.some((j) => j.id === att.id)) return prev;
+        return { ...prev, journals: [...prev.journals, att] };
+      });
       contextKind = "journal";
       contextLabel = att.title;
-      contextDetail = att.detail ?? null;
-      contextNote = `Journal "${att.title}" was just attached (full body in context). If your last question asked what is going on or what they need, treat the journal as (part of) their answer. Draw from it; do not re-ask what the entry already covers.`;
+      contextDetail = null;
+      contextNote = `Journal "${att.title}" was just attached (full body in context). Acknowledge it by name. Treat it as an answer only if the entry clearly covers your last question; otherwise keep that question open and ask one question that still gathers it, drawing on the journal where relevant.`;
     } else if (picker === "goal") {
       const area = lifeAreas.find((g) => g.id === draftLifeAreaId);
       if (!area) return;
+      const selectedGoal = draftGoalId
+        ? area.goals.find((g) => g.id === draftGoalId) ?? null
+        : null;
       const att: CreateFlowGoalAttachment = {
         lifeAreaId: area.id,
         lifeAreaTitle: area.title.trim() || "Life area",
-        goalId: draftGoalId,
-        goalTitle: null,
+        goalId: selectedGoal?.id ?? null,
+        goalTitle: selectedGoal?.title?.trim() || null,
       };
       setState((prev) => ({ ...prev, goal: att }));
       contextKind = "goal";
       contextLabel = att.lifeAreaTitle;
-      contextNote = `Life area "${att.lifeAreaTitle}" was just attached. If your last question asked what they need or want, treat this life area / goal as (part of) their answer. Do not re-ask.`;
+      contextDetail = att.goalTitle ?? null;
+      contextNote = att.goalTitle
+        ? `Life area "${att.lifeAreaTitle}" (goal: "${att.goalTitle}") was just attached. You MUST acknowledge this goal by name in one short sentence. It does NOT complete your last question unless it clearly covers that question. If a program Ask-item is still unanswered, ask ONE question that still serves that Ask-item and ties it to this goal (e.g. how the session theme shows up around "${att.goalTitle}"). Do not wrap with [[READY]].`
+        : `Life area "${att.lifeAreaTitle}" was just attached. You MUST acknowledge this life area by name in one short sentence. It does NOT complete your last question unless it clearly covers that question. If a program Ask-item is still unanswered, ask ONE question that still serves that Ask-item and ties it to this life area. Do not wrap with [[READY]].`;
     }
     setPicker(null);
     if (contextNote && contextLabel && contextKind) {
@@ -907,7 +1184,7 @@ export function CreateOneFlow({
   function resetShape() {
     shapeRequestIdRef.current += 1;
     setShapeBusy(false);
-    setShowAsForm(false);
+    setProgramHeaderOpen(false);
     setShapeInput("");
     // Keep the cached Start seed; only clear the thread and reopen against it.
     setState((prev) => {
@@ -924,7 +1201,12 @@ export function CreateOneFlow({
 
   function sendShapeMessage(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || shapeBusy) return;
+    if (!trimmed) return;
+    if (shapeBusy) {
+      shapeRequestIdRef.current += 1;
+      setShapeBusy(false);
+    }
+    setProgramHeaderOpen(false);
     setShapeInput("");
     scrollShapeThreadToBottom();
     const prev = stateRef.current;
@@ -972,11 +1254,12 @@ export function CreateOneFlow({
       }
       lines.push(`${m.role === "user" ? "User" : "Guide"}: ${m.text.trim()}`);
     }
-    if (state.journals[0]) {
-      const j = state.journals[0];
-      lines.push(
-        `Journal context: ${j.title}${j.bodyPlain?.trim() ? `\n${j.bodyPlain.trim()}` : ""}`,
-      );
+    if (state.journals.length > 0) {
+      for (const j of state.journals) {
+        lines.push(
+          `Journal context: ${j.title}${j.bodyPlain?.trim() ? `\n${j.bodyPlain.trim()}` : ""}`,
+        );
+      }
     }
     if (state.goal) {
       lines.push(`Life area: ${state.goal.lifeAreaTitle}`);
@@ -1002,7 +1285,6 @@ export function CreateOneFlow({
       if (!soundExtras?.reference_id) throw new Error("No voice available");
 
       const styleForJob = state.style?.id ?? null;
-      const transcript = buildTranscript();
       const provenance = buildMeditationCreationProvenance({
         creationPath: state.program
           ? "fromProgram"
@@ -1025,82 +1307,111 @@ export function CreateOneFlow({
         directPrompt: state.prompt.trim() || undefined,
       });
 
-      const { jobId } = await createMeditationAudioJob({
-        meditationStyle: styleForJob ?? "General",
-        journalMode:
-          !state.style ||
-          Boolean(state.journals.length || state.goal || state.program),
-        meditationTargetMinutes: state.lengthMinutes,
-        transcript,
-        reference_id: soundExtras.reference_id,
-        ttsProvider: "speechify",
-        fishTtsModel: "s2.1-pro-free",
-        creationProvenance: provenance,
-        voiceFxPreset: soundExtras.voiceFxPreset,
-        voiceFxDial: soundExtras.voiceFxDial,
-        speed: soundExtras.speed,
-        ...(soundExtras.claudeModel
-          ? { claudeModel: soundExtras.claudeModel }
-          : {}),
-        ...(soundExtras.fishPauseMode
-          ? { fishPauseMode: soundExtras.fishPauseMode }
-          : {}),
-        ...(soundExtras.skipVoiceFx ? { skipVoiceFx: true } : {}),
-        ...(soundExtras.skipSpeechifyLoudnorm
-          ? { skipSpeechifyLoudnorm: true }
-          : {}),
-        ...(soundExtras.speechifyEmotionVariants
-          ? { speechifyEmotionVariants: true }
-          : {}),
-        ...(typeof soundExtras.speechifyRate === "number"
-          ? { speechifyRate: soundExtras.speechifyRate }
-          : {}),
-        ...(soundExtras.longerBreaks ? { longerBreaks: true } : {}),
-        ...(state.goal?.lifeAreaId
-          ? { lifeAreaId: state.goal.lifeAreaId }
-          : {}),
-        ...(soundExtras.backgroundNatureKey
-          ? {
-              backgroundNatureKey: soundExtras.backgroundNatureKey,
-              backgroundNatureGain: soundExtras.backgroundNatureGain,
-            }
-          : {}),
-        ...(soundExtras.backgroundMusicKey
-          ? {
-              backgroundMusicKey: soundExtras.backgroundMusicKey,
-              backgroundMusicGain: soundExtras.backgroundMusicGain,
-            }
-          : {}),
-        ...(soundExtras.backgroundDrumsKey
-          ? {
-              backgroundDrumsKey: soundExtras.backgroundDrumsKey,
-              backgroundDrumsGain: soundExtras.backgroundDrumsGain,
-            }
-          : {}),
-        ...(soundExtras.backgroundNoiseKey
-          ? {
-              backgroundNoiseKey: soundExtras.backgroundNoiseKey,
-              backgroundNoiseGain: soundExtras.backgroundNoiseGain,
-            }
-          : {}),
-      });
+      const perSession =
+        Boolean(state.program) && state.program?.mode === "perSession";
+      const sessionJobs: Array<string | null> = perSession
+        ? [...(state.program?.sessionIds ?? [])]
+        : [null];
+      if (perSession && sessionJobs.length === 0) {
+        throw new Error("Select at least one session");
+      }
 
-      appendPendingLibraryGeneration({
-        jobId,
-        createdAt: new Date().toISOString(),
-        title: "",
-        description: null,
-        meditationStyle: styleForJob,
-        speakerName: soundExtras.speakerName,
-        speakerModelId: soundExtras.reference_id,
-      });
+      const baseTranscript = buildTranscript();
+      let firstJobId: string | null = null;
+
+      for (const sessionId of sessionJobs) {
+        const minutes: MeditationLengthMinutes =
+          sessionId && state.program
+            ? sessionEffectiveMinutes(sessionId)
+            : coerceMeditationLengthMinutes(state.lengthMinutes);
+        const sessionTitle =
+          sessionId && state.program
+            ? state.program.sessionTitles[sessionId] || "Session"
+            : null;
+        const transcript = sessionTitle
+          ? `${baseTranscript}\n\nProgram session: ${sessionTitle} (target ${minutes} min)`
+          : baseTranscript;
+
+        const { jobId } = await createMeditationAudioJob({
+          meditationStyle: styleForJob ?? "General",
+          journalMode:
+            !state.style ||
+            Boolean(state.journals.length || state.goal || state.program),
+          meditationTargetMinutes: minutes,
+          transcript,
+          reference_id: soundExtras.reference_id,
+          ttsProvider: "speechify",
+          fishTtsModel: "s2.1-pro-free",
+          creationProvenance: provenance,
+          voiceFxPreset: soundExtras.voiceFxPreset,
+          voiceFxDial: soundExtras.voiceFxDial,
+          speed: soundExtras.speed,
+          ...(soundExtras.claudeModel
+            ? { claudeModel: soundExtras.claudeModel }
+            : {}),
+          ...(soundExtras.fishPauseMode
+            ? { fishPauseMode: soundExtras.fishPauseMode }
+            : {}),
+          ...(soundExtras.skipVoiceFx ? { skipVoiceFx: true } : {}),
+          ...(soundExtras.skipSpeechifyLoudnorm
+            ? { skipSpeechifyLoudnorm: true }
+            : {}),
+          ...(soundExtras.speechifyEmotionVariants
+            ? { speechifyEmotionVariants: true }
+            : {}),
+          ...(typeof soundExtras.speechifyRate === "number"
+            ? { speechifyRate: soundExtras.speechifyRate }
+            : {}),
+          ...(soundExtras.longerBreaks ? { longerBreaks: true } : {}),
+          ...(state.goal?.lifeAreaId
+            ? { lifeAreaId: state.goal.lifeAreaId }
+            : {}),
+          ...(soundExtras.backgroundNatureKey
+            ? {
+                backgroundNatureKey: soundExtras.backgroundNatureKey,
+                backgroundNatureGain: soundExtras.backgroundNatureGain,
+              }
+            : {}),
+          ...(soundExtras.backgroundMusicKey
+            ? {
+                backgroundMusicKey: soundExtras.backgroundMusicKey,
+                backgroundMusicGain: soundExtras.backgroundMusicGain,
+              }
+            : {}),
+          ...(soundExtras.backgroundDrumsKey
+            ? {
+                backgroundDrumsKey: soundExtras.backgroundDrumsKey,
+                backgroundDrumsGain: soundExtras.backgroundDrumsGain,
+              }
+            : {}),
+          ...(soundExtras.backgroundNoiseKey
+            ? {
+                backgroundNoiseKey: soundExtras.backgroundNoiseKey,
+                backgroundNoiseGain: soundExtras.backgroundNoiseGain,
+              }
+            : {}),
+        });
+
+        if (!firstJobId) firstJobId = jobId;
+        appendPendingLibraryGeneration({
+          jobId,
+          createdAt: new Date().toISOString(),
+          title: sessionTitle ?? "",
+          description: null,
+          meditationStyle: styleForJob,
+          speakerName: soundExtras.speakerName,
+          speakerModelId: soundExtras.reference_id,
+        });
+      }
+
+      if (!firstJobId) throw new Error("Generation failed");
       ensurePendingMeditationJobPoller();
       shapeCachedContextRef.current = null;
       shapeAppliedFingerprintRef.current = null;
       shapeOverridesSupplementRef.current = null;
       clearCreateOneFlowState();
       navigate(
-        `/meditate/library/creations?focus=${encodeURIComponent(`pending:${jobId}`)}`,
+        `/meditate/library/creations?focus=${encodeURIComponent(`pending:${firstJobId}`)}`,
       );
     } catch (e) {
       setAudioError(e instanceof Error ? e.message : "Generation failed");
@@ -1127,12 +1438,19 @@ export function CreateOneFlow({
 
   const tokens = (
     removable: boolean,
+    opts?: {
+      includeStyle?: boolean;
+      includeProgram?: boolean;
+      includeJournal?: boolean;
+      includeGoal?: boolean;
+      kindLabels?: boolean;
+    },
   ): ReactNode => (
     <>
-      {state.style ? (
+      {opts?.includeStyle !== false && state.style ? (
         <ContextToken
-          visual={<ContextLetterBadge letter="S" />}
           name={state.style.id}
+          kindLabel={opts?.kindLabels ? "Style" : undefined}
           onRemove={
             removable
               ? () => setState((p) => ({ ...p, style: null, answers: {} }))
@@ -1140,16 +1458,15 @@ export function CreateOneFlow({
           }
         />
       ) : null}
-      {state.program ? (
+      {opts?.includeProgram !== false && state.program ? (
         <ContextToken
           visual={
             state.program.coverImageUrl ? (
               <img src={state.program.coverImageUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <ContextLetterBadge letter="P" />
-            )
+            ) : undefined
           }
           name={state.program.title}
+          kindLabel={opts?.kindLabels ? "Program" : undefined}
           detail={
             state.program.mode === "one"
               ? "One meditation"
@@ -1162,12 +1479,12 @@ export function CreateOneFlow({
           }
         />
       ) : null}
-      {state.journals.map((j) => (
+      {opts?.includeJournal !== false &&
+        state.journals.map((j) => (
         <ContextToken
           key={j.id}
-          visual={<ContextLetterBadge letter="J" />}
           name={j.title}
-          detail={j.detail}
+          kindLabel={opts?.kindLabels ? "Journal" : undefined}
           onRemove={
             removable
               ? () =>
@@ -1179,11 +1496,11 @@ export function CreateOneFlow({
           }
         />
       ))}
-      {state.goal ? (
+      {opts?.includeGoal !== false && state.goal ? (
         <ContextToken
-          visual={<ContextLetterBadge letter="G" />}
           name={state.goal.lifeAreaTitle}
           detail={state.goal.goalTitle}
+          kindLabel={opts?.kindLabels ? "Goal" : undefined}
           onRemove={
             removable
               ? () => setState((p) => ({ ...p, goal: null }))
@@ -1192,6 +1509,105 @@ export function CreateOneFlow({
         />
       ) : null}
     </>
+  );
+
+  const journalSelected = state.journals.length > 0;
+  const goalSelected = Boolean(state.goal);
+
+  const renderStartTile = (
+    kind: "style" | "program" | "journal" | "goal",
+    title: string,
+    line: string,
+    coverCategory: string,
+    opts: { selected: boolean; dimmed: boolean },
+  ) => {
+    const coverUrl = categoryImageUrls[coverCategory]?.trim() || "";
+    return (
+      <button
+        key={kind}
+        type="button"
+        aria-pressed={opts.selected}
+        onClick={() => openPicker(kind)}
+        className={`relative flex h-full w-full flex-col overflow-hidden rounded-xl border bg-card text-left shadow-sm transition ${
+          opts.selected
+            ? "border-accent"
+            : "border-border"
+        } ${opts.dimmed ? "opacity-40 grayscale" : ""}`}
+      >
+        <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20">
+          {coverUrl ? (
+            <img
+              src={categoryImageUrlForTile(coverUrl, 480, 360)}
+              alt=""
+              width={480}
+              height={360}
+              decoding="async"
+              className="block h-full w-full object-cover object-[center_40%]"
+            />
+          ) : null}
+          {opts.selected ? (
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-foreground/45"
+              aria-hidden
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-14 w-14 text-card drop-shadow-sm md:h-16 md:w-16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12.5l5 5L20 7" />
+              </svg>
+            </div>
+          ) : (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-[2px] md:h-8 md:w-8"
+            >
+              <IconPlus className="h-3.5 w-3.5 md:h-4 md:w-4" />
+            </span>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col px-2.5 pb-2.5 pt-2 md:px-3 md:pb-3">
+          <p className="font-display text-[15px] font-medium leading-snug text-foreground md:text-[16px]">
+            {title}
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-muted md:text-[13px]">
+            {line}
+          </p>
+        </div>
+      </button>
+    );
+  };
+
+  const startTileSlotClass = "min-w-0 min-h-0 flex-1";
+
+  const renderSurpriseMe = () => (
+    <button
+      type="button"
+      onClick={surpriseMe}
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[15px] font-semibold text-foreground hover:underline md:text-base"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-[1.1em] w-[1.1em] shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <circle cx="12" cy="12" r="9" />
+        <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+        <path d="M9.2 14.2c.85 1.15 1.9 1.7 2.8 1.7s1.95-.55 2.8-1.7" />
+      </svg>
+      Surprise me
+    </button>
   );
 
   const stepper = (
@@ -1228,6 +1644,406 @@ export function CreateOneFlow({
     </>
   );
 
+  const shapeAddChips = (
+    <>
+      {shapeAddOptions.map(({ kind, label }) => (
+        <button
+          key={kind}
+          type="button"
+          onClick={() => openPicker(kind)}
+          className="inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1 rounded-[10px] border border-dashed border-accent/40 px-2.5 text-[13px] text-accent-link"
+        >
+          <IconPlus className="h-3.5 w-3.5" /> {label}
+        </button>
+      ))}
+    </>
+  );
+
+  const shapeBriefBody = (clamp: "none" | "one" | "two") => {
+    const textClass =
+      clamp === "none"
+        ? "w-full text-left font-display text-[17px] leading-[1.4] text-foreground"
+        : clamp === "one"
+          ? "min-w-0 flex-1 cursor-pointer truncate text-left font-display text-[18px] leading-[1.35] text-foreground"
+          : "min-w-0 flex-1 cursor-pointer text-left font-display text-[16px] leading-[1.35] text-foreground line-clamp-2 md:truncate md:text-[18px]";
+    if (briefEditing) {
+      return (
+        <textarea
+          ref={briefTextareaRef}
+          value={briefDraft}
+          onChange={(e) => setBriefDraft(e.target.value)}
+          onBlur={() => commitBriefEdit()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              commitBriefEdit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancelBriefEdit();
+            }
+          }}
+          rows={clamp === "none" ? 3 : 1}
+          className={`min-h-[1.35em] min-w-0 resize-none border-0 bg-transparent font-display leading-[1.4] text-foreground outline-none ${
+            clamp === "none" ? "w-full text-[17px]" : "flex-1 text-[16px] md:text-[18px]"
+          }`}
+        />
+      );
+    }
+    if (state.prompt.trim()) {
+      return (
+        <button
+          type="button"
+          title={state.prompt.trim()}
+          onClick={beginBriefEdit}
+          className={textClass}
+        >
+          {state.prompt.trim()}
+        </button>
+      );
+    }
+    return (
+      <button type="button" onClick={beginBriefEdit} className={`${textClass} italic text-muted`}>
+        Add a line about what this is for
+      </button>
+    );
+  };
+
+  function setProgramMode(mode: "one" | "perSession") {
+    setState((p) =>
+      p.program ? { ...p, program: { ...p.program, mode } } : p,
+    );
+  }
+
+  function toggleProgramSession(id: string) {
+    setState((p) => {
+      if (!p.program) return p;
+      const set = new Set(p.program.sessionIds);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      return {
+        ...p,
+        program: { ...p.program, sessionIds: [...set] },
+      };
+    });
+  }
+
+  function setAllProgramSessions(all: boolean) {
+    setState((p) => {
+      if (!p.program) return p;
+      return {
+        ...p,
+        program: {
+          ...p.program,
+          sessionIds: all ? Object.keys(p.program.sessionTitles) : [],
+        },
+      };
+    });
+  }
+
+  function removeProgram() {
+    setProgramHeaderOpen(false);
+    setState((p) => ({ ...p, program: null }));
+  }
+
+  const programSessionEntries = state.program
+    ? Object.entries(state.program.sessionTitles)
+    : [];
+  const programSelectedCount = state.program?.sessionIds.length ?? 0;
+  const programTotalCount = programSessionEntries.length;
+
+  const shapeProgramModeToggle = state.program ? (
+    <div className="flex items-center rounded-[10px] border border-border/70 bg-accent-soft/25 p-[3px]">
+      {(
+        [
+          ["one", "One meditation"],
+          ["perSession", "One per session"],
+        ] as const
+      ).map(([mode, label]) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => setProgramMode(mode)}
+          className={`flex-1 cursor-pointer rounded-lg px-2 py-1.5 text-[12px] ${
+            state.program?.mode === mode
+              ? "header-gold-sunlit-fill font-semibold text-on-accent"
+              : "border border-transparent text-muted"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const shapeProgramSessionList = state.program ? (
+      <div className="flex flex-col gap-2">
+        {programSessionEntries.map(([id, title], i) => {
+          const checked = state.program!.sessionIds.includes(id);
+          const showPill =
+            checked && state.program!.mode === "perSession";
+          const defaultMins = sessionDefaultMinutes(id);
+          const effectiveMins = sessionEffectiveMinutes(id);
+          return (
+            <div key={id} className="flex items-center gap-2">
+              <label
+                className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-[13px] ${
+                  checked ? "text-foreground" : "text-muted"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleProgramSession(id)}
+                  className="h-[18px] w-[18px] shrink-0 rounded-[5px] accent-[var(--color-accent)]"
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  {i + 1}. {title}
+                </span>
+              </label>
+              {showPill ? (
+                <SessionLengthPill
+                  value={effectiveMins}
+                  defaultMinutes={defaultMins}
+                  onChange={(mins) => setSessionLengthOverride(id, mins)}
+                  onReset={() => setSessionLengthOverride(id, null)}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+  ) : null;
+
+  const shapeProgramSessionsBlock = state.program ? (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[12px] text-muted">
+          Sessions · {programSelectedCount} of {programTotalCount}
+          {state.program.mode === "perSession" ? (
+            <>
+              {" · "}
+              <span className="font-semibold text-foreground">
+                ≈ {programSelectedMinutesSum} min
+              </span>
+            </>
+          ) : null}
+        </span>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            className="cursor-pointer text-[12px] font-semibold text-accent-link"
+            onClick={() => setAllProgramSessions(true)}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer text-[12px] font-semibold text-muted"
+            onClick={() => setAllProgramSessions(false)}
+          >
+            None
+          </button>
+        </div>
+      </div>
+      {shapeProgramSessionList}
+    </div>
+  ) : null;
+
+  const shapeProgramCard = state.program ? (
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex items-start gap-3">
+        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+          {state.program.coverImageUrl ? (
+            <img
+              src={state.program.coverImageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : null}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <p className="font-display text-[16px] leading-[1.25] text-foreground">
+            {state.program.title}
+          </p>
+          <p className="text-[12px] text-muted">Making it your own</p>
+        </div>
+        <button
+          type="button"
+          aria-label="Remove format"
+          onClick={removeProgram}
+          className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-muted hover:text-foreground"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+      {shapeProgramModeToggle}
+      <div className="h-px bg-border" />
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[12px] text-muted">
+          Sessions · {programSelectedCount} of {programTotalCount}
+          {state.program.mode === "perSession" ? (
+            <>
+              {" · "}
+              <span className="font-semibold text-foreground">
+                ≈ {programSelectedMinutesSum} min
+              </span>
+            </>
+          ) : null}
+        </span>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            className="cursor-pointer text-[12px] font-semibold text-accent-link"
+            onClick={() => setAllProgramSessions(true)}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer text-[12px] font-semibold text-muted"
+            onClick={() => setAllProgramSessions(false)}
+          >
+            None
+          </button>
+        </div>
+      </div>
+      <div className="min-h-0 max-h-[186px] overflow-y-auto">
+        {shapeProgramSessionList}
+      </div>
+    </div>
+  ) : null;
+
+  const shapeQuestionRows = styleQuestions.map((_, i) => {
+    const done = styleQuestionStatuses[i];
+    const current = styleQuestionCurrentIndex === i;
+    const title = styleQuestionShortTitles[i] ?? `Question ${i + 1}`;
+    return (
+      <div
+        key={i}
+        className={`flex items-center gap-2.5 text-[13px] ${
+          done
+            ? "text-foreground"
+            : current
+              ? "font-semibold text-foreground"
+              : "text-muted"
+        }`}
+      >
+        {done ? (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent bg-accent-soft text-accent-link">
+            <IconCheck className="h-3 w-3" />
+          </span>
+        ) : current ? (
+          <span className="header-gold-sunlit-fill flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold">
+            {i + 1}
+          </span>
+        ) : (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-[11px] text-muted">
+            {i + 1}
+          </span>
+        )}
+        {title}
+      </div>
+    );
+  });
+
+  const shapeThread = (
+    <div
+      ref={threadScrollRef}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        threadStickToBottomRef.current = dist < 48;
+      }}
+      className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-contain px-3 py-3.5 md:gap-3 md:px-6 md:py-5"
+    >
+      {visibleChat.map((m, i) =>
+        m.role === "assistant" && !m.text.trim() ? null :
+        m.kind === "context" ? (
+          m.contextKind === "program" ? (
+            <div
+              key={`context-${i}`}
+              className="ml-auto flex flex-col items-end gap-1.5"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
+                Program added
+              </span>
+              <span className="inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-lg border border-accent/40 bg-accent-soft/50 py-0 pl-[3px] pr-2.5 text-[12px] font-semibold text-foreground">
+                <span className="flex h-[22px] w-[22px] shrink-0 overflow-hidden rounded-md bg-accent-soft">
+                  {m.contextImageUrl ? (
+                    <img
+                      src={m.contextImageUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-[10px] font-bold">
+                      P
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0 truncate">{m.text}</span>
+              </span>
+            </div>
+          ) : (
+            <div
+              key={`context-${i}`}
+              className="ml-auto flex max-w-[92%] flex-wrap items-center justify-end gap-2 py-0.5 md:max-w-[80%]"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
+                {m.contextKind === "style"
+                  ? "Style added"
+                  : m.contextKind === "goal"
+                    ? "Goal added"
+                    : m.contextKind === "journal"
+                      ? "Journal added"
+                      : m.contextKind === "start"
+                        ? "Start updated"
+                        : "Context added"}
+              </span>
+              <ContextToken
+                name={m.text}
+                detail={m.contextKind === "journal" ? null : m.contextDetail}
+              />
+            </div>
+          )
+        ) : (
+          <div
+            key={`${m.role}-${i}`}
+            className={`px-3.5 py-[11px] text-[16px] leading-[1.5] whitespace-pre-wrap ${
+              m.role === "user"
+                ? "header-gold-sunlit-fill ml-auto max-w-[85%] rounded-[14px] rounded-br-sm shadow-sm md:max-w-[78%]"
+                : "mr-auto max-w-[92%] rounded-[14px] rounded-bl-sm bg-background text-foreground shadow-sm md:max-w-[84%]"
+            }`}
+          >
+            {m.role === "assistant" && state.style ? (
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                {state.style.id}
+              </p>
+            ) : null}
+            {m.text.trim() ? m.text : null}
+          </div>
+        ),
+      )}
+      {shapeBusy &&
+      !(
+        visibleChat[visibleChat.length - 1]?.role === "assistant" &&
+        Boolean(visibleChat[visibleChat.length - 1]?.text.trim())
+      ) ? (
+        <ChatTypingIndicator />
+      ) : null}
+      {shapeCanProceedToSound && !shapeBusy ? (
+        <div className="flex w-full justify-start pt-0.5">
+          <CreateFlowNavPill onClick={() => goStep("sound")}>
+            <span>Proceed to Sound</span>
+            <IconChevronRight className="text-accent-link" />
+          </CreateFlowNavPill>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {step !== "shape" ? (
@@ -1241,7 +2057,7 @@ export function CreateOneFlow({
                   What&apos;s this one for?
                 </h1>
                 <p className="mt-2 text-[15px] text-foreground md:mt-2">
-                  Write a line, attach context, or both — then talk it through or skip to audio.
+                  Write a line, choose a format, add context, or any mix. Then talk it through or skip to audio.
                 </p>
               </div>
 
@@ -1256,15 +2072,12 @@ export function CreateOneFlow({
                   rows={3}
                   className="min-h-[72px] w-full resize-none border-0 bg-transparent font-display text-[17px] leading-[1.45] text-foreground outline-none placeholder:text-muted md:min-h-[84px] md:text-xl"
                 />
-                {exclusiveNote ? (
-                  <p className="text-[12px] text-muted">{exclusiveNote}</p>
-                ) : null}
-                <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                <div className="flex items-end justify-between gap-2 border-t border-border pt-1">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5">
                     {hasAttachedContext ? (
-                      tokens(true)
+                      tokens(true, { kindLabels: true })
                     ) : (
-                      <p className="text-[14px] text-muted md:text-[15px]">
+                      <p className="py-[7px] text-[14px] text-muted md:text-[15px]">
                         Add context below, or just send
                       </p>
                     )}
@@ -1293,108 +2106,95 @@ export function CreateOneFlow({
               </div>
 
               <div className="mt-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[13px] font-semibold uppercase tracking-[1.4px] text-accent-link md:text-[14px]">
-                    Add context
-                  </p>
-                  <button
-                    type="button"
-                    onClick={surpriseMe}
-                    className="inline-flex cursor-pointer items-center gap-1.5 text-[15px] font-semibold text-foreground hover:underline md:text-base"
+                <div className="mt-2 grid grid-cols-1 gap-y-2 md:grid-cols-2 md:gap-x-6">
+                  <div className="flex min-h-8 items-center justify-between gap-2 md:col-start-1 md:row-start-1">
+                    <p className="leading-none">
+                      <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                        Format
+                      </span>
+                      <span className="text-[11px] font-medium tracking-[1px] text-muted">
+                        {" "}
+                        (optional)
+                      </span>
+                    </p>
+                    <div className="md:hidden">{renderSurpriseMe()}</div>
+                  </div>
+                  <div
+                    role="radiogroup"
+                    aria-label="Format"
+                    className="relative flex items-stretch gap-2 rounded-[14px] bg-accent-soft p-2 md:col-start-1 md:row-start-2 md:gap-3"
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-[1.1em] w-[1.1em] shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.75"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
-                      <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
-                      <path d="M9.2 14.2c.85 1.15 1.9 1.7 2.8 1.7s1.95-.55 2.8-1.7" />
-                    </svg>
-                    Surprise me
-                  </button>
-                </div>
-                <div className="mt-2 grid w-3/4 grid-cols-2 gap-3.5 md:grid-cols-4 md:gap-5">
-                  {(
-                    [
-                      [
+                    <div className={startTileSlotClass}>
+                      {renderStartTile(
                         "style",
                         "Meditation style",
                         "Pick a practice type — body scan, sleep, breath, and more.",
                         "All",
-                      ],
-                      [
+                        {
+                          selected: Boolean(state.style),
+                          dimmed: Boolean(state.program),
+                        },
+                      )}
+                    </div>
+                    <div className={startTileSlotClass}>
+                      {renderStartTile(
                         "program",
                         "Program",
                         "Start from a guided course and make selected sessions your own.",
                         "Program",
-                      ],
-                      [
+                        {
+                          selected: Boolean(state.program),
+                          dimmed: Boolean(state.style),
+                        },
+                      )}
+                    </div>
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute left-1/2 top-2 z-[1] aspect-[4/3] w-[calc((100%-16px-8px)/2)] -translate-x-1/2 md:w-[calc((100%-16px-12px)/2)]"
+                    >
+                      <span className="absolute left-1/2 top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-accent/35 bg-card text-[11px] font-semibold tracking-[0.5px] text-accent-link">
+                        or
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex min-h-8 items-center justify-between gap-2 md:col-start-2 md:row-start-1">
+                    <p className="leading-none">
+                      <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                        Context
+                      </span>
+                      <span className="text-[11px] font-medium tracking-[1px] text-muted">
+                        {" "}
+                        (optional)
+                      </span>
+                    </p>
+                    <div className="hidden md:block">{renderSurpriseMe()}</div>
+                  </div>
+                  <div className="flex items-stretch gap-2 p-2 md:col-start-2 md:row-start-2 md:gap-3">
+                    <div className={startTileSlotClass}>
+                      {renderStartTile(
                         "journal",
                         "Journal entry",
                         "Meditate on a journal entry — reflect what you wrote into a practice.",
                         "Journal",
-                      ],
-                      [
+                        {
+                          selected: journalSelected,
+                          dimmed: false,
+                        },
+                      )}
+                    </div>
+                    <div className={startTileSlotClass}>
+                      {renderStartTile(
                         "goal",
                         "Manifest goal",
                         "Ground the practice in a life area or goal from Manifest.",
                         "Manifest",
-                      ],
-                    ] as const
-                  )
-                    .filter(([kind]) => {
-                      if (kind === "style") return !state.style;
-                      if (kind === "program") return !state.program;
-                      if (kind === "journal") return state.journals.length === 0;
-                      if (kind === "goal") return !state.goal;
-                      return true;
-                    })
-                    .map(([kind, title, line, coverCategory]) => {
-                      const coverUrl =
-                        categoryImageUrls[coverCategory]?.trim() || "";
-                      return (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => openPicker(kind)}
-                        className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-card text-left shadow-sm"
-                      >
-                        <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20">
-                          {coverUrl ? (
-                            <img
-                              src={categoryImageUrlForTile(coverUrl, 360, 360)}
-                              alt=""
-                              width={360}
-                              height={360}
-                              decoding="async"
-                              className="block h-full w-full object-cover object-center"
-                            />
-                          ) : null}
-                          <span
-                            aria-hidden
-                            className="pointer-events-none absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-[2px] md:h-8 md:w-8"
-                          >
-                            <IconPlus className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                          </span>
-                        </div>
-                        <div className="flex flex-1 flex-col px-2.5 pb-2.5 pt-2 md:px-3 md:pb-3">
-                          <p className="font-display text-[15px] font-medium leading-snug text-foreground md:text-[16px]">
-                            {title}
-                          </p>
-                          <p className="mt-1 text-[12px] leading-snug text-muted md:text-[13px]">
-                            {line}
-                          </p>
-                        </div>
-                      </button>
-                      );
-                    })}
+                        {
+                          selected: goalSelected,
+                          dimmed: false,
+                        },
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1402,16 +2202,131 @@ export function CreateOneFlow({
 
           {step === "sound" ? (
             <div className="flex w-full flex-col gap-4">
-              <div className="flex flex-col gap-2 rounded-[14px] border border-accent/35 bg-accent-soft/40 px-4 py-3.5">
-                <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                  You&apos;re making
-                </p>
-                <p className="font-display text-[17px] leading-snug text-foreground md:text-xl md:leading-[1.3]">
-                  {summarySentence}
-                </p>
-                <div className="flex flex-wrap gap-1.5">{tokens(false)}</div>
+              <div className="rounded-[10px] border border-accent/35 bg-accent-soft/40">
+                <button
+                  type="button"
+                  aria-expanded={soundSummaryOpen}
+                  onClick={() => setSoundSummaryOpen((v) => !v)}
+                  className="flex h-10 w-full cursor-pointer items-center gap-2.5 px-3.5 text-left"
+                >
+                  <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                    <span className="md:hidden">Making</span>
+                    <span className="hidden md:inline">You&apos;re making</span>
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-display text-[15px] leading-none text-foreground">
+                    {summarySentence}
+                  </span>
+                  <IconChevronDown
+                    size={18}
+                    stroke={2}
+                    aria-hidden
+                    className={`shrink-0 text-muted transition-transform duration-200 ${
+                      soundSummaryOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {soundSummaryOpen ? (
+                  <div className="flex flex-col gap-3 border-t border-accent/20 px-3.5 py-3">
+                    <p className="font-display text-[17px] leading-[1.4] text-foreground">
+                      {state.prompt.trim() || summarySentence}
+                    </p>
+                    {state.style || state.program ? (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                          {state.program ? "Format · Program" : "Format · Style"}
+                        </span>
+                        {state.program ? (
+                          <div className="flex items-start gap-3">
+                            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                              {state.program.coverImageUrl ? (
+                                <img
+                                  src={state.program.coverImageUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-display text-[16px] leading-[1.25] text-foreground">
+                                {state.program.title}
+                              </p>
+                              <p className="text-[12px] text-muted">
+                                {state.program.mode === "one"
+                                  ? "One meditation"
+                                  : "One per session"}
+                                {" · "}
+                                {programSelectedCount} of {programTotalCount}{" "}
+                                sessions
+                              </p>
+                            </div>
+                          </div>
+                        ) : state.style ? (
+                          <>
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                                {(() => {
+                                  const url =
+                                    categoryImageUrls[state.style.id]?.trim() ||
+                                    categoryImageUrls.All?.trim() ||
+                                    categoryImageUrls.all?.trim() ||
+                                    "";
+                                  return url ? (
+                                    <img
+                                      src={categoryImageUrlForTile(url, 72, 72)}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : null;
+                                })()}
+                              </div>
+                              <p className="min-w-0 flex-1 font-display text-[16px] leading-[1.25] text-foreground">
+                                {state.style.id}
+                              </p>
+                            </div>
+                            {styleQuestions.length > 0 ? (
+                              <div className="flex flex-col gap-1.5">
+                                {shapeQuestionRows}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {state.journals.length > 0 || state.goal ? (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                          Context
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tokens(false, {
+                            includeStyle: false,
+                            includeProgram: false,
+                            kindLabels: true,
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-              <CreateSoundStep ref={soundStepRef} disabled={audioBusy} />
+              <CreateSoundStep
+                ref={soundStepRef}
+                disabled={audioBusy}
+                meditationStyle={state.style?.id ?? null}
+                programSpeakerModelId={state.program?.speakerModelId ?? null}
+                programTitle={state.program?.title ?? null}
+                programVoicePrefs={
+                  state.program
+                    ? {
+                        energy: state.program.preferredEnergy ?? null,
+                        pitch: state.program.preferredPitch ?? null,
+                        gender: state.program.preferredGender ?? null,
+                        accent: state.program.preferredAccent ?? null,
+                      }
+                    : null
+                }
+                onPreviewMixPlayingChange={setSoundPreviewPlaying}
+              />
               {audioError ? (
                 <p className="text-sm text-danger">{audioError}</p>
               ) : null}
@@ -1421,422 +2336,248 @@ export function CreateOneFlow({
         </div>
       </div>
       ) : (
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2.5 px-4 pt-3.5 md:gap-3 md:px-6 md:pt-5">
-          <div className="shrink-0">{stepper}</div>
-          <div className="flex min-h-0 w-full max-w-[760px] flex-1 flex-col gap-[14px] pb-4 md:gap-[18px] md:pb-4">
-            {/* Brief card */}
-            <div className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-border bg-card px-3 py-2.5 shadow-sm md:gap-2.5 md:px-4 md:py-3">
-              <div className="flex items-center gap-2.5">
-                {briefEditing ? (
-                  <textarea
-                    ref={briefTextareaRef}
-                    value={briefDraft}
-                    onChange={(e) => setBriefDraft(e.target.value)}
-                    onBlur={() => commitBriefEdit()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        commitBriefEdit();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelBriefEdit();
-                      }
-                    }}
-                    rows={1}
-                    className="min-h-[1.35em] min-w-0 flex-1 resize-none border-0 bg-transparent font-display text-[16px] leading-[1.35] text-foreground outline-none md:text-[18px]"
-                  />
-                ) : state.prompt.trim() ? (
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-3 md:gap-0 md:px-6 md:pt-6">
+          <div className="shrink-0 md:hidden">{stepper}</div>
+          <div className="flex min-h-0 w-full flex-1 flex-col pb-4 xl:flex-row xl:items-stretch xl:gap-5 xl:pb-4">
+            <div className="flex min-h-0 min-w-0 w-full max-w-[760px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_18px_rgb(0_0_0_/_0.08)] md:rounded-[18px]">
+              <div className="flex shrink-0 flex-col gap-2.5 border-b border-border px-3.5 py-3 md:px-5 md:py-4 xl:hidden">
+                <div className="flex items-center gap-2.5">
+                  {shapeBriefBody("two")}
                   <button
                     type="button"
-                    title={state.prompt.trim()}
+                    aria-label="Edit brief"
                     onClick={beginBriefEdit}
-                    className="min-w-0 flex-1 cursor-pointer text-left font-display text-[16px] leading-[1.35] text-foreground line-clamp-2 md:truncate md:text-[18px] md:leading-[1.35]"
+                    className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
                   >
-                    {state.prompt.trim()}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={beginBriefEdit}
-                    className="min-w-0 flex-1 cursor-pointer text-left font-display text-[16px] italic leading-[1.35] text-muted md:text-[18px]"
-                  >
-                    Add a line about what this is for
-                  </button>
-                )}
-                <button
-                  type="button"
-                  aria-label="Edit brief"
-                  onClick={beginBriefEdit}
-                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
-                >
-                  <IconPencil className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              {(state.program
-                ? state.journals.length > 0 ||
-                  state.goal ||
-                  shapeAddOptions.length > 0
-                : true) && (
-                <div className="flex min-w-0 items-center gap-2">
-                  <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto md:flex-wrap">
-                    {state.program
-                      ? (
-                          <>
-                            {state.journals.map((j) => (
-                              <ContextToken
-                                key={j.id}
-                                visual={
-                                  <ContextLetterBadge letter="J" />
-                                }
-                                name={j.title}
-                                detail={j.detail}
-                                onRemove={() =>
-                                  setState((p) => ({
-                                    ...p,
-                                    journals: p.journals.filter(
-                                      (x) => x.id !== j.id,
-                                    ),
-                                  }))
-                                }
-                              />
-                            ))}
-                            {state.goal ? (
-                              <ContextToken
-                                visual={
-                                  <ContextLetterBadge letter="G" />
-                                }
-                                name={state.goal.lifeAreaTitle}
-                                detail={state.goal.goalTitle}
-                                onRemove={() =>
-                                  setState((p) => ({ ...p, goal: null }))
-                                }
-                              />
-                            ) : null}
-                          </>
-                        )
-                      : tokens(true)}
-                    {shapeAddOptions.map(({ kind, label }) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => openPicker(kind)}
-                        className="inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1 rounded-[10px] border border-dashed border-accent/40 px-2.5 text-[13px] text-accent-link"
-                      >
-                        <IconPlus className="h-3.5 w-3.5" /> {label}
-                      </button>
-                    ))}
-                  </div>
-                  {!state.program && state.style ? (
-                    <div className="ml-auto hidden shrink-0 items-center gap-2 md:flex">
-                      <span className="text-[12px] text-muted">
-                        {state.style.id}
-                        {state.chat.some((m) => m.ready)
-                          ? " · ready"
-                          : " · shaping"}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
-
-            {state.program ? (
-              <div className="flex shrink-0 flex-col gap-3 rounded-[14px] border border-border bg-card px-3.5 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-accent-soft md:h-11 md:w-11">
-                    {state.program.coverImageUrl ? (
-                      <img
-                        src={state.program.coverImageUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-base text-foreground md:text-[17px]">
-                      {state.program.title}
-                    </p>
-                    <p className="text-[12px] text-muted">
-                      {state.program.mode === "one"
-                        ? "Making it your own · one meditation"
-                        : `Making it your own · ${state.program.sessionIds.length} of ${Object.keys(state.program.sessionTitles).length || state.program.sessionIds.length} sessions`}
-                    </p>
-                  </div>
-                  <div className="hidden items-center rounded-[10px] border border-border/70 bg-accent-soft/25 p-[3px] md:flex">
-                    {(
-                      [
-                        ["one", "One meditation"],
-                        ["perSession", "One per session"],
-                      ] as const
-                    ).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() =>
-                          setState((p) =>
-                            p.program
-                              ? {
-                                  ...p,
-                                  program: { ...p.program, mode },
-                                }
-                              : p,
-                          )
-                        }
-                        className={`h-8 cursor-pointer rounded-lg px-2.5 text-[12px] ${
-                          state.program?.mode === mode
-                            ? "header-gold-sunlit-fill font-semibold"
-                            : "text-muted"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="cursor-pointer text-[13px] font-semibold text-accent-link"
-                    onClick={() => setSessionsOpen((v) => !v)}
-                  >
-                    {sessionsOpen ? "Sessions ▴" : "Sessions ▾"}
-                  </button>
-                </div>
-                {sessionsOpen && state.program.mode === "perSession" ? (
-                  <div className="grid grid-cols-1 gap-2 border-t border-border pt-2.5 md:grid-cols-2 md:gap-x-5 md:gap-y-2">
-                    {Object.entries(state.program.sessionTitles).map(
-                      ([id, title], i) => {
-                        const checked = state.program!.sessionIds.includes(id);
-                        return (
-                          <label
-                            key={id}
-                            className={`flex cursor-pointer items-center gap-2 text-[13px] ${
-                              checked ? "text-foreground" : "text-muted"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() =>
-                                setState((p) => {
-                                  if (!p.program) return p;
-                                  const set = new Set(p.program.sessionIds);
-                                  if (set.has(id)) set.delete(id);
-                                  else set.add(id);
-                                  return {
-                                    ...p,
-                                    program: {
-                                      ...p.program,
-                                      sessionIds: [...set],
-                                    },
-                                  };
-                                })
-                              }
-                              className="h-[18px] w-[18px] rounded-[5px] accent-[var(--color-accent)]"
-                            />
-                            {i + 1}. {title}
-                          </label>
-                        );
-                      },
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {showAsForm && state.style ? (
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-                  {styleQuestions.map((q, i) => (
-                    <label key={i} className="block">
-                      <span className="text-[12px] font-semibold text-accent-link">
-                        {i + 1}. {q}
-                      </span>
-                      <textarea
-                        value={state.answers[String(i)] ?? ""}
-                        onChange={(e) =>
-                          setState((p) => ({
-                            ...p,
-                            answers: {
-                              ...p.answers,
-                              [String(i)]: e.target.value,
-                            },
-                          }))
-                        }
-                        rows={2}
-                        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px]"
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div
-                ref={threadScrollRef}
-                onScroll={(e) => {
-                  const el = e.currentTarget;
-                  const dist =
-                    el.scrollHeight - el.scrollTop - el.clientHeight;
-                  threadStickToBottomRef.current = dist < 48;
-                }}
-                className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
-              >
-                {visibleChat.map((m, i) =>
-                  m.kind === "context" ? (
-                    m.contextKind === "program" ? (
-                      <div
-                        key={`context-${i}`}
-                        className="ml-auto flex w-full max-w-[92%] flex-col items-end gap-1.5 md:max-w-[80%]"
-                      >
-                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
-                          Program added
-                        </span>
-                        <div className="flex w-full items-center gap-3 rounded-[14px] border border-border bg-card px-3 py-2.5 shadow-sm">
-                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
-                            {m.contextImageUrl ? (
-                              <img
-                                src={m.contextImageUrl}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center">
-                                <ContextLetterBadge letter="P" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1 text-left">
-                            <p className="truncate font-display text-[15px] text-foreground md:text-[16px]">
-                              {m.text}
-                            </p>
-                            {m.contextDetail?.trim() ? (
-                              <p className="truncate text-[12px] text-muted">
-                                {m.contextDetail.trim()}
-                              </p>
-                            ) : (
-                              <p className="truncate text-[12px] text-muted">
-                                Making it your own
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        key={`context-${i}`}
-                        className="ml-auto flex max-w-[92%] flex-wrap items-center justify-end gap-2 py-0.5 md:max-w-[80%]"
-                      >
-                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
-                          {m.contextKind === "style"
-                            ? "Style added"
-                            : m.contextKind === "goal"
-                              ? "Goal added"
-                              : m.contextKind === "journal"
-                                ? "Journal added"
-                                : m.contextKind === "start"
-                                  ? "Start updated"
-                                  : "Context added"}
-                        </span>
-                        <ContextToken
-                          visual={
-                            <ContextLetterBadge
-                              letter={
-                                m.contextKind === "style"
-                                  ? "S"
-                                  : m.contextKind === "goal"
-                                    ? "G"
-                                    : m.contextKind === "start"
-                                      ? "★"
-                                      : "J"
-                              }
-                            />
-                          }
-                          name={m.text}
-                          detail={m.contextDetail}
-                        />
-                      </div>
-                    )
-                  ) : (
-                    <div
-                      key={`${m.role}-${i}`}
-                      className={`rounded-[14px] px-3.5 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap ${
-                        m.role === "user"
-                          ? "header-gold-sunlit-fill ml-auto max-w-[80%] rounded-br-sm"
-                          : "mr-auto max-w-[92%] rounded-bl-sm border border-border bg-card text-foreground md:max-w-[86%]"
-                      }`}
-                    >
-                      {m.role === "assistant" && state.style ? (
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                          {state.style.id}
-                        </p>
-                      ) : null}
-                      {m.text.trim() ? m.text : shapeBusy ? "…" : null}
-                    </div>
-                  ),
-                )}
-              </div>
-            )}
-
-            <div className="shrink-0">
-              <div className="flex items-center gap-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-1.5 shadow-sm">
-                <input
-                  value={shapeInput}
-                  onChange={(e) => setShapeInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendShapeMessage(shapeInput);
-                    }
-                  }}
-                  placeholder="Type or tap an answer"
-                  className="min-w-0 flex-1 border-0 bg-transparent text-[14px] outline-none md:text-[15px]"
-                />
-                <DictationMicButton
-                  variant="composer"
-                  onTranscript={(t) =>
-                    setShapeInput((v) => (v ? `${v} ${t}` : t))
-                  }
-                />
-                <button
-                  type="button"
-                  disabled={shapeBusy || !shapeInput.trim()}
-                  onClick={() => sendShapeMessage(shapeInput)}
-                  style={PRIMARY_ACCENT_FILL_STYLE}
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  <IconArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="mt-2 flex flex-col items-center gap-2 md:items-start md:pl-4">
-                <div className="flex items-center justify-center gap-[18px] text-[12px] md:justify-start md:text-[13px]">
-                  {state.style ? (
-                    <button
-                      type="button"
-                      className="cursor-pointer font-semibold text-accent-link"
-                      onClick={() => setShowAsForm((v) => !v)}
-                    >
-                      {showAsForm ? "Show as chat" : "Show as form"}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="cursor-pointer text-muted"
-                    onClick={resetShape}
-                  >
-                    Reset
+                    <IconPencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 {state.program ? (
+                  <div className="flex items-center gap-3 rounded-xl bg-background px-3 py-2.5">
+                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                      {state.program.coverImageUrl ? (
+                        <img
+                          src={state.program.coverImageUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-display text-[15px] leading-[1.25] text-foreground md:text-[16px]">
+                        {state.program.title}
+                      </p>
+                      <p className="text-[12px] text-muted">
+                        {programSelectedCount} of {programTotalCount} sessions
+                        {" · "}
+                        {state.program.mode === "one"
+                          ? "One meditation"
+                          : "One per session"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProgramHeaderOpen((v) => !v)}
+                      className="h-8 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3 text-[13px] font-semibold text-foreground"
+                    >
+                      {programHeaderOpen ? "Done ▴" : "Edit ▾"}
+                    </button>
+                  </div>
+                ) : null}
+                <div className="hidden min-w-0 items-center gap-2 md:flex">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                    {tokens(true, { includeProgram: false })}
+                    {shapeAddChips}
+                  </div>
+                  {state.style && !state.program ? (
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        {styleQuestions.map((_, i) => (
+                          <span
+                            key={i}
+                            className={`h-1.5 w-3.5 rounded-full ${
+                              styleQuestionStatuses[i] ||
+                              styleQuestionCurrentIndex === i
+                                ? "header-gold-sunlit-fill"
+                                : "bg-border"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[12px] text-muted">
+                        {styleQuestionProgressLabel}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:hidden">
+                  {tokens(true, { includeProgram: false })}
+                </div>
+              </div>
+
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                {state.program && programHeaderOpen ? (
+                  <div className="absolute inset-x-0 top-0 z-20 max-h-full overflow-y-auto border-b border-border bg-background px-3.5 py-3 shadow-[0_8px_24px_rgb(0_0_0_/_0.12)] md:px-5 xl:hidden">
+                    <div className="flex flex-col gap-2.5">
+                      {shapeProgramModeToggle}
+                      {shapeProgramSessionsBlock}
+                      <button
+                        type="button"
+                        onClick={removeProgram}
+                        className="cursor-pointer text-left text-[12px] font-semibold text-muted"
+                      >
+                        Remove program
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={resetShape}
+                  className="absolute right-3 top-3 z-10 inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card/95 px-2.5 py-1 text-[12px] font-semibold text-muted shadow-sm backdrop-blur-sm hover:text-foreground md:right-4 md:top-4 md:text-[13px]"
+                >
+                  <IconRefresh className="h-3.5 w-3.5" stroke={1.8} />
+                  Reset
+                </button>
+                {shapeThread}
+              </div>
+
+              <div className="relative z-20 flex shrink-0 flex-col gap-2 border-t border-border bg-card px-3 py-2.5 md:px-5 md:py-3.5 md:pb-3">
+                <div className="flex items-center gap-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-1.5">
+                  <input
+                    value={shapeInput}
+                    onChange={(e) => setShapeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendShapeMessage(shapeInput);
+                      }
+                    }}
+                    placeholder="Type or tap an answer"
+                    className="min-w-0 flex-1 border-0 bg-transparent text-[16px] leading-[1.45] outline-none placeholder:text-[16px]"
+                  />
+                  <DictationMicButton
+                    variant="composer"
+                    onTranscript={(t) =>
+                      setShapeInput((v) => (v ? `${v} ${t}` : t))
+                    }
+                  />
                   <button
                     type="button"
-                    onClick={() => goStep("sound")}
-                    className="cursor-pointer text-center text-[12px] font-semibold text-accent-link md:hidden"
+                    disabled={!shapeInput.trim()}
+                    onClick={() => sendShapeMessage(shapeInput)}
+                    style={PRIMARY_ACCENT_FILL_STYLE}
+                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {state.program.mode === "one"
-                      ? "Create now with what you've said"
-                      : `Create ${state.program.sessionIds.length || 1} now with what you've said`}
+                    <IconArrowRight className="h-4 w-4" />
                   </button>
-                ) : null}
+                </div>
               </div>
             </div>
+
+            <aside
+              aria-label="This meditation"
+              className="hidden w-[300px] shrink-0 flex-col gap-3 overflow-y-auto xl:flex"
+            >
+              <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                    You&apos;re making
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Edit brief"
+                    onClick={beginBriefEdit}
+                    className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
+                  >
+                    <IconPencil className="h-[13px] w-[13px]" />
+                  </button>
+                </div>
+                {shapeBriefBody("none")}
+              </div>
+
+              {state.style || state.program ? (
+                <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
+                  {state.program ? (
+                    <>
+                      <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                        Format · Program
+                      </span>
+                      {shapeProgramCard}
+                    </>
+                  ) : state.style ? (
+                    <>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                          Format · Style
+                        </span>
+                        <span className="text-[12px] text-muted">
+                          {styleQuestionProgressLabel}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                          {(() => {
+                            const url =
+                              categoryImageUrls[state.style.id]?.trim() ||
+                              categoryImageUrls.All?.trim() ||
+                              categoryImageUrls.all?.trim() ||
+                              "";
+                            return url ? (
+                              <img
+                                src={categoryImageUrlForTile(url, 72, 72)}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : null;
+                          })()}
+                        </div>
+                        <p className="min-w-0 flex-1 font-display text-[16px] leading-[1.25] text-foreground">
+                          {state.style.id}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label="Remove format"
+                          onClick={() =>
+                            setState((p) => ({ ...p, style: null, answers: {} }))
+                          }
+                          className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-muted hover:text-foreground"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="h-px bg-border" />
+                      {shapeQuestionRows}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
+                <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                  Context
+                </span>
+                <div className="flex flex-col items-start gap-2">
+                  {state.journals.length > 0 || state.goal ? (
+                    <div className="flex flex-wrap gap-2">
+                      {tokens(true, {
+                        includeStyle: false,
+                        includeProgram: false,
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-1.5">{shapeAddChips}</div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
       )}
@@ -1856,13 +2597,23 @@ export function CreateOneFlow({
           <div className="flex items-center justify-center gap-2.5">
             <MeditationLengthSelect
               value={state.lengthMinutes}
-              onChange={(n) =>
-                setState((p) => ({
-                  ...p,
-                  lengthMinutes:
-                    n === 2 || n === 5 || n === 10 || n === 20 ? n : 5,
-                }))
+              displayLabel={perSessionFooterLabel ?? undefined}
+              extraOption={
+                perSessionFooterLabel
+                  ? {
+                      label: "Program lengths",
+                      onSelect: () => applyLengthToAllSessions(null),
+                    }
+                  : undefined
               }
+              onChange={(n) => {
+                const mins = coerceMeditationLengthMinutes(n);
+                if (state.program?.mode === "perSession") {
+                  applyLengthToAllSessions(mins);
+                  return;
+                }
+                setState((p) => ({ ...p, lengthMinutes: mins }));
+              }}
             />
           </div>
           <div className="flex justify-end gap-2.5">
@@ -1903,15 +2654,66 @@ export function CreateOneFlow({
               </>
             ) : null}
             {step === "sound" ? (
-              <CreateFlowNavPill
-                disabled={audioBusy}
-                onClick={() => void generateMeditation()}
-                style={PRIMARY_ACCENT_FILL_STYLE}
-                className="!border-transparent accent-fill-gradient !text-on-accent hover:!opacity-90"
-              >
-                <span className="md:hidden">✦ Create</span>
-                <span className="hidden md:inline">✦ Create meditation</span>
-              </CreateFlowNavPill>
+              <>
+                <CreateFlowNavPill
+                  disabled={audioBusy}
+                  onClick={() => soundStepRef.current?.togglePreviewMix()}
+                  className="hidden !h-11 !py-0 !pl-1.5 !pr-4 md:inline-flex"
+                  aria-label={
+                    soundPreviewPlaying ? "Stop preview mix" : "Preview mix"
+                  }
+                >
+                  <span
+                    className="flex h-8 w-8 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
+                    style={PRIMARY_ACCENT_FILL_STYLE}
+                  >
+                    {soundPreviewPlaying ? (
+                      <span className="block h-2.5 w-2.5 rounded-[1px] bg-current" />
+                    ) : (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="currentColor"
+                      >
+                        <path d="M8 5v14l11-7L8 5z" />
+                      </svg>
+                    )}
+                  </span>
+                  Preview mix
+                </CreateFlowNavPill>
+                <button
+                  type="button"
+                  disabled={audioBusy}
+                  aria-label={
+                    soundPreviewPlaying ? "Stop preview mix" : "Preview mix"
+                  }
+                  onClick={() => soundStepRef.current?.togglePreviewMix()}
+                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-foreground shadow-sm md:hidden"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-[18px] w-[18px]"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 14v-4a2 2 0 0 1 2-2h1l3-3v14l-3-3H5a2 2 0 0 1-2-2z" />
+                    <path d="M16 8a5 5 0 0 1 0 8" />
+                    <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
+                  </svg>
+                </button>
+                <CreateFlowNavPill
+                  disabled={audioBusy}
+                  onClick={() => void generateMeditation()}
+                  style={PRIMARY_ACCENT_FILL_STYLE}
+                  className="!border-transparent accent-fill-gradient !text-on-accent hover:!opacity-90"
+                >
+                  <span className="md:hidden">✦ Create</span>
+                  <span className="hidden md:inline">✦ Create meditation</span>
+                </CreateFlowNavPill>
+              </>
             ) : null}
           </div>
         </div>
@@ -1963,7 +2765,7 @@ export function CreateOneFlow({
         open={picker === "journal"}
         eyebrow="Add · Journal"
         title="Pick a journal entry"
-        confirmLabel={state.journals.length ? "Save" : "Add to meditation"}
+        confirmLabel="Add to meditation"
         confirmDisabled={!draftJournalId}
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
@@ -1997,7 +2799,10 @@ export function CreateOneFlow({
             setDraftLifeAreaId(id);
             setDraftGoalId(null);
           }}
-          onSelectGoal={(id) => setDraftGoalId(id)}
+          onSelectGoal={(lifeAreaId, goalId) => {
+            setDraftLifeAreaId(lifeAreaId);
+            setDraftGoalId((prev) => (prev === goalId ? null : goalId));
+          }}
           guidance=""
           onGuidanceChange={() => {}}
         />

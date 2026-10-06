@@ -11,6 +11,10 @@ import {
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { coerceMeditationTargetMinutes } from "./meditation-target-minutes";
+import {
+  coerceVoicePrefs,
+  type VoicePreferredTraits,
+} from "./voice-preferred-traits";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -64,6 +68,11 @@ export type ProgramPublic = {
   published: boolean;
   /** Fish speaker for every lesson in this program. */
   speakerModelId: string;
+  /** Preferred voice traits for closest-match ranking (after the program speaker). */
+  preferredEnergy: VoicePreferredTraits["energy"];
+  preferredPitch: VoicePreferredTraits["pitch"];
+  preferredGender: VoicePreferredTraits["gender"];
+  preferredAccent: VoicePreferredTraits["accent"];
   sort: number;
   days: ProgramDay[];
   createdAt: string;
@@ -204,6 +213,12 @@ export function normalizeProgram(raw: unknown): ProgramPublic | null {
     }
   }
   const coverImageKey = coerceCoverKey(o.coverImageKey);
+  const prefs = coerceVoicePrefs({
+    energy: o.preferredEnergy,
+    pitch: o.preferredPitch,
+    gender: o.preferredGender,
+    accent: o.preferredAccent,
+  });
   return {
     id,
     title:
@@ -216,6 +231,10 @@ export function normalizeProgram(raw: unknown): ProgramPublic | null {
         : "",
     published: o.published === true,
     speakerModelId,
+    preferredEnergy: prefs.energy,
+    preferredPitch: prefs.pitch,
+    preferredGender: prefs.gender,
+    preferredAccent: prefs.accent,
     sort,
     days: days.map((d) =>
       speakerModelId ? { ...d, speakerModelId } : d,
@@ -274,6 +293,11 @@ export type LibraryProgram = {
   sort: number;
   days: LibraryProgramDay[];
   coverImageUrl: string | null;
+  speakerModelId: string;
+  preferredEnergy: VoicePreferredTraits["energy"];
+  preferredPitch: VoicePreferredTraits["pitch"];
+  preferredGender: VoicePreferredTraits["gender"];
+  preferredAccent: VoicePreferredTraits["accent"];
 };
 
 export function toLibraryProgram(p: ProgramPublic): LibraryProgram | null {
@@ -315,6 +339,11 @@ export function toLibraryProgram(p: ProgramPublic): LibraryProgram | null {
     sort: p.sort,
     days,
     coverImageUrl: p.coverImageUrl,
+    speakerModelId: p.speakerModelId,
+    preferredEnergy: p.preferredEnergy,
+    preferredPitch: p.preferredPitch,
+    preferredGender: p.preferredGender,
+    preferredAccent: p.preferredAccent,
   };
 }
 

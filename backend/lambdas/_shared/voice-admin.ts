@@ -11,8 +11,21 @@ import {
   FISH_SPEAKERS,
   HIDDEN_FISH_SPEAKER_MODEL_IDS,
   type FishSpeaker,
+  type VoiceAccent,
+  type VoiceEnergy,
   type VoiceGender,
+  type VoicePitch,
 } from "./fish-speakers";
+import { KNOWN_MEDITATION_TYPES } from "./meditation-types";
+import {
+  coerceAccent,
+  coerceEnergy,
+  coerceGender,
+  coercePitch,
+  coerceVoicePrefs,
+  emptyVoicePrefs,
+  type VoicePreferredTraits,
+} from "./voice-preferred-traits";
 import {
   SCRIPT_PAUSE_BANDS,
   SCRIPT_PAUSE_BAND_SECONDS,
@@ -26,6 +39,7 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 export const VOICE_SPEAKER_PK = "VOICE_SPEAKER";
 export const VOICE_SETTINGS_PK = "VOICE_SETTINGS";
 export const VOICE_PAUSES_SK = "pauses";
+export const STYLE_VOICE_PREFS_SK = "style-voice-prefs";
 
 export type VoiceSpeakerBrand = "fish" | "speechify";
 
@@ -42,6 +56,9 @@ export type VoiceSpeakerRow = Omit<FishSpeaker, "gender"> & {
   goodFor: string[];
   /** Null when the admin has not specified one. */
   gender: VoiceGender | null;
+  energy: VoiceEnergy | null;
+  pitch: VoicePitch | null;
+  accent: VoiceAccent | null;
   /** Speechify SSML rate offset in percent (e.g. -7 → rate="-7%"). Unused for Fish. */
   speechifyRate: number | null;
 };
@@ -74,6 +91,9 @@ export function defaultVoiceSpeakers(): VoiceSpeakerRow[] {
     description: "",
     goodFor: [],
     gender: null,
+    energy: null,
+    pitch: null,
+    accent: null,
     speechifyRate: null,
     updatedAt: now,
   }));
@@ -97,9 +117,6 @@ function coerceDescription(raw: unknown): string {
   return raw.trim().slice(0, 800);
 }
 
-function coerceGender(raw: unknown): VoiceGender | null {
-  return raw === "male" || raw === "female" ? raw : null;
-}
 
 export function coerceVoiceSpeakerBrand(raw: unknown): VoiceSpeakerBrand {
   return raw === "speechify" ? "speechify" : "fish";
@@ -185,6 +202,9 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
         description: stored.length > 0 ? coerceDescription(it.description) : legacy.description,
         goodFor: stored.length > 0 ? stored : legacy.goodFor,
         gender: coerceGender(it.gender),
+        energy: coerceEnergy(it.energy),
+        pitch: coercePitch(it.pitch),
+        accent: coerceAccent(it.accent),
         speechifyRate: coerceSpeechifyRate(it.speechifyRate),
         updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
       };
@@ -237,6 +257,9 @@ async function persistVoiceSpeaker(
         description: row.description,
         goodFor: row.goodFor,
         gender: row.gender,
+        energy: row.energy,
+        pitch: row.pitch,
+        accent: row.accent,
         speechifyRate: row.speechifyRate,
         updatedAt: row.updatedAt,
       },
@@ -253,6 +276,9 @@ export async function putVoiceSpeaker(row: {
   description?: string;
   goodFor?: string[] | string;
   gender?: VoiceGender | null;
+  energy?: VoiceEnergy | null;
+  pitch?: VoicePitch | null;
+  accent?: VoiceAccent | null;
   speechifyRate?: number | null;
 }): Promise<VoiceSpeakerRow> {
   const table = requireTable();
@@ -282,6 +308,12 @@ export async function putVoiceSpeaker(row: {
       row.goodFor !== undefined ? coerceGoodFor(row.goodFor) : coerceGoodFor(prev?.goodFor),
     gender:
       row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev?.gender),
+    energy:
+      row.energy !== undefined ? coerceEnergy(row.energy) : coerceEnergy(prev?.energy),
+    pitch:
+      row.pitch !== undefined ? coercePitch(row.pitch) : coercePitch(prev?.pitch),
+    accent:
+      row.accent !== undefined ? coerceAccent(row.accent) : coerceAccent(prev?.accent),
     speechifyRate:
       row.speechifyRate !== undefined
         ? coerceSpeechifyRate(row.speechifyRate)
@@ -335,6 +367,12 @@ export async function renameVoiceSpeaker(
       row.goodFor !== undefined ? coerceGoodFor(row.goodFor) : coerceGoodFor(prev.goodFor),
     gender:
       row.gender !== undefined ? coerceGender(row.gender) : coerceGender(prev.gender),
+    energy:
+      row.energy !== undefined ? coerceEnergy(row.energy) : coerceEnergy(prev.energy),
+    pitch:
+      row.pitch !== undefined ? coercePitch(row.pitch) : coercePitch(prev.pitch),
+    accent:
+      row.accent !== undefined ? coerceAccent(row.accent) : coerceAccent(prev.accent),
     speechifyRate:
       row.speechifyRate !== undefined
         ? coerceSpeechifyRate(row.speechifyRate)
@@ -357,6 +395,9 @@ export async function renameVoiceSpeaker(
               description: next.description,
               goodFor: next.goodFor,
               gender: next.gender,
+              energy: next.energy,
+              pitch: next.pitch,
+              accent: next.accent,
               speechifyRate: next.speechifyRate,
               updatedAt: next.updatedAt,
             },
@@ -384,6 +425,55 @@ export async function deleteVoiceSpeaker(modelId: string): Promise<void> {
       Key: { pk: VOICE_SPEAKER_PK, sk: modelId.trim() },
     }),
   );
+}
+
+export type StyleVoicePrefsMap = Record<string, VoicePreferredTraits>;
+
+function coerceStyleVoicePrefsMap(raw: unknown): StyleVoicePrefsMap {
+  const out: StyleVoicePrefsMap = {};
+  for (const style of KNOWN_MEDITATION_TYPES) {
+    out[style] = emptyVoicePrefs();
+  }
+  if (!raw || typeof raw !== "object") return out;
+  const o = raw as Record<string, unknown>;
+  for (const style of KNOWN_MEDITATION_TYPES) {
+    if (Object.prototype.hasOwnProperty.call(o, style)) {
+      out[style] = coerceVoicePrefs(o[style]);
+    }
+  }
+  return out;
+}
+
+export async function loadStyleVoicePrefs(): Promise<StyleVoicePrefsMap> {
+  const table = tableName();
+  if (!table) return coerceStyleVoicePrefsMap(null);
+  const out = await ddb.send(
+    new GetCommand({
+      TableName: table,
+      Key: { pk: VOICE_SETTINGS_PK, sk: STYLE_VOICE_PREFS_SK },
+    }),
+  );
+  return coerceStyleVoicePrefsMap(out.Item?.prefs);
+}
+
+export async function saveStyleVoicePrefs(
+  patch: Record<string, unknown>,
+): Promise<StyleVoicePrefsMap> {
+  const table = requireTable();
+  const current = await loadStyleVoicePrefs();
+  const merged = coerceStyleVoicePrefsMap({ ...current, ...patch });
+  await ddb.send(
+    new PutCommand({
+      TableName: table,
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: STYLE_VOICE_PREFS_SK,
+        prefs: merged,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+  return merged;
 }
 
 export async function loadPauseBandSeconds(): Promise<PauseBandSeconds> {
@@ -437,6 +527,9 @@ export async function listPickerFishSpeakers(): Promise<FishSpeaker[]> {
       ...(s.description ? { description: s.description } : {}),
       ...(s.goodFor.length > 0 ? { goodFor: s.goodFor } : {}),
       ...(s.gender ? { gender: s.gender } : {}),
+      ...(s.energy ? { energy: s.energy } : {}),
+      ...(s.pitch ? { pitch: s.pitch } : {}),
+      ...(s.accent ? { accent: s.accent } : {}),
       // Always surface admin rate for Speechify so Create can seed the same
       // value the generate worker would use (null = Speechify default).
       ...(s.brand === "speechify" ? { speechifyRate: s.speechifyRate } : {}),

@@ -87,6 +87,73 @@ export const STYLE_INTAKE_QUESTIONS: Record<MeditationStyleLabel, [string, strin
   ],
 };
 
+/** 3–5 word labels for the Shape rail checklist. */
+export const STYLE_INTAKE_SHORT_TITLES: Record<
+  MeditationStyleLabel,
+  [string, string, string]
+> = {
+  "Body scan": [
+    "Full scan or linger",
+    "Where tension sits",
+    "How you want to feel",
+  ],
+  Visualization: [
+    "What to visualise",
+    "First vivid detail",
+    "How you want to feel",
+  ],
+  "Breath-led": [
+    "Counted or natural",
+    "How you feel now",
+    "Slow or natural pace",
+  ],
+  Manifestation: [
+    "What to manifest",
+    "What's in the way",
+    "How success would feel",
+  ],
+  "Affirmation loop": [
+    "Feeling to generate",
+    "Goal you're moving toward",
+    "Words or phrases",
+  ],
+  Story: [
+    "Story style",
+    "Who it's about",
+    "Feeling it leaves",
+  ],
+  Reflection: [
+    "What to process",
+    "Answer or sit with it",
+    "Helpful insight or shift",
+  ],
+  Sleep: [
+    "How you feel now",
+    "Scene or body and breath",
+    "How to fall asleep",
+  ],
+  "Loving-kindness": [
+    "Who it's for",
+    "How you feel toward them",
+    "Kindness that's needed",
+  ],
+  "Anxiety relief": [
+    "Main worry or pressure",
+    "Where you feel it",
+    "How you want to feel",
+  ],
+  "Movement meditation": [
+    "Walking or stretching",
+    "How your body feels",
+    "Limits to work around",
+  ],
+  "Open awareness": [
+    "What pulls attention away",
+    "Sitting standing or lying",
+    "Quiet or noisy place",
+  ],
+};
+
 export type StyleQuestionAnswers = [string, string, string, string];
 
 export function intakeQuestionsForStyle(style: string): [string, string, string] {
@@ -98,6 +165,17 @@ export function intakeQuestionsForStyle(style: string): [string, string, string]
     `How are you feeling today, and what do you want this “${trimmed}” practice to support?`,
     "Is there a situation, person, or inner state we should keep in mind?",
     "How do you want to feel when the meditation ends?",
+  ];
+}
+
+export function intakeShortTitlesForStyle(style: string): [string, string, string] {
+  if ((MEDITATION_STYLE_LABELS as readonly string[]).includes(style)) {
+    return STYLE_INTAKE_SHORT_TITLES[style as MeditationStyleLabel];
+  }
+  return [
+    "How you're feeling",
+    "What to keep in mind",
+    "How you want to feel",
   ];
 }
 

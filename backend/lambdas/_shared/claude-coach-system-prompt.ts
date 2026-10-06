@@ -90,8 +90,8 @@ export function buildClaudeCoachSystemPrompt(params: {
     ...(fromProgram
       ? []
       : [
-          "If there is already an assistant message in the history that functions as the FIRST concrete-situation question, do NOT ask that same question again; only ask necessary follow-ups that cover new ground.",
-          "If there is NO prior assistant message yet (i.e., this is the first assistant turn), ask EXACTLY ONE first question for the concrete situation tailored to the chosen style (or a concrete goal if the style is manifestation/goal-based).",
+          "If there is already an assistant message in the history that functions as the FIRST intake question, do NOT ask that same question again; only ask necessary follow-ups that cover new ground.",
+          "If there is NO prior assistant message yet (first assistant turn): follow OPEN NOW in the user message. If a specific style/format is already chosen, greet in one short sentence (do not name the style), then ask ONE question that gathers Format AIM item 1. NEVER open with a mood-intake line such as “What’s on your mind?” or “What’s on your mind today?” when they already chose a format, wrote a brief, or attached journal/goal. Mood-intake openers are ONLY when Start had no brief, no format, and no context.",
         ]),
     "Prioritize questions about the concrete situation or (when relevant) a concrete goal — never “how do you want to feel”.",
     "Only ask about body sensations when the user has invited that kind of focus (for example by mentioning stress in the body or somatic work).",

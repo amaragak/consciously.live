@@ -1,11 +1,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FavoriteHeartButton } from "@/components/favorite-heart-button";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import {
   categoryLabel,
   channelSubcategoryOptions,
   inferSoundSubcategory,
   prettySubcategoryLabel,
+  soundDisplayName,
   subcategoryLabel,
   type SoundCategoryId,
 } from "@/lib/sound-taxonomy";
@@ -17,33 +19,55 @@ type SoundFolderSelectProps = {
   onChange: (key: string) => void;
   disabled?: boolean;
   compact?: boolean;
+  /** 36px rounded-10 trigger for the Sound mixer desk. */
+  desk?: boolean;
+  favoriteKeys?: ReadonlySet<string>;
+  onToggleFavorite?: (key: string) => void;
 };
 
 function SampleButtons({
   sounds,
   value,
   onPick,
+  favoriteKeys,
+  onToggleFavorite,
 }: {
   sounds: BackgroundAudioItem[];
   value: string;
   onPick: (key: string) => void;
+  favoriteKeys?: ReadonlySet<string>;
+  onToggleFavorite?: (key: string) => void;
 }) {
   if (sounds.length === 0) {
     return <div className="px-3 py-1.5 text-sm text-muted">No sounds yet</div>;
   }
+  const ranked = [...sounds].sort((a, b) => {
+    const af = favoriteKeys?.has(a.key) ? 0 : 1;
+    const bf = favoriteKeys?.has(b.key) ? 0 : 1;
+    if (af !== bf) return af - bf;
+    return a.name.localeCompare(b.name);
+  });
   return (
     <>
-      {sounds.map((s) => (
-        <button
-          key={s.key}
-          type="button"
-          className={`block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-background ${
-            s.key === value ? "font-medium text-foreground" : "text-muted"
-          }`}
-          onClick={() => onPick(s.key)}
-        >
-          {s.name}
-        </button>
+      {ranked.map((s) => (
+        <div key={s.key} className="flex items-center gap-0.5">
+          <button
+            type="button"
+            className={`min-w-0 flex-1 truncate px-3 py-1.5 text-left text-sm hover:bg-background ${
+              s.key === value ? "font-medium text-foreground" : "text-muted"
+            }`}
+            onClick={() => onPick(s.key)}
+          >
+            {s.name}
+          </button>
+          {onToggleFavorite ? (
+            <FavoriteHeartButton
+              pressed={Boolean(favoriteKeys?.has(s.key))}
+              label={s.name}
+              onToggle={() => onToggleFavorite(s.key)}
+            />
+          ) : null}
+        </div>
       ))}
     </>
   );
@@ -56,6 +80,9 @@ export function SoundFolderSelect({
   onChange,
   disabled,
   compact,
+  desk,
+  favoriteKeys,
+  onToggleFavorite,
 }: SoundFolderSelectProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const mobileSamplesRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +99,11 @@ export function SoundFolderSelect({
     return extra.length > 0 ? [...base, ...extra] : base;
   }, [category, items]);
   const selected = items.find((s) => s.key === value);
-  const label = selected?.name || "None";
+  const label = selected
+    ? desk
+      ? soundDisplayName(selected.name)
+      : selected.name
+    : "None";
 
   const bySub = useMemo(() => {
     const map = new Map<string, BackgroundAudioItem[]>();
@@ -127,9 +158,13 @@ export function SoundFolderSelect({
     setActiveSub((cur) => (cur === folderId ? null : folderId));
   }
 
-  const triggerClass = compact
-    ? "flex w-full min-w-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-left text-sm disabled:opacity-50"
-    : "flex min-w-0 flex-1 items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-left text-sm disabled:opacity-50";
+  const triggerClass = desk
+    ? `flex h-9 w-full min-w-0 items-center gap-2 rounded-[10px] border border-border px-3 text-left text-[14px] disabled:opacity-50 ${
+        selected ? "bg-card text-foreground" : "bg-transparent text-muted"
+      }`
+    : compact
+      ? "flex w-full min-w-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-left text-sm disabled:opacity-50"
+      : "flex min-w-0 flex-1 items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-left text-sm disabled:opacity-50";
 
   const menu = (
     <div
@@ -148,18 +183,13 @@ export function SoundFolderSelect({
         None
       </button>
       {folders.length === 0 ? (
-        items.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            className={`block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-background ${
-              s.key === value ? "font-medium text-foreground" : "text-muted"
-            }`}
-            onClick={() => pickSound(s.key)}
-          >
-            {s.name}
-          </button>
-        ))
+        <SampleButtons
+          sounds={items}
+          value={value}
+          onPick={pickSound}
+          favoriteKeys={favoriteKeys}
+          onToggleFavorite={onToggleFavorite}
+        />
       ) : (
         folders.map((folder) => {
           const sounds = bySub.get(folder.id) ?? [];
@@ -197,6 +227,8 @@ export function SoundFolderSelect({
                     sounds={sounds}
                     value={value}
                     onPick={pickSound}
+                    favoriteKeys={favoriteKeys}
+                    onToggleFavorite={onToggleFavorite}
                   />
                 </div>
               ) : null}
@@ -210,9 +242,9 @@ export function SoundFolderSelect({
   return (
     <div
       ref={rootRef}
-      className={`relative min-w-0 ${compact ? "w-full" : "flex-1"} ${
-        open ? "z-30" : ""
-      }`}
+      className={`relative min-w-0 ${
+        desk || compact ? "w-full" : "flex-1"
+      } ${open ? "z-30" : ""}`}
     >
       <button
         type="button"
