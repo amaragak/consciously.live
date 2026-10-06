@@ -12,7 +12,8 @@
 # Defaults to ConsciouslyBackend (live). Primary region is London (eu-west-2).
 # MedimadeBackend is LEGACY — refused unless LEGACY_MEDIMADE_STACK=1 (do not use
 # for product work; put changes under lib/consciously/ instead).
-# AWS profile: defaults to AWS_PROFILE=mm when unset and no --profile in arguments.
+# AWS profile: defaults to AWS_PROFILE=mm locally when unset and no --profile.
+# Skipped in CI / when AWS_ACCESS_KEY_ID is already set.
 set -euo pipefail
 
 BACKEND_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

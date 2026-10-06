@@ -15,7 +15,7 @@ import { seedClaudePrepromptsToDynamo } from "../lambdas/_shared/claude-prepromp
 
 async function resolveTableFromStack(stackName: string): Promise<string> {
   const cfn = new CloudFormationClient({});
-  const queue = await cfn.send(
+  const out = await cfn.send(
     new ListStackResourcesCommand({ StackName: stackName }),
   );
   const nests = (out.StackResourceSummaries ?? []).filter(
