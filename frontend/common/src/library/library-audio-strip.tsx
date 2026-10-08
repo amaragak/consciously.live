@@ -61,6 +61,10 @@ export type LibraryActiveTrack = {
   wetUrl?: string;
   voiceFxDial?: number;
   durationSeconds?: number;
+  /** Bed-only seconds before voice; omit = default BED_VOICE_INTRO_SECONDS. */
+  leadInSeconds?: number;
+  /** When false, skip post-voice bed fade. Default true. */
+  fadeOut?: boolean;
   coverImageUrl?: string;
 };
 
@@ -75,6 +79,33 @@ export function mediaFileUrl(base: string, key: string): string {
   const b = base.replace(/\/$/, "");
   const path = key.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
+}
+
+/** Optional strip subtitle — mixes / voice samples only (not soundscapes). */
+function playerStripSubtitle(track: LibraryActiveTrack): string | null {
+  if (track.s3Key.startsWith("create:sound:voice:")) return "Voice sample";
+  if (track.s3Key === "create:sound:mix" || track.ambientKind === "mix") {
+    return "Your mix";
+  }
+  return null;
+}
+
+function PlayerStripWaveformIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
+    </svg>
+  );
 }
 
 export function trackFromBlogNarration(url: string, title: string): LibraryActiveTrack {
@@ -126,6 +157,12 @@ export function trackFromLibraryItem(
       typeof m.durationSeconds === "number" && m.durationSeconds > 0
         ? m.durationSeconds
         : undefined,
+    ...(typeof m.leadInSeconds === "number" &&
+    Number.isFinite(m.leadInSeconds) &&
+    m.leadInSeconds >= 0
+      ? { leadInSeconds: m.leadInSeconds }
+      : {}),
+    ...(typeof m.fadeOut === "boolean" ? { fadeOut: m.fadeOut } : {}),
     ...(cover ? { coverImageUrl: cover } : {}),
   };
 }
@@ -279,9 +316,22 @@ export function LibraryAudioStrip({
   onHeightChange,
   mediaBase = null,
   besideSidebar = false,
+  /** Lift the strip above a bottom chrome bar (e.g. create-flow length nav). */
+  bottomOffsetPx = 0,
+  /**
+   * `fixed` — viewport dock (default).
+   * `inline` — in-flow host (e.g. above create length nav).
+   */
+  placement = "fixed",
   /** When false, load/sync only — do not start (click / playItem starts playback). */
   autoplay = false,
-  tone = "default",
+  tone: _tone = "default",
+  /**
+   * Create · Sound: strip play chrome reflects voice+beds together, and the
+   * play button uses this toggle instead of bed-only transport.
+   */
+  externalPlaying = null,
+  onExternalTransportToggle = null,
 }: {
   track: LibraryActiveTrack | null;
   musicItems: BackgroundAudioItem[];
@@ -296,10 +346,17 @@ export function LibraryAudioStrip({
   mediaBase?: string | null;
   /** When true, dock inset leaves room for the app sidebar. */
   besideSidebar?: boolean;
+  bottomOffsetPx?: number;
+  placement?: "fixed" | "inline";
   autoplay?: boolean;
-  /** Dark navy bar for marketing / home-v2 surfaces. */
+  /** Kept for API compat; strip chrome is always the PlayerStrip navy gradient. */
   tone?: "default" | "dark";
+  /** When non-null, overrides the strip play/pause icon state. */
+  externalPlaying?: boolean | null;
+  /** When set, strip play button calls this instead of internal toggle. */
+  onExternalTransportToggle?: (() => void) | null;
 }) {
+  const inline = placement === "inline";
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const dualRef = useRef<DualStemPlayer>(getLibraryVoicePlayer());
@@ -342,6 +399,14 @@ export function LibraryAudioStrip({
   const ambientMix = track?.ambientOnly === true && track.ambientKind === "mix";
   const ambientSoundscape =
     track?.ambientOnly === true && track.ambientKind === "soundscape";
+
+  const onPlayingChangeRef = useRef(onPlayingChange);
+  onPlayingChangeRef.current = onPlayingChange;
+  // Keep provider `playingS3Key` in lockstep with local transport (incl. ambient mount).
+  useLayoutEffect(() => {
+    if (!track) return;
+    onPlayingChangeRef.current?.(track.s3Key, playing);
+  }, [track?.s3Key, playing, track]);
 
   /** Focus tasks shelf — inset the strip so it doesn't run under the rail. */
   const [focusTasksInsetPx, setFocusTasksInsetPx] = useState(0);
@@ -449,6 +514,14 @@ export function LibraryAudioStrip({
       if (!ambientSoundscape) onDismiss();
       return;
     }
+    if (track.fadeOut === false) {
+      clearBedOutro();
+      clearVoiceIntro();
+      setPlaying(false);
+      onPlayingChange?.(track.s3Key, false);
+      if (!ambientSoundscape) onDismiss();
+      return;
+    }
     clearBedOutro();
     clearVoiceIntro();
     bedOutroRef.current.active = true;
@@ -485,8 +558,14 @@ export function LibraryAudioStrip({
     }, BED_OUTRO_HOLD_SECONDS * 1000);
   }
 
+  function voiceIntroSeconds(): number {
+    const n = track?.leadInSeconds;
+    if (typeof n === "number" && Number.isFinite(n) && n >= 0) return n;
+    return BED_VOICE_INTRO_SECONDS;
+  }
+
   function shouldDelayVoice(atSeconds: number): boolean {
-    return trackHasLiveBeds() && atSeconds < 0.08;
+    return trackHasLiveBeds() && voiceIntroSeconds() > 0 && atSeconds < 0.08;
   }
 
   function startOrResumePlayback() {
@@ -504,6 +583,17 @@ export function LibraryAudioStrip({
       clearVoiceIntro();
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
+      if (shouldDelayVoice(dual.currentTime)) {
+        voiceIntroTimerRef.current = window.setTimeout(() => {
+          voiceIntroTimerRef.current = null;
+          syncSoundscapeToVoice(0);
+          void dual.play().catch(() => {
+            setPlaying(false);
+            onPlayingChange?.(track.s3Key, false);
+          });
+        }, voiceIntroSeconds() * 1000);
+        return;
+      }
       syncSoundscapeToVoice(dual.currentTime);
       void dual.play().catch(() => {
         setPlaying(false);
@@ -536,7 +626,7 @@ export function LibraryAudioStrip({
         // Align composition to voice start after the bed-only intro.
         syncSoundscapeToVoice(0);
         void el.play().catch(() => {});
-      }, BED_VOICE_INTRO_SECONDS * 1000);
+      }, voiceIntroSeconds() * 1000);
       return;
     }
     syncSoundscapeToVoice(el.currentTime);
@@ -555,7 +645,8 @@ export function LibraryAudioStrip({
     setPlaying(false);
   }
 
-  function togglePlayback() {
+  /** Bed/voice elements only — used by playbackToggleNonce from the provider. */
+  function togglePlaybackInternal() {
     if (ambientMix) {
       if (playing) pausePlayback();
       else startOrResumePlayback();
@@ -571,6 +662,18 @@ export function LibraryAudioStrip({
     if (playing || voiceIntroTimerRef.current != null) pausePlayback();
     else startOrResumePlayback();
   }
+
+  /** Strip play button — Create · Sound may override to joint voice+beds transport. */
+  function togglePlayback() {
+    if (onExternalTransportToggle) {
+      onExternalTransportToggle();
+      return;
+    }
+    togglePlaybackInternal();
+  }
+
+  const stripPlaying =
+    typeof externalPlaying === "boolean" ? externalPlaying : playing;
 
   useEffect(() => {
     liveBedGainsRef.current = {
@@ -774,7 +877,7 @@ export function LibraryAudioStrip({
       }
       syncGaplessBed(el, {
         url: mediaFileUrl(mediaBase, backgroundAudioPlaybackKey(bed.key)),
-        fallbackUrl: mediaFileUrl(mediaBase, backgroundAudioStreamingKey(bed.key)),
+        fallbackUrl: null,
         volume,
         playing,
         leadSec: ambientMix ? 0.4 : undefined,
@@ -811,7 +914,9 @@ export function LibraryAudioStrip({
     if (!track) return;
     if (playbackToggleNonce === lastToggleNonceRef.current) return;
     lastToggleNonceRef.current = playbackToggleNonce;
-    togglePlayback();
+    // Always drive strip elements — never the Create · Sound external bridge
+    // (that bridge itself calls toggleCurrent → this nonce).
+    togglePlaybackInternal();
   }, [playbackToggleNonce, track]);
 
   useEffect(() => {
@@ -905,10 +1010,11 @@ export function LibraryAudioStrip({
   if (!track) return null;
 
   const max = Math.max(duration, 0.0001);
-  const hideTransportSeek = ambientMix;
+  /** Seek/scrub only for soundscape beds — voice samples and custom mixes stay fixed. */
+  const canSeekTransport = ambientSoundscape;
 
   function skipSeconds(delta: number) {
-    if (ambientMix) return;
+    if (!canSeekTransport) return;
     if (useDual) {
       const dual = dualRef.current;
       if (!dual) return;
@@ -955,17 +1061,96 @@ export function LibraryAudioStrip({
     }
   }
 
+  const coverUrl =
+    typeof track.coverImageUrl === "string" ? track.coverImageUrl.trim() : "";
+  const stripSubtitle = playerStripSubtitle(track);
+  /** Match PlayerStrip mockup ivory — hard colors so Tailwind/theme remaps can't kill contrast. */
+  const ivory = "#F3EDE2";
+  const ivory60 = "rgba(243,237,226,0.6)";
+  const ivory55 = "rgba(243,237,226,0.55)";
+  const ivory18 = "rgba(243,237,226,0.18)";
+  const ivory10 = "rgba(243,237,226,0.10)";
+  const stripBorder = "rgba(243,237,226,0.22)";
+  const stripStyle = {
+    height: 76,
+    boxSizing: "border-box",
+    color: ivory,
+    backgroundImage:
+      "linear-gradient(90deg, var(--player-surface-start, #2a3c5a) 0%, var(--deep, #0f1b2d) 100%)",
+    border: `1px solid ${stripBorder}`,
+    boxShadow:
+      "0 10px 30px color-mix(in srgb, var(--deep, #0f1b2d) 25%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.14)",
+    padding: "10px 24px 10px 10px",
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+  } as CSSProperties;
+  const outlineBtnStyle = {
+    width: 36,
+    height: 36,
+    borderRadius: 9999,
+    border: `1.5px solid ${ivory55}`,
+    boxSizing: "border-box",
+    background: "transparent",
+    color: ivory,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    cursor: "pointer",
+    padding: 0,
+  } as CSSProperties;
+  const playBtnStyle = {
+    width: 44,
+    height: 44,
+    borderRadius: 9999,
+    boxSizing: "border-box",
+    backgroundColor: "var(--accent-button, #c3d2e8)",
+    backgroundImage: "var(--accent-gradient-button)",
+    border: "1px solid color-mix(in srgb, var(--accent-button, #c3d2e8) 72%, #6b7f9a)",
+    color: "var(--on-accent, #0f1b2d)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    cursor: "pointer",
+    padding: 0,
+  } as CSSProperties;
+  const mutedTextStyle = {
+    color: ivory60,
+    fontSize: 12,
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: 1,
+  } as CSSProperties;
+  const scrubPct = canSeekTransport
+    ? Math.min(100, Math.max(0, (Math.min(current, max) / max) * 100))
+    : 50;
+  const scrubTrackBg = `linear-gradient(to right, var(--accent, #c8a46a) 0%, var(--accent, #c8a46a) ${scrubPct}%, ${ivory18} ${scrubPct}%, ${ivory18} 100%)`;
+
   return (
     <div
       ref={rootRef}
-      className={`pointer-events-none fixed bottom-0 z-50 ${
-        besideSidebar
-          ? "left-0 md:left-[var(--app-sidebar-w,200px)]"
-          : "left-0"
-      }`}
-      style={{
-        right: focusTasksInsetPx > 0 ? focusTasksInsetPx : 0,
-      }}
+      className={
+        // Padding inside max-w-6xl so the pill matches page content width
+        // (create/library columns use mx-auto max-w-6xl px-4 md:px-6).
+        inline
+          ? "pointer-events-none relative z-50 mx-auto w-full max-w-6xl px-4 pb-3 pt-2 md:px-6"
+          : `pointer-events-none fixed z-50 mx-auto w-full max-w-6xl px-4 pt-3 md:px-6 ${
+              besideSidebar
+                ? "left-0 right-0 md:left-[var(--app-sidebar-w,200px)]"
+                : "left-0 right-0"
+            }`
+      }
+      style={
+        inline
+          ? undefined
+          : {
+              bottom: Math.max(0, bottomOffsetPx),
+              // `right` from focus inset; otherwise left+right:0 centers max-w-6xl.
+              ...(focusTasksInsetPx > 0 ? { right: focusTasksInsetPx } : {}),
+              paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+            }
+      }
     >
       {ambientMix || useDual ? null : (
         <audio
@@ -991,232 +1176,270 @@ export function LibraryAudioStrip({
       <audio ref={noiseRef} className="hidden" playsInline />
 
       <div
-        className="pointer-events-auto w-full min-w-0 border-t border-border bg-card py-2.5 pl-2.5 pr-4 sm:pr-6"
-        style={{
-          paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))",
-          boxShadow:
-            tone === "dark"
-              ? "0 -8px 28px rgb(0 0 0 / 0.45), 0 -1px 4px rgb(0 0 0 / 0.3)"
-              : "0 -4px 16px color-mix(in srgb, var(--overlay) 12%, transparent), 0 -1px 4px color-mix(in srgb, var(--overlay) 8%, transparent)",
-          ...(tone === "dark"
-            ? ({
-                colorScheme: "dark",
-                // Match home-v2 sticky / band navy so the bar sits on dark heroes.
-                "--background": "#161a22",
-                "--foreground": "#f6f1e7",
-                "--muted": "rgba(246, 241, 231, 0.55)",
-                "--card": "#1e232e",
-                "--border": "rgba(246, 241, 231, 0.14)",
-                "--accent-soft":
-                  "color-mix(in srgb, #c8a46a 22%, transparent)",
-                "--overlay": "rgb(0 0 0 / 0.55)",
-                "--gold": "#c8a46a",
-              } as CSSProperties)
-            : null),
-        }}
+        className="pointer-events-auto w-full min-w-0 rounded-full"
+        style={stripStyle}
         role="region"
         aria-label="Now playing"
       >
-      <div className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
-          <CoverArtThumb src={track.coverImageUrl} alt="" size="player" />
-          <div className="flex shrink-0 items-center gap-1">
-            {hideTransportSeek ? null : (
-              <button
-                type="button"
-                onClick={() => skipSeconds(-10)}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-foreground hover:border-accent/40 sm:h-9 sm:w-9"
-                aria-label="Back 10 seconds"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <path d="M11 18V6l-8.5 6L11 18zm11 0V6l-8.5 6L22 18z" />
-                </svg>
-              </button>
-            )}
+        {coverUrl ? (
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 9999,
+              flexShrink: 0,
+              overflow: "hidden",
+              border: `1px solid ${stripBorder}`,
+              boxSizing: "border-box",
+            }}
+          >
+            <CoverArtThumb
+              src={coverUrl}
+              alt=""
+              edgePx={54}
+              className="!rounded-full"
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 9999,
+              flexShrink: 0,
+              background: ivory10,
+              border: `1px solid ${stripBorder}`,
+              boxSizing: "border-box",
+              color: "var(--accent, #c8a46a)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            aria-hidden
+          >
+            <PlayerStripWaveformIcon />
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {canSeekTransport ? (
             <button
               type="button"
-              onClick={() => togglePlayback()}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent sm:h-12 sm:w-12"
-              aria-label={playing ? "Pause" : "Play"}
+              onClick={() => skipSeconds(-10)}
+              style={outlineBtnStyle}
+              aria-label="Back 10 seconds"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = ivory;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = ivory55;
+              }}
             >
-              {playing ? (
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
-                  <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
-                  <path d="M8 5v14l11-7L8 5z" />
-                </svg>
-              )}
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
+                <path d="M11 6v12L3 12zM20 6v12l-8-6z" />
+              </svg>
             </button>
-            {hideTransportSeek ? null : (
-              <button
-                type="button"
-                onClick={() => skipSeconds(10)}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-foreground hover:border-accent/40 sm:h-9 sm:w-9"
-                aria-label="Forward 10 seconds"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
-                </svg>
-              </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => togglePlayback()}
+            style={playBtnStyle}
+            aria-label={stripPlaying ? "Pause" : "Play"}
+          >
+            {stripPlaying ? (
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
+                <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
+                <path d="M8 5v14l11-7L8 5z" />
+              </svg>
             )}
+          </button>
+          {canSeekTransport ? (
+            <button
+              type="button"
+              onClick={() => skipSeconds(10)}
+              style={outlineBtnStyle}
+              aria-label="Forward 10 seconds"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = ivory;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = ivory55;
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
+                <path d="M13 6v12l8-6zM4 6v12l8-6z" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "center",
+              gap: 10,
+              minWidth: 0,
+            }}
+          >
+            <p
+              className="font-display"
+              style={{
+                margin: 0,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: 19,
+                lineHeight: 1.15,
+                color: ivory,
+              }}
+            >
+              {track.title}
+            </p>
+            {stripSubtitle ? (
+              <span style={{ ...mutedTextStyle, flexShrink: 0, fontVariantNumeric: undefined }}>
+                {stripSubtitle}
+              </span>
+            ) : null}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="relative -top-1.5 min-w-0 flex-1 truncate text-center font-display text-base font-semibold leading-tight text-foreground sm:text-lg">
-                {track.title}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  pausePlayback();
-                  onDismiss();
-                }}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-accent-soft/40 hover:text-foreground sm:hidden"
-                aria-label="Close player"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M18 6L6 18" />
-                  <path d="M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="w-10 shrink-0 tabular-nums text-[11px] leading-none text-muted">
-                {hideTransportSeek ? "" : formatAudioClock(current)}
-              </span>
-              {hideTransportSeek ? (
-                <div
-                  className="relative h-1 w-full min-w-0 flex-1 overflow-hidden rounded-full bg-border/70"
-                  aria-hidden
-                >
-                  <div
-                    className={`absolute inset-y-0 left-0 w-1/3 rounded-full bg-gold/80 ${
-                      playing ? "animate-pulse" : ""
-                    }`}
-                  />
-                </div>
-              ) : (
-                <input
-                  type="range"
-                  className="h-1 w-full min-w-0 flex-1 cursor-pointer accent-accent"
-                  min={0}
-                  max={max}
-                  step={0.05}
-                  value={Math.min(current, max)}
-                  aria-label="Seek"
-                  onMouseDown={() => {
-                    seekingRef.current = true;
-                  }}
-                  onMouseUp={() => {
-                    seekingRef.current = false;
-                  }}
-                  onMouseLeave={() => {
-                    seekingRef.current = false;
-                  }}
-                  onTouchStart={() => {
-                    seekingRef.current = true;
-                  }}
-                  onTouchEnd={() => {
-                    seekingRef.current = false;
-                  }}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    if (useDual) {
-                      const dual = dualRef.current;
-                      if (!dual) return;
-                      dual.seek(v);
-                      syncSoundscapeToVoice(v);
-                      setCurrent(v);
-                      reportTime(v);
-                      if (!playing && voiceIntroTimerRef.current == null) return;
-                      clearVoiceIntro();
-                      if (shouldDelayVoice(v)) {
-                        dual.pause();
-                        startOrResumePlayback();
-                      } else if (!dual.isPlaying) {
-                        void dual.play().catch(() => {});
-                      }
-                      return;
-                    }
-                    const el = audioRef.current;
-                    if (!el) return;
-                    el.currentTime = v;
-                    syncSoundscapeToVoice(v);
-                    setCurrent(v);
-                    reportTime(v);
-                    if (!playing && voiceIntroTimerRef.current == null) return;
-                    clearVoiceIntro();
-                    if (shouldDelayVoice(v)) {
-                      el.pause();
-                      startOrResumePlayback();
-                    } else if (el.paused) {
-                      void el.play().catch(() => {});
-                    }
-                  }}
-                />
-              )}
-              <span
-                className="w-10 shrink-0 text-right tabular-nums text-[11px] leading-none text-muted"
-                aria-label={hideTransportSeek ? "Continuous loop" : undefined}
-              >
-                {hideTransportSeek ? "∞" : formatAudioClock(duration)}
-              </span>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ ...mutedTextStyle, width: 40, flexShrink: 0 }}>
+              {canSeekTransport ? formatAudioClock(current) : ""}
+            </span>
+            <input
+              type="range"
+              className={`library-strip-scrubber min-w-0 flex-1 ${
+                canSeekTransport
+                  ? "cursor-pointer"
+                  : "pointer-events-none cursor-default opacity-50"
+              }`}
+              style={{ background: scrubTrackBg }}
+              min={0}
+              max={max}
+              step={0.05}
+              value={canSeekTransport ? Math.min(current, max) : max / 2}
+              disabled={!canSeekTransport}
+              aria-label={canSeekTransport ? "Seek" : "Seek unavailable"}
+              onMouseDown={() => {
+                if (!canSeekTransport) return;
+                seekingRef.current = true;
+              }}
+              onMouseUp={() => {
+                seekingRef.current = false;
+              }}
+              onMouseLeave={() => {
+                seekingRef.current = false;
+              }}
+              onTouchStart={() => {
+                if (!canSeekTransport) return;
+                seekingRef.current = true;
+              }}
+              onTouchEnd={() => {
+                seekingRef.current = false;
+              }}
+              onChange={(e) => {
+                if (!canSeekTransport) return;
+                const v = Number(e.target.value);
+                if (!Number.isFinite(v)) return;
+                if (useDual) {
+                  const dual = dualRef.current;
+                  if (!dual) return;
+                  dual.seek(v);
+                  syncSoundscapeToVoice(v);
+                  setCurrent(v);
+                  reportTime(v);
+                  if (!playing && voiceIntroTimerRef.current == null) return;
+                  clearVoiceIntro();
+                  if (shouldDelayVoice(v)) {
+                    dual.pause();
+                    startOrResumePlayback();
+                  } else if (!dual.isPlaying) {
+                    void dual.play().catch(() => {});
+                  }
+                  return;
+                }
+                const el = audioRef.current;
+                if (!el) return;
+                el.currentTime = v;
+                syncSoundscapeToVoice(v);
+                setCurrent(v);
+                reportTime(v);
+                if (!playing && voiceIntroTimerRef.current == null) return;
+                clearVoiceIntro();
+                if (shouldDelayVoice(v)) {
+                  el.pause();
+                  startOrResumePlayback();
+                } else if (el.paused) {
+                  void el.play().catch(() => {});
+                }
+              }}
+            />
+            <span
+              style={{
+                ...mutedTextStyle,
+                width: 40,
+                flexShrink: 0,
+                textAlign: "right",
+              }}
+            >
+              {canSeekTransport ? formatAudioClock(duration) : ""}
+            </span>
           </div>
         </div>
 
-        <div className="hidden shrink-0 items-center justify-end gap-2 sm:flex">
-          <button
-            type="button"
-            onClick={() => {
-              pausePlayback();
-              onDismiss();
-            }}
-            className="rounded-xl px-2.5 py-1.5 text-sm text-muted hover:bg-accent-soft/40 hover:text-foreground"
-            aria-label="Close player"
+        <button
+          type="button"
+          onClick={() => {
+            pausePlayback();
+            onDismiss();
+          }}
+          style={{
+            flexShrink: 0,
+            paddingLeft: 4,
+            border: "none",
+            background: "transparent",
+            color: ivory60,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          aria-label="Close player"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = ivory;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = ivory60;
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M18 6L6 18" />
-              <path d="M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
+            <path d="M18 6L6 18" />
+            <path d="M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );

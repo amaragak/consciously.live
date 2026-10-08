@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   fetchJournalInsightsPreviewRemote,
   getMedimadeMediaBaseUrl,
@@ -177,20 +178,7 @@ function NarrateSpeakerSelect({
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">
           {voices.length === 0 ? "Loading…" : label}
         </span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <SelectChevron open={open} />
       </button>
       {open ? (
         <div
@@ -925,11 +913,10 @@ export function InsightsGenerateDialog({
               type="button"
               aria-expanded={patternsOpen}
               onClick={() => setPatternsOpen((v) => !v)}
-              className="ml-[30px] cursor-pointer self-start border-none bg-transparent py-1 text-[13px] font-semibold text-accent-link"
+              className="ml-[30px] inline-flex cursor-pointer items-center gap-1 self-start border-none bg-transparent py-1 text-[13px] font-semibold text-accent-link"
             >
-              {patternsOpen
-                ? "Hide pattern options ▴"
-                : "Choose which patterns ▾"}
+              {patternsOpen ? "Hide pattern options" : "Choose which patterns"}
+              <SelectChevron open={patternsOpen} />
             </button>
             {patternsOpen ? (
               <div className="ml-[30px] flex flex-col border-t border-border-subtle pt-0.5">

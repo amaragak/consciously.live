@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectChevron } from "@/components/select-chevron";
 import { useEffect, useRef, useState } from "react";
 import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
 import { MEDITATION_TARGET_MINUTES } from "@/lib/medimade-api";
@@ -56,20 +57,7 @@ export function MeditationLengthSelect({ value, onChange, disabled }: Props) {
           className="min-w-[5.5rem] justify-between text-left disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[6.25rem]"
         >
           <span>{value} min</span>
-          <svg
-            viewBox="0 0 24 24"
-            className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform sm:h-4 sm:w-4 ${
-              open ? "rotate-180" : ""
-            }`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.25"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
+          <SelectChevron open={open} />
         </CreateFlowNavPill>
         {open ? (
           <div

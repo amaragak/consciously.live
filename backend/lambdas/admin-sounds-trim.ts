@@ -4,15 +4,9 @@ import type {
 } from "aws-lambda";
 import {
   CopyObjectCommand,
-  GetObjectCommand,
   HeadObjectCommand,
-  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import fs from "fs";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import { randomUUID } from "crypto";
 import { requireAdminJson } from "./_shared/admin-auth";
 import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
@@ -21,87 +15,29 @@ import {
   parseBgAudioKey,
   siblingWavKey,
 } from "./_shared/background-audio-keys";
+import { coerceSoundEqBands } from "./_shared/sound-eq-bands";
+import { bakeStreamingAac } from "./_shared/sound-streaming-bake";
 import {
-  AAC_CONTENT_TYPE,
-  AAC_EXTENSION,
-  aacEncodeArgs,
-  siblingAacKey,
-} from "./_shared/audio-aac";
-import { listAllSoundRows, putSoundRow, soundEnabledFromStatus, type SoundCatalogRow } from "./_shared/sound-catalog";
+  enqueueStreamingBakeWorker,
+  isStreamingBakeWorkerEvent,
+  markStreamingBakeFailed,
+  markStreamingBakeStarted,
+  STREAMING_BAKE_DETAIL_TRIM,
+} from "./_shared/sound-streaming-bake-async";
+import {
+  getSoundRow,
+  putSoundRow,
+  soundEnabledFromStatus,
+  type SoundCatalogRow,
+} from "./_shared/sound-catalog";
 
 const s3 = new S3Client({});
-const execFileAsync = promisify(execFile);
-const EDGE_FADE_SEC = 0.01;
 
 function json(
   statusCode: number,
   payload: Record<string, unknown>,
 ): APIGatewayProxyStructuredResultV2 {
   return jsonAuth(statusCode, payload);
-}
-
-function ffmpegExecutable(): string {
-  if (fs.existsSync("/opt/bin/ffmpeg")) return "/opt/bin/ffmpeg";
-  return "ffmpeg";
-}
-
-function ffprobeExecutable(): string {
-  if (fs.existsSync("/opt/bin/ffprobe")) return "/opt/bin/ffprobe";
-  return "ffprobe";
-}
-
-function binEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, PATH: `/opt/bin:${process.env.PATH || ""}` };
-}
-
-async function execFfmpeg(args: string[]): Promise<void> {
-  const bin = ffmpegExecutable();
-  try {
-    await execFileAsync(bin, args, { env: binEnv(), maxBuffer: 10 * 1024 * 1024 });
-  } catch (err: unknown) {
-    const e = err as { stderr?: Buffer; message?: string };
-    const stderr = e.stderr?.toString?.().trim() ?? "";
-    throw new Error(
-      `ffmpeg failed (${bin}): ${e.message ?? String(err)}${stderr ? `\n${stderr}` : ""}`,
-    );
-  }
-}
-
-async function probeDurationSec(path: string): Promise<number> {
-  const bin = ffprobeExecutable();
-  const { stdout } = await execFileAsync(
-    bin,
-    [
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      path,
-    ],
-    { env: binEnv(), maxBuffer: 1024 * 1024 },
-  );
-  const n = Number(String(stdout).trim());
-  if (!Number.isFinite(n) || n <= 0) throw new Error("Could not read audio duration");
-  return n;
-}
-
-/**
- * Fades at the clip edges. The tiny default is a de-click, not a musical fade —
- * an explicit fade time replaces it. Neither may exceed a quarter of the clip,
- * so a short sample cannot fade over its whole length.
- */
-function fadeFilter(clipDurSec: number, fadeInSec: number, fadeOutSec: number): string | null {
-  const cap = clipDurSec / 4;
-  const fadeIn = Math.min(fadeInSec > 0 ? fadeInSec : EDGE_FADE_SEC, cap);
-  const fadeOut = Math.min(fadeOutSec > 0 ? fadeOutSec : EDGE_FADE_SEC, cap);
-  const parts: string[] = [];
-  if (fadeIn > 0) parts.push(`afade=t=in:st=0:d=${fadeIn}:curve=qsin`);
-  if (fadeOut > 0) {
-    parts.push(`afade=t=out:st=${Math.max(0, clipDurSec - fadeOut)}:d=${fadeOut}:curve=qsin`);
-  }
-  return parts.length > 0 ? parts.join(",") : null;
 }
 
 async function objectExists(bucket: string, key: string): Promise<boolean> {
@@ -111,13 +47,6 @@ async function objectExists(bucket: string, key: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-async function downloadToFile(bucket: string, key: string, path: string): Promise<void> {
-  const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!obj.Body) throw new Error("S3 body is empty");
-  const buf = Buffer.from(await obj.Body.transformToByteArray());
-  fs.writeFileSync(path, buf);
 }
 
 async function copyObject(bucket: string, fromKey: string, toKey: string): Promise<void> {
@@ -131,15 +60,162 @@ async function copyObject(bucket: string, fromKey: string, toKey: string): Promi
   );
 }
 
+function buildRow(params: {
+  mp3Key: string;
+  existing: SoundCatalogRow | null;
+  archiveKey: string | undefined;
+  startSec: number;
+  endSec: number | null;
+  fadeInSec: number;
+  fadeOutSec: number;
+  now: string;
+  keepEq: boolean;
+}): SoundCatalogRow {
+  const { mp3Key, existing, archiveKey, startSec, endSec, fadeInSec, fadeOutSec, now } =
+    params;
+  const parsed = parseBgAudioKey(mp3Key);
+  return {
+    pk: "SOUND",
+    sk: mp3Key,
+    name: existing?.name ?? parsed?.name ?? mp3Key,
+    category: existing?.category ?? parsed?.category ?? "music",
+    subcategory: existing?.subcategory,
+    categoryPinned: existing?.categoryPinned,
+    suggestedCategory: existing?.suggestedCategory,
+    suggestedSubcategory: existing?.suggestedSubcategory,
+    suggestedName: existing?.suggestedName,
+    packPath: existing?.packPath,
+    tags: existing?.tags ?? [],
+    status: existing?.status ?? "in_use",
+    enabled: soundEnabledFromStatus(existing?.status ?? "in_use"),
+    notes: existing?.notes,
+    originalKey: archiveKey ?? existing?.originalKey,
+    trimStartSec: startSec,
+    trimEndSec: endSec,
+    fadeInSec,
+    fadeOutSec,
+    streamingEditedAt: now,
+    eqBands:
+      params.keepEq && coerceSoundEqBands(existing?.eqBands).length
+        ? existing?.eqBands
+        : undefined,
+    processing: {
+      stage: "done",
+      detail: STREAMING_BAKE_DETAIL_TRIM,
+      updatedAt: now,
+    },
+    importedAt: existing?.importedAt ?? existing?.updatedAt,
+    updatedAt: now,
+    coverImageKey: existing?.coverImageKey,
+    coverImageUrl: existing?.coverImageUrl,
+    coverImageThumbKey: existing?.coverImageThumbKey,
+    coverImageThumbUrl: existing?.coverImageThumbUrl,
+    lastCoverPrompt: existing?.lastCoverPrompt,
+    coverPromptHistory: existing?.coverPromptHistory,
+    binauralHz: existing?.binauralHz,
+    adminFavourite: existing?.adminFavourite,
+    customPackName: existing?.customPackName,
+  };
+}
+
+type TrimJob = {
+  kind: "trim";
+  mp3Key: string;
+  clearTrim: boolean;
+  clearEq: boolean;
+  startSec: number;
+  endSec: number | null;
+  fadeInSec: number;
+  fadeOutSec: number;
+  archiveKey?: string;
+};
+
+async function runTrimBake(job: TrimJob): Promise<void> {
+  const bucket = process.env.MEDIA_BUCKET_NAME;
+  if (!bucket) throw new Error("MEDIA_BUCKET_NAME is not set");
+  const existing = await getSoundRow(job.mp3Key);
+
+  let nextStart = job.startSec;
+  let nextEnd = job.endSec;
+  let nextFi = job.fadeInSec;
+  let nextFo = job.fadeOutSec;
+  if (job.clearTrim) {
+    nextStart = 0;
+    nextEnd = null;
+    nextFi = 0;
+    nextFo = 0;
+  } else if (job.clearEq) {
+    const catalogStart = Number(existing?.trimStartSec ?? 0);
+    const catalogEndRaw = existing?.trimEndSec;
+    nextStart = Number.isFinite(catalogStart) && catalogStart > 0 ? catalogStart : 0;
+    nextEnd =
+      catalogEndRaw === null || catalogEndRaw === undefined
+        ? null
+        : Number(catalogEndRaw);
+    if (nextEnd != null && !Number.isFinite(nextEnd)) nextEnd = null;
+    const catalogFi = Number(existing?.fadeInSec ?? 0);
+    const catalogFo = Number(existing?.fadeOutSec ?? 0);
+    nextFi = Number.isFinite(catalogFi) && catalogFi > 0 ? catalogFi : 0;
+    nextFo = Number.isFinite(catalogFo) && catalogFo > 0 ? catalogFo : 0;
+  }
+  const keepEq = !job.clearEq;
+
+  await bakeStreamingAac({
+    s3,
+    bucket,
+    mp3Key: job.mp3Key,
+    preferOriginal: true,
+    trimStartSec: nextStart,
+    trimEndSec: nextEnd,
+    fadeInSec: nextFi,
+    fadeOutSec: nextFo,
+    eqBands: keepEq ? existing?.eqBands ?? [] : [],
+  });
+
+  const doneAt = new Date().toISOString();
+  await putSoundRow(
+    buildRow({
+      mp3Key: job.mp3Key,
+      existing,
+      archiveKey: job.archiveKey,
+      startSec: nextStart,
+      endSec: nextEnd,
+      fadeInSec: nextFi,
+      fadeOutSec: nextFo,
+      now: doneAt,
+      keepEq,
+    }),
+  );
+}
+
 export async function handler(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyStructuredResultV2> {
-  if (event.requestContext.http.method === "OPTIONS") return json(204, {});
-  if (event.requestContext.http.method !== "POST") {
+  event: APIGatewayProxyEventV2 | Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2 | void> {
+  if (isStreamingBakeWorkerEvent(event)) {
+    const job = event.job as TrimJob;
+    if (job?.kind !== "trim" || typeof job.mp3Key !== "string") {
+      console.error("admin-sounds-trim worker: bad job", event.job);
+      return;
+    }
+    try {
+      await runTrimBake(job);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("admin-sounds-trim worker", msg);
+      await markStreamingBakeFailed(job.mp3Key, STREAMING_BAKE_DETAIL_TRIM, msg);
+    }
+    return;
+  }
+
+  const httpEvent = event as APIGatewayProxyEventV2;
+  if (httpEvent.requestContext?.http?.method === "OPTIONS") {
+    return json(204, {});
+  }
+  if (httpEvent.requestContext?.http?.method !== "POST") {
     return json(405, { error: "Method not allowed" });
   }
 
-  const admin = await requireAdminJson(event);
+  const admin = await requireAdminJson(httpEvent);
   if ("statusCode" in admin) return admin;
 
   const bucket = process.env.MEDIA_BUCKET_NAME;
@@ -147,7 +223,7 @@ export async function handler(
 
   let body: Record<string, unknown> = {};
   try {
-    body = JSON.parse(event.body || "{}") as Record<string, unknown>;
+    body = JSON.parse(httpEvent.body || "{}") as Record<string, unknown>;
   } catch {
     return json(400, { error: "Invalid JSON" });
   }
@@ -157,211 +233,122 @@ export async function handler(
     return json(400, { error: "key must be a background-audio object" });
   }
 
-  const startSec = Number(body.startSec);
-  const endSecRaw = body.endSec;
-  const endSec =
-    endSecRaw === null || endSecRaw === undefined || endSecRaw === ""
-      ? null
-      : Number(endSecRaw);
-  if (!Number.isFinite(startSec) || startSec < 0) {
-    return json(400, { error: "startSec must be a non-negative number" });
-  }
-  if (endSec != null && (!Number.isFinite(endSec) || endSec <= startSec)) {
-    return json(400, { error: "endSec must be greater than startSec" });
-  }
-
-  function fadeArg(raw: unknown): number {
-    const n = Number(raw ?? 0);
-    if (!Number.isFinite(n) || n <= 0) return 0;
-    return Math.min(n, 30);
-  }
-  const fadeInSec = fadeArg(body.fadeInSec);
-  const fadeOutSec = fadeArg(body.fadeOutSec);
-
-  const mp3Key = key.toLowerCase().endsWith(".wav") ? `${key.slice(0, -4)}.mp3` : key;
+  const clearTrim =
+    body.clear === true ||
+    body.clear === "true" ||
+    body.action === "clear" ||
+    body.clearTrim === true ||
+    body.clearTrim === "true";
+  const clearEq =
+    body.clearEq === true ||
+    body.clearEq === "true" ||
+    body.action === "clearEq";
+  const mp3Key = key.toLowerCase().endsWith(".wav")
+    ? `${key.slice(0, -4)}.mp3`
+    : key;
   const wavKey = siblingWavKey(mp3Key) ?? `${mp3Key.slice(0, -4)}.wav`;
-  const aacKey = siblingAacKey(mp3Key) ?? `${mp3Key.slice(0, -4)}${AAC_EXTENSION}`;
   const origMp3 = originalKeyForPublicKey(mp3Key);
   const origWav = originalKeyForPublicKey(wavKey);
 
-  const id = randomUUID();
-  const inPath = `/tmp/trim-in-${id}`;
-  const outWav = `/tmp/trim-out-${id}.wav`;
-  const outMp3 = `/tmp/trim-out-${id}.mp3`;
-  const outAac = `/tmp/trim-out-${id}${AAC_EXTENSION}`;
-  const origMp3Path = `/tmp/trim-orig-${id}.mp3`;
+  let startSec = 0;
+  let endSec: number | null = null;
+  let fadeInSec = 0;
+  let fadeOutSec = 0;
+
+  if (!clearTrim && !clearEq) {
+    startSec = Number(body.startSec ?? 0);
+    const endSecRaw = body.endSec;
+    endSec =
+      endSecRaw === null || endSecRaw === undefined || endSecRaw === ""
+        ? null
+        : Number(endSecRaw);
+    if (!Number.isFinite(startSec) || startSec < 0) {
+      return json(400, { error: "startSec must be a non-negative number" });
+    }
+    if (endSec != null && (!Number.isFinite(endSec) || endSec <= startSec)) {
+      return json(400, { error: "endSec must be greater than startSec" });
+    }
+    function fadeArg(raw: unknown): number {
+      const n = Number(raw ?? 0);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      return Math.min(n, 30);
+    }
+    fadeInSec = fadeArg(body.fadeInSec);
+    fadeOutSec = fadeArg(body.fadeOutSec);
+  }
 
   try {
-    if (!(await objectExists(bucket, origWav)) && !(await objectExists(bucket, origMp3))) {
-      if (await objectExists(bucket, wavKey)) await copyObject(bucket, wavKey, origWav);
-      if (await objectExists(bucket, mp3Key)) await copyObject(bucket, mp3Key, origMp3);
+    // Fast archive copies stay on the request path; AAC bake is async.
+    if (!(await objectExists(bucket, origWav)) && (await objectExists(bucket, wavKey))) {
+      await copyObject(bucket, wavKey, origWav);
+    }
+    if (!(await objectExists(bucket, origMp3)) && (await objectExists(bucket, mp3Key))) {
+      await copyObject(bucket, mp3Key, origMp3);
     }
 
-    let sourceKey: string | null = null;
-    let ext = "wav";
-    if (await objectExists(bucket, origWav)) {
-      sourceKey = origWav;
-      ext = "wav";
-    } else if (await objectExists(bucket, origMp3)) {
-      sourceKey = origMp3;
-      ext = "mp3";
-    } else if (await objectExists(bucket, wavKey)) {
-      sourceKey = wavKey;
-      ext = "wav";
-    } else if (await objectExists(bucket, mp3Key)) {
-      sourceKey = mp3Key;
-      ext = "mp3";
-    }
-    if (!sourceKey) return json(404, { error: "Audio object not found (still processing?)" });
+    const existing = await getSoundRow(mp3Key);
+    const hasOrigWav = await objectExists(bucket, origWav);
+    const hasOrigMp3 = await objectExists(bucket, origMp3);
+    const archiveKey = hasOrigWav ? origWav : hasOrigMp3 ? origMp3 : undefined;
 
-    const srcPath = `${inPath}.${ext}`;
-    await downloadToFile(bucket, sourceKey, srcPath);
-
-    // The admin panel always auditions the archived original and streams it as
-    // MP3, so a WAV-only original would leave the card silent once the public
-    // file has been replaced by the trimmed render.
-    if (!(await objectExists(bucket, origMp3))) {
-      await execFfmpeg([
-        "-hide_banner",
-        "-y",
-        "-i",
-        srcPath,
-        "-c:a",
-        "libmp3lame",
-        "-q:a",
-        "2",
-        origMp3Path,
-      ]);
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: origMp3,
-          Body: fs.readFileSync(origMp3Path),
-          ContentType: "audio/mpeg",
-          CacheControl: "public, max-age=31536000, immutable",
-        }),
-      );
+    let nextStart = startSec;
+    let nextEnd = endSec;
+    let nextFi = fadeInSec;
+    let nextFo = fadeOutSec;
+    if (clearTrim) {
+      nextStart = 0;
+      nextEnd = null;
+      nextFi = 0;
+      nextFo = 0;
+    } else if (clearEq) {
+      const catalogStart = Number(existing?.trimStartSec ?? 0);
+      const catalogEndRaw = existing?.trimEndSec;
+      nextStart = Number.isFinite(catalogStart) && catalogStart > 0 ? catalogStart : 0;
+      nextEnd =
+        catalogEndRaw === null || catalogEndRaw === undefined
+          ? null
+          : Number(catalogEndRaw);
+      if (nextEnd != null && !Number.isFinite(nextEnd)) nextEnd = null;
+      const catalogFi = Number(existing?.fadeInSec ?? 0);
+      const catalogFo = Number(existing?.fadeOutSec ?? 0);
+      nextFi = Number.isFinite(catalogFi) && catalogFi > 0 ? catalogFi : 0;
+      nextFo = Number.isFinite(catalogFo) && catalogFo > 0 ? catalogFo : 0;
     }
 
-    const clipDur =
-      endSec != null
-        ? Math.max(0, endSec - startSec)
-        : Math.max(0, (await probeDurationSec(srcPath)) - startSec);
-    const fade = fadeFilter(clipDur, fadeInSec, fadeOutSec);
-
-    const args = ["-hide_banner", "-y", "-i", srcPath, "-ss", String(startSec)];
-    if (endSec != null) args.push("-to", String(endSec));
-    if (fade) args.push("-af", fade);
-    args.push("-c:a", "pcm_s24le", outWav);
-    await execFfmpeg(args);
-    await execFfmpeg([
-      "-hide_banner",
-      "-y",
-      "-i",
-      outWav,
-      "-c:a",
-      "libmp3lame",
-      "-q:a",
-      "2",
-      outMp3,
-    ]);
-    let aacBuf: Buffer | null = null;
-    try {
-      await execFfmpeg(aacEncodeArgs(outWav, outAac));
-      aacBuf = fs.readFileSync(outAac);
-    } catch (e) {
-      console.warn("aac encode skipped", e instanceof Error ? e.message : e);
-    }
-
-    const wavBuf = fs.readFileSync(outWav);
-    const mp3Buf = fs.readFileSync(outMp3);
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: wavKey,
-        Body: wavBuf,
-        ContentType: "audio/wav",
-        CacheControl: "public, max-age=31536000, immutable",
-      }),
+    const bakeStartedAt = await markStreamingBakeStarted(
+      mp3Key,
+      STREAMING_BAKE_DETAIL_TRIM,
+      existing,
     );
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: mp3Key,
-        Body: mp3Buf,
-        ContentType: "audio/mpeg",
-        CacheControl: "public, max-age=31536000, immutable",
-      }),
-    );
-    if (aacBuf) {
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: aacKey,
-          Body: aacBuf,
-          ContentType: AAC_CONTENT_TYPE,
-          CacheControl: "public, max-age=31536000, immutable",
-        }),
-      );
-    }
+    await enqueueStreamingBakeWorker({
+      kind: "trim",
+      mp3Key,
+      clearTrim,
+      clearEq,
+      startSec: nextStart,
+      endSec: nextEnd,
+      fadeInSec: nextFi,
+      fadeOutSec: nextFo,
+      archiveKey,
+    } satisfies TrimJob);
 
-    const rows = await listAllSoundRows();
-    const existing = rows.find((r) => r.sk === mp3Key);
-    const parsed = parseBgAudioKey(mp3Key);
-    const row: SoundCatalogRow = {
-      pk: "SOUND",
-      sk: mp3Key,
-      name: existing?.name ?? parsed?.name ?? mp3Key,
-      category: existing?.category ?? parsed?.category ?? "music",
-      subcategory: existing?.subcategory,
-      categoryPinned: existing?.categoryPinned,
-      suggestedCategory: existing?.suggestedCategory,
-      suggestedSubcategory: existing?.suggestedSubcategory,
-      suggestedName: existing?.suggestedName,
-      packPath: existing?.packPath,
-      tags: existing?.tags ?? [],
-      status: existing?.status ?? "in_use",
-      enabled: soundEnabledFromStatus(existing?.status ?? "in_use"),
-      notes: existing?.notes,
-      originalKey: origMp3,
-      trimStartSec: startSec,
-      trimEndSec: endSec,
-      fadeInSec,
-      fadeOutSec,
-      importedAt: existing?.importedAt ?? existing?.updatedAt,
-      updatedAt: new Date().toISOString(),
-    };
-    await putSoundRow(row);
-
-    return json(200, {
+    return json(202, {
       ok: true,
+      accepted: true,
+      async: true,
       key: mp3Key,
-      wavKey,
-      originalKey: origMp3,
-      startSec,
-      endSec,
-      fadeInSec,
-      fadeOutSec,
+      bakeStartedAt,
+      cleared: clearTrim || undefined,
+      clearedEq: clearEq || undefined,
+      originalKey: archiveKey ?? null,
+      startSec: nextStart,
+      endSec: nextEnd,
+      fadeInSec: nextFi,
+      fadeOutSec: nextFo,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("admin-sounds-trim", msg);
+    console.error("admin-sounds-trim enqueue", msg);
     return json(500, { error: msg });
-  } finally {
-    for (const p of [
-      inPath,
-      `${inPath}.wav`,
-      `${inPath}.mp3`,
-      outWav,
-      outMp3,
-      outAac,
-      origMp3Path,
-    ]) {
-      try {
-        fs.unlinkSync(p);
-      } catch {
-        /* */
-      }
-    }
   }
 }

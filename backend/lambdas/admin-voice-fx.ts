@@ -14,6 +14,7 @@ import {
   loadIrFromS3,
   putIrToS3,
 } from "./_shared/voice-fx-ffmpeg-chain";
+import { voiceFxStemWetGain } from "./_shared/voice-fx-dial";
 import {
   loadVoiceFxCommitted,
   loadVoiceFxDraft,
@@ -249,10 +250,16 @@ async function rebuildFxFromDryKey(params: {
       : params.dryKey.toLowerCase().endsWith(".mp3")
         ? ".mp3"
         : ".wav";
+  // Commit stems only: bake 1.5× admin wet mix. Preview uses settings.wetGain as-is.
+  // Dry is already loudnormed — chain must not loudnorm again.
+  const stemSettings: VoiceFxSettings = {
+    ...params.settings,
+    wetGain: voiceFxStemWetGain(params.settings.wetGain),
+  };
   const result = await applyVoiceFxFfmpegChain({
     dryAudio: Buffer.from(dryBytes),
     inputExt: dryExt,
-    settings: params.settings,
+    settings: stemSettings,
     irWav: params.irWav,
   });
   // Prefer AAC siblings next to legacy .wav keys.

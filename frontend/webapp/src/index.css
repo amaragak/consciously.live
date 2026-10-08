@@ -12,6 +12,7 @@
   --accent: #C8A46A;
   --accent-link: #a68b5e;
   --accent-button: #C3D2E8;
+  --player-surface-start: #2a3c5a;
   --accent-soft: color-mix(in srgb, #C8A46A 18%, transparent);
   --on-accent: #1E2530;
   --accent-gradient-button: linear-gradient(90deg, #C3D2E8 0%, #D6E1EF 100%);
@@ -670,6 +671,53 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
   z-index: 1;
 }
 
+/** Now-playing strip scrubber — gold fill/thumb on ivory track (see PlayerStrip). */
+.library-strip-scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+}
+.library-strip-scrubber::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+}
+.library-strip-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, #c8a46a);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 0.28);
+  cursor: pointer;
+}
+.library-strip-scrubber::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+  border: none;
+}
+.library-strip-scrubber::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+  border: none;
+}
+.library-strip-scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, #c8a46a);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 0.28);
+  cursor: pointer;
+}
+
 /** Selected voice / soundscape card — mist border pulse (clearly visible). */
 @keyframes create-audio-selected-border-pulse {
   0%,
@@ -1207,6 +1255,71 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
 .mixer-desk-fader:disabled::-moz-range-thumb {
   border-color: var(--border);
   box-shadow: none;
+}
+
+/**
+ * Create · Sound axis faders (Volume / Pacing).
+ * Fixed 18px control height so the 4px track sits on the true vertical
+ * midline — tick marks can center on `top: 50%` and match the painted line.
+ */
+.create-sound-axis-fader {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.create-sound-axis-fader:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.create-sound-axis-fader::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent, #c8a46a) 0%,
+    var(--accent, #c8a46a) var(--fader-pct, 0%),
+    var(--border, #e6ddcb) var(--fader-pct, 0%),
+    var(--border, #e6ddcb) 100%
+  );
+}
+.create-sound-axis-fader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  /* Center 18px thumb on 4px track: (4 - 18) / 2 */
+  margin-top: -7px;
+  border-radius: 999px;
+  background: var(--accent, #c8a46a);
+  border: none;
+  box-shadow: 0 1px 3px rgb(15 27 45 / 0.22);
+  box-sizing: border-box;
+}
+.create-sound-axis-fader::-moz-range-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--border, #e6ddcb);
+}
+.create-sound-axis-fader::-moz-range-progress {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent, #c8a46a);
+}
+.create-sound-axis-fader::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent, #c8a46a);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 0.22);
+  box-sizing: border-box;
 }
 
 @media (prefers-reduced-motion: reduce) {

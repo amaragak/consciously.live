@@ -18,7 +18,6 @@ import {
 } from "@/lib/gapless-bed-loop";
 import {
   backgroundAudioPlaybackKey,
-  backgroundAudioStreamingKey,
   deleteAdminFactoryMix,
   getMedimadeMediaBaseUrl,
   listAdminFactoryMixes,
@@ -621,7 +620,7 @@ export function MixerSoundsStudio({
         const shouldPlay = keyChanged || playing[track];
         syncGaplessBed(el, {
           url: mediaFileUrl(base, backgroundAudioPlaybackKey(key)),
-          fallbackUrl: mediaFileUrl(base, backgroundAudioStreamingKey(key)),
+          fallbackUrl: null,
           volume,
           playing: shouldPlay,
           onPlaybackBlocked: () => stopTrack(track),
@@ -907,10 +906,7 @@ export function MixerSoundsStudio({
       if (bed.key) {
         syncGaplessBed(el, {
           url: mediaFileUrl(mediaBaseUrl, backgroundAudioPlaybackKey(bed.key)),
-          fallbackUrl: mediaFileUrl(
-            mediaBaseUrl,
-            backgroundAudioStreamingKey(bed.key),
-          ),
+          fallbackUrl: null,
           volume,
           playing: true,
         });

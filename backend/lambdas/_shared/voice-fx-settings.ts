@@ -54,8 +54,9 @@ export type VoiceFxSettings = {
   /** SoX wet-gain (dB, typically 0). */
   soxWetGain: number;
   /**
-   * How much wet (echo→afir) is baked into the FX stem vs dry.
-   * FX stem = 1.0*dry + wetGain*peakMatched(wet). Dial still crossfades dry↔FX.
+   * Parallel-send wet amount. Stored as-is for preview.
+   * Mix: out = 1.0*dry + wetGain*peakMatched(delay→IR). Commit stems use 1.5× only.
+   * No loudnorm (dry samples are already loudnormed).
    */
   wetGain: number;
   /** Tail pad after convolution (seconds). */

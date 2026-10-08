@@ -13,6 +13,7 @@ import type { SoundCategoryId } from "@/lib/sound-taxonomy";
 import { FavoriteHeartButton } from "@/components/favorite-heart-button";
 import { SoundFolderSelect } from "@/components/sound-folder-select";
 import { FactoryIcon } from "@/components/factory-icons";
+import { SelectChevron } from "@/components/select-chevron";
 import type { MixerFactoryPreset } from "@/lib/mixer-factory-presets";
 import type { MixerPreset } from "@/lib/mixer-preset-storage";
 
@@ -52,25 +53,10 @@ function MixerVoiceIcon() {
 function MixerPlayPauseIcon({
   playing,
   size = 22,
-  stopWhenPlaying = false,
 }: {
   playing: boolean;
   size?: number;
-  stopWhenPlaying?: boolean;
 }) {
-  if (playing && stopWhenPlaying) {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width={size}
-        height={size}
-        fill="currentColor"
-        aria-hidden
-      >
-        <rect x="7" y="7" width="10" height="10" rx="1.5" />
-      </svg>
-    );
-  }
   return playing ? (
     <svg
       viewBox="0 0 24 24"
@@ -600,11 +586,7 @@ export function MixerDeskRow({
               : "accent-fill-gradient cursor-pointer text-on-accent hover:opacity-90"
           } disabled:cursor-not-allowed`}
         >
-          <MixerPlayPauseIcon
-            playing={playing}
-            size={11}
-            stopWhenPlaying
-          />
+          <MixerPlayPauseIcon playing={playing} size={11} />
         </button>
       </div>
     </div>
@@ -702,20 +684,7 @@ function MixerSpeakerSelect({
         className="flex w-full min-w-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-left text-sm disabled:opacity-50"
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <SelectChevron open={open} />
       </button>
       {open ? (
         <div
@@ -1031,20 +1000,7 @@ export function MixerPresetChannel({
         <span className="min-w-0 flex-1 truncate">
           {loading ? "Loading…" : triggerLabel}
         </span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-4 w-4 shrink-0 text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <SelectChevron open={open} />
       </button>
       {open ? (
         <div

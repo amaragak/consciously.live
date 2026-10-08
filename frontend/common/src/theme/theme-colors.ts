@@ -322,6 +322,11 @@ type Semantic = {
   accent: string;
   /** Filled CTAs — mist in light; breadcrumb copper in dark. */
   accentButton: string;
+  /**
+   * Floating player strip gradient start — deep shade of mist blue so ivory
+   * text stays WCAG AA (independent of dark-mode gold CTAs).
+   */
+  playerSurfaceStart: string;
   accentSoft: string;
   accentLink: string;
   gold: string;
@@ -456,6 +461,8 @@ function assemble(
   const accentButton = dark ? DARK_PRIMARY : ACCENT_BUTTON_FILL;
   /** Mist is cool/light — navy ink; dark gold CTAs keep warm brown. */
   const onAccent = dark ? ON_ACCENT : NAV_FOREGROUND_LIGHT;
+  /** ≈ #2A3C5A — deep mist for player strip (AA with ivory text). */
+  const playerSurfaceStart = mixHex(MIST, PAPER_V2.deep, 0.84);
   const warmCreamBg = mixHex(PRIMARY, paper.background, WARM_CREAM_BG_MIX);
   const warmCreamBorder = mixHex(PRIMARY, paper.background, WARM_CREAM_BORDER_MIX);
   const surface2 = dark ? SURFACE_2_DARK : SURFACE_2_LIGHT;
@@ -463,6 +470,7 @@ function assemble(
     ...paper,
     ...brand,
     accentButton,
+    playerSurfaceStart,
     onAccent,
     gold,
     surface2,
@@ -671,6 +679,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--border-subtle": s.borderSubtle,
     "--accent": s.accent,
     "--accent-button": s.accentButton,
+    "--player-surface-start": s.playerSurfaceStart,
     "--accent-soft": s.accentSoft,
     "--accent-link": s.accentLink,
     "--gold": s.gold,

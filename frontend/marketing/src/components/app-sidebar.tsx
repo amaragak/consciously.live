@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   APP_NAV_MAIN,
   APP_SIDEBAR_WIDTH_TRANSITION_MS,
@@ -29,24 +30,6 @@ import {
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { MeditateMark } from "@/components/meditate-mark";
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
 
 /** Animate nested nav open/close without unmounting mid-transition. */
 function CollapsibleNavChildren({
@@ -143,7 +126,7 @@ function NavSectionBlock({
                 : "text-muted hover:text-foreground"
             }`}
           >
-            <ChevronIcon expanded={expanded} />
+            <SelectChevron open={expanded} />
           </button>
         ) : null}
       </div>

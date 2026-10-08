@@ -25,8 +25,6 @@ const RECENT_SOUND_KEYS = "mm_recent_soundscapes_v1";
 
 export const SILENCE_SOUND_ID = "";
 
-export type DayPart = "morning" | "afternoon" | "evening" | "night";
-
 export type VoicePickMeta = {
   description: string;
   gender: "male" | "female" | null;
@@ -97,8 +95,8 @@ const VOICE_PLACEHOLDERS: Record<
   Novelist: { energy: "steady", pitch: "mid", gender: "male", accent: "US" },
 };
 
-function titleEnergy(energy: VoiceEnergy): string {
-  return energy.charAt(0).toUpperCase() + energy.slice(1);
+function titleCaseTrait(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function voiceDisplayMeta(speaker: FishSpeaker): VoicePickMeta {
@@ -115,8 +113,9 @@ export function voiceDisplayMeta(speaker: FishSpeaker): VoicePickMeta {
   const gender = speaker.gender ?? ph?.gender ?? null;
   const live =
     liveEnergies.length > 0 && Boolean(speaker.pitch) && Boolean(speaker.accent);
+  const energyLabel = energy.map(titleCaseTrait).join(", ");
   return {
-    description: `${energy.map(titleEnergy).join(", ")} · ${pitch} · ${accent}`,
+    description: `${energyLabel} energy · ${titleCaseTrait(pitch)} pitch · ${accent} accent`,
     gender,
     accent,
     energy,
@@ -208,18 +207,6 @@ export function rankVoicesByPrefs(
   });
 }
 
-export function dayPartNow(d = new Date()): DayPart {
-  const h = d.getHours();
-  if (h < 5 || h >= 21) return "night";
-  if (h < 12) return "morning";
-  if (h < 17) return "afternoon";
-  return "evening";
-}
-
-export function dayPartArticle(part: DayPart): string {
-  return part === "afternoon" || part === "evening" ? "an" : "a";
-}
-
 export function readLastVoiceId(): string | null {
   try {
     return readAccountLocalStorage(LAST_VOICE_STORAGE_KEY)?.trim() || null;
@@ -294,20 +281,51 @@ function voiceFilterValues(speakers: FishSpeaker[]): {
 
 export function voiceFilterChips(speakers: FishSpeaker[]): string[] {
   const { genders, accents } = voiceFilterValues(speakers);
-  return ["All", "Favourites", ...genders, ...accents];
+  return ["Favourites", ...genders, ...accents];
 }
 
+const VOICE_GENDER_FILTERS = new Set(["male", "female"]);
+
+/**
+ * Multi-select voice filters. Empty = all voices.
+ * Favourites is AND; genders OR among themselves; accents OR among themselves;
+ * gender × accent × favourites are AND across groups (e.g. male + UK).
+ */
 export function voiceMatchesFilter(
   speaker: FishSpeaker,
-  filter: string,
+  filters: ReadonlySet<string> | readonly string[],
   favoriteIds?: ReadonlySet<string>,
 ): boolean {
-  if (filter === "All") return true;
-  if (filter === "Favourites") return favoriteIds?.has(speaker.modelId) === true;
+  const active =
+    filters instanceof Set
+      ? filters
+      : new Set(
+          filters
+            .map((f) => f.trim())
+            .filter((f) => f && f !== "All"),
+        );
+  if (active.size === 0) return true;
+
+  if (active.has("Favourites") && favoriteIds?.has(speaker.modelId) !== true) {
+    return false;
+  }
+
   const m = voiceDisplayMeta(speaker);
-  if (m.gender === filter) return true;
-  if (m.accent === filter) return true;
-  return false;
+  const genderSelected: string[] = [];
+  const accentSelected: string[] = [];
+  for (const f of active) {
+    if (f === "Favourites") continue;
+    if (VOICE_GENDER_FILTERS.has(f)) genderSelected.push(f);
+    else accentSelected.push(f);
+  }
+
+  if (genderSelected.length > 0 && !genderSelected.includes(m.gender ?? "")) {
+    return false;
+  }
+  if (accentSelected.length > 0 && !accentSelected.includes(m.accent ?? "")) {
+    return false;
+  }
+  return true;
 }
 
 function inCategory(item: BackgroundAudioItem, subIds: string[]): boolean {
@@ -399,13 +417,10 @@ export function computeSoundPicks(opts: {
     if (voiceAlts.length >= 3) break;
   }
 
-  const part = dayPartNow();
-  const styleLabel = style?.trim() || "practice";
   let soundId =
     opts.lockedSoundId !== undefined && opts.lockedSoundId !== null
       ? opts.lockedSoundId
       : "";
-  let soundReason = "";
   const soundExists =
     soundId === SILENCE_SOUND_ID ||
     soundscapes.some((s) => s.key === soundId);
@@ -417,24 +432,15 @@ export function computeSoundPicks(opts: {
       soundscapes.some((s) => s.key === lastSound)
     ) {
       soundId = lastSound;
-      soundReason = "Your pick last time";
     } else {
       const ourPicks = soundscapes.filter((s) => s.adminFavourite);
       const pool = ourPicks.length > 0 ? ourPicks : soundscapes;
       const shuffled = shuffleInPlace([...pool]);
       soundId = shuffled[0]?.key ?? SILENCE_SOUND_ID;
-      soundReason =
-        ourPicks.length > 0
-          ? "One of our picks for this meditation"
-          : `Suits ${dayPartArticle(part)} ${part} ${styleLabel}`;
     }
-  } else if (soundId === lastSound && soundId !== SILENCE_SOUND_ID) {
-    soundReason = "Your pick last time";
-  } else if (soundId === SILENCE_SOUND_ID) {
-    soundReason = "Voice only";
-  } else {
-    soundReason = `Suits ${dayPartArticle(part)} ${part} ${styleLabel}`;
   }
+  // Initial pick only — cleared in UI when the user switches sound.
+  const soundReason = "Suggested";
 
   const ourPicks = soundscapes.filter(
     (s) => s.adminFavourite && s.key !== soundId,
@@ -507,11 +513,22 @@ export function compositionTagLabel(tag: string): string {
   return COMPOSITION_TAG_LABELS[key] ?? tag;
 }
 
-/** Map Balance 0–100 (50 = today's mix) onto the existing 0–100 bed gain. */
+/**
+ * Sound-card volume fader (0–100 ↔ axis 0–1).
+ * Recommended default is always 67 (0.67) — not restored from prior sessions.
+ */
+export const SOUND_VOLUME_RECOMMENDED = 67;
+
+/** Voice-card pacing fader: ±5% of the speaker’s base speed/rate. Center = recommended. */
+export const VOICE_PACING_MIN = -5;
+export const VOICE_PACING_MAX = 5;
+export const VOICE_PACING_RECOMMENDED = 0;
+
+/** Map Volume 0–100 onto bed gain (100 = full catalog gain). */
 export function musicLevelToBedGain(
   musicLevel: number,
   todayGain = 100,
 ): number {
-  const n = Math.min(100, Math.max(0, Math.round(musicLevel)));
-  return Math.min(100, Math.max(0, Math.round((todayGain * n) / 50)));
+  const n = Math.min(100, Math.max(0, musicLevel));
+  return Math.min(100, Math.max(0, Math.round((todayGain * n) / 100)));
 }

@@ -6,7 +6,11 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import { siblingOpusKey } from "./_shared/background-audio-keys";
+import {
+  siblingAacKey,
+  siblingOpusKey,
+  siblingWavKey,
+} from "./_shared/background-audio-keys";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -628,17 +632,20 @@ function clampGain(n: unknown): number {
   return Math.min(100, Math.max(0, n));
 }
 
-const BED_GAIN_PEAK_VOLUME = 0.5;
+/** Same peak as ready-made soundscape listen level (0.75 × 0.67). */
+const BED_GAIN_PEAK_VOLUME = 0.75 * 0.67;
 
 /**
  * Mix speech (input 0) with one or more looped background beds.
- * Each layer gain is 0–100; mixer peak (100) is volume 0.5 so speech at 1.0 stays louder.
+ * Each layer gain is 0–100; mixer peak (100) matches default soundscape playback.
  */
 async function mixSpeechWithBackgrounds(params: {
   speechBuf: Buffer;
   layers: { key: string; gain: number }[];
   durationSeconds: number | null;
   bucket: string;
+  leadInSeconds?: number;
+  fadeOut?: boolean;
 }): Promise<Buffer> {
   const layers = params.layers.filter((l) => l.key?.trim());
   if (layers.length === 0) return params.speechBuf;
@@ -655,22 +662,38 @@ async function mixSpeechWithBackgrounds(params: {
     fs.writeFileSync(speechPath, params.speechBuf);
 
     for (let i = 0; i < layers.length; i++) {
-      // Beds are looped by `aloop` below, so prefer the gapless Opus sibling —
-      // MP3 carries encoder padding that would land on every loop seam.
+      // Beds are looped by `aloop` below, so prefer gapless Opus, then AAC,
+      // then WAV master. No bed MP3.
       const requested = layers[i].key.trim();
+      const candidates: { key: string; ext: string }[] = [];
       const opus = siblingOpusKey(requested);
-      let sourceKey = requested;
-      let ext = "mp3";
-      if (opus) {
+      const aac = siblingAacKey(requested);
+      const wav = siblingWavKey(requested);
+      if (opus) candidates.push({ key: opus, ext: "opus" });
+      if (aac) candidates.push({ key: aac, ext: "m4a" });
+      if (wav) candidates.push({ key: wav, ext: "wav" });
+      if (/\.m4a$/i.test(requested)) {
+        candidates.push({ key: requested, ext: "m4a" });
+      } else if (/\.wav$/i.test(requested)) {
+        candidates.push({ key: requested, ext: "wav" });
+      }
+
+      let sourceKey: string | null = null;
+      let ext = "m4a";
+      for (const c of candidates) {
         try {
           await s3.send(
-            new HeadObjectCommand({ Bucket: params.bucket, Key: opus }),
+            new HeadObjectCommand({ Bucket: params.bucket, Key: c.key }),
           );
-          sourceKey = opus;
-          ext = "opus";
+          sourceKey = c.key;
+          ext = c.ext;
+          break;
         } catch {
-          /* not backfilled yet — fall back to the MP3 */
+          /* try next */
         }
+      }
+      if (!sourceKey) {
+        throw new Error(`Background bed missing (opus/aac/wav): ${requested}`);
       }
       const bgObj = await s3.send(
         new GetObjectCommand({
@@ -690,15 +713,23 @@ async function mixSpeechWithBackgrounds(params: {
         : undefined;
 
     // Desired structure:
-    // - 1.5s background-only intro
-    // - speech starts after 1.5s
-    // - 8s tail after speech ends, with background fading out over the tail
-    const introSeconds = 1.5;
-    const tailSeconds = 8;
+    // - background-only intro (leadInSeconds; default 1.5s for older jobs)
+    // - speech starts after intro
+    // - optional 8s tail after speech ends, with background fading out
+    const introSeconds =
+      typeof params.leadInSeconds === "number" &&
+      Number.isFinite(params.leadInSeconds) &&
+      params.leadInSeconds >= 0
+        ? params.leadInSeconds
+        : 1.5;
+    const wantFadeOut = params.fadeOut !== false;
+    const tailSeconds = wantFadeOut ? 8 : 0;
     const totalDurSeconds =
       dur !== undefined ? dur + introSeconds + tailSeconds : undefined;
     const bedFadeOut =
-      totalDurSeconds !== undefined && totalDurSeconds > tailSeconds + 0.06
+      wantFadeOut &&
+      totalDurSeconds !== undefined &&
+      totalDurSeconds > tailSeconds + 0.06
         ? `,afade=t=out:st=${Math.max(
             0,
             totalDurSeconds - tailSeconds,
@@ -2677,6 +2708,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           scriptTruncated,
           rating: null,
           liveMix: true,
+          ...(body.leadInSeconds === 0 || body.leadInSeconds === 20
+            ? { leadInSeconds: body.leadInSeconds }
+            : {}),
+          ...(typeof body.fadeOut === "boolean"
+            ? { fadeOut: body.fadeOut }
+            : {}),
           backgroundNatureKey: nk ?? "",
           backgroundMusicKey: mk ?? "",
           backgroundDrumsKey: dk ?? "",

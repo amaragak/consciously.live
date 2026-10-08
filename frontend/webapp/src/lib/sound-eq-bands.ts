@@ -39,17 +39,25 @@ export function blankSoundEqBand(
   };
 }
 
-/** Presence cut around 2–4 kHz — common harshness / “forward” reduction. */
-export function presenceCutPresetBands(): SoundEqBand[] {
-  return [
-    blankSoundEqBand({
-      type: "peaking",
-      frequency: 3000,
-      Q: 1.2,
-      gain: -4,
-      enabled: true,
-    }),
-  ];
+/** Presence peaking band (~3 kHz) — shared shape for light / heavy cuts. */
+function presenceCutBand(gainDb: number): SoundEqBand {
+  return blankSoundEqBand({
+    type: "peaking",
+    frequency: 3000,
+    Q: 1.2,
+    gain: gainDb,
+    enabled: true,
+  });
+}
+
+/** Mild presence cut (~3 dB) — soft harshness / “forward” reduction. */
+export function lightPresenceCutPresetBands(): SoundEqBand[] {
+  return [presenceCutBand(-3)];
+}
+
+/** Stronger presence cut (~7 dB) — more assertive mid reduction. */
+export function heavyPresenceCutPresetBands(): SoundEqBand[] {
+  return [presenceCutBand(-7)];
 }
 
 export function coerceSoundEqBands(raw: unknown): SoundEqBand[] {

@@ -47,13 +47,18 @@ export function LibraryAudioStrip(
     onPlaybackTimeChange?: (s3Key: string, timeSeconds: number) => void;
     onHeightChange?: (heightPx: number) => void;
     autoplay?: boolean;
+    placement?: "fixed" | "inline";
+    externalPlaying?: boolean | null;
+    onExternalTransportToggle?: (() => void) | null;
   },
 ) {
+  const inline = props.placement === "inline";
   return (
     <SharedLibraryAudioStrip
       {...props}
       mediaBase={getMedimadeMediaBaseUrl()}
-      besideSidebar
+      besideSidebar={!inline}
+      placement={props.placement ?? "fixed"}
     />
   );
 }

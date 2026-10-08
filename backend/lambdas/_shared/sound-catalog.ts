@@ -138,6 +138,19 @@ export type SoundCatalogRow = {
   /** Fades baked in at the trim edges when the trim is applied. */
   fadeInSec?: number;
   fadeOutSec?: number;
+  /**
+   * When the AAC streaming sibling (.m4a) was last rewritten by trim or EQ.
+   * Admin UI shows a second waveform vs the WAV/original master.
+   */
+  streamingEditedAt?: string;
+  /** Last EQ bands baked into the AAC (admin UI restore). */
+  eqBands?: Array<{
+    type: string;
+    frequency: number;
+    Q: number;
+    gain: number;
+    enabled: boolean;
+  }>;
   importedAt?: string;
   processing?: SoundProcessing;
   /** Square cover for Music › Compositions admin art. */
@@ -228,6 +241,35 @@ function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
     trimEndSec: typeof it.trimEndSec === "number" ? it.trimEndSec : null,
     fadeInSec: typeof it.fadeInSec === "number" ? it.fadeInSec : undefined,
     fadeOutSec: typeof it.fadeOutSec === "number" ? it.fadeOutSec : undefined,
+    streamingEditedAt:
+      typeof it.streamingEditedAt === "string" && it.streamingEditedAt.trim()
+        ? it.streamingEditedAt.trim()
+        : undefined,
+    eqBands: (() => {
+      if (!Array.isArray(it.eqBands)) return undefined;
+      const out: NonNullable<SoundCatalogRow["eqBands"]> = [];
+      for (const row of it.eqBands) {
+        if (!row || typeof row !== "object") continue;
+        const o = row as Record<string, unknown>;
+        const type = String(o.type ?? "").trim();
+        const frequency = Number(o.frequency);
+        const Q = Number(o.Q ?? o.q);
+        const gain = Number(o.gain ?? 0);
+        if (!type) continue;
+        if (!Number.isFinite(frequency) || !Number.isFinite(Q) || !Number.isFinite(gain)) {
+          continue;
+        }
+        out.push({
+          type,
+          frequency: Math.round(frequency * 10) / 10,
+          Q: Math.round(Q * 100) / 100,
+          gain: Math.round(gain * 10) / 10,
+          enabled: o.enabled !== false,
+        });
+        if (out.length >= 12) break;
+      }
+      return out.length > 0 ? out : undefined;
+    })(),
     importedAt,
     processing: parseSoundProcessing(it.processing),
     coverImageKey:

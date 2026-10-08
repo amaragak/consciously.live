@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectChevron } from "@/components/select-chevron";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import {
@@ -181,9 +182,7 @@ export function SoundFolderSelect({
                     ({sounds.length})
                   </span>
                 </span>
-                <span className="text-muted" aria-hidden>
-                  {isActive ? "▾" : "›"}
-                </span>
+<SelectChevron direction="right" open={isActive} />
               </button>
               {/* Inline accordion — side flyouts get clipped by overflow ancestors */}
               {isActive ? (
@@ -234,20 +233,7 @@ export function SoundFolderSelect({
         className={triggerClass}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+<SelectChevron open={open} />
       </button>
       {open ? menu : null}
     </div>

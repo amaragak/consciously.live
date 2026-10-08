@@ -75,8 +75,10 @@ export {
 
 export {
   VOICE_FX_DIAL_DEFAULT,
+  VOICE_FX_STEM_WET_MULT,
   clampVoiceFxDial,
   voiceFxDialGains,
+  voiceFxStemWetGain,
 } from "./audio/voice-fx-dial";
 
 export { VoiceFxKnob } from "./ui/voice-fx-knob";

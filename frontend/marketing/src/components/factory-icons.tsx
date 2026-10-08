@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectChevron } from "@/components/select-chevron";
 import { useEffect, useRef, useState } from "react";
 import {
   IconCampfire,
@@ -125,20 +126,7 @@ export function FactoryIconSelect({
         <span className="hidden min-w-[4.5rem] text-left sm:inline">
           {selected.label}
         </span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <SelectChevron open={open} />
       </button>
       {open ? (
         <div

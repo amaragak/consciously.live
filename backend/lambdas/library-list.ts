@@ -100,6 +100,8 @@ type OutItem = {
   coverImageUrl: string | null;
   voiceFxDial: number | null;
   createdVoiceFxDial: number | null;
+  leadInSeconds: number | null;
+  fadeOut: boolean | null;
   backgroundNatureKey: string | null;
   backgroundMusicKey: string | null;
   backgroundDrumsKey: string | null;
@@ -650,6 +652,11 @@ function buildLibraryItems(params: {
       voiceFxDial: optGain(row.voiceFxDial),
       createdVoiceFxDial:
         optGain(row.createdVoiceFxDial) ?? optGain(row.voiceFxDial),
+      leadInSeconds:
+        row.leadInSeconds === 0 || row.leadInSeconds === 20
+          ? row.leadInSeconds
+          : null,
+      fadeOut: typeof row.fadeOut === "boolean" ? row.fadeOut : null,
       backgroundNatureKey: optTrimKey(row.backgroundNatureKey),
       backgroundMusicKey: optTrimKey(row.backgroundMusicKey),
       backgroundDrumsKey: optTrimKey(row.backgroundDrumsKey),
@@ -761,6 +768,8 @@ function buildLibraryItems(params: {
       coverImageUrl: null,
       voiceFxDial: null,
       createdVoiceFxDial: null,
+      leadInSeconds: null,
+      fadeOut: null,
       backgroundNatureKey: null,
       backgroundMusicKey: null,
       backgroundDrumsKey: null,

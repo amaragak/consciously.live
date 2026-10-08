@@ -308,6 +308,8 @@ async function handleGet(bucket: string, baseUrl: string | undefined) {
       trimEndSec: meta?.trimEndSec ?? null,
       fadeInSec: meta?.fadeInSec ?? 0,
       fadeOutSec: meta?.fadeOutSec ?? 0,
+      streamingEditedAt: meta?.streamingEditedAt ?? null,
+      eqBands: meta?.eqBands ?? null,
       inCatalog: Boolean(meta),
       ready: item.ready,
       hasRaw,

@@ -2918,6 +2918,8 @@ export type BackgroundAudioItem = {
   subcategory?: string;
   /** Catalog tags (lowercase), mainly for compositions / soundscapes. */
   tags?: string[];
+  /** Beat frequency in Hz when the bed has a binaural component. */
+  binauralHz?: number | null;
   /** Admin-curated pick — “Our Picks” in the soundscape picker. */
   adminFavourite?: boolean;
   /** Consumer-facing pack label (not the S3 folder). */
@@ -3600,6 +3602,10 @@ export async function createMeditationAudioJob(params: {
   /** If set, applies voice FX (Pedalboard) after loudness normalization. */
   voiceFxPreset?: string | null;
   voiceFxDial?: number;
+  /** Bed-only seconds before voice (0 or 20). */
+  leadInSeconds?: 0 | 20;
+  /** Fade beds after voice ends (default true). */
+  fadeOut?: boolean;
   /** @deprecated use layered background keys + gains */
   backgroundSoundKey?: string | null;
   backgroundNatureKey?: string | null;
@@ -3675,6 +3681,10 @@ export async function createMeditationAudioJob(params: {
       : {}),
     ...(params.voiceFxPreset ? { voiceFxPreset: params.voiceFxPreset } : {}),
     ...(typeof params.voiceFxDial === "number" ? { voiceFxDial: params.voiceFxDial } : {}),
+    ...(params.leadInSeconds === 0 || params.leadInSeconds === 20
+      ? { leadInSeconds: params.leadInSeconds }
+      : {}),
+    ...(typeof params.fadeOut === "boolean" ? { fadeOut: params.fadeOut } : {}),
     ...(sessionTokenForBody() ? { sessionToken: sessionTokenForBody() } : {}),
     ...(speed === undefined ? {} : { speed }),
     ...(backgroundSoundKey === undefined ? {} : { backgroundSoundKey }),
@@ -3807,6 +3817,16 @@ export type AdminSoundItem = {
   trimEndSec: number | null;
   fadeInSec: number;
   fadeOutSec: number;
+  /** AAC (.m4a) last rewritten by trim or EQ — show dual waveform in admin. */
+  streamingEditedAt?: string | null;
+  /** Last EQ bands baked into the AAC (restore in admin EQ panel). */
+  eqBands?: Array<{
+    type: string;
+    frequency: number;
+    Q: number;
+    gain: number;
+    enabled?: boolean;
+  }> | null;
   inCatalog: boolean;
   ready: boolean;
   hasRaw?: boolean;
@@ -4219,6 +4239,42 @@ export async function saveAdminCompositionPackNames(
     : [];
 }
 
+/** Rename a pack label and rewrite assignments on every composition using it. */
+export async function renameAdminCompositionPackName(
+  from: string,
+  to: string,
+): Promise<{ packNames: string[]; updatedCount: number }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ action: "rename-pack-name", from, to }),
+  });
+  const data = (await res.json()) as {
+    packNames?: unknown[];
+    updatedCount?: number;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const packNames = Array.isArray(data.packNames)
+    ? data.packNames
+        .filter((n): n is string => typeof n === "string")
+        .map((n) => n.trim().slice(0, 48))
+        .filter(Boolean)
+    : [];
+  return {
+    packNames,
+    updatedCount:
+      typeof data.updatedCount === "number" && Number.isFinite(data.updatedCount)
+        ? data.updatedCount
+        : 0,
+  };
+}
+
 /** Resize existing full covers → thumbs. Does not call AI image gen. */
 export async function ensureAdminCompositionCoverThumbs(params?: {
   keys?: string[];
@@ -4626,13 +4682,59 @@ export async function uploadAdminSoundToS3(
   await putS3WithRetry(u.url, file, signal, onProgress);
 }
 
+function isLikelyGatewayTimeout(res: Response, errText: string): boolean {
+  if (res.status === 503 || res.status === 504 || res.status === 502) return true;
+  return /timeout|timed out|gateway|service unavailable/i.test(errText);
+}
+
+/** Poll catalog until async streaming AAC bake finishes (or fails). */
+async function pollAdminSoundStreamingBake(params: {
+  key: string;
+  bakeStartedAt: string;
+  timeoutMs?: number;
+}): Promise<AdminSoundItem> {
+  const deadline = Date.now() + (params.timeoutMs ?? 12 * 60 * 1000);
+  const started = params.bakeStartedAt;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    const list = await listAdminSounds();
+    const item = list.items.find((i) => i.key === params.key);
+    if (!item) continue;
+    const proc = item.processing;
+    if (
+      proc?.stage === "failed" &&
+      typeof proc.detail === "string" &&
+      proc.detail.startsWith("streaming-aac")
+    ) {
+      throw new Error(proc.error || "Streaming AAC bake failed");
+    }
+    const edited = item.streamingEditedAt;
+    if (
+      edited &&
+      edited >= started &&
+      (proc?.stage === "done" ||
+        (proc?.stage !== "encoding" && proc?.stage !== "storing"))
+    ) {
+      return item;
+    }
+  }
+  throw new Error("Streaming AAC bake is still running — check again in a moment.");
+}
+
 export async function trimAdminSound(body: {
   key: string;
   startSec: number;
   endSec: number | null;
   fadeInSec?: number;
   fadeOutSec?: number;
-}): Promise<void> {
+}): Promise<{
+  originalKey: string | null;
+  streamingEditedAt: string | null;
+  startSec: number;
+  endSec: number | null;
+  fadeInSec: number;
+  fadeOutSec: number;
+}> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/sounds/trim`, {
@@ -4640,10 +4742,176 @@ export async function trimAdminSound(body: {
     headers: medimadeJsonHeaders(),
     body: JSON.stringify(body),
   });
-  const data = (await res.json()) as { error?: string; detail?: string };
-  if (!res.ok) {
-    throw new Error(data.detail ?? data.error ?? res.statusText);
+  let data: {
+    error?: string;
+    detail?: string;
+    originalKey?: string | null;
+    streamingEditedAt?: string;
+    startSec?: number;
+    endSec?: number | null;
+    fadeInSec?: number;
+    fadeOutSec?: number;
+    baked?: boolean;
+    accepted?: boolean;
+    async?: boolean;
+    bakeStartedAt?: string;
+    key?: string;
+  } = {};
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    data = {};
   }
+  const errText = data.detail ?? data.error ?? res.statusText;
+  if (!res.ok && res.status !== 202) {
+    if (isLikelyGatewayTimeout(res, errText)) {
+      throw new Error(
+        "Timed out before AAC bake could start — trim was not applied. Try again.",
+      );
+    }
+    throw new Error(errText || "Trim failed");
+  }
+
+  if (data.accepted === true || data.async === true || res.status === 202) {
+    const bakeStartedAt =
+      typeof data.bakeStartedAt === "string" && data.bakeStartedAt
+        ? data.bakeStartedAt
+        : new Date().toISOString();
+    const item = await pollAdminSoundStreamingBake({
+      key: typeof data.key === "string" ? data.key : body.key,
+      bakeStartedAt,
+    });
+    invalidateBackgroundAudioClientCache();
+    return {
+      originalKey:
+        typeof data.originalKey === "string" && data.originalKey.trim()
+          ? data.originalKey.trim()
+          : item.originalKey ?? null,
+      streamingEditedAt: item.streamingEditedAt ?? null,
+      startSec: item.trimStartSec,
+      endSec: item.trimEndSec,
+      fadeInSec: item.fadeInSec,
+      fadeOutSec: item.fadeOutSec,
+    };
+  }
+
+  if (data.baked !== true) {
+    throw new Error("Trim did not confirm AAC bake — try again.");
+  }
+  invalidateBackgroundAudioClientCache();
+  return {
+    originalKey:
+      typeof data.originalKey === "string" && data.originalKey.trim()
+        ? data.originalKey.trim()
+        : null,
+    streamingEditedAt:
+      typeof data.streamingEditedAt === "string" ? data.streamingEditedAt : null,
+    startSec:
+      typeof data.startSec === "number" && Number.isFinite(data.startSec)
+        ? data.startSec
+        : body.startSec,
+    endSec:
+      data.endSec === null || data.endSec === undefined
+        ? body.endSec
+        : Number(data.endSec),
+    fadeInSec:
+      typeof data.fadeInSec === "number" && Number.isFinite(data.fadeInSec)
+        ? data.fadeInSec
+        : body.fadeInSec ?? 0,
+    fadeOutSec:
+      typeof data.fadeOutSec === "number" && Number.isFinite(data.fadeOutSec)
+        ? data.fadeOutSec
+        : body.fadeOutSec ?? 0,
+  };
+}
+
+/** Clear baked trim + fades and regenerate AAC (keeps EQ if any). */
+export async function clearAdminSoundTrim(key: string): Promise<{
+  streamingEditedAt: string | null;
+  startSec: number;
+  endSec: number | null;
+  fadeInSec: number;
+  fadeOutSec: number;
+  originalKey: string | null;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  // Always send zeroed trim fields so older lambdas (pre-`clear`) still accept
+  // the request instead of rejecting with "startSec must be a non-negative number".
+  const res = await medimadeFetch(`${base}/admin/sounds/trim`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      key,
+      clear: true,
+      startSec: 0,
+      endSec: null,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+    }),
+  });
+  let data: {
+    error?: string;
+    detail?: string;
+    originalKey?: string | null;
+    streamingEditedAt?: string;
+    baked?: boolean;
+    accepted?: boolean;
+    async?: boolean;
+    bakeStartedAt?: string;
+    key?: string;
+  } = {};
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    data = {};
+  }
+  const errText = data.detail ?? data.error ?? res.statusText;
+  if (!res.ok && res.status !== 202) {
+    if (isLikelyGatewayTimeout(res, errText)) {
+      throw new Error(
+        "Timed out before AAC bake could start — trim was not cleared. Try again.",
+      );
+    }
+    throw new Error(errText || "Clear trim failed");
+  }
+  if (data.accepted === true || data.async === true || res.status === 202) {
+    const item = await pollAdminSoundStreamingBake({
+      key: typeof data.key === "string" ? data.key : key,
+      bakeStartedAt:
+        typeof data.bakeStartedAt === "string" && data.bakeStartedAt
+          ? data.bakeStartedAt
+          : new Date().toISOString(),
+    });
+    invalidateBackgroundAudioClientCache();
+    return {
+      originalKey:
+        typeof data.originalKey === "string" && data.originalKey.trim()
+          ? data.originalKey.trim()
+          : item.originalKey ?? null,
+      streamingEditedAt: item.streamingEditedAt ?? null,
+      startSec: 0,
+      endSec: null,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+    };
+  }
+  if (data.baked !== true) {
+    throw new Error("Trim clear did not confirm AAC bake — try again.");
+  }
+  invalidateBackgroundAudioClientCache();
+  return {
+    originalKey:
+      typeof data.originalKey === "string" && data.originalKey.trim()
+        ? data.originalKey.trim()
+        : null,
+    streamingEditedAt:
+      typeof data.streamingEditedAt === "string" ? data.streamingEditedAt : null,
+    startSec: 0,
+    endSec: null,
+    fadeInSec: 0,
+    fadeOutSec: 0,
+  };
 }
 
 export async function applyAdminSoundEq(body: {
@@ -4655,7 +4923,10 @@ export async function applyAdminSoundEq(body: {
     gain: number;
     enabled?: boolean;
   }>;
-}): Promise<void> {
+}): Promise<{
+  streamingEditedAt: string | null;
+  bands: NonNullable<AdminSoundItem["eqBands"]>;
+}> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const res = await medimadeFetch(`${base}/admin/sounds/eq`, {
@@ -4663,11 +4934,155 @@ export async function applyAdminSoundEq(body: {
     headers: medimadeJsonHeaders(),
     body: JSON.stringify(body),
   });
-  const data = (await res.json()) as { error?: string; detail?: string };
-  if (!res.ok) {
-    throw new Error(data.detail ?? data.error ?? res.statusText);
+  let data: {
+    error?: string;
+    detail?: string;
+    streamingEditedAt?: string;
+    bands?: AdminSoundItem["eqBands"];
+    baked?: boolean;
+    accepted?: boolean;
+    async?: boolean;
+    bakeStartedAt?: string;
+    key?: string;
+  } = {};
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    data = {};
+  }
+  const errText = data.detail ?? data.error ?? res.statusText;
+  if (!res.ok && res.status !== 202) {
+    if (isLikelyGatewayTimeout(res, errText)) {
+      throw new Error(
+        "Timed out before AAC bake could start — EQ was not applied. Try again.",
+      );
+    }
+    throw new Error(errText || "EQ apply failed");
+  }
+  if (data.accepted === true || data.async === true || res.status === 202) {
+    const item = await pollAdminSoundStreamingBake({
+      key: typeof data.key === "string" ? data.key : body.key,
+      bakeStartedAt:
+        typeof data.bakeStartedAt === "string" && data.bakeStartedAt
+          ? data.bakeStartedAt
+          : new Date().toISOString(),
+    });
+    invalidateBackgroundAudioClientCache();
+    return {
+      streamingEditedAt: item.streamingEditedAt ?? null,
+      bands: item.eqBands?.length ? item.eqBands : body.bands,
+    };
+  }
+  if (data.baked !== true) {
+    throw new Error("EQ apply did not confirm AAC bake — try again.");
   }
   invalidateBackgroundAudioClientCache();
+  return {
+    streamingEditedAt:
+      typeof data.streamingEditedAt === "string" ? data.streamingEditedAt : null,
+    bands: Array.isArray(data.bands) ? data.bands : body.bands,
+  };
+}
+
+/** Clear baked EQ and regenerate AAC (keeps trim/fade if any). */
+export async function clearAdminSoundEq(body: {
+  key: string;
+  /** Included so older trim lambdas pass startSec validation; clearEq ignores them. */
+  startSec?: number;
+  endSec?: number | null;
+  fadeInSec?: number;
+  fadeOutSec?: number;
+}): Promise<{
+  streamingEditedAt: string | null;
+  bands: NonNullable<AdminSoundItem["eqBands"]>;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const startSec =
+    typeof body.startSec === "number" && Number.isFinite(body.startSec)
+      ? Math.max(0, body.startSec)
+      : 0;
+  const endSec =
+    body.endSec === null || body.endSec === undefined
+      ? null
+      : Number(body.endSec);
+  // Route through /trim with clearEq — the EQ endpoint rejects empty bands on
+  // older deploys ("At least one active EQ band is required").
+  // Always send trim fields so a not-yet-redeployed trim lambda does not
+  // reject with "startSec must be a non-negative number".
+  const res = await medimadeFetch(`${base}/admin/sounds/trim`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      key: body.key,
+      clearEq: true,
+      startSec,
+      endSec:
+        endSec != null && Number.isFinite(endSec) && endSec > startSec
+          ? endSec
+          : null,
+      fadeInSec:
+        typeof body.fadeInSec === "number" && Number.isFinite(body.fadeInSec)
+          ? Math.max(0, body.fadeInSec)
+          : 0,
+      fadeOutSec:
+        typeof body.fadeOutSec === "number" && Number.isFinite(body.fadeOutSec)
+          ? Math.max(0, body.fadeOutSec)
+          : 0,
+    }),
+  });
+  let data: {
+    error?: string;
+    detail?: string;
+    streamingEditedAt?: string;
+    bands?: AdminSoundItem["eqBands"];
+    clearedEq?: boolean;
+    baked?: boolean;
+    accepted?: boolean;
+    async?: boolean;
+    bakeStartedAt?: string;
+    key?: string;
+  } = {};
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    data = {};
+  }
+  const errText = data.detail ?? data.error ?? res.statusText;
+  if (!res.ok && res.status !== 202) {
+    if (isLikelyGatewayTimeout(res, errText)) {
+      throw new Error(
+        "Timed out before AAC bake could start — EQ was not cleared. Try again.",
+      );
+    }
+    throw new Error(errText || "Clear EQ failed");
+  }
+  if (data.accepted === true || data.async === true || res.status === 202) {
+    const item = await pollAdminSoundStreamingBake({
+      key: typeof data.key === "string" ? data.key : body.key,
+      bakeStartedAt:
+        typeof data.bakeStartedAt === "string" && data.bakeStartedAt
+          ? data.bakeStartedAt
+          : new Date().toISOString(),
+    });
+    invalidateBackgroundAudioClientCache();
+    return {
+      streamingEditedAt: item.streamingEditedAt ?? null,
+      bands: item.eqBands ?? [],
+    };
+  }
+  // Older trim lambdas ignore clearEq and just re-apply trim (EQ stays).
+  if (data.clearedEq !== true || data.baked !== true) {
+    throw new Error(
+      "EQ clear did not confirm AAC bake. Redeploy admin-sounds-trim if this persists.",
+    );
+  }
+  invalidateBackgroundAudioClientCache();
+  return {
+    streamingEditedAt:
+      typeof data.streamingEditedAt === "string" ? data.streamingEditedAt : null,
+    bands: Array.isArray(data.bands) ? data.bands : [],
+  };
 }
 
 export type VoiceSpeakerBrand = "fish" | "speechify";
@@ -6548,9 +6963,19 @@ function parseBackgroundAudioPayload(
         typeof item.customPackName === "string" && item.customPackName.trim()
           ? item.customPackName.trim().slice(0, 48)
           : null;
+      const hzRaw = (item as { binauralHz?: unknown }).binauralHz;
+      const hzNum =
+        typeof hzRaw === "number"
+          ? hzRaw
+          : typeof hzRaw === "string"
+            ? Number(hzRaw.trim())
+            : NaN;
+      const binauralHz =
+        Number.isFinite(hzNum) && hzNum > 0 ? hzNum : null;
       return {
         ...item,
         tags: tags.length > 0 ? tags : undefined,
+        binauralHz,
         adminFavourite: item.adminFavourite === true ? true : undefined,
         customPackName: customPackName || undefined,
       };
@@ -6782,6 +7207,8 @@ export type LibraryMeditationItem = {
   coverImageUrl?: string | null;
   voiceFxDial?: number | null;
   createdVoiceFxDial?: number | null;
+  leadInSeconds?: number | null;
+  fadeOut?: boolean | null;
   backgroundNatureKey?: string | null;
   backgroundMusicKey?: string | null;
   backgroundDrumsKey?: string | null;

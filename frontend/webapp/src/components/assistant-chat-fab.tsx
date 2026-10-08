@@ -29,6 +29,7 @@ import {
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
+import { useLibraryPlayer } from "@/components/library-player-provider";
 
 /** Hide only when main content already hosts a chat UI. */
 function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
@@ -127,7 +128,12 @@ export function AssistantChatFab() {
   );
   const [footerInset, setFooterInset] = useState(getChatFabFooterInset);
   const bottomPad = useFabBottomPaddingPx();
-  const fabBottom = footerInset + bottomPad;
+  const { nowPlaying, playerStripHeightPx } = useLibraryPlayer();
+  const stripLift =
+    footerInset > 0 && nowPlaying && playerStripHeightPx > 0
+      ? playerStripHeightPx
+      : 0;
+  const fabBottom = footerInset + bottomPad + stripLift;
   const hidden = hideFabOnPath(pathname, createChatVisible);
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(false);

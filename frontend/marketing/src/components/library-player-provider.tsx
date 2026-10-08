@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   listBackgroundAudio,
   postDashboardPlayEvent,
@@ -42,6 +43,8 @@ type LibraryPlayerContextValue = {
   nowPlaying: LibraryActiveTrack | null;
   playingS3Key: string | null;
   playerStripHeightPx: number;
+  /** True when strip is docked into create-flow chrome (above length nav). */
+  playerStripDocked: boolean;
   bedVolumeApiRef: React.MutableRefObject<LibraryBedVolumeApi | null>;
   playItem: (item: LibraryMeditationItem) => void;
   playTrack: (track: LibraryActiveTrack) => void;
@@ -53,6 +56,8 @@ type LibraryPlayerContextValue = {
   setPlaybackTimeListener: (
     fn: ((s3Key: string, timeSeconds: number) => void) | null,
   ) => void;
+  /** Dock the strip into an in-flow host (create length nav). Pass null to undock. */
+  setPlayerStripDockHost: (host: HTMLElement | null) => void;
 };
 
 const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(
@@ -76,6 +81,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   const [mixCompositions, setMixCompositions] = useState<BackgroundAudioItem[]>(
     [],
   );
+  const [stripDockHost, setStripDockHost] = useState<HTMLElement | null>(null);
   const bedVolumeApiRef = useRef<LibraryBedVolumeApi | null>(null);
   const timeListenerRef = useRef<
     ((s3Key: string, timeSeconds: number) => void) | null
@@ -173,7 +179,13 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       h > 0 ? h : PLAYER_STRIP_HEIGHT_ESTIMATE_PX,
     );
     setAutoplay(true);
-    startLibraryVoicePlayback(track);
+    // Ambient beds/soundscapes are owned by the strip elements — don't also
+    // start the library voice singleton (create step plays voice separately).
+    if (track.ambientOnly) {
+      stopLibraryVoicePlayback();
+    } else {
+      startLibraryVoicePlayback(track);
+    }
     setNowPlaying(track);
   }, []);
 
@@ -205,11 +217,16 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setPlayerStripDockHost = useCallback((host: HTMLElement | null) => {
+    setStripDockHost(host);
+  }, []);
+
   const value = useMemo<LibraryPlayerContextValue>(
     () => ({
       nowPlaying,
       playingS3Key,
       playerStripHeightPx,
+      playerStripDocked: Boolean(stripDockHost),
       bedVolumeApiRef,
       playItem,
       playTrack,
@@ -217,42 +234,50 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       dismiss,
       patchNowPlaying,
       setPlaybackTimeListener,
+      setPlayerStripDockHost,
     }),
     [
       nowPlaying,
       playingS3Key,
       playerStripHeightPx,
+      stripDockHost,
       playItem,
       playTrack,
       toggleCurrent,
       dismiss,
       patchNowPlaying,
       setPlaybackTimeListener,
+      setPlayerStripDockHost,
     ],
+  );
+
+  const strip = (
+    <LibraryAudioStrip
+      key={nowPlaying?.s3Key ?? "none"}
+      track={nowPlaying}
+      musicItems={mixMusic}
+      compositionItems={mixCompositions}
+      onDismiss={dismiss}
+      playbackToggleNonce={playbackToggleNonce}
+      bedVolumeApiRef={bedVolumeApiRef}
+      onHeightChange={setPlayerStripHeightPx}
+      autoplay={autoplay}
+      placement={stripDockHost ? "inline" : "fixed"}
+      onPlayingChange={(s3Key, playing) => {
+        setPlayingS3Key(playing ? s3Key : null);
+        setAutoplay(playing);
+      }}
+      onPlaybackTimeChange={(s3Key, timeSeconds) => {
+        if (playingS3KeyRef.current !== s3Key) return;
+        timeListenerRef.current?.(s3Key, timeSeconds);
+      }}
+    />
   );
 
   return (
     <LibraryPlayerContext.Provider value={value}>
       {children}
-      <LibraryAudioStrip
-        key={nowPlaying?.s3Key ?? "none"}
-        track={nowPlaying}
-        musicItems={mixMusic}
-        compositionItems={mixCompositions}
-        onDismiss={dismiss}
-        playbackToggleNonce={playbackToggleNonce}
-        bedVolumeApiRef={bedVolumeApiRef}
-        onHeightChange={setPlayerStripHeightPx}
-        autoplay={autoplay}
-        onPlayingChange={(s3Key, playing) => {
-          setPlayingS3Key(playing ? s3Key : null);
-          setAutoplay(playing);
-        }}
-        onPlaybackTimeChange={(s3Key, timeSeconds) => {
-          if (playingS3KeyRef.current !== s3Key) return;
-          timeListenerRef.current?.(s3Key, timeSeconds);
-        }}
-      />
+      {stripDockHost ? createPortal(strip, stripDockHost) : strip}
     </LibraryPlayerContext.Provider>
   );
 }

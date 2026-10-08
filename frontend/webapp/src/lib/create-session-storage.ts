@@ -3,6 +3,7 @@ import {
   removeAccountSessionStorage,
   writeAccountSessionStorage,
 } from "@/lib/account-scoped-storage";
+import { VOICE_FX_DIAL_DEFAULT } from "@consciously/common";
 import {
   isMeditationTargetMinutes,
   type MedimadeChatTurn,
@@ -272,7 +273,7 @@ export function parseCreateSession(raw: unknown): CreateSessionV1 | null {
     speakerFxPreviewOn: o.speakerFxPreviewOn,
     voiceFxDial: isFiniteNumber(o.voiceFxDial)
       ? Math.min(100, Math.max(0, Math.round(o.voiceFxDial)))
-      : 100,
+      : VOICE_FX_DIAL_DEFAULT,
     backgroundNatureKey: o.backgroundNatureKey,
     backgroundMusicKey: o.backgroundMusicKey,
     backgroundDrumsKey: o.backgroundDrumsKey,

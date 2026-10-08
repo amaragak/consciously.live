@@ -520,6 +520,54 @@ body {
   color: var(--on-accent);
 }
 
+/** Now-playing strip scrubber — mist thumb, navy track (progress soft / rest full). */
+/** Now-playing strip scrubber — gold fill/thumb on ivory track (see PlayerStrip). */
+.library-strip-scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+}
+.library-strip-scrubber::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+}
+.library-strip-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, #c8a46a);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 0.28);
+  cursor: pointer;
+}
+.library-strip-scrubber::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+  border: none;
+}
+.library-strip-scrubber::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+  border: none;
+}
+.library-strip-scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, #c8a46a);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 0.28);
+  cursor: pointer;
+}
+
 /* Header “consciously” — radial from sun (white) → light gold-peach. Edit in theme-colors.ts.
  * Light mode uses a solid clay fill (set via --brand-wordmark-gradient). */
 .brand-wordmark {

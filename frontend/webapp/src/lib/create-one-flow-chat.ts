@@ -280,9 +280,9 @@ export function styleIntakeAims(styleId: MeditationStyleLabel | string): string[
 function formatAimsBlock(styleId: string): string {
   const aims = styleIntakeAims(styleId);
   return [
-    `Information to AIM to learn for the "${styleId}" practice (gather naturally across the conversation; skip anything already covered by chat, journal, or goal; the creator may skip any item; do NOT run through as a numbered checklist or paste these as questions verbatim):`,
+    `Information to AIM to learn for the "${styleId}" practice (gather naturally across the conversation; skip anything already covered by chat, journal, or goal — and when you skip, confirm how you will use that covered material in the meditation; the creator may skip any item; do NOT run through as a numbered checklist or paste these as questions verbatim):`,
     ...aims.map((a, i) => `${i + 1}. ${a}`),
-    "PROGRESS MARKERS (never show to the user). Every assistant reply must include [[ASKING:n]] for the AIM item you are asking about now (1-based; keep the same n on follow-ups) or [[READY]] if every remaining item is done or skipped. Also emit [[AIM:k]] for each item now done. Moving on in one reply: [[AIM:n]][[ASKING:n+1]]. You may gather themes fluidly — do not paste these as a numbered quiz — but markers must match what you are actually asking.",
+    "PROGRESS MARKERS (never show to the user). Every assistant reply must include [[ASKING:n]] for the AIM item you are asking about now (1-based; keep the same n on follow-ups), OR omit [[ASKING:]] on a confirm-only turn when you are only marking covered items, OR [[READY]] if every remaining item is done or skipped. Also emit [[AIM:k]] for each item now done. Moving on in one reply: [[AIM:n]][[ASKING:n+1]]. You may gather themes fluidly — do not paste these as a numbered quiz — but markers must match what you are actually asking or confirming.",
   ].join("\n");
 }
 
@@ -312,7 +312,11 @@ export function buildShapeContextBlock(opts: {
     "PURPOSE: Gather enough information to create a meditation in the attached FORMAT — either a Style practice OR a Program (never both; they may overlap in theme, but the creator picks one). Journal entries and Manifest goals are CONTEXT: they are always valuable. They may already answer some required questions — if they clearly do, count those answered and do not re-ask. They never replace the format. The finished meditation should always hint at / weave in attached journal and goal context.",
     "You are shaping that meditation with the creator. Be fluid: use attached context and prior chat; when new context appears, fold it in and continue — do not restart the conversation.",
     "REQUIRED QUESTIONS: For a Style, gather the style AIM items unless the creator skips. For a Program, gather each selected session's Ask-items unless the creator skips. Do not emit [[READY]] until those required items are answered or skipped (or there is no format and the brief + context is enough for a general practice).",
-    "HARD RULE — attaching context is NOT automatically an answer. Only treat a newly attached style / journal / goal / program as fully answering your last question if that attachment clearly covers it (e.g. you asked what kind of practice and they attached a style, or a journal clearly answers an Ask-item). If it does not, acknowledge the new context by name in one short sentence, then ask ONE question that still gathers what the outstanding Ask-item/question needs AND, when it fits, how that relates to the new context (e.g. a self-compassion Ask-item plus a new goal → ask the struggle in light of that goal). Never skip the unanswered ask. Never emit [[READY]] just because context was added.",
+    "CONTEXT USE RULE (every turn): For each required Format item (Style AIM / Program Ask-item), decide whether the brief, journal, goal, or prior chat already answers it.",
+    "— If YES: count it answered (emit [[AIM:n]] for styles). Confirm in plain words how you will use that material in the meditation (one concrete construction cue — e.g. weaving a named worry into the body of the practice) so they can correct you if you misread it. Do not re-ask that item.",
+    "— If NO / unclear: ask that item directly (one question).",
+    "REPLY SHAPE until [[READY]]: either (A) confirm-only — no question — stating how covered context will shape the practice, optionally inviting extras as statements (“If you want, add anything else as a short statement”), or (B) a short ack plus ONE direct question for something still missing. Prefer (A) whenever context already covers what you would have asked.",
+    "HARD RULE — attaching context is NOT automatically an answer. Only treat a newly attached style / journal / goal / program as fully answering your last question if that attachment clearly covers it (e.g. you asked what kind of practice and they attached a style, or a journal clearly answers an Ask-item). If it does: confirm how you will use it in the meditation and mark the item done; if nothing required remains, confirm-only + [[READY]]. If it does not: acknowledge the new context by name and how you will fold it in, then ask ONE question that still gathers what the outstanding Ask-item needs AND, when it fits, how that relates to the new context. Never skip the unanswered ask. Never emit [[READY]] just because context was added.",
   ];
 
   if (contextUpdateNote?.trim()) {
@@ -383,7 +387,7 @@ export function buildShapeContextBlock(opts: {
       );
     }
     lines.push(
-      "AIM from journal: treat the entry as valuable context that should be hinted at in the meditation. It may already answer required Style/Program questions — if so, count those answered. Ask only for missing concrete detail still needed.",
+      "AIM from journal: treat the entry as valuable context. If it clearly answers required Style/Program questions, count those answered and confirm how you will use that material in the meditation (so they can correct you). Otherwise ask only for missing concrete detail still needed. Always plan to hint at / weave the journal into the finished practice.",
     );
   }
 
@@ -403,7 +407,7 @@ export function buildShapeContextBlock(opts: {
       lines.push("Vision:", lifeArea.visionText.trim());
     }
     lines.push(
-      "AIM from Manifest: stay grounded in their dream/vision. Always hint at this goal in the meditation. It may help answer required Style/Program questions; count those answered only when it clearly covers them. Otherwise keep the outstanding ask open and weave the goal into the next question.",
+      "AIM from Manifest: stay grounded in their dream/vision. Always hint at this goal in the meditation. If it clearly answers required Style/Program questions, count those answered and confirm how you will use the goal in the practice. Otherwise keep the outstanding ask open and weave the goal into the next question.",
     );
   }
 
@@ -421,9 +425,17 @@ export function hasShapeStartMaterial(state: CreateOneFlowState): boolean {
   );
 }
 
+/** True when Start carries brief/journal/goal the coach should scan before asking. */
+export function styleOpenHasUsableContext(state: CreateOneFlowState): boolean {
+  return Boolean(
+    state.prompt.trim() || state.journals.length > 0 || state.goal,
+  );
+}
+
 /**
- * First Shape bubble when a style is the format: greet, then AIM 1.
- * Mood-intake (“What’s on your mind today?”) is only for a totally empty Start.
+ * Instant first bubble when a style is chosen with no brief/journal/goal.
+ * When those are present, Shape streams the coach instead so it can confirm
+ * how context will be used (or ask only what is still missing).
  */
 export function buildStyleFormatOpenTurn(
   state: CreateOneFlowState,
@@ -437,15 +449,9 @@ export function buildStyleFormatOpenTurn(
       ? firstAim
       : `${firstAim}?`
     : "What would you like this practice to hold?";
-  const hasNotes = Boolean(
-    state.prompt.trim() || state.journals.length > 0 || state.goal,
-  );
-  const greet = hasNotes
-    ? "I've got what you set on Start — let's shape from there."
-    : "Let's shape this practice together.";
   return {
     role: "assistant",
-    text: `${greet}\n\n${question}`,
+    text: `Let's shape this practice together.\n\n${question}`,
     aimAsking: 0,
   };
 }
@@ -454,17 +460,26 @@ function shapeOpenNowInstruction(state: CreateOneFlowState): string {
   if (state.program) {
     return [
       "OPEN NOW (first reply): Follow the program OPEN NOW in the Start/program brief.",
+      "First scan brief / journal / goal against Ask-items: if context clearly answers an item, do not ask it — confirm how you will use that material in the meditation and move to the next unanswered Ask-item (or [[READY]] if none remain).",
       "Do NOT use a mood-intake opener such as “What’s on your mind?” or “What’s on your mind today?”.",
     ].join(" ");
   }
   if (state.style) {
     const first = styleIntakeAims(state.style.id)[0]?.trim();
+    const hasCtx = styleOpenHasUsableContext(state);
+    if (hasCtx) {
+      return [
+        "OPEN NOW (first reply): Scan their brief / journal / goal against every Format AIM item before asking anything.",
+        "For each AIM clearly answered by that context: emit [[AIM:n]] and do not ask it.",
+        "In your visible reply, confirm how you will use the covered material in the meditation (concrete construction cue) so they can correct you.",
+        "If any AIM remains unanswered: after that confirm, ask ONE natural question for the first unanswered AIM only; emit [[ASKING:n]]. Two bubbles (confirm, then question).",
+        "If every AIM is already covered: ONE bubble only — construction-oriented confirm, optionally invite extras as statements (no question mark), then [[READY]].",
+        "FORBIDDEN: mood-intake openers; forbidden to ask an AIM that context already answered.",
+      ].join(" ");
+    }
     return [
       "OPEN NOW (first reply — exactly two bubbles):",
       "(1) One short warm greeting that treats the attached format as already chosen (do not name the style).",
-      state.prompt.trim()
-        ? "Nod to their brief if they wrote one."
-        : "",
       first
         ? `(2) One natural question that gathers Format AIM item 1 (${first}). Emit [[ASKING:1]]. Do not paste the AIM text verbatim if you can say it more simply.`
         : "(2) One natural question for the first Format AIM. Emit [[ASKING:1]].",
@@ -475,9 +490,10 @@ function shapeOpenNowInstruction(state: CreateOneFlowState): string {
   }
   if (hasShapeStartMaterial(state)) {
     return [
-      "OPEN NOW (first reply — exactly two bubbles):",
-      "(1) Short greeting that shows you already have their Start brief and/or attached journal/goal.",
-      "(2) One concrete question that uses that material.",
+      "OPEN NOW (first reply): You already have their Start brief and/or attached journal/goal.",
+      "Confirm how you will use that material in the meditation so they can correct you.",
+      "If you still need one concrete detail: two bubbles (confirm, then one question).",
+      "If the material is enough for a general practice: one confirm-only bubble, optional invite for extras as statements, then [[READY]].",
       "FORBIDDEN: a blank-slate mood-intake opener (“What’s on your mind today?”).",
     ].join(" ");
   }
@@ -571,7 +587,7 @@ export function buildShapeContextUpdateUserContent(opts: {
       contextUpdateNote: opts.note,
     }),
     "",
-    "The creator just attached context (see CONTEXT UPDATE). Acknowledge that attachment by name in one short sentence. Journal/goal context is valuable and should be woven into the meditation; it may answer a required question if it clearly covers it. Treat it as fully answering your last question ONLY if it clearly covers that question. Otherwise keep the ask open: ask ONE question that still gets what you needed AND, when it fits, how it relates to the new context. Do not skip ahead. Do not emit [[READY]] because context was added.",
+    "The creator just attached context (see CONTEXT UPDATE). Acknowledge it by name and say how you will use it in the meditation (so they can correct you). Journal/goal context is valuable and should be woven into the practice; it may answer a required question if it clearly covers it. Treat it as fully answering your last question ONLY if it clearly covers that question — then mark that item done and either confirm-only (invite extras as statements if everything required is covered, then [[READY]]) or ask the next missing required item. Otherwise keep the ask open: ask ONE question that still gets what you needed AND, when it fits, how it relates to the new context. Do not skip ahead. Do not emit [[READY]] merely because context was added.",
   ].join("\n");
 }
 

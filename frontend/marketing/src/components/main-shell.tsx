@@ -74,10 +74,15 @@ export function MainShell({
   const patternTileActive = !isHeroPage && !isAuthPage;
   const tileHeightPx = usePatternTileHeight(contentRef, patternTileActive);
   const [focusPattern, setFocusPattern] = useState<FocusPatternId>("default");
-  const { nowPlaying, playerStripHeightPx } = useLibraryPlayer();
+  const { nowPlaying, playerStripHeightPx, playerStripDocked } =
+    useLibraryPlayer();
   // Focus keeps the timer composition fixed; the strip overlays instead of padding the page.
+  // Create flow docks the strip above its length nav — skip main pad there.
   const playerPad =
-    !isFocusApp && nowPlaying && playerStripHeightPx > 0
+    !isFocusApp &&
+    !playerStripDocked &&
+    nowPlaying &&
+    playerStripHeightPx > 0
       ? playerStripHeightPx + 16
       : 0;
 

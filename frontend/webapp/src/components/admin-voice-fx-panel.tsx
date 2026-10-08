@@ -84,7 +84,7 @@ const PRIMARY_FIELDS: Field[] = [
     min: 0.05,
     max: 1,
     step: 0.05,
-    hint: "Blend of dry vs delay→IR chain (1 = full processed)",
+    hint: "Echo recommended. FX stem / Echo at Wet = 1.5× this (capped at 1)",
   },
 ];
 

@@ -173,20 +173,6 @@ async function loudnormToWav(
   ]);
 }
 
-async function wavToMp3(wavPath: string, outputMp3Path: string): Promise<void> {
-  await execFfmpeg([
-    "-hide_banner",
-    "-y",
-    "-i",
-    wavPath,
-    "-c:a",
-    "libmp3lame",
-    "-q:a",
-    "2",
-    outputMp3Path,
-  ]);
-}
-
 async function wavToAac(wavPath: string, outputAacPath: string): Promise<void> {
   await execFfmpeg(aacEncodeArgs(wavPath, outputAacPath));
 }
@@ -224,7 +210,6 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
     const inExt = key.toLowerCase().endsWith(".mp3") ? "mp3" : "wav";
     const inPath = `/tmp/bg-in-${id}.${inExt}`;
     const tmpWav = `/tmp/bg-norm-${id}.wav`;
-    const tmpMp3 = `/tmp/bg-out-${id}.mp3`;
     const tmpAac = `/tmp/bg-out-${id}${AAC_EXTENSION}`;
     const startedAt = Date.now();
     let stage: "downloading" | "normalizing" | "encoding" | "storing" = "downloading";
@@ -239,8 +224,13 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
         : `${Math.round(rawBytes / 1048576)}MB source`;
 
     try {
-      if (await alreadyNormalized(bucket, mp3Key)) {
-        console.log("bg audio already normalized, skipping", { key, mp3Key });
+      // Skip when WAV+AAC already exist. Catalog identity stays `.mp3`-shaped
+      // but we no longer write bed MP3 objects.
+      if (
+        (await alreadyNormalized(bucket, wavKey)) &&
+        (await alreadyNormalized(bucket, aacKey))
+      ) {
+        console.log("bg audio already normalized, skipping", { key, wavKey, aacKey });
         await updateSoundProcessing(mp3Key, { stage: "done", detail: "already normalized" });
         continue;
       }
@@ -257,26 +247,12 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
 
       stage = "encoding";
       await updateSoundProcessing(mp3Key, { stage: "encoding", detail: describeSource() });
-      await wavToMp3(tmpWav, tmpMp3);
-      // AAC is the Safari-safe streaming default. Keep MP3 as legacy fallback.
-      let hasAac = false;
-      try {
-        await wavToAac(tmpWav, tmpAac);
-        hasAac = true;
-      } catch (e) {
-        console.warn("aac encode skipped", {
-          key,
-          msg: e instanceof Error ? e.message : String(e),
-        });
-      }
+      await wavToAac(tmpWav, tmpAac);
 
       stage = "storing";
       await updateSoundProcessing(mp3Key, { stage: "storing", detail: describeSource() });
       const wavBytes = await uploadFile(bucket, wavKey, tmpWav, "audio/wav");
-      const mp3Bytes = await uploadFile(bucket, mp3Key, tmpMp3, "audio/mpeg");
-      const aacBytes = hasAac
-        ? await uploadFile(bucket, aacKey, tmpAac, AAC_CONTENT_TYPE)
-        : null;
+      const aacBytes = await uploadFile(bucket, aacKey, tmpAac, AAC_CONTENT_TYPE);
 
       await updateSoundProcessing(mp3Key, { stage: "done", detail: describeSource() });
       console.log("normalized bg audio", {
@@ -284,10 +260,9 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
         key,
         wavKey,
         mp3Key,
-        aacKey: hasAac ? aacKey : null,
+        aacKey,
         rawBytes,
         wavBytes,
-        mp3Bytes,
         aacBytes,
         sampleRate,
         durationSec: source.durationSec,
@@ -310,7 +285,7 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
       console.error("bg audio normalize failed", { bucket, key, mp3Key, stage, detail, msg });
       throw e;
     } finally {
-      for (const p of [inPath, tmpWav, tmpMp3, tmpAac]) {
+      for (const p of [inPath, tmpWav, tmpAac]) {
         try {
           fs.unlinkSync(p);
         } catch {

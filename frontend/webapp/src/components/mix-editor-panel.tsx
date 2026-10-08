@@ -13,7 +13,7 @@ import {
 } from "@/lib/medimade-api";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import type { BedVolumeChannel } from "@/components/library-player-provider";
-import { VoiceFxKnob } from "@consciously/common";
+import { VOICE_FX_DIAL_DEFAULT, VoiceFxKnob } from "@consciously/common";
 import { SoundscapeDevVolumeFader } from "@/components/soundscape-dev-volume-fader";
 import {
   shouldRenderDevUi,
@@ -44,7 +44,7 @@ export const DEFAULT_MIX_EDITOR_VALUES: MixEditorValues = {
   musicGain: 50,
   drumsGain: 40,
   noiseGain: 10,
-  voiceFxDial: 100,
+  voiceFxDial: VOICE_FX_DIAL_DEFAULT,
 };
 
 export function mixWithGain(

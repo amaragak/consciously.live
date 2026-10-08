@@ -9,6 +9,8 @@ export type BackgroundAudioItem = {
   subcategory?: string;
   /** Catalog tags (lowercase), mainly for compositions / soundscapes. */
   tags?: string[];
+  /** Beat frequency in Hz when the bed has a binaural component. */
+  binauralHz?: number | null;
   adminFavourite?: boolean;
   customPackName?: string | null;
   /** Public CDN URL for composition / soundscape cover art when present. */
@@ -29,6 +31,10 @@ export type LibraryMeditationFields = {
   coverImageUrl?: string | null;
   voiceFxDial?: number | null;
   durationSeconds?: number | null;
+  /** Bed-only seconds before voice starts (live mix). */
+  leadInSeconds?: number | null;
+  /** When false, beds stop with the voice (no post-voice fade). */
+  fadeOut?: boolean | null;
   backgroundNatureKey?: string | null;
   backgroundMusicKey?: string | null;
   backgroundDrumsKey?: string | null;

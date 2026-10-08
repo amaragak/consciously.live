@@ -247,8 +247,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(180),
-        memorySize: 2048,
-        ephemeralStorageSize: cdk.Size.mebibytes(2048),
+        memorySize: 3008,
+        ephemeralStorageSize: cdk.Size.mebibytes(4096),
         layers: [ffmpegLayer],
         role,
         environment: {
@@ -277,8 +277,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(180),
-        memorySize: 2048,
-        ephemeralStorageSize: cdk.Size.mebibytes(2048),
+        memorySize: 3008,
+        ephemeralStorageSize: cdk.Size.mebibytes(4096),
         layers: [ffmpegLayer],
         role,
         environment: {
@@ -298,6 +298,18 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         adminSoundsEq,
       ),
     });
+
+    // Self-invoke for async AAC bake. Wildcard ARNs avoid CFN cycles with the
+    // shared Lambda role (grantInvoke(role) → circular dep across ApiAdmin).
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["lambda:InvokeFunction"],
+        resources: [
+          `arn:aws:lambda:${this.region}:${this.account}:function:*AdminSoundsTrim*`,
+          `arn:aws:lambda:${this.region}:${this.account}:function:*AdminSoundsEq*`,
+        ],
+      }),
+    );
 
     const adminFactoryMixes = new lambda_nodejs.NodejsFunction(
       this,

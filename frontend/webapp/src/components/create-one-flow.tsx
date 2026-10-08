@@ -12,13 +12,14 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { IconChevronDown, IconRefresh } from "@tabler/icons-react";
+import { IconRefresh } from "@tabler/icons-react";
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
 import { CreateFlowNavPill } from "@/components/create-flow-nav-pill";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { CreateOneFlowPickerShell } from "@/components/create-one-flow-picker-shell";
+import { SelectChevron } from "@/components/select-chevron";
 import { CreateOneFlowStepper } from "@/components/create-one-flow-stepper";
 import { CreateProgramPicker } from "@/components/create-program-picker";
 import { DictationMicButton } from "@/components/dictation-mic-button";
@@ -67,6 +68,7 @@ import {
   buildShapeStartOverridesSupplement,
   buildShapeTurnApiMessages,
   buildStyleFormatOpenTurn,
+  styleOpenHasUsableContext,
   fingerprintShapeStart,
   hasShapeStartMaterial,
   parseCoachDisplayText,
@@ -351,13 +353,16 @@ export function CreateOneFlow({
   const [briefDraft, setBriefDraft] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [soundSummaryOpen, setSoundSummaryOpen] = useState(false);
   const [soundPreviewPlaying, setSoundPreviewPlaying] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const briefTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
   const threadStickToBottomRef = useRef(true);
   const soundStepRef = useRef<CreateSoundStepHandle | null>(null);
+  useEffect(() => {
+    if (step === "sound") return;
+    soundStepRef.current?.stopPreviews();
+  }, [step]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const shapeRequestIdRef = useRef(0);
@@ -730,7 +735,7 @@ export function CreateOneFlow({
     return [
       withLengths,
       "",
-      "MID-CHAT ATTACH (overrides OPEN NOW / first-reply): The conversation already has prior turns — keep them. Do NOT welcome from scratch, do NOT use the five-bubble OPEN NOW format, do NOT restart. Acknowledge the program in one short sentence, then ask exactly one concrete question for Ask-item 1 of the first selected session (or one spirit question if there are no Ask-items). Prior brief/chat answers still count.",
+      "MID-CHAT ATTACH (overrides OPEN NOW / first-reply): The conversation already has prior turns — keep them. Do NOT welcome from scratch, do NOT use the five-bubble OPEN NOW format, do NOT restart. Acknowledge the program by name and say how you will use it in the meditation. Scan Ask-items against prior brief/chat/journal/goal: skip any clearly answered (confirm how you'll use that answer). Ask exactly one concrete question for the first unanswered Ask-item of the first selected session (or one spirit question if there are no Ask-items). If every Ask-item is already covered, confirm-only and [[READY]].",
     ].join("\n");
   }
 
@@ -858,7 +863,9 @@ export function CreateOneFlow({
   function openShapeCoach(s: CreateOneFlowState) {
     const hasAssistant = s.chat.some((m) => m.role === "assistant");
     if (hasAssistant) return;
-    if (s.style && !s.program) {
+    // Style with no brief/journal/goal: instant AIM-1 open. With context, stream
+    // the coach so it can confirm how that material will be used (or ask only gaps).
+    if (s.style && !s.program && !styleOpenHasUsableContext(s)) {
       const turn = buildStyleFormatOpenTurn(s);
       setState((prev) => ({ ...prev, chat: [...prev.chat, turn] }));
       return;
@@ -1079,7 +1086,7 @@ export function CreateOneFlow({
       contextKind = "program";
       contextLabel = att.title;
       contextImageUrl = att.coverImageUrl ?? null;
-      contextNote = `Program "${att.title}" was just attached mid-chat. Keep every prior assistant/user turn visible in history. Do not restart or re-ask the brief question. Treat the program as new context under that thread, then ask the next program Ask-item only.`;
+      contextNote = `Program "${att.title}" was just attached mid-chat. Keep every prior assistant/user turn visible in history. Do not restart. Acknowledge the program and how you will use it in the meditation. Scan Ask-items against prior brief/chat/journal/goal — skip clearly answered ones (confirm how you'll use them). Ask the first unanswered Ask-item only; if none remain, confirm-only + [[READY]].`;
     } else if (picker === "journal") {
       const e = journalEntries.find((x) => x.id === draftJournalId);
       if (!e) return;
@@ -1096,7 +1103,7 @@ export function CreateOneFlow({
       contextKind = "journal";
       contextLabel = att.title;
       contextDetail = null;
-      contextNote = `Journal "${att.title}" was just attached (full body in context). Acknowledge it by name. Treat it as an answer only if the entry clearly covers your last question; otherwise keep that question open and ask one question that still gathers it, drawing on the journal where relevant.`;
+      contextNote = `Journal "${att.title}" was just attached (full body in context). Acknowledge it by name and say how you will use it in the meditation. Treat it as answering your last question only if the entry clearly covers it — then mark that item done. If required items remain, ask one question for the next gap (drawing on the journal where relevant). If everything required is covered, confirm-only and invite extras as statements, then [[READY]].`;
     } else if (picker === "goal") {
       const area = lifeAreas.find((g) => g.id === draftLifeAreaId);
       if (!area) return;
@@ -1114,8 +1121,8 @@ export function CreateOneFlow({
       contextLabel = att.lifeAreaTitle;
       contextDetail = att.goalTitle ?? null;
       contextNote = att.goalTitle
-        ? `Life area "${att.lifeAreaTitle}" (goal: "${att.goalTitle}") was just attached. You MUST acknowledge this goal by name in one short sentence. It does NOT complete your last question unless it clearly covers that question. If a program Ask-item is still unanswered, ask ONE question that still serves that Ask-item and ties it to this goal (e.g. how the session theme shows up around "${att.goalTitle}"). Do not wrap with [[READY]].`
-        : `Life area "${att.lifeAreaTitle}" was just attached. You MUST acknowledge this life area by name in one short sentence. It does NOT complete your last question unless it clearly covers that question. If a program Ask-item is still unanswered, ask ONE question that still serves that Ask-item and ties it to this life area. Do not wrap with [[READY]].`;
+        ? `Life area "${att.lifeAreaTitle}" (goal: "${att.goalTitle}") was just attached. Acknowledge this goal by name and say how you will use it in the meditation. It does NOT complete your last question unless it clearly covers that question — if it does, mark that item done. If a required Ask-item/AIM is still unanswered, ask ONE question that still serves it and ties it to this goal. If everything required is covered, confirm-only + [[READY]].`
+        : `Life area "${att.lifeAreaTitle}" was just attached. Acknowledge this life area by name and say how you will use it in the meditation. It does NOT complete your last question unless it clearly covers that question — if it does, mark that item done. If a required Ask-item/AIM is still unanswered, ask ONE question that still serves it and ties it to this life area. If everything required is covered, confirm-only + [[READY]].`;
     }
     setPicker(null);
     if (contextNote && contextLabel && contextKind) {
@@ -1346,6 +1353,8 @@ export function CreateOneFlow({
           creationProvenance: provenance,
           voiceFxPreset: soundExtras.voiceFxPreset,
           voiceFxDial: soundExtras.voiceFxDial,
+          leadInSeconds: soundExtras.leadInSeconds,
+          fadeOut: soundExtras.fadeOut,
           speed: soundExtras.speed,
           ...(soundExtras.claudeModel
             ? { claudeModel: soundExtras.claudeModel }
@@ -2204,109 +2213,23 @@ export function CreateOneFlow({
           {step === "sound" ? (
             <div className="flex w-full flex-col gap-4">
               <div className="rounded-[10px] border border-accent/35 bg-accent-soft/40">
-                <button
-                  type="button"
-                  aria-expanded={soundSummaryOpen}
-                  onClick={() => setSoundSummaryOpen((v) => !v)}
-                  className="flex h-10 w-full cursor-pointer items-center gap-2.5 px-3.5 text-left"
-                >
-                  <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                <div className="flex min-w-0 items-start gap-2.5 px-3.5 py-2.5">
+                  <span className="mt-0.5 shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                     <span className="md:hidden">Making</span>
                     <span className="hidden md:inline">You&apos;re making</span>
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-display text-[15px] leading-none text-foreground">
-                    {summarySentence}
-                  </span>
-                  <IconChevronDown
-                    size={18}
-                    stroke={2}
-                    aria-hidden
-                    className={`shrink-0 text-muted transition-transform duration-200 ${
-                      soundSummaryOpen ? "rotate-180" : ""
+                  <span
+                    title={state.prompt.trim() || undefined}
+                    className={`min-w-0 flex-1 font-display text-[15px] leading-[1.35] text-foreground line-clamp-2 md:truncate md:text-[16px] ${
+                      state.prompt.trim() ? "" : "italic text-muted"
                     }`}
-                  />
-                </button>
-                {soundSummaryOpen ? (
-                  <div className="flex flex-col gap-3 border-t border-accent/20 px-3.5 py-3">
-                    <p className="font-display text-[17px] leading-[1.4] text-foreground">
-                      {state.prompt.trim() || summarySentence}
-                    </p>
-                    {state.style || state.program ? (
-                      <div className="flex flex-col gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                          {state.program ? "Format · Program" : "Format · Style"}
-                        </span>
-                        {state.program ? (
-                          <div className="flex items-start gap-3">
-                            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
-                              {state.program.coverImageUrl ? (
-                                <img
-                                  src={state.program.coverImageUrl}
-                                  alt=""
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : null}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-display text-[16px] leading-[1.25] text-foreground">
-                                {state.program.title}
-                              </p>
-                              <p className="text-[12px] text-muted">
-                                {state.program.mode === "one"
-                                  ? "One meditation"
-                                  : "One per session"}
-                                {" · "}
-                                {programSelectedCount} of {programTotalCount}{" "}
-                                sessions
-                              </p>
-                            </div>
-                          </div>
-                        ) : state.style ? (
-                          <>
-                            <div className="flex items-center gap-2.5">
-                              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
-                                {(() => {
-                                  const url =
-                                    categoryImageUrls[state.style.id]?.trim() ||
-                                    categoryImageUrls.All?.trim() ||
-                                    categoryImageUrls.all?.trim() ||
-                                    "";
-                                  return url ? (
-                                    <img
-                                      src={categoryImageUrlForTile(url, 72, 72)}
-                                      alt=""
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : null;
-                                })()}
-                              </div>
-                              <p className="min-w-0 flex-1 font-display text-[16px] leading-[1.25] text-foreground">
-                                {state.style.id}
-                              </p>
-                            </div>
-                            {styleQuestions.length > 0 ? (
-                              <div className="flex flex-col gap-1.5">
-                                {shapeQuestionRows}
-                              </div>
-                            ) : null}
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {state.journals.length > 0 || state.goal ? (
-                      <div className="flex flex-col gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                          Context
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {tokens(false, {
-                            includeStyle: false,
-                            includeProgram: false,
-                            kindLabels: true,
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
+                  >
+                    {state.prompt.trim() || summarySentence}
+                  </span>
+                </div>
+                {hasAttachedContext ? (
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-accent/20 px-3.5 py-2.5">
+                    {tokens(false, { kindLabels: true })}
                   </div>
                 ) : null}
               </div>
@@ -2379,9 +2302,10 @@ export function CreateOneFlow({
                     <button
                       type="button"
                       onClick={() => setProgramHeaderOpen((v) => !v)}
-                      className="h-8 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3 text-[13px] font-semibold text-foreground"
+                      className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-3 text-[13px] font-semibold text-foreground"
                     >
-                      {programHeaderOpen ? "Done ▴" : "Edit ▾"}
+                      {programHeaderOpen ? "Done" : "Edit"}
+                      <SelectChevron open={programHeaderOpen} />
                     </button>
                   </div>
                 ) : null}

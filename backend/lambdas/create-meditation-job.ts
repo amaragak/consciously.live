@@ -87,6 +87,10 @@ export async function handler(
     skipSpeechifyLoudnorm?: boolean;
     /** Dev override for Speechify SSML rate percent. */
     speechifyRate?: number;
+    /** Bed-only seconds before voice (0 or 20). */
+    leadInSeconds?: number;
+    /** Fade beds after voice ends. */
+    fadeOut?: boolean;
   };
   try {
     body = JSON.parse(event.body || "{}");
@@ -244,6 +248,10 @@ export async function handler(
           typeof body.voiceFxDial === "number" && Number.isFinite(body.voiceFxDial)
             ? Math.min(100, Math.max(0, Math.round(body.voiceFxDial)))
             : 100,
+        ...(body.leadInSeconds === 0 || body.leadInSeconds === 20
+          ? { leadInSeconds: body.leadInSeconds }
+          : {}),
+        ...(typeof body.fadeOut === "boolean" ? { fadeOut: body.fadeOut } : {}),
         backgroundSoundKey,
         ...(backgroundNatureKey ? { backgroundNatureKey } : {}),
         ...(backgroundMusicKey ? { backgroundMusicKey } : {}),

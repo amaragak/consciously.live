@@ -22,11 +22,18 @@ const AAC_BITRATE = "160k";
 export const AAC_ENCODER = process.env.AAC_ENCODER?.trim() || "libfdk_aac";
 
 export function aacEncodeArgs(inputPath: string, outputPath: string): string[] {
-  return [
-    "-hide_banner",
-    "-y",
-    "-i",
-    inputPath,
+  return aacEncodeArgsWithFilter(inputPath, outputPath, null);
+}
+
+/** One-pass AAC encode; optional `-af` avoids a huge intermediate PCM WAV. */
+export function aacEncodeArgsWithFilter(
+  inputPath: string,
+  outputPath: string,
+  audioFilter: string | null,
+): string[] {
+  const args = ["-hide_banner", "-y", "-i", inputPath];
+  if (audioFilter) args.push("-af", audioFilter);
+  args.push(
     "-ac",
     "1",
     "-ar",
@@ -36,7 +43,8 @@ export function aacEncodeArgs(inputPath: string, outputPath: string): string[] {
     "-b:a",
     AAC_BITRATE,
     outputPath,
-  ];
+  );
+  return args;
 }
 
 /** `foo.mp3` / `foo.wav` / `foo.opus` → `foo.m4a`. */

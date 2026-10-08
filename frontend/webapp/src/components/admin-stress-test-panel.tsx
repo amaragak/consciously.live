@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   ScriptLabBeatsPreview,
 } from "@/components/script-lab-beats-preview";
@@ -162,7 +163,7 @@ function RunCard({
           Run {run.runIndex} — {STRESS_TEST_PATH_LABELS[run.path]}
         </span>
         <span className="text-xs text-muted">{headline}</span>
-        <span className="text-xs text-muted">{expanded ? "▾" : "▸"}</span>
+        <SelectChevron direction="right" open={expanded} />
       </button>
       {expanded ? (
         <div className="space-y-3 border-t border-border px-3 py-3">
@@ -571,7 +572,7 @@ export function AdminStressTestPanel() {
           onClick={() => setConfigOpen((v) => !v)}
         >
           Configuration
-          <span className="text-muted">{configOpen ? "▾" : "▸"}</span>
+          <SelectChevron direction="right" open={configOpen} />
         </button>
         {configOpen ? (
           <div className="space-y-4 border-t border-border px-4 py-4 text-sm">
@@ -773,7 +774,7 @@ export function AdminStressTestPanel() {
                   }
                 >
                   <h3 className="font-display text-lg font-medium">{type}</h3>
-                  <span className="text-sm text-muted">{collapsed ? "▸" : "▾"}</span>
+                  <SelectChevron direction="right" open={!collapsed} />
                 </button>
                 {!collapsed ? (
                   <div className="grid gap-4 border-t border-border px-4 py-4 lg:grid-cols-3">

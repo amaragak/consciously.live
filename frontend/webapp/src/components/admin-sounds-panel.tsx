@@ -7,6 +7,7 @@ import {
   type AdminSoundCategory,
   type AdminSoundItem,
   type AdminSoundProcessingStage,
+  backgroundAudioPlaybackKey,
   createAdminSoundUploads,
   reprocessAdminSound,
   uploadAdminSoundToS3,
@@ -16,6 +17,8 @@ import {
   listAdminSounds,
   patchAdminSound,
   trimAdminSound,
+  clearAdminSoundTrim,
+  clearAdminSoundEq,
 } from "@/lib/medimade-api";
 import {
   SOUND_CATEGORIES,
@@ -26,6 +29,7 @@ import {
   soundSubcategorySlug,
   subcategoryOptions,
 } from "@/lib/sound-taxonomy";
+import type { SoundEqBandType } from "@/lib/sound-eq-bands";
 
 type UseFilter =
   | "every"
@@ -94,9 +98,10 @@ function mediaUrl(baseUrl: string | undefined, key: string, bust?: string | null
   return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(bust)}`;
 }
 
+/** Master audition key — keep WAV when that is the archived original (no lame MP3). */
 function streamingPlayKey(key: string): string {
   const k = key.trim();
-  if (k.toLowerCase().endsWith(".wav")) return `${k.slice(0, -4)}.mp3`;
+  if (k.toLowerCase().endsWith(".wav")) return k;
   return k;
 }
 
@@ -243,8 +248,10 @@ export function AdminSoundsPanel() {
     inCatalog: 0,
   });
   const [q, setQ] = useState("");
-  const [catFilter, setCatFilter] = useState<"all" | AdminSoundCategory>("all");
-  const [useFilter, setUseFilter] = useState<UseFilter>("in");
+  const [catFilter, setCatFilter] = useState<"all" | AdminSoundCategory>(
+    "compositions",
+  );
+  const [useFilter, setUseFilter] = useState<UseFilter>("categorised");
   const [subFilter, setSubFilter] = useState("");
   const [sortBy, setSortBy] = useState<"imported-desc" | "imported-asc" | "name">("imported-desc");
   const [fadingKeys, setFadingKeys] = useState<Set<string>>(() => new Set());
@@ -309,12 +316,36 @@ export function AdminSoundsPanel() {
     return incoming.map((row) => {
       const entry = pending.get(row.key);
       if (!entry) return row;
-      // Server has caught up; drop the override so later edits are not masked.
-      if (row.status === entry.item.status && row.category === entry.item.category) {
+      const local = entry.item;
+      const streamingCaughtUp =
+        (row.streamingEditedAt || "") === (local.streamingEditedAt || "") &&
+        (row.trimStartSec ?? 0) === (local.trimStartSec ?? 0) &&
+        (row.trimEndSec ?? null) === (local.trimEndSec ?? null) &&
+        (row.fadeInSec ?? 0) === (local.fadeInSec ?? 0) &&
+        (row.fadeOutSec ?? 0) === (local.fadeOutSec ?? 0) &&
+        (row.eqBands?.length ?? 0) === (local.eqBands?.length ?? 0);
+      const metaCaughtUp =
+        row.status === local.status && row.category === local.category;
+      if (metaCaughtUp && streamingCaughtUp) {
         pending.delete(row.key);
         return row;
       }
-      return { ...row, ...entry.item };
+      // Keep optimistic edits (including clear trim/EQ) until the list reflects them.
+      return {
+        ...row,
+        status: local.status,
+        category: local.category,
+        subcategory: local.subcategory,
+        name: local.name,
+        enabled: local.enabled,
+        trimStartSec: local.trimStartSec,
+        trimEndSec: local.trimEndSec,
+        fadeInSec: local.fadeInSec,
+        fadeOutSec: local.fadeOutSec,
+        eqBands: local.eqBands,
+        streamingEditedAt: local.streamingEditedAt ?? row.streamingEditedAt,
+        originalKey: local.originalKey ?? row.originalKey,
+      };
     });
   }, []);
 
@@ -351,7 +382,13 @@ export function AdminSoundsPanel() {
 
   useEffect(() => {
     const waitingNorm = items.some((i) => !i.ready && i.hasRaw);
-    if (!waitingNorm) return;
+    const waitingBake = items.some(
+      (i) =>
+        i.processing?.stage === "encoding" &&
+        typeof i.processing.detail === "string" &&
+        i.processing.detail.startsWith("streaming-aac"),
+    );
+    if (!waitingNorm && !waitingBake) return;
     const t = window.setInterval(() => {
       void load().catch(() => undefined);
     }, 4000);
@@ -1621,6 +1658,7 @@ function SoundRow({
   onCancelFadeOut: (key: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamingAudioRef = useRef<HTMLAudioElement | null>(null);
   const startRef = useRef(item.trimStartSec ?? 0);
   const endRef = useRef<number | null>(item.trimEndSec ?? null);
   const [startSec, setStartSec] = useState(item.trimStartSec ?? 0);
@@ -1633,11 +1671,16 @@ function SoundRow({
   const [err, setErr] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [streamingDuration, setStreamingDuration] = useState<number | null>(null);
+  const [streamingTime, setStreamingTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [streamingPlaying, setStreamingPlaying] = useState(false);
   const [fadeDim, setFadeDim] = useState(false);
   const [nameDraft, setNameDraft] = useState(item.name);
   const cardRef = useRef<HTMLLIElement | null>(null);
   const seekGuardRef = useRef(0);
+  const streamingSeekGuardRef = useRef(0);
+  const streamingPlayKeyId = `${item.key}::aac`;
 
   startRef.current = startSec;
   endRef.current = endSec;
@@ -1658,10 +1701,15 @@ function SoundRow({
   }, [fading]);
 
   useEffect(() => {
-    if (activePlayKey === item.key) return;
-    const el = audioRef.current;
-    if (el && !el.paused) el.pause();
-  }, [activePlayKey, item.key]);
+    if (activePlayKey !== item.key) {
+      const el = audioRef.current;
+      if (el && !el.paused) el.pause();
+    }
+    if (activePlayKey !== streamingPlayKeyId) {
+      const el = streamingAudioRef.current;
+      if (el && !el.paused) el.pause();
+    }
+  }, [activePlayKey, item.key, streamingPlayKeyId]);
 
   // Per-frame rather than on timeupdate: timeupdate only fires a few times a
   // second, too coarse for a clean loop point or a smooth fade.
@@ -1690,6 +1738,28 @@ function SoundRow({
       if (el) el.volume = 1;
     };
   }, [playing]);
+
+  // Streaming AAC already has trim/fades baked in — loop the full file.
+  useEffect(() => {
+    if (!streamingPlaying) return;
+    let raf = 0;
+    const tick = () => {
+      const el = streamingAudioRef.current;
+      if (el) {
+        const limit = Number.isFinite(el.duration) ? el.duration : null;
+        if (
+          limit != null &&
+          el.currentTime >= limit - 0.02 &&
+          performance.now() >= streamingSeekGuardRef.current
+        ) {
+          seekStreamingTo(el, 0);
+        }
+      }
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [streamingPlaying]);
 
   useEffect(() => {
     if (!reviewSelected) return;
@@ -1724,6 +1794,19 @@ function SoundRow({
   const playKey = streamingPlayKey(item.originalKey || item.key);
   const src = item.ready ? mediaUrl(baseUrl, playKey, item.updatedAt) : "";
   const waveformSrc = src;
+  // Streaming strip only when we have a post-bake timestamp (or an archive
+  // original). Do not show from eqBands alone — that can be stale metadata.
+  const showStreamingWave = Boolean(
+    item.ready && (item.streamingEditedAt || item.originalKey),
+  );
+  const aacSrc = item.ready
+    ? mediaUrl(
+        baseUrl,
+        backgroundAudioPlaybackKey(item.key),
+        item.streamingEditedAt || item.updatedAt,
+      )
+    : "";
+  const streamingSrc = showStreamingWave ? aacSrc : "";
 
   async function savePatch(partial: Partial<AdminSoundItem>) {
     setErr(null);
@@ -1768,18 +1851,23 @@ function SoundRow({
   }
 
   /**
-   * Preview the fades without touching the file: gain is derived from the
-   * playhead each frame, matching ffmpeg's qsin curve so what you hear here is
-   * what "Apply trim" will bake in.
+   * Live preview: fade in from the start trim marker for fadeInSec; fade out
+   * into the end trim marker for fadeOutSec. qsin matches ffmpeg bake.
    */
   function simulatedGain(t: number, limit: number | null): number {
     const start = startRef.current;
     const fadeIn = fadeInRef.current;
     const fadeOut = fadeOutRef.current;
     let g = 1;
-    if (fadeIn > 0 && t < start + fadeIn) g = Math.min(g, (t - start) / fadeIn);
+    // From start marker → start + fadeIn
+    if (fadeIn > 0 && t >= start && t < start + fadeIn) {
+      g = Math.min(g, (t - start) / fadeIn);
+    } else if (fadeIn > 0 && t < start) {
+      g = 0;
+    }
+    // Into end marker: (end - fadeOut) → end
     if (fadeOut > 0 && limit != null && t > limit - fadeOut) {
-      g = Math.min(g, (limit - t) / fadeOut);
+      g = Math.min(g, Math.max(0, (limit - t) / fadeOut));
     }
     if (!Number.isFinite(g)) return 1;
     return Math.sin(Math.max(0, Math.min(1, g)) * (Math.PI / 2));
@@ -1841,6 +1929,58 @@ function SoundRow({
     startPlayback(el);
   }
 
+  function seekStreamingTo(el: HTMLAudioElement, sec: number) {
+    streamingSeekGuardRef.current = performance.now() + 250;
+    el.currentTime = sec;
+  }
+
+  function startStreamingPlayback(el: HTMLAudioElement) {
+    void playWithLeadBuffer(el).catch((e) => {
+      setErr(e instanceof Error ? e.message : "Could not play streaming AAC");
+    });
+  }
+
+  /** Streaming AAC is already trimmed — loop the whole file from 0. */
+  function playStreamingFromStart() {
+    const el = streamingAudioRef.current;
+    if (!el) return;
+    onReviewSelect();
+    onPlayKeyChange(streamingPlayKeyId);
+    seekStreamingTo(el, 0);
+    startStreamingPlayback(el);
+  }
+
+  function playStreamingLoopSeam() {
+    const el = streamingAudioRef.current;
+    if (!el) return;
+    const limit = Number.isFinite(el.duration) ? el.duration : streamingDuration;
+    if (limit == null || limit <= 0) return;
+    onReviewSelect();
+    onPlayKeyChange(streamingPlayKeyId);
+    const bakedFadeOut = item.fadeOutSec ?? 0;
+    const lead = Math.max(LOOP_TEST_LEAD_SEC, bakedFadeOut);
+    seekStreamingTo(el, Math.max(0, limit - lead));
+    startStreamingPlayback(el);
+  }
+
+  function toggleStreamingPlay() {
+    const el = streamingAudioRef.current;
+    if (!el) return;
+    if (!el.paused) {
+      el.pause();
+      return;
+    }
+    onReviewSelect();
+    onPlayKeyChange(streamingPlayKeyId);
+    const limit = Number.isFinite(el.duration) ? el.duration : streamingDuration;
+    const t = el.currentTime;
+    if (t < 0.05 || (limit != null && t >= limit - 0.04)) {
+      playStreamingFromStart();
+      return;
+    }
+    startStreamingPlayback(el);
+  }
+
   function onAudioTime(el: HTMLAudioElement) {
     setCurrentTime(el.currentTime);
   }
@@ -1860,16 +2000,209 @@ function SoundRow({
     setErr(null);
     setBusy("trim");
     try {
-      await trimAdminSound({
+      const result = await trimAdminSound({
         key: item.key,
         startSec: start,
         endSec: end,
         fadeInSec,
         fadeOutSec,
       });
-      onChanged();
+      const now = result.streamingEditedAt || new Date().toISOString();
+      setStreamingDuration(null);
+      setStreamingTime(0);
+      // Confirmed response — update local row; skip list reload (stale GET race).
+      onLocal({
+        ...item,
+        originalKey: result.originalKey || item.originalKey,
+        trimStartSec: result.startSec,
+        trimEndSec: result.endSec,
+        fadeInSec: result.fadeInSec,
+        fadeOutSec: result.fadeOutSec,
+        streamingEditedAt: now,
+        updatedAt: now,
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Trim failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function formatTrimSummary(): string {
+    const start = item.trimStartSec ?? 0;
+    const end = item.trimEndSec;
+    const fi = item.fadeInSec ?? 0;
+    const fo = item.fadeOutSec ?? 0;
+    const parts: string[] = [];
+    if (start > 0.01 || end != null) {
+      const endLabel = end != null ? `${end.toFixed(1)}s` : "end";
+      parts.push(`Trim ${start.toFixed(1)}s → ${endLabel}`);
+    }
+    if (fi > 0) parts.push(`Fade in ${fi.toFixed(1)}s`);
+    if (fo > 0) parts.push(`Fade out ${fo.toFixed(1)}s`);
+    return parts.join(" · ");
+  }
+
+  function formatEqSummary(): string {
+    const bands = item.eqBands ?? [];
+    if (bands.length === 0) return "";
+    return bands
+      .filter((b) => b.enabled !== false)
+      .map((b) => {
+        const g = b.gain >= 0 ? `+${b.gain}` : `${b.gain}`;
+        return `${b.frequency}Hz ${g}dB`;
+      })
+      .join(" · ");
+  }
+
+  // Badges only when catalog has adjustments AND a post-bake streamingEditedAt
+  // (catalog is written only after AAC is uploaded).
+  const streamingBaked = Boolean(item.streamingEditedAt);
+  const hasBakedTrim = streamingBaked && Boolean(formatTrimSummary());
+  const hasBakedEq = streamingBaked && Boolean(formatEqSummary());
+
+  const catalogHasTrim =
+    (item.trimStartSec ?? 0) > 0.01 ||
+    item.trimEndSec != null ||
+    (item.fadeInSec ?? 0) > 0 ||
+    (item.fadeOutSec ?? 0) > 0;
+  const catalogHasEq = (item.eqBands?.length ?? 0) > 0;
+  const uiHasTrim =
+    startSec > 0.01 || endSec != null || fadeInSec > 0 || fadeOutSec > 0;
+  const hasRecordedMarkers = catalogHasTrim || catalogHasEq || uiHasTrim;
+  /** Metadata exists but no confirmed post-bake timestamp. */
+  const needsBakeForSure = item.ready && hasRecordedMarkers && !streamingBaked;
+
+  function bakeMarkers(): {
+    startSec: number;
+    endSec: number | null;
+    fadeInSec: number;
+    fadeOutSec: number;
+  } {
+    // Prefer waveform UI markers when set; otherwise catalog metadata.
+    if (uiHasTrim) {
+      return { startSec, endSec, fadeInSec, fadeOutSec };
+    }
+    return {
+      startSec: item.trimStartSec ?? 0,
+      endSec: item.trimEndSec ?? null,
+      fadeInSec: item.fadeInSec ?? 0,
+      fadeOutSec: item.fadeOutSec ?? 0,
+    };
+  }
+
+  function pendingBakeSummary(): string {
+    const m = bakeMarkers();
+    const parts: string[] = [];
+    if (m.startSec > 0.01 || m.endSec != null) {
+      const endLabel = m.endSec != null ? `${m.endSec.toFixed(1)}s` : "end";
+      parts.push(`Trim ${m.startSec.toFixed(1)}s → ${endLabel}`);
+    }
+    if (m.fadeInSec > 0) parts.push(`Fade in ${m.fadeInSec.toFixed(1)}s`);
+    if (m.fadeOutSec > 0) parts.push(`Fade out ${m.fadeOutSec.toFixed(1)}s`);
+    const eq = formatEqSummary();
+    if (eq) parts.push(`EQ ${eq}`);
+    return parts.join(" · ") || "Current markers";
+  }
+
+  /** Re-bake AAC from master using recorded trim/fade (+ catalog EQ). */
+  async function bakeForSure() {
+    setErr(null);
+    setBusy("bake");
+    audioRef.current?.pause();
+    streamingAudioRef.current?.pause();
+    onPlayKeyChange(null);
+    const m = bakeMarkers();
+    try {
+      // Trim path re-encodes from the master and re-applies catalog EQ bands.
+      const result = await trimAdminSound({
+        key: item.key,
+        startSec: m.startSec,
+        endSec: m.endSec,
+        fadeInSec: m.fadeInSec,
+        fadeOutSec: m.fadeOutSec,
+      });
+      const now = result.streamingEditedAt || new Date().toISOString();
+      setStartSec(result.startSec);
+      setEndSec(result.endSec);
+      setFadeInSec(result.fadeInSec);
+      setFadeOutSec(result.fadeOutSec);
+      setStreamingDuration(null);
+      setStreamingTime(0);
+      onLocal({
+        ...item,
+        originalKey: result.originalKey || item.originalKey,
+        trimStartSec: result.startSec,
+        trimEndSec: result.endSec,
+        fadeInSec: result.fadeInSec,
+        fadeOutSec: result.fadeOutSec,
+        streamingEditedAt: now,
+        updatedAt: now,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Bake failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function clearTrimFade() {
+    setErr(null);
+    setBusy("clear-trim");
+    audioRef.current?.pause();
+    streamingAudioRef.current?.pause();
+    onPlayKeyChange(null);
+    try {
+      const result = await clearAdminSoundTrim(item.key);
+      const now = result.streamingEditedAt || new Date().toISOString();
+      setStartSec(0);
+      setEndSec(null);
+      setFadeInSec(0);
+      setFadeOutSec(0);
+      setStreamingDuration(null);
+      setStreamingTime(0);
+      onLocal({
+        ...item,
+        originalKey: result.originalKey || item.originalKey,
+        trimStartSec: 0,
+        trimEndSec: null,
+        fadeInSec: 0,
+        fadeOutSec: 0,
+        streamingEditedAt: now,
+        updatedAt: now,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not clear trim/fade");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function clearEq() {
+    setErr(null);
+    setBusy("clear-eq");
+    audioRef.current?.pause();
+    streamingAudioRef.current?.pause();
+    onPlayKeyChange(null);
+    try {
+      const result = await clearAdminSoundEq({
+        key: item.key,
+        startSec: item.trimStartSec ?? 0,
+        endSec: item.trimEndSec ?? null,
+        fadeInSec: item.fadeInSec ?? 0,
+        fadeOutSec: item.fadeOutSec ?? 0,
+      });
+      const now = result.streamingEditedAt || new Date().toISOString();
+      setStreamingDuration(null);
+      setStreamingTime(0);
+      onLocal({
+        ...item,
+        eqBands: [],
+        streamingEditedAt: now,
+        updatedAt: now,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not clear EQ");
     } finally {
       setBusy(null);
     }
@@ -2046,7 +2379,7 @@ function SoundRow({
 
       {src ? (
         <>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               aria-label={playing ? "Pause" : "Play from trim start"}
@@ -2076,6 +2409,9 @@ function SoundRow({
               <IconLoop />
               Test loop
             </button>
+            {showStreamingWave ? (
+              <span className="text-[11px] text-muted">Master (trim / preview)</span>
+            ) : null}
           </div>
           <audio
             ref={audioRef}
@@ -2100,10 +2436,13 @@ function SoundRow({
           {waveformSrc ? (
           <SoundTrimWaveform
             src={waveformSrc}
+            label={showStreamingWave ? "Master" : undefined}
             startSec={startSec}
             endSec={endSec}
             duration={duration}
             currentTime={currentTime}
+            fadeInSec={fadeInSec}
+            fadeOutSec={fadeOutSec}
             onChange={(s, e) => {
               setStartSec(s);
               setEndSec(e);
@@ -2114,6 +2453,112 @@ function SoundRow({
               seekTo(el, sec);
             }}
           />
+          ) : null}
+          {showStreamingWave && streamingSrc ? (
+            <div
+              key={item.streamingEditedAt || streamingSrc}
+              className="mt-4 rounded-xl border border-border/80 bg-background/40 p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  aria-label={
+                    streamingPlaying ? "Pause streaming AAC" : "Play streaming AAC"
+                  }
+                  disabled={!item.ready}
+                  onClick={toggleStreamingPlay}
+                  className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent disabled:opacity-40"
+                >
+                  {streamingPlaying ? <IconPause /> : <IconPlay />}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Replay streaming AAC from start"
+                  disabled={!item.ready}
+                  onClick={playStreamingFromStart}
+                  className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border text-foreground hover:bg-background disabled:opacity-40"
+                >
+                  <IconReplay />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Test streaming AAC loop"
+                  title={`Play the last ${LOOP_TEST_LEAD_SEC}s of the baked AAC, then loop to the start`}
+                  disabled={!item.ready || streamingDuration == null}
+                  onClick={playStreamingLoopSeam}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-sm text-foreground hover:bg-background disabled:opacity-40"
+                >
+                  <IconLoop />
+                  Test loop
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                    Streaming AAC (what customers hear)
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {hasBakedTrim ? (
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] text-foreground">
+                        {formatTrimSummary()}
+                      </span>
+                    ) : null}
+                    {hasBakedEq ? (
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] text-foreground">
+                        EQ {formatEqSummary()}
+                      </span>
+                    ) : null}
+                    {streamingBaked && !hasBakedTrim && !hasBakedEq ? (
+                      <span className="text-[11px] text-muted">
+                        Streaming AAC baked (no trim/EQ)
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <audio
+                ref={streamingAudioRef}
+                className="pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0"
+                preload="metadata"
+                src={streamingSrc}
+                onPlay={() => {
+                  setStreamingPlaying(true);
+                  onPlayKeyChange(streamingPlayKeyId);
+                }}
+                onPause={() => {
+                  setStreamingPlaying(false);
+                  onPlayKeyChange((current) =>
+                    current === streamingPlayKeyId ? null : current,
+                  );
+                }}
+                onLoadedMetadata={(e) =>
+                  setStreamingDuration(e.currentTarget.duration)
+                }
+                onTimeUpdate={(e) => setStreamingTime(e.currentTarget.currentTime)}
+                onEnded={() => playStreamingFromStart()}
+                onError={() =>
+                  setErr(
+                    "Could not play streaming AAC. Apply trim or EQ again if the .m4a is missing.",
+                  )
+                }
+              />
+              <SoundTrimWaveform
+                key={`wave-${item.streamingEditedAt || streamingSrc}`}
+                src={streamingSrc}
+                label="Streaming AAC"
+                readOnly
+                startSec={0}
+                endSec={null}
+                duration={streamingDuration}
+                currentTime={streamingTime}
+                fadeInSec={item.fadeInSec ?? 0}
+                fadeOutSec={item.fadeOutSec ?? 0}
+                onSeek={(sec) => {
+                  const el = streamingAudioRef.current;
+                  if (!el) return;
+                  seekStreamingTo(el, sec);
+                  setStreamingTime(sec);
+                }}
+              />
+            </div>
           ) : null}
         </>
       ) : (
@@ -2169,31 +2614,166 @@ function SoundRow({
           {busy === "trim" ? "Trimming…" : "Apply trim"}
         </button>
         <span className="pb-1.5 text-[11px] text-muted">
-          Trim and fades are previewed live; nothing is written until you apply.
+          Fade in runs from the start marker; fade out ends at the end marker.
+          Previewed live — Apply writes streaming AAC only (WAV untouched).
         </span>
       </div>
-      {item.ready && src ? (
+      {item.ready && aacSrc ? (
         <AdminSoundEqPanel
+          key={`eq-${item.key}`}
           soundKey={item.key}
-          soundUrl={src}
+          soundUrl={aacSrc}
           mediaBaseUrl={baseUrl || getMedimadeMediaBaseUrl() || undefined}
           disabled={busy !== null}
-          onApplied={() => onChanged()}
+          initialBands={
+            item.eqBands?.length
+              ? item.eqBands.map((b, i) => ({
+                  id: `saved-${i}`,
+                  type: b.type as SoundEqBandType,
+                  frequency: b.frequency,
+                  Q: b.Q,
+                  gain: b.gain,
+                  enabled: b.enabled !== false,
+                }))
+              : null
+          }
+          ensureStreamingAacUrl={async () => {
+            const m = bakeMarkers();
+            const result = await trimAdminSound({
+              key: item.key,
+              startSec: m.startSec,
+              endSec: m.endSec,
+              fadeInSec: m.fadeInSec,
+              fadeOutSec: m.fadeOutSec,
+            });
+            const now = result.streamingEditedAt || new Date().toISOString();
+            onLocal({
+              ...item,
+              originalKey: result.originalKey || item.originalKey,
+              trimStartSec: result.startSec,
+              trimEndSec: result.endSec,
+              fadeInSec: result.fadeInSec,
+              fadeOutSec: result.fadeOutSec,
+              streamingEditedAt: now,
+              updatedAt: now,
+            });
+            return mediaUrl(
+              baseUrl,
+              backgroundAudioPlaybackKey(item.key),
+              now,
+            );
+          }}
+          onApplied={(meta) => {
+            const now = meta.streamingEditedAt || new Date().toISOString();
+            setStreamingDuration(null);
+            setStreamingTime(0);
+            // Confirmed server response — update local row; skip list reload so
+            // a stale GET cannot wipe eqBands / streamingEditedAt.
+            onLocal({
+              ...item,
+              streamingEditedAt: now,
+              eqBands: meta.bands.map((b) => ({
+                type: b.type,
+                frequency: b.frequency,
+                Q: b.Q,
+                gain: b.gain,
+                enabled: b.enabled,
+              })),
+              updatedAt: now,
+            });
+          }}
           onPreviewStart={() => {
             const el = audioRef.current;
             if (el && !el.paused) el.pause();
-            onPlayKeyChange((current) =>
-              current === item.key ? null : current,
-            );
+            const stream = streamingAudioRef.current;
+            if (stream && !stream.paused) stream.pause();
+            onPlayKeyChange(null);
           }}
         />
       ) : null}
       {duration != null ? (
         <p className="mt-1 text-[11px] text-muted">
-          {item.originalKey
-            ? "Waveform is the archived original, so you can re-cut."
-            : "First apply archives the original, then writes the trimmed mixer file."}
+          {showStreamingWave
+            ? "Master is for re-trim; streaming AAC is what customers hear after trim/EQ."
+            : item.originalKey
+              ? "Waveform is the archived original, so you can re-cut."
+              : "First apply archives the original, then writes the trimmed streaming AAC."}
         </p>
+      ) : null}
+      {needsBakeForSure ? (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+            Not baked into streaming AAC
+          </p>
+          <p className="mt-1 text-[11px] text-muted">{pendingBakeSummary()}</p>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void bakeForSure()}
+            className="mt-2 rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+          >
+            {busy === "bake" ? "Baking AAC…" : "Bake streaming AAC"}
+          </button>
+          <p className="mt-2 text-[11px] text-muted">
+            Re-encodes from the master WAV with these markers (and any saved EQ).
+            Badges only appear after the file is written.
+          </p>
+        </div>
+      ) : null}
+      {hasBakedTrim || hasBakedEq ? (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+            Baked into streaming AAC
+          </p>
+          <ul className="mt-2 space-y-2">
+            {hasBakedTrim ? (
+              <li className="flex items-start justify-between gap-3 rounded-xl border border-border bg-background/50 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Trim + fade</p>
+                  <p className="mt-0.5 text-[11px] text-muted">{formatTrimSummary()}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void clearTrimFade()}
+                  className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-foreground hover:bg-card disabled:opacity-50"
+                >
+                  {busy === "clear-trim" ? "Clearing…" : "Remove"}
+                </button>
+              </li>
+            ) : null}
+            {hasBakedEq ? (
+              <li className="flex items-start justify-between gap-3 rounded-xl border border-border bg-background/50 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">EQ</p>
+                  <p className="mt-0.5 text-[11px] text-muted">{formatEqSummary()}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void clearEq()}
+                  className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-foreground hover:bg-card disabled:opacity-50"
+                >
+                  {busy === "clear-eq" ? "Clearing…" : "Remove"}
+                </button>
+              </li>
+            ) : null}
+          </ul>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void bakeForSure()}
+              className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground hover:bg-card disabled:opacity-50"
+            >
+              {busy === "bake" ? "Baking…" : "Re-bake from master"}
+            </button>
+            <p className="text-[11px] text-muted">
+              Shown only after AAC write confirmed. Re-bake re-encodes from the
+              WAV with these markers. Remove drops that processing.
+            </p>
+          </div>
+        </div>
       ) : null}
       {err ? <p className="mt-2 text-xs text-foreground">{err}</p> : null}
     </li>

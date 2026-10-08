@@ -1,6 +1,8 @@
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FavoriteHeartButton } from "@/components/favorite-heart-button";
+import { SelectChevron } from "@/components/select-chevron";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import {
   categoryLabel,
@@ -85,15 +87,25 @@ export function SoundFolderSelect({
   onToggleFavorite,
 }: SoundFolderSelectProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const mobileSamplesRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [activeSub, setActiveSub] = useState<string | null>(null);
+  const [menuBox, setMenuBox] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
+
   const folders = useMemo(() => {
     const base = channelSubcategoryOptions(category);
-    // Compositions arrive with a folder named after their pack, so the list of
-    // folders is whatever the items actually carry.
     const known = new Set(base.map((o) => o.id));
-    const extra = [...new Set(items.map((it) => it.subcategory || "").filter((s) => s && !known.has(s)))]
+    const extra = [
+      ...new Set(
+        items.map((it) => it.subcategory || "").filter((s) => s && !known.has(s)),
+      ),
+    ]
       .sort()
       .map((id) => ({ id, label: prettySubcategoryLabel(id) }));
     return extra.length > 0 ? [...base, ...extra] : base;
@@ -122,11 +134,41 @@ export function SoundFolderSelect({
     return map;
   }, [items, folders, category]);
 
+  const usePortal = Boolean(desk);
+
+  useLayoutEffect(() => {
+    if (!open || !usePortal) {
+      setMenuBox(null);
+      return;
+    }
+    const place = () => {
+      const trigger = rootRef.current;
+      if (!trigger) return;
+      const r = trigger.getBoundingClientRect();
+      const gap = 4;
+      const maxHeight = Math.min(288, Math.max(160, window.innerHeight - r.bottom - gap - 12));
+      setMenuBox({
+        top: r.bottom + gap,
+        left: r.left,
+        width: Math.max(r.width, 192),
+        maxHeight,
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, usePortal, activeSub]);
+
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: PointerEvent) {
       const t = e.target as Node | null;
-      if (!t || rootRef.current?.contains(t)) return;
+      if (!t) return;
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
       setOpen(false);
       setActiveSub(null);
     }
@@ -166,15 +208,8 @@ export function SoundFolderSelect({
       ? "flex w-full min-w-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-left text-sm disabled:opacity-50"
       : "flex min-w-0 flex-1 items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-left text-sm disabled:opacity-50";
 
-  const menu = (
-    <div
-      className={`absolute z-[90] max-h-72 overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-xl ${
-        compact
-          ? "left-0 right-0 top-full mt-1 sm:left-1/2 sm:right-auto sm:min-w-[13rem] sm:-translate-x-1/2"
-          : "left-0 top-full mt-1 min-w-[12rem]"
-      }`}
-      role="listbox"
-    >
+  const menuInner = (
+    <>
       <button
         type="button"
         className="block w-full px-3 py-1.5 text-left text-sm hover:bg-background"
@@ -210,11 +245,8 @@ export function SoundFolderSelect({
                     ({sounds.length})
                   </span>
                 </span>
-                <span className="text-muted" aria-hidden>
-                  {isActive ? "▾" : "›"}
-                </span>
+                <SelectChevron direction="right" open={isActive} />
               </button>
-              {/* Inline accordion — side flyouts get clipped by overflow ancestors */}
               {isActive ? (
                 <div
                   ref={mobileSamplesRef}
@@ -236,8 +268,43 @@ export function SoundFolderSelect({
           );
         })
       )}
-    </div>
+    </>
   );
+
+  const menu = open ? (
+    usePortal && menuBox ? (
+      createPortal(
+        <div
+          ref={menuRef}
+          className="overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-xl"
+          style={{
+            position: "fixed",
+            top: menuBox.top,
+            left: menuBox.left,
+            width: menuBox.width,
+            maxHeight: menuBox.maxHeight,
+            zIndex: 200,
+          }}
+          role="listbox"
+        >
+          {menuInner}
+        </div>,
+        document.body,
+      )
+    ) : !usePortal ? (
+      <div
+        ref={menuRef}
+        className={`absolute z-[90] max-h-72 overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-xl ${
+          compact
+            ? "left-0 right-0 top-full mt-1 sm:left-1/2 sm:right-auto sm:min-w-[13rem] sm:-translate-x-1/2"
+            : "left-0 top-full mt-1 min-w-[12rem]"
+        }`}
+        role="listbox"
+      >
+        {menuInner}
+      </div>
+    ) : null
+  ) : null;
 
   return (
     <div
@@ -265,22 +332,9 @@ export function SoundFolderSelect({
         className={triggerClass}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <SelectChevron open={open} />
       </button>
-      {open ? menu : null}
+      {menu}
     </div>
   );
 }

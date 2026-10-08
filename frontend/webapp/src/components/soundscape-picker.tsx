@@ -1,5 +1,6 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import { createAudioPulseDelayMs } from "@/lib/create-audio-pulse";
 import { prettySubcategoryLabel, soundDisplayName } from "@/lib/sound-taxonomy";
@@ -250,11 +251,8 @@ export function SoundscapePicker({
                       aria-hidden
                     >
                       <span
-                        className={`flex h-9 w-9 items-center justify-center rounded-full shadow-[0_1px_4px_rgb(15_27_45_/_0.18)] backdrop-blur-[2px] ${
-                          selected
-                            ? "bg-accent-button text-on-accent"
-                            : "bg-[color-mix(in_srgb,var(--accent-button)_48%,transparent)] text-[color-mix(in_srgb,var(--on-accent)_72%,transparent)]"
-                        }`}
+                        className="flex h-9 w-9 items-center justify-center rounded-full accent-fill-gradient text-on-accent shadow-[0_1px_4px_rgb(15_27_45_/_0.2)]"
+                        style={PRIMARY_ACCENT_FILL_STYLE}
                       >
                         <PlayPauseIcon playing={playing} size={16} />
                       </span>

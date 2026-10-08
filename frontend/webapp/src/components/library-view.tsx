@@ -10,6 +10,7 @@ import {
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   type LibraryMeditationItem,
   type LibraryProgram,
@@ -2245,19 +2246,7 @@ export default function LibraryView({
                   <span className="min-w-0 flex-1 whitespace-nowrap overflow-hidden text-ellipsis">
                     {selectedSortLabel}
                   </span>
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
+                  <SelectChevron open={sortDropdownOpen} />
                 </button>
                 {sortDropdownOpen ? (
                   <div
@@ -2379,9 +2368,10 @@ export default function LibraryView({
           aria-haspopup="listbox"
           aria-expanded={sortDropdownOpen}
           onClick={() => setSortDropdownOpen((v) => !v)}
-          className={mobileFilterPillClass}
+          className={`${mobileFilterPillClass} inline-flex items-center gap-1`}
         >
-          {selectedSortLabel} ▾
+          {selectedSortLabel}
+          <SelectChevron open={sortDropdownOpen} />
         </button>
         {sortDropdownOpen ? (
           <div
@@ -2422,9 +2412,10 @@ export default function LibraryView({
             aria-haspopup="listbox"
             aria-expanded={categoryDropdownOpen}
             onClick={() => setCategoryDropdownOpen((v) => !v)}
-            className={mobileFilterPillClass}
+            className={`${mobileFilterPillClass} inline-flex items-center gap-1`}
           >
-            {selectedCategoryLabel} ▾
+            {selectedCategoryLabel}
+            <SelectChevron open={categoryDropdownOpen} />
           </button>
           {categoryDropdownOpen ? (
             <div
@@ -2669,19 +2660,7 @@ export default function LibraryView({
                   <span className="min-w-0 flex-1 whitespace-nowrap overflow-hidden text-ellipsis">
                     {selectedCategoryLabel}
                   </span>
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
+                  <SelectChevron open={categoryDropdownOpen} />
                 </button>
                 {categoryDropdownOpen ? (
                   <div

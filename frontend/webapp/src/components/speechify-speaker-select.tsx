@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { SelectChevron } from "@/components/select-chevron";
 
 export type SpeechifySpeakerOption = {
   modelId: string;
@@ -36,24 +37,6 @@ function IconPause({ size = 14 }: { size?: number }) {
   );
 }
 
-function IconChevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={`transition-transform ${open ? "rotate-180" : ""}`}
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
 
 /**
  * Custom speaker picker: native &lt;select&gt; cannot put play controls on options.
@@ -129,7 +112,7 @@ export function SpeechifySpeakerSelect({
         >
           {triggerLabel}
         </span>
-        <IconChevron open={open} />
+        <SelectChevron open={open} />
       </button>
       {open ? (
         <div

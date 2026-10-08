@@ -9,6 +9,7 @@ import {
   generateAdminCompositionCover,
   getMedimadeMediaBaseUrl,
   listAdminCompositionCovers,
+  renameAdminCompositionPackName,
   saveAdminCompositionPackNames,
   saveAdminCompositionTagTypes,
   setAdminCompositionCoverTags,
@@ -645,6 +646,47 @@ export function AdminCompositionCoversPanel() {
     void persistPackNames(packNames.filter((p) => p !== name));
   }
 
+  async function renamePackName(from: string) {
+    const next = window.prompt(`Rename pack “${from}” to:`, from);
+    if (next == null) return;
+    const to = next.trim().replace(/\s+/g, " ").slice(0, 48);
+    if (!to || to === from) return;
+    if (
+      packNames.some(
+        (p) => p.toLowerCase() === to.toLowerCase() && p !== from,
+      )
+    ) {
+      setError(`Pack “${to}” already exists`);
+      return;
+    }
+    setPackNamesBusy(true);
+    setError(null);
+    try {
+      const { packNames: saved } = await renameAdminCompositionPackName(
+        from,
+        to,
+      );
+      setPackNames(saved);
+      const fromKey = from.toLowerCase();
+      setItems((prev) =>
+        prev.map((item) =>
+          (item.customPackName ?? "").toLowerCase() === fromKey
+            ? { ...item, customPackName: to }
+            : item,
+        ),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not rename pack");
+      try {
+        await refresh();
+      } catch {
+        /* keep optimistic */
+      }
+    } finally {
+      setPackNamesBusy(false);
+    }
+  }
+
   function togglePlay(item: AdminCompositionCoverItem) {
     const track = compositionStripTrack(baseUrl, item);
     if (!track) {
@@ -810,7 +852,9 @@ export function AdminCompositionCoversPanel() {
             <p className="mt-0.5 text-xs text-muted">
               Customer-facing pack labels such as World or Solemn — not S3
               folder names. Define them here, then assign one per track below.
-              They appear as filter chips in the soundscape picker.
+              They appear as filter chips in the soundscape picker. Rename
+              (✎) rewrites the label on every assigned track so associations
+              stay intact.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -845,9 +889,19 @@ export function AdminCompositionCoversPanel() {
             {packNames.map((name) => (
               <span
                 key={name}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-background py-0.5 pl-2.5 pr-1 text-[12px] text-foreground"
+                className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background py-0.5 pl-2.5 pr-1 text-[12px] text-foreground"
               >
                 {name}
+                <button
+                  type="button"
+                  disabled={packNamesBusy}
+                  aria-label={`Rename pack ${name}`}
+                  title="Rename (keeps track assignments)"
+                  onClick={() => void renamePackName(name)}
+                  className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-muted hover:text-foreground disabled:opacity-50"
+                >
+                  ✎
+                </button>
                 <button
                   type="button"
                   disabled={packNamesBusy}

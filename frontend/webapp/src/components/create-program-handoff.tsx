@@ -268,6 +268,7 @@ export function buildProgramMakeOwnApiContent(opts: {
     ? [
         "OPEN NOW (first reply only — do not ask about later sessions yet):",
         `Session title bubble MUST be exactly: **${first.title}**`,
+        "First scan any Start brief / journal / goal against Ask-item 1 before choosing bubble (5).",
         "First reply — five blank-line-separated bubbles:",
         "(1) Welcome — one short warm sentence; may name the program.",
         selected.length === 1
@@ -275,7 +276,7 @@ export function buildProgramMakeOwnApiContent(opts: {
           : "(2) Exactly: “I'll ask you some questions to shape your practice for each session.”",
         `(3) **${first.title}**`,
         "(4) Two plain outline sentences (no metaphors; do not preview the question).",
-        "(5) Concrete question for Ask-item 1 of this session only (name listed areas if the Ask-item names them).",
+        "(5) If Ask-item 1 is already clearly answered by brief/journal/goal: confirm-only — say how you will use that material in this session's meditation (no question mark). Otherwise: concrete question for Ask-item 1 only (name listed areas if the Ask-item names them).",
         "The app will tell you when to open each later session — wait for APP CONTROL cues.",
       ].join("\n")
     : "";
@@ -283,13 +284,14 @@ export function buildProgramMakeOwnApiContent(opts: {
   const intakeInstructions = hasIntake
     ? [
         "Customization intake — follow exactly:",
-        "- Ask-items are instructions. Ask what each one tells you to ask — once — then move on.",
+        "- Ask-items are instructions. Ask what each one tells you to ask — once — then move on, unless brief/journal/goal already clearly answers it.",
+        "- If context already answers an Ask-item: do not ask it; confirm how you will use that material in the meditation so they can correct you; treat it as done.",
         "- If they answer (including “I'm fine / pretty good / nothing”), that Ask-item is done.",
         "- Be concrete and direct. If an Ask-item names areas, you MUST include those named areas in the question.",
         "- Session title: ONLY **Exact Title**, once when opening that session (the app will cue later opens).",
         "- After APP CONTROL says all sessions are done: [[READY]].",
       ].join("\n")
-    : "No Ask-items listed — follow OPEN NOW with one brief concrete spirit question, then wait for APP CONTROL.";
+    : "No Ask-items listed — follow OPEN NOW; if brief/journal/goal already gives enough spirit material, confirm how you will use it (no question), else ask one brief concrete spirit question; then wait for APP CONTROL.";
 
   return [
     `I want to make the guided program “${opts.program.title}” my own — fresh meditations inspired by selected lessons.`,

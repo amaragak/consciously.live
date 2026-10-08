@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   SOUNDSCAPE_ELEMENT_VOLUME,
   SPEECH_ELEMENT_VOLUME,
@@ -6,7 +7,9 @@ import {
 import {
   activeSoundEqBands,
   blankSoundEqBand,
-  presenceCutPresetBands,
+  coerceSoundEqBands,
+  heavyPresenceCutPresetBands,
+  lightPresenceCutPresetBands,
   toBiquadType,
   type SoundEqBand,
   type SoundEqBandType,
@@ -16,27 +19,53 @@ import {
   listAdminVoice,
   type AdminVoiceSpeaker,
 } from "@/lib/medimade-api";
+import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
-  speakerPreviewLoudDrySampleKey,
+  speakerPreviewLoudFxSampleKey,
+  withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
 type Props = {
   soundKey: string;
-  /** CDN URL for the public / original audition file. */
+  /** CDN URL for streaming AAC (.m4a) — Web Audio preview decodes this. */
   soundUrl: string;
   mediaBaseUrl?: string;
   disabled?: boolean;
-  onApplied: () => void;
+  /** Previously applied bands from the catalog (if any). */
+  initialBands?: SoundEqBand[] | null;
+  onApplied: (meta: {
+    streamingEditedAt: string | null;
+    bands: SoundEqBand[];
+  }) => void;
   /** Pause the card's HTML audio so Web Audio preview is clean. */
   onPreviewStart?: () => void;
+  /**
+   * If AAC is missing, bake from the WAV master (keeps trim/EQ markers) and
+   * return a cache-busted .m4a URL.
+   */
+  ensureStreamingAacUrl?: () => Promise<string>;
 };
+
+function bandsFromInitial(
+  initial: SoundEqBand[] | null | undefined,
+): SoundEqBand[] {
+  const restored = coerceSoundEqBands(initial ?? []);
+  return restored.length > 0 ? restored : lightPresenceCutPresetBands();
+}
 
 function mediaUrl(base: string | undefined, key: string): string {
   if (!base || !key) return "";
   const b = base.replace(/\/$/, "");
   const path = key.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
+}
+
+/** Beds stream as AAC — map accidental WAV/MP3 URLs to the .m4a sibling. */
+function aacDecodeUrl(url: string): string {
+  return url
+    .replace(/\.wav(\?|$)/i, ".m4a$1")
+    .replace(/\.mp3(\?|$)/i, ".m4a$1");
 }
 
 function buildLogFreqs(n = 128): Float32Array {
@@ -89,15 +118,20 @@ export function AdminSoundEqPanel({
   soundUrl,
   mediaBaseUrl,
   disabled = false,
+  initialBands,
   onApplied,
   onPreviewStart,
+  ensureStreamingAacUrl,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [bands, setBands] = useState<SoundEqBand[]>(() => presenceCutPresetBands());
+  const [bands, setBands] = useState<SoundEqBand[]>(() =>
+    bandsFromInitial(initialBands),
+  );
   const [bypass, setBypass] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appliedNote, setAppliedNote] = useState<string | null>(null);
   const [speakers, setSpeakers] = useState<AdminVoiceSpeaker[]>([]);
   const [speakerId, setSpeakerId] = useState("");
 
@@ -106,9 +140,14 @@ export function AdminSoundEqPanel({
   const voiceSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const filterNodesRef = useRef<BiquadFilterNode[]>([]);
   const bedGainRef = useRef<GainNode | null>(null);
+  const voiceGainRef = useRef<GainNode | null>(null);
+  /** All live sources — stop must kill orphans from overlapping starts. */
+  const liveSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const liveGainsRef = useRef<Set<GainNode>>(new Set());
   const bedBufferRef = useRef<AudioBuffer | null>(null);
   const voiceBufferRef = useRef<AudioBuffer | null>(null);
   const voiceBufferSpeakerRef = useRef<string>("");
+  const previewGenRef = useRef(0);
   const bandsRef = useRef(bands);
   const bypassRef = useRef(bypass);
   bandsRef.current = bands;
@@ -120,7 +159,8 @@ export function AdminSoundEqPanel({
     void listAdminVoice()
       .then((state) => {
         if (cancelled) return;
-        const list = state.speakers.filter(
+        // Fish lives only on admin /voice — EQ preview is Speechify only.
+        const list = speechifySpeakersForPicker(state.speakers).filter(
           (s) => !s.hidden && (s.hasSample || s.sampleUrl),
         );
         setSpeakers(list);
@@ -135,11 +175,31 @@ export function AdminSoundEqPanel({
     };
   }, [open]);
 
+  const initialBandsKey = JSON.stringify(
+    (initialBands ?? []).map((b) => [
+      b.type,
+      b.frequency,
+      b.Q,
+      b.gain,
+      b.enabled !== false,
+    ]),
+  );
+  // Re-hydrate when catalog bands change (e.g. after reload) while closed.
+  useEffect(() => {
+    if (open) return;
+    setBands(bandsFromInitial(initialBands));
+  }, [initialBands, initialBandsKey, open, soundKey]);
+
   useEffect(() => {
     return () => {
       stopPreviewNodes();
     };
   }, []);
+
+  // New bed URL → drop cached decode (WAV→MP3 swap, re-bake bust, etc.).
+  useEffect(() => {
+    bedBufferRef.current = null;
+  }, [soundUrl]);
 
   const curve = useMemo(() => curvePath(bands, 320, 88), [bands]);
 
@@ -150,12 +210,25 @@ export function AdminSoundEqPanel({
     return audioCtxRef.current;
   }
 
-  async function decodeUrl(url: string): Promise<AudioBuffer> {
+  async function decodeFetchedUrl(url: string): Promise<AudioBuffer> {
+    const ctx = ensureCtx();
     const res = await fetch(url, { mode: "cors" });
     if (!res.ok) throw new Error(`Could not load audio (${res.status})`);
     const buf = await res.arrayBuffer();
-    const ctx = ensureCtx();
+    if (buf.byteLength < 64) throw new Error("Audio response was empty");
     return ctx.decodeAudioData(buf.slice(0));
+  }
+
+  async function decodeBedForPreview(url: string): Promise<AudioBuffer> {
+    const target = aacDecodeUrl(url);
+    try {
+      return await decodeFetchedUrl(target);
+    } catch (first) {
+      if (!ensureStreamingAacUrl) throw first;
+      const bakedUrl = (await ensureStreamingAacUrl()).trim();
+      if (!bakedUrl) throw first;
+      return decodeFetchedUrl(aacDecodeUrl(bakedUrl));
+    }
   }
 
   function wireFilters(from: AudioNode, to: AudioNode, useEq: boolean) {
@@ -193,103 +266,150 @@ export function AdminSoundEqPanel({
     prev.connect(to);
   }
 
+  function stopNode(node: AudioNode | null | undefined) {
+    if (!node) return;
+    try {
+      if ("stop" in node && typeof (node as AudioBufferSourceNode).stop === "function") {
+        (node as AudioBufferSourceNode).stop();
+      }
+    } catch {
+      /* already stopped */
+    }
+    try {
+      node.disconnect();
+    } catch {
+      /* ignore */
+    }
+  }
+
   function stopPreviewNodes() {
-    try {
-      bedSourceRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
-    try {
-      voiceSourceRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
+    for (const src of liveSourcesRef.current) stopNode(src);
+    liveSourcesRef.current.clear();
+    for (const g of liveGainsRef.current) stopNode(g);
+    liveGainsRef.current.clear();
+    stopNode(bedSourceRef.current);
+    stopNode(voiceSourceRef.current);
+    stopNode(bedGainRef.current);
+    stopNode(voiceGainRef.current);
     bedSourceRef.current = null;
     voiceSourceRef.current = null;
-    for (const n of filterNodesRef.current) {
-      try {
-        n.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
+    bedGainRef.current = null;
+    voiceGainRef.current = null;
+    for (const n of filterNodesRef.current) stopNode(n);
     filterNodesRef.current = [];
   }
 
   function stopPreview() {
+    previewGenRef.current += 1;
     stopPreviewNodes();
     setPreviewing(false);
   }
 
-  async function startPreview() {
+  async function startPreview(speakerIdOverride?: string) {
     setError(null);
     if (!soundUrl) {
       setError("No playable audio URL");
       return;
     }
+    const activeSpeakerId = (speakerIdOverride ?? speakerId).trim();
+    if (!activeSpeakerId) {
+      setError("Pick a speaker to preview against");
+      return;
+    }
+    const speaker = speakers.find((s) => s.modelId === activeSpeakerId);
+    if (!speaker) {
+      setError("Speaker sample not available yet — wait a moment and try again");
+      return;
+    }
+
+    const gen = ++previewGenRef.current;
     stopPreviewNodes();
     onPreviewStart?.();
     const ctx = ensureCtx();
     if (ctx.state === "suspended") await ctx.resume();
+    if (gen !== previewGenRef.current) return;
 
     try {
       if (!bedBufferRef.current) {
-        bedBufferRef.current = await decodeUrl(soundUrl);
+        bedBufferRef.current = await decodeBedForPreview(soundUrl);
       }
     } catch (e) {
+      if (gen !== previewGenRef.current) return;
       bedBufferRef.current = null;
-      setError(e instanceof Error ? e.message : "Could not decode soundscape");
+      setError(
+        e instanceof Error ? e.message : "Could not decode streaming AAC for EQ preview",
+      );
       setPreviewing(false);
       return;
     }
+    if (gen !== previewGenRef.current) return;
 
-    const speaker = speakers.find((s) => s.modelId === speakerId);
+    // Wet (FX) stem only — dry+wet together comb-filters / phases.
     let voiceBuf = voiceBufferRef.current;
-    if (
-      speaker &&
-      (!voiceBuf || voiceBufferSpeakerRef.current !== speakerId)
-    ) {
+    if (!voiceBuf || voiceBufferSpeakerRef.current !== activeSpeakerId) {
       try {
-        const key = speakerPreviewLoudDrySampleKey(
+        const key = speakerPreviewLoudFxSampleKey(
           speaker.modelId,
           FIXED_SPEECH_PREVIEW_SPEED,
           speaker.brand,
         );
-        const url = speaker.sampleUrl?.trim() || mediaUrl(mediaBaseUrl, key);
-        voiceBuf = await decodeUrl(url);
+        const rawUrl = mediaUrl(mediaBaseUrl, key);
+        if (!rawUrl) throw new Error("No media base URL for speaker samples");
+        const url = withSpeakerSampleCacheBust(rawUrl) || rawUrl;
+        voiceBuf = await decodeFetchedUrl(url);
+        if (gen !== previewGenRef.current) return;
         voiceBufferRef.current = voiceBuf;
-        voiceBufferSpeakerRef.current = speakerId;
-      } catch {
+        voiceBufferSpeakerRef.current = activeSpeakerId;
+      } catch (e) {
+        if (gen !== previewGenRef.current) return;
         voiceBuf = null;
         voiceBufferRef.current = null;
         voiceBufferSpeakerRef.current = "";
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Could not load wet speaker sample (loud-fx)",
+        );
+        setPreviewing(false);
+        return;
       }
     }
+    if (gen !== previewGenRef.current) return;
 
     const bedGain = ctx.createGain();
     bedGain.gain.value = SOUNDSCAPE_ELEMENT_VOLUME;
-    bedGainRef.current = bedGain;
-
+    const voiceGain = ctx.createGain();
+    voiceGain.gain.value = SPEECH_ELEMENT_VOLUME;
     const bedSrc = ctx.createBufferSource();
     bedSrc.buffer = bedBufferRef.current;
     bedSrc.loop = true;
+    const voiceSrc = ctx.createBufferSource();
+    voiceSrc.buffer = voiceBuf;
+    voiceSrc.loop = true;
+
+    // Final race check immediately before connecting/starting.
+    if (gen !== previewGenRef.current) return;
+
+    liveGainsRef.current.add(bedGain);
+    liveGainsRef.current.add(voiceGain);
+    liveSourcesRef.current.add(bedSrc);
+    liveSourcesRef.current.add(voiceSrc);
+    bedGainRef.current = bedGain;
+    voiceGainRef.current = voiceGain;
+    bedSourceRef.current = bedSrc;
+    voiceSourceRef.current = voiceSrc;
+
     wireFilters(bedSrc, bedGain, !bypassRef.current);
     bedGain.connect(ctx.destination);
+    voiceSrc.connect(voiceGain);
+    voiceGain.connect(ctx.destination);
     bedSrc.start();
-    bedSourceRef.current = bedSrc;
+    voiceSrc.start();
 
-    if (voiceBuf) {
-      const voiceGain = ctx.createGain();
-      voiceGain.gain.value = SPEECH_ELEMENT_VOLUME;
-      const voiceSrc = ctx.createBufferSource();
-      voiceSrc.buffer = voiceBuf;
-      voiceSrc.loop = true;
-      voiceSrc.connect(voiceGain);
-      voiceGain.connect(ctx.destination);
-      voiceSrc.start();
-      voiceSourceRef.current = voiceSrc;
+    if (gen !== previewGenRef.current) {
+      stopPreviewNodes();
+      return;
     }
-
     setPreviewing(true);
   }
 
@@ -318,23 +438,35 @@ export function AdminSoundEqPanel({
     }
     if (
       !window.confirm(
-        "Apply this EQ to the sound file? This rewrites the public audio (original archive is kept).",
+        "Apply this EQ to the AAC streaming file (.m4a)? The WAV master is left unchanged so you can re-EQ from it.",
       )
     ) {
       return;
     }
     setBusy(true);
     setError(null);
+    setAppliedNote(null);
     stopPreview();
     try {
-      await applyAdminSoundEq({
+      const result = await applyAdminSoundEq({
         key: soundKey,
         bands: active,
       });
       bedBufferRef.current = null;
-      onApplied();
+      const restored = coerceSoundEqBands(result.bands);
+      if (restored.length > 0) setBands(restored);
+      onApplied({
+        streamingEditedAt: result.streamingEditedAt,
+        bands: restored.length > 0 ? restored : active,
+      });
+      setAppliedNote("EQ baked into streaming AAC.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "EQ apply failed");
+      const msg = e instanceof Error ? e.message : "EQ apply failed";
+      setError(
+        /out of memory|runtime\.outofmemory/i.test(msg)
+          ? "EQ bake ran out of memory on a large master — try Bake streaming AAC, or retry."
+          : msg,
+      );
     } finally {
       setBusy(false);
     }
@@ -349,9 +481,10 @@ export function AdminSoundEqPanel({
             if (open) stopPreview();
             setOpen((v) => !v);
           }}
-          className="text-left text-sm font-semibold text-foreground"
+          className="inline-flex items-center gap-1.5 text-left text-sm font-semibold text-foreground"
         >
-          EQ {open ? "▾" : "▸"}
+          EQ
+          <SelectChevron direction="right" open={open} />
         </button>
         <span className="text-[11px] text-muted">
           Preview with a looping speaker before committing
@@ -402,10 +535,13 @@ export function AdminSoundEqPanel({
                 value={speakerId}
                 disabled={disabled || busy || speakers.length === 0}
                 onChange={(e) => {
-                  setSpeakerId(e.target.value);
+                  const next = e.target.value;
+                  setSpeakerId(next);
                   voiceBufferRef.current = null;
                   voiceBufferSpeakerRef.current = "";
-                  if (previewing) void startPreview();
+                  if (previewing || liveSourcesRef.current.size > 0) {
+                    void startPreview(next);
+                  }
                 }}
                 className="h-9 rounded-xl border border-border bg-card px-2 text-sm text-foreground outline-none"
               >
@@ -424,8 +560,11 @@ export function AdminSoundEqPanel({
               type="button"
               disabled={disabled || busy || !soundUrl}
               onClick={() => {
-                if (previewing) stopPreview();
-                else void startPreview();
+                if (previewing || liveSourcesRef.current.size > 0) {
+                  stopPreview();
+                } else {
+                  void startPreview();
+                }
               }}
               className="h-9 rounded-xl border border-border px-3 text-sm font-semibold hover:bg-card disabled:opacity-50"
             >
@@ -443,10 +582,20 @@ export function AdminSoundEqPanel({
             <button
               type="button"
               disabled={disabled || busy}
-              onClick={() => setBands(presenceCutPresetBands())}
+              onClick={() => setBands(lightPresenceCutPresetBands())}
               className="h-9 rounded-xl border border-border px-3 text-sm hover:bg-card disabled:opacity-50"
+              title="3 kHz peaking, −3 dB"
             >
-              Presence cut
+              Light presence cut
+            </button>
+            <button
+              type="button"
+              disabled={disabled || busy}
+              onClick={() => setBands(heavyPresenceCutPresetBands())}
+              className="h-9 rounded-xl border border-border px-3 text-sm hover:bg-card disabled:opacity-50"
+              title="3 kHz peaking, −7 dB"
+            >
+              Heavy presence cut
             </button>
             <button
               type="button"
@@ -565,14 +714,17 @@ export function AdminSoundEqPanel({
               onClick={() => void onApply()}
               className="rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
             >
-              {busy ? "Applying EQ…" : "Apply EQ to file"}
+              {busy ? "Applying EQ…" : "Apply EQ to AAC"}
             </button>
             <span className="text-[11px] text-muted">
-              Soundscape at default listen level · speaker dry loop on top ·
-              nothing written until Apply
+              Soundscape at default listen level · wet speaker loop on top ·
+              Apply writes .m4a only (WAV untouched)
             </span>
           </div>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
+          {appliedNote ? (
+            <p className="text-sm text-foreground">{appliedNote}</p>
+          ) : null}
         </div>
       ) : null}
     </div>

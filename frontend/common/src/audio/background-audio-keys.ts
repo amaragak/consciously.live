@@ -1,4 +1,7 @@
-/** Prefer CDN MP3 for previews and mixer jobs (`background-audio/…` beds). */
+/**
+ * Canonical catalog / API bed key (`background-audio/….mp3` path shape).
+ * WAV inputs are mapped to the MP3-shaped identity — not a CDN fetch format.
+ */
 export function backgroundAudioStreamingKey(key: string): string {
   const k = key.trim();
   if (!k) return k;
@@ -8,20 +11,22 @@ export function backgroundAudioStreamingKey(key: string): string {
 }
 
 /**
- * Playback-only key for beds. Prefer AAC-in-MP4 (.m4a); catalog keys stay MP3.
- * Callers that get a 404 should fall back to {@link backgroundAudioStreamingKey}.
+ * Bed playback key: AAC-in-MP4 only. Catalog keys stay `.mp3`-shaped.
  */
 export function backgroundAudioPlaybackKey(key: string): string {
-  const mp3 = backgroundAudioStreamingKey(key);
-  if (!mp3) return mp3;
-  const lower = mp3.toLowerCase();
+  const catalog = backgroundAudioStreamingKey(key);
+  if (!catalog) return catalog;
+  const lower = catalog.toLowerCase();
   if (!lower.startsWith("background-audio/") || !lower.endsWith(".mp3")) {
-    return mp3;
+    return catalog;
   }
-  return `${mp3.slice(0, -4)}.m4a`;
+  return `${catalog.slice(0, -4)}.m4a`;
 }
 
-/** Legacy MP3 bed URL — use when `.m4a` is missing pre-backfill. */
+/**
+ * @deprecated Beds are AAC-only — same as {@link backgroundAudioPlaybackKey}.
+ * Kept so older call sites compile; do not introduce MP3 fallbacks.
+ */
 export function backgroundAudioPlaybackFallbackKey(key: string): string {
-  return backgroundAudioStreamingKey(key);
+  return backgroundAudioPlaybackKey(key);
 }

@@ -2,6 +2,10 @@
  * Echo → IR convolution voice FX via ffmpeg.
  * Voice path: compressed (AAC/m4a/mp3/wav) in → AAC-in-MP4 out — no voice WAV encode.
  * IR is a tiny synthetic PCM wav required by afir (not a voice encode hop).
+ *
+ * Mix is a DAW parallel send (same as compare-reverbs.py):
+ *   out = 1.0 * dry + wetGain * peakMatched(delay→IR)
+ * No loudnorm. Peak-match only stages the return to dry peak.
  */
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -26,6 +30,10 @@ function binEnv(): NodeJS.ProcessEnv {
 function ffmpegBin(): string {
   if (fs.existsSync("/opt/bin/ffmpeg")) return "/opt/bin/ffmpeg";
   return "ffmpeg";
+}
+
+function clampWetGain(wetGain: number): number {
+  return Math.min(1, Math.max(0, wetGain));
 }
 
 async function run(
@@ -53,6 +61,58 @@ async function run(
       }`,
     );
   }
+}
+
+function parsePeakLinear(stderr: string): number {
+  const m = /max_volume:\s*([-\d.]+)\s*dB/.exec(stderr);
+  if (!m) return 1;
+  const db = Number(m[1]);
+  if (!Number.isFinite(db) || db < -90) return 1e-6;
+  return Math.max(1e-6, Math.pow(10, db / 20));
+}
+
+/** Abs peak (linear 0..1) via ffmpeg volumedetect. */
+async function detectPeakLinear(
+  argsBeforeAf: string[],
+  af = "volumedetect",
+): Promise<number> {
+  const args = [
+    "-hide_banner",
+    ...argsBeforeAf,
+    "-af",
+    af,
+    "-f",
+    "null",
+    "-",
+  ];
+  try {
+    const { stderr } = await execFileAsync(ffmpegBin(), args, {
+      env: binEnv(),
+      maxBuffer: 2 * 1024 * 1024,
+      encoding: "utf8",
+    });
+    return parsePeakLinear(stderr);
+  } catch (e) {
+    const err = e as { stderr?: string | Buffer };
+    const stderr =
+      typeof err.stderr === "string"
+        ? err.stderr
+        : err.stderr
+          ? err.stderr.toString("utf8")
+          : "";
+    return parsePeakLinear(stderr);
+  }
+}
+
+/** delay → afir → pad → [proc]. Inputs: [0]=dry, [1]=ir. */
+function delayAfirPadToProc(settings: VoiceFxSettings, sampleRate: number): string {
+  const s = settings;
+  return (
+    `[0:a]aformat=sample_rates=${sampleRate}:channel_layouts=mono,` +
+    `aecho=1:1:${s.delayMs}|${s.delayMs2}|${s.delayMs3}:${s.delayDecay}|${s.delayDecay2}|${s.delayDecay3}[e];` +
+    `[1:a]aformat=sample_rates=${sampleRate}:channel_layouts=mono[ir];` +
+    `[e][ir]afir=dry=1:wet=1,apad=pad_dur=${s.tailPadSec}[proc]`
+  );
 }
 
 function writeMonoWav(path: string, sr: number, samples: Int16Array): void {
@@ -157,8 +217,8 @@ export async function generateSoxIrWav(
 }
 
 /**
- * Raw s16le mono @ 24 kHz → delay→afir→dry/wet mix (settings.wetGain) → s16le @ 24 kHz.
- * Includes reverb tail pad. Used for per-segment FX before PCM overlap-add.
+ * Raw s16le mono @ 24 kHz → delay→afir → parallel send mix → s16le @ 24 kHz.
+ * out = 1.0*dry + wetGain*peakMatched(proc). Used for per-segment FX OLA.
  */
 export async function applyVoiceFxPcmSegment24k(params: {
   dryPcm: Buffer;
@@ -173,11 +233,19 @@ export async function applyVoiceFxPcmSegment24k(params: {
   const id = randomUUID();
   const dryPath = `/tmp/fx-pcm-in-${id}.s16le`;
   const irPath = `/tmp/fx-pcm-ir-${id}.wav`;
+  const procPath = `/tmp/fx-pcm-proc-${id}.s16le`;
   const outPath = `/tmp/fx-pcm-out-${id}.s16le`;
   const t0 = Date.now();
   const s = params.settings;
-  const w = Math.min(1, Math.max(0, s.wetGain));
-  const dryW = 1 - w;
+  const w = clampWetGain(s.wetGain);
+  const pcmIn = [
+    "-f",
+    "s16le",
+    "-ar",
+    String(VOICE_FX_PCM_SR),
+    "-ac",
+    "1",
+  ];
   try {
     fs.writeFileSync(dryPath, dryPcm);
     if (params.irWav && params.irWav.byteLength > 100) {
@@ -185,28 +253,58 @@ export async function applyVoiceFxPcmSegment24k(params: {
     } else {
       await generateSoxIrWav(s, irPath, VOICE_FX_PCM_SR);
     }
-    const fc =
-      `[0:a]aformat=sample_rates=${VOICE_FX_PCM_SR}:channel_layouts=mono,asplit=2[d][d2];` +
-      `[d2]aecho=1:1:${s.delayMs}|${s.delayMs2}|${s.delayMs3}:${s.delayDecay}|${s.delayDecay2}|${s.delayDecay3}[e];` +
-      `[1:a]aformat=sample_rates=${VOICE_FX_PCM_SR}:channel_layouts=mono[ir];` +
-      `[e][ir]afir=dry=1:wet=1,apad=pad_dur=${s.tailPadSec}[proc];` +
-      `[d][proc]amix=inputs=2:weights=${dryW.toFixed(4)} ${w.toFixed(4)}:` +
-      `normalize=0:duration=longest[fx]`;
     await run(
       ffmpegBin(),
       [
         "-hide_banner",
         "-y",
+        ...pcmIn,
+        "-i",
+        dryPath,
+        "-i",
+        irPath,
+        "-filter_complex",
+        delayAfirPadToProc(s, VOICE_FX_PCM_SR),
+        "-map",
+        "[proc]",
         "-f",
         "s16le",
         "-ar",
         String(VOICE_FX_PCM_SR),
         "-ac",
         "1",
+        procPath,
+      ],
+      "ffmpeg voice-fx pcm24k wet return",
+    );
+    const dryPeak = await detectPeakLinear([
+      ...pcmIn,
+      "-i",
+      dryPath,
+    ]);
+    const wetPeak = await detectPeakLinear([
+      ...pcmIn,
+      "-i",
+      procPath,
+    ]);
+    const match = dryPeak / wetPeak;
+    const fc =
+      `[0:a]aformat=sample_rates=${VOICE_FX_PCM_SR}:channel_layouts=mono[d];` +
+      `[1:a]aformat=sample_rates=${VOICE_FX_PCM_SR}:channel_layouts=mono,` +
+      `volume=${match.toFixed(8)}[w];` +
+      `[d][w]amix=inputs=2:weights=1 ${w.toFixed(4)}:` +
+      `normalize=0:duration=longest[fx]`;
+    await run(
+      ffmpegBin(),
+      [
+        "-hide_banner",
+        "-y",
+        ...pcmIn,
         "-i",
         dryPath,
+        ...pcmIn,
         "-i",
-        irPath,
+        procPath,
         "-filter_complex",
         fc,
         "-map",
@@ -219,11 +317,11 @@ export async function applyVoiceFxPcmSegment24k(params: {
         "1",
         outPath,
       ],
-      "ffmpeg voice-fx pcm24k segment",
+      "ffmpeg voice-fx pcm24k parallel send",
     );
     return { wetPcm: fs.readFileSync(outPath), ms: Date.now() - t0 };
   } finally {
-    for (const p of [dryPath, irPath, outPath]) {
+    for (const p of [dryPath, irPath, procPath, outPath]) {
       try {
         fs.unlinkSync(p);
       } catch {
@@ -331,35 +429,19 @@ export async function pcm24kS16leToAac44100(pcm: Buffer): Promise<Buffer> {
   }
 }
 
-function delayIrLabels(settings: VoiceFxSettings): {
-  /** [0]=dry in, [1]=ir in → labeled [proc] (delay→IR). */
-  toProc: string;
-  /** Same chain ending at [w] for wet-only encode. */
-  toWet: string;
-} {
-  const s = settings;
-  const body =
-    `[0:a]aformat=sample_rates=44100:channel_layouts=mono,` +
-    `aecho=1:1:${s.delayMs}|${s.delayMs2}|${s.delayMs3}:${s.delayDecay}|${s.delayDecay2}|${s.delayDecay3}[e];` +
-    `[1:a]aformat=sample_rates=44100:channel_layouts=mono[ir];` +
-    `[e][ir]afir=dry=1:wet=1,apad=pad_dur=${s.tailPadSec}`;
-  return { toProc: `${body}[proc]`, toWet: `${body}[w]` };
-}
-
 export type VoiceFxInputExt = ".wav" | ".mp3" | ".aac" | ".m4a";
 
 export type VoiceFxChainResult = {
-  /** FX stem (settings.wetGain baked). AAC-in-MP4. */
+  /** FX stem: 1.0*dry + wetGain*peakMatched(delay→IR). AAC-in-MP4. */
   fxAudio: Buffer;
   /** Dry stem (resampled). AAC-in-MP4. */
   dryAudio: Buffer;
-  /** Wet-only (delay→IR) when requested. AAC-in-MP4. */
+  /** Peak-matched wet return (delay→IR) when requested. AAC-in-MP4. */
   wetAudio: Buffer | null;
   format: "m4a";
   irFingerprint: string;
   timings: {
     irMs: number;
-    /** Always 0 — peak-match pass removed. */
     peakMs: number;
     encodeMs: number;
     totalMs: number;
@@ -376,8 +458,8 @@ export type VoiceFxChainResult = {
 };
 
 /**
- * Compressed/voice in → delay → IR → wet mix → AAC out.
- * No voice WAV encode; only the tiny afir IR is PCM wav.
+ * Compressed/voice in → delay → IR → peak-match → parallel send → AAC out.
+ * out = 1.0 * dry + wetGain * peakMatched(proc). No loudnorm.
  */
 export async function applyVoiceFxFfmpegChain(params: {
   dryAudio?: Buffer;
@@ -395,11 +477,13 @@ export async function applyVoiceFxFfmpegChain(params: {
   const id = randomUUID();
   const dryPath = `/tmp/fx-in-${id}${inputExt}`;
   const irPath = `/tmp/fx-ir-${id}.wav`;
+  const procPath = `/tmp/fx-proc-${id}.wav`;
   const fxPath = `/tmp/fx-out-${id}${AAC_EXTENSION}`;
   const dryOutPath = `/tmp/fx-dry-${id}${AAC_EXTENSION}`;
   const wetPath = `/tmp/fx-wet-${id}${AAC_EXTENSION}`;
   const t0 = Date.now();
   let irMs = 0;
+  let peakMs = 0;
   let encodeMs = 0;
 
   try {
@@ -412,20 +496,49 @@ export async function applyVoiceFxFfmpegChain(params: {
     }
     irMs = Date.now() - irStarted;
 
-    const labels = delayIrLabels(params.settings);
-    const w = Math.min(1, Math.max(0, params.settings.wetGain));
-    const dryW = 1 - w;
+    const w = clampWetGain(params.settings.wetGain);
     const s = params.settings;
 
     const encodeStarted = Date.now();
-    // asplit=3: dry for mix, dry for stem out, dry into delay chain.
-    // No peak-match pass — wet level comes from IR + wetGain dial only.
+    // 1) Wet return only (delay → afir → pad).
+    await run(
+      ffmpegBin(),
+      [
+        "-hide_banner",
+        "-y",
+        "-i",
+        dryPath,
+        "-i",
+        irPath,
+        "-filter_complex",
+        delayAfirPadToProc(s, 44100),
+        "-map",
+        "[proc]",
+        "-ac",
+        "1",
+        "-ar",
+        "44100",
+        procPath,
+      ],
+      "ffmpeg voice-fx wet return",
+    );
+
+    // 2) Peak-match return to dry (send gain-staging — not loudnorm).
+    const peakStarted = Date.now();
+    const dryPeak = await detectPeakLinear(
+      ["-i", dryPath],
+      "aformat=sample_rates=44100:channel_layouts=mono,volumedetect",
+    );
+    const wetPeak = await detectPeakLinear(["-i", procPath]);
+    const match = dryPeak / wetPeak;
+    peakMs = Date.now() - peakStarted;
+
+    // 3) Parallel send: 1.0 * dry + w * peakMatched(wet).
     const fc =
-      `[0:a]aformat=sample_rates=44100:channel_layouts=mono,asplit=3[d][d_out][d2];` +
-      `[d2]aecho=1:1:${s.delayMs}|${s.delayMs2}|${s.delayMs3}:${s.delayDecay}|${s.delayDecay2}|${s.delayDecay3}[e];` +
-      `[1:a]aformat=sample_rates=44100:channel_layouts=mono[ir];` +
-      `[e][ir]afir=dry=1:wet=1,apad=pad_dur=${s.tailPadSec}[proc];` +
-      `[d][proc]amix=inputs=2:weights=${dryW.toFixed(4)} ${w.toFixed(4)}:` +
+      `[0:a]aformat=sample_rates=44100:channel_layouts=mono,asplit=2[d][d_out];` +
+      `[1:a]aformat=sample_rates=44100:channel_layouts=mono,` +
+      `volume=${match.toFixed(8)}[w];` +
+      `[d][w]amix=inputs=2:weights=1 ${w.toFixed(4)}:` +
       `normalize=0:duration=longest[fx]`;
 
     await run(
@@ -436,7 +549,7 @@ export async function applyVoiceFxFfmpegChain(params: {
         "-i",
         dryPath,
         "-i",
-        irPath,
+        procPath,
         "-filter_complex",
         fc,
         "-map",
@@ -462,7 +575,7 @@ export async function applyVoiceFxFfmpegChain(params: {
         AAC_BITRATE,
         dryOutPath,
       ],
-      "ffmpeg voice-fx aac",
+      "ffmpeg voice-fx parallel send aac",
     );
 
     let wetAudio: Buffer | null = null;
@@ -473,13 +586,9 @@ export async function applyVoiceFxFfmpegChain(params: {
           "-hide_banner",
           "-y",
           "-i",
-          dryPath,
-          "-i",
-          irPath,
-          "-filter_complex",
-          labels.toWet,
-          "-map",
-          "[w]",
+          procPath,
+          "-af",
+          `aformat=sample_rates=44100:channel_layouts=mono,volume=${match.toFixed(8)}`,
           "-ac",
           "1",
           "-ar",
@@ -507,10 +616,10 @@ export async function applyVoiceFxFfmpegChain(params: {
       irFingerprint: voiceFxIrFingerprint(params.settings),
       timings: {
         irMs,
-        peakMs: 0,
+        peakMs,
         encodeMs,
         totalMs: Date.now() - t0,
-        wetMs: 0,
+        wetMs: peakMs,
         mixMs: encodeMs,
       },
       fxWav: fxAudio,
@@ -518,7 +627,7 @@ export async function applyVoiceFxFfmpegChain(params: {
       wetWav: wetAudio ?? fxAudio,
     };
   } finally {
-    for (const p of [dryPath, irPath, fxPath, dryOutPath, wetPath]) {
+    for (const p of [dryPath, irPath, procPath, fxPath, dryOutPath, wetPath]) {
       try {
         fs.unlinkSync(p);
       } catch {

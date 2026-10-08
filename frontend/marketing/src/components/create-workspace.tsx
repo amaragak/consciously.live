@@ -4042,7 +4042,7 @@ export function CreateWorkspace({
         const shouldPlay = keyChanged || playing[track];
         syncGaplessBed(el, {
           url: mediaFileUrl(base, backgroundAudioPlaybackKey(key)),
-          fallbackUrl: mediaFileUrl(base, backgroundAudioStreamingKey(key)),
+          fallbackUrl: null,
           volume,
           playing: shouldPlay,
           onPlaybackBlocked: () => stopTrack(track),

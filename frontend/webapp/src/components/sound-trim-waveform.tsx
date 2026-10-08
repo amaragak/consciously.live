@@ -5,7 +5,8 @@ const BAR_COUNT = 900;
 const HANDLE_PX = 10;
 
 function waveformSrc(url: string): string {
-  return url.replace(/\.wav(\?|$)/i, ".mp3$1");
+  // Decode the URL as given — archived masters may be WAV-only (no lame MP3).
+  return url;
 }
 
 function peaksFromBuffer(buffer: AudioBuffer, bars: number): Float32Array {
@@ -46,14 +47,25 @@ export function SoundTrimWaveform({
   currentTime,
   onChange,
   onSeek,
+  readOnly = false,
+  label,
+  fadeInSec = 0,
+  fadeOutSec = 0,
 }: {
   src: string;
   startSec: number;
   endSec: number | null;
   duration: number | null;
   currentTime?: number;
-  onChange: (start: number, end: number | null) => void;
+  onChange?: (start: number, end: number | null) => void;
   onSeek?: (sec: number) => void;
+  /** Seek-only — no trim handles (used for the streaming AAC A/B strip). */
+  readOnly?: boolean;
+  label?: string;
+  /** Fade-in length from the start marker (master) or file start (streaming). */
+  fadeInSec?: number;
+  /** Fade-out length into the end marker (master) or file end (streaming). */
+  fadeOutSec?: number;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -101,7 +113,9 @@ export function SoundTrimWaveform({
       for (let i = 0; i < peaks.length; i += 1) {
         const x = i * barW;
         const amp = ((peaks[i] ?? 0) / peakMax) * (h * 0.42);
-        const inSel = x + barW * 0.5 >= startX && x + barW * 0.5 <= endX;
+        const inSel = readOnly
+          ? true
+          : x + barW * 0.5 >= startX && x + barW * 0.5 <= endX;
         ctx.fillStyle = inSel ? accent : muted;
         ctx.globalAlpha = inSel ? 0.9 : 0.28;
         ctx.fillRect(x, mid - amp, Math.max(1, barW * 0.85), amp * 2);
@@ -109,19 +123,50 @@ export function SoundTrimWaveform({
       ctx.globalAlpha = 1;
     }
 
-    ctx.fillStyle = fg;
-    ctx.globalAlpha = 0.08;
-    ctx.fillRect(0, 0, startX, h);
-    ctx.fillRect(endX, 0, w - endX, h);
-    ctx.globalAlpha = 1;
+    if (!readOnly) {
+      ctx.fillStyle = fg;
+      ctx.globalAlpha = 0.08;
+      ctx.fillRect(0, 0, startX, h);
+      ctx.fillRect(endX, 0, w - endX, h);
+      ctx.globalAlpha = 1;
+    }
 
-    ctx.fillStyle = accent;
-    ctx.fillRect(startX - 1 * dpr, 0, 2 * dpr, h);
-    ctx.fillRect(endX - 1 * dpr, 0, 2 * dpr, h);
-    ctx.beginPath();
-    ctx.arc(startX, h / 2, HANDLE_PX * 0.45 * dpr, 0, Math.PI * 2);
-    ctx.arc(endX, h / 2, HANDLE_PX * 0.45 * dpr, 0, Math.PI * 2);
-    ctx.fill();
+    // Fade regions are anchored to the trim markers: in from start, out into end.
+    const selStart = readOnly ? 0 : startSec;
+    const selEnd = readOnly ? dur : (endSec ?? dur);
+    const selLen = Math.max(0, selEnd - selStart);
+    const fi = Math.min(Math.max(0, fadeInSec), selLen / 4);
+    const fo = Math.min(Math.max(0, fadeOutSec), selLen / 4);
+    if (dur > 0 && (fi > 0 || fo > 0)) {
+      if (fi > 0) {
+        const x0 = (selStart / dur) * w;
+        const x1 = ((selStart + fi) / dur) * w;
+        const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+        grad.addColorStop(0, "rgba(0,0,0,0.45)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x0, 0, Math.max(1, x1 - x0), h);
+      }
+      if (fo > 0) {
+        const x0 = ((selEnd - fo) / dur) * w;
+        const x1 = (selEnd / dur) * w;
+        const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+        grad.addColorStop(0, "rgba(0,0,0,0)");
+        grad.addColorStop(1, "rgba(0,0,0,0.45)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x0, 0, Math.max(1, x1 - x0), h);
+      }
+    }
+
+    if (!readOnly) {
+      ctx.fillStyle = accent;
+      ctx.fillRect(startX - 1 * dpr, 0, 2 * dpr, h);
+      ctx.fillRect(endX - 1 * dpr, 0, 2 * dpr, h);
+      ctx.beginPath();
+      ctx.arc(startX, h / 2, HANDLE_PX * 0.45 * dpr, 0, Math.PI * 2);
+      ctx.arc(endX, h / 2, HANDLE_PX * 0.45 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (dur > 0 && currentTime != null && Number.isFinite(currentTime)) {
       const px = (currentTime / dur) * w;
@@ -134,7 +179,7 @@ export function SoundTrimWaveform({
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-  }, [currentTime, dur, endSec, startSec]);
+  }, [currentTime, dur, endSec, fadeInSec, fadeOutSec, readOnly, startSec]);
 
   useEffect(() => {
     draw();
@@ -153,19 +198,22 @@ export function SoundTrimWaveform({
         setError(null);
         const url = waveformSrc(src);
         void (async () => {
-          try {
-            const res = await fetch(url, { mode: "cors" });
+          const tryDecode = async (fetchUrl: string) => {
+            const res = await fetch(fetchUrl, { mode: "cors" });
             if (!res.ok) throw new Error(`Could not load audio (${res.status})`);
             const buf = await res.arrayBuffer();
             const ctx = new AudioContext();
             try {
-              const decoded = await ctx.decodeAudioData(buf.slice(0));
-              if (cancelled) return;
-              peaksRef.current = peaksFromBuffer(decoded, BAR_COUNT);
-              setStatus("ready");
+              return await ctx.decodeAudioData(buf.slice(0));
             } finally {
               await ctx.close().catch(() => undefined);
             }
+          };
+          try {
+            const decoded = await tryDecode(url);
+            if (cancelled) return;
+            peaksRef.current = peaksFromBuffer(decoded, BAR_COUNT);
+            setStatus("ready");
           } catch (e) {
             if (cancelled) return;
             setStatus("error");
@@ -214,7 +262,7 @@ export function SoundTrimWaveform({
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (dur <= 0) return;
+    if (dur <= 0 || readOnly || !onChange) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const kind = kindAt(e.clientX);
     const t = secFromClientX(e.clientX);
@@ -228,6 +276,7 @@ export function SoundTrimWaveform({
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (readOnly || !onChange) return;
     const { kind, grabOffset } = dragRef.current;
     if (!kind || dur <= 0) return;
     const t = secFromClientX(e.clientX);
@@ -254,21 +303,36 @@ export function SoundTrimWaveform({
     }
   }
 
-  function onDoubleClick(e: React.MouseEvent<HTMLCanvasElement>) {
+  function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!onSeek || dur <= 0) return;
+    if (readOnly || e.detail >= 2) {
+      onSeek(secFromClientX(e.clientX));
+    }
+  }
+
+  function onDoubleClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (readOnly || !onSeek || dur <= 0) return;
     onSeek(secFromClientX(e.clientX));
   }
 
   return (
     <div ref={wrapRef} className="mt-3">
+      {label ? (
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted">
+          {label}
+        </p>
+      ) : null}
       <div className="relative overflow-hidden rounded-xl border border-border bg-background">
         <canvas
           ref={canvasRef}
-          className="block h-24 w-full cursor-ew-resize touch-none sm:h-28"
+          className={`block h-24 w-full touch-none sm:h-28 ${
+            readOnly ? "cursor-pointer" : "cursor-ew-resize"
+          }`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onClick={onCanvasClick}
           onDoubleClick={onDoubleClick}
         />
         {status === "loading" || status === "idle" ? (
@@ -278,16 +342,20 @@ export function SoundTrimWaveform({
         ) : null}
       </div>
       <div className="mt-1 flex justify-between text-[11px] tabular-nums text-muted">
-        <span>{formatTime(startSec)}</span>
+        <span>{readOnly ? formatTime(currentTime ?? 0) : formatTime(startSec)}</span>
         <span>
-          {formatTime(endSec ?? dur)}
-          {dur > 0 ? ` · ${formatTime(dur)}` : ""}
+          {readOnly
+            ? dur > 0
+              ? formatTime(dur)
+              : ""
+            : `${formatTime(endSec ?? dur)}${dur > 0 ? ` · ${formatTime(dur)}` : ""}`}
         </span>
       </div>
       {error ? <p className="mt-1 text-[11px] text-foreground">{error}</p> : null}
       <p className="mt-1 text-[11px] text-muted">
-        Drag the handles to trim. Drag the highlighted region to slide the window. Double-click to
-        seek.
+        {readOnly
+          ? "Click to seek. This is the AAC customers hear after trim/EQ."
+          : "Drag the handles to trim. Fade in starts at the left marker; fade out ends at the right marker. Double-click to seek."}
       </p>
     </div>
   );

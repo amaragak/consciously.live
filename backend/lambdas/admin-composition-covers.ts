@@ -495,6 +495,55 @@ async function handleSetPackNames(
   return json(200, { packNames });
 }
 
+/**
+ * Rename a pack label and rewrite every composition still assigned to the old
+ * string (the label is the association key — there is no separate pack id).
+ */
+async function handleRenamePackName(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const from = normalizeCompositionPackName(body.from);
+  const to = normalizeCompositionPackName(body.to);
+  if (!from) return json(400, { error: "from is required" });
+  if (!to) return json(400, { error: "to is required" });
+  if (from === to) {
+    const packNames = await loadCompositionPackNames();
+    return json(200, { packNames, updatedCount: 0 });
+  }
+
+  const current = await loadCompositionPackNames();
+  const hasFrom = current.some((n) => n.toLowerCase() === from.toLowerCase());
+  if (!hasFrom) {
+    return json(404, { error: `Pack “${from}” not found` });
+  }
+  const clash = current.some(
+    (n) => n.toLowerCase() === to.toLowerCase() && n.toLowerCase() !== from.toLowerCase(),
+  );
+  if (clash) {
+    return json(409, { error: `Pack “${to}” already exists` });
+  }
+
+  const nextNames = current.map((n) =>
+    n.toLowerCase() === from.toLowerCase() ? to : n,
+  );
+  const packNames = await saveCompositionPackNames(nextNames);
+
+  const rows = await listAllSoundRows();
+  let updatedCount = 0;
+  for (const row of rows) {
+    const assigned = normalizeCompositionPackName(row.customPackName);
+    if (!assigned || assigned.toLowerCase() !== from.toLowerCase()) continue;
+    await putSoundRow({
+      ...row,
+      customPackName: to,
+      updatedAt: new Date().toISOString(),
+    });
+    updatedCount += 1;
+  }
+
+  return json(200, { packNames, updatedCount });
+}
+
 async function handleSetTags(
   body: Record<string, unknown>,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -579,6 +628,7 @@ export async function handler(
       if (action === "update-meta") return await handleUpdateMeta(body);
       if (action === "set-tag-types") return await handleSetTagTypes(body);
       if (action === "set-pack-names") return await handleSetPackNames(body);
+      if (action === "rename-pack-name") return await handleRenamePackName(body);
       return json(400, { error: "Unknown action" });
     }
     return json(405, { error: "Method not allowed" });

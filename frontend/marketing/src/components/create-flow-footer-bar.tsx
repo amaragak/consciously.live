@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { setChatFabFooterInset } from "@/lib/assistant-chat-fab-footer-inset";
+import { useLibraryPlayer } from "@/components/library-player-provider";
 
 type Props = {
   children: ReactNode;
@@ -17,9 +18,17 @@ type Props = {
  * Length stays centered in the row on all breakpoints.
  *
  * Reports its height so the app Chat FAB can sit above it.
+ * Hosts the now-playing strip directly above the length nav when a track plays.
  */
 export function CreateFlowFooterBar({ children, className }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const stripHostRef = useRef<HTMLDivElement | null>(null);
+  const { setPlayerStripDockHost } = useLibraryPlayer();
+
+  useLayoutEffect(() => {
+    setPlayerStripDockHost(stripHostRef.current);
+    return () => setPlayerStripDockHost(null);
+  }, [setPlayerStripDockHost]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -39,17 +48,24 @@ export function CreateFlowFooterBar({ children, className }: Props) {
   }, []);
 
   return (
-    <div
-      ref={rootRef}
-      className={[
-        "shrink-0 border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6",
-        className ?? "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl items-center gap-2 px-4 sm:min-h-[2.75rem] sm:gap-3 sm:px-6">
-        {children}
+    <div className="relative shrink-0">
+      {/* Floats above the length nav; out of flow so page content shows through. */}
+      <div
+        ref={stripHostRef}
+        className="pointer-events-none absolute inset-x-0 bottom-full z-50"
+      />
+      <div
+        ref={rootRef}
+        className={[
+          "border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6",
+          className ?? "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl items-center gap-2 px-4 sm:min-h-[2.75rem] sm:gap-3 sm:px-6">
+          {children}
+        </div>
       </div>
     </div>
   );

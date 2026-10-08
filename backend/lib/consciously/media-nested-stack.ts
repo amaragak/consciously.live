@@ -61,12 +61,27 @@ export class ConsciouslyMediaNestedStack extends cdk.NestedStack {
     this.oai = new cloudfront.OriginAccessIdentity(this, "MediaOAI");
     this.bucket.grantRead(this.oai);
 
+    // Clients bust with `?v=<updatedAt>` after re-bake. Default CachingOptimized
+    // ignores query strings, so the old AAC would stick for a year.
+    const mediaCachePolicy = new cloudfront.CachePolicy(this, "MediaCachePolicy", {
+      comment: "Media: include ?v= in cache key for re-bake bust",
+      defaultTtl: cdk.Duration.days(1),
+      maxTtl: cdk.Duration.days(365),
+      minTtl: cdk.Duration.seconds(0),
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+      headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList("v"),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+    });
+
     this.distribution = new cloudfront.Distribution(this, "MediaDistribution", {
       defaultBehavior: {
         origin: new origins.S3Origin(this.bucket, {
           originAccessIdentity: this.oai,
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: mediaCachePolicy,
         responseHeadersPolicy:
           cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
       },

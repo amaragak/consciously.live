@@ -48,6 +48,9 @@ export function LibraryAudioStrip(
     onPlaybackTimeChange?: (s3Key: string, timeSeconds: number) => void;
     onHeightChange?: (heightPx: number) => void;
     autoplay?: boolean;
+    placement?: "fixed" | "inline";
+    externalPlaying?: boolean | null;
+    onExternalTransportToggle?: (() => void) | null;
   },
 ) {
   return (
@@ -56,6 +59,7 @@ export function LibraryAudioStrip(
       mediaBase={getMedimadeMediaBaseUrl()}
       besideSidebar={false}
       tone="dark"
+      placement={props.placement ?? "fixed"}
     />
   );
 }
