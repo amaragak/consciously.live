@@ -142,7 +142,10 @@ export async function handler(
     typeof body.meditationStyle === "string" ? body.meditationStyle : "";
   const scriptText =
     typeof body.scriptText === "string" ? body.scriptText.trim() : "";
-  const speed = FIXED_SPEECH_PREVIEW_SPEED;
+  const speed =
+    typeof body.speed === "number" && Number.isFinite(body.speed)
+      ? body.speed
+      : FIXED_SPEECH_PREVIEW_SPEED;
   const voiceFxPreset =
     typeof body.voiceFxPreset === "string" && body.voiceFxPreset.trim().length > 0
       ? body.voiceFxPreset.trim()

@@ -519,7 +519,7 @@ export function compositionTagLabel(tag: string): string {
  */
 export const SOUND_VOLUME_RECOMMENDED = 67;
 
-/** Voice-card pacing fader: ±5% of the speaker’s base speed/rate. Center = recommended. */
+/** Voice-card pacing fader: Speechify admin rate ± integer (−5…+5). Center = admin rate. */
 export const VOICE_PACING_MIN = -5;
 export const VOICE_PACING_MAX = 5;
 export const VOICE_PACING_RECOMMENDED = 0;

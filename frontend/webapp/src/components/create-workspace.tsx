@@ -128,6 +128,7 @@ import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 import {
@@ -4641,10 +4642,14 @@ export function CreateWorkspace({
   function speakerPreviewDryUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+    );
     return withSpeakerSampleCacheBust(
       mediaFileUrl(
         mediaBaseUrl,
-        speakerPreviewLoudDrySampleKey(modelId, speechSpeed, speaker?.brand),
+        speakerPreviewLoudDrySampleKey(modelId, speedOrRate, speaker?.brand),
       ),
       speaker?.updatedAt,
     );
@@ -4653,10 +4658,14 @@ export function CreateWorkspace({
   function speakerPreviewWetUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+    );
     return withSpeakerSampleCacheBust(
       mediaFileUrl(
         mediaBaseUrl,
-        speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand),
+        speakerPreviewLoudFxSampleKey(modelId, speedOrRate, speaker?.brand),
       ),
       speaker?.updatedAt,
     );

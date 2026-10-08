@@ -107,9 +107,10 @@ import { useSoundFavorites } from "@/lib/sound-favorites";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
-  snapSpeakerSampleSpeed,
+  effectiveSpeechifyRate,
   speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
@@ -437,11 +438,9 @@ export const CreateSoundStep = forwardRef<
     bedVolumeApiRef,
     setCreateSoundStripBridge,
   } = useLibraryPlayer();
-  /** ±5% of the speaker base speed; always opens at recommended (0). */
+  /** Create Sound pacing: Speechify = admin rate ± integer (−5…+5); Fish unused for samples. */
   const [pacingPercent, setPacingPercent] = useState(VOICE_PACING_RECOMMENDED);
-  const speechSpeed = snapSpeakerSampleSpeed(
-    FIXED_SPEECH_PREVIEW_SPEED * (1 + pacingPercent / 100),
-  );
+  const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
   const devUi = useDevUiSettings();
   const showCreateAudioDevControls = shouldRenderDevUi(
     devUi.createAudioDevControls,
@@ -989,10 +988,15 @@ export const CreateSoundStep = forwardRef<
   function speakerPreviewDryUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = speakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+      pacingPercent,
+    );
     return withSpeakerSampleCacheBust(
       mediaFileUrl(
         mediaBaseUrl,
-        speakerPreviewLoudDrySampleKey(modelId, speechSpeed, speaker?.brand),
+        speakerPreviewLoudDrySampleKey(modelId, speedOrRate, speaker?.brand),
       ),
       speaker?.updatedAt,
     );
@@ -1001,10 +1005,15 @@ export const CreateSoundStep = forwardRef<
   function speakerPreviewWetUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = speakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+      pacingPercent,
+    );
     return withSpeakerSampleCacheBust(
       mediaFileUrl(
         mediaBaseUrl,
-        speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand),
+        speakerPreviewLoudFxSampleKey(modelId, speedOrRate, speaker?.brand),
       ),
       speaker?.updatedAt,
     );
@@ -1533,14 +1542,9 @@ export const CreateSoundStep = forwardRef<
         const speaker =
           speakers.find((s) => s.modelId === referenceId) ?? null;
         const rateN = Number(speechifyRateInput.trim());
-        const speakerBaseRate =
-          typeof speaker?.speechifyRate === "number" &&
-          Number.isFinite(speaker.speechifyRate)
-            ? speaker.speechifyRate
-            : 0;
-        const pacedSpeechifyRate = Math.max(
-          -50,
-          Math.min(50, Math.round(speakerBaseRate + pacingPercent)),
+        const pacedSpeechifyRate = effectiveSpeechifyRate(
+          speaker?.speechifyRate,
+          pacingPercent,
         );
         return {
           reference_id: referenceId,
@@ -1734,6 +1738,16 @@ export const CreateSoundStep = forwardRef<
   useEffect(() => {
     voicePlayerRef.current?.setDial(voiceFxDial);
   }, [voiceFxDial]);
+
+  // Speechify pacing swaps pre-baked rate stems; reload while preview is active.
+  useEffect(() => {
+    const modelId = (voicePreviewId || speakerModelId).trim();
+    if (!modelId || !voicePreviewPlaying) return;
+    const speaker = speakers.find((s) => s.modelId === modelId);
+    if (speaker?.brand !== "speechify") return;
+    void startVoicePreview(modelId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when pacing notch changes
+  }, [pacingPercent]);
   const soundPacks = useMemo(() => {
     const names = new Set<string>();
     for (const item of compositions) {

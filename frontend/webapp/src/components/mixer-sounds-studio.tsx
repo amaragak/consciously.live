@@ -54,9 +54,9 @@ import {
   type MixerPresetMix,
 } from "@/lib/mixer-preset-storage";
 import {
-  FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
@@ -678,15 +678,19 @@ export function MixerSoundsStudio({
     el.volume = 1;
     if (mediaBaseUrl && speakerModelId) {
       const speaker = fishSpeakers.find((s) => s.modelId === speakerModelId);
+      const speedOrRate = speakerSampleSpeedOrRate(
+        speaker?.brand,
+        speaker?.speechifyRate,
+      );
       const key = speakerFxPreviewOn
         ? speakerPreviewLoudFxSampleKey(
             speakerModelId,
-            FIXED_SPEECH_PREVIEW_SPEED,
+            speedOrRate,
             speaker?.brand,
           )
         : speakerPreviewLoudSampleKey(
             speakerModelId,
-            FIXED_SPEECH_PREVIEW_SPEED,
+            speedOrRate,
             speaker?.brand,
           );
       const next = withSpeakerSampleCacheBust(

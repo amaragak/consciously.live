@@ -106,6 +106,7 @@ import {
   speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 import { VOICE_FX_DIAL_DEFAULT, VoiceFxKnob } from "@consciously/common";
@@ -4108,10 +4109,14 @@ export function CreateWorkspace({
   function speakerPreviewDryUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+    );
     return withSpeakerSampleCacheBust(
       mediaFileUrl(
         mediaBaseUrl,
-        speakerPreviewLoudDrySampleKey(modelId, speechSpeed, speaker?.brand),
+        speakerPreviewLoudDrySampleKey(modelId, speedOrRate, speaker?.brand),
       ),
       speaker?.updatedAt,
     );
@@ -4120,22 +4125,30 @@ export function CreateWorkspace({
   function speakerPreviewWetUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+    );
     return withSpeakerSampleCacheBust(
       mediaFileUrl(
         mediaBaseUrl,
-        speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand),
+        speakerPreviewLoudFxSampleKey(modelId, speedOrRate, speaker?.brand),
       ),
       speaker?.updatedAt,
     );
   }
 
-  /** Mixer FX sample (same file admin plays). Speechify keys have no Fish speed stem. */
+  /** Mixer FX sample (same file admin plays). Speechify keys use admin rate stem. */
   function speakerPreviewUrl(modelId: string): string | null {
     if (!mediaBaseUrl || !modelId) return null;
     const speaker = fishSpeakers.find((s) => s.modelId === modelId);
+    const speedOrRate = speakerSampleSpeedOrRate(
+      speaker?.brand,
+      speaker?.speechifyRate,
+    );
     const key = voiceFxOn
-      ? speakerPreviewLoudFxSampleKey(modelId, speechSpeed, speaker?.brand)
-      : speakerPreviewLoudSampleKey(modelId, speechSpeed, speaker?.brand);
+      ? speakerPreviewLoudFxSampleKey(modelId, speedOrRate, speaker?.brand)
+      : speakerPreviewLoudSampleKey(modelId, speedOrRate, speaker?.brand);
     return withSpeakerSampleCacheBust(
       mediaFileUrl(mediaBaseUrl, key),
       speaker?.updatedAt,

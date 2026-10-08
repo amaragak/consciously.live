@@ -143,14 +143,22 @@ async function handleGet() {
       let hasSample = false;
       if (bucket) {
         try {
-          hasSample = await speakerPreviewReady(s3, bucket, s.modelId, s.brand);
+          hasSample = await speakerPreviewReady(
+            s3,
+            bucket,
+            s.modelId,
+            s.brand,
+            s.brand === "speechify" ? (s.speechifyRate ?? 0) : undefined,
+          );
         } catch {
           hasSample = false;
         }
       }
       const sampleKey = speakerPreviewLoudFxSampleKey(
         s.modelId,
-        FIXED_SPEECH_PREVIEW_SPEED,
+        s.brand === "speechify"
+          ? (s.speechifyRate ?? 0)
+          : FIXED_SPEECH_PREVIEW_SPEED,
         s.brand,
       );
       const bust = encodeURIComponent(s.updatedAt || String(Date.now()));
@@ -314,13 +322,14 @@ async function handlePost(event: APIGatewayProxyEventV2) {
             brand,
             apiBase,
             force,
-            synthesize: async () =>
+            speechifyBaseRate: existing?.speechifyRate ?? 0,
+            synthesize: async (rate) =>
               aacAdtsToMp3Buffer(
                 await speechifyTtsMp3({
                   apiKey: await getSpeechifyApiKey(),
                   text: SPEAKER_PREVIEW_TEXT,
                   voiceId: modelId,
-                  rate: speechifyRateToSsml(existing?.speechifyRate ?? null),
+                  rate: speechifyRateToSsml(rate),
                 }),
               ),
           })
@@ -375,7 +384,9 @@ async function handlePost(event: APIGatewayProxyEventV2) {
     const domain = (process.env.MEDIA_CLOUDFRONT_DOMAIN || "").trim();
     const sampleKey = speakerPreviewLoudFxSampleKey(
       modelId,
-      FIXED_SPEECH_PREVIEW_SPEED,
+      brand === "speechify"
+        ? (existing?.speechifyRate ?? 0)
+        : FIXED_SPEECH_PREVIEW_SPEED,
       brand,
     );
     const bust = encodeURIComponent(updatedAt || String(Date.now()));

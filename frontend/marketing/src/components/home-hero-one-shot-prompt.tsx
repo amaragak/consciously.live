@@ -25,8 +25,8 @@ import {
   startHomepageOneShotGeneration,
 } from "@/lib/homepage-one-shot-handoff";
 import {
-  FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudSampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
@@ -115,7 +115,7 @@ function HomeHeroSpeakerPicker({
         mediaBaseUrl,
         speakerPreviewLoudSampleKey(
           modelId,
-          FIXED_SPEECH_PREVIEW_SPEED,
+          speakerSampleSpeedOrRate(speaker?.brand, speaker?.speechifyRate),
           speaker?.brand,
         ),
       ),

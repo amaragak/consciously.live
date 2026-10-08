@@ -17,8 +17,10 @@ import { recordFishTtsUsage } from "./ai-usage";
 import { voiceStemStreamKeys } from "./voice-stem-stream";
 import { applyCommittedVoiceFx } from "./voice-fx-apply";
 import {
+  clampSpeechifyRate,
   FIXED_SPEECH_PREVIEW_SPEED,
   SPEECHIFY_EMOTION_SAMPLE_TAGS,
+  SPEECHIFY_RATE_PACING_OFFSETS,
   speakerEmotionSampleKey,
   speakerLetterIntroSampleKey,
   speakerPreviewLoudDrySampleKey,
@@ -94,12 +96,14 @@ export async function speakerPreviewExists(
   bucket: string,
   modelId: string,
   brand?: "fish" | "speechify" | null,
+  /** Speechify: absolute SSML rate for the center (admin) sample. */
+  speechifyRate?: number | null,
 ): Promise<boolean> {
-  const key = speakerPreviewLoudSampleKey(
-    modelId,
-    FIXED_SPEECH_PREVIEW_SPEED,
-    brand,
-  );
+  const speedOrRate =
+    brand === "speechify"
+      ? clampSpeechifyRate(speechifyRate ?? 0)
+      : FIXED_SPEECH_PREVIEW_SPEED;
+  const key = speakerPreviewLoudSampleKey(modelId, speedOrRate, brand);
   return s3ObjectExists(s3, bucket, key);
 }
 
@@ -126,10 +130,14 @@ export async function speakerPreviewReady(
   bucket: string,
   modelId: string,
   brand?: "fish" | "speechify" | null,
+  speechifyRate?: number | null,
 ): Promise<boolean> {
-  const speed = FIXED_SPEECH_PREVIEW_SPEED;
-  const dryKey = speakerPreviewLoudDrySampleKey(modelId, speed, brand);
-  const fxKey = speakerPreviewLoudFxSampleKey(modelId, speed, brand);
+  const speedOrRate =
+    brand === "speechify"
+      ? clampSpeechifyRate(speechifyRate ?? 0)
+      : FIXED_SPEECH_PREVIEW_SPEED;
+  const dryKey = speakerPreviewLoudDrySampleKey(modelId, speedOrRate, brand);
+  const fxKey = speakerPreviewLoudFxSampleKey(modelId, speedOrRate, brand);
   const [dry, fx] = await Promise.all([
     speakerStemStreamsReady(s3, bucket, dryKey),
     speakerStemStreamsReady(s3, bucket, fxKey),
@@ -269,87 +277,48 @@ async function bounceLockedPreviewStems(params: {
   await invalidateSpeakerPreviewKeys(uploaded);
 }
 
-/** Mixer preview (loud MP3 + FX WAV). Fish keys include the fixed speed stem. */
-export async function generateFishSpeakerPreview(params: {
+async function uploadPreviewAtSpeedOrRate(params: {
   s3: S3Client;
   bucket: string;
-  apiKey?: string;
   modelId: string;
-  brand?: "fish" | "speechify" | null;
-  apiBase?: string | null;
-  /** When true, replace an existing preview instead of skipping. */
-  force?: boolean;
-  synthesize?: (speed: number) => Promise<Buffer>;
+  brand: "fish" | "speechify";
+  speedOrRate: number;
+  rawMp3: Buffer;
+  /** Also write legacy unstemmed Speechify keys (`loud.mp3`, …). */
+  writeLegacySpeechifyKeys?: boolean;
 }): Promise<{
   mp3Key: string;
   loudKey: string;
   loudFxKey: string | null;
   loudWetKey: string | null;
-  skipped?: boolean;
+  uploadedKeys: string[];
 }> {
-  const speed = FIXED_SPEECH_PREVIEW_SPEED;
-  const brand = params.brand === "speechify" ? "speechify" : "fish";
-  const mp3Key = speakerPreviewSampleKey(params.modelId, speed, brand);
-  const loudKey = speakerPreviewLoudSampleKey(params.modelId, speed, brand);
-  const loudFxKey = speakerPreviewLoudFxSampleKey(params.modelId, speed, brand);
-  const loudDryKey = speakerPreviewLoudDrySampleKey(params.modelId, speed, brand);
+  const { s3, bucket, modelId, brand, speedOrRate } = params;
+  const mp3Key = speakerPreviewSampleKey(modelId, speedOrRate, brand);
+  const loudKey = speakerPreviewLoudSampleKey(modelId, speedOrRate, brand);
+  const loudFxKey = speakerPreviewLoudFxSampleKey(modelId, speedOrRate, brand);
+  const loudDryKey = speakerPreviewLoudDrySampleKey(modelId, speedOrRate, brand);
   const loudWetKey = speakerPreviewLoudWetSampleKey(
-    params.modelId,
-    speed,
+    modelId,
+    speedOrRate,
     brand,
   );
 
-  if (
-    !params.force &&
-    (await speakerPreviewExists(
-      params.s3,
-      params.bucket,
-      params.modelId,
-      brand,
-    ))
-  ) {
-    const ready = await speakerPreviewReady(
-      params.s3,
-      params.bucket,
-      params.modelId,
-      brand,
-    );
-    if (!ready) {
-      await bounceLockedPreviewStems({
-        s3: params.s3,
-        bucket: params.bucket,
-        loudKey,
-        loudDryKey,
-        loudFxKey,
-      });
-    }
-    return {
-      mp3Key,
-      loudKey,
-      loudFxKey,
-      loudWetKey: loudFxKey,
-      skipped: true,
-    };
-  }
-
-  const buf = params.synthesize
-    ? await params.synthesize(speed)
-    : await fishTtsMp3(params.apiKey ?? "", params.modelId, speed);
-  await params.s3.send(
+  await s3.send(
     new PutObjectCommand({
-      Bucket: params.bucket,
+      Bucket: bucket,
       Key: mp3Key,
-      Body: buf,
+      Body: params.rawMp3,
       ContentType: "audio/mpeg",
       CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
     }),
   );
 
-  const previewMp3 = await trimMp3ForPreview(buf);
+  const previewMp3 = await trimMp3ForPreview(params.rawMp3);
   const loudMp3 = await loudnormMp3Buffer(previewMp3);
-  await params.s3.send(
+  await s3.send(
     new PutObjectCommand({
-      Bucket: params.bucket,
+      Bucket: bucket,
       Key: loudKey,
       Body: loudMp3,
       ContentType: "audio/mpeg",
@@ -357,16 +326,16 @@ export async function generateFishSpeakerPreview(params: {
     }),
   );
 
+  const uploaded: string[] = [mp3Key, loudKey];
   let uploadedFx: string | null = null;
-  const uploaded: string[] = [];
-  const pair = await voiceFxFfmpegPair(params.s3, params.bucket, loudMp3);
+  const pair = await voiceFxFfmpegPair(s3, bucket, loudMp3);
   const dryStreams = voiceStemStreamKeys(loudDryKey);
   const fxStreams = voiceStemStreamKeys(loudFxKey);
   const wetStreams = voiceStemStreamKeys(loudWetKey);
   if (dryStreams) {
-    await params.s3.send(
+    await s3.send(
       new PutObjectCommand({
-        Bucket: params.bucket,
+        Bucket: bucket,
         Key: dryStreams.aacKey,
         Body: pair.dry,
         ContentType: "audio/mp4",
@@ -376,9 +345,9 @@ export async function generateFishSpeakerPreview(params: {
     uploaded.push(dryStreams.aacKey);
   }
   if (fxStreams) {
-    await params.s3.send(
+    await s3.send(
       new PutObjectCommand({
-        Bucket: params.bucket,
+        Bucket: bucket,
         Key: fxStreams.aacKey,
         Body: pair.fx,
         ContentType: "audio/mp4",
@@ -389,9 +358,9 @@ export async function generateFishSpeakerPreview(params: {
     uploadedFx = loudFxKey;
   }
   if (wetStreams) {
-    await params.s3.send(
+    await s3.send(
       new PutObjectCommand({
-        Bucket: params.bucket,
+        Bucket: bucket,
         Key: wetStreams.aacKey,
         Body: pair.fx,
         ContentType: "audio/mp4",
@@ -401,15 +370,293 @@ export async function generateFishSpeakerPreview(params: {
     uploaded.push(wetStreams.aacKey);
   }
 
-  await invalidateSpeakerPreviewKeys(
-    [mp3Key, loudKey, ...uploaded].filter((k): k is string => Boolean(k)),
-  );
+  if (params.writeLegacySpeechifyKeys && brand === "speechify") {
+    const legacy = {
+      sample: `speaker-samples/${modelId}/sample.mp3`,
+      loud: `speaker-samples/${modelId}/loud.mp3`,
+      dry: `speaker-samples/${modelId}/loud-dry.wav`,
+      fx: `speaker-samples/${modelId}/loud-fx.wav`,
+      wet: `speaker-samples/${modelId}/loud-wet.wav`,
+    };
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: legacy.sample,
+        Body: params.rawMp3,
+        ContentType: "audio/mpeg",
+        CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      }),
+    );
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: legacy.loud,
+        Body: loudMp3,
+        ContentType: "audio/mpeg",
+        CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+      }),
+    );
+    uploaded.push(legacy.sample, legacy.loud);
+    const legDry = voiceStemStreamKeys(legacy.dry);
+    const legFx = voiceStemStreamKeys(legacy.fx);
+    const legWet = voiceStemStreamKeys(legacy.wet);
+    if (legDry) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: legDry.aacKey,
+          Body: pair.dry,
+          ContentType: "audio/mp4",
+          CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+        }),
+      );
+      uploaded.push(legDry.aacKey);
+    }
+    if (legFx) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: legFx.aacKey,
+          Body: pair.fx,
+          ContentType: "audio/mp4",
+          CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+        }),
+      );
+      uploaded.push(legFx.aacKey);
+    }
+    if (legWet) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: legWet.aacKey,
+          Body: pair.fx,
+          ContentType: "audio/mp4",
+          CacheControl: SPEAKER_SAMPLE_CACHE_CONTROL,
+        }),
+      );
+      uploaded.push(legWet.aacKey);
+    }
+  }
 
   return {
     mp3Key,
     loudKey,
     loudFxKey: uploadedFx,
     loudWetKey: wetStreams ? loudWetKey : null,
+    uploadedKeys: uploaded,
+  };
+}
+
+/**
+ * Mixer preview (loud MP3 + FX). Fish: fixed speed stem.
+ * Speechify: admin rate ±5 (11 stems) so Create Sound pacing can preview each integer.
+ */
+export async function generateFishSpeakerPreview(params: {
+  s3: S3Client;
+  bucket: string;
+  apiKey?: string;
+  modelId: string;
+  brand?: "fish" | "speechify" | null;
+  apiBase?: string | null;
+  /** When true, replace an existing preview instead of skipping. */
+  force?: boolean;
+  /** Speechify admin rate (center of −5…+5 ladder). */
+  speechifyBaseRate?: number | null;
+  /** Fish: prosody speed. Speechify: absolute SSML rate percent. */
+  synthesize?: (speedOrRate: number) => Promise<Buffer>;
+}): Promise<{
+  mp3Key: string;
+  loudKey: string;
+  loudFxKey: string | null;
+  loudWetKey: string | null;
+  skipped?: boolean;
+  ratesGenerated?: number[];
+}> {
+  const brand = params.brand === "speechify" ? "speechify" : "fish";
+  const baseRate = clampSpeechifyRate(params.speechifyBaseRate ?? 0);
+  const centerOrSpeed =
+    brand === "speechify" ? baseRate : FIXED_SPEECH_PREVIEW_SPEED;
+
+  const mp3Key = speakerPreviewSampleKey(params.modelId, centerOrSpeed, brand);
+  const loudKey = speakerPreviewLoudSampleKey(
+    params.modelId,
+    centerOrSpeed,
+    brand,
+  );
+  const loudFxKey = speakerPreviewLoudFxSampleKey(
+    params.modelId,
+    centerOrSpeed,
+    brand,
+  );
+
+  const ratesOrSpeeds: number[] =
+    brand === "speechify"
+      ? SPEECHIFY_RATE_PACING_OFFSETS.map((off) =>
+          clampSpeechifyRate(baseRate + off),
+        )
+      : [FIXED_SPEECH_PREVIEW_SPEED];
+
+  // Dedupe if clamp collapses edges (e.g. admin already at ±50).
+  const unique = [...new Set(ratesOrSpeeds)];
+
+  if (!params.force) {
+    const readiness = await Promise.all(
+      unique.map(async (rate) => ({
+        rate,
+        exists: await speakerPreviewExists(
+          params.s3,
+          params.bucket,
+          params.modelId,
+          brand,
+          brand === "speechify" ? rate : null,
+        ),
+        ready: await speakerPreviewReady(
+          params.s3,
+          params.bucket,
+          params.modelId,
+          brand,
+          brand === "speechify" ? rate : null,
+        ),
+      })),
+    );
+    const allExist = readiness.every((r) => r.exists);
+    if (allExist) {
+      for (const r of readiness) {
+        if (r.ready) continue;
+        const k = brand === "speechify" ? r.rate : FIXED_SPEECH_PREVIEW_SPEED;
+        await bounceLockedPreviewStems({
+          s3: params.s3,
+          bucket: params.bucket,
+          loudKey: speakerPreviewLoudSampleKey(params.modelId, k, brand),
+          loudDryKey: speakerPreviewLoudDrySampleKey(params.modelId, k, brand),
+          loudFxKey: speakerPreviewLoudFxSampleKey(params.modelId, k, brand),
+        });
+      }
+      return {
+        mp3Key,
+        loudKey,
+        loudFxKey,
+        loudWetKey: loudFxKey,
+        skipped: true,
+        ratesGenerated: unique,
+      };
+    }
+  }
+
+  const allUploaded: string[] = [];
+  let centerResult: Awaited<ReturnType<typeof uploadPreviewAtSpeedOrRate>> | null =
+    null;
+
+  for (const speedOrRate of unique) {
+    if (!params.force) {
+      const rateArg = brand === "speechify" ? speedOrRate : null;
+      const ready = await speakerPreviewReady(
+        params.s3,
+        params.bucket,
+        params.modelId,
+        brand,
+        rateArg,
+      );
+      if (ready) {
+        if (speedOrRate === centerOrSpeed) {
+          centerResult = {
+            mp3Key: speakerPreviewSampleKey(params.modelId, speedOrRate, brand),
+            loudKey: speakerPreviewLoudSampleKey(
+              params.modelId,
+              speedOrRate,
+              brand,
+            ),
+            loudFxKey: speakerPreviewLoudFxSampleKey(
+              params.modelId,
+              speedOrRate,
+              brand,
+            ),
+            loudWetKey: speakerPreviewLoudWetSampleKey(
+              params.modelId,
+              speedOrRate,
+              brand,
+            ),
+            uploadedKeys: [],
+          };
+        }
+        continue;
+      }
+      const exists = await speakerPreviewExists(
+        params.s3,
+        params.bucket,
+        params.modelId,
+        brand,
+        rateArg,
+      );
+      if (exists) {
+        await bounceLockedPreviewStems({
+          s3: params.s3,
+          bucket: params.bucket,
+          loudKey: speakerPreviewLoudSampleKey(
+            params.modelId,
+            speedOrRate,
+            brand,
+          ),
+          loudDryKey: speakerPreviewLoudDrySampleKey(
+            params.modelId,
+            speedOrRate,
+            brand,
+          ),
+          loudFxKey: speakerPreviewLoudFxSampleKey(
+            params.modelId,
+            speedOrRate,
+            brand,
+          ),
+        });
+        if (speedOrRate === centerOrSpeed) {
+          centerResult = {
+            mp3Key: speakerPreviewSampleKey(params.modelId, speedOrRate, brand),
+            loudKey: speakerPreviewLoudSampleKey(
+              params.modelId,
+              speedOrRate,
+              brand,
+            ),
+            loudFxKey: speakerPreviewLoudFxSampleKey(
+              params.modelId,
+              speedOrRate,
+              brand,
+            ),
+            loudWetKey: speakerPreviewLoudWetSampleKey(
+              params.modelId,
+              speedOrRate,
+              brand,
+            ),
+            uploadedKeys: [],
+          };
+        }
+        continue;
+      }
+    }
+    const buf = params.synthesize
+      ? await params.synthesize(speedOrRate)
+      : await fishTtsMp3(params.apiKey ?? "", params.modelId, speedOrRate);
+    const result = await uploadPreviewAtSpeedOrRate({
+      s3: params.s3,
+      bucket: params.bucket,
+      modelId: params.modelId,
+      brand,
+      speedOrRate,
+      rawMp3: buf,
+      writeLegacySpeechifyKeys:
+        brand === "speechify" && speedOrRate === baseRate,
+    });
+    allUploaded.push(...result.uploadedKeys);
+    if (speedOrRate === centerOrSpeed) centerResult = result;
+  }
+
+  await invalidateSpeakerPreviewKeys([...new Set(allUploaded)]);
+
+  return {
+    mp3Key: centerResult?.mp3Key ?? mp3Key,
+    loudKey: centerResult?.loudKey ?? loudKey,
+    loudFxKey: centerResult?.loudFxKey ?? null,
+    loudWetKey: centerResult?.loudWetKey ?? null,
+    ratesGenerated: brand === "speechify" ? unique : undefined,
   };
 }
 

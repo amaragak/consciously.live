@@ -34,6 +34,7 @@ import { SOUNDSCAPE_ELEMENT_VOLUME } from "@/lib/bed-volume";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudFxSampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
@@ -359,7 +360,7 @@ export function AdminProgramsPanel() {
         mediaBaseUrl,
         speakerPreviewLoudFxSampleKey(
           id,
-          FIXED_SPEECH_PREVIEW_SPEED,
+          speakerSampleSpeedOrRate(speaker?.brand, speaker?.speechifyRate),
           speaker?.brand,
         ),
       ),

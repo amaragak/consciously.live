@@ -1739,7 +1739,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     styleTrimmed.toLowerCase() === "general";
   const scriptText =
     typeof body.scriptText === "string" ? body.scriptText.trim() : "";
-  const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
+  const speechSpeed =
+    typeof body.speed === "number" && Number.isFinite(body.speed)
+      ? body.speed
+      : FIXED_SPEECH_PREVIEW_SPEED;
   const voiceFxPreset =
     typeof body.voiceFxPreset === "string" && body.voiceFxPreset.trim().length > 0
       ? body.voiceFxPreset.trim()
