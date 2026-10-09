@@ -2570,8 +2570,8 @@ export const CreateSoundStep = forwardRef<
         same width as the ideal 2-col layout instead of stretching full bleed.
       */}
       <div className="grid grid-cols-1 items-stretch justify-items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:justify-items-stretch xl:gap-4">
-        <section className="flex w-full max-w-[34rem] flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-[18px] xl:max-w-none">
-          <div className="flex items-center justify-between gap-2">
+        <section className="flex w-full max-w-[34rem] flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 pb-[18px] pt-4 xl:max-w-none">
+          <div className="flex items-start justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
               Voice
             </p>
