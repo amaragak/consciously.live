@@ -58,6 +58,7 @@ import {
 } from "@/lib/mixer-factory-presets";
 import {
   loadMixerPresetStore,
+  mixForPlayback,
   mixerPresetToMix,
   newMixerPreset,
   saveMixerPresetStore,
@@ -921,6 +922,11 @@ export const CreateSoundStep = forwardRef<
       natureGain: next.backgroundNatureGain,
       drumsGain: next.backgroundDrumsGain,
       noiseGain: next.backgroundNoiseGain,
+      musicEnabled: true,
+      natureEnabled: true,
+      drumsEnabled: true,
+      noiseEnabled: true,
+      masterVolume: 100,
     });
   }
 
@@ -1192,6 +1198,12 @@ export const CreateSoundStep = forwardRef<
       natureGain: backgroundNatureGain,
       drumsGain: backgroundDrumsGain,
       noiseGain: backgroundNoiseGain,
+      // Create applies enabled/master at load (mixForPlayback), so live state is "all on".
+      musicEnabled: true,
+      natureEnabled: true,
+      drumsEnabled: true,
+      noiseEnabled: true,
+      masterVolume: 100,
     }),
     [
       backgroundMusicKey,
@@ -1832,12 +1844,12 @@ export const CreateSoundStep = forwardRef<
     const id = key.slice(sep + 1);
     if (kind === "factory") {
       const p = factoryMixes.find((x) => x.id === id);
-      if (p) applyBedMix(factoryPresetToMix(p));
+      if (p) applyBedMix(mixForPlayback(factoryPresetToMix(p)));
       return;
     }
     if (kind === "user") {
       const p = userMixPresets.find((x) => x.id === id);
-      if (p) applyBedMix(mixerPresetToMix(p));
+      if (p) applyBedMix(mixForPlayback(mixerPresetToMix(p)));
     }
   }
 

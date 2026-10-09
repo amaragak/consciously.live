@@ -43,14 +43,16 @@ export type SpeechifyEmotionPlayback = "neutral" | "warm" | "calm";
 const DESC_BLOCK_MIN_PX = 60;
 /** text-lg / leading-snug — one title line (covers never grow with wrapped titles). */
 const TITLE_LINE_PX = 25;
+/** Artist line under title (text-[13px] leading-snug + mt-0.5). */
+const ARTIST_LINE_PX = 18;
 /** text-xs meta row. */
 const META_LINE_PX = 16;
 /**
- * List cover edge: 1 title row + 3 desc rows + meta (desktop; pill sits on title row).
+ * List cover edge: 1 title row + artist + 3 desc rows + meta (desktop; pill sits on title row).
  * Title wrap / show-more must not change this.
  */
 const LIST_COVER_EDGE_DESKTOP_PX =
-  TITLE_LINE_PX + 4 + DESC_BLOCK_MIN_PX + 8 + META_LINE_PX;
+  TITLE_LINE_PX + ARTIST_LINE_PX + 4 + DESC_BLOCK_MIN_PX + 8 + META_LINE_PX;
 /** Mobile adds type pill under title + play control in the text column. */
 const LIST_COVER_EDGE_MOBILE_PX =
   TITLE_LINE_PX +
@@ -184,6 +186,24 @@ export function formatWhen(iso: string | null): string {
     });
   } catch {
     return iso;
+  }
+}
+
+export function formatDateOnly(iso: string | null): string | null {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+  } catch {
+    return iso;
+  }
+}
+
+export function formatTimeOnly(iso: string | null): string | null {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleTimeString(undefined, { timeStyle: "short" });
+  } catch {
+    return null;
   }
 }
 
@@ -504,15 +524,29 @@ export function LibraryMeditationCard({
               style={{ minHeight: coverEdge }}
             >
               {titleSlot}
+              {item.speakerName?.trim() ? (
+                <p className="mt-0.5 truncate font-sans text-[13px] font-normal leading-snug text-muted">
+                  {item.speakerName.trim()}
+                </p>
+              ) : null}
               <div className="mt-1">{descSlot}</div>
               {isFailed ? (
                 <p className="mt-2 text-sm text-danger">
                   {item.error ?? "Generation failed."}
                 </p>
               ) : null}
-              <p className="mt-auto pt-2 text-xs text-muted">
-                {formatWhen(item.createdAt)}
-                {item.speakerName ? ` · ${item.speakerName}` : ""}
+              <p className="mt-auto pt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                {formatDateOnly(item.createdAt) ? (
+                  <span>{formatDateOnly(item.createdAt)}</span>
+                ) : null}
+                {formatTimeOnly(item.createdAt) ? (
+                  <span className="inline-flex items-center gap-x-2">
+                    {formatDateOnly(item.createdAt) ? (
+                      <span aria-hidden>·</span>
+                    ) : null}
+                    <span>{formatTimeOnly(item.createdAt)}</span>
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>
@@ -950,19 +984,37 @@ export function LibraryMeditationCard({
     </div>
   ) : null;
 
-  const dateLine = (
-    <span className="text-xs text-muted">
-      {formatWhen(m.createdAt)}
-      {m.speakerName ? ` · ${m.speakerName}` : ""}
-    </span>
-  );
+  const speakerLabel = m.speakerName?.trim() || "";
+  const artistLine = speakerLabel ? (
+    <p className="mt-0.5 truncate font-sans text-[13px] font-normal leading-snug text-muted">
+      {speakerLabel}
+    </p>
+  ) : null;
+  const dateOnly = formatDateOnly(m.createdAt);
+  const timeOnly = formatTimeOnly(m.createdAt);
+  const metaBits: ReactNode[] = [];
+  if (dateOnly) metaBits.push(<span key="date">{dateOnly}</span>);
+  if (timeOnly) metaBits.push(<span key="time">{timeOnly}</span>);
 
-  const metaRow = (
-    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-      {dateLine}
-      {stars}
-    </div>
-  );
+  const metaLine =
+    metaBits.length > 0 ? (
+      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+        {metaBits.map((bit, i) => (
+          <span key={i} className="inline-flex items-center gap-x-2">
+            {i > 0 ? <span aria-hidden>·</span> : null}
+            {bit}
+          </span>
+        ))}
+      </span>
+    ) : null;
+
+  const metaRow =
+    metaLine || stars ? (
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+        {metaLine}
+        {stars}
+      </div>
+    ) : null;
 
   const scriptBlock =
     open && m.scriptText ? (
@@ -990,9 +1042,12 @@ export function LibraryMeditationCard({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2 pr-9">
-            <h2 className="min-w-0 flex-1 font-display text-lg font-medium leading-snug">
-              {m.title}
-            </h2>
+            <div className="min-w-0 flex-1">
+              <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
+                {m.title}
+              </h2>
+              {artistLine}
+            </div>
             <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
               {lengthLine}
             </span>
@@ -1048,9 +1103,12 @@ export function LibraryMeditationCard({
             </p>
           </div>
           <div className="mt-2 flex items-start gap-3">
-            <h2 className="font-display text-lg font-medium leading-snug">
-              {m.title}
-            </h2>
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-medium leading-snug">
+                {m.title}
+              </h2>
+              {artistLine}
+            </div>
             <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
               {lengthLine}
             </span>
@@ -1119,9 +1177,12 @@ export function LibraryMeditationCard({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
               <div className="flex min-w-0 items-start gap-3">
-                <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
-                  {m.title}
-                </h2>
+                <div className="min-w-0">
+                  <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
+                    {m.title}
+                  </h2>
+                  {artistLine}
+                </div>
                 <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
                   {lengthLine}
                 </span>

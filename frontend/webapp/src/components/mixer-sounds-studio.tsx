@@ -1,12 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronLeft, MoreHorizontal } from "lucide-react";
-import { IconPlus } from "@tabler/icons-react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { MixerChannel, MixerVoiceChannel } from "@/components/mixer-channel";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
 import { FactoryIconSelect } from "@/components/factory-icons";
 import { FactoryPresetRow } from "@/components/factory-preset-row";
+import { SoundFolderSelect } from "@/components/sound-folder-select";
+import { SoundsConfirmModal } from "@/components/sounds-confirm-modal";
+import { SoundsDiscardChangesModal } from "@/components/sounds-discard-changes-modal";
+import {
+  SoundsMobileActionBar,
+  SoundsPresetBar,
+  type SoundsSaveActions,
+} from "@/components/sounds-preset-bar";
+import {
+  flattenPresetSections,
+  sectionPresetMenu,
+  type SoundsPresetMenuItem,
+} from "@/components/sounds-preset-menu";
+import {
+  SoundsLayerRow,
+  SoundsLayerStrip,
+} from "@/components/sounds-mixer-strips";
+import { useMinWidth } from "@/hooks/use-min-width";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import { bedElementVolume } from "@/lib/bed-volume";
 import {
@@ -42,13 +59,14 @@ import {
   userMixFavoriteId,
   useSoundFavorites,
 } from "@/lib/sound-favorites";
-import { FavoriteHeartButton } from "@/components/favorite-heart-button";
 import {
   emptyMixerMix,
   loadMixerPresetStore,
   mixEquals,
+  mixForPlayback,
   mixerPresetToMix,
   newMixerPreset,
+  normalizeFaderGains,
   saveMixerPresetStore,
   type MixerPreset,
   type MixerPresetMix,
@@ -60,7 +78,11 @@ import {
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 
-const SOUNDS_HREF = "/meditate/sounds";
+import {
+  readSoundsLastOpen,
+  writeSoundsLastOpen,
+} from "@/lib/sounds-recent-mixes";
+import { SOUNDS_HREF } from "@/lib/sounds-tabs";
 
 type SoundsRoute =
   | { kind: "list" }
@@ -95,19 +117,6 @@ function soundsRouteFromPath(pathname: string): SoundsRoute {
 }
 
 type BedTrack = "nature" | "music" | "drums" | "noise";
-
-function playingFromMix(
-  mix: MixerPresetMix,
-  musicItems: BackgroundAudioItem[],
-): Record<BedTrack, boolean> {
-  const drumsLocked = isMelodicMusicKey(musicItems, mix.musicKey);
-  return {
-    nature: Boolean(mix.natureKey.trim()),
-    music: Boolean(mix.musicKey.trim()),
-    drums: Boolean(mix.drumsKey.trim()) && !drumsLocked,
-    noise: Boolean(mix.noiseKey.trim()),
-  };
-}
 
 function mediaFileUrl(base: string, key: string): string {
   const b = base.replace(/\/+$/, "");
@@ -167,12 +176,17 @@ export function MixerSoundsStudio({
   const [factoryPreviewId, setFactoryPreviewId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [mixMenuId, setMixMenuId] = useState<string | null>(null);
-  const [mixMenuPos, setMixMenuPos] = useState<{
-    top: number;
-    right: number;
+  /** Pending action after Discard in the unsaved-changes modal (user path). */
+  const [discardPrompt, setDiscardPrompt] = useState<{
+    mixName: string;
+    proceed: () => void;
   } | null>(null);
-  const mixMenuRef = useRef<HTMLDivElement | null>(null);
+  /** Delete confirm (user mix or factory) — same light modal as discard. */
+  const [deletePrompt, setDeletePrompt] = useState<{
+    mixName: string;
+    factory: boolean;
+    proceed: () => void;
+  } | null>(null);
   const [factoryPresetsOpen, setFactoryPresetsOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -202,6 +216,7 @@ export function MixerSoundsStudio({
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
   const [speakerPlaying, setSpeakerPlaying] = useState(false);
   const favorites = useSoundFavorites();
+  const isDesktop = useMinWidth(768);
 
   const [playing, setPlaying] = useState<Record<BedTrack, boolean>>({
     nature: false,
@@ -221,6 +236,10 @@ export function MixerSoundsStudio({
   const factoryDrumsRef = useRef<HTMLAudioElement | null>(null);
   const factoryNoiseRef = useRef<HTMLAudioElement | null>(null);
   const handledNewRouteRef = useRef(false);
+  /** One-shot restore of last-open / Nostalgia when landing on `/meditate/sounds`. */
+  const listRestoreDoneRef = useRef(false);
+  /** Route key last applied to the editor — prevents click+navigate double-load flash. */
+  const appliedRouteKeyRef = useRef<string | null>(null);
   const lastBgKeysRef = useRef<Record<BedTrack, string>>({
     nature: "",
     music: "",
@@ -234,6 +253,21 @@ export function MixerSoundsStudio({
     noise: mix.noiseGain,
   });
 
+  const masterVolumeRef = useRef(mix.masterVolume);
+
+  function layerVolume(track: BedTrack): number {
+    return bedElementVolume(
+      (bedGainRef.current[track] * masterVolumeRef.current) / 100,
+    );
+  }
+
+  function applyAllLiveVolumes() {
+    setGaplessBedVolume(previewNatureRef.current, layerVolume("nature"));
+    setGaplessBedVolume(previewMusicRef.current, layerVolume("music"));
+    setGaplessBedVolume(previewDrumsRef.current, layerVolume("drums"));
+    setGaplessBedVolume(previewNoiseRef.current, layerVolume("noise"));
+  }
+
   useEffect(() => {
     bedGainRef.current = {
       nature: mix.natureGain,
@@ -241,52 +275,16 @@ export function MixerSoundsStudio({
       drums: mix.drumsGain,
       noise: mix.noiseGain,
     };
-  }, [mix.natureGain, mix.musicGain, mix.drumsGain, mix.noiseGain]);
-
-  useEffect(() => {
-    if (!mixMenuId) return;
-    function onDoc(e: MouseEvent) {
-      const t = e.target as Node | null;
-      if (mixMenuRef.current?.contains(t)) return;
-      if (
-        t instanceof Element &&
-        t.closest("[data-mix-menu-trigger]")
-      ) {
-        return;
-      }
-      setMixMenuId(null);
-      setMixMenuPos(null);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setMixMenuId(null);
-        setMixMenuPos(null);
-      }
-    }
-    function onReposition() {
-      setMixMenuId(null);
-      setMixMenuPos(null);
-    }
-    // Defer so the opening click doesn’t immediately close the menu.
-    const t = window.setTimeout(() => {
-      document.addEventListener("mousedown", onDoc);
-      document.addEventListener("keydown", onKey);
-      window.addEventListener("resize", onReposition);
-      window.addEventListener("scroll", onReposition, true);
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", onReposition);
-      window.removeEventListener("scroll", onReposition, true);
-    };
-  }, [mixMenuId]);
-
-  function closeMixMenu() {
-    setMixMenuId(null);
-    setMixMenuPos(null);
-  }
+    masterVolumeRef.current = mix.masterVolume;
+    applyAllLiveVolumes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mix.natureGain,
+    mix.musicGain,
+    mix.drumsGain,
+    mix.noiseGain,
+    mix.masterVolume,
+  ]);
 
   useEffect(() => {
     try {
@@ -309,7 +307,7 @@ export function MixerSoundsStudio({
           : track === "drums"
             ? previewDrumsRef.current
             : previewNoiseRef.current;
-    setGaplessBedVolume(el, bedElementVolume(gain));
+    setGaplessBedVolume(el, layerVolume(track));
   }
 
   const drumsLockedForMelodic = isMelodicMusicKey(
@@ -349,18 +347,39 @@ export function MixerSoundsStudio({
     ],
   );
 
+  /** Factory presets are locked: edits live in memory until "Save as my mix". */
+  const factoryDirty = useMemo(() => {
+    if (isAdmin || !loadedFactory) return false;
+    // Saved factory gains are fader-normalised; compare like-for-like so Save
+    // doesn’t leave the desk looking dirty while faders stay as the user set them.
+    return !mixEquals(
+      normalizeFaderGains(mix),
+      factoryPresetToMix(loadedFactory),
+    );
+  }, [isAdmin, loadedFactory, mix]);
+
   const dirty = useMemo(() => {
+    if (!isAdmin && loadedFactory) return factoryDirty;
     if (isAdmin) {
       if (!loadedFactory) return true;
       return !factoryPresetEquals(loadedFactory, {
         ...editorFactory,
         id: loadedFactory.id,
+        channels: mixToFactoryChannels(normalizeFaderGains(mix)),
       });
     }
     if (!activePreset) return true;
     if (nameDraft.trim() !== activePreset.name) return true;
-    return !mixEquals(mix, activePreset);
-  }, [isAdmin, loadedFactory, editorFactory, activePreset, mix, nameDraft]);
+    return !mixEquals(normalizeFaderGains(mix), mixerPresetToMix(activePreset));
+  }, [
+    isAdmin,
+    loadedFactory,
+    factoryDirty,
+    editorFactory,
+    activePreset,
+    mix,
+    nameDraft,
+  ]);
 
   useEffect(() => {
     if (isAdmin) {
@@ -370,12 +389,8 @@ export function MixerSoundsStudio({
     const store = loadMixerPresetStore();
     setPresets(store.presets);
     setActiveId(store.activeId);
-    const cur =
-      store.presets.find((p) => p.id === store.activeId) ?? store.presets[0];
-    if (cur) {
-      setMix(mixerPresetToMix(cur));
-      setNameDraft(cur.name);
-    }
+    // List URL restores last-open / Nostalgia in the route effect — don't paint
+    // a stale user mix first (that flashes before the factory default loads).
     setHydrated(true);
   }, [isAdmin]);
 
@@ -388,13 +403,95 @@ export function MixerSoundsStudio({
     });
   }, [hydrated, isAdmin, activeId, presets]);
 
-  /** Deep-link / browser back: sync editor from `/meditate/sounds/...` (user only). */
+  /**
+   * Deep-link / browser back: sync editor from `/meditate/sounds/...` (user only).
+   *
+   * Do not depend on `activeId` / editor state here — a preset click updates those
+   * before `pathname` catches up, and re-running with the stale URL reloads the
+   * previous mix (visible UI flash). Clicks set `appliedRouteKeyRef` first so the
+   * path update is a no-op; this effect only applies when the URL is ahead of the
+   * editor (back/forward, cold load, or factory list just arriving).
+   */
   useEffect(() => {
     if (isAdmin || !hydrated) return;
     const route = soundsRouteFromPath(pathname);
 
     if (route.kind === "list") {
       handledNewRouteRef.current = false;
+      if (factoryPresetsLoading) return;
+      if (listRestoreDoneRef.current) {
+        appliedRouteKeyRef.current = "list";
+        return;
+      }
+      listRestoreDoneRef.current = true;
+
+      const openLastOrDefault = () => {
+        const last = readSoundsLastOpen();
+        if (last?.kind === "mix") {
+          const p = presets.find((x) => x.id === last.id);
+          if (p) {
+            appliedRouteKeyRef.current = `mix:${p.id}`;
+            loadMixIntoEditor({
+              name: p.name,
+              mix: mixerPresetToMix(p),
+              savedId: p.id,
+            });
+            navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`, {
+              replace: true,
+            });
+            return;
+          }
+        }
+        if (last?.kind === "preset") {
+          const p = factoryPresets.find((x) => x.id === last.id);
+          if (p) {
+            appliedRouteKeyRef.current = `preset:${p.id}`;
+            loadMixIntoEditor({
+              name: p.name,
+              mix: factoryPresetToMix(p),
+              savedId: null,
+              factoryId: p.id,
+              factoryMeta: {
+                description: p.description,
+                icon: p.icon,
+                icon_bg: p.icon_bg,
+                icon_color: p.icon_color,
+              },
+            });
+            navigate(`${SOUNDS_HREF}/preset/${encodeURIComponent(p.id)}`, {
+              replace: true,
+            });
+            return;
+          }
+        }
+        const nostalgia =
+          factoryPresets.find(
+            (p) => p.name.trim().toLowerCase() === "nostalgia",
+          ) ?? null;
+        const fallback = nostalgia ?? factoryPresets[0] ?? null;
+        if (fallback) {
+          appliedRouteKeyRef.current = `preset:${fallback.id}`;
+          loadMixIntoEditor({
+            name: fallback.name,
+            mix: factoryPresetToMix(fallback),
+            savedId: null,
+            factoryId: fallback.id,
+            factoryMeta: {
+              description: fallback.description,
+              icon: fallback.icon,
+              icon_bg: fallback.icon_bg,
+              icon_color: fallback.icon_color,
+            },
+          });
+          writeSoundsLastOpen({ kind: "preset", id: fallback.id });
+          navigate(`${SOUNDS_HREF}/preset/${encodeURIComponent(fallback.id)}`, {
+            replace: true,
+          });
+          return;
+        }
+        appliedRouteKeyRef.current = "list";
+      };
+      openLastOrDefault();
       return;
     }
 
@@ -402,6 +499,7 @@ export function MixerSoundsStudio({
       if (handledNewRouteRef.current) return;
       handledNewRouteRef.current = true;
       const p = newMixerPreset();
+      appliedRouteKeyRef.current = `mix:${p.id}`;
       setPresets((prev) => [p, ...prev]);
       setActiveId(p.id);
       setLoadedFactoryId(null);
@@ -417,30 +515,35 @@ export function MixerSoundsStudio({
     handledNewRouteRef.current = false;
 
     if (route.kind === "mix") {
+      const routeKey = `mix:${route.id}`;
+      if (appliedRouteKeyRef.current === routeKey) return;
       const p = presets.find((x) => x.id === route.id);
       if (!p) {
-        // createNew may navigate before presets state commits
-        if (activeId === route.id) return;
+        // createNew sets appliedRouteKey before presets state commits.
+        if (appliedRouteKeyRef.current === routeKey) return;
         navigate(SOUNDS_HREF, { replace: true });
         return;
       }
-      if (activeId === p.id && !loadedFactoryId) return;
+      appliedRouteKeyRef.current = routeKey;
       loadMixIntoEditor({
         name: p.name,
         mix: mixerPresetToMix(p),
         savedId: p.id,
       });
+      writeSoundsLastOpen({ kind: "mix", id: p.id });
       return;
     }
 
     if (route.kind === "preset") {
       if (factoryPresetsLoading) return;
+      const routeKey = `preset:${route.id}`;
+      if (appliedRouteKeyRef.current === routeKey) return;
       const p = factoryPresets.find((x) => x.id === route.id);
       if (!p) {
         navigate(SOUNDS_HREF, { replace: true });
         return;
       }
-      if (loadedFactoryId === p.id) return;
+      appliedRouteKeyRef.current = routeKey;
       loadMixIntoEditor({
         name: p.name,
         mix: factoryPresetToMix(p),
@@ -453,6 +556,7 @@ export function MixerSoundsStudio({
           icon_color: p.icon_color,
         },
       });
+      writeSoundsLastOpen({ kind: "preset", id: p.id });
     }
   }, [
     isAdmin,
@@ -461,8 +565,6 @@ export function MixerSoundsStudio({
     presets,
     factoryPresets,
     factoryPresetsLoading,
-    activeId,
-    loadedFactoryId,
     navigate,
   ]);
 
@@ -555,7 +657,11 @@ export function MixerSoundsStudio({
     speakerSampleRef.current?.pause();
     setPlayAllActive(false);
     setSpeakerPlaying(false);
-    setPlaying({ nature: false, music: false, drums: false, noise: false });
+    setPlaying((p) =>
+      p.nature || p.music || p.drums || p.noise
+        ? { nature: false, music: false, drums: false, noise: false }
+        : p,
+    );
   }
 
   function stopFactoryPreview() {
@@ -576,9 +682,11 @@ export function MixerSoundsStudio({
       "description" | "icon" | "icon_bg" | "icon_color"
     >;
   }) {
+    // Selecting a preset only loads the editor — do not auto-start beds.
+    // Auto-play on every switch was flashing titles/selects/faders as layers
+    // remounted and gapless beds reloaded.
     stopFactoryPreview();
-    speakerSampleRef.current?.pause();
-    setSpeakerPlaying(false);
+    stopAll();
     setNameDraft(opts.name);
     setMix(opts.mix);
     setActiveId(opts.savedId);
@@ -588,14 +696,12 @@ export function MixerSoundsStudio({
     setIconBgDraft(opts.factoryMeta?.icon_bg ?? "#E4EEF4");
     setIconColorDraft(opts.factoryMeta?.icon_color ?? "#3D5A73");
     setSaveError(null);
-    const nextPlaying = playingFromMix(opts.mix, backgroundMusic);
-    setPlaying(nextPlaying);
-    setPlayAllActive(
-      nextPlaying.nature ||
-        nextPlaying.music ||
-        nextPlaying.drums ||
-        nextPlaying.noise,
-    );
+    lastBgKeysRef.current = {
+      nature: "",
+      music: "",
+      drums: "",
+      noise: "",
+    };
   }
 
   useEffect(() => {
@@ -609,23 +715,23 @@ export function MixerSoundsStudio({
     const sync = (
       el: HTMLAudioElement | null,
       key: string,
+      enabled: boolean,
       track: BedTrack,
     ) => {
       if (!el) return;
       // Mixer 100% → 0.5 playback so speech at 1.0 stays louder.
-      const volume = bedElementVolume(bedGainRef.current[track]);
-      if (base && key) {
-        const prevKey = lastBgKeysRef.current[track];
-        const keyChanged = prevKey !== key;
-        const shouldPlay = keyChanged || playing[track];
+      const volume = layerVolume(track);
+      if (base && key && enabled) {
+        // Only play when the transport says so — never auto-start on key change
+        // (that flashed UI and reloaded audio on every factory preset click).
+        const wantPlay = playing[track];
         syncGaplessBed(el, {
           url: mediaFileUrl(base, backgroundAudioPlaybackKey(key)),
           fallbackUrl: null,
           volume,
-          playing: shouldPlay,
+          playing: wantPlay,
           onPlaybackBlocked: () => stopTrack(track),
         });
-        if (shouldPlay) setPlaying((p) => ({ ...p, [track]: true }));
         lastBgKeysRef.current[track] = key;
       } else {
         syncGaplessBed(el, { url: null, volume, playing: false });
@@ -633,16 +739,25 @@ export function MixerSoundsStudio({
         lastBgKeysRef.current[track] = "";
       }
     };
-    sync(previewNatureRef.current, mix.natureKey, "nature");
-    sync(previewMusicRef.current, mix.musicKey, "music");
-    sync(previewDrumsRef.current, drumsPreviewKey, "drums");
-    sync(previewNoiseRef.current, mix.noiseKey, "noise");
+    sync(previewNatureRef.current, mix.natureKey, mix.natureEnabled, "nature");
+    sync(previewMusicRef.current, mix.musicKey, mix.musicEnabled, "music");
+    sync(previewDrumsRef.current, drumsPreviewKey, mix.drumsEnabled, "drums");
+    sync(previewNoiseRef.current, mix.noiseKey, mix.noiseEnabled, "noise");
   }, [
     mediaBaseUrl,
     mix.natureKey,
     mix.musicKey,
     drumsPreviewKey,
     mix.noiseKey,
+    mix.natureEnabled,
+    mix.musicEnabled,
+    mix.drumsEnabled,
+    mix.noiseEnabled,
+    mix.natureGain,
+    mix.musicGain,
+    mix.drumsGain,
+    mix.noiseGain,
+    mix.masterVolume,
     playing.nature,
     playing.music,
     playing.drums,
@@ -735,33 +850,31 @@ export function MixerSoundsStudio({
     }
     stopAll();
     const parts: Promise<void>[] = [];
-    if (mix.natureKey && previewNatureRef.current?.src) {
-      setGaplessBedVolume(
-        previewNatureRef.current,
-        bedElementVolume(bedGainRef.current.nature),
-      );
-      parts.push(resumeGaplessBed(previewNatureRef.current));
-    }
-    if (mix.musicKey && previewMusicRef.current?.src) {
-      setGaplessBedVolume(
-        previewMusicRef.current,
-        bedElementVolume(bedGainRef.current.music),
-      );
-      parts.push(resumeGaplessBed(previewMusicRef.current));
-    }
-    if (drumsPreviewKey && previewDrumsRef.current?.src) {
-      setGaplessBedVolume(
-        previewDrumsRef.current,
-        bedElementVolume(bedGainRef.current.drums),
-      );
-      parts.push(resumeGaplessBed(previewDrumsRef.current));
-    }
-    if (mix.noiseKey && previewNoiseRef.current?.src) {
-      setGaplessBedVolume(
-        previewNoiseRef.current,
-        bedElementVolume(bedGainRef.current.noise),
-      );
-      parts.push(resumeGaplessBed(previewNoiseRef.current));
+    // Disabled or None layers are skipped.
+    const audible: Record<BedTrack, boolean> = {
+      nature: Boolean(
+        mix.natureEnabled && mix.natureKey && previewNatureRef.current?.src,
+      ),
+      music: Boolean(
+        mix.musicEnabled && mix.musicKey && previewMusicRef.current?.src,
+      ),
+      drums: Boolean(
+        mix.drumsEnabled && drumsPreviewKey && previewDrumsRef.current?.src,
+      ),
+      noise: Boolean(
+        mix.noiseEnabled && mix.noiseKey && previewNoiseRef.current?.src,
+      ),
+    };
+    const els: Record<BedTrack, HTMLAudioElement | null> = {
+      nature: previewNatureRef.current,
+      music: previewMusicRef.current,
+      drums: previewDrumsRef.current,
+      noise: previewNoiseRef.current,
+    };
+    for (const track of ["music", "nature", "drums", "noise"] as const) {
+      if (!audible[track]) continue;
+      setGaplessBedVolume(els[track], layerVolume(track));
+      parts.push(resumeGaplessBed(els[track]));
     }
     if (isAdmin && speakerModelId && speakerSampleRef.current?.src) {
       parts.push(speakerSampleRef.current.play());
@@ -770,12 +883,7 @@ export function MixerSoundsStudio({
     setSpeakerPlaying(
       Boolean(isAdmin && speakerModelId && speakerSampleRef.current?.src),
     );
-    setPlaying({
-      nature: Boolean(mix.natureKey && previewNatureRef.current?.src),
-      music: Boolean(mix.musicKey && previewMusicRef.current?.src),
-      drums: Boolean(drumsPreviewKey && previewDrumsRef.current?.src),
-      noise: Boolean(mix.noiseKey && previewNoiseRef.current?.src),
-    });
+    setPlaying(audible);
     await Promise.all(parts.map((p) => p.catch(() => undefined)));
   }
 
@@ -802,10 +910,15 @@ export function MixerSoundsStudio({
 
   async function toggleRowPreview(track: BedTrack) {
     stopFactoryPreview();
-    if (track === "nature" && !mix.natureKey) return;
-    if (track === "music" && !mix.musicKey) return;
-    if (track === "drums" && (!mix.drumsKey || drumsLockedForMelodic)) return;
-    if (track === "noise" && !mix.noiseKey) return;
+    if (track === "nature" && (!mix.natureKey || !mix.natureEnabled)) return;
+    if (track === "music" && (!mix.musicKey || !mix.musicEnabled)) return;
+    if (
+      track === "drums" &&
+      (!mix.drumsKey || !mix.drumsEnabled || drumsLockedForMelodic)
+    ) {
+      return;
+    }
+    if (track === "noise" && (!mix.noiseKey || !mix.noiseEnabled)) return;
     if (playing[track]) {
       stopTrack(track);
       return;
@@ -819,16 +932,8 @@ export function MixerSoundsStudio({
             ? previewDrumsRef.current
             : previewNoiseRef.current;
     if (!el?.src) return;
-    const gain =
-      track === "nature"
-        ? mix.natureGain
-        : track === "music"
-          ? mix.musicGain
-          : track === "drums"
-            ? mix.drumsGain
-            : mix.noiseGain;
     try {
-      setGaplessBedVolume(el, bedElementVolume(gain));
+      setGaplessBedVolume(el, layerVolume(track));
       await resumeGaplessBed(el);
       setPlaying((p) => ({ ...p, [track]: true }));
     } catch {
@@ -837,11 +942,13 @@ export function MixerSoundsStudio({
   }
 
   function applyPreset(p: MixerPreset, opts?: { navigate?: boolean }) {
+    appliedRouteKeyRef.current = `mix:${p.id}`;
     loadMixIntoEditor({
       name: p.name,
       mix: mixerPresetToMix(p),
       savedId: p.id,
     });
+    if (!isAdmin) writeSoundsLastOpen({ kind: "mix", id: p.id });
     if (!isAdmin && opts?.navigate !== false) {
       navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
     }
@@ -849,8 +956,16 @@ export function MixerSoundsStudio({
 
   function applyFactoryPreset(
     p: MixerFactoryPreset,
-    opts?: { navigate?: boolean },
+    opts?: { navigate?: boolean; force?: boolean },
   ) {
+    if (loadedFactoryId === p.id && !opts?.force) {
+      if (!isAdmin) writeSoundsLastOpen({ kind: "preset", id: p.id });
+      if (!isAdmin && opts?.navigate !== false) {
+        navigate(`${SOUNDS_HREF}/preset/${encodeURIComponent(p.id)}`);
+      }
+      return;
+    }
+    appliedRouteKeyRef.current = `preset:${p.id}`;
     loadMixIntoEditor({
       name: p.name,
       mix: factoryPresetToMix(p),
@@ -863,19 +978,25 @@ export function MixerSoundsStudio({
         icon_color: p.icon_color,
       },
     });
+    if (!isAdmin) writeSoundsLastOpen({ kind: "preset", id: p.id });
     if (!isAdmin && opts?.navigate !== false) {
       navigate(`${SOUNDS_HREF}/preset/${encodeURIComponent(p.id)}`);
     }
   }
 
   async function toggleFactoryPreview(p: MixerFactoryPreset) {
-    if (factoryPreviewId === p.id) {
+    await togglePresetPreview(p.id, factoryPresetToMix(p));
+  }
+
+  async function togglePresetPreview(id: string, presetMix: MixerPresetMix) {
+    if (factoryPreviewId === id) {
       stopFactoryPreview();
       return;
     }
     if (!mediaBaseUrl) return;
     stopAll();
-    const nextMix = factoryPresetToMix(p);
+    // Disabled layers are dropped and master volume is applied.
+    const nextMix = mixForPlayback(presetMix);
     const beds: Array<{
       el: HTMLAudioElement | null;
       key: string;
@@ -920,7 +1041,7 @@ export function MixerSoundsStudio({
       }
     }
     if (parts.length === 0) return;
-    setFactoryPreviewId(p.id);
+    setFactoryPreviewId(id);
     await Promise.all(parts);
   }
 
@@ -946,11 +1067,13 @@ export function MixerSoundsStudio({
       return;
     }
     const p = newMixerPreset();
+    appliedRouteKeyRef.current = `mix:${p.id}`;
     setPresets((prev) => [p, ...prev]);
     setActiveId(p.id);
     setLoadedFactoryId(null);
     setNameDraft(p.name);
     setMix(emptyMixerMix());
+    writeSoundsLastOpen({ kind: "mix", id: p.id });
     navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
   }
 
@@ -961,6 +1084,8 @@ export function MixerSoundsStudio({
   async function saveCurrent() {
     const name = nameDraft.trim() || "Untitled mix";
     setNameDraft(name);
+    // Normalise only in the persisted payload — leave the desk + playback alone.
+    const normalized = normalizeFaderGains(mix);
     if (isAdmin) {
       setSaving(true);
       setSaveError(null);
@@ -969,6 +1094,7 @@ export function MixerSoundsStudio({
           ...editorFactory,
           id: loadedFactoryId || editorFactory.id || emptyFactoryPreset().id,
           name,
+          channels: mixToFactoryChannels(normalized),
         };
         const saved = await saveAdminFactoryMix(payload);
         setFactoryPresets((prev) => {
@@ -990,78 +1116,139 @@ export function MixerSoundsStudio({
     if (!activeId) {
       const p: MixerPreset = {
         ...newMixerPreset(name),
-        ...mix,
+        ...normalized,
         name,
         updatedAt: now,
       };
       setPresets((prev) => [p, ...prev]);
       setActiveId(p.id);
       setLoadedFactoryId(null);
+      navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
       return;
     }
     setPresets((prev) =>
       prev.map((p) =>
         p.id === activeId
-          ? { ...p, ...mix, name, updatedAt: now }
+          ? { ...p, ...normalized, name, updatedAt: now }
           : p,
       ),
     );
     setLoadedFactoryId(null);
   }
 
-  async function deleteCurrentFactory() {
-    if (!isAdmin || !loadedFactoryId) return;
-    if (!window.confirm("Remove this factory mix?")) return;
+  /** New user mix from the current editor state (factory "Save as my mix", user "Save as new"). */
+  function saveAsNewUserMix(promptTitle: string, defaultName: string) {
+    const entered = window.prompt(promptTitle, defaultName);
+    if (entered == null) return;
+    const name = entered.trim().slice(0, 80) || "Untitled mix";
+    const now = new Date().toISOString();
+    const normalized = normalizeFaderGains(mix);
+    const p: MixerPreset = {
+      ...newMixerPreset(name),
+      ...normalized,
+      name,
+      updatedAt: now,
+    };
+    setPresets((prev) => [p, ...prev]);
+    setActiveId(p.id);
+    setLoadedFactoryId(null);
+    setNameDraft(name);
     setSaveError(null);
-    try {
-      try {
-        await deleteAdminFactoryMix(loadedFactoryId);
-      } catch {
-        /* Draft mixes are local-only until Save. */
-      }
-      setFactoryPresets((prev) => prev.filter((p) => p.id !== loadedFactoryId));
-      setLoadedFactoryId(null);
-      setActiveId(null);
-      setNameDraft("Untitled mix");
-      setDescriptionDraft("");
-      setMix(emptyMixerMix());
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Could not delete mix");
-    }
+    writeSoundsLastOpen({ kind: "mix", id: p.id });
+    navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
   }
 
-  function renameUserMix(id: string) {
-    const current = presets.find((p) => p.id === id);
-    if (!current) return;
-    closeMixMenu();
-    const next = window.prompt("Rename mix", current.name);
-    if (next == null) return;
-    const name = next.trim().slice(0, 80) || "Untitled mix";
-    const now = new Date().toISOString();
-    setPresets((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, name, updatedAt: now } : p)),
-    );
-    if (activeId === id) setNameDraft(name);
+  function resetFactoryPreset() {
+    if (!loadedFactory) return;
+    applyFactoryPreset(loadedFactory, { navigate: false, force: true });
+  }
+
+  function deleteCurrentFactory() {
+    if (!isAdmin || !loadedFactoryId) return;
+    const id = loadedFactoryId;
+    const mixName = nameDraft.trim() || "Untitled mix";
+    setDeletePrompt({
+      mixName,
+      factory: true,
+      proceed: () => {
+        void (async () => {
+          setSaveError(null);
+          try {
+            try {
+              await deleteAdminFactoryMix(id);
+            } catch {
+              /* Draft mixes are local-only until Save. */
+            }
+            setFactoryPresets((prev) => prev.filter((p) => p.id !== id));
+            setLoadedFactoryId(null);
+            setActiveId(null);
+            setNameDraft("Untitled mix");
+            setDescriptionDraft("");
+            setMix(emptyMixerMix());
+          } catch (e) {
+            setSaveError(
+              e instanceof Error ? e.message : "Could not delete mix",
+            );
+          }
+        })();
+      },
+    });
   }
 
   function deleteUserMix(id: string) {
     const current = presets.find((p) => p.id === id);
     if (!current) return;
-    closeMixMenu();
-    if (!window.confirm(`Delete “${current.name}”? This can’t be undone.`)) {
-      return;
-    }
-    setPresets((prev) => prev.filter((p) => p.id !== id));
-    if (activeId === id) {
-      stopFactoryPreview();
-      stopAll();
-      setActiveId(null);
-      setLoadedFactoryId(null);
-      setNameDraft("Untitled mix");
-      setMix(emptyMixerMix());
-      openSoundsList();
-    }
+    setDeletePrompt({
+      mixName: current.name,
+      factory: false,
+      proceed: () => {
+        setPresets((prev) => prev.filter((p) => p.id !== id));
+        if (activeId === id) {
+          stopFactoryPreview();
+          stopAll();
+          setActiveId(null);
+          setLoadedFactoryId(null);
+          setNameDraft("Untitled mix");
+          setMix(emptyMixerMix());
+          // Stay on the mixer with an empty mix (no separate list page).
+          navigate(SOUNDS_HREF, { replace: true });
+        }
+      },
+    });
   }
+
+  const deleteConfirmModal = (
+    <SoundsConfirmModal
+      open={Boolean(deletePrompt)}
+      title={deletePrompt?.factory ? "Delete factory mix?" : "Delete mix?"}
+      description={
+        deletePrompt?.factory ? (
+          <>
+            Remove{" "}
+            <span className="font-medium text-foreground">
+              {deletePrompt.mixName.trim() || "Untitled mix"}
+            </span>{" "}
+            for everyone? This can’t be undone.
+          </>
+        ) : (
+          <>
+            Delete{" "}
+            <span className="font-medium text-foreground">
+              “{deletePrompt?.mixName.trim() || "Untitled mix"}”
+            </span>
+            ? This can’t be undone.
+          </>
+        )
+      }
+      confirmLabel="Delete"
+      onCancel={() => setDeletePrompt(null)}
+      onConfirm={() => {
+        const proceed = deletePrompt?.proceed;
+        setDeletePrompt(null);
+        proceed?.();
+      }}
+    />
+  );
 
   function patchMix(partial: Partial<MixerPresetMix>) {
     const next = { ...mix, ...partial };
@@ -1069,21 +1256,373 @@ export function MixerSoundsStudio({
     const drumsLocked = isMelodicMusicKey(backgroundMusic, next.musicKey);
     setPlaying((p) => {
       const live = { ...p };
-      if (partial.musicKey !== undefined) {
-        live.music = Boolean(partial.musicKey.trim());
+      if (partial.musicKey !== undefined || partial.musicEnabled !== undefined) {
+        live.music = Boolean(next.musicKey.trim()) && next.musicEnabled;
       }
-      if (partial.natureKey !== undefined) {
-        live.nature = Boolean(partial.natureKey.trim());
+      if (partial.natureKey !== undefined || partial.natureEnabled !== undefined) {
+        live.nature = Boolean(next.natureKey.trim()) && next.natureEnabled;
       }
-      if (partial.drumsKey !== undefined) {
-        live.drums = Boolean(partial.drumsKey.trim()) && !drumsLocked;
+      if (partial.drumsKey !== undefined || partial.drumsEnabled !== undefined) {
+        live.drums =
+          Boolean(next.drumsKey.trim()) && next.drumsEnabled && !drumsLocked;
       }
-      if (partial.noiseKey !== undefined) {
-        live.noise = Boolean(partial.noiseKey.trim());
+      if (partial.noiseKey !== undefined || partial.noiseEnabled !== undefined) {
+        live.noise = Boolean(next.noiseKey.trim()) && next.noiseEnabled;
       }
       if (drumsLocked) live.drums = false;
       return live;
     });
+  }
+
+  if (!isAdmin) {
+    const allPlaying = anyTrackPlaying || playAllActive;
+
+    const selectWrapBase =
+      "min-w-0 [&_button[aria-haspopup=listbox]]:rounded-[10px] [&_button[aria-haspopup=listbox]]:border [&_button[aria-haspopup=listbox]]:bg-card [&_button[aria-haspopup=listbox]]:text-[13px] [&_button[aria-haspopup=listbox]]:whitespace-nowrap";
+    const selectWrapClass = isDesktop
+      ? `${selectWrapBase} [&_button[aria-haspopup=listbox]]:h-[38px]`
+      : `${selectWrapBase} [&_button[aria-haspopup=listbox]]:h-[40px]`;
+    const layerSelect = (
+      category: "music" | "ambience" | "drums" | "noise",
+      items: BackgroundAudioItem[],
+      value: string,
+      onChange: (key: string) => void,
+      disabled?: boolean,
+    ) => (
+      <div className={selectWrapClass}>
+        <SoundFolderSelect
+          category={category}
+          items={items}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          desk
+          favoriteKeys={favorites.compositionSet}
+          onToggleFavorite={favorites.toggleComposition}
+        />
+      </div>
+    );
+
+    // ── Preset bar ──────────────────────────────────────────────────────
+    const factoryMenuItems: SoundsPresetMenuItem[] = factoryPresets.map((p) => ({
+      key: `f:${p.id}`,
+      kind: "factory",
+      id: p.id,
+      name: p.name,
+      iconId: p.icon,
+      iconBg: p.icon_bg,
+      iconColor: p.icon_color,
+      favorite: favorites.mixSet.has(factoryMixFavoriteId(p.id)),
+    }));
+    const userMenuItems: SoundsPresetMenuItem[] = presets.map((p) => ({
+      key: `u:${p.id}`,
+      kind: "user",
+      id: p.id,
+      name: p.name,
+      iconId: "headphones",
+      favorite: favorites.mixSet.has(userMixFavoriteId(p.id)),
+    }));
+    const menuSections = sectionPresetMenu(factoryMenuItems, userMenuItems);
+    const menuOrder = flattenPresetSections(menuSections);
+    const loadedKey = loadedFactoryId
+      ? `f:${loadedFactoryId}`
+      : activeId
+        ? `u:${activeId}`
+        : null;
+
+    const currentFavId = loadedFactoryId
+      ? factoryMixFavoriteId(loadedFactoryId)
+      : activeId
+        ? userMixFavoriteId(activeId)
+        : null;
+    const currentIsFavorite = currentFavId
+      ? favorites.mixSet.has(currentFavId)
+      : false;
+
+    const currentName = nameDraft.trim() || "Untitled mix";
+    const isOwnLoaded = !loadedFactory && Boolean(activeId);
+    /** Only a loaded saved preset has anything to discard. */
+    const hasDiscardable = dirty && Boolean(loadedFactory || activePreset);
+
+    function requestDiscard(proceed: () => void) {
+      if (!hasDiscardable) {
+        proceed();
+        return;
+      }
+      setDiscardPrompt({ mixName: currentName, proceed });
+    }
+
+    function selectMenuItem(item: SoundsPresetMenuItem) {
+      if (item.key === loadedKey) return;
+      requestDiscard(() => {
+        if (item.kind === "factory") {
+          const p = factoryPresets.find((x) => x.id === item.id);
+          if (p) applyFactoryPreset(p);
+        } else {
+          const p = presets.find((x) => x.id === item.id);
+          if (p) applyPreset(p);
+        }
+      });
+    }
+
+    function stepPreset(dir: 1 | -1) {
+      const n = menuOrder.length;
+      if (n === 0) return;
+      const idx = menuOrder.findIndex((i) => i.key === loadedKey);
+      const next =
+        idx < 0
+          ? dir === 1
+            ? 0
+            : n - 1
+          : (idx + dir + n) % n;
+      if (menuOrder[next].key === loadedKey) return;
+      selectMenuItem(menuOrder[next]);
+    }
+
+    function newMixFromMenu() {
+      requestDiscard(() => createNew());
+    }
+
+    function renameCurrentMix() {
+      if (!activeId || loadedFactory) return;
+      const entered = window.prompt("Rename mix", nameDraft);
+      if (entered == null) return;
+      const name = entered.trim().slice(0, 80);
+      if (!name) return;
+      const now = new Date().toISOString();
+      setPresets((prev) =>
+        prev.map((p) =>
+          p.id === activeId ? { ...p, name, updatedAt: now } : p,
+        ),
+      );
+      setNameDraft(name);
+    }
+
+    function revertToSaved() {
+      if (loadedFactory) {
+        resetFactoryPreset();
+      } else if (activePreset) {
+        applyPreset(activePreset, { navigate: false });
+      }
+    }
+
+    const saveActions: SoundsSaveActions = {
+      mainLabel: loadedFactory ? "Save as…" : saving ? "Saving…" : "Save",
+      mainDisabled: loadedFactory ? false : !dirty || saving,
+      onMain: () => {
+        if (loadedFactory) saveAsNewUserMix("Save as my mix", nameDraft);
+        else void saveCurrent();
+      },
+      onSaveAsNew: () =>
+        saveAsNewUserMix(
+          loadedFactory ? "Save as my mix" : "Save as new mix",
+          loadedFactory ? nameDraft : `${currentName} copy`,
+        ),
+      onRename: renameCurrentMix,
+      onRevert: revertToSaved,
+      onDelete: () => {
+        if (activeId) deleteUserMix(activeId);
+      },
+      canRename: isOwnLoaded,
+      canDelete: isOwnLoaded,
+      canRevert: hasDiscardable,
+    };
+
+    const statusText = loadedFactory
+      ? factoryDirty
+        ? "Factory · unsaved changes"
+        : "Factory"
+      : dirty
+        ? "unsaved changes"
+        : "saved";
+
+    const presetBar = (
+      <SoundsPresetBar
+        variant={isDesktop ? "desktop" : "mobile"}
+        current={{
+          name: currentName,
+          iconId: loadedFactory ? iconDraft : "headphones",
+          iconBg: loadedFactory ? iconBgDraft : undefined,
+          iconColor: loadedFactory ? iconColorDraft : undefined,
+          locked: Boolean(loadedFactory),
+        }}
+        dirty={dirty}
+        statusText={statusText}
+        sections={menuSections}
+        loadedKey={loadedKey}
+        onSelect={selectMenuItem}
+        onPrev={() => stepPreset(-1)}
+        onNext={() => stepPreset(1)}
+        onNew={newMixFromMenu}
+        favorite={
+          currentFavId
+            ? {
+                pressed: currentIsFavorite,
+                onToggle: () => favorites.toggleMix(currentFavId),
+              }
+            : null
+        }
+        playing={allPlaying}
+        playDisabled={!mediaBaseUrl}
+        onTogglePlayAll={() => void togglePlayAll()}
+        save={saveActions}
+      />
+    );
+
+    // ── Layers ──────────────────────────────────────────────────────────
+    const layerDefs = [
+      {
+        track: "music" as const,
+        label: "Music",
+        category: "music" as const,
+        items: backgroundMusic,
+        soundKey: mix.musicKey,
+        gain: mix.musicGain,
+        enabled: mix.musicEnabled,
+        onSoundKey: (key: string) => patchMix({ musicKey: key }),
+        onGain: (gain: number) => patchMix({ musicGain: gain }),
+        onEnabled: (on: boolean) => patchMix({ musicEnabled: on }),
+        selectDisabled: false,
+        hasSound: Boolean(mix.musicKey),
+        playAria: playing.music ? "Pause music" : "Play music",
+      },
+      {
+        track: "nature" as const,
+        label: "Ambience",
+        category: "ambience" as const,
+        items: backgroundNature,
+        soundKey: mix.natureKey,
+        gain: mix.natureGain,
+        enabled: mix.natureEnabled,
+        onSoundKey: (key: string) => patchMix({ natureKey: key }),
+        onGain: (gain: number) => patchMix({ natureGain: gain }),
+        onEnabled: (on: boolean) => patchMix({ natureEnabled: on }),
+        selectDisabled: false,
+        hasSound: Boolean(mix.natureKey),
+        playAria: playing.nature ? "Pause ambience" : "Play ambience",
+      },
+      {
+        track: "drums" as const,
+        label: "Drums",
+        category: "drums" as const,
+        items: backgroundDrums,
+        soundKey: mix.drumsKey,
+        gain: mix.drumsGain,
+        enabled: mix.drumsEnabled,
+        onSoundKey: (key: string) => patchMix({ drumsKey: key }),
+        onGain: (gain: number) => patchMix({ drumsGain: gain }),
+        onEnabled: (on: boolean) => patchMix({ drumsEnabled: on }),
+        selectDisabled: drumsLockedForMelodic,
+        hasSound: Boolean(mix.drumsKey) && !drumsLockedForMelodic,
+        playAria: playing.drums ? "Pause drums" : "Play drums",
+      },
+      {
+        track: "noise" as const,
+        label: "Noise",
+        category: "noise" as const,
+        items: backgroundNoise,
+        soundKey: mix.noiseKey,
+        gain: mix.noiseGain,
+        enabled: mix.noiseEnabled,
+        onSoundKey: (key: string) => patchMix({ noiseKey: key }),
+        onGain: (gain: number) => patchMix({ noiseGain: gain }),
+        onEnabled: (on: boolean) => patchMix({ noiseEnabled: on }),
+        selectDisabled: false,
+        hasSound: Boolean(mix.noiseKey),
+        playAria: playing.noise ? "Pause noise" : "Play noise",
+      },
+    ];
+
+    const renderLayer = (d: (typeof layerDefs)[number]) => {
+      const common = {
+        label: d.label,
+        soundSelect: layerSelect(
+          d.category,
+          d.items,
+          d.soundKey,
+          d.onSoundKey,
+          d.selectDisabled,
+        ),
+        gain: d.gain,
+        onGainChange: d.onGain,
+        onLiveGainChange: (gain: number) => applyLiveBedGain(d.track, gain),
+        enabled: d.enabled,
+        onEnabledChange: d.onEnabled,
+        hasSound: d.hasSound,
+        playing: playing[d.track],
+        onTogglePreview: () => void toggleRowPreview(d.track),
+        playAriaLabel: d.playAria,
+      };
+      const strip = isDesktop ? (
+        <SoundsLayerStrip {...common} />
+      ) : (
+        <SoundsLayerRow {...common} />
+      );
+      if (d.track !== "drums") return <div key={d.track} className="contents">{strip}</div>;
+      return (
+        <DrumsLockedWrap
+          key={d.track}
+          locked={drumsLockedForMelodic}
+          className={isDesktop ? "flex min-w-[112px] flex-1" : "block"}
+        >
+          {strip}
+        </DrumsLockedWrap>
+      );
+    };
+
+    return (
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col">
+        <audio ref={previewNatureRef} className="hidden" playsInline />
+        <audio ref={previewMusicRef} className="hidden" playsInline />
+        <audio ref={previewDrumsRef} className="hidden" playsInline />
+        <audio ref={previewNoiseRef} className="hidden" playsInline />
+        <audio ref={factoryNatureRef} className="hidden" playsInline />
+        <audio ref={factoryMusicRef} className="hidden" playsInline />
+        <audio ref={factoryDrumsRef} className="hidden" playsInline />
+        <audio ref={factoryNoiseRef} className="hidden" playsInline />
+
+        <SoundsDiscardChangesModal
+          open={Boolean(discardPrompt)}
+          mixName={discardPrompt?.mixName ?? currentName}
+          onCancel={() => setDiscardPrompt(null)}
+          onDiscard={() => {
+            const proceed = discardPrompt?.proceed;
+            setDiscardPrompt(null);
+            proceed?.();
+          }}
+        />
+        {deleteConfirmModal}
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex flex-col gap-3 px-4 pb-6 pt-2 sm:px-6 sm:pt-3 md:pb-4">
+            {/* One full-width mixer card; the preset bar is its header. */}
+            <section className="min-w-0 rounded-2xl border border-border bg-card shadow-sm">
+              {presetBar}
+
+              {isDesktop ? (
+                <div className="overflow-x-auto px-5 py-3.5">
+                  <div className="flex gap-3">
+                    {layerDefs.map(renderLayer)}
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-b-2xl">
+                  {layerDefs.map(renderLayer)}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Sticky bottom action bar — mobile only */}
+          <SoundsMobileActionBar
+            playing={allPlaying}
+            playDisabled={!mediaBaseUrl}
+            onTogglePlayAll={() => void togglePlayAll()}
+            save={saveActions}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1105,36 +1644,7 @@ export function MixerSoundsStudio({
       <audio ref={factoryMusicRef} className="hidden" playsInline />
       <audio ref={factoryDrumsRef} className="hidden" playsInline />
       <audio ref={factoryNoiseRef} className="hidden" playsInline />
-
-      {mixMenuId && mixMenuPos ? (
-        <div
-          ref={mixMenuRef}
-          role="menu"
-          style={{
-            position: "fixed",
-            top: mixMenuPos.top,
-            right: mixMenuPos.right,
-          }}
-          className="z-[200] min-w-[9.5rem] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-xl"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => renameUserMix(mixMenuId)}
-            className="flex w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-background"
-          >
-            Rename
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => deleteUserMix(mixMenuId)}
-            className="flex w-full cursor-pointer px-3 py-2 text-left text-sm text-danger hover:bg-background"
-          >
-            Delete
-          </button>
-        </div>
-      ) : null}
+      {deleteConfirmModal}
 
       {isAdmin ? (
         <div
@@ -1245,142 +1755,6 @@ export function MixerSoundsStudio({
               ) : null}
             </div>
 
-            {isAdmin ? null : (
-              <div className="border-t-[0.5px] border-solid border-border pt-4">
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Voices
-                </h2>
-                {fishSpeakers.length === 0 ? (
-                  <p className="text-sm text-muted">No voices yet.</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {[...fishSpeakers]
-                      .sort((a, b) => {
-                        const af = favorites.voiceSet.has(a.modelId) ? 0 : 1;
-                        const bf = favorites.voiceSet.has(b.modelId) ? 0 : 1;
-                        if (af !== bf) return af - bf;
-                        return a.name.localeCompare(b.name);
-                      })
-                      .map((s) => (
-                      <li
-                        key={s.modelId}
-                        className="flex items-center gap-1 rounded-lg px-1"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-sm">
-                          {s.name}
-                        </span>
-                        <FavoriteHeartButton
-                          pressed={favorites.voiceSet.has(s.modelId)}
-                          label={s.name}
-                          onToggle={() => favorites.toggleVoice(s.modelId)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            {isAdmin ? null : (
-              <div className="border-t-[0.5px] border-solid border-border pt-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Your mixes
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={createNew}
-                    className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg accent-fill-gradient px-2.5 py-1.5 text-xs font-semibold text-on-accent transition-opacity hover:opacity-90"
-                    aria-label="New mix"
-                  >
-                    <IconPlus size={14} stroke={2} aria-hidden />
-                    <span>New mix</span>
-                  </button>
-                </div>
-                {!hydrated ? (
-                  <p className="text-sm text-muted">Loading…</p>
-                ) : presets.length === 0 ? (
-                  <p className="text-sm text-muted">
-                    Nothing saved yet — start from a preset above, or build your
-                    own with New mix.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {[...presets]
-                      .sort((a, b) => {
-                        const af = favorites.mixSet.has(userMixFavoriteId(a.id))
-                          ? 0
-                          : 1;
-                        const bf = favorites.mixSet.has(userMixFavoriteId(b.id))
-                          ? 0
-                          : 1;
-                        return af - bf;
-                      })
-                      .map((p) => {
-                      const isActive = p.id === activeId;
-                      const menuOpen = mixMenuId === p.id;
-                      return (
-                        <li key={p.id} className="relative">
-                          <div
-                            className={`flex items-stretch rounded-xl border transition-colors ${
-                              isActive
-                                ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
-                                : "border-border bg-background text-foreground hover:border-accent/40"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => applyPreset(p)}
-                              className="min-w-0 flex-1 cursor-pointer px-3 py-2.5 text-left"
-                            >
-                              <span className="line-clamp-2 text-sm font-semibold">
-                                {p.name}
-                              </span>
-                            </button>
-                            <FavoriteHeartButton
-                              pressed={favorites.mixSet.has(
-                                userMixFavoriteId(p.id),
-                              )}
-                              label={p.name}
-                              onToggle={() =>
-                                favorites.toggleMix(userMixFavoriteId(p.id))
-                              }
-                            />
-                            <div className="relative shrink-0">
-                              <button
-                                type="button"
-                                data-mix-menu-trigger
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  if (mixMenuId === p.id) {
-                                    closeMixMenu();
-                                    return;
-                                  }
-                                  const rect =
-                                    e.currentTarget.getBoundingClientRect();
-                                  setMixMenuPos({
-                                    top: rect.bottom + 4,
-                                    right: window.innerWidth - rect.right,
-                                  });
-                                  setMixMenuId(p.id);
-                                }}
-                                aria-label={`Actions for ${p.name}`}
-                                aria-expanded={menuOpen}
-                                aria-haspopup="menu"
-                                className="flex h-full min-h-[2.75rem] cursor-pointer items-center px-2 text-muted transition-colors hover:text-foreground"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            )}
           </nav>
         </aside>
 
@@ -1426,7 +1800,7 @@ export function MixerSoundsStudio({
               {isAdmin && loadedFactoryId ? (
                 <button
                   type="button"
-                  onClick={() => void deleteCurrentFactory()}
+                  onClick={() => deleteCurrentFactory()}
                   className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold text-muted shadow-sm transition-colors hover:border-accent/40 hover:text-foreground"
                 >
                   Delete

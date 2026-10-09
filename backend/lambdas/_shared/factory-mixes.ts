@@ -60,6 +60,37 @@ function coerceChannel(raw: unknown): FactoryChannel {
   return { source: src || null, volume: clampGain(o.volume) };
 }
 
+/**
+ * Stretch channel volumes so the loudest *populated* fader is 100%.
+ * Channels with no source are stored at 0.
+ */
+function normalizeChannelFaders(channels: FactoryMixPublic["channels"]): FactoryMixPublic["channels"] {
+  const keys = ["music", "ambience", "drums", "noise"] as const;
+  const peak = Math.max(
+    0,
+    ...keys.map((k) => {
+      const c = channels[k];
+      return c.source ? c.volume : 0;
+    }),
+  );
+  const scale = (c: FactoryChannel): FactoryChannel => {
+    if (!c.source) return { ...c, volume: 0 };
+    if (peak <= 0) return { ...c, volume: 0 };
+    if (peak === 100) return c;
+    const vol =
+      c.volume <= 0
+        ? 0
+        : Math.min(100, Math.max(0, Math.round((c.volume / peak) * 100)));
+    return { ...c, volume: vol };
+  };
+  return {
+    music: scale(channels.music),
+    ambience: scale(channels.ambience),
+    drums: scale(channels.drums),
+    noise: scale(channels.noise),
+  };
+}
+
 function coerceHex(raw: unknown, fallback: string): string {
   if (typeof raw !== "string") return fallback;
   const v = raw.trim();
@@ -102,12 +133,12 @@ export function normalizeFactoryMix(raw: unknown): FactoryMixPublic | null {
     icon_bg: coerceHex(o.icon_bg, "#E4EEF4"),
     icon_color: coerceHex(o.icon_color, "#3D5A73"),
     sort,
-    channels: {
+    channels: normalizeChannelFaders({
       music: coerceChannel(ch.music),
       ambience: coerceChannel(ch.ambience),
       drums: coerceChannel(ch.drums),
       noise: coerceChannel(ch.noise),
-    },
+    }),
     createdAt,
     updatedAt,
   };
@@ -178,7 +209,7 @@ export async function putFactoryMix(
       Item: row,
     }),
   );
-  void invalidateBgAudioListCache();
+  await invalidateBgAudioListCache();
   return next;
 }
 
@@ -191,5 +222,5 @@ export async function deleteFactoryMix(id: string): Promise<void> {
       Key: { pk: FACTORY_MIX_PK, sk },
     }),
   );
-  void invalidateBgAudioListCache();
+  await invalidateBgAudioListCache();
 }

@@ -50,6 +50,7 @@ export type SettingsKey =
   | "meditate.defaults"
   | "meditate.background"
   | "meditate.playbackSpeed"
+  | "meditate.showCreateHint"
   | "meditate.downloads"
   | "focus.sessionDefaults"
   | "focus.distraction"
@@ -103,6 +104,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "meditate.defaults": "wired",
   "meditate.background": "not_implemented",
   "meditate.playbackSpeed": "not_implemented",
+  "meditate.showCreateHint": "wired",
   "meditate.downloads": "not_available",
   "focus.sessionDefaults": "wired",
   "focus.distraction": "not_available",

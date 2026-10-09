@@ -74,6 +74,8 @@ type OutItem = {
   description: string | null;
   speakerModelId: string | null;
   speakerName: string | null;
+  /** CDN portrait for the speaker (library meta row). */
+  speakerPortraitUrl: string | null;
   catalogued: boolean;
   mp3Bytes: number | null;
   isDraft: boolean;
@@ -497,6 +499,7 @@ function buildLibraryItems(params: {
   cfDomain: string;
   draftUserFallback?: string;
   speakerNames: Map<string, string>;
+  speakerPortraits: Map<string, string>;
   /** Program-shelf audio keys — omit from My Creations / uncatalogued merge. */
   excludeS3Keys?: Set<string>;
 }): OutItem[] {
@@ -506,6 +509,7 @@ function buildLibraryItems(params: {
     cfDomain,
     draftUserFallback,
     speakerNames,
+    speakerPortraits,
     excludeS3Keys,
   } = params;
   const merged = new Map<string, OutItem>();
@@ -625,6 +629,9 @@ function buildLibraryItems(params: {
       description,
       speakerModelId: referenceId,
       speakerName: referenceId ? speakerNames.get(referenceId) ?? null : null,
+      speakerPortraitUrl: referenceId
+        ? speakerPortraits.get(referenceId) ?? null
+        : null,
       catalogued: !isDraft,
       mp3Bytes,
       isDraft,
@@ -753,6 +760,7 @@ function buildLibraryItems(params: {
       description: null,
       speakerModelId: null,
       speakerName: null,
+      speakerPortraitUrl: null,
       catalogued: false,
       mp3Bytes: obj.size,
       isDraft: false,
@@ -836,12 +844,24 @@ export async function handler(
   try {
     const speakerRows = await listVoiceSpeakers().catch(() => []);
     const speakerNames = new Map(speakerRows.map((s) => [s.modelId, s.name]));
+    const speakerPortraits = new Map<string, string>();
+    for (const s of speakerRows) {
+      const key =
+        typeof s.portraitImageKey === "string" ? s.portraitImageKey.trim() : "";
+      if (!key) continue;
+      const bust = s.updatedAt ? `?v=${encodeURIComponent(s.updatedAt)}` : "";
+      speakerPortraits.set(s.modelId, `https://${cfDomain}/${key}${bust}`);
+    }
 
     if (community) {
       const ddbItems = await scanPublicMeditationItems(tableName);
-      const items = buildLibraryItems({ ddbItems, s3Objects: [], cfDomain, speakerNames }).map(
-        (item) => ({ ...item, creationProvenance: null }),
-      );
+      const items = buildLibraryItems({
+        ddbItems,
+        s3Objects: [],
+        cfDomain,
+        speakerNames,
+        speakerPortraits,
+      }).map((item) => ({ ...item, creationProvenance: null }));
       const mixTable = process.env.MEDITATION_LISTENER_MIX_TABLE_NAME;
       const listenerPk = mixTable
         ? mixListenerPk({
@@ -887,6 +907,7 @@ export async function handler(
           s3Objects: [...s3ByKey.values()],
           cfDomain,
           speakerNames,
+          speakerPortraits,
           excludeS3Keys: programAudioKeys,
         }),
       });
@@ -907,6 +928,7 @@ export async function handler(
         cfDomain,
         draftUserFallback: user.sub,
         speakerNames,
+        speakerPortraits,
         excludeS3Keys: programAudioKeys,
       }),
     });

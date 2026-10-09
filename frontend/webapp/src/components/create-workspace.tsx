@@ -1787,6 +1787,11 @@ export function CreateWorkspace({
     natureGain: backgroundNatureGain,
     drumsGain: backgroundDrumsGain,
     noiseGain: backgroundNoiseGain,
+    musicEnabled: true,
+    natureEnabled: true,
+    drumsEnabled: true,
+    noiseEnabled: true,
+    masterVolume: 100,
   };
   const currentMixSnapshot: CreateMixSnapshot = {
     ...currentBedMix,

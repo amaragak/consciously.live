@@ -20,7 +20,9 @@ export function SelectChevron({
   return (
     <svg
       viewBox="0 0 24 24"
-      className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${rotate} ${className}`}
+      className={`h-3.5 w-3.5 shrink-0 transition-transform ${rotate} ${
+        className.includes("text-") ? className : `text-muted ${className}`
+      }`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2.25"

@@ -66,6 +66,8 @@ export type UserSettingsV1 = {
     backgroundSound: boolean;
     backgroundVolume: number;
     playbackSpeed: number;
+    /** Dismissible Create · Start tip; Settings › Meditate can turn it back on. */
+    showCreateHint: boolean;
   };
   focus: {
     defaultSessionMinutes: number;
@@ -124,6 +126,7 @@ export function defaultUserSettings(): UserSettingsV1 {
       backgroundSound: true,
       backgroundVolume: 0.4,
       playbackSpeed: 1,
+      showCreateHint: true,
     },
     focus: {
       defaultSessionMinutes: 25,
@@ -342,6 +345,10 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
         d.meditate.playbackSpeed,
         0.5,
         2,
+      ),
+      showCreateHint: asBool(
+        meditate.showCreateHint,
+        d.meditate.showCreateHint,
       ),
     },
     focus: {

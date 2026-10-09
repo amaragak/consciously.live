@@ -68,7 +68,6 @@ import {
   PENDING_LIBRARY_GENERATIONS_LS_KEY,
   type PendingLibraryGeneration,
 } from "@/lib/pending-library-generations";
-import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
@@ -1098,10 +1097,13 @@ export default function LibraryView({
     const tokens = librarySearchTokens(searchQuery);
     if (libraryTab === "programs") return [];
     if (libraryTab === "community") {
+      const afterFav = favouritesOnly
+        ? sortedCommunityItems.filter((x) => x.favourite)
+        : sortedCommunityItems;
       const list =
         categoryFilter === "all"
-          ? sortedCommunityItems
-          : sortedCommunityItems.filter((x) =>
+          ? afterFav
+          : afterFav.filter((x) =>
               itemMatchesLibraryCategory(x, categoryFilter),
             );
       return list.filter((x) => libraryRowMatchesSearch(x, tokens));
@@ -1211,10 +1213,9 @@ export default function LibraryView({
       libraryTab === "community"
         ? sortedCommunityItems
         : sortedItems.filter((x) => x.catalogued);
-    const afterFav =
-      libraryTab === "community" || !favouritesOnly
-        ? base
-        : base.filter((x) => x.favourite);
+    const afterFav = favouritesOnly
+      ? base.filter((x) => x.favourite)
+      : base;
     const counts: Record<string, number> = {};
     for (const x of afterFav) {
       const key = libraryMeditationCategoryLabel(x);
@@ -2313,7 +2314,7 @@ export default function LibraryView({
           />
         ) : null}
       </button>
-      {libraryTab === "meditations" ? (
+      {libraryTab === "meditations" || libraryTab === "community" ? (
         <button
           type="button"
           onClick={() => setFavouritesOnly((v) => !v)}
@@ -2365,13 +2366,15 @@ export default function LibraryView({
               label: tab.shortLabel,
             }))}
           />
-          <Link
-            href="/meditate/create"
-            aria-label="Create new meditation"
-            className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent shadow-sm transition-opacity hover:opacity-90"
-          >
-            <IconPlus size={22} stroke={2.25} aria-hidden />
-          </Link>
+          {libraryTab !== "programs" ? (
+            <Link
+              href="/meditate/create"
+              aria-label="Create new meditation"
+              className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl accent-fill-gradient text-on-accent shadow-sm transition-opacity hover:opacity-90"
+            >
+              <IconPlus size={22} stroke={2.25} aria-hidden />
+            </Link>
+          ) : null}
         </div>
         {libraryTab === "meditations" ? (
           <div className="mt-5 flex items-center justify-between gap-3 md:mt-2">
@@ -2415,23 +2418,14 @@ export default function LibraryView({
                 <IconSparkles size={16} stroke={2} aria-hidden />
                 Make it your own
               </Link>
-            ) : (
-              <Link
-                href="/meditate/create"
-                className={`hidden shrink-0 px-3 py-2.5 md:inline-flex ${makeItYourOwnClassName}`}
-                style={makeItYourOwnStyle}
-              >
-                + Create new
-              </Link>
-            )}
+            ) : null}
           </div>
         ) : null}
-        {libraryTab === "meditations" ? (
+        {libraryTab === "meditations" || libraryTab === "community" ? (
           <>
             <div className="mt-6 md:hidden">{mobileSearchFilterRow}</div>
             <div className="mt-6 hidden w-full flex-wrap items-center gap-3 md:flex">
             <div className="flex shrink-0 items-center gap-3">
-              {libraryTab === "meditations" ? (
               <button
                 type="button"
                 onClick={() => setFavouritesOnly((v) => !v)}
@@ -2445,9 +2439,7 @@ export default function LibraryView({
                 <IconHeart filled={favouritesOnly} />
                 <span className="hidden sm:inline">Favourites</span>
               </button>
-              ) : null}
               {sortDropdown}
-              {libraryTab === "meditations" ? (
               <div ref={categoryDropdownRef} className="relative shrink-0">
                 <button
                   type="button"
@@ -2501,7 +2493,6 @@ export default function LibraryView({
                   </div>
                 ) : null}
               </div>
-              ) : null}
             </div>
             {searchInput}
             <div className="ml-auto shrink-0">{layoutToggle}</div>
@@ -2509,30 +2500,6 @@ export default function LibraryView({
           </>
         ) : null}
       </header>
-
-      {libraryTab === "community" ? (
-        <>
-          <p className="mt-6 font-display text-lg font-medium tracking-tight text-foreground sm:text-xl">
-            Pick a category
-          </p>
-          <CommunityCategoryGrid
-            selected={categoryFilter}
-            onSelect={setCategoryFilter}
-            className="mt-3 grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
-          />
-          <div
-            className="md:hidden"
-            style={{ height: 40, minHeight: 40, width: "100%" }}
-            aria-hidden
-          />
-          {mobileSearchFilterRow}
-          <div className="mt-8 hidden w-full flex-wrap items-center gap-3 md:flex">
-            <div className="shrink-0">{sortDropdown}</div>
-            {searchInput}
-            <div className="ml-auto shrink-0">{layoutToggle}</div>
-          </div>
-        </>
-      ) : null}
 
       {libraryTab === "programs" ? (
         programsError && programs.length === 0 && programsReady ? (
@@ -2730,9 +2697,11 @@ export default function LibraryView({
           {searchQuery.trim() ? (
             "No meditations match your search."
           ) : libraryTab === "community" ? (
-            categoryFilter === "all"
-              ? "No community meditations yet. Popular sessions will show up here."
-              : `No community meditations in ${categoryFilter} yet.`
+            favouritesOnly
+              ? "No favourite community meditations yet."
+              : categoryFilter === "all"
+                ? "No community meditations yet. Popular sessions will show up here."
+                : `No community meditations in ${categoryFilter} yet.`
           ) : favouritesOnly ? (
             "No favourite meditations yet."
           ) : (

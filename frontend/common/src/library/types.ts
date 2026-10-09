@@ -29,6 +29,8 @@ export type LibraryMeditationFields = {
   wetAudioUrl?: string | null;
   /** CDN URL for square cover art (gpt-image), when generated. */
   coverImageUrl?: string | null;
+  /** Voice / speaker credit shown as artist under the title. */
+  speakerName?: string | null;
   voiceFxDial?: number | null;
   durationSeconds?: number | null;
   /** Bed-only seconds before voice starts (live mix). */

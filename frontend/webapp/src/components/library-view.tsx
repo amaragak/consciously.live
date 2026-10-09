@@ -67,7 +67,6 @@ import {
   PENDING_LIBRARY_GENERATIONS_LS_KEY,
   type PendingLibraryGeneration,
 } from "@/lib/pending-library-generations";
-import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
@@ -465,9 +464,9 @@ const LIBRARY_MAIN_TABS: {
   label: string;
   shortLabel: string;
 }[] = [
-  { id: "meditations", path: "creations", label: "My Creations", shortLabel: "Creations" },
-  { id: "programs", path: "programs", label: "Programs", shortLabel: "Programs" },
+  { id: "meditations", path: "creations", label: "My Creations", shortLabel: "Mine" },
   { id: "community", path: "community", label: "Community", shortLabel: "Community" },
+  { id: "programs", path: "programs", label: "Programs", shortLabel: "Programs" },
 ];
 
 function libraryTabFromPath(tab: string | null | undefined): LibraryMainTab {
@@ -644,6 +643,7 @@ function libraryItemFromProgramDay(
     meditationStyle: null,
     speakerModelId: null,
     speakerName: null,
+    speakerPortraitUrl: null,
     description: day.description.trim() || null,
     createdAt: null,
     durationSeconds:
@@ -1120,10 +1120,13 @@ export default function LibraryView({
     const tokens = librarySearchTokens(searchQuery);
     if (libraryTab === "programs") return [];
     if (libraryTab === "community") {
+      const afterFav = favouritesOnly
+        ? sortedCommunityItems.filter((x) => x.favourite)
+        : sortedCommunityItems;
       const list =
         categoryFilter === "all"
-          ? sortedCommunityItems
-          : sortedCommunityItems.filter((x) =>
+          ? afterFav
+          : afterFav.filter((x) =>
               itemMatchesLibraryCategory(x, categoryFilter),
             );
       return list.filter((x) => libraryRowMatchesSearch(x, tokens));
@@ -1233,10 +1236,9 @@ export default function LibraryView({
       libraryTab === "community"
         ? sortedCommunityItems
         : sortedItems.filter((x) => x.catalogued);
-    const afterFav =
-      libraryTab === "community" || !favouritesOnly
-        ? base
-        : base.filter((x) => x.favourite);
+    const afterFav = favouritesOnly
+      ? base.filter((x) => x.favourite)
+      : base;
     const counts: Record<string, number> = {};
     for (const x of afterFav) {
       const key = libraryMeditationCategoryLabel(x);
@@ -2344,8 +2346,9 @@ export default function LibraryView({
   } as const;
 
   const mobileFilterPills = (
-    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {libraryTab === "meditations" ? (
+    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {libraryTab === "meditations" || libraryTab === "community" ? (
         <button
           type="button"
           onClick={() => setFavouritesOnly((v) => !v)}
@@ -2404,7 +2407,7 @@ export default function LibraryView({
           </div>
         ) : null}
       </div>
-      {libraryTab === "meditations" ? (
+      {libraryTab === "meditations" || libraryTab === "community" ? (
         <div ref={categoryDropdownRef} className="relative shrink-0">
           <button
             type="button"
@@ -2450,6 +2453,15 @@ export default function LibraryView({
         </div>
       ) : null}
     </div>
+      {libraryTab === "meditations" || libraryTab === "community" ? (
+        <PrimaryCreateButton
+          to="/meditate/create"
+          variant="compact"
+          aria-label="Create new"
+          className="h-[34px] w-[34px] shrink-0 rounded-full shadow-sm"
+        />
+      ) : null}
+    </div>
   );
 
   const mobileSearchBlock = (
@@ -2483,10 +2495,28 @@ export default function LibraryView({
             selectedClassName={HEADER_SECTION_TABS_SELECTED}
             options={LIBRARY_MAIN_TABS.map((tab) => ({
               id: tab.id,
-              label: tab.label,
+              label:
+                tab.shortLabel === tab.label ? (
+                  tab.label
+                ) : (
+                  <>
+                    <span className="sm:hidden">{tab.shortLabel}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
+                  </>
+                ),
             }))}
           />
         </AppPrimaryTabsDesktop>
+
+        <h1 className="sr-only">
+          {libraryTab === "community"
+            ? "Community"
+            : libraryTab === "programs"
+              ? exploringProgram
+                ? exploringProgram.title
+                : "Programs"
+              : "Library"}
+        </h1>
 
         {/* Mobile top block — section tabs live in the header at all sizes. */}
         <div className="flex flex-col gap-3.5 md:hidden">
@@ -2499,9 +2529,9 @@ export default function LibraryView({
               >
                 ← All programs
               </button>
-              <h1 className="font-display text-[clamp(1.375rem,5.5vw,1.625rem)] font-normal leading-[1.15] text-foreground">
+              <p className="font-display text-[clamp(1.375rem,5.5vw,1.625rem)] font-normal leading-[1.15] text-foreground">
                 {exploringProgram.title}
-              </h1>
+              </p>
               {exploringProgram.description ? (
                 <div className="flex flex-col gap-1">
                   <p
@@ -2534,82 +2564,29 @@ export default function LibraryView({
                 </Link>
               </div>
             </>
-          ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="min-w-0 flex-1 font-display text-[clamp(1.25rem,5vw,1.5rem)] font-normal leading-[1.15] text-foreground">
-                {libraryTab === "community"
-                  ? "Quiet practices, openly shared"
-                  : libraryTab === "programs"
-                    ? "Guided courses, one lesson at a time"
-                    : "A library for your inner life"}
-              </h1>
-              <PrimaryCreateButton
-                to="/meditate/create"
-                variant="compact"
-                aria-label="Create"
-                className="h-10 w-10 shrink-0 rounded-[14px] shadow-sm"
-              />
-            </div>
-          )}
-          {libraryTab === "meditations" ? mobileSearchBlock : null}
+          ) : null}
+          {libraryTab === "meditations" || libraryTab === "community"
+            ? mobileSearchBlock
+            : null}
         </div>
 
-        {/* Desktop titles */}
-        {libraryTab === "meditations" ? (
+        {libraryTab === "programs" && exploringProgram ? (
           <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">
-            <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-              A library for your inner life
-            </h1>
-            <PrimaryCreateButton
-              to="/meditate/create"
-              className="shrink-0 shadow-sm"
+            <p className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+              {exploringProgram.title}
+            </p>
+            <Link
+              to="/meditate/create?step=shape&seed=program"
+              className={`shrink-0 px-3 py-2.5 ${makeItYourOwnClassName}`}
+              style={makeItYourOwnStyle}
             >
-              Create new
-            </PrimaryCreateButton>
+              <IconSparkles size={16} stroke={2} aria-hidden />
+              Make it your own
+            </Link>
           </div>
         ) : null}
-        {libraryTab === "community" ? (
-          <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">
-            <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-              Quiet practices, openly shared
-            </h1>
-            <PrimaryCreateButton
-              to="/meditate/create"
-              className="shrink-0 shadow-sm"
-            >
-              Create new
-            </PrimaryCreateButton>
-          </div>
-        ) : null}
-        {libraryTab === "programs" ? (
-          <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">
-            <h1 className="min-w-0 font-display text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-              {exploringProgram
-                ? exploringProgram.title
-                : "Guided courses, one lesson at a time"}
-            </h1>
-            {exploringProgram ? (
-              <Link
-                to="/meditate/create?step=shape&seed=program"
-                className={`shrink-0 px-3 py-2.5 ${makeItYourOwnClassName}`}
-                style={makeItYourOwnStyle}
-              >
-                <IconSparkles size={16} stroke={2} aria-hidden />
-                Make it your own
-              </Link>
-            ) : (
-              <PrimaryCreateButton
-                to="/meditate/create"
-                className={`shrink-0 ${makeItYourOwnClassName}`}
-                style={makeItYourOwnStyle}
-              >
-                Create new
-              </PrimaryCreateButton>
-            )}
-          </div>
-        ) : null}
-        {libraryTab === "meditations" ? (
-          <div className="mt-6 hidden w-full flex-wrap items-center gap-3 md:flex">
+        {libraryTab === "meditations" || libraryTab === "community" ? (
+          <div className="mt-3 hidden w-full flex-wrap items-center gap-3 md:mt-2 md:flex">
             <div className="flex shrink-0 items-center gap-3">
               <button
                 type="button"
@@ -2680,39 +2657,28 @@ export default function LibraryView({
               </div>
             </div>
             {searchInput}
-            <div className="ml-auto shrink-0">{layoutToggle}</div>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              {layoutToggle}
+              <PrimaryCreateButton
+                to="/meditate/create"
+                className="shrink-0 shadow-sm"
+              >
+                Create new
+              </PrimaryCreateButton>
+            </div>
           </div>
         ) : null}
       </header>
 
-      {libraryTab === "community" ? (
-        <>
-          <p className="mt-6 px-4 font-display text-lg font-medium tracking-tight text-foreground max-md:mt-4 max-md:text-base sm:text-xl md:px-0">
-            Pick a category
-          </p>
-          <CommunityCategoryGrid
-            selected={categoryFilter}
-            onSelect={setCategoryFilter}
-            className="mt-3 grid w-full grid-cols-1 gap-1.5 px-4 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 md:px-0 lg:grid-cols-7"
-          />
-          <div className="mt-6 px-4 md:hidden">{mobileSearchBlock}</div>
-          <div className="mt-8 hidden w-full flex-wrap items-center gap-3 md:flex">
-            <div className="shrink-0">{sortDropdown}</div>
-            {searchInput}
-            <div className="ml-auto shrink-0">{layoutToggle}</div>
-          </div>
-        </>
-      ) : null}
-
       {libraryTab === "programs" ? (
         programsError && programs.length === 0 && programsReady ? (
-          <p className="mt-6 w-full min-w-0 rounded-xl border border-border bg-card px-4 py-3 text-sm text-danger">
+          <p className="mt-3 w-full min-w-0 rounded-xl border border-border bg-card px-4 py-3 text-sm text-danger md:mt-2">
             {programsError}
           </p>
         ) : programsLoading && programs.length === 0 ? (
-          <p className="mt-10 text-sm text-muted">Loading programs…</p>
+          <p className="mt-3 text-sm text-muted md:mt-2">Loading programs…</p>
         ) : programsReady && programs.length === 0 ? (
-          <div className="mt-10 w-full min-w-0 rounded-2xl border border-border bg-card px-5 py-10 text-center sm:px-10">
+          <div className="mt-3 w-full min-w-0 rounded-2xl border border-border bg-card px-5 py-10 text-center md:mt-2 sm:px-10">
             <h2 className="font-display text-xl font-medium tracking-tight">
               Programs
             </h2>
@@ -2792,7 +2758,7 @@ export default function LibraryView({
             );
           }
           return (
-            <ul className="mt-3.5 flex w-full min-w-0 max-w-full flex-col gap-3 px-4 max-md:pt-3.5 md:mt-10 md:gap-4 md:px-0">
+            <ul className="mt-3 flex w-full min-w-0 max-w-full flex-col gap-3 px-4 md:mt-2 md:gap-4 md:px-0">
               {programs.map((program) => {
                 const lessonCount = program.days.length;
                 return (
@@ -2917,9 +2883,11 @@ export default function LibraryView({
           {searchQuery.trim() ? (
             "No meditations match your search."
           ) : libraryTab === "community" ? (
-            categoryFilter === "all"
-              ? "No community meditations yet. Popular sessions will show up here."
-              : `No community meditations in ${categoryFilter} yet.`
+            favouritesOnly
+              ? "No favourite community meditations yet."
+              : categoryFilter === "all"
+                ? "No community meditations yet. Popular sessions will show up here."
+                : `No community meditations in ${categoryFilter} yet.`
           ) : favouritesOnly ? (
             "No favourite meditations yet."
           ) : (

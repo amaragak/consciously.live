@@ -23,57 +23,17 @@ const SIZE_PX = {
   player: 56,
 } as const;
 
-function PlaceholderMark({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 3.5l1.1 3.4 3.5 1.1-3.5 1.1L12 12.5l-1.1-3.4-3.5-1.1 3.5-1.1L12 3.5z" />
-      <path d="M18 13.5l0.55 1.7 1.7.55-1.7.55L18 18l-.55-1.7-1.7-.55 1.7-.55L18 13.5z" />
-      <path d="M5.5 14.5l0.45 1.4 1.4.45-1.4.45L5.5 18.2l-.45-1.4-1.4-.45 1.4-.45.45-1.4z" />
-    </svg>
-  );
-}
-
-function CoverPlaceholder({
-  dim,
-  box,
-  alt,
-}: {
-  dim: { width: number; height: number; minWidth: number; minHeight: number };
-  box: string;
-  alt: string;
-}) {
-  return (
-    <div
-      style={dim}
-      className={`${box} flex items-center justify-center bg-gradient-to-br from-accent/35 via-accent-soft/50 to-selected/25 text-accent/70`}
-      aria-hidden={alt ? undefined : true}
-      role={alt ? "img" : undefined}
-      aria-label={alt || undefined}
-    >
-      <PlaceholderMark className="h-[45%] w-[45%] opacity-80" />
-    </div>
-  );
-}
+const GREY_SLOT = "bg-muted/35";
 
 /**
- * Photoreal cover when available; soft gradient sparkle placeholder otherwise
- * (matches library mockup artwork slot).
+ * Photoreal cover when available; neutral grey slot while loading or when
+ * missing/broken (no decorative placeholder art).
  *
  * Eager load: the app scrolls inside `<main overflow-y-auto>`, and native
- * `loading="lazy"` often never fetches images in that nested scrollport —
- * leaving empty `bg-surface-2` squares in My Creations.
+ * `loading="lazy"` often never fetches images in that nested scrollport.
  *
- * When a URL arrives, keep the placeholder underneath and fade the image in
- * once decoded so library rows that were open during generation feel smooth.
+ * When a URL arrives, keep the grey underneath and fade the image in once
+ * decoded so library rows that were open during generation feel smooth.
  */
 export function CoverArtThumb({
   src,
@@ -102,7 +62,15 @@ export function CoverArtThumb({
   }, [url]);
 
   if (!url || broken) {
-    return <CoverPlaceholder dim={dim} box={box} alt={alt} />;
+    return (
+      <div
+        style={dim}
+        className={`${box} ${GREY_SLOT}`}
+        aria-hidden={alt ? undefined : true}
+        role={alt ? "img" : undefined}
+        aria-label={alt || undefined}
+      />
+    );
   }
 
   return (
@@ -114,12 +82,10 @@ export function CoverArtThumb({
     >
       <div
         aria-hidden
-        className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br from-accent/35 via-accent-soft/50 to-selected/25 text-accent/70 transition-opacity duration-500 ease-out ${
+        className={`absolute inset-0 ${GREY_SLOT} transition-opacity duration-500 ease-out ${
           shown ? "opacity-0" : "opacity-100"
         }`}
-      >
-        <PlaceholderMark className="h-[45%] w-[45%] opacity-80" />
-      </div>
+      />
       <img
         src={url}
         alt={alt}

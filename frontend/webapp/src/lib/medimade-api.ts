@@ -6110,6 +6110,7 @@ export async function saveAdminFactoryMix(
   }
   const saved = normalizeFactoryPreset(data.mix);
   if (!saved) throw new Error("Invalid factory mix response");
+  invalidateBackgroundAudioClientCache();
   return saved;
 }
 
@@ -6125,6 +6126,7 @@ export async function deleteAdminFactoryMix(id: string): Promise<void> {
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+  invalidateBackgroundAudioClientCache();
 }
 
 export type AdminProgramDayStatus = "draft" | "generating" | "ready" | "failed";
@@ -6919,7 +6921,7 @@ export async function generateAdminProgramDayDescription(params: {
 /** Treat day descriptions shorter than this as missing (auto-generate). */
 export const PROGRAM_DAY_DESCRIPTION_MIN_CHARS = 100;
 
-const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v4";
+const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v5";
 
 type BgAudioClientCache = {
   version: string;
@@ -7107,23 +7109,31 @@ export async function listBackgroundAudio(opts?: {
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
   const refresh = opts?.refresh === true;
 
-  if (!refresh) {
-    if (bgAudioMemory) return bgAudioMemory.data;
+  if (!refresh && bgAudioInflight) return bgAudioInflight;
+
+  const cachedVersion = refresh
+    ? null
+    : bgAudioMemory?.version ?? readBgAudioLocalCache()?.version ?? null;
+
+  // Always revalidate against the server (ETag / cacheVersion). A warm
+  // memory hit used to skip the network entirely, so factory-mix edits
+  // stayed invisible for the rest of the SPA session.
+  if (!refresh && cachedVersion && bgAudioMemory) {
+    preloadBackgroundAudioCoverImages(bgAudioMemory.data);
+  } else if (!refresh && !bgAudioMemory) {
     const local = readBgAudioLocalCache();
     if (local) {
       bgAudioMemory = local;
       preloadBackgroundAudioCoverImages(local.data);
-      // Revalidate in background; return cached immediately.
-      void fetchBackgroundAudioNetwork(base, local.version).catch(() => undefined);
-      return local.data;
     }
-    if (bgAudioInflight) return bgAudioInflight;
   }
 
-  const run = fetchBackgroundAudioNetwork(
-    base,
-    refresh ? null : bgAudioMemory?.version ?? readBgAudioLocalCache()?.version ?? null,
-    refresh,
+  const run = fetchBackgroundAudioNetwork(base, cachedVersion, refresh).catch(
+    (err) => {
+      // Offline / transient failure — serve last known catalog if we have one.
+      if (!refresh && bgAudioMemory) return bgAudioMemory.data;
+      throw err;
+    },
   );
   if (!refresh) bgAudioInflight = run;
   try {
@@ -7252,6 +7262,8 @@ export type LibraryMeditationItem = {
   meditationStyle: string | null;
   speakerModelId: string | null;
   speakerName: string | null;
+  /** CDN portrait for the speaker (library meta row). */
+  speakerPortraitUrl?: string | null;
   description: string | null;
   createdAt: string | null;
   durationSeconds: number | null;

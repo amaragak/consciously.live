@@ -111,11 +111,21 @@ export function SoundFolderSelect({
     return extra.length > 0 ? [...base, ...extra] : base;
   }, [category, items]);
   const selected = items.find((s) => s.key === value);
+  // Prefer catalog name; if the key is set but items aren’t ready yet, show a
+  // stable basename so the trigger doesn’t flash “None” during preset switches.
   const label = selected
     ? desk
       ? soundDisplayName(selected.name)
       : selected.name
-    : "None";
+    : value.trim()
+      ? soundDisplayName(
+          value
+            .replace(/\\/g, "/")
+            .split("/")
+            .pop()!
+            .replace(/\.[^.]+$/, ""),
+        )
+      : "None";
 
   const bySub = useMemo(() => {
     const map = new Map<string, BackgroundAudioItem[]>();
@@ -200,10 +210,13 @@ export function SoundFolderSelect({
     setActiveSub((cur) => (cur === folderId ? null : folderId));
   }
 
+  const hasValue = Boolean(value.trim());
+  // Desk chrome stays constant (no bg/opacity flip) so factory preset switches
+  // only change the label text — not the whole trigger surface.
   const triggerClass = desk
-    ? `flex h-9 w-full min-w-0 items-center gap-2 rounded-[10px] border border-border px-3 text-left text-[14px] disabled:opacity-50 ${
-        selected ? "bg-card text-foreground" : "bg-transparent text-muted"
-      }`
+    ? `flex h-9 w-full min-w-0 items-center gap-2 rounded-[10px] border border-border bg-card px-3 text-left text-[14px] ${
+        hasValue ? "text-foreground" : "text-muted"
+      } disabled:cursor-not-allowed disabled:text-muted`
     : compact
       ? "flex w-full min-w-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-left text-sm disabled:opacity-50"
       : "flex min-w-0 flex-1 items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-left text-sm disabled:opacity-50";
@@ -322,7 +335,9 @@ export function SoundFolderSelect({
         title={
           selected
             ? `${selected.name}${selected.subcategory ? ` · ${subcategoryLabel(category, selected.subcategory)}` : ""}`
-            : "None"
+            : hasValue
+              ? label
+              : "None"
         }
         onClick={() => {
           if (disabled) return;

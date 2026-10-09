@@ -3,7 +3,6 @@
 import { usePathname } from "@/lib/spa-nav";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppFooter } from "@/components/app-footer";
-import { useLibraryPlayer } from "@/components/library-player-provider";
 import { shouldShowAppFooter, shouldUseDocumentScroll } from "@/lib/app-footer-visibility";
 import {
   FOCUS_PATTERN_CHANGED_EVENT,
@@ -76,22 +75,13 @@ export function MainShell({
   const patternTileActive = !isHeroPage;
   const tileHeightPx = usePatternTileHeight(contentRef, patternTileActive);
   const [focusPattern, setFocusPattern] = useState<FocusPatternId>("default");
-  const { nowPlaying, playerStripHeightPx, playerStripDocked } =
-    useLibraryPlayer();
-  // Focus keeps the timer composition fixed; the strip overlays instead of padding the page.
-  // Create flow docks the strip above its length nav — skip main pad there.
-  const playerPad =
-    !isFocusApp &&
-    !playerStripDocked &&
-    nowPlaying &&
-    playerStripHeightPx > 0
-      ? playerStripHeightPx + 16
-      : 0;
 
   /**
    * Document scroll: content grows with the page.
    * Immersive fill: full-height workspaces with their own internal overflow
    * (create / journal / chat / focus).
+   * The floating library strip is fixed overlay only — never pad <main> for it
+   * (that was stretching the page background under the strip).
    */
 
   useEffect(() => {
@@ -114,7 +104,6 @@ export function MainShell({
         layout === "app" ? (isFocusApp ? "focus" : "signed-in") : undefined
       }
       data-focus-pattern={isFocusApp ? focusPattern : undefined}
-      style={playerPad > 0 ? { paddingBottom: playerPad } : undefined}
     >
       {patternTileActive && tileHeightPx > 0 ? (
         <div

@@ -2,11 +2,23 @@ export function FavoriteHeartButton({
   pressed,
   label,
   onToggle,
+  size = "sm",
+  iconSize,
+  boxClassName,
 }: {
   pressed: boolean;
   label: string;
   onToggle: () => void;
+  size?: "sm" | "md";
+  /** Override the heart glyph size in px. */
+  iconSize?: number;
+  /** Override the hit-area box classes (default per `size`). */
+  boxClassName?: string;
 }) {
+  const box =
+    boxClassName ??
+    (size === "md" ? "h-10 w-10 rounded-xl" : "h-8 w-8 rounded-lg");
+  const icon = iconSize ?? (size === "md" ? 20 : 16);
   return (
     <button
       type="button"
@@ -18,14 +30,14 @@ export function FavoriteHeartButton({
         e.preventDefault();
         onToggle();
       }}
-      className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg ${
+      className={`flex ${box} shrink-0 cursor-pointer items-center justify-center ${
         pressed ? "text-accent-link" : "text-muted hover:text-foreground"
       }`}
     >
       <svg
         viewBox="0 0 24 24"
-        width="16"
-        height="16"
+        width={icon}
+        height={icon}
         fill={pressed ? "currentColor" : "none"}
         stroke="currentColor"
         strokeWidth="2"

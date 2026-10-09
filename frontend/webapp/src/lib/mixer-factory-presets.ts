@@ -1,8 +1,13 @@
-import type { MixerPresetMix } from "@/lib/mixer-preset-storage";
+import {
+  normalizeFaderGains,
+  type MixerPresetMix,
+} from "@/lib/mixer-preset-storage";
 
 export type FactoryChannel = {
   source: string | null;
   volume: number;
+  /** Layer power; missing means on. Off keeps source + volume. */
+  enabled?: boolean;
 };
 
 export type MixerFactoryPreset = {
@@ -32,8 +37,8 @@ export const MIXER_FACTORY_PRESETS: MixerFactoryPreset[] = [
     icon_bg: "#E4EEF4",
     icon_color: "#3D5A73",
     channels: {
-      music: { source: null, volume: 20 },
-      ambience: { source: null, volume: 40 },
+      music: { source: null, volume: 50 },
+      ambience: { source: null, volume: 100 },
       drums: { source: null, volume: 0 },
       noise: { source: null, volume: 0 },
     },
@@ -49,7 +54,7 @@ export const MIXER_FACTORY_PRESETS: MixerFactoryPreset[] = [
       music: { source: null, volume: 0 },
       ambience: { source: null, volume: 0 },
       drums: { source: null, volume: 0 },
-      noise: { source: null, volume: 8 },
+      noise: { source: null, volume: 100 },
     },
   },
   {
@@ -61,8 +66,8 @@ export const MIXER_FACTORY_PRESETS: MixerFactoryPreset[] = [
     icon_color: "#A65252",
     channels: {
       music: { source: null, volume: 0 },
-      ambience: { source: null, volume: 18 },
-      drums: { source: null, volume: 35 },
+      ambience: { source: null, volume: 51 },
+      drums: { source: null, volume: 100 },
       noise: { source: null, volume: 0 },
     },
   },
@@ -75,9 +80,9 @@ export const MIXER_FACTORY_PRESETS: MixerFactoryPreset[] = [
     icon_color: "#4A6B3A",
     channels: {
       music: { source: null, volume: 0 },
-      ambience: { source: null, volume: 38 },
+      ambience: { source: null, volume: 100 },
       drums: { source: null, volume: 0 },
-      noise: { source: null, volume: 12 },
+      noise: { source: null, volume: 32 },
     },
   },
 ];
@@ -92,15 +97,36 @@ export function factoryPresetToMix(p: MixerFactoryPreset): MixerPresetMix {
     natureGain: p.channels.ambience.volume,
     drumsGain: p.channels.drums.volume,
     noiseGain: p.channels.noise.volume,
+    musicEnabled: p.channels.music.enabled !== false,
+    natureEnabled: p.channels.ambience.enabled !== false,
+    drumsEnabled: p.channels.drums.enabled !== false,
+    noiseEnabled: p.channels.noise.enabled !== false,
+    masterVolume: 100,
   };
 }
 
 export function mixToFactoryChannels(mix: MixerPresetMix): MixerFactoryPreset["channels"] {
   return {
-    music: { source: mix.musicKey.trim() || null, volume: mix.musicGain },
-    ambience: { source: mix.natureKey.trim() || null, volume: mix.natureGain },
-    drums: { source: mix.drumsKey.trim() || null, volume: mix.drumsGain },
-    noise: { source: mix.noiseKey.trim() || null, volume: mix.noiseGain },
+    music: {
+      source: mix.musicKey.trim() || null,
+      volume: mix.musicGain,
+      enabled: mix.musicEnabled !== false,
+    },
+    ambience: {
+      source: mix.natureKey.trim() || null,
+      volume: mix.natureGain,
+      enabled: mix.natureEnabled !== false,
+    },
+    drums: {
+      source: mix.drumsKey.trim() || null,
+      volume: mix.drumsGain,
+      enabled: mix.drumsEnabled !== false,
+    },
+    noise: {
+      source: mix.noiseKey.trim() || null,
+      volume: mix.noiseGain,
+      enabled: mix.noiseEnabled !== false,
+    },
   };
 }
 
@@ -157,10 +183,10 @@ export function emptyFactoryPreset(name?: string): MixerFactoryPreset {
     icon_bg: "#E4EEF4",
     icon_color: "#3D5A73",
     channels: {
-      music: { source: null, volume: 25 },
-      ambience: { source: null, volume: 25 },
-      drums: { source: null, volume: 25 },
-      noise: { source: null, volume: 25 },
+      music: { source: null, volume: 25, enabled: true },
+      ambience: { source: null, volume: 25, enabled: true },
+      drums: { source: null, volume: 25, enabled: true },
+      noise: { source: null, volume: 25, enabled: true },
     },
   };
 }
@@ -174,7 +200,9 @@ export function normalizeFactoryPreset(raw: unknown): MixerFactoryPreset | null 
       ? (o.channels as Record<string, unknown>)
       : {};
   const channel = (c: unknown, fallback: number): FactoryChannel => {
-    if (!c || typeof c !== "object") return { source: null, volume: fallback };
+    if (!c || typeof c !== "object") {
+      return { source: null, volume: fallback, enabled: true };
+    }
     const x = c as Record<string, unknown>;
     const src = typeof x.source === "string" ? x.source.trim() : "";
     const vol =
@@ -182,6 +210,7 @@ export function normalizeFactoryPreset(raw: unknown): MixerFactoryPreset | null 
     return {
       source: src || null,
       volume: Math.min(100, Math.max(0, vol)),
+      enabled: x.enabled !== false,
     };
   };
   return {
@@ -199,13 +228,52 @@ export function normalizeFactoryPreset(raw: unknown): MixerFactoryPreset | null 
       typeof o.icon_color === "string" && o.icon_color.trim()
         ? o.icon_color.trim()
         : "#3D5A73",
-    channels: {
-      music: channel(ch.music, 25),
-      ambience: channel(ch.ambience, 25),
-      drums: channel(ch.drums, 25),
-      noise: channel(ch.noise, 25),
-    },
+    channels: (() => {
+      const raw = {
+        music: channel(ch.music, 25),
+        ambience: channel(ch.ambience, 25),
+        drums: channel(ch.drums, 25),
+        noise: channel(ch.noise, 25),
+      };
+      // Peak among layers that have a sound; empty layers stay at 0.
+      // Also covers stale catalog caches that still ship pre-normalised volumes.
+      const withKeys = {
+        musicKey: raw.music.source ?? "",
+        natureKey: raw.ambience.source ?? "",
+        drumsKey: raw.drums.source ?? "",
+        noiseKey: raw.noise.source ?? "",
+        musicGain: raw.music.source ? raw.music.volume : 0,
+        natureGain: raw.ambience.source ? raw.ambience.volume : 0,
+        drumsGain: raw.drums.source ? raw.drums.volume : 0,
+        noiseGain: raw.noise.source ? raw.noise.volume : 0,
+        musicEnabled: raw.music.enabled !== false,
+        natureEnabled: raw.ambience.enabled !== false,
+        drumsEnabled: raw.drums.enabled !== false,
+        noiseEnabled: raw.noise.enabled !== false,
+        masterVolume: 100,
+      };
+      const norm = normalizeFaderGains(withKeys);
+      return {
+        music: { ...raw.music, volume: norm.musicGain },
+        ambience: { ...raw.ambience, volume: norm.natureGain },
+        drums: { ...raw.drums, volume: norm.drumsGain },
+        noise: { ...raw.noise, volume: norm.noiseGain },
+      };
+    })(),
   };
+}
+
+function channelsEqual(
+  a: MixerFactoryPreset["channels"],
+  b: MixerFactoryPreset["channels"],
+): boolean {
+  const keys = ["music", "ambience", "drums", "noise"] as const;
+  return keys.every(
+    (k) =>
+      (a[k].source ?? null) === (b[k].source ?? null) &&
+      a[k].volume === b[k].volume &&
+      (a[k].enabled !== false) === (b[k].enabled !== false),
+  );
 }
 
 export function factoryPresetEquals(a: MixerFactoryPreset, b: MixerFactoryPreset): boolean {
@@ -216,6 +284,6 @@ export function factoryPresetEquals(a: MixerFactoryPreset, b: MixerFactoryPreset
     a.icon === b.icon &&
     a.icon_bg === b.icon_bg &&
     a.icon_color === b.icon_color &&
-    JSON.stringify(a.channels) === JSON.stringify(b.channels)
+    channelsEqual(a.channels, b.channels)
   );
 }

@@ -66,6 +66,8 @@ export type LibraryActiveTrack = {
   /** When false, skip post-voice bed fade. Default true. */
   fadeOut?: boolean;
   coverImageUrl?: string;
+  /** Speaker / voice credit — shown as artist under the title. */
+  speakerName?: string;
 };
 
 export type BedVolumeChannel = "nature" | "music" | "drums" | "noise";
@@ -137,6 +139,7 @@ export function trackFromLibraryItem(
   m: LibraryMeditationFields,
 ): LibraryActiveTrack {
   const cover = m.coverImageUrl?.trim();
+  const speaker = m.speakerName?.trim();
   return {
     url: voiceStemPlaybackUrl(m.audioUrl),
     title: m.title,
@@ -164,6 +167,7 @@ export function trackFromLibraryItem(
       : {}),
     ...(typeof m.fadeOut === "boolean" ? { fadeOut: m.fadeOut } : {}),
     ...(cover ? { coverImageUrl: cover } : {}),
+    ...(speaker ? { speakerName: speaker } : {}),
   };
 }
 
@@ -1010,8 +1014,8 @@ export function LibraryAudioStrip({
   if (!track) return null;
 
   const max = Math.max(duration, 0.0001);
-  /** Seek/scrub only for soundscape beds — voice samples and custom mixes stay fixed. */
-  const canSeekTransport = ambientSoundscape;
+  /** Looping ambient mixes have no timeline; meditations and soundscapes scrub. */
+  const canSeekTransport = !ambientMix;
 
   function skipSeconds(delta: number) {
     if (!canSeekTransport) return;
@@ -1072,7 +1076,7 @@ export function LibraryAudioStrip({
   const ivory10 = "rgba(243,237,226,0.10)";
   const stripBorder = "rgba(243,237,226,0.22)";
   const stripStyle = {
-    height: 76,
+    height: track.speakerName ? 88 : 76,
     boxSizing: "border-box",
     color: ivory,
     backgroundImage:
@@ -1288,31 +1292,60 @@ export function LibraryAudioStrip({
           <div
             style={{
               display: "flex",
-              alignItems: "baseline",
-              justifyContent: "center",
-              gap: 10,
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
               minWidth: 0,
             }}
           >
-            <p
-              className="font-display"
+            <div
               style={{
-                margin: 0,
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "center",
+                gap: 10,
                 minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                fontSize: 19,
-                lineHeight: 1.15,
-                color: ivory,
+                maxWidth: "100%",
               }}
             >
-              {track.title}
-            </p>
-            {stripSubtitle ? (
-              <span style={{ ...mutedTextStyle, flexShrink: 0, fontVariantNumeric: undefined }}>
-                {stripSubtitle}
-              </span>
+              <p
+                className="font-display"
+                style={{
+                  margin: 0,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: 19,
+                  lineHeight: 1.15,
+                  color: ivory,
+                }}
+              >
+                {track.title}
+              </p>
+              {stripSubtitle ? (
+                <span style={{ ...mutedTextStyle, flexShrink: 0, fontVariantNumeric: undefined }}>
+                  {stripSubtitle}
+                </span>
+              ) : null}
+            </div>
+            {track.speakerName ? (
+              <p
+                className="font-sans"
+                style={{
+                  margin: 0,
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: 12,
+                  fontWeight: 400,
+                  lineHeight: 1.2,
+                  color: ivory60,
+                }}
+              >
+                {track.speakerName}
+              </p>
             ) : null}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

@@ -70,6 +70,9 @@ export async function getBgAudioListCache(): Promise<BgAudioListCacheHit | null>
     const updatedAt =
       typeof item.updatedAt === "string" ? item.updatedAt : "";
     if (!version || !payload || typeof payload !== "object") return null;
+    // VERSION_SK is bumped before CACHE_SK is deleted — reject a leftover blob.
+    const currentVersion = await getBgAudioListCacheVersion();
+    if (currentVersion && currentVersion !== version) return null;
     return {
       version,
       payload: payload as Record<string, unknown>,

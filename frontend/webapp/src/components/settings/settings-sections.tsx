@@ -1523,6 +1523,29 @@ function MeditateSection({ settings, onPatch }: SectionProps) {
     );
   }
 
+  if (shouldShowSettingsRow("meditate.showCreateHint")) {
+    rows.push(
+      <SettingsRow
+        key="createHint"
+        settingsKey="meditate.showCreateHint"
+        title="Show tips on Create"
+        helper="Hint above the brief on the Create · Start step."
+        control={
+          <SettingsSwitch
+            aria-label="Show tips on Create"
+            checked={settings.meditate.showCreateHint}
+            disabled={settingsRowDisabled("meditate.showCreateHint")}
+            onCheckedChange={
+              settingsRowDisabled("meditate.showCreateHint")
+                ? undefined
+                : (v) => onPatch({ meditate: { showCreateHint: v } })
+            }
+          />
+        }
+      />,
+    );
+  }
+
   if (shouldShowSettingsRow("meditate.background")) {
     rows.push(
       <SettingsRow

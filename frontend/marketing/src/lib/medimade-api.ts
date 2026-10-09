@@ -3831,6 +3831,7 @@ export async function saveAdminFactoryMix(
   }
   const saved = normalizeFactoryPreset(data.mix);
   if (!saved) throw new Error("Invalid factory mix response");
+  invalidateBackgroundAudioClientCache();
   return saved;
 }
 
@@ -3846,6 +3847,7 @@ export async function deleteAdminFactoryMix(id: string): Promise<void> {
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
+  invalidateBackgroundAudioClientCache();
 }
 
 export type AdminProgramDayStatus = "draft" | "generating" | "ready" | "failed";
@@ -4687,21 +4689,22 @@ export async function listBackgroundAudio(opts?: {
   if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
   const refresh = opts?.refresh === true;
 
-  if (!refresh) {
-    if (bgAudioMemory) return bgAudioMemory.data;
+  if (!refresh && bgAudioInflight) return bgAudioInflight;
+
+  const cachedVersion = refresh
+    ? null
+    : bgAudioMemory?.version ?? readBgAudioLocalCache()?.version ?? null;
+
+  if (!refresh && !bgAudioMemory) {
     const local = readBgAudioLocalCache();
-    if (local) {
-      bgAudioMemory = local;
-      void fetchBackgroundAudioNetwork(base, local.version).catch(() => undefined);
-      return local.data;
-    }
-    if (bgAudioInflight) return bgAudioInflight;
+    if (local) bgAudioMemory = local;
   }
 
-  const run = fetchBackgroundAudioNetwork(
-    base,
-    refresh ? null : bgAudioMemory?.version ?? readBgAudioLocalCache()?.version ?? null,
-    refresh,
+  const run = fetchBackgroundAudioNetwork(base, cachedVersion, refresh).catch(
+    (err) => {
+      if (!refresh && bgAudioMemory) return bgAudioMemory.data;
+      throw err;
+    },
   );
   if (!refresh) bgAudioInflight = run;
   try {
@@ -4827,6 +4830,8 @@ export type LibraryMeditationItem = {
   meditationStyle: string | null;
   speakerModelId: string | null;
   speakerName: string | null;
+  /** CDN portrait for the speaker (library meta row). */
+  speakerPortraitUrl?: string | null;
   description: string | null;
   createdAt: string | null;
   durationSeconds: number | null;

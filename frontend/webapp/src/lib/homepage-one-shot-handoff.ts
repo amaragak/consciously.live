@@ -43,6 +43,11 @@ function emptyMix(): MixerPresetMix {
     natureGain: 25,
     drumsGain: 10,
     noiseGain: 40,
+    musicEnabled: true,
+    natureEnabled: true,
+    drumsEnabled: true,
+    noiseEnabled: true,
+    masterVolume: 100,
   };
 }
 

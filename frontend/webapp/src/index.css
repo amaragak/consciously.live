@@ -671,6 +671,39 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
   z-index: 1;
 }
 
+/*
+ * Sounds › Soundscapes / Voices scroll well.
+ * Fill matches Create › Start format tray (accent-soft over page bg).
+ * Inset shadow sits above scrolling cards via ::after.
+ */
+.sounds-browse-well {
+  position: relative;
+  isolation: isolate;
+  background-color: color-mix(
+    in srgb,
+    var(--accent) 18%,
+    var(--background)
+  );
+}
+
+.sounds-browse-well::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 2px rgb(28 25 23 / 0.07),
+    inset 0 2px 6px rgb(28 25 23 / 0.05);
+}
+
+:root.dark .sounds-browse-well::after {
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.22),
+    inset 0 2px 8px rgb(0 0 0 / 0.14);
+}
+
 /** Now-playing strip scrubber — gold fill/thumb on ivory track (see PlayerStrip). */
 .library-strip-scrubber {
   -webkit-appearance: none;
