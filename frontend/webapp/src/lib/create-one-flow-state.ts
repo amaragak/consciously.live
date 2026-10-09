@@ -39,10 +39,10 @@ export type CreateFlowChatTurn = {
   /** 0-based AIM item the coach is asking about ([[ASKING:n]]). */
   aimAsking?: number;
   /**
-   * Mid-chat attachment shown as a “Context added” row (not a typed bubble).
+   * Mid-chat attachment / removal shown as a context row (not a typed bubble).
    * Still sent to the coach as a user turn.
    */
-  kind?: "context";
+  kind?: "context" | "context-removed";
   contextKind?: CreateFlowContextKind;
   contextDetail?: string | null;
   /** Optional cover for program (and similar) context rows. */

@@ -25,6 +25,7 @@ import { CreateProgramPicker } from "@/components/create-program-picker";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
 import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
+import { ChatMarkdown } from "@/components/chat-markdown";
 import { MeditationLengthSelect } from "@/components/meditation-length-select";
 import { CreateProgramSessionControl } from "@/components/create-program-session-control";
 import {
@@ -625,8 +626,11 @@ export function CreateOneFlow({
     kind: "style" | "program" | "journal" | "goal";
     label: string;
   }> = [];
-  if (!state.style) shapeAddOptions.push({ kind: "style", label: "Style" });
-  if (!state.program) shapeAddOptions.push({ kind: "program", label: "Program" });
+  // Style and Program are exclusive — only offer either when neither is attached.
+  if (!state.style && !state.program) {
+    shapeAddOptions.push({ kind: "style", label: "Style" });
+    shapeAddOptions.push({ kind: "program", label: "Program" });
+  }
   shapeAddOptions.push({ kind: "journal", label: "Journal" });
   if (!state.goal) shapeAddOptions.push({ kind: "goal", label: "Goal" });
   const shapeFormatAddOptions = shapeAddOptions.filter(
@@ -1119,6 +1123,104 @@ export function CreateOneFlow({
     });
   }
 
+  /** After removing format/context on Shape — coach acknowledges; may check direction. */
+  function nudgeShapeAfterContextRemoval(opts: {
+    label: string;
+    contextKind: CreateFlowContextKind;
+    detail?: string | null;
+    /** State already with the attachment removed. */
+    nextState: CreateOneFlowState;
+  }) {
+    if (step !== "shape") return;
+    const live = opts.nextState;
+    if (!live.chat.some((m) => m.role === "assistant" || m.role === "user")) {
+      return;
+    }
+    scrollShapeThreadToBottom();
+    const label = opts.label.trim();
+    const removalTurn: CreateFlowChatTurn = {
+      role: "user",
+      text: label,
+      kind: "context-removed",
+      contextKind: opts.contextKind,
+      contextDetail: opts.detail ?? null,
+    };
+    let nextState: CreateOneFlowState | null = null;
+    setState((prev) => {
+      nextState = {
+        ...prev,
+        chat: [...prev.chat, removalTurn],
+      };
+      return nextState;
+    });
+    const s = nextState ?? {
+      ...live,
+      chat: [...live.chat, removalTurn],
+    };
+    const isFormat =
+      opts.contextKind === "style" || opts.contextKind === "program";
+    const stillHasFormat = Boolean(s.style || s.program);
+    const stillHasPersonalContext = Boolean(
+      s.journals.length > 0 || s.goal || s.prompt.trim(),
+    );
+    const note = [
+      `The creator just REMOVED ${opts.contextKind} "${label}"${
+        opts.detail?.trim() ? ` (${opts.detail.trim()})` : ""
+      }. Acknowledge the removal briefly by name.`,
+      isFormat
+        ? stillHasFormat
+          ? "They still have another format attached — acknowledge and continue from remaining required items; do not restart."
+          : "That was their Format (style or program). If the chat was clearly building around it, ask ONE short check: whether they meant to leave that direction, and whether they want a new direction or a different format — keep prior answers that still apply. If the brief + remaining context already make a clear general practice, acknowledge and continue (confirm-only or the next open gap) without forcing a re-orientation."
+        : stillHasPersonalContext && (s.style || s.program || s.prompt.trim())
+          ? "Personal context was removed. If the conversation was relying on it for theme/direction, ask ONE short check whether they meant to drop that thread or want a new direction; otherwise acknowledge and continue."
+          : "Personal context was removed and little else remains for direction — ask whether they want a new direction or to add different context, without restarting answered ground that still applies.",
+      "Do not emit [[READY]] merely because something was removed. Do not re-ask answered ground that still applies without the removed item.",
+    ].join(" ");
+    const apiUserText = `I removed ${opts.contextKind} context: ${label}${
+      opts.detail?.trim() ? ` (${opts.detail.trim()})` : ""
+    }. Keep the prior conversation; this is not a restart.`;
+    const messages = buildShapeTurnApiMessages({
+      chat: s.chat,
+      userText: apiUserText,
+      state: s,
+      lifeArea: shapeLifeAreaFor(s),
+      programBrief: shapeProgramBriefFor(s),
+      contextUpdateNote: note,
+      leanUserTurn: Boolean(shapeCachedContextRef.current),
+    });
+    if (shapeCachedContextRef.current) {
+      shapeOverridesSupplementRef.current = buildShapeStartOverridesSupplement({
+        cachedContext: shapeCachedContextRef.current,
+        state: s,
+        lifeArea: shapeLifeAreaFor(s),
+        programBrief: shapeProgramBriefFor(s),
+      });
+      shapeAppliedFingerprintRef.current = fingerprintShapeStart(s);
+    }
+    void streamShapeAssistant({
+      messages,
+      stateSnapshot: s,
+      appendBubble: true,
+    });
+  }
+
+  function removeShapeAttachment(opts: {
+    contextKind: CreateFlowContextKind;
+    label: string;
+    detail?: string | null;
+    apply: (prev: CreateOneFlowState) => CreateOneFlowState;
+  }) {
+    const live = stateRef.current;
+    const next = opts.apply(live);
+    setState(() => next);
+    nudgeShapeAfterContextRemoval({
+      label: opts.label,
+      contextKind: opts.contextKind,
+      detail: opts.detail,
+      nextState: next,
+    });
+  }
+
   function openPicker(kind: Exclude<PickerKind, null>) {
     if (kind === "style") setDraftStyle(state.style?.id ?? "");
     if (kind === "program") setDraftProgramId(state.program?.id ?? null);
@@ -1344,6 +1446,14 @@ export function CreateOneFlow({
         );
         continue;
       }
+      if (m.kind === "context-removed") {
+        lines.push(
+          `User: [Context removed · ${m.contextKind ?? "context"}] ${m.text.trim()}${
+            m.contextDetail?.trim() ? ` (${m.contextDetail.trim()})` : ""
+          }`,
+        );
+        continue;
+      }
       lines.push(`${m.role === "user" ? "User" : "Guide"}: ${m.text.trim()}`);
     }
     if (state.journals.length > 0) {
@@ -1564,7 +1674,14 @@ export function CreateOneFlow({
           kindLabel={opts?.kindLabels ? "Style" : undefined}
           onRemove={
             removable
-              ? () => setState((p) => ({ ...p, style: null, answers: {} }))
+              ? () => {
+                  const id = state.style!.id;
+                  removeShapeAttachment({
+                    contextKind: "style",
+                    label: id,
+                    apply: (p) => ({ ...p, style: null, answers: {} }),
+                  });
+                }
               : undefined
           }
         />
@@ -1585,7 +1702,19 @@ export function CreateOneFlow({
           }
           onRemove={
             removable
-              ? () => setState((p) => ({ ...p, program: null }))
+              ? () => {
+                  const title = state.program!.title;
+                  const detail =
+                    state.program!.mode === "one"
+                      ? "One meditation"
+                      : `${state.program!.sessionIds.length} sessions`;
+                  removeShapeAttachment({
+                    contextKind: "program",
+                    label: title,
+                    detail,
+                    apply: (p) => ({ ...p, program: null }),
+                  });
+                }
               : undefined
           }
         />
@@ -1598,11 +1727,18 @@ export function CreateOneFlow({
           kindLabel={opts?.kindLabels ? "Journal" : undefined}
           onRemove={
             removable
-              ? () =>
-                  setState((p) => ({
-                    ...p,
-                    journals: p.journals.filter((x) => x.id !== j.id),
-                  }))
+              ? () => {
+                  const title = j.title;
+                  const id = j.id;
+                  removeShapeAttachment({
+                    contextKind: "journal",
+                    label: title,
+                    apply: (p) => ({
+                      ...p,
+                      journals: p.journals.filter((x) => x.id !== id),
+                    }),
+                  });
+                }
               : undefined
           }
         />
@@ -1614,7 +1750,16 @@ export function CreateOneFlow({
           kindLabel={opts?.kindLabels ? "Goal" : undefined}
           onRemove={
             removable
-              ? () => setState((p) => ({ ...p, goal: null }))
+              ? () => {
+                  const area = state.goal!.lifeAreaTitle;
+                  const goalTitle = state.goal!.goalTitle;
+                  removeShapeAttachment({
+                    contextKind: "goal",
+                    label: area,
+                    detail: goalTitle,
+                    apply: (p) => ({ ...p, goal: null }),
+                  });
+                }
               : undefined
           }
         />
@@ -1665,13 +1810,13 @@ export function CreateOneFlow({
         type="button"
         aria-pressed={opts.selected}
         onClick={() => openPicker(kind)}
-        className={`relative flex h-full w-full flex-col overflow-hidden rounded-xl border bg-card text-left shadow-sm transition ${
+        className={`relative flex h-[88px] w-full flex-row overflow-hidden rounded-xl bg-card text-left shadow-sm transition md:h-full md:flex-col ${
           opts.selected
-            ? "border-accent"
-            : "border-border"
+            ? "border-[1.5px] border-accent md:border md:border-accent"
+            : "border border-border"
         } ${opts.dimmed ? "opacity-40 grayscale" : ""}`}
       >
-        <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20">
+        <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20 md:aspect-[4/3] md:h-auto md:w-full">
           {coverUrl ? (
             <img
               src={categoryImageUrlForTile(coverUrl, 480, 360)}
@@ -1689,7 +1834,7 @@ export function CreateOneFlow({
             >
               <svg
                 viewBox="0 0 24 24"
-                className="h-14 w-14 text-card drop-shadow-sm md:h-16 md:w-16"
+                className="h-10 w-10 text-card drop-shadow-sm md:h-16 md:w-16"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2.75"
@@ -1702,25 +1847,33 @@ export function CreateOneFlow({
           ) : (
             <span
               aria-hidden
-              className="pointer-events-none absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-[2px] md:h-8 md:w-8"
+              className="pointer-events-none absolute right-2 top-2 hidden h-8 w-8 items-center justify-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-[2px] md:flex"
             >
-              <IconPlus className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              <IconPlus className="h-4 w-4" />
             </span>
           )}
         </div>
-        <div className="flex flex-1 flex-col px-2.5 pb-2.5 pt-2 md:px-3 md:pb-3">
-          <p className="font-display text-[15px] font-medium leading-snug text-foreground md:text-[16px]">
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-[3px] py-2.5 pl-3 pr-[34px] md:flex-none md:gap-0 md:px-3 md:pb-3 md:pt-2 md:pr-3">
+          <p className="font-display text-[16px] font-medium leading-snug text-foreground">
             {title}
           </p>
-          <p className="mt-1 text-[12px] leading-snug text-muted md:text-[13px]">
+          <p className="line-clamp-2 text-[12px] leading-[1.35] text-muted md:mt-1 md:line-clamp-none md:text-[13px] md:leading-snug">
             {line}
           </p>
         </div>
+        {!opts.selected ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-[2px] md:hidden"
+          >
+            <IconPlus className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
       </button>
     );
   };
 
-  const startTileSlotClass = "min-w-0 min-h-0 flex-1";
+  const startTileSlotClass = "min-w-0 min-h-0 md:flex-1";
 
   const renderSurpriseMe = () => (
     <button
@@ -1871,7 +2024,17 @@ export function CreateOneFlow({
 
   function removeProgram() {
     setProgramHeaderOpen(false);
-    setState((p) => ({ ...p, program: null }));
+    const prog = stateRef.current.program;
+    if (!prog) return;
+    removeShapeAttachment({
+      contextKind: "program",
+      label: prog.title,
+      detail:
+        prog.mode === "one"
+          ? "One meditation"
+          : `${prog.sessionIds.length} sessions`,
+      apply: (p) => ({ ...p, program: null }),
+    });
   }
 
   const programSessionEntries = state.program
@@ -1995,69 +2158,97 @@ export function CreateOneFlow({
     >
       {visibleChat.map((m, i) =>
         m.role === "assistant" && !m.text.trim() ? null :
-        m.kind === "context" ? (
-          m.contextKind === "program" ? (
-            <div
-              key={`context-${i}`}
-              className="ml-auto flex flex-col items-end gap-1.5"
-            >
-              <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
-                Program added
-              </span>
-              <span className="inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-lg border border-accent/40 bg-accent-soft/50 py-0 pl-[3px] pr-2.5 text-[12px] font-semibold text-foreground">
-                <span className="flex h-[22px] w-[22px] shrink-0 overflow-hidden rounded-md bg-accent-soft">
-                  {m.contextImageUrl ? (
-                    <img
-                      src={m.contextImageUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-[10px] font-bold">
-                      P
-                    </span>
-                  )}
-                </span>
-                <span className="min-w-0 truncate">{m.text}</span>
-              </span>
-            </div>
-          ) : (
-            <div
-              key={`context-${i}`}
-              className="ml-auto flex max-w-[92%] flex-wrap items-center justify-end gap-2 py-0.5 md:max-w-[80%]"
-            >
-              <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
-                {m.contextKind === "style"
-                  ? "Style added"
+        m.kind === "context" || m.kind === "context-removed" ? (
+          (() => {
+            const removed = m.kind === "context-removed";
+            const kindLabel =
+              m.contextKind === "style"
+                ? removed
+                  ? "Style removed"
+                  : "Style added"
+                : m.contextKind === "program"
+                  ? removed
+                    ? "Program removed"
+                    : "Program added"
                   : m.contextKind === "goal"
-                    ? "Goal added"
+                    ? removed
+                      ? "Goal removed"
+                      : "Goal added"
                     : m.contextKind === "journal"
-                      ? "Journal added"
+                      ? removed
+                        ? "Journal removed"
+                        : "Journal added"
                       : m.contextKind === "start"
                         ? "Start updated"
-                        : "Context added"}
-              </span>
-              <ContextToken
-                name={m.text}
-                detail={m.contextKind === "journal" ? null : m.contextDetail}
-              />
-            </div>
-          )
+                        : removed
+                          ? "Context removed"
+                          : "Context added";
+            if (!removed && m.contextKind === "program") {
+              return (
+                <div
+                  key={`context-${i}`}
+                  className="ml-auto flex flex-col items-end gap-1.5"
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
+                    {kindLabel}
+                  </span>
+                  <span className="inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-lg border border-accent/40 bg-accent-soft/50 py-0 pl-[3px] pr-2.5 text-[12px] font-semibold text-foreground">
+                    <span className="flex h-[22px] w-[22px] shrink-0 overflow-hidden rounded-md bg-accent-soft">
+                      {m.contextImageUrl ? (
+                        <img
+                          src={m.contextImageUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-[10px] font-bold">
+                          P
+                        </span>
+                      )}
+                    </span>
+                    <span className="min-w-0 truncate">{m.text}</span>
+                  </span>
+                </div>
+              );
+            }
+            return (
+              <div
+                key={`context-${i}`}
+                className="ml-auto flex max-w-[92%] flex-wrap items-center justify-end gap-2 py-0.5 md:max-w-[80%]"
+              >
+                <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
+                  {kindLabel}
+                </span>
+                <ContextToken
+                  name={m.text}
+                  detail={m.contextKind === "journal" ? null : m.contextDetail}
+                />
+              </div>
+            );
+          })()
+        ) : m.role === "user" ? (
+          <div
+            key={`${m.role}-${i}`}
+            className="header-gold-sunlit-fill ml-auto max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-br-sm px-3.5 py-[11px] text-[16px] leading-[1.5] shadow-sm md:max-w-[78%]"
+          >
+            {m.text.trim() ? m.text : null}
+          </div>
         ) : (
           <div
             key={`${m.role}-${i}`}
-            className={`px-3.5 py-[11px] text-[16px] leading-[1.5] whitespace-pre-wrap ${
-              m.role === "user"
-                ? "header-gold-sunlit-fill ml-auto max-w-[85%] rounded-[14px] rounded-br-sm shadow-sm md:max-w-[78%]"
-                : "mr-auto max-w-[92%] rounded-[14px] rounded-bl-sm bg-background text-foreground shadow-sm md:max-w-[84%]"
-            }`}
+            className="mr-auto max-w-[92%] py-1 text-foreground md:max-w-[84%]"
           >
-            {m.role === "assistant" && state.style ? (
+            {state.style ? (
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                 {state.style.id}
               </p>
             ) : null}
-            {m.text.trim() ? m.text : null}
+            {m.text.trim() ? (
+              <ChatMarkdown
+                text={m.text}
+                className="text-[16px] font-normal leading-[1.5] text-foreground"
+              />
+            ) : null}
           </div>
         ),
       )}
@@ -2158,7 +2349,7 @@ export function CreateOneFlow({
                   <div
                     role="radiogroup"
                     aria-label="Format"
-                    className="relative flex items-stretch gap-2 rounded-[14px] bg-accent-soft p-2 md:col-start-1 md:row-start-2 md:gap-3"
+                    className="relative grid grid-cols-1 gap-3 rounded-[14px] bg-accent-soft p-1.5 sm:grid-cols-2 md:col-start-1 md:row-start-2 md:flex md:items-stretch md:gap-3 md:p-2"
                   >
                     <div className={startTileSlotClass}>
                       {renderStartTile(
@@ -2184,9 +2375,19 @@ export function CreateOneFlow({
                         },
                       )}
                     </div>
+                    {/* Below md: centre of the group (gap between stacked / side-by-side row tiles). */}
                     <div
                       aria-hidden
-                      className="pointer-events-none absolute left-1/2 top-2 z-[1] aspect-[4/3] w-[calc((100%-16px-8px)/2)] -translate-x-1/2 md:w-[calc((100%-16px-12px)/2)]"
+                      className="pointer-events-none absolute inset-0 z-[1] md:hidden"
+                    >
+                      <span className="absolute left-1/2 top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-accent/35 bg-card text-[11px] font-semibold tracking-[0.5px] text-accent-link">
+                        or
+                      </span>
+                    </div>
+                    {/* md+: centred on the image band between tall tiles. */}
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute left-1/2 top-2 z-[1] hidden aspect-[4/3] w-[calc((100%-16px-12px)/2)] -translate-x-1/2 md:block"
                     >
                       <span className="absolute left-1/2 top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-accent/35 bg-card text-[11px] font-semibold tracking-[0.5px] text-accent-link">
                         or
@@ -2205,7 +2406,7 @@ export function CreateOneFlow({
                     </p>
                     <div className="hidden md:block">{renderSurpriseMe()}</div>
                   </div>
-                  <div className="flex items-stretch gap-2 p-2 md:col-start-2 md:row-start-2 md:gap-3">
+                  <div className="grid grid-cols-1 gap-3 px-1.5 sm:grid-cols-2 md:col-start-2 md:row-start-2 md:flex md:items-stretch md:gap-3 md:p-2 md:px-2">
                     <div className={startTileSlotClass}>
                       {renderStartTile(
                         "journal",
@@ -2475,6 +2676,25 @@ export function CreateOneFlow({
                       {programHeaderOpen ? "Done" : "Edit"}
                       <SelectChevron open={programHeaderOpen} />
                     </button>
+                    <button
+                      type="button"
+                      aria-label="Remove program"
+                      onClick={removeProgram}
+                      className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path
+                          d="M6 6l12 12M18 6L6 18"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
                   </div>
                 ) : null}
                 <div className="flex min-w-0 items-center gap-2">
@@ -2635,9 +2855,19 @@ export function CreateOneFlow({
                       <button
                         type="button"
                         aria-label="Remove format"
-                        onClick={() =>
-                          setState((p) => ({ ...p, style: null, answers: {} }))
-                        }
+                        onClick={() => {
+                          const id = state.style?.id;
+                          if (!id) return;
+                          removeShapeAttachment({
+                            contextKind: "style",
+                            label: id,
+                            apply: (p) => ({
+                              ...p,
+                              style: null,
+                              answers: {},
+                            }),
+                          });
+                        }}
                         className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-muted hover:text-foreground"
                       >
                         <svg

@@ -310,7 +310,7 @@ export function buildShapeContextBlock(opts: {
   const lines: string[] = [
     "--- Shape context (for the guide; do not mention this block to the user) ---",
     "PURPOSE: Gather enough information to create a meditation in the attached FORMAT — either a Style practice OR a Program (never both; they may overlap in theme, but the creator picks one). Journal entries and Manifest goals are CONTEXT: they are always valuable. They may already answer some required questions — if they clearly do, count those answered and do not re-ask. They never replace the format. The finished meditation should always hint at / weave in attached journal and goal context.",
-    "You are shaping that meditation with the creator. Be fluid: use attached context and prior chat; when new context appears, fold it in and continue — do not restart the conversation.",
+    "You are shaping that meditation with the creator. Be fluid: use attached context and prior chat; when new context appears or is removed, fold that in and continue — do not restart the conversation.",
     "REQUIRED QUESTIONS: For a Style, gather the style AIM items unless the creator skips. For a Program, gather each selected session's Ask-items unless the creator skips. Do not emit [[READY]] until those required items are answered or skipped (or there is no format and the brief + context is enough for a general practice).",
     "CONTEXT USE RULE (every turn): For each required Format item (Style AIM / Program Ask-item), decide whether the brief, journal, goal, or prior chat already answers it.",
     "— If YES: count it answered (emit [[AIM:n]] for styles). Confirm in plain words how you will use that material in the meditation (one concrete construction cue — e.g. weaving a named worry into the body of the practice) so they can correct you if you misread it. Do not re-ask that item.",
@@ -598,6 +598,13 @@ function turnToApiContent(m: CreateFlowChatTurn): string {
     return `I added ${kind} context: ${m.text.trim()}${
       detail ? ` (${detail})` : ""
     }. (Context attach — not a spoken answer unless it clearly addressed the last question.)`;
+  }
+  if (m.kind === "context-removed") {
+    const kind = m.contextKind ?? "context";
+    const detail = m.contextDetail?.trim();
+    return `I removed ${kind} context: ${m.text.trim()}${
+      detail ? ` (${detail})` : ""
+    }. (Removal — acknowledge; check whether they meant to leave that direction if it was load-bearing.)`;
   }
   if (m.role === "assistant") {
     const asking =
