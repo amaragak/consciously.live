@@ -65,42 +65,14 @@ export function siblingAacKey(key: string): string | null {
 
 /** AAC (ADTS or M4A) → MP3 for catalog / loudnorm paths that still expect MPEG. */
 export async function aacAdtsToMp3Buffer(aac: Buffer): Promise<Buffer> {
-  const id = randomUUID();
+  const { bufferToMp3 } = await import("./audio-mp3");
   const isM4a =
     aac.length >= 8 &&
     aac[4] === 0x66 &&
     aac[5] === 0x74 &&
     aac[6] === 0x79 &&
     aac[7] === 0x70;
-  const inPath = `/tmp/aac-in-${id}${isM4a ? AAC_EXTENSION : ".aac"}`;
-  const outPath = `/tmp/aac-out-${id}.mp3`;
-  fs.writeFileSync(inPath, aac);
-  try {
-    await execFileAsync("ffmpeg", [
-      "-hide_banner",
-      "-y",
-      "-i",
-      inPath,
-      "-ac",
-      "1",
-      "-ar",
-      "44100",
-      "-c:a",
-      "libmp3lame",
-      "-q:a",
-      "2",
-      outPath,
-    ]);
-    return fs.readFileSync(outPath);
-  } finally {
-    for (const p of [inPath, outPath]) {
-      try {
-        fs.unlinkSync(p);
-      } catch {
-        /* */
-      }
-    }
-  }
+  return bufferToMp3(aac, isM4a ? AAC_EXTENSION : ".aac");
 }
 
 /**

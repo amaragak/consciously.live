@@ -74,7 +74,7 @@ export function AppChrome({ children }: Props) {
             slides with the rail collapse/expand (same 200ms as `.app-sidebar-drawer`).
           */}
           <div
-            className="hidden w-[var(--app-sidebar-w,200px)] shrink-0 transition-[width] duration-200 ease-out motion-reduce:transition-none md:block"
+            className="hidden w-[var(--app-sidebar-w,200px)] shrink-0 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:block"
             aria-hidden
           />
           <AppSidebar

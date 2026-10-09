@@ -104,6 +104,17 @@ import {
   writeLastVoiceId,
 } from "@/lib/create-sound-picks";
 import { useSoundFavorites } from "@/lib/sound-favorites";
+import {
+  SOUND_SETTING_KEYS,
+  VOICE_SETTING_KEYS,
+  countNonEmptyOverrides,
+  diffSoundSessionSettings,
+  overrideHasKeys,
+  resolveSoundSessionSettings,
+  stripOverrideKeys,
+  type CreateSoundSessionOverride,
+  type CreateSoundSessionSettings,
+} from "@/lib/create-sound-session-settings";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
@@ -181,9 +192,32 @@ export type CreateSoundStepJobExtras = {
   speechifyRate?: number;
 } & ReturnType<typeof buildCreateMeditationBedJobFields>;
 
+export type CreateSoundSessionOverrideMeta = {
+  /** Sessions with a non-empty override. */
+  overrideCount: number;
+  /** Ids of the overridden sessions (for pill dots). */
+  overriddenSessionIds: string[];
+  /** null = All. */
+  focusSessionId: string | null;
+  expanded: boolean;
+  voiceDiffers: boolean;
+  soundDiffers: boolean;
+};
+
 export type CreateSoundStepHandle = {
   stopPreviews: () => void;
+  /** Job extras for the current focus (All or the focused session). */
   getJobExtras: () => Promise<CreateSoundStepJobExtras>;
+  /** Job extras for one session's resolved settings; null = All. */
+  getJobExtrasForSession: (
+    sessionId: string | null,
+  ) => Promise<CreateSoundStepJobExtras>;
+  getSessionOverrideMeta: () => CreateSoundSessionOverrideMeta;
+  setSessionPickerExpanded: (v: boolean) => void;
+  setFocusSessionId: (id: string | null) => void;
+  clearAllSessionOverrides: () => void;
+  resetVoiceOverrideForFocus: () => void;
+  resetSoundOverrideForFocus: () => void;
   togglePreviewMix: () => void;
   /** Pause/resume whichever preview is active (strip transport). */
   togglePreviewTransport: () => void;
@@ -197,6 +231,11 @@ type CreateSoundStepProps = {
   programTitle?: string | null;
   programVoicePrefs?: VoicePreferredTraits | null;
   onPreviewMixPlayingChange?: (playing: boolean) => void;
+  /** Attached program id; per-session overrides only exist with a program. */
+  programId?: string | null;
+  /** When length >= 1 and a program is attached, per-session mode is available. */
+  programSessionIds?: string[] | null;
+  onSessionOverrideMetaChange?: (meta: CreateSoundSessionOverrideMeta) => void;
 };
 
 type FlowSoundLock = {
@@ -212,7 +251,47 @@ type FlowSoundLock = {
   leadInSeconds: 0 | 20;
   fadeOut: boolean;
   longerBreaks: boolean;
+  programId: string | null;
+  /** programId + session ids; overrides only restore when this matches. */
+  sessionKey: string;
+  sessionOverrides: Record<string, CreateSoundSessionOverride>;
 };
+
+function sessionKeyFor(
+  programId: string | null | undefined,
+  sessionIds: string[] | null | undefined,
+): string {
+  if (!programId || !sessionIds || sessionIds.length < 1) return "";
+  return `${programId}|${sessionIds.join(",")}`;
+}
+
+function SessionDiffNote({
+  sessionNumber,
+  onReset,
+  disabled,
+}: {
+  sessionNumber: number;
+  onReset: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-[10px] bg-accent-soft px-3 py-2 text-[13px] text-foreground">
+      <span
+        aria-hidden
+        className="h-2 w-2 shrink-0 rounded-full bg-accent"
+      />
+      <span className="min-w-0">Session {sessionNumber} differs from All</span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onReset}
+        className="ml-auto shrink-0 cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Reset to all
+      </button>
+    </div>
+  );
+}
 
 function formatBrainwaveBadge(
   tag: string,
@@ -414,6 +493,11 @@ function TagTypeMultiSelect({
 
 let flowSoundLock: FlowSoundLock | null = null;
 
+/** Drop remembered per-session overrides (call once a flow has been generated). */
+export function clearCreateSoundSessionOverridesLock(): void {
+  if (flowSoundLock) flowSoundLock.sessionOverrides = {};
+}
+
 export const CreateSoundStep = forwardRef<
   CreateSoundStepHandle,
   CreateSoundStepProps
@@ -425,6 +509,9 @@ export const CreateSoundStep = forwardRef<
     programTitle: _programTitle = null,
     programVoicePrefs = null,
     onPreviewMixPlayingChange,
+    programId = null,
+    programSessionIds = null,
+    onSessionOverrideMetaChange,
   },
   ref,
 ) {
@@ -730,6 +817,259 @@ export const CreateSoundStep = forwardRef<
     };
   }, [cachedBeds]);
 
+  // ── Per-session overrides (Program attached) ──────────────────────────
+  const sessionKey = sessionKeyFor(programId, programSessionIds);
+  const sessionMode = sessionKey !== "";
+  const [sessionOverrides, setSessionOverrides] = useState<
+    Record<string, CreateSoundSessionOverride>
+  >(() =>
+    sessionKey !== "" && flowSoundLock?.sessionKey === sessionKey
+      ? { ...flowSoundLock.sessionOverrides }
+      : {},
+  );
+  /** null = All. */
+  const [focusSessionId, setFocusSessionIdState] = useState<string | null>(
+    null,
+  );
+  const [sessionPickerExpanded, setSessionPickerExpandedState] =
+    useState(false);
+  /** Program-wide ("All") settings; only updated while All is focused. */
+  const allSettingsRef = useRef<CreateSoundSessionSettings | null>(null);
+  /** True from a focus switch / reset until the commit that applied it. */
+  const hydratingFocusRef = useRef(false);
+  const sessionOverridesRef = useRef(sessionOverrides);
+  sessionOverridesRef.current = sessionOverrides;
+  const focusSessionIdRef = useRef(focusSessionId);
+  focusSessionIdRef.current = focusSessionId;
+
+  const currentSettings = useMemo<CreateSoundSessionSettings>(
+    () => ({
+      speakerModelId,
+      longerBreaks,
+      pacingPercent,
+      voiceFxDial,
+      soundMode,
+      compositionKey,
+      backgroundNatureKey,
+      backgroundMusicKey,
+      backgroundDrumsKey,
+      backgroundNoiseKey,
+      backgroundNatureGain,
+      backgroundMusicGain,
+      backgroundDrumsGain,
+      backgroundNoiseGain,
+      selectedMixKey,
+      musicLevel,
+      leadInSeconds,
+      fadeOut,
+    }),
+    [
+      speakerModelId,
+      longerBreaks,
+      pacingPercent,
+      voiceFxDial,
+      soundMode,
+      compositionKey,
+      backgroundNatureKey,
+      backgroundMusicKey,
+      backgroundDrumsKey,
+      backgroundNoiseKey,
+      backgroundNatureGain,
+      backgroundMusicGain,
+      backgroundDrumsGain,
+      backgroundNoiseGain,
+      selectedMixKey,
+      musicLevel,
+      leadInSeconds,
+      fadeOut,
+    ],
+  );
+  const currentSettingsRef = useRef(currentSettings);
+  currentSettingsRef.current = currentSettings;
+
+  /** Snapshot the editable UI state into the settings shape. */
+  function snapshotSettings(): CreateSoundSessionSettings {
+    return currentSettingsRef.current;
+  }
+
+  /** Push a settings object back into the card state. */
+  function applySettings(next: CreateSoundSessionSettings) {
+    setSpeakerModelId(next.speakerModelId);
+    setLongerBreaks(next.longerBreaks);
+    setPacingPercent(next.pacingPercent);
+    setVoiceFxDial(next.voiceFxDial);
+    setSoundMode(next.soundMode);
+    setCompositionKey(next.compositionKey);
+    setBackgroundNatureKey(next.backgroundNatureKey);
+    setBackgroundMusicKey(next.backgroundMusicKey);
+    setBackgroundDrumsKey(next.backgroundDrumsKey);
+    setBackgroundNoiseKey(next.backgroundNoiseKey);
+    setBackgroundNatureGain(next.backgroundNatureGain);
+    setBackgroundMusicGain(next.backgroundMusicGain);
+    setBackgroundDrumsGain(next.backgroundDrumsGain);
+    setBackgroundNoiseGain(next.backgroundNoiseGain);
+    setSelectedMixKey(next.selectedMixKey);
+    setMusicLevel(next.musicLevel);
+    setLeadInSeconds(next.leadInSeconds);
+    setFadeOut(next.fadeOut);
+    setMixBaseline({
+      musicKey: next.backgroundMusicKey,
+      natureKey: next.backgroundNatureKey,
+      drumsKey: next.backgroundDrumsKey,
+      noiseKey: next.backgroundNoiseKey,
+      musicGain: next.backgroundMusicGain,
+      natureGain: next.backgroundNatureGain,
+      drumsGain: next.backgroundDrumsGain,
+      noiseGain: next.backgroundNoiseGain,
+    });
+  }
+
+  // Program removed / changed → clear overrides, back to All, collapse.
+  const prevSessionKeyRef = useRef(sessionKey);
+  useEffect(() => {
+    if (prevSessionKeyRef.current === sessionKey) return;
+    prevSessionKeyRef.current = sessionKey;
+    const all = allSettingsRef.current;
+    if (focusSessionIdRef.current != null && all) {
+      hydratingFocusRef.current = true;
+      applySettings(all);
+    }
+    setSessionOverrides({});
+    setFocusSessionIdState(null);
+    setSessionPickerExpandedState(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on sessionKey only
+  }, [sessionKey]);
+
+  // Sync UI edits into All (focus = All) or the focused session's override.
+  useEffect(() => {
+    if (!picksReady) return;
+    if (hydratingFocusRef.current) return;
+    if (focusSessionId == null || !sessionMode) {
+      allSettingsRef.current = currentSettings;
+      return;
+    }
+    const all = allSettingsRef.current;
+    if (!all) return;
+    const diff = diffSoundSessionSettings(all, currentSettings);
+    const empty = Object.keys(diff).length === 0;
+    setSessionOverrides((prev) => {
+      const had = prev[focusSessionId];
+      if (empty) {
+        if (!had) return prev;
+        const { [focusSessionId]: _drop, ...rest } = prev;
+        return rest;
+      }
+      if (
+        had &&
+        Object.keys(had).length === Object.keys(diff).length &&
+        (Object.keys(diff) as Array<keyof CreateSoundSessionSettings>).every(
+          (k) => had[k] === diff[k],
+        )
+      ) {
+        return prev;
+      }
+      return { ...prev, [focusSessionId]: diff };
+    });
+  }, [picksReady, focusSessionId, sessionMode, currentSettings]);
+
+  // Runs after the sync effect above: the switch/reset commit has landed.
+  useEffect(() => {
+    hydratingFocusRef.current = false;
+  });
+
+  function setFocusSessionId(id: string | null) {
+    if (!sessionMode) return;
+    if (id === focusSessionIdRef.current) return;
+    if (id != null && !programSessionIds?.includes(id)) return;
+    const all =
+      focusSessionIdRef.current == null
+        ? snapshotSettings()
+        : allSettingsRef.current;
+    if (!all) {
+      setFocusSessionIdState(id);
+      return;
+    }
+    allSettingsRef.current = all;
+    hydratingFocusRef.current = true;
+    stopAllAudioPreview();
+    applySettings(
+      id == null
+        ? all
+        : resolveSoundSessionSettings(all, sessionOverridesRef.current[id]),
+    );
+    setFocusSessionIdState(id);
+  }
+
+  function setSessionPickerExpanded(v: boolean) {
+    if (!sessionMode) return;
+    if (!v) setFocusSessionId(null);
+    setSessionPickerExpandedState(v);
+  }
+
+  function clearAllSessionOverrides() {
+    if (!sessionMode) return;
+    const all = allSettingsRef.current;
+    setSessionOverrides({});
+    if (focusSessionIdRef.current != null && all) {
+      hydratingFocusRef.current = true;
+      applySettings(all);
+    }
+  }
+
+  function resetFocusedOverrideKeys(
+    keys: ReadonlyArray<keyof CreateSoundSessionSettings>,
+  ) {
+    const id = focusSessionIdRef.current;
+    const all = allSettingsRef.current;
+    if (!sessionMode || id == null || !all) return;
+    const nextOverride = stripOverrideKeys(
+      sessionOverridesRef.current[id],
+      keys,
+    );
+    const next = { ...sessionOverridesRef.current };
+    if (nextOverride) next[id] = nextOverride;
+    else delete next[id];
+    hydratingFocusRef.current = true;
+    setSessionOverrides(next);
+    applySettings(resolveSoundSessionSettings(all, nextOverride));
+  }
+
+  const focusOverride =
+    focusSessionId != null ? sessionOverrides[focusSessionId] : undefined;
+  const sessionFocused = sessionMode && focusSessionId != null;
+  const focusSessionNumber =
+    focusSessionId != null
+      ? (programSessionIds?.indexOf(focusSessionId) ?? -1) + 1
+      : 0;
+  const voiceDiffers =
+    sessionFocused && overrideHasKeys(focusOverride, VOICE_SETTING_KEYS);
+  const soundDiffers =
+    sessionFocused && overrideHasKeys(focusOverride, SOUND_SETTING_KEYS);
+  const overriddenSessionIds = sessionMode
+    ? Object.keys(sessionOverrides).filter(
+        (id) => Object.keys(sessionOverrides[id] ?? {}).length > 0,
+      )
+    : [];
+  const overrideCount = sessionMode
+    ? countNonEmptyOverrides(sessionOverrides)
+    : 0;
+  const sessionOverrideMeta: CreateSoundSessionOverrideMeta = {
+    overrideCount,
+    overriddenSessionIds,
+    focusSessionId: sessionMode ? focusSessionId : null,
+    expanded: sessionMode && sessionPickerExpanded,
+    voiceDiffers,
+    soundDiffers,
+  };
+  const sessionOverrideMetaRef = useRef(sessionOverrideMeta);
+  sessionOverrideMetaRef.current = sessionOverrideMeta;
+  const onSessionOverrideMetaChangeRef = useRef(onSessionOverrideMetaChange);
+  onSessionOverrideMetaChangeRef.current = onSessionOverrideMetaChange;
+  const sessionOverrideMetaKey = `${overrideCount}|${overriddenSessionIds.join(",")}|${sessionOverrideMeta.focusSessionId ?? ""}|${sessionOverrideMeta.expanded}|${voiceDiffers}|${soundDiffers}`;
+  useEffect(() => {
+    onSessionOverrideMetaChangeRef.current?.(sessionOverrideMetaRef.current);
+  }, [sessionOverrideMetaKey]);
+
   useEffect(() => {
     if (picksReady) return;
     if (speakers.length === 0) return;
@@ -783,19 +1123,37 @@ export const CreateSoundStep = forwardRef<
 
   useEffect(() => {
     if (!picksReady) return;
+    // While a session is focused the card shows its resolved values — the lock
+    // always remembers the program-wide (All) ones.
+    const base =
+      sessionMode && focusSessionId != null && allSettingsRef.current
+        ? allSettingsRef.current
+        : {
+            speakerModelId,
+            compositionKey,
+            soundMode,
+            voiceFxDial,
+            musicLevel,
+            leadInSeconds,
+            fadeOut,
+            longerBreaks,
+          };
     flowSoundLock = {
-      speakerModelId,
-      compositionKey,
-      soundMode,
+      speakerModelId: base.speakerModelId,
+      compositionKey: base.compositionKey,
+      soundMode: base.soundMode,
       voiceAlts,
       soundAlts,
       showVoiceReason,
       showSoundReason,
-      voiceFxDial,
-      musicLevel,
-      leadInSeconds,
-      fadeOut,
-      longerBreaks,
+      voiceFxDial: base.voiceFxDial,
+      musicLevel: base.musicLevel,
+      leadInSeconds: base.leadInSeconds,
+      fadeOut: base.fadeOut,
+      longerBreaks: base.longerBreaks,
+      programId: sessionMode ? (programId ?? null) : null,
+      sessionKey,
+      sessionOverrides: sessionMode ? sessionOverrides : {},
     };
   }, [
     picksReady,
@@ -811,6 +1169,11 @@ export const CreateSoundStep = forwardRef<
     leadInSeconds,
     fadeOut,
     longerBreaks,
+    sessionMode,
+    focusSessionId,
+    programId,
+    sessionKey,
+    sessionOverrides,
   ]);
 
   const drumsLockedForMelodic = isMelodicMusicKey(
@@ -1518,6 +1881,126 @@ export const CreateSoundStep = forwardRef<
     setSelectedMixKey("");
   }
 
+  /** Build job extras from one resolved settings object (All or a session). */
+  async function buildJobExtras(
+    cfg: CreateSoundSessionSettings,
+  ): Promise<CreateSoundStepJobExtras> {
+    let referenceId = cfg.speakerModelId.trim();
+    if (!referenceId) {
+      const list = await listFishSpeakers();
+      const pick = pickDefaultSpeechifySpeaker(
+        speechifySpeakersForPicker(list),
+      );
+      referenceId = pick?.modelId ?? "";
+    }
+    if (!referenceId) throw new Error("No voice available");
+    const speaker =
+      speakers.find((sp) => sp.modelId === referenceId) ?? null;
+    const cfgDrumsPreviewKey = isMelodicMusicKey(backgroundMusic, cfg.backgroundMusicKey)
+      ? ""
+      : cfg.backgroundDrumsKey;
+    const rateN = Number(speechifyRateInput.trim());
+    const pacedSpeechifyRate = effectiveSpeechifyRate(
+      speaker?.speechifyRate,
+      cfg.pacingPercent,
+    );
+    return {
+      reference_id: referenceId,
+      voiceFxDial: cfg.voiceFxDial,
+      voiceFxPreset: voiceFxOn ? VOICE_FX_PRESET_MEDITATION_MIXER : null,
+      speed: speechSpeed,
+      ...(cfg.longerBreaks ? { longerBreaks: true as const } : {}),
+      speakerName: speaker?.name ?? null,
+      leadInSeconds: cfg.leadInSeconds,
+      fadeOut: cfg.fadeOut,
+      ...(showCreateAudioDevControls
+        ? {
+            claudeModel: claudeModelChoice,
+            fishPauseMode,
+            ...(skipVoiceFx ? { skipVoiceFx: true as const } : {}),
+            ...(skipSpeechifyLoudnorm
+              ? { skipSpeechifyLoudnorm: true as const }
+              : {}),
+            ...(speechifyEmotionVariants
+              ? { speechifyEmotionVariants: true as const }
+              : {}),
+            ...(Number.isFinite(rateN)
+              ? {
+                  speechifyRate: Math.max(
+                    -50,
+                    Math.min(50, Math.round(rateN)),
+                  ),
+                }
+              : { speechifyRate: pacedSpeechifyRate }),
+          }
+        : {
+            claudeModel: CLAUDE_SONNET_45_MODEL_ID,
+            fishPauseMode: "segmented" as const,
+            ...(speaker?.brand === "speechify"
+              ? { speechifyRate: pacedSpeechifyRate }
+              : {}),
+          }),
+      ...buildCreateMeditationBedJobFields({
+        soundMode: cfg.soundMode,
+        compositionKey: cfg.compositionKey,
+        backgroundNatureKey: cfg.backgroundNatureKey,
+        backgroundMusicKey: cfg.backgroundMusicKey,
+        backgroundDrumsKey: cfg.backgroundDrumsKey,
+        backgroundNoiseKey: cfg.backgroundNoiseKey,
+        backgroundNatureGain: musicLevelToBedGain(
+          cfg.musicLevel,
+          cfg.backgroundNatureGain,
+        ),
+        backgroundMusicGain: musicLevelToBedGain(
+          cfg.musicLevel,
+          cfg.soundMode === "soundscape"
+            ? SOUNDSCAPE_GAIN
+            : cfg.backgroundMusicGain,
+        ),
+        backgroundDrumsGain: musicLevelToBedGain(
+          cfg.musicLevel,
+          cfg.backgroundDrumsGain,
+        ),
+        backgroundNoiseGain: musicLevelToBedGain(
+          cfg.musicLevel,
+          cfg.backgroundNoiseGain,
+        ),
+        drumsPreviewKey: cfgDrumsPreviewKey,
+      }),
+    };
+  }
+
+  /** Settings for a session: All, or { ...All, ...override }. */
+  function settingsForSession(sessionId: string | null): CreateSoundSessionSettings {
+    const focus = focusSessionIdRef.current;
+    const all =
+      focus == null || !sessionMode
+        ? snapshotSettings()
+        : (allSettingsRef.current ?? snapshotSettings());
+    if (sessionId == null || !sessionMode) return all;
+    // The focused session's live UI is the freshest source for its override.
+    const override =
+      focus === sessionId
+        ? diffSoundSessionSettings(all, snapshotSettings())
+        : sessionOverridesRef.current[sessionId];
+    return resolveSoundSessionSettings(all, override);
+  }
+
+  // Latest closures for the (stable) imperative handle below.
+  const sessionApi = {
+    getJobExtras: () => buildJobExtras(snapshotSettings()),
+    getJobExtrasForSession: (id: string | null) =>
+      buildJobExtras(settingsForSession(id)),
+    getSessionOverrideMeta: () => sessionOverrideMetaRef.current,
+    setSessionPickerExpanded,
+    setFocusSessionId,
+    clearAllSessionOverrides,
+    resetVoiceOverrideForFocus: () => resetFocusedOverrideKeys(VOICE_SETTING_KEYS),
+    resetSoundOverrideForFocus: () => resetFocusedOverrideKeys(SOUND_SETTING_KEYS),
+  };
+  const sessionApiRef = useRef(sessionApi);
+  sessionApiRef.current = sessionApi;
+
   useImperativeHandle(
     ref,
     () => ({
@@ -1529,119 +2012,21 @@ export const CreateSoundStep = forwardRef<
       togglePreviewTransport: () => {
         togglePreviewTransportRef.current();
       },
-      getJobExtras: async () => {
-        let referenceId = speakerModelId.trim();
-        if (!referenceId) {
-          const list = await listFishSpeakers();
-          const pick = pickDefaultSpeechifySpeaker(
-            speechifySpeakersForPicker(list),
-          );
-          referenceId = pick?.modelId ?? "";
-        }
-        if (!referenceId) throw new Error("No voice available");
-        const speaker =
-          speakers.find((s) => s.modelId === referenceId) ?? null;
-        const rateN = Number(speechifyRateInput.trim());
-        const pacedSpeechifyRate = effectiveSpeechifyRate(
-          speaker?.speechifyRate,
-          pacingPercent,
-        );
-        return {
-          reference_id: referenceId,
-          voiceFxDial,
-          voiceFxPreset: voiceFxOn ? VOICE_FX_PRESET_MEDITATION_MIXER : null,
-          speed: speechSpeed,
-          ...(longerBreaks ? { longerBreaks: true as const } : {}),
-          speakerName: speaker?.name ?? null,
-          leadInSeconds,
-          fadeOut,
-          ...(showCreateAudioDevControls
-            ? {
-                claudeModel: claudeModelChoice,
-                fishPauseMode,
-                ...(skipVoiceFx ? { skipVoiceFx: true as const } : {}),
-                ...(skipSpeechifyLoudnorm
-                  ? { skipSpeechifyLoudnorm: true as const }
-                  : {}),
-                ...(speechifyEmotionVariants
-                  ? { speechifyEmotionVariants: true as const }
-                  : {}),
-                ...(Number.isFinite(rateN)
-                  ? {
-                      speechifyRate: Math.max(
-                        -50,
-                        Math.min(50, Math.round(rateN)),
-                      ),
-                    }
-                  : { speechifyRate: pacedSpeechifyRate }),
-              }
-            : {
-                claudeModel: CLAUDE_SONNET_45_MODEL_ID,
-                fishPauseMode: "segmented" as const,
-                ...(speaker?.brand === "speechify"
-                  ? { speechifyRate: pacedSpeechifyRate }
-                  : {}),
-              }),
-          ...buildCreateMeditationBedJobFields({
-            soundMode,
-            compositionKey,
-            backgroundNatureKey,
-            backgroundMusicKey,
-            backgroundDrumsKey,
-            backgroundNoiseKey,
-            backgroundNatureGain: musicLevelToBedGain(
-              musicLevel,
-              backgroundNatureGain,
-            ),
-            backgroundMusicGain: musicLevelToBedGain(
-              musicLevel,
-              soundMode === "soundscape" ? SOUNDSCAPE_GAIN : backgroundMusicGain,
-            ),
-            backgroundDrumsGain: musicLevelToBedGain(
-              musicLevel,
-              backgroundDrumsGain,
-            ),
-            backgroundNoiseGain: musicLevelToBedGain(
-              musicLevel,
-              backgroundNoiseGain,
-            ),
-            drumsPreviewKey,
-          }),
-        };
-      },
+      getJobExtras: () => sessionApiRef.current.getJobExtras(),
+      getJobExtrasForSession: (id) =>
+        sessionApiRef.current.getJobExtrasForSession(id),
+      getSessionOverrideMeta: () => sessionApiRef.current.getSessionOverrideMeta(),
+      setSessionPickerExpanded: (v) =>
+        sessionApiRef.current.setSessionPickerExpanded(v),
+      setFocusSessionId: (id) => sessionApiRef.current.setFocusSessionId(id),
+      clearAllSessionOverrides: () =>
+        sessionApiRef.current.clearAllSessionOverrides(),
+      resetVoiceOverrideForFocus: () =>
+        sessionApiRef.current.resetVoiceOverrideForFocus(),
+      resetSoundOverrideForFocus: () =>
+        sessionApiRef.current.resetSoundOverrideForFocus(),
     }),
-    [
-      stopAllAudioPreview,
-      speakerModelId,
-      speakers,
-      voiceFxDial,
-      voiceFxOn,
-      longerBreaks,
-      leadInSeconds,
-      fadeOut,
-      musicLevel,
-      pacingPercent,
-      speechSpeed,
-      showCreateAudioDevControls,
-      claudeModelChoice,
-      fishPauseMode,
-      skipVoiceFx,
-      skipSpeechifyLoudnorm,
-      speechifyEmotionVariants,
-      speechifyRateInput,
-      soundMode,
-      compositionKey,
-      backgroundNatureKey,
-      backgroundMusicKey,
-      backgroundDrumsKey,
-      backgroundNoiseKey,
-      backgroundNatureGain,
-      backgroundMusicGain,
-      backgroundDrumsGain,
-      backgroundNoiseGain,
-      drumsPreviewKey,
-      previewMixPlaying,
-    ],
+    [stopAllAudioPreview, previewMixPlaying],
   );
 
   const selectedVoice =
@@ -2173,31 +2558,43 @@ export const CreateSoundStep = forwardRef<
             <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
               Voice
             </p>
-            <div
-              className="inline-flex rounded-xl bg-background p-[3px]"
-              role="group"
-              aria-label="Meditation pacing"
-            >
-              {(["guided", "open"] as const).map((id) => {
-                const on = id === "open" ? longerBreaks : !longerBreaks;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    disabled={soundControlsDisabled}
-                    onClick={() => setLongerBreaks(id === "open")}
-                    className={`cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
-                      on
-                        ? "border border-border bg-card font-semibold text-foreground"
-                        : "border border-transparent text-muted"
-                    }`}
-                  >
-                    {id === "guided" ? "Guided" : "Open sits"}
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-[10px]">
+              {sessionFocused && !voiceDiffers ? (
+                <span className="text-[12px] text-muted">Same as All</span>
+              ) : null}
+              <div
+                className="inline-flex rounded-xl bg-background p-[3px]"
+                role="group"
+                aria-label="Meditation pacing"
+              >
+                {(["guided", "open"] as const).map((id) => {
+                  const on = id === "open" ? longerBreaks : !longerBreaks;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      disabled={soundControlsDisabled}
+                      onClick={() => setLongerBreaks(id === "open")}
+                      className={`cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
+                        on
+                          ? "border border-border bg-card font-semibold text-foreground"
+                          : "border border-transparent text-muted"
+                      }`}
+                    >
+                      {id === "guided" ? "Guided" : "Open sits"}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
+          {sessionFocused && voiceDiffers ? (
+            <SessionDiffNote
+              sessionNumber={focusSessionNumber}
+              disabled={soundControlsDisabled}
+              onReset={() => resetFocusedOverrideKeys(VOICE_SETTING_KEYS)}
+            />
+          ) : null}
           <div className="flex items-center gap-3.5">
             <button
               type="button"
@@ -2208,10 +2605,30 @@ export const CreateSoundStep = forwardRef<
               onClick={() =>
                 speakerModelId ? toggleVoicePreview(speakerModelId) : undefined
               }
-              style={PRIMARY_ACCENT_FILL_STYLE}
-              className="flex h-[46px] w-[46px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent"
+              style={
+                selectedVoice?.portraitImageUrl
+                  ? undefined
+                  : PRIMARY_ACCENT_FILL_STYLE
+              }
+              className="relative flex h-[46px] w-[46px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full accent-fill-gradient text-on-accent"
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+              {selectedVoice?.portraitImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={selectedVoice.portraitImageUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : null}
+              <svg
+                viewBox="0 0 24 24"
+                className={`relative h-4 w-4 ${
+                  selectedVoice?.portraitImageUrl
+                    ? "drop-shadow-[0_0_2px_rgba(0,0,0,0.85)]"
+                    : ""
+                }`}
+                fill="currentColor"
+              >
                 {selectedVoicePlaying ? (
                   <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
                 ) : (
@@ -2423,16 +2840,28 @@ export const CreateSoundStep = forwardRef<
                 <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                   Sound
                 </p>
-                <button
-                  ref={changeSoundBtnRef}
-                  type="button"
-                  disabled={soundControlsDisabled}
-                  onClick={() => openSoundPanel()}
-                  className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
-                >
-                  Change
-                </button>
+                <div className="flex items-center gap-[10px]">
+                  {sessionFocused && !soundDiffers ? (
+                    <span className="text-[12px] text-muted">Same as All</span>
+                  ) : null}
+                  <button
+                    ref={changeSoundBtnRef}
+                    type="button"
+                    disabled={soundControlsDisabled}
+                    onClick={() => openSoundPanel()}
+                    className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
+                  >
+                    Change
+                  </button>
+                </div>
               </div>
+              {sessionFocused && soundDiffers ? (
+                <SessionDiffNote
+                  sessionNumber={focusSessionNumber}
+                  disabled={soundControlsDisabled}
+                  onReset={() => resetFocusedOverrideKeys(SOUND_SETTING_KEYS)}
+                />
+              ) : null}
               <div className="flex items-center gap-3.5">
                 <button
                   type="button"
@@ -2551,6 +2980,13 @@ export const CreateSoundStep = forwardRef<
                   </p>
                 </div>
               </div>
+              {sessionFocused && soundDiffers ? (
+                <SessionDiffNote
+                  sessionNumber={focusSessionNumber}
+                  disabled={soundControlsDisabled}
+                  onReset={() => resetFocusedOverrideKeys(SOUND_SETTING_KEYS)}
+                />
+              ) : null}
               <div className="flex flex-wrap items-center gap-1.5">
                 {selectedSoundTags.brainwave ? (
                   <span className="rounded-full bg-foreground px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap text-[color:var(--color-accent,#E9D3A8)]">
@@ -2761,15 +3197,35 @@ export const CreateSoundStep = forwardRef<
                   }`}
                 >
                   <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
-                    style={PRIMARY_ACCENT_FILL_STYLE}
+                    className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full accent-fill-gradient text-on-accent"
+                    style={
+                      v.portraitImageUrl
+                        ? undefined
+                        : PRIMARY_ACCENT_FILL_STYLE
+                    }
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleVoicePreview(v.modelId);
                     }}
                     role="presentation"
                   >
-                    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
+                    {v.portraitImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={v.portraitImageUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : null}
+                    <svg
+                      viewBox="0 0 24 24"
+                      className={`relative h-3 w-3 ${
+                        v.portraitImageUrl
+                          ? "drop-shadow-[0_0_2px_rgba(0,0,0,0.85)]"
+                          : ""
+                      }`}
+                      fill="currentColor"
+                    >
                       {voicePreviewPlaying && voicePreviewId === v.modelId ? (
                         <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
                       ) : (

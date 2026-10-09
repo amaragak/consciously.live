@@ -25,16 +25,13 @@ import { CreateProgramPicker } from "@/components/create-program-picker";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
 import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
-import {
-  MeditationLengthSelect,
-  SessionLengthPill,
-} from "@/components/meditation-length-select";
+import { MeditationLengthSelect } from "@/components/meditation-length-select";
+import { CreateProgramSessionControl } from "@/components/create-program-session-control";
 import {
   attachProgramExclusive,
   attachStyleExclusive,
   coerceMeditationLengthMinutes,
   effectiveSessionMinutes,
-  footerPerSessionLengthLabel,
   programDefaultSessionMinutes,
   clearCreateOneFlowState,
   createOneFlowHref,
@@ -113,8 +110,20 @@ import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
   CreateSoundStep,
+  clearCreateSoundSessionOverridesLock,
+  type CreateSoundSessionOverrideMeta,
   type CreateSoundStepHandle,
+  type CreateSoundStepJobExtras,
 } from "@/components/create-sound-step";
+
+const EMPTY_SESSION_OVERRIDE_META: CreateSoundSessionOverrideMeta = {
+  overrideCount: 0,
+  overriddenSessionIds: [],
+  focusSessionId: null,
+  expanded: false,
+  voiceDiffers: false,
+  soundDiffers: false,
+};
 
 type PickerKind = "style" | "program" | "journal" | "goal" | null;
 
@@ -354,6 +363,8 @@ export function CreateOneFlow({
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [soundPreviewPlaying, setSoundPreviewPlaying] = useState(false);
+  const [soundSessionMeta, setSoundSessionMeta] =
+    useState<CreateSoundSessionOverrideMeta>(EMPTY_SESSION_OVERRIDE_META);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const briefTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
@@ -362,6 +373,7 @@ export function CreateOneFlow({
   useEffect(() => {
     if (step === "sound") return;
     soundStepRef.current?.stopPreviews();
+    setSoundSessionMeta(EMPTY_SESSION_OVERRIDE_META);
   }, [step]);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -608,12 +620,21 @@ export function CreateOneFlow({
     return () => window.cancelAnimationFrame(id);
   }, [visibleChat, state.chat, shapeBusy, step, scrollShapeThreadToBottom]);
 
-  /** Context chips on Shape — format is chosen on Start only. */
+  /** Add chips on Shape — format + context (thin header & cards). */
   const shapeAddOptions: Array<{
-    kind: "journal" | "goal";
+    kind: "style" | "program" | "journal" | "goal";
     label: string;
-  }> = [{ kind: "journal", label: "Journal" }];
+  }> = [];
+  if (!state.style) shapeAddOptions.push({ kind: "style", label: "Style" });
+  if (!state.program) shapeAddOptions.push({ kind: "program", label: "Program" });
+  shapeAddOptions.push({ kind: "journal", label: "Journal" });
   if (!state.goal) shapeAddOptions.push({ kind: "goal", label: "Goal" });
+  const shapeFormatAddOptions = shapeAddOptions.filter(
+    (o) => o.kind === "style" || o.kind === "program",
+  );
+  const shapeContextAddOptions = shapeAddOptions.filter(
+    (o) => o.kind === "journal" || o.kind === "goal",
+  );
 
   const attachedProgramDays = useMemo(() => {
     if (!state.program) return [];
@@ -643,16 +664,99 @@ export function CreateOneFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.program, attachedProgramDays]);
 
-  const perSessionFooterLabel = useMemo(() => {
-    if (!state.program || state.program.mode !== "perSession") return null;
-    const ids = state.program.sessionIds;
-    return footerPerSessionLengthLabel(
-      ids,
-      ids.map((id) => sessionEffectiveMinutes(id)),
-      ids.map((id) => state.program!.sessionLengthOverrides?.[id] == null),
+  /** Chip label when a Program is attached (ProgramLengthChip). */
+  const lengthChipLabel = useMemo(() => {
+    if (!state.program) return undefined;
+    if (state.program.mode === "one") {
+      return `One meditation · ${state.lengthMinutes} min`;
+    }
+    const k = state.program.sessionIds.length;
+    return `${k} session${k === 1 ? "" : "s"} · ≈${programSelectedMinutesSum} min`;
+  }, [state.program, state.lengthMinutes, programSelectedMinutesSum]);
+
+  function resetProgramToDefaults() {
+    setState((p) => {
+      if (!p.program) return p;
+      return {
+        ...p,
+        lengthMinutes: 5,
+        program: {
+          ...p.program,
+          mode: "perSession",
+          sessionIds: Object.keys(p.program.sessionTitles),
+          sessionLengthOverrides: {},
+        },
+      };
+    });
+  }
+
+  const programSessionControl =
+    state.program ? (
+      <CreateProgramSessionControl
+        mode={state.program.mode}
+        onModeChange={setProgramMode}
+        sessions={Object.entries(state.program.sessionTitles).map(
+          ([id, title]) => ({ id, title }),
+        )}
+        selectedIds={state.program.sessionIds}
+        onToggleSession={toggleProgramSession}
+        onSelectAll={setAllProgramSessions}
+        selectedMinutesSum={programSelectedMinutesSum}
+        sessionDefaultMinutes={sessionDefaultMinutes}
+        sessionEffectiveMinutes={sessionEffectiveMinutes}
+        onSessionLengthChange={setSessionLengthOverride}
+        onSessionLengthReset={(id) => setSessionLengthOverride(id, null)}
+        oneMeditationMinutes={state.lengthMinutes}
+        onOneMeditationMinutesChange={(mins) =>
+          setState((p) => ({ ...p, lengthMinutes: mins }))
+        }
+      />
+    ) : null;
+
+  const renderLengthChip = (
+    size: "default" | "compact" = "default",
+    opts?: { disabled?: boolean },
+  ) => {
+    const disabled = Boolean(opts?.disabled);
+    const programPanel =
+      state.program && !disabled
+        ? {
+            width: 320,
+            content: (
+              <>
+                {programSessionControl}
+                <div className="flex items-center justify-between gap-2 border-t border-border px-1 pb-0.5 pt-2.5 text-[13px]">
+                  <span className="text-muted">
+                    {state.program.mode === "perSession"
+                      ? `Total ≈ ${programSelectedMinutesSum} min`
+                      : `1 meditation · ${state.lengthMinutes} min`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetProgramToDefaults}
+                    className="cursor-pointer font-semibold text-accent-link"
+                  >
+                    Reset to program
+                  </button>
+                </div>
+              </>
+            ),
+          }
+        : undefined;
+    return (
+      <MeditationLengthSelect
+        size={size}
+        disabled={disabled}
+        value={state.lengthMinutes}
+        displayLabel={lengthChipLabel}
+        panel={programPanel}
+        onChange={(n) => {
+          const mins = coerceMeditationLengthMinutes(n);
+          setState((p) => ({ ...p, lengthMinutes: mins }));
+        }}
+      />
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.program, attachedProgramDays]);
+  };
 
   function setSessionLengthOverride(
     sessionId: string,
@@ -664,26 +768,6 @@ export function CreateOneFlow({
       if (mins == null) delete next[sessionId];
       else next[sessionId] = mins;
       return { ...p, program: { ...p.program, sessionLengthOverrides: next } };
-    });
-  }
-
-  function applyLengthToAllSessions(mins: MeditationLengthMinutes | null) {
-    setState((p) => {
-      if (!p.program) return p;
-      if (mins == null) {
-        return {
-          ...p,
-          program: { ...p.program, sessionLengthOverrides: {} },
-        };
-      }
-      const overrides: Partial<Record<string, MeditationLengthMinutes>> = {};
-      for (const id of Object.keys(p.program.sessionTitles)) {
-        overrides[id] = mins;
-      }
-      return {
-        ...p,
-        program: { ...p.program, sessionLengthOverrides: overrides },
-      };
     });
   }
 
@@ -1289,8 +1373,11 @@ export function CreateOneFlow({
     setAudioError(null);
     try {
       soundStepRef.current?.stopPreviews();
-      const soundExtras = await soundStepRef.current?.getJobExtras();
-      if (!soundExtras?.reference_id) throw new Error("No voice available");
+      // Per-session voice/sound: resolve each session's settings up front
+      // (All = null) so a bad voice fails before any job is submitted.
+      const soundStep = soundStepRef.current;
+      const allExtras = await soundStep?.getJobExtrasForSession(null);
+      if (!allExtras?.reference_id) throw new Error("No voice available");
 
       const styleForJob = state.style?.id ?? null;
       const provenance = buildMeditationCreationProvenance({
@@ -1324,10 +1411,23 @@ export function CreateOneFlow({
         throw new Error("Select at least one session");
       }
 
+      const extrasBySession = new Map<string, CreateSoundStepJobExtras>();
+      if (perSession) {
+        for (const sessionId of sessionJobs) {
+          if (!sessionId) continue;
+          const extras = await soundStep?.getJobExtrasForSession(sessionId);
+          if (!extras?.reference_id) throw new Error("No voice available");
+          extrasBySession.set(sessionId, extras);
+        }
+      }
+
       const baseTranscript = buildTranscript();
       let firstJobId: string | null = null;
 
       for (const sessionId of sessionJobs) {
+        // Single job → All; per-session program → that session's resolved settings.
+        const soundExtras =
+          (sessionId ? extrasBySession.get(sessionId) : null) ?? allExtras;
         const minutes: MeditationLengthMinutes =
           sessionId && state.program
             ? sessionEffectiveMinutes(sessionId)
@@ -1419,6 +1519,7 @@ export function CreateOneFlow({
       shapeCachedContextRef.current = null;
       shapeAppliedFingerprintRef.current = null;
       shapeOverridesSupplementRef.current = null;
+      clearCreateSoundSessionOverridesLock();
       clearCreateOneFlowState();
       navigate(
         `/meditate/library/creations?focus=${encodeURIComponent(`pending:${firstJobId}`)}`,
@@ -1521,6 +1622,32 @@ export function CreateOneFlow({
     </>
   );
 
+  /** Session ids for Sound per-session UI — hidden in One meditation mode. */
+  const soundSessionIds =
+    state.program &&
+    state.program.mode === "perSession" &&
+    state.program.sessionIds.length >= 1
+      ? state.program.sessionIds
+      : null;
+  const soundFocusIndex =
+    soundSessionIds && soundSessionMeta.focusSessionId
+      ? soundSessionIds.indexOf(soundSessionMeta.focusSessionId)
+      : -1;
+  const soundPreviewLabel =
+    soundFocusIndex >= 0 ? `Preview session ${soundFocusIndex + 1}` : "Preview mix";
+  const soundPreviewStopLabel =
+    soundFocusIndex >= 0
+      ? `Stop preview session ${soundFocusIndex + 1}`
+      : "Stop preview mix";
+  const soundCreateCount =
+    state.program?.mode === "perSession"
+      ? state.program.sessionIds.length
+      : 1;
+  const soundCreateLabel =
+    soundCreateCount > 1
+      ? `✦ Create ${soundCreateCount} meditations`
+      : "✦ Create meditation";
+
   const journalSelected = state.journals.length > 0;
   const goalSelected = Boolean(state.goal);
 
@@ -1621,42 +1748,31 @@ export function CreateOneFlow({
   );
 
   const stepper = (
-    <>
-      <AppPrimaryTabsDesktop>
-        <CreateOneFlowStepper
-          compact
-          step={step}
-          onStepClick={(s) => {
-            if (
-              s === "start" ||
-              (s === "shape" && step !== "start") ||
-              s === step
-            ) {
-              goStep(s);
-            }
-          }}
-        />
-      </AppPrimaryTabsDesktop>
-      <div className="md:hidden">
-        <CreateOneFlowStepper
-          step={step}
-          onStepClick={(s) => {
-            if (
-              s === "start" ||
-              (s === "shape" && step !== "start") ||
-              s === step
-            ) {
-              goStep(s);
-            }
-          }}
-        />
-      </div>
-    </>
+    <AppPrimaryTabsDesktop>
+      <CreateOneFlowStepper
+        compact
+        step={step}
+        onStepClick={(s) => {
+          if (
+            s === "start" ||
+            (s === "shape" && step !== "start") ||
+            s === step
+          ) {
+            goStep(s);
+          }
+        }}
+      />
+    </AppPrimaryTabsDesktop>
   );
 
-  const shapeAddChips = (
+  const renderShapeAddChips = (
+    options: Array<{
+      kind: "style" | "program" | "journal" | "goal";
+      label: string;
+    }>,
+  ) => (
     <>
-      {shapeAddOptions.map(({ kind, label }) => (
+      {options.map(({ kind, label }) => (
         <button
           key={kind}
           type="button"
@@ -1668,6 +1784,9 @@ export function CreateOneFlow({
       ))}
     </>
   );
+  const shapeAddChips = renderShapeAddChips(shapeAddOptions);
+  const shapeFormatAddChips = renderShapeAddChips(shapeFormatAddOptions);
+  const shapeContextAddChips = renderShapeAddChips(shapeContextAddOptions);
 
   const shapeBriefBody = (clamp: "none" | "one" | "two") => {
     const textClass =
@@ -1761,102 +1880,24 @@ export function CreateOneFlow({
   const programSelectedCount = state.program?.sessionIds.length ?? 0;
   const programTotalCount = programSessionEntries.length;
 
-  const shapeProgramModeToggle = state.program ? (
-    <div className="flex items-center rounded-[10px] border border-border/70 bg-accent-soft/25 p-[3px]">
-      {(
-        [
-          ["one", "One meditation"],
-          ["perSession", "One per session"],
-        ] as const
-      ).map(([mode, label]) => (
-        <button
-          key={mode}
-          type="button"
-          onClick={() => setProgramMode(mode)}
-          className={`flex-1 cursor-pointer rounded-lg px-2 py-1.5 text-[12px] ${
-            state.program?.mode === mode
-              ? "header-gold-sunlit-fill font-semibold text-on-accent"
-              : "border border-transparent text-muted"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  ) : null;
-
-  const shapeProgramSessionList = state.program ? (
-      <div className="flex flex-col gap-2">
-        {programSessionEntries.map(([id, title], i) => {
-          const checked = state.program!.sessionIds.includes(id);
-          const showPill =
-            checked && state.program!.mode === "perSession";
-          const defaultMins = sessionDefaultMinutes(id);
-          const effectiveMins = sessionEffectiveMinutes(id);
-          return (
-            <div key={id} className="flex items-center gap-2">
-              <label
-                className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-[13px] ${
-                  checked ? "text-foreground" : "text-muted"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleProgramSession(id)}
-                  className="h-[18px] w-[18px] shrink-0 rounded-[5px] accent-[var(--color-accent)]"
-                />
-                <span className="min-w-0 flex-1 truncate">
-                  {i + 1}. {title}
-                </span>
-              </label>
-              {showPill ? (
-                <SessionLengthPill
-                  value={effectiveMins}
-                  defaultMinutes={defaultMins}
-                  onChange={(mins) => setSessionLengthOverride(id, mins)}
-                  onReset={() => setSessionLengthOverride(id, null)}
-                />
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-  ) : null;
-
   const shapeProgramSessionsBlock = state.program ? (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[12px] text-muted">
-          Sessions · {programSelectedCount} of {programTotalCount}
-          {state.program.mode === "perSession" ? (
-            <>
-              {" · "}
-              <span className="font-semibold text-foreground">
-                ≈ {programSelectedMinutesSum} min
-              </span>
-            </>
-          ) : null}
-        </span>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            className="cursor-pointer text-[12px] font-semibold text-accent-link"
-            onClick={() => setAllProgramSessions(true)}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            className="cursor-pointer text-[12px] font-semibold text-muted"
-            onClick={() => setAllProgramSessions(false)}
-          >
-            None
-          </button>
-        </div>
-      </div>
-      {shapeProgramSessionList}
-    </div>
+    <CreateProgramSessionControl
+      mode={state.program.mode}
+      onModeChange={setProgramMode}
+      sessions={programSessionEntries.map(([id, title]) => ({ id, title }))}
+      selectedIds={state.program.sessionIds}
+      onToggleSession={toggleProgramSession}
+      onSelectAll={setAllProgramSessions}
+      selectedMinutesSum={programSelectedMinutesSum}
+      sessionDefaultMinutes={sessionDefaultMinutes}
+      sessionEffectiveMinutes={sessionEffectiveMinutes}
+      onSessionLengthChange={setSessionLengthOverride}
+      onSessionLengthReset={(id) => setSessionLengthOverride(id, null)}
+      oneMeditationMinutes={state.lengthMinutes}
+      onOneMeditationMinutesChange={(mins) =>
+        setState((p) => ({ ...p, lengthMinutes: mins }))
+      }
+    />
   ) : null;
 
   const shapeProgramCard = state.program ? (
@@ -1888,40 +1929,24 @@ export function CreateOneFlow({
           </svg>
         </button>
       </div>
-      {shapeProgramModeToggle}
-      <div className="h-px bg-border" />
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[12px] text-muted">
-          Sessions · {programSelectedCount} of {programTotalCount}
-          {state.program.mode === "perSession" ? (
-            <>
-              {" · "}
-              <span className="font-semibold text-foreground">
-                ≈ {programSelectedMinutesSum} min
-              </span>
-            </>
-          ) : null}
-        </span>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            className="cursor-pointer text-[12px] font-semibold text-accent-link"
-            onClick={() => setAllProgramSessions(true)}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            className="cursor-pointer text-[12px] font-semibold text-muted"
-            onClick={() => setAllProgramSessions(false)}
-          >
-            None
-          </button>
-        </div>
-      </div>
-      <div className="min-h-0 max-h-[186px] overflow-y-auto">
-        {shapeProgramSessionList}
-      </div>
+      <CreateProgramSessionControl
+        mode={state.program.mode}
+        onModeChange={setProgramMode}
+        sessions={programSessionEntries.map(([id, title]) => ({ id, title }))}
+        selectedIds={state.program.sessionIds}
+        onToggleSession={toggleProgramSession}
+        onSelectAll={setAllProgramSessions}
+        selectedMinutesSum={programSelectedMinutesSum}
+        sessionDefaultMinutes={sessionDefaultMinutes}
+        sessionEffectiveMinutes={sessionEffectiveMinutes}
+        onSessionLengthChange={setSessionLengthOverride}
+        onSessionLengthReset={(id) => setSessionLengthOverride(id, null)}
+        oneMeditationMinutes={state.lengthMinutes}
+        onOneMeditationMinutesChange={(mins) =>
+          setState((p) => ({ ...p, lengthMinutes: mins }))
+        }
+        sessionListClassName="min-h-0 max-h-[186px] overflow-y-auto"
+      />
     </div>
   ) : null;
 
@@ -2093,6 +2118,7 @@ export function CreateOneFlow({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <div className="mr-1">{renderLengthChip()}</div>
                     <DictationMicButton
                       variant="composer"
                       onTranscript={(t) =>
@@ -2226,8 +2252,147 @@ export function CreateOneFlow({
                   >
                     {state.prompt.trim() || summarySentence}
                   </span>
+                  <div className="shrink-0 self-center">
+                    {renderLengthChip("compact", {
+                      disabled: !state.program,
+                    })}
+                  </div>
                 </div>
-                {hasAttachedContext ? (
+                {soundSessionIds && state.program ? (
+                  <>
+                    <div className="flex min-w-0 flex-col gap-1 border-t border-accent/20 px-3.5 py-2.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
+                        Program
+                      </span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-y-2">
+                        {tokens(false, {
+                          includeStyle: false,
+                          includeJournal: false,
+                          includeGoal: false,
+                        })}
+                        {soundSessionMeta.expanded ? (
+                          <div
+                            role="group"
+                            aria-label="Voice and sound target"
+                            className="ml-4 flex min-w-0 items-center gap-1.5 border-l border-accent/35 pl-4 max-md:order-last max-md:ml-0 max-md:w-full max-md:overflow-x-auto max-md:border-l-0 max-md:py-1 max-md:pl-0 max-md:pr-1"
+                          >
+                            {[
+                              { id: null as string | null, label: "All sessions" },
+                              ...soundSessionIds.map((id, i) => ({
+                                id: id as string | null,
+                                label: String(i + 1),
+                              })),
+                            ].map(({ id, label }) => {
+                              const selected = soundSessionMeta.focusSessionId === id;
+                              const overridden =
+                                id != null &&
+                                soundSessionMeta.overriddenSessionIds.includes(id);
+                              return (
+                                <button
+                                  key={id ?? "all"}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  disabled={audioBusy}
+                                  onClick={() =>
+                                    soundStepRef.current?.setFocusSessionId(id)
+                                  }
+                                  className={`relative inline-flex h-[34px] min-w-[34px] shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-full bg-card px-[14px] text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    selected
+                                      ? "border-[1.5px] border-accent font-semibold text-foreground"
+                                      : "border border-border text-muted"
+                                  }`}
+                                >
+                                  {label}
+                                  {overridden ? (
+                                    <span
+                                      aria-hidden
+                                      className="absolute -right-0.5 -top-0.5 h-[9px] w-[9px] rounded-full bg-accent ring-2 ring-background"
+                                    />
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2 pl-3 text-[13px]">
+                          {soundSessionMeta.expanded ? (
+                            <>
+                              {soundSessionMeta.overrideCount > 0 ? (
+                                <>
+                                  <span className="text-muted">
+                                    {soundSessionMeta.overrideCount === 1
+                                      ? "1 session differs"
+                                      : `${soundSessionMeta.overrideCount} sessions differ`}
+                                  </span>
+                                  <span aria-hidden className="text-border">
+                                    ·
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={audioBusy}
+                                    onClick={() =>
+                                      soundStepRef.current?.clearAllSessionOverrides()
+                                    }
+                                    className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    Reset all
+                                  </button>
+                                  <span aria-hidden className="text-border">
+                                    ·
+                                  </span>
+                                </>
+                              ) : null}
+                              <button
+                                type="button"
+                                disabled={audioBusy}
+                                onClick={() =>
+                                  soundStepRef.current?.setSessionPickerExpanded(false)
+                                }
+                                className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Done
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-muted">
+                                {soundSessionMeta.overrideCount > 0
+                                  ? soundSessionMeta.overrideCount === 1
+                                    ? "1 session customised"
+                                    : `${soundSessionMeta.overrideCount} sessions customised`
+                                  : soundSessionIds.length === 1
+                                    ? "Voice and sound apply to your session"
+                                    : `Voice and sound apply to all ${soundSessionIds.length} sessions`}
+                              </span>
+                              <span aria-hidden className="text-border">
+                                ·
+                              </span>
+                              <button
+                                type="button"
+                                disabled={audioBusy}
+                                onClick={() =>
+                                  soundStepRef.current?.setSessionPickerExpanded(true)
+                                }
+                                className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {soundSessionMeta.overrideCount > 0
+                                  ? "Edit"
+                                  : "Set per session ›"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {state.style ||
+                    state.journals.length > 0 ||
+                    state.goal ? (
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-accent/20 px-3.5 py-2.5">
+                        {tokens(false, { kindLabels: true, includeProgram: false })}
+                      </div>
+                    ) : null}
+                  </>
+                ) : hasAttachedContext ? (
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-accent/20 px-3.5 py-2.5">
                     {tokens(false, { kindLabels: true })}
                   </div>
@@ -2250,6 +2415,9 @@ export function CreateOneFlow({
                     : null
                 }
                 onPreviewMixPlayingChange={setSoundPreviewPlaying}
+                programId={soundSessionIds ? (state.program?.id ?? null) : null}
+                programSessionIds={soundSessionIds}
+                onSessionOverrideMetaChange={setSoundSessionMeta}
               />
               {audioError ? (
                 <p className="text-sm text-danger">{audioError}</p>
@@ -2261,7 +2429,7 @@ export function CreateOneFlow({
       </div>
       ) : (
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-3 md:gap-0 md:px-6 md:pt-6">
-          <div className="shrink-0 md:hidden">{stepper}</div>
+          {stepper}
           <div className="flex min-h-0 w-full flex-1 flex-col pb-4 xl:flex-row xl:items-stretch xl:gap-5 xl:pb-4">
             <div className="flex min-h-0 min-w-0 w-full max-w-[760px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_18px_rgb(0_0_0_/_0.08)] md:rounded-[18px]">
               <div className="flex shrink-0 flex-col gap-2.5 border-b border-border px-3.5 py-3 md:px-5 md:py-4 xl:hidden">
@@ -2309,13 +2477,13 @@ export function CreateOneFlow({
                     </button>
                   </div>
                 ) : null}
-                <div className="hidden min-w-0 items-center gap-2 md:flex">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible">
                     {tokens(true, { includeProgram: false })}
                     {shapeAddChips}
                   </div>
                   {state.style && !state.program ? (
-                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <div className="hidden shrink-0 items-center gap-2 md:flex">
                       <div className="flex items-center gap-1">
                         {styleQuestions.map((_, i) => (
                           <span
@@ -2334,9 +2502,7 @@ export function CreateOneFlow({
                       </span>
                     </div>
                   ) : null}
-                </div>
-                <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:hidden">
-                  {tokens(true, { includeProgram: false })}
+                  <div className="ml-auto shrink-0">{renderLengthChip()}</div>
                 </div>
               </div>
 
@@ -2344,7 +2510,6 @@ export function CreateOneFlow({
                 {state.program && programHeaderOpen ? (
                   <div className="absolute inset-x-0 top-0 z-20 max-h-full overflow-y-auto border-b border-border bg-background px-3.5 py-3 shadow-[0_8px_24px_rgb(0_0_0_/_0.12)] md:px-5 xl:hidden">
                     <div className="flex flex-col gap-2.5">
-                      {shapeProgramModeToggle}
                       {shapeProgramSessionsBlock}
                       <button
                         type="button"
@@ -2419,76 +2584,104 @@ export function CreateOneFlow({
                   </button>
                 </div>
                 {shapeBriefBody("none")}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {renderLengthChip()}
+                </div>
               </div>
 
-              {state.style || state.program ? (
-                <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
-                  {state.program ? (
-                    <>
+              <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
+                {state.program ? (
+                  <>
+                    <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                      Format · Program
+                    </span>
+                    {shapeProgramCard}
+                    {shapeFormatAddOptions.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {shapeFormatAddChips}
+                      </div>
+                    ) : null}
+                  </>
+                ) : state.style ? (
+                  <>
+                    <div className="flex items-baseline justify-between gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                        Format · Program
+                        Format · Style
                       </span>
-                      {shapeProgramCard}
-                    </>
-                  ) : state.style ? (
-                    <>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                          Format · Style
-                        </span>
-                        <span className="text-[12px] text-muted">
-                          {styleQuestionProgressLabel}
-                        </span>
+                      <span className="text-[12px] text-muted">
+                        {styleQuestionProgressLabel}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
+                        {(() => {
+                          const url =
+                            categoryImageUrls[state.style.id]?.trim() ||
+                            categoryImageUrls.All?.trim() ||
+                            categoryImageUrls.all?.trim() ||
+                            "";
+                          return url ? (
+                            <img
+                              src={categoryImageUrlForTile(url, 72, 72)}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : null;
+                        })()}
                       </div>
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
-                          {(() => {
-                            const url =
-                              categoryImageUrls[state.style.id]?.trim() ||
-                              categoryImageUrls.All?.trim() ||
-                              categoryImageUrls.all?.trim() ||
-                              "";
-                            return url ? (
-                              <img
-                                src={categoryImageUrlForTile(url, 72, 72)}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : null;
-                          })()}
-                        </div>
-                        <p className="min-w-0 flex-1 font-display text-[16px] leading-[1.25] text-foreground">
-                          {state.style.id}
-                        </p>
-                        <button
-                          type="button"
-                          aria-label="Remove format"
-                          onClick={() =>
-                            setState((p) => ({ ...p, style: null, answers: {} }))
-                          }
-                          className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-muted hover:text-foreground"
+                      <p className="min-w-0 flex-1 font-display text-[16px] leading-[1.25] text-foreground">
+                        {state.style.id}
+                      </p>
+                      <button
+                        type="button"
+                        aria-label="Remove format"
+                        onClick={() =>
+                          setState((p) => ({ ...p, style: null, answers: {} }))
+                        }
+                        className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-muted hover:text-foreground"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-3.5 w-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-                          </svg>
-                        </button>
+                          <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="h-px bg-border" />
+                    {shapeQuestionRows}
+                    {shapeFormatAddOptions.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {shapeFormatAddChips}
                       </div>
-                      <div className="h-px bg-border" />
-                      {shapeQuestionRows}
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+                      Format
+                      <span className="font-medium tracking-[1px] text-muted">
+                        {" "}
+                        (optional)
+                      </span>
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {shapeFormatAddChips}
+                    </div>
+                  </>
+                )}
+              </div>
 
               <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
                 <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                   Context
+                  <span className="font-medium tracking-[1px] text-muted">
+                    {" "}
+                    (optional)
+                  </span>
                 </span>
                 <div className="flex flex-col items-start gap-2">
                   {state.journals.length > 0 || state.goal ? (
@@ -2499,7 +2692,9 @@ export function CreateOneFlow({
                       })}
                     </div>
                   ) : null}
-                  <div className="flex flex-wrap gap-1.5">{shapeAddChips}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {shapeContextAddChips}
+                  </div>
                 </div>
               </div>
             </aside>
@@ -2519,28 +2714,8 @@ export function CreateOneFlow({
               </CreateFlowNavPill>
             ) : null}
           </div>
-          <div className="flex items-center justify-center gap-2.5">
-            <MeditationLengthSelect
-              value={state.lengthMinutes}
-              displayLabel={perSessionFooterLabel ?? undefined}
-              extraOption={
-                perSessionFooterLabel
-                  ? {
-                      label: "Program lengths",
-                      onSelect: () => applyLengthToAllSessions(null),
-                    }
-                  : undefined
-              }
-              onChange={(n) => {
-                const mins = coerceMeditationLengthMinutes(n);
-                if (state.program?.mode === "perSession") {
-                  applyLengthToAllSessions(mins);
-                  return;
-                }
-                setState((p) => ({ ...p, lengthMinutes: mins }));
-              }}
-            />
-          </div>
+          {/* Empty centre column keeps Back / actions positions (LengthBrief). */}
+          <div className="flex items-center justify-center gap-2.5" aria-hidden />
           <div className="flex justify-end gap-2.5">
             {step === "start" ? (
               <>
@@ -2585,7 +2760,7 @@ export function CreateOneFlow({
                   onClick={() => soundStepRef.current?.togglePreviewMix()}
                   className="hidden !h-11 !py-0 !pl-1.5 !pr-4 md:inline-flex"
                   aria-label={
-                    soundPreviewPlaying ? "Stop preview mix" : "Preview mix"
+                    soundPreviewPlaying ? soundPreviewStopLabel : soundPreviewLabel
                   }
                 >
                   <span
@@ -2604,13 +2779,13 @@ export function CreateOneFlow({
                       </svg>
                     )}
                   </span>
-                  Preview mix
+                  {soundPreviewLabel}
                 </CreateFlowNavPill>
                 <button
                   type="button"
                   disabled={audioBusy}
                   aria-label={
-                    soundPreviewPlaying ? "Stop preview mix" : "Preview mix"
+                    soundPreviewPlaying ? soundPreviewStopLabel : soundPreviewLabel
                   }
                   onClick={() => soundStepRef.current?.togglePreviewMix()}
                   className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-foreground shadow-sm md:hidden"
@@ -2635,8 +2810,12 @@ export function CreateOneFlow({
                   style={PRIMARY_ACCENT_FILL_STYLE}
                   className="!border-transparent accent-fill-gradient !text-on-accent hover:!opacity-90"
                 >
-                  <span className="md:hidden">✦ Create</span>
-                  <span className="hidden md:inline">✦ Create meditation</span>
+                  <span className="md:hidden">
+                    {soundCreateCount > 1
+                      ? `✦ Create ${soundCreateCount}`
+                      : "✦ Create"}
+                  </span>
+                  <span className="hidden md:inline">{soundCreateLabel}</span>
                 </CreateFlowNavPill>
               </>
             ) : null}

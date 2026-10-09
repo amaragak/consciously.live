@@ -155,7 +155,9 @@ function TrailCrumb({
       <span
         className={
           current
-            ? "app-header-crumb-current min-w-0 max-w-[240px] truncate font-semibold"
+            ? // Avoid min-w-0 here — in shrink-wrapped header clusters it collapses
+              // short labels like "Create" to "C." while empty space remains.
+              "app-header-crumb-current block max-w-[min(240px,100%)] truncate font-semibold"
             : "app-header-crumb-trail shrink-0"
         }
         {...(current ? { "aria-current": "page" as const } : {})}
@@ -240,7 +242,7 @@ export function AppBreadcrumb({
     <nav
       ref={navRef}
       aria-label="Breadcrumb"
-      className={`relative min-w-0 overflow-hidden font-ui text-sm ${className ?? ""}`}
+      className={`relative overflow-hidden font-ui text-sm ${className ?? "min-w-0"}`}
     >
       {/* Off-screen full trail for overflow measurement */}
       <ol
@@ -275,7 +277,10 @@ export function AppBreadcrumb({
           }
           const last = item.index === crumbs.length - 1;
           return (
-            <li key={`${item.crumb.label}-${item.index}`} className="flex min-w-0 items-center">
+            <li
+              key={`${item.crumb.label}-${item.index}`}
+              className={`flex items-center ${last ? "min-w-0" : "shrink-0"}`}
+            >
               {i > 0 ? <TrailSeparator /> : null}
               <TrailCrumb crumb={item.crumb} current={last} />
             </li>

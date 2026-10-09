@@ -3080,6 +3080,12 @@ export type FishSpeaker = {
   brand?: "fish" | "speechify";
   /** Speechify SSML prosody rate percent from admin. Null/omit = Speechify default. */
   speechifyRate?: number | null;
+  /** Photoreal portrait appearance brief (admin). */
+  appearanceDescription?: string;
+  /** Portrait backdrop color / gradient brief (admin). */
+  portraitBgColor?: string;
+  portraitImageKey?: string | null;
+  portraitImageUrl?: string | null;
   /** Admin row timestamp — Create/mixer append this to bust cached samples. */
   updatedAt?: string;
 };
@@ -5103,6 +5109,10 @@ export type AdminVoiceSpeaker = {
   accent?: VoiceAccent | null;
   /** Speechify rate offset in percent (e.g. -7). Unused for Fish. */
   speechifyRate?: number | null;
+  appearanceDescription?: string;
+  portraitBgColor?: string;
+  portraitImageKey?: string | null;
+  portraitImageUrl?: string | null;
   hasSample?: boolean;
   sampleUrl?: string | null;
   /** Speechify emotion audition clips (neutral / warm / calm). */
@@ -5634,6 +5644,8 @@ export async function patchAdminVoice(body: {
     pitch?: VoicePitch | null;
     accent?: VoiceAccent | null;
     speechifyRate?: number | null;
+    appearanceDescription?: string;
+    portraitBgColor?: string;
   };
 }): Promise<{
   pauses?: AdminPauseBands;
@@ -5683,7 +5695,7 @@ export async function deleteAdminVoiceSpeaker(modelId: string): Promise<void> {
 
 export async function generateAdminVoiceSample(
   modelId: string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; speechifyRate?: number },
 ): Promise<{ sampleUrl?: string | null }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
@@ -5694,10 +5706,55 @@ export async function generateAdminVoiceSample(
       action: "sample",
       modelId,
       force: opts?.force === true,
+      ...(typeof opts?.speechifyRate === "number" &&
+      Number.isFinite(opts.speechifyRate)
+        ? { speechifyRate: Math.round(opts.speechifyRate) }
+        : {}),
     }),
   });
   const data = (await res.json()) as {
     sampleUrl?: string | null;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  invalidateFishSpeakersClientCache();
+  return data;
+}
+
+export async function generateAdminVoicePortrait(
+  modelId: string,
+  opts?: {
+    appearanceDescription?: string;
+    portraitBgColor?: string;
+    model?: string;
+  },
+): Promise<{
+  portraitImageUrl?: string | null;
+  speaker?: AdminVoiceSpeaker;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/voice`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "portrait",
+      modelId,
+      ...(opts?.appearanceDescription
+        ? { appearanceDescription: opts.appearanceDescription }
+        : {}),
+      ...(opts?.portraitBgColor
+        ? { portraitBgColor: opts.portraitBgColor }
+        : {}),
+      ...(opts?.model ? { model: opts.model } : {}),
+    }),
+  });
+  const data = (await res.json()) as {
+    portraitImageUrl?: string | null;
+    speaker?: AdminVoiceSpeaker;
     error?: string;
     detail?: string;
   };

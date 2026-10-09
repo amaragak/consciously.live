@@ -26,6 +26,14 @@ export type FishSpeaker = {
   brand?: "fish" | "speechify";
   /** Speechify SSML prosody rate percent (admin). Omitted / null = Speechify default. */
   speechifyRate?: number | null;
+  /** Photoreal portrait appearance brief (admin). */
+  appearanceDescription?: string;
+  /** Portrait backdrop color or gradient brief (admin). */
+  portraitBgColor?: string;
+  /** S3 key for generated circular-style portrait. */
+  portraitImageKey?: string | null;
+  /** Public CDN URL for the portrait (picker / admin). */
+  portraitImageUrl?: string | null;
   /** When the admin last saved this row — used to bust CDN sample URLs. */
   updatedAt?: string;
 };

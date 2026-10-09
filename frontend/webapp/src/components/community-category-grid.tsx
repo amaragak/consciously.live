@@ -248,7 +248,7 @@ export function MeditationTypeCardGrid({
       className={`${
         className ||
         (isPicker
-          ? "grid w-full grid-cols-2 gap-2.5 md:grid-cols-3"
+          ? "grid w-full grid-cols-3 gap-2.5"
           : "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")
       }${!isPicker ? " p-1.5" : ""}`}
     >
@@ -586,7 +586,7 @@ export function CommunityCategoryGrid({
       className={
         className ??
         (variant === "picker"
-          ? "grid w-full grid-cols-2 gap-2.5 md:grid-cols-3"
+          ? "grid w-full grid-cols-3 gap-2.5"
           : includeAll
             ? "mt-8 grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-7"
             : "grid w-full grid-cols-1 gap-1.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6")

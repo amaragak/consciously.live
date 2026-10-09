@@ -172,6 +172,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         role,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
         },
       },
     );
@@ -574,6 +575,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         SPEECHIFY_VOICE_ID: "geffen_32",
         SPEECHIFY_TTS_MODEL: "simba-3.2",
+        OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
       },
     });

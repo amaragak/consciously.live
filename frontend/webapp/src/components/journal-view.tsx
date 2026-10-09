@@ -1485,20 +1485,8 @@ export function JournalView() {
             options={JOURNAL_SECTION_TABS}
           />
         </AppPrimaryTabsDesktop>
-        {/* Mobile: keep tabs in-page. */}
+        {/* Support link only — section tabs live in the header at all sizes. */}
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 py-1.5 md:hidden">
-          <SegmentedPillTabs
-            className="min-w-0 flex-1 shadow-md"
-            equalWidth
-            aria-label="Journal section"
-            value={section}
-            onChange={(id) => {
-              flushSaveSync();
-              navigate(JOURNAL_SECTION_HREF[id]);
-            }}
-            selectedClassName="bg-selected text-on-selected hybrid:!bg-[#ecf0ec] hybrid:!text-foreground"
-            options={JOURNAL_SECTION_TABS}
-          />
           <InsightsNeedSupportLink className="shrink-0" />
         </div>
         {importBatchId ? (

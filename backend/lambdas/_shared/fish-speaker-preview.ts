@@ -148,25 +148,31 @@ export async function speakerPreviewReady(
 async function trimMp3ForPreview(buf: Buffer): Promise<Buffer> {
   const id = randomUUID();
   const inPath = `/tmp/spk-in-${id}.mp3`;
-  const outPath = `/tmp/spk-trim-${id}.mp3`;
+  const wavPath = `/tmp/spk-trim-${id}.wav`;
   try {
     fs.writeFileSync(inPath, buf);
-    await execFileAsync("ffmpeg", [
-      "-hide_banner",
-      "-y",
-      "-i",
-      inPath,
-      "-t",
-      String(LOUD_PREVIEW_SECONDS),
-      "-c:a",
-      "libmp3lame",
-      "-q:a",
-      "2",
-      outPath,
-    ]);
-    return fs.readFileSync(outPath);
+    const ffmpeg = fs.existsSync("/opt/bin/ffmpeg") ? "/opt/bin/ffmpeg" : "ffmpeg";
+    await execFileAsync(
+      ffmpeg,
+      [
+        "-hide_banner",
+        "-y",
+        "-i",
+        inPath,
+        "-t",
+        String(LOUD_PREVIEW_SECONDS),
+        "-ac",
+        "1",
+        "-ar",
+        "44100",
+        wavPath,
+      ],
+      { env: { ...process.env, PATH: `/opt/bin:${process.env.PATH || ""}` } },
+    );
+    const { wavPathToMp3Buffer } = await import("./audio-mp3");
+    return wavPathToMp3Buffer(wavPath);
   } finally {
-    for (const p of [inPath, outPath]) {
+    for (const p of [inPath, wavPath]) {
       try {
         fs.unlinkSync(p);
       } catch {
@@ -462,6 +468,11 @@ export async function generateFishSpeakerPreview(params: {
   force?: boolean;
   /** Speechify admin rate (center of −5…+5 ladder). */
   speechifyBaseRate?: number | null;
+  /**
+   * When set, only synthesize these absolute Speechify rates (or Fish speeds).
+   * Used to stay under API Gateway’s 30s limit (one rate per HTTP call).
+   */
+  onlyRates?: number[] | null;
   /** Fish: prosody speed. Speechify: absolute SSML rate percent. */
   synthesize?: (speedOrRate: number) => Promise<Buffer>;
 }): Promise<{
@@ -490,11 +501,15 @@ export async function generateFishSpeakerPreview(params: {
   );
 
   const ratesOrSpeeds: number[] =
-    brand === "speechify"
-      ? SPEECHIFY_RATE_PACING_OFFSETS.map((off) =>
-          clampSpeechifyRate(baseRate + off),
+    params.onlyRates && params.onlyRates.length > 0
+      ? params.onlyRates.map((r) =>
+          brand === "speechify" ? clampSpeechifyRate(r) : r,
         )
-      : [FIXED_SPEECH_PREVIEW_SPEED];
+      : brand === "speechify"
+        ? SPEECHIFY_RATE_PACING_OFFSETS.map((off) =>
+            clampSpeechifyRate(baseRate + off),
+          )
+        : [FIXED_SPEECH_PREVIEW_SPEED];
 
   // Dedupe if clamp collapses edges (e.g. admin already at ±50).
   const unique = [...new Set(ratesOrSpeeds)];

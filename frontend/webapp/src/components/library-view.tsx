@@ -2467,23 +2467,6 @@ export default function LibraryView({
     </div>
   );
 
-  const mobileTabs = (
-    <SegmentedPillTabs
-      equalWidth
-      aria-label="Library section"
-      value={libraryTab}
-      onChange={(id) => goToLibraryTab(id)}
-      className="w-full gap-0.5 rounded-[14px] border-0 bg-border/70 p-1"
-      idleClassName="rounded-[10px] border border-transparent px-0.5 py-2 text-[13px] font-normal tracking-tight text-muted"
-      selectedClassName="rounded-[10px] border border-border bg-card px-0.5 py-2 text-[13px] font-semibold tracking-tight text-foreground"
-      options={[
-        { id: "meditations" as const, label: "Mine" },
-        { id: "programs" as const, label: "Programs" },
-        { id: "community" as const, label: "Community" },
-      ]}
-    />
-  );
-
   return (
     <>
     <div
@@ -2505,17 +2488,8 @@ export default function LibraryView({
           />
         </AppPrimaryTabsDesktop>
 
-        {/* Mobile top block */}
+        {/* Mobile top block — section tabs live in the header at all sizes. */}
         <div className="flex flex-col gap-3.5 md:hidden">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">{mobileTabs}</div>
-            <PrimaryCreateButton
-              to="/meditate/create"
-              variant="compact"
-              aria-label="Create"
-              className="h-10 w-10 rounded-[14px] shadow-sm"
-            />
-          </div>
           {libraryTab === "programs" && exploringProgram ? (
             <>
               <button
@@ -2561,13 +2535,21 @@ export default function LibraryView({
               </div>
             </>
           ) : (
-            <h1 className="font-display text-[clamp(1.25rem,5vw,1.5rem)] font-normal leading-[1.15] text-foreground">
-              {libraryTab === "community"
-                ? "Quiet practices, openly shared"
-                : libraryTab === "programs"
-                  ? "Guided courses, one lesson at a time"
-                  : "A library for your inner life"}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="min-w-0 flex-1 font-display text-[clamp(1.25rem,5vw,1.5rem)] font-normal leading-[1.15] text-foreground">
+                {libraryTab === "community"
+                  ? "Quiet practices, openly shared"
+                  : libraryTab === "programs"
+                    ? "Guided courses, one lesson at a time"
+                    : "A library for your inner life"}
+              </h1>
+              <PrimaryCreateButton
+                to="/meditate/create"
+                variant="compact"
+                aria-label="Create"
+                className="h-10 w-10 shrink-0 rounded-[14px] shadow-sm"
+              />
+            </div>
           )}
           {libraryTab === "meditations" ? mobileSearchBlock : null}
         </div>

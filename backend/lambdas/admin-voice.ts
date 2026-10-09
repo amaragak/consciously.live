@@ -6,6 +6,7 @@ import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-sec
 import {
   CopyObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { requireAdminJson } from "./_shared/admin-auth";
@@ -35,6 +36,16 @@ import {
   SPEECHIFY_EMOTION_SAMPLE_TAGS,
   type SpeechifyEmotionSampleTag,
 } from "./_shared/speaker-sample-speed";
+import {
+  buildSpeakerPortraitPrompt,
+  coerceAppearanceDescription,
+  coercePortraitBgColor,
+  speakerPortraitObjectKey,
+} from "./_shared/speaker-portrait";
+import {
+  coerceAdminImageModel,
+  generateAdminImageFromPrompt,
+} from "./_shared/meditation-cover";
 import { coerceEnergies } from "./_shared/voice-preferred-traits";
 import type { VoiceEnergy } from "./_shared/fish-speakers";
 import {
@@ -180,11 +191,16 @@ async function handleGet() {
           emotionSampleUrls = {};
         }
       }
+      const portraitImageUrl =
+        s.portraitImageKey && baseUrl
+          ? `${baseUrl}/${s.portraitImageKey}?v=${bust}`
+          : null;
       return {
         ...s,
         hasSample,
         sampleUrl,
         emotionSampleUrls,
+        portraitImageUrl,
       };
     }),
   );
@@ -272,6 +288,12 @@ async function handlePatch(event: APIGatewayProxyEventV2) {
         Object.prototype.hasOwnProperty.call(s, "speechifyRate")
           ? (s.speechifyRate as number | null)
           : undefined,
+      appearanceDescription:
+        typeof s.appearanceDescription === "string"
+          ? s.appearanceDescription
+          : undefined,
+      portraitBgColor:
+        typeof s.portraitBgColor === "string" ? s.portraitBgColor : undefined,
     };
     const previousModelId = String(s.previousModelId ?? "").trim();
     speaker =
@@ -313,6 +335,14 @@ async function handlePost(event: APIGatewayProxyEventV2) {
     if (!bucket) return json(500, { error: "MEDIA_BUCKET_NAME is not set" });
     const apiBase = process.env.CONSCIOUSLY_API_URL?.trim() || null;
     const brand = existing?.brand === "speechify" ? "speechify" : "fish";
+    // One absolute Speechify rate per call keeps us under API Gateway’s 30s cap.
+    const onlySpeechifyRate =
+      brand === "speechify" &&
+      typeof body.speechifyRate === "number" &&
+      Number.isFinite(body.speechifyRate)
+        ? Math.max(-50, Math.min(50, Math.round(body.speechifyRate)))
+        : null;
+    const baseRate = existing?.speechifyRate ?? 0;
     const keys =
       brand === "speechify"
         ? await generateFishSpeakerPreview({
@@ -322,7 +352,10 @@ async function handlePost(event: APIGatewayProxyEventV2) {
             brand,
             apiBase,
             force,
-            speechifyBaseRate: existing?.speechifyRate ?? 0,
+            speechifyBaseRate: baseRate,
+            ...(onlySpeechifyRate != null
+              ? { onlyRates: [onlySpeechifyRate] }
+              : {}),
             synthesize: async (rate) =>
               aacAdtsToMp3Buffer(
                 await speechifyTtsMp3({
@@ -344,7 +377,11 @@ async function handlePost(event: APIGatewayProxyEventV2) {
           });
     let letterIntroKey: string | null = null;
     let letterIntroWrote = false;
-    if (brand === "speechify") {
+    // Letter intro once at admin (center) rate — skip when generating a pacing sibling.
+    const shouldWriteLetterIntro =
+      brand === "speechify" &&
+      (onlySpeechifyRate == null || onlySpeechifyRate === Math.round(baseRate));
+    if (shouldWriteLetterIntro) {
       const intro = await generateSpeechifyLetterIntroSample({
         s3,
         bucket,
@@ -467,6 +504,87 @@ async function handlePost(event: APIGatewayProxyEventV2) {
       bust,
     });
     return json(200, { ok: true, results, emotionSampleUrls });
+  }
+  if (action === "portrait") {
+    const modelId = String(body.modelId ?? "").trim();
+    if (!modelId) return json(400, { error: "modelId is required" });
+    const existing = (await listVoiceSpeakers()).find((s) => s.modelId === modelId);
+    if (!existing) return json(404, { error: "Speaker not found" });
+    if (existing.brand !== "speechify") {
+      return json(400, { error: "Portraits are Speechify-only for now" });
+    }
+    const appearance =
+      coerceAppearanceDescription(
+        typeof body.appearanceDescription === "string"
+          ? body.appearanceDescription
+          : existing.appearanceDescription,
+      ) || coerceAppearanceDescription(existing.appearanceDescription);
+    const bg =
+      coercePortraitBgColor(
+        typeof body.portraitBgColor === "string"
+          ? body.portraitBgColor
+          : existing.portraitBgColor,
+      ) || coercePortraitBgColor(existing.portraitBgColor);
+    if (!appearance) {
+      return json(400, { error: "appearanceDescription is required" });
+    }
+    if (!bg) {
+      return json(400, { error: "portraitBgColor is required" });
+    }
+    const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
+    if (!bucket) return json(500, { error: "MEDIA_BUCKET_NAME is not set" });
+    const domain = (process.env.MEDIA_CLOUDFRONT_DOMAIN || "").trim();
+    if (!domain) {
+      return json(500, { error: "MEDIA_CLOUDFRONT_DOMAIN is not set" });
+    }
+
+    const prompt = buildSpeakerPortraitPrompt({
+      name: existing.name,
+      appearanceDescription: appearance,
+      portraitBgColor: bg,
+      gender: existing.gender,
+    });
+    const model = coerceAdminImageModel(body.model);
+    const { body: imageBody, mime } = await generateAdminImageFromPrompt({
+      prompt,
+      model,
+    });
+    const key = speakerPortraitObjectKey(modelId);
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: imageBody,
+        ContentType: mime,
+        CacheControl: "public, max-age=0, must-revalidate",
+      }),
+    );
+    const saved = await putVoiceSpeaker({
+      modelId,
+      name: existing.name,
+      brand: existing.brand,
+      hidden: existing.hidden,
+      sort: existing.sort,
+      description: existing.description,
+      goodFor: existing.goodFor,
+      gender: existing.gender,
+      energy: existing.energy,
+      pitch: existing.pitch,
+      accent: existing.accent,
+      speechifyRate: existing.speechifyRate,
+      appearanceDescription: appearance,
+      portraitBgColor: bg,
+      portraitImageKey: key,
+    });
+    const bust = encodeURIComponent(saved.updatedAt || String(Date.now()));
+    const portraitImageUrl = `https://${domain}/${key}?v=${bust}`;
+    return json(200, {
+      ok: true,
+      speaker: { ...saved, portraitImageUrl },
+      portraitImageUrl,
+      portraitImageKey: key,
+      prompt,
+    });
   }
   return json(400, { error: "Unknown action" });
 }

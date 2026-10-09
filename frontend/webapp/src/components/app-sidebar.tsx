@@ -268,7 +268,7 @@ export function AppSidebar({
     const next = resolveSidebarExpandState(path);
     const mobile =
       typeof window !== "undefined" &&
-      window.matchMedia("(max-width: 767px)").matches;
+      window.matchMedia("(max-width: 1023px)").matches;
     return mobile ? clampMobileSidebarExpandState(next, path) : next;
   });
   const [lifeAreas, setLifeAreas] = useState<
@@ -278,15 +278,15 @@ export function AppSidebar({
   const [showAdmin, setShowAdmin] = useState(() =>
     isOwnerAdminAccount(getMedimadeSessionEmail()),
   );
-  /** Below md the drawer is always the expanded panel so open/close is a pure slide. */
+  /** Below lg the drawer is always the expanded panel so open/close is a pure slide. */
   const [isMobileLayout, setIsMobileLayout] = useState(() =>
     typeof window !== "undefined"
-      ? window.matchMedia("(max-width: 767px)").matches
+      ? window.matchMedia("(max-width: 1023px)").matches
       : false,
   );
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
+    const mq = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsMobileLayout(mq.matches);
     sync();
     mq.addEventListener("change", sync);
@@ -452,7 +452,7 @@ export function AppSidebar({
         type="button"
         aria-label="Close menu"
         tabIndex={mobileOpen ? undefined : -1}
-        className={`app-sidebar-mobile-scrim fixed inset-0 top-14 z-[110] md:hidden${
+        className={`app-sidebar-mobile-scrim fixed inset-0 top-14 z-[110] lg:hidden${
           mobileOpen ? " is-open" : ""
         }`}
         onClick={onCloseMobile}
@@ -488,7 +488,7 @@ export function AppSidebar({
                 type="button"
                 onClick={onToggleCollapsed}
                 aria-label="Expand sidebar"
-                className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
+                className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground lg:flex"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -539,8 +539,8 @@ export function AppSidebar({
         </nav>
 
         <div className="mt-auto shrink-0 border-t border-border px-2 py-3">
-          {/* Mobile drawer: appearance, settings, admin, account (header keeps these on md+). */}
-          <div className="mb-3 flex flex-col gap-0.5 md:hidden">
+          {/* Drawer chrome: appearance, settings, admin, account (header keeps these on lg+). */}
+          <div className="mb-3 flex flex-col gap-0.5 lg:hidden">
             <div className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2">
               <span className="text-[13px] text-muted">Appearance</span>
               <ColorSchemePicker variant="sidebar" />
@@ -600,12 +600,12 @@ export function AppSidebar({
               Sign out
             </button>
           </div>
-          <div className="mb-1 flex items-center justify-end gap-1 px-1 md:justify-start">
+          <div className="mb-1 flex items-center justify-end gap-1 px-1 lg:justify-start">
             <button
               type="button"
               onClick={onToggleCollapsed}
               aria-label="Collapse sidebar"
-              className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-background hover:text-foreground md:inline-flex"
+              className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-background hover:text-foreground lg:inline-flex"
             >
               <svg
                 viewBox="0 0 24 24"

@@ -4,6 +4,7 @@ import {
   type AdminVoiceSpeaker,
   deleteAdminVoiceSpeaker,
   generateAdminVoiceEmotionSamples,
+  generateAdminVoicePortrait,
   generateAdminVoiceSample,
   listAdminVoice,
   patchAdminVoice,
@@ -15,6 +16,7 @@ import {
   type VoicePitch,
   type VoiceSpeakerBrand,
 } from "@/lib/medimade-api";
+import { SPEECHIFY_RATE_PACING_OFFSETS } from "@/lib/speaker-sample-speed";
 
 const SPEECHIFY_EMOTION_TAGS: readonly SpeechifyEmotionSampleTag[] = [
   "neutral",
@@ -72,9 +74,7 @@ export function AdminVoicePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [speakers, setSpeakers] = useState<AdminVoiceSpeaker[]>([]);
-  const [listBrand, setListBrand] = useState<VoiceSpeakerBrand | "all">(
-    "speechify",
-  );
+  const [listBrand, setListBrand] = useState<VoiceSpeakerBrand>("speechify");
   const [newName, setNewName] = useState("");
   const [newModelId, setNewModelId] = useState("");
   const [newBrand, setNewBrand] = useState<VoiceSpeakerBrand>("speechify");
@@ -83,14 +83,10 @@ export function AdminVoicePanel() {
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleProgress, setSampleProgress] = useState<string | null>(null);
 
-  const visibleSpeakers =
-    listBrand === "all"
-      ? speakers
-      : speakers.filter((s) =>
-          listBrand === "speechify"
-            ? s.brand === "speechify"
-            : s.brand !== "speechify",
-        );
+  const visibleSpeakers = speakers.filter((s) =>
+    listBrand === "speechify" ? s.brand === "speechify" : s.brand !== "speechify",
+  );
+  const providerLabel = listBrand === "speechify" ? "Speechify" : "Fish";
 
   async function load() {
     setError(null);
@@ -129,7 +125,7 @@ export function AdminVoicePanel() {
       setNewModelId("");
       setNewBrand("speechify");
       setNewRate("-7");
-      setListBrand(newBrand === "speechify" ? "speechify" : "fish");
+      setListBrand(newBrand);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add speaker");
@@ -142,13 +138,53 @@ export function AdminVoicePanel() {
     if (visibleSpeakers.length === 0) return;
     setSampleBusy(true);
     setError(null);
+    const failures: string[] = [];
     try {
-      for (let i = 0; i < visibleSpeakers.length; i++) {
-        const s = visibleSpeakers[i];
-        setSampleProgress(`${i + 1}/${visibleSpeakers.length} ${s.name}`);
-        await generateAdminVoiceSample(s.modelId);
+      // Speechify: one absolute rate per HTTP call (API Gateway 30s cap).
+      const jobs: Array<{
+        speaker: AdminVoiceSpeaker;
+        speechifyRate?: number;
+        label: string;
+      }> = [];
+      for (const s of visibleSpeakers) {
+        if (s.brand === "speechify") {
+          const base =
+            typeof s.speechifyRate === "number" && Number.isFinite(s.speechifyRate)
+              ? Math.round(s.speechifyRate)
+              : 0;
+          for (const off of SPEECHIFY_RATE_PACING_OFFSETS) {
+            const rate = Math.max(-50, Math.min(50, base + off));
+            jobs.push({
+              speaker: s,
+              speechifyRate: rate,
+              label: `${s.name} r${rate}`,
+            });
+          }
+        } else {
+          jobs.push({ speaker: s, label: s.name });
+        }
+      }
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        setSampleProgress(`${i + 1}/${jobs.length} ${job.label}`);
+        try {
+          await generateAdminVoiceSample(job.speaker.modelId, {
+            ...(typeof job.speechifyRate === "number"
+              ? { speechifyRate: job.speechifyRate }
+              : {}),
+          });
+        } catch (e) {
+          failures.push(
+            `${job.label}: ${e instanceof Error ? e.message : "failed"}`,
+          );
+        }
       }
       await load();
+      if (failures.length > 0) {
+        setError(
+          `Finished with ${failures.length} failure(s). First: ${failures[0]}`,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not generate samples");
       await load().catch(() => undefined);
@@ -173,11 +209,11 @@ export function AdminVoicePanel() {
             <h2 className="text-sm font-semibold">Speakers</h2>
             <p className="mt-1 text-xs text-muted">
               Fish Audio or Speechify. Hidden speakers stay off the Create picker
-              (Create and letter narration show Speechify only). Generate all
-              skips voices that already have dry + FX stems; missing FX-only wet
-              files are bounced without re-synthesizing. Speechify also gets a
-              letter-intro audition clip. Use Generate sample on a speaker to
-              rebuild the clip.
+              (Create and letter narration show Speechify only). Generate samples
+              only runs for the selected provider and skips voices that already
+              have dry + FX stems; missing FX-only wet files are bounced without
+              re-synthesizing. Speechify also gets a letter-intro audition clip.
+              Use Generate sample on a speaker to rebuild the clip.
             </p>
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:items-end">
@@ -187,16 +223,14 @@ export function AdminVoicePanel() {
                 className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
                 value={listBrand}
                 onChange={(e) => {
-                  const v = e.target.value;
                   setListBrand(
-                    v === "fish" || v === "speechify" ? v : "all",
+                    e.target.value === "fish" ? "fish" : "speechify",
                   );
                 }}
                 aria-label="Filter speakers by provider"
               >
                 <option value="speechify">Speechify</option>
                 <option value="fish">Fish</option>
-                <option value="all">All</option>
               </select>
             </label>
             <button
@@ -209,7 +243,7 @@ export function AdminVoicePanel() {
                 ? sampleProgress
                   ? `Generating ${sampleProgress}…`
                   : "Generating…"
-                : "Generate samples"}
+                : `Generate ${providerLabel} samples`}
             </button>
           </div>
         </div>
@@ -346,6 +380,12 @@ function SpeakerRow({
   const [speechifyRate, setSpeechifyRate] = useState(
     speaker.speechifyRate != null ? String(speaker.speechifyRate) : "-7",
   );
+  const [appearanceDescription, setAppearanceDescription] = useState(
+    speaker.appearanceDescription ?? "",
+  );
+  const [portraitBgColor, setPortraitBgColor] = useState(
+    speaker.portraitBgColor ?? "",
+  );
   const [hidden, setHidden] = useState(speaker.hidden);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -366,6 +406,8 @@ function SpeakerRow({
     setSpeechifyRate(
       speaker.speechifyRate != null ? String(speaker.speechifyRate) : "-7",
     );
+    setAppearanceDescription(speaker.appearanceDescription ?? "");
+    setPortraitBgColor(speaker.portraitBgColor ?? "");
     setHidden(speaker.hidden);
   }, [
     speaker.modelId,
@@ -378,6 +420,8 @@ function SpeakerRow({
     speaker.pitch,
     speaker.accent,
     speaker.speechifyRate,
+    speaker.appearanceDescription,
+    speaker.portraitBgColor,
     speaker.hidden,
   ]);
 
@@ -429,6 +473,8 @@ function SpeakerRow({
     speechifyRate?: number | null;
     modelId?: string;
     name?: string;
+    appearanceDescription?: string;
+    portraitBgColor?: string;
   }) {
     setBusy("save");
     onError(null);
@@ -453,6 +499,14 @@ function SpeakerRow({
             next?.speechifyRate !== undefined
               ? next.speechifyRate
               : parseSpeechifyRate(speechifyRate),
+          appearanceDescription:
+            next?.appearanceDescription !== undefined
+              ? next.appearanceDescription
+              : appearanceDescription,
+          portraitBgColor:
+            next?.portraitBgColor !== undefined
+              ? next.portraitBgColor
+              : portraitBgColor,
         },
       });
       applySavedSpeaker(res.speaker, sentEnergy, previousModelId);
@@ -463,11 +517,42 @@ function SpeakerRow({
     }
   }
 
+  async function generatePortrait() {
+    setBusy("portrait");
+    onError(null);
+    try {
+      await generateAdminVoicePortrait(speaker.modelId, {
+        appearanceDescription: appearanceDescription.trim(),
+        portraitBgColor: portraitBgColor.trim(),
+      });
+      onReload();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not generate portrait");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function generateSample() {
     setBusy("sample");
     onError(null);
     try {
-      await generateAdminVoiceSample(speaker.modelId, { force: true });
+      if (brand === "speechify") {
+        const base =
+          typeof speaker.speechifyRate === "number" &&
+          Number.isFinite(speaker.speechifyRate)
+            ? Math.round(speaker.speechifyRate)
+            : 0;
+        for (const off of SPEECHIFY_RATE_PACING_OFFSETS) {
+          const rate = Math.max(-50, Math.min(50, base + off));
+          await generateAdminVoiceSample(speaker.modelId, {
+            force: true,
+            speechifyRate: rate,
+          });
+        }
+      } else {
+        await generateAdminVoiceSample(speaker.modelId, { force: true });
+      }
       onReload();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not generate sample");
@@ -561,30 +646,97 @@ function SpeakerRow({
             </select>
           </label>
           {brand === "speechify" ? (
-            <label className="block text-xs font-medium text-muted">
-              Rate
-              <input
-                className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-sm font-normal text-foreground"
-                type="number"
-                min={-50}
-                max={50}
-                step={1}
-                value={speechifyRate}
-                disabled={busy !== null}
-                onChange={(e) => setSpeechifyRate(e.target.value)}
-                onBlur={() => {
-                  const next = parseSpeechifyRate(speechifyRate);
-                  if (next !== (speaker.speechifyRate ?? null)) {
-                    void save({ speechifyRate: next });
+            <>
+              <label className="block text-xs font-medium text-muted">
+                Rate
+                <input
+                  className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-sm font-normal text-foreground"
+                  type="number"
+                  min={-50}
+                  max={50}
+                  step={1}
+                  value={speechifyRate}
+                  disabled={busy !== null}
+                  onChange={(e) => setSpeechifyRate(e.target.value)}
+                  onBlur={() => {
+                    const next = parseSpeechifyRate(speechifyRate);
+                    if (next !== (speaker.speechifyRate ?? null)) {
+                      void save({ speechifyRate: next });
+                    }
+                  }}
+                  aria-label="Speechify rate"
+                />
+                <span className="mt-1 block text-[11px] font-normal text-muted">
+                  Percent vs Speechify default. Negative is slower (−7 is a light
+                  slowdown). Save, then generate the sample.
+                </span>
+              </label>
+              <label className="block text-xs font-medium text-muted">
+                Appearance
+                <textarea
+                  className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+                  rows={2}
+                  maxLength={600}
+                  placeholder="White woman, blonde shoulder-length hair, warm smile, soft makeup…"
+                  value={appearanceDescription}
+                  disabled={busy !== null}
+                  onChange={(e) => setAppearanceDescription(e.target.value)}
+                  onBlur={() => {
+                    const next = appearanceDescription.trim();
+                    const prev = (speaker.appearanceDescription ?? "").trim();
+                    if (next !== prev) void save({ appearanceDescription: next });
+                  }}
+                  aria-label="Speaker appearance for portrait"
+                />
+              </label>
+              <label className="block text-xs font-medium text-muted">
+                Portrait background
+                <input
+                  className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+                  maxLength={160}
+                  placeholder="dark blue-to-purple gradient"
+                  value={portraitBgColor}
+                  disabled={busy !== null}
+                  onChange={(e) => setPortraitBgColor(e.target.value)}
+                  onBlur={() => {
+                    const next = portraitBgColor.trim();
+                    const prev = (speaker.portraitBgColor ?? "").trim();
+                    if (next !== prev) void save({ portraitBgColor: next });
+                  }}
+                  aria-label="Portrait background color or gradient"
+                />
+                <span className="mt-1 block text-[11px] font-normal text-muted">
+                  Solid color or soft two-color gradient. Style lock lives in
+                  Admin › Pre-prompts → Speaker portrait style.
+                </span>
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                {speaker.portraitImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={speaker.portraitImageUrl}
+                    alt=""
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-border text-[10px] text-muted">
+                    No photo
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={
+                    busy !== null ||
+                    !appearanceDescription.trim() ||
+                    !portraitBgColor.trim()
                   }
-                }}
-                aria-label="Speechify rate"
-              />
-              <span className="mt-1 block text-[11px] font-normal text-muted">
-                Percent vs Speechify default. Negative is slower (−7 is a light
-                slowdown). Save, then generate the sample.
-              </span>
-            </label>
+                  onClick={() => void generatePortrait()}
+                  className="rounded-xl accent-fill-gradient px-3 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
+                >
+                  {busy === "portrait" ? "Generating…" : "Generate portrait"}
+                </button>
+              </div>
+            </>
           ) : null}
           <label className="block text-xs font-medium text-muted">
             How this voice sounds
@@ -671,6 +823,8 @@ function SpeakerRow({
                     pitch,
                     accent,
                     speechifyRate: parseSpeechifyRate(speechifyRate),
+                    appearanceDescription,
+                    portraitBgColor,
                   },
                 })
                   .then((res) =>

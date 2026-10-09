@@ -1,11 +1,15 @@
 /**
  * EBU R128 loudness normalization for MP3 via ffmpeg (two-pass loudnorm).
  * Target matches common podcast / voice streaming delivery (-16 LUFS integrated).
+ *
+ * Lambda ffmpeg layer has FDK AAC but not libmp3lame — encode the loudnorm
+ * output with the bundled `lame` CLI (see audio-mp3.ts).
  */
 import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
+import { wavPathToMp3Buffer } from "./audio-mp3";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +23,14 @@ type LoudnormMeasure = {
   input_thresh: string;
   target_offset: string;
 };
+
+function ffmpegBin(): string {
+  return fs.existsSync("/opt/bin/ffmpeg") ? "/opt/bin/ffmpeg" : "ffmpeg";
+}
+
+function binEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, PATH: `/opt/bin:${process.env.PATH || ""}` };
+}
 
 function parseLoudnormJson(stderr: string): LoudnormMeasure {
   const anchor = stderr.indexOf('"input_i"');
@@ -72,16 +84,16 @@ function parseLoudnormJson(stderr: string): LoudnormMeasure {
 
 /**
  * Normalize MP3 buffer to ~OUTPUT_LUFS_I LUFS integrated (true peak capped per filter).
- * Requires `ffmpeg` on PATH (Lambda: attach ffmpeg layer).
+ * Requires `ffmpeg` (+ `lame` on Lambda) on PATH.
  */
 export async function loudnormMp3Buffer(buf: Buffer): Promise<Buffer> {
   const id = randomUUID();
   const inPath = `/tmp/lufs-in-${id}.mp3`;
-  const outPath = `/tmp/lufs-out-${id}.mp3`;
+  const wavPath = `/tmp/lufs-out-${id}.wav`;
   try {
     fs.writeFileSync(inPath, buf);
     const { stderr: e1 } = await execFileAsync(
-      "ffmpeg",
+      ffmpegBin(),
       [
         "-hide_banner",
         "-nostats",
@@ -93,7 +105,11 @@ export async function loudnormMp3Buffer(buf: Buffer): Promise<Buffer> {
         "null",
         "-",
       ],
-      { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 },
+      {
+        encoding: "utf8",
+        maxBuffer: 20 * 1024 * 1024,
+        env: binEnv(),
+      },
     );
     const m = parseLoudnormJson(e1);
     const af = [
@@ -110,22 +126,26 @@ export async function loudnormMp3Buffer(buf: Buffer): Promise<Buffer> {
       "print_format=summary",
     ].join(":");
     const afArg = `loudnorm=${af.slice("loudnorm:".length)}`;
-    await execFileAsync("ffmpeg", [
-      "-hide_banner",
-      "-y",
-      "-i",
-      inPath,
-      "-af",
-      afArg,
-      "-c:a",
-      "libmp3lame",
-      "-q:a",
-      "2",
-      outPath,
-    ]);
-    return fs.readFileSync(outPath);
+    await execFileAsync(
+      ffmpegBin(),
+      [
+        "-hide_banner",
+        "-y",
+        "-i",
+        inPath,
+        "-af",
+        afArg,
+        "-ac",
+        "1",
+        "-ar",
+        "44100",
+        wavPath,
+      ],
+      { env: binEnv() },
+    );
+    return wavPathToMp3Buffer(wavPath);
   } finally {
-    for (const p of [inPath, outPath]) {
+    for (const p of [inPath, wavPath]) {
       try {
         fs.unlinkSync(p);
       } catch {

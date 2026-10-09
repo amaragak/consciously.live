@@ -31,6 +31,11 @@ import {
   SCRIPT_PAUSE_BAND_SECONDS,
   type ScriptPauseBand,
 } from "./script-pause-bands";
+import {
+  coerceAppearanceDescription,
+  coercePortraitBgColor,
+  coercePortraitImageKey,
+} from "./speaker-portrait";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -61,6 +66,12 @@ export type VoiceSpeakerRow = Omit<FishSpeaker, "gender"> & {
   accent: VoiceAccent | null;
   /** Speechify SSML rate offset in percent (e.g. -7 → rate="-7%"). Unused for Fish. */
   speechifyRate: number | null;
+  /** How the speaker looks for portrait generation. */
+  appearanceDescription: string;
+  /** Backdrop color / gradient for portrait generation. */
+  portraitBgColor: string;
+  /** S3 object key under speaker-portraits/, or null. */
+  portraitImageKey: string | null;
 };
 
 export type PauseBandSeconds = Record<ScriptPauseBand, number>;
@@ -95,6 +106,9 @@ export function defaultVoiceSpeakers(): VoiceSpeakerRow[] {
     pitch: null,
     accent: null,
     speechifyRate: null,
+    appearanceDescription: "",
+    portraitBgColor: "",
+    portraitImageKey: null,
     updatedAt: now,
   }));
 }
@@ -206,6 +220,11 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
         pitch: coercePitch(it.pitch),
         accent: coerceAccent(it.accent),
         speechifyRate: coerceSpeechifyRate(it.speechifyRate),
+        appearanceDescription: coerceAppearanceDescription(
+          it.appearanceDescription,
+        ),
+        portraitBgColor: coercePortraitBgColor(it.portraitBgColor),
+        portraitImageKey: coercePortraitImageKey(it.portraitImageKey),
         updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
       };
       items.push(row);
@@ -261,6 +280,9 @@ async function persistVoiceSpeaker(
         pitch: row.pitch,
         accent: row.accent,
         speechifyRate: row.speechifyRate,
+        appearanceDescription: row.appearanceDescription,
+        portraitBgColor: row.portraitBgColor,
+        portraitImageKey: row.portraitImageKey,
         updatedAt: row.updatedAt,
       },
     }),
@@ -280,6 +302,9 @@ export async function putVoiceSpeaker(row: {
   pitch?: VoicePitch | null;
   accent?: VoiceAccent | null;
   speechifyRate?: number | null;
+  appearanceDescription?: string;
+  portraitBgColor?: string;
+  portraitImageKey?: string | null;
 }): Promise<VoiceSpeakerRow> {
   const table = requireTable();
   const modelId = row.modelId.trim();
@@ -318,6 +343,18 @@ export async function putVoiceSpeaker(row: {
       row.speechifyRate !== undefined
         ? coerceSpeechifyRate(row.speechifyRate)
         : coerceSpeechifyRate(prev?.speechifyRate),
+    appearanceDescription:
+      row.appearanceDescription !== undefined
+        ? coerceAppearanceDescription(row.appearanceDescription)
+        : coerceAppearanceDescription(prev?.appearanceDescription),
+    portraitBgColor:
+      row.portraitBgColor !== undefined
+        ? coercePortraitBgColor(row.portraitBgColor)
+        : coercePortraitBgColor(prev?.portraitBgColor),
+    portraitImageKey:
+      row.portraitImageKey !== undefined
+        ? coercePortraitImageKey(row.portraitImageKey)
+        : coercePortraitImageKey(prev?.portraitImageKey),
     updatedAt: new Date().toISOString(),
   };
   await persistVoiceSpeaker(table, next);
@@ -377,6 +414,18 @@ export async function renameVoiceSpeaker(
       row.speechifyRate !== undefined
         ? coerceSpeechifyRate(row.speechifyRate)
         : coerceSpeechifyRate(prev.speechifyRate),
+    appearanceDescription:
+      row.appearanceDescription !== undefined
+        ? coerceAppearanceDescription(row.appearanceDescription)
+        : coerceAppearanceDescription(prev.appearanceDescription),
+    portraitBgColor:
+      row.portraitBgColor !== undefined
+        ? coercePortraitBgColor(row.portraitBgColor)
+        : coercePortraitBgColor(prev.portraitBgColor),
+    portraitImageKey:
+      row.portraitImageKey !== undefined
+        ? coercePortraitImageKey(row.portraitImageKey)
+        : coercePortraitImageKey(prev.portraitImageKey),
     updatedAt: new Date().toISOString(),
   };
   await ddb.send(
@@ -399,6 +448,9 @@ export async function renameVoiceSpeaker(
               pitch: next.pitch,
               accent: next.accent,
               speechifyRate: next.speechifyRate,
+              appearanceDescription: next.appearanceDescription,
+              portraitBgColor: next.portraitBgColor,
+              portraitImageKey: next.portraitImageKey,
               updatedAt: next.updatedAt,
             },
             ConditionExpression: "attribute_not_exists(sk)",
@@ -517,23 +569,43 @@ export async function getVoiceSpeaker(
 
 export async function listPickerFishSpeakers(): Promise<FishSpeaker[]> {
   const rows = await listVoiceSpeakers();
+  const domain = (process.env.MEDIA_CLOUDFRONT_DOMAIN || "").trim();
+  const baseUrl = domain ? `https://${domain}` : "";
   return rows
     .filter((s) => !s.hidden)
-    .map((s) => ({
-      name: s.name,
-      modelId: s.modelId,
-      brand: s.brand,
-      ...(s.updatedAt ? { updatedAt: s.updatedAt } : {}),
-      ...(s.description ? { description: s.description } : {}),
-      ...(s.goodFor.length > 0 ? { goodFor: s.goodFor } : {}),
-      ...(s.gender ? { gender: s.gender } : {}),
-      ...(s.energy.length > 0 ? { energy: s.energy } : {}),
-      ...(s.pitch ? { pitch: s.pitch } : {}),
-      ...(s.accent ? { accent: s.accent } : {}),
-      // Always surface admin rate for Speechify so Create can seed the same
-      // value the generate worker would use (null = Speechify default).
-      ...(s.brand === "speechify" ? { speechifyRate: s.speechifyRate } : {}),
-    }));
+    .map((s) => {
+      const portraitUrl =
+        s.portraitImageKey && baseUrl
+          ? `${baseUrl}/${s.portraitImageKey}${
+              s.updatedAt
+                ? `?v=${encodeURIComponent(s.updatedAt)}`
+                : ""
+            }`
+          : null;
+      return {
+        name: s.name,
+        modelId: s.modelId,
+        brand: s.brand,
+        ...(s.updatedAt ? { updatedAt: s.updatedAt } : {}),
+        ...(s.description ? { description: s.description } : {}),
+        ...(s.goodFor.length > 0 ? { goodFor: s.goodFor } : {}),
+        ...(s.gender ? { gender: s.gender } : {}),
+        ...(s.energy.length > 0 ? { energy: s.energy } : {}),
+        ...(s.pitch ? { pitch: s.pitch } : {}),
+        ...(s.accent ? { accent: s.accent } : {}),
+        // Always surface admin rate for Speechify so Create can seed the same
+        // value the generate worker would use (null = Speechify default).
+        ...(s.brand === "speechify" ? { speechifyRate: s.speechifyRate } : {}),
+        ...(s.appearanceDescription
+          ? { appearanceDescription: s.appearanceDescription }
+          : {}),
+        ...(s.portraitBgColor ? { portraitBgColor: s.portraitBgColor } : {}),
+        ...(s.portraitImageKey
+          ? { portraitImageKey: s.portraitImageKey }
+          : {}),
+        ...(portraitUrl ? { portraitImageUrl: portraitUrl } : {}),
+      };
+    });
 }
 
 export async function resolveSpeakerName(

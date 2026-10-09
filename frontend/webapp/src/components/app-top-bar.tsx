@@ -224,37 +224,39 @@ function BrandPhrase({
   size,
   className,
   showWordmark = true,
+  /** Reveal wordmark/verb from `md` (compact header between md–lg). */
+  wordmarkFromMd = false,
 }: {
   verb: string;
   size: "desktop" | "mobile";
   className?: string;
-  /** When false, only the sun mark (mobile header). */
+  /** When false, only the sun mark (narrow phones). */
   showWordmark?: boolean;
+  wordmarkFromMd?: boolean;
 }) {
   const markSize = size === "desktop" ? 28 : 22;
   const textPx = size === "desktop" ? 22 : 19;
-  const sunOnly = !showWordmark;
+  const wordmarkReveal = wordmarkFromMd ? " hidden md:inline" : "";
+  const showMarkGap = showWordmark && !wordmarkFromMd;
   return (
     <span
-      className={`inline-flex shrink-0 ${
-        sunOnly ? "items-center" : "items-baseline"
-      } ${className ?? ""}`}
+      className={`relative top-[2px] inline-flex shrink-0 items-center ${className ?? ""}`}
     >
       <Link
         href="/"
         title="consciously"
         aria-label="consciously home"
-        className={`inline-flex ${sunOnly ? "items-center" : "items-baseline"}`}
+        className="inline-flex items-center"
       >
         <LogoMark
           size={markSize}
-          className={`app-header-brand-sun relative shrink-0 self-center${
-            showWordmark ? " top-[0.12em] mr-2" : " -top-px"
+          className={`app-header-brand-sun relative top-[2px] block shrink-0${
+            showMarkGap ? " mr-2" : wordmarkFromMd ? " md:mr-2" : ""
           }`}
         />
         {showWordmark ? (
           <span
-            className="brand-wordmark relative shrink-0 font-display font-normal lowercase tracking-tight text-nav-foreground"
+            className={`brand-wordmark shrink-0 font-display font-normal lowercase leading-none tracking-tight text-nav-foreground${wordmarkReveal}`}
             style={{ fontSize: textPx }}
           >
             consciously
@@ -263,7 +265,7 @@ function BrandPhrase({
       </Link>
       {verb ? (
         <span
-          className="app-header-section-verb relative ml-[7px] shrink-0 font-display font-normal italic tracking-tight"
+          className={`app-header-section-verb ml-[7px] shrink-0 font-display font-normal italic leading-none tracking-tight${wordmarkReveal}`}
           style={{ fontSize: textPx }}
         >
           {verb}
@@ -296,7 +298,8 @@ export function AppTopBar({
   );
   const headerRef = useRef<HTMLElement | null>(null);
   const leftClusterRef = useRef<HTMLDivElement | null>(null);
-  const phraseRef = useRef<HTMLDivElement | null>(null);
+  const phraseDesktopRef = useRef<HTMLDivElement | null>(null);
+  const phraseCompactRef = useRef<HTMLDivElement | null>(null);
   const tabsSlotRef = useRef<HTMLDivElement | null>(null);
   const [leftMaxPx, setLeftMaxPx] = useState<number | undefined>(undefined);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -350,15 +353,20 @@ export function AppTopBar({
     const header = headerRef.current;
     if (!header) return;
     const measure = () => {
+      // lg+: true-centre tabs; clamp desktop left so the trail stays clear.
+      // md–lg uses in-flow flex (left | flex-1 middle | right) — no measure.
+      if (!window.matchMedia("(min-width: 1024px)").matches) {
+        setLeftMaxPx(undefined);
+        return;
+      }
       const headerRect = header.getBoundingClientRect();
-      // Measure the actual tab strip, not the full-bleed centering wrapper
-      // (that wrapper is inset-0 so its left edge is always 0 — which was
-      // clamping the phrase to ~120px and clipping "consciously").
       const strip = tabsSlotRef.current;
       const stripRect = strip?.getBoundingClientRect();
       const hasTabs = Boolean(stripRect && stripRect.width > 1);
-      const phraseW = phraseRef.current?.getBoundingClientRect().width ?? 280;
-      // Phrase must always fit; trail collapses inside whatever remains.
+      const phraseW = Math.max(
+        phraseDesktopRef.current?.getBoundingClientRect().width ?? 0,
+        120,
+      );
       const floor = Math.ceil(phraseW) + (location.trail.length > 0 ? 48 : 0);
       if (!hasTabs || !stripRect) {
         setLeftMaxPx(undefined);
@@ -371,7 +379,7 @@ export function AppTopBar({
     const ro = new ResizeObserver(measure);
     ro.observe(header);
     if (tabsSlotRef.current) ro.observe(tabsSlotRef.current);
-    if (phraseRef.current) ro.observe(phraseRef.current);
+    if (phraseDesktopRef.current) ro.observe(phraseDesktopRef.current);
     window.addEventListener("resize", measure);
     return () => {
       ro.disconnect();
@@ -403,21 +411,21 @@ export function AppTopBar({
       >
         {/* Desktop sun center: icon inset + half of 28px LogoMark. */}
         <span
-          className="app-header-sun-glow absolute top-1/2 hidden h-32 w-64 -translate-x-1/2 -translate-y-1/2 blur-md md:block"
+          className="app-header-sun-glow absolute top-1/2 hidden h-32 w-64 -translate-x-1/2 -translate-y-1/2 blur-md lg:block"
           style={{ left: APP_SIDEBAR_ICON_INSET_PX + 14 }}
         />
       </div>
-      {/* Desktop: brand phrase + optional trail. Keep clear of centre tabs. */}
+      {/* Desktop (lg+): brand phrase + optional trail. Keep clear of centre tabs. */}
       <div
         ref={leftClusterRef}
-        className="pointer-events-none relative z-10 hidden items-center overflow-hidden pr-2 md:flex"
+        className="pointer-events-none relative z-10 hidden items-center overflow-hidden pr-2 lg:flex"
         style={{
           paddingLeft: APP_SIDEBAR_ICON_INSET_PX,
           ...(leftMaxPx != null ? { maxWidth: leftMaxPx } : {}),
         }}
       >
         <div className="pointer-events-auto flex max-w-full items-center">
-          <div ref={phraseRef} className="shrink-0">
+          <div ref={phraseDesktopRef} className="shrink-0">
             <BrandPhrase
               verb={location.verb}
               size="desktop"
@@ -435,42 +443,55 @@ export function AppTopBar({
         </div>
       </div>
 
-      {/* Mobile: sun only; divider + breadcrumb trail use the remaining width.
-          Expanding search pushes this cluster fully off to the left. */}
+      {/* Compact (&lt; lg): hamburger nav. Phone = sun only; md–lg keeps wordmark.
+          Shrink-wrap so the flex-1 middle can centre in the free band. */}
       <div
-        className={`relative z-10 flex min-w-0 flex-1 items-center py-0 pl-3 pr-[7.25rem] transition-transform duration-200 ease-out md:hidden ${
+        className={`relative z-10 flex w-fit max-w-[min(100%,42%)] shrink-0 items-center overflow-hidden py-0 pl-3 pr-2 transition-transform duration-200 ease-out lg:hidden ${
           mobileSearchOpen
             ? "pointer-events-none -translate-x-full"
             : "translate-x-0"
         }`}
         aria-hidden={mobileSearchOpen}
       >
-        <BrandPhrase
-          verb=""
-          size="mobile"
-          showWordmark={false}
-          className="shrink-0"
-        />
-        {mobileCrumbs.length > 0 ? (
-          <>
-            <span
-              className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center"
-              aria-hidden
+        <div className="flex items-center">
+          <div ref={phraseCompactRef} className="shrink-0">
+            <BrandPhrase
+              verb={location.verb}
+              size="mobile"
+              showWordmark
+              wordmarkFromMd
+              className="shrink-0"
             />
-            <AppBreadcrumb
-              crumbs={mobileCrumbs}
-              className="min-w-0 flex-1 text-[13px]"
-            />
-          </>
-        ) : null}
+          </div>
+          {mobileCrumbs.length > 0 ? (
+            <>
+              <span
+                className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center"
+                aria-hidden
+              />
+              <AppBreadcrumb
+                crumbs={mobileCrumbs}
+                className="min-w-0 shrink text-[13px] md:shrink-0"
+              />
+            </>
+          ) : null}
+        </div>
       </div>
 
-      {/* Spacer so absolute centre/right chrome doesn't collide on desktop. */}
-      <div className="hidden min-w-0 flex-1 md:block" aria-hidden />
+      {/* &lt;lg: flex-1 band between left + right. lg+: absolute true viewport centre. */}
+      <div className="pointer-events-none relative z-[15] flex min-w-0 flex-1 items-center justify-center lg:absolute lg:inset-0 lg:flex-none">
+        <AppPrimaryTabsSlot
+          ref={tabsSlotRef}
+          className="pointer-events-auto flex w-max max-w-full items-center justify-center overflow-x-auto"
+        />
+      </div>
 
-      <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2 sm:right-4">
+      {/* lg+: keeps right cluster at the trailing edge under the absolute centre slot. */}
+      <div className="hidden min-w-0 flex-1 lg:block" aria-hidden />
+
+      <div className="relative z-20 ml-auto flex shrink-0 items-center gap-2 pr-3 sm:pr-4 lg:ml-0">
         <AppTopBarTrailingSlot className="flex max-w-[min(100vw-11rem,28rem)] items-center justify-end overflow-x-auto" />
-        <div className="hidden md:contents">
+        <div className="hidden lg:contents">
           {isCrossOriginApp() ? (
             <AlphaChromeButton
               title="Open the logged-in SPA (Focus and migrated sections)"
@@ -482,12 +503,12 @@ export function AppTopBar({
             </AlphaChromeButton>
           ) : null}
         </div>
-        <div className="flex items-center gap-0.5 md:gap-2">
-          {/* +10px matches bell’s +5px nudge so search↔bell == bell↔hamburger on mobile. */}
-          <span className="relative translate-x-[10px] md:translate-x-0">
+        <div className="flex items-center gap-0.5 lg:gap-2">
+          {/* +10px matches bell’s +5px nudge so search↔bell == bell↔hamburger on compact. */}
+          <span className="relative translate-x-[10px] lg:translate-x-0">
             <AppGlobalSearch onOpenChange={setMobileSearchOpen} />
           </span>
-          <div className="hidden md:contents">
+          <div className="hidden lg:contents">
             <ColorSchemePicker variant="header" />
           </div>
           <Link
@@ -496,7 +517,7 @@ export function AppTopBar({
             aria-current={
               pathname.startsWith("/settings") ? "page" : undefined
             }
-            className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors md:inline-flex ${
+            className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors lg:inline-flex ${
               pathname.startsWith("/settings")
                 ? "bg-nav-active text-nav-foreground"
                 : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
@@ -511,7 +532,7 @@ export function AppTopBar({
               aria-current={
                 pathname.startsWith("/admin") ? "page" : undefined
               }
-              className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors md:inline-flex ${
+              className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors lg:inline-flex ${
                 pathname.startsWith("/admin")
                   ? "bg-nav-active text-nav-foreground"
                   : "text-nav-muted hover:bg-nav-active hover:text-nav-foreground"
@@ -520,7 +541,7 @@ export function AppTopBar({
               <Shield aria-hidden className="size-[18px]" strokeWidth={1.75} />
             </Link>
           ) : null}
-          <span className="relative translate-x-[5px] md:translate-x-0">
+          <span className="relative translate-x-[5px] lg:translate-x-0">
             <AppNotificationsBell />
           </span>
           {onToggleSidebar ? (
@@ -529,7 +550,7 @@ export function AppTopBar({
               aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileSidebarOpen}
               onClick={onToggleSidebar}
-              className={`app-top-bar-menu-btn inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground md:hidden${
+              className={`app-top-bar-menu-btn inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground lg:hidden${
                 mobileSidebarOpen ? " is-open" : ""
               }`}
             >
@@ -539,19 +560,12 @@ export function AppTopBar({
               </span>
             </button>
           ) : null}
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <AccountMenu accountLabel={accountLabel} />
           </div>
         </div>
       </div>
 
-      {/* True viewport centre (full header width), not content-area centre. */}
-      <div className="pointer-events-none absolute inset-0 z-[15] hidden items-center justify-center md:flex">
-        <AppPrimaryTabsSlot
-          ref={tabsSlotRef}
-          className="pointer-events-auto flex max-w-[min(100%,48rem)] items-center justify-center overflow-x-auto"
-        />
-      </div>
     </header>
   );
 }

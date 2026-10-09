@@ -65,8 +65,7 @@ export const AppPrimaryTabsSlot = forwardRef<
 });
 
 /**
- * Renders primary page tabs into the top-bar centre on desktop (`md+`).
- * Pair with a `md:hidden` copy in the page content for mobile.
+ * Renders primary page tabs / create stepper into the top-bar centre (all breakpoints).
  */
 export function AppPrimaryTabsDesktop({ children }: { children: ReactNode }) {
   const ctx = usePrimaryTabsContext();

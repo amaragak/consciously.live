@@ -27,6 +27,7 @@ import {
   scriptLabV3Pass1SystemPrompt,
 } from "./script-lab-generate-v3";
 import { soundCategorySuggestSystemPrompt } from "./sound-category-suggest";
+import { SPEAKER_PORTRAIT_STYLE_PREPROMPT } from "./speaker-portrait";
 
 export type ClaudePrepromptKind =
   | "system"
@@ -297,6 +298,15 @@ export function buildClaudePrepromptCatalog(): ClaudePrepromptEntry[] {
       kind: "system",
       sourcePath: "backend/lambdas/_shared/script-lab-generate-v3.ts",
       text: scriptLabV3ReviewSystemPrompt(),
+      sortOrder: next(),
+    },
+    {
+      id: "speaker-portrait-style",
+      title: "Speaker portrait style (Speechify card)",
+      feature: "Admin › Voice",
+      kind: "fragment",
+      sourcePath: "backend/lambdas/_shared/speaker-portrait.ts",
+      text: SPEAKER_PORTRAIT_STYLE_PREPROMPT,
       sortOrder: next(),
     },
   ];

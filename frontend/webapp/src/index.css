@@ -1174,7 +1174,8 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   animation-delay: 0.6s;
 }
 
-@media (min-width: 768px) {
+/* Persistent rail from lg; md–lg keeps the slide-over drawer + hamburger. */
+@media (min-width: 1024px) {
   .app-sidebar-drawer {
     transform: none;
     pointer-events: auto;
