@@ -245,6 +245,7 @@ export function buildMeditationScriptGenerationPrompt(params: {
       : storyType
         ? `You scale pause bands for Story narrative pacing (${params.targetMinutes} min): keep silences modest — **medium** max in narrative sections, **long** only at major scene/emotional boundaries, **never extra-long**. Reach duration with story content, not contemplative silence.`
         : `You scale pause density and band weight to the target duration (${params.targetMinutes} min): longer scripts need substantially more silence than shorter ones — reach duration with more pause beats dominated by **long**, not by spraying **extra-long** throughout the core, and not with extra speech.`,
+    "Never invent spoken second-counts or count-along breath recipes unless the creator explicitly asked; still choose [[PAUSE …]] bands thoughtfully for natural flow. When they do ask for counted timing, sync pauses to real seconds.",
   ];
 
   if (params.includeSegmentPlaceholders) {

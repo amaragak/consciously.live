@@ -65,10 +65,8 @@ import {
   buildShapeOpenUserContent,
   buildShapeStartOverridesSupplement,
   buildShapeTurnApiMessages,
-  buildStyleFormatOpenTurn,
-  styleOpenHasUsableContext,
+  describeShapeStartChanges,
   fingerprintShapeStart,
-  hasShapeStartMaterial,
   parseCoachDisplayText,
   resolveAimMarkers,
   collectStyleAimCoverage,
@@ -951,23 +949,7 @@ export function CreateOneFlow({
   function openShapeCoach(s: CreateOneFlowState) {
     const hasAssistant = s.chat.some((m) => m.role === "assistant");
     if (hasAssistant) return;
-    // Style with no brief/journal/goal: instant AIM-1 open. With context, stream
-    // the coach so it can confirm how that material will be used (or ask only gaps).
-    if (s.style && !s.program && !styleOpenHasUsableContext(s)) {
-      const turn = buildStyleFormatOpenTurn(s);
-      setState((prev) => ({ ...prev, chat: [...prev.chat, turn] }));
-      return;
-    }
-    if (!hasShapeStartMaterial(s)) {
-      setState((prev) => ({
-        ...prev,
-        chat: [
-          ...prev.chat,
-          { role: "assistant", text: "What's on your mind today?" },
-        ],
-      }));
-      return;
-    }
+    // Always stream the first Shape turn — never seed a hardcoded assistant line.
     const lean = Boolean(shapeCachedContextRef.current);
     const content = buildShapeOpenUserContent({
       state: s,
@@ -985,6 +967,8 @@ export function CreateOneFlow({
   function applyStartEditsKeepingChat(s: CreateOneFlowState) {
     const cached = shapeCachedContextRef.current;
     if (!cached) return;
+    const prevFp = shapeAppliedFingerprintRef.current;
+    const changeSummary = describeShapeStartChanges(prevFp, s);
     const supplement = buildShapeStartOverridesSupplement({
       cachedContext: cached,
       state: s,
@@ -999,13 +983,12 @@ export function CreateOneFlow({
       return;
     }
     scrollShapeThreadToBottom();
-    const label = "Updated from Start";
     const contextTurn: CreateFlowChatTurn = {
       role: "user",
-      text: label,
+      text: changeSummary,
       kind: "context",
       contextKind: "start",
-      contextDetail: "Start step changes",
+      contextDetail: null,
     };
     let nextState: CreateOneFlowState | null = null;
     setState((prev) => {
@@ -1015,12 +998,10 @@ export function CreateOneFlow({
     const live = nextState ?? { ...s, chat: [...s.chat, contextTurn] };
     const messages = buildShapeTurnApiMessages({
       chat: live.chat,
-      userText:
-        "I updated the Start step. Keep the prior chat intact; fold in the Start overrides (system supplement) and continue — do not restart.",
+      userText: `I updated the Start step (${changeSummary}). Keep the prior chat intact; fold in the Start overrides (system supplement) and continue — do not restart.`,
       state: live,
       leanUserTurn: true,
-      contextUpdateNote:
-        "Creator returned from Start with changes. Prior messages stay. Do not re-ask answered ground.",
+      contextUpdateNote: `Creator returned from Start with changes: ${changeSummary}. Prior messages stay. Do not re-ask answered ground.`,
     });
     void streamShapeAssistant({
       messages,
@@ -2207,6 +2188,21 @@ export function CreateOneFlow({
                       )}
                     </span>
                     <span className="min-w-0 truncate">{m.text}</span>
+                  </span>
+                </div>
+              );
+            }
+            if (m.contextKind === "start") {
+              return (
+                <div
+                  key={`context-${i}`}
+                  className="ml-auto flex max-w-[92%] flex-col items-end gap-1 py-0.5 md:max-w-[80%]"
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
+                    {kindLabel}
+                  </span>
+                  <span className="rounded-[10px] border border-accent/40 bg-accent-soft/50 px-2.5 py-1.5 text-right text-[13px] font-semibold leading-snug text-foreground">
+                    {m.text.trim() || "Start step updated"}
                   </span>
                 </div>
               );

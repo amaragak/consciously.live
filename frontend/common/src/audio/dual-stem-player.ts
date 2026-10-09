@@ -125,14 +125,23 @@ export class DualStemPlayer {
     const ctx = this.ensureCtx();
     this.inFlight = (async () => {
       try {
-        const [dryBuf, wetBuf] = await Promise.all([
-          decodeStem(ctx, dry),
-          wet ? decodeStem(ctx, wet) : Promise.resolve(null),
-        ]);
+        const dryBuf = await decodeStem(ctx, dry);
+        if (this.loadKey !== key) return;
+        let wetBuf: AudioBuffer | null = null;
+        if (wet) {
+          try {
+            wetBuf = await decodeStem(ctx, wet);
+          } catch {
+            // FX stem missing — still audition dry (Echo dial stays dry-only).
+            wetBuf = null;
+          }
+        }
         if (this.loadKey !== key) return;
         this.dryBuf = dryBuf;
         this.wetBuf = wetBuf;
+        this.hasWet = Boolean(wetBuf);
         this.mode = "locked";
+        this.applyGains();
         this.notifyDuration();
       } catch {
         if (this.loadKey !== key) return;

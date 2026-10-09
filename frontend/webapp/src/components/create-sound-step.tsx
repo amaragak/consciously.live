@@ -1618,8 +1618,18 @@ export const CreateSoundStep = forwardRef<
       ensureVoiceLabelStrip(modelId, voiceName);
     }
     try {
+      const dry = speakerPreviewDryUrl(modelId);
+      if (!dry) {
+        await startVoicePreview(modelId);
+        return;
+      }
       player.seek(0);
-      await player.play();
+      await player.start(
+        dry,
+        speakerPreviewWetUrl(modelId),
+        voiceFxDial,
+        dry,
+      );
     } catch {
       await startVoicePreview(modelId);
     }
@@ -1639,10 +1649,12 @@ export const CreateSoundStep = forwardRef<
     setVoicePreviewPlaying(true);
     ensureVoiceLabelStrip(modelId, voiceName);
     try {
-      await player.load(dry, wet, voiceFxDial, null);
+      // start() resumes AudioContext in the click gesture, then decodes.
+      // Do not stop() first — that bumps playEpoch and can make start() no-op play.
       player.seek(0);
-      await player.play();
-    } catch {
+      await player.start(dry, wet, voiceFxDial, dry);
+    } catch (e) {
+      console.warn("startVoicePreview failed", modelId, dry, wet, e);
       voiceLoopWantedRef.current = false;
       player.onEnded = null;
       setVoicePreviewPlaying(false);
@@ -2552,8 +2564,13 @@ export const CreateSoundStep = forwardRef<
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:gap-4">
-        <section className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-[18px]">
+      {/*
+        Card max = half of max-w-6xl content track minus gap:
+        (72rem − md:px-6×2 − gap-4) / 2 = 34rem. Keeps 1-col cards at the
+        same width as the ideal 2-col layout instead of stretching full bleed.
+      */}
+      <div className="grid grid-cols-1 items-stretch justify-items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:justify-items-stretch xl:gap-4">
+        <section className="flex w-full max-w-[34rem] flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-[18px] xl:max-w-none">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
               Voice
@@ -2596,21 +2613,14 @@ export const CreateSoundStep = forwardRef<
             />
           ) : null}
           <div className="flex items-center gap-3.5">
-            <button
-              type="button"
-              disabled={soundControlsDisabled || !speakerModelId}
-              aria-label={
-                selectedVoicePlaying ? "Pause voice preview" : "Preview voice"
-              }
-              onClick={() =>
-                speakerModelId ? toggleVoicePreview(speakerModelId) : undefined
-              }
+            <span
+              aria-hidden
               style={
                 selectedVoice?.portraitImageUrl
                   ? undefined
                   : PRIMARY_ACCENT_FILL_STYLE
               }
-              className="relative flex h-[46px] w-[46px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full accent-fill-gradient text-on-accent"
+              className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full accent-fill-gradient text-on-accent"
             >
               {selectedVoice?.portraitImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -2620,22 +2630,7 @@ export const CreateSoundStep = forwardRef<
                   className="absolute inset-0 h-full w-full object-cover"
                 />
               ) : null}
-              <svg
-                viewBox="0 0 24 24"
-                className={`relative h-4 w-4 ${
-                  selectedVoice?.portraitImageUrl
-                    ? "drop-shadow-[0_0_2px_rgba(0,0,0,0.85)]"
-                    : ""
-                }`}
-                fill="currentColor"
-              >
-                {selectedVoicePlaying ? (
-                  <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-                ) : (
-                  <path d="M8 5v14l11-7L8 5z" />
-                )}
-              </svg>
-            </button>
+            </span>
             <div className="min-w-0 flex-1">
               <p className="font-display text-[21px] leading-snug text-foreground">
                 {selectedVoice?.name ?? "Choose a voice"}
@@ -2700,17 +2695,20 @@ export const CreateSoundStep = forwardRef<
                   className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card py-0 pl-1 pr-2.5 text-[13px] text-foreground"
                 >
                   <span
-                    className="flex h-6 w-6 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
-                    style={PRIMARY_ACCENT_FILL_STYLE}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleVoicePreview(id);
-                    }}
-                    role="presentation"
+                    aria-hidden
+                    className="relative flex h-6 w-6 overflow-hidden rounded-full accent-fill-gradient"
+                    style={
+                      v.portraitImageUrl ? undefined : PRIMARY_ACCENT_FILL_STYLE
+                    }
                   >
-                    <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor">
-                      <path d="M8 5v14l11-7L8 5z" />
-                    </svg>
+                    {v.portraitImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={v.portraitImageUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : null}
                   </span>
                   {v.name}
                 </button>
@@ -2833,7 +2831,7 @@ export const CreateSoundStep = forwardRef<
           </div>
         </section>
 
-        <section className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-[18px]">
+        <section className="flex w-full max-w-[34rem] flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-[18px] xl:max-w-none">
           {usingMix || !compositionKey ? (
             <>
               <div className="flex items-center justify-between gap-2">
@@ -2924,7 +2922,7 @@ export const CreateSoundStep = forwardRef<
             </>
           ) : (
             <>
-              <div className="relative -mx-5 -mt-[18px] h-[136px] overflow-hidden rounded-t-2xl bg-accent-soft">
+              <div className="relative -mx-5 -mt-[18px] aspect-[4/1] overflow-hidden rounded-t-2xl bg-accent-soft">
                 {selectedSound?.coverImageUrl ||
                 selectedSound?.coverImageThumbUrl ? (
                   <img
@@ -2934,7 +2932,18 @@ export const CreateSoundStep = forwardRef<
                       ""
                     }
                     alt=""
-                    className="absolute left-0 top-1/2 w-full max-w-none -translate-y-1/2"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      objectPosition: `center ${
+                        typeof selectedSound.coverWideCropY === "number" &&
+                        Number.isFinite(selectedSound.coverWideCropY)
+                          ? Math.min(
+                              100,
+                              Math.max(0, Math.round(selectedSound.coverWideCropY)),
+                            )
+                          : 50
+                      }%`,
+                    }}
                   />
                 ) : null}
                 <span className="absolute inset-0 bg-gradient-to-b from-foreground/5 to-foreground/45" />
@@ -3186,28 +3195,31 @@ export const CreateSoundStep = forwardRef<
                   !(voicePrefs?.speakers ?? []).includes(x.modelId),
               )?.modelId;
               return (
-                <button
+                <div
                   key={v.modelId}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
                   onClick={() => setStagedVoiceId(v.modelId)}
-                  className={`flex min-h-[52px] items-center gap-3 rounded-[10px] px-2.5 text-left ${
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    setStagedVoiceId(v.modelId);
+                  }}
+                  className={`flex min-h-[52px] cursor-pointer items-center gap-3 rounded-[10px] px-2.5 text-left ${
                     selected
                       ? "border border-accent/40 bg-accent-soft/40"
                       : "border border-transparent"
                   }`}
                 >
                   <span
-                    className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full accent-fill-gradient text-on-accent"
+                    aria-hidden
+                    className="relative flex h-8 w-8 shrink-0 overflow-hidden rounded-full accent-fill-gradient"
                     style={
                       v.portraitImageUrl
                         ? undefined
                         : PRIMARY_ACCENT_FILL_STYLE
                     }
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleVoicePreview(v.modelId);
-                    }}
-                    role="presentation"
                   >
                     {v.portraitImageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -3217,21 +3229,6 @@ export const CreateSoundStep = forwardRef<
                         className="absolute inset-0 h-full w-full object-cover"
                       />
                     ) : null}
-                    <svg
-                      viewBox="0 0 24 24"
-                      className={`relative h-3 w-3 ${
-                        v.portraitImageUrl
-                          ? "drop-shadow-[0_0_2px_rgba(0,0,0,0.85)]"
-                          : ""
-                      }`}
-                      fill="currentColor"
-                    >
-                      {voicePreviewPlaying && voicePreviewId === v.modelId ? (
-                        <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-                      ) : (
-                        <path d="M8 5v14l11-7L8 5z" />
-                      )}
-                    </svg>
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14px] font-semibold">{v.name}</span>
@@ -3254,6 +3251,26 @@ export const CreateSoundStep = forwardRef<
                       Your usual
                     </span>
                   ) : null}
+                  <button
+                    type="button"
+                    aria-label={
+                      voicePreviewPlaying && voicePreviewId === v.modelId
+                        ? `Pause ${v.name}`
+                        : `Play ${v.name}`
+                    }
+                    className="flex shrink-0 cursor-pointer items-center justify-center rounded-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleVoicePreview(v.modelId);
+                    }}
+                  >
+                    <MistPlayBadge
+                      playing={
+                        voicePreviewPlaying && voicePreviewId === v.modelId
+                      }
+                      size="sm"
+                    />
+                  </button>
                   <FavoriteHeartButton
                     pressed={favorites.voiceSet.has(v.modelId)}
                     label={v.name}
@@ -3266,7 +3283,7 @@ export const CreateSoundStep = forwardRef<
                       </span>
                     ) : null}
                   </span>
-                </button>
+                </div>
               );
             })}
           </div>

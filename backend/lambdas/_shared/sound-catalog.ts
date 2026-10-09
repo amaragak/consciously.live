@@ -159,6 +159,11 @@ export type SoundCatalogRow = {
   /** Smaller JPEG derived from the full cover (list / picker thumbs). */
   coverImageThumbKey?: string;
   coverImageThumbUrl?: string;
+  /**
+   * Vertical focus for the Create · Sound widescreen band (CSS object-position Y %).
+   * Sound card is 4:1; 50 = centre band (legacy default).
+   */
+  coverWideCropY?: number;
   /** Last prompt used to generate the cover (admin). */
   lastCoverPrompt?: string;
   /** Prior cover prompts (oldest → newest), used when refining with a change note. */
@@ -178,6 +183,20 @@ export function coerceBinauralHz(raw: unknown): number | null {
   if (!Number.isFinite(n) || n <= 0 || n > 1000) return null;
   // Keep one decimal for values like 7.83 Hz; round integers cleanly.
   return Math.round(n * 10) / 10;
+}
+
+/** Create · Sound cover band is 4:1 (card width ÷ 136px band). */
+export const SOUND_CARD_COVER_ASPECT = 4;
+
+/** CSS object-position Y % for the widescreen sound-card crop (default centre). */
+export function coerceCoverWideCropY(
+  raw: unknown,
+  fallback = 50,
+): number {
+  if (raw == null || raw === "") return fallback;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(n)));
 }
 
 function tableName(): string {
@@ -288,6 +307,10 @@ function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
       typeof it.coverImageThumbUrl === "string" && it.coverImageThumbUrl.trim()
         ? it.coverImageThumbUrl.trim()
         : undefined,
+    coverWideCropY: (() => {
+      if (it.coverWideCropY == null || it.coverWideCropY === "") return undefined;
+      return coerceCoverWideCropY(it.coverWideCropY);
+    })(),
     lastCoverPrompt:
       typeof it.lastCoverPrompt === "string" && it.lastCoverPrompt.trim()
         ? it.lastCoverPrompt.trim().slice(0, 4000)

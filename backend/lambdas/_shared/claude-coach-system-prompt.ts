@@ -93,7 +93,7 @@ export function buildClaudeCoachSystemPrompt(params: {
       ? []
       : [
           "If there is already an assistant message in the history that functions as the FIRST intake question, do NOT ask that same question again; only ask necessary follow-ups that cover new ground.",
-          "If there is NO prior assistant message yet (first assistant turn): follow OPEN NOW in the user message. Scan brief/journal/goal against Format AIM items first — confirm how covered material will shape the meditation; ask only the first unanswered AIM (or confirm-only + [[READY]] if all are covered). NEVER open with a mood-intake line such as “What’s on your mind?” or “What’s on your mind today?” when they already chose a format, wrote a brief, or attached journal/goal. Mood-intake openers are ONLY when Start had no brief, no format, and no context.",
+          "If there is NO prior assistant message yet (first assistant turn): follow OPEN NOW in the user message. Scan brief/journal/goal against Format AIM items first — confirm how covered material will shape the meditation; ask only the first unanswered AIM (or confirm-only + [[READY]] if all are covered). NEVER open with a generic mood-intake when they already chose a format, wrote a brief, or attached journal/goal. A blank-slate mood-intake is ONLY when Start had no brief, no format, and no context — and you must invent fresh wording for that turn (no stock canned opener).",
         ]),
     "Prioritize questions about the concrete situation or (when relevant) a concrete goal — never “how do you want to feel”.",
     "Only ask about body sensations when the user has invited that kind of focus (for example by mentioning stress in the body or somatic work).",

@@ -11,7 +11,12 @@ import {
   type BgAudioCategory,
   type ListedBgItem,
 } from "./_shared/background-audio-keys";
-import { listAllSoundRows, normalizeTags, soundIsInCustomerPicker } from "./_shared/sound-catalog";
+import {
+  coerceCoverWideCropY,
+  listAllSoundRows,
+  normalizeTags,
+  soundIsInCustomerPicker,
+} from "./_shared/sound-catalog";
 import { listFactoryMixes } from "./_shared/factory-mixes";
 import { loadCompositionTagTypes } from "./_shared/composition-tag-types";
 import {
@@ -165,6 +170,7 @@ async function buildBackgroundAudioPayload(params: {
   const subcategoryOverride = new Map<string, string>();
   const coverUrlByKey = new Map<string, string>();
   const coverThumbUrlByKey = new Map<string, string>();
+  const coverWideCropYByKey = new Map<string, number>();
   const tagsByKey = new Map<string, string[]>();
   const adminFavouriteByKey = new Map<string, boolean>();
   const customPackByKey = new Map<string, string>();
@@ -228,6 +234,13 @@ async function buildBackgroundAudioPayload(params: {
       coverThumbUrlByKey.set(`${stem}.mp3`, thumbUrl);
       coverThumbUrlByKey.set(`${stem}.wav`, thumbUrl);
     }
+    if (row.coverWideCropY != null) {
+      const cropY = coerceCoverWideCropY(row.coverWideCropY);
+      coverWideCropYByKey.set(row.sk, cropY);
+      const stem = row.sk.replace(/\.(mp3|wav)$/i, "");
+      coverWideCropYByKey.set(`${stem}.mp3`, cropY);
+      coverWideCropYByKey.set(`${stem}.wav`, cropY);
+    }
     const tags = normalizeTags(row.tags);
     if (tags.length > 0) {
       tagsByKey.set(row.sk, tags);
@@ -265,6 +278,14 @@ async function buildBackgroundAudioPayload(params: {
       coverThumbUrlByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
       coverThumbUrlByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
       null
+    );
+  }
+
+  function coverWideCropYForKey(key: string): number | undefined {
+    return (
+      coverWideCropYByKey.get(key) ??
+      coverWideCropYByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
+      coverWideCropYByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav")
     );
   }
 
@@ -365,6 +386,9 @@ async function buildBackgroundAudioPayload(params: {
       customPackName: customPackForKey(row.sk),
       coverImageUrl: coverForKey(row.sk),
       coverImageThumbUrl: coverThumbForKey(row.sk),
+      ...(coverWideCropYForKey(row.sk) != null
+        ? { coverWideCropY: coverWideCropYForKey(row.sk) }
+        : {}),
     });
   }
 
@@ -395,6 +419,9 @@ async function buildBackgroundAudioPayload(params: {
         ...(pack ? { customPackName: pack } : {}),
         coverImageUrl: coverForKey(it.key),
         coverImageThumbUrl: coverThumbForKey(it.key),
+        ...(coverWideCropYForKey(it.key) != null
+          ? { coverWideCropY: coverWideCropYForKey(it.key) }
+          : {}),
       };
     });
     buckets[c].sort((a, b) => a.name.localeCompare(b.name));

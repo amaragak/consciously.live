@@ -114,6 +114,8 @@ export type ListedBgItem = {
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */
   coverImageThumbUrl?: string | null;
+  /** CSS object-position Y % for Create · Sound 4:1 cover band. */
+  coverWideCropY?: number;
 };
 
 export function mergeByNamePreferMp3(

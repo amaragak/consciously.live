@@ -432,36 +432,12 @@ export function styleOpenHasUsableContext(state: CreateOneFlowState): boolean {
   );
 }
 
-/**
- * Instant first bubble when a style is chosen with no brief/journal/goal.
- * When those are present, Shape streams the coach instead so it can confirm
- * how context will be used (or ask only what is still missing).
- */
-export function buildStyleFormatOpenTurn(
-  state: CreateOneFlowState,
-): CreateFlowChatTurn {
-  const styleId = state.style?.id?.trim() || "";
-  const firstAim = styleId
-    ? styleIntakeAims(styleId)[0]?.trim()
-    : "";
-  const question = firstAim
-    ? firstAim.endsWith("?")
-      ? firstAim
-      : `${firstAim}?`
-    : "What would you like this practice to hold?";
-  return {
-    role: "assistant",
-    text: `Let's shape this practice together.\n\n${question}`,
-    aimAsking: 0,
-  };
-}
-
 function shapeOpenNowInstruction(state: CreateOneFlowState): string {
   if (state.program) {
     return [
       "OPEN NOW (first reply): Follow the program OPEN NOW in the Start/program brief.",
       "First scan brief / journal / goal against Ask-items: if context clearly answers an item, do not ask it — confirm how you will use that material in the meditation and move to the next unanswered Ask-item (or [[READY]] if none remain).",
-      "Do NOT use a mood-intake opener such as “What’s on your mind?” or “What’s on your mind today?”.",
+      "Do NOT use a generic mood-intake opener when they already chose a program or attached context.",
     ].join(" ");
   }
   if (state.style) {
@@ -474,7 +450,7 @@ function shapeOpenNowInstruction(state: CreateOneFlowState): string {
         "In your visible reply, confirm how you will use the covered material in the meditation (concrete construction cue) so they can correct you.",
         "If any AIM remains unanswered: after that confirm, ask ONE natural question for the first unanswered AIM only; emit [[ASKING:n]]. Two bubbles (confirm, then question).",
         "If every AIM is already covered: ONE bubble only — construction-oriented confirm, optionally invite extras as statements (no question mark), then [[READY]].",
-        "FORBIDDEN: mood-intake openers; forbidden to ask an AIM that context already answered.",
+        "FORBIDDEN: generic mood-intake openers; forbidden to ask an AIM that context already answered.",
       ].join(" ");
     }
     return [
@@ -483,7 +459,7 @@ function shapeOpenNowInstruction(state: CreateOneFlowState): string {
       first
         ? `(2) One natural question that gathers Format AIM item 1 (${first}). Emit [[ASKING:1]]. Do not paste the AIM text verbatim if you can say it more simply.`
         : "(2) One natural question for the first Format AIM. Emit [[ASKING:1]].",
-      "FORBIDDEN: mood-intake openers (“What’s on your mind?”, “What’s on your mind today?”). Those are only when Start had no brief, no format, and no context.",
+      "FORBIDDEN: generic mood-intake openers. Those are only when Start had no brief, no format, and no context.",
     ]
       .filter(Boolean)
       .join(" ");
@@ -494,12 +470,13 @@ function shapeOpenNowInstruction(state: CreateOneFlowState): string {
       "Confirm how you will use that material in the meditation so they can correct you.",
       "If you still need one concrete detail: two bubbles (confirm, then one question).",
       "If the material is enough for a general practice: one confirm-only bubble, optional invite for extras as statements, then [[READY]].",
-      "FORBIDDEN: a blank-slate mood-intake opener (“What’s on your mind today?”).",
+      "FORBIDDEN: a blank-slate mood-intake opener.",
     ].join(" ");
   }
   return [
     "OPEN NOW (first reply): They arrived with no brief, no format, and no context.",
-    "A mood-intake opener is allowed here — e.g. a short greeting, then “What’s on your mind today?”.",
+    "Write a short, natural mood-intake opener yourself (warm greeting + one open question about what they want to sit with).",
+    "Do not reuse a stock canned line — invent the wording for this turn.",
   ].join(" ");
 }
 
@@ -525,8 +502,30 @@ export function buildShapeOpenUserContent(opts: {
 }
 
 /** Fingerprint of Start-step fields that seed Shape's cached prompt. */
-export function fingerprintShapeStart(state: CreateOneFlowState): string {
-  return JSON.stringify({
+type ShapeStartFingerprint = {
+  prompt: string;
+  styleId: string | null;
+  programId: string | null;
+  programMode: string | null;
+  programSessions: string[];
+  journals: Array<{
+    id: string;
+    title: string;
+    detail: string | null;
+    bodyPlain: string | null;
+  }>;
+  goal: {
+    lifeAreaId: string;
+    lifeAreaTitle: string;
+    goalId: string | null;
+  } | null;
+  lengthMinutes: number;
+};
+
+function shapeStartFingerprintFromState(
+  state: CreateOneFlowState,
+): ShapeStartFingerprint {
+  return {
     prompt: state.prompt.trim(),
     styleId: state.style?.id ?? null,
     programId: state.program?.id ?? null,
@@ -546,7 +545,156 @@ export function fingerprintShapeStart(state: CreateOneFlowState): string {
         }
       : null,
     lengthMinutes: state.lengthMinutes,
-  });
+  };
+}
+
+export function fingerprintShapeStart(state: CreateOneFlowState): string {
+  return JSON.stringify(shapeStartFingerprintFromState(state));
+}
+
+function parseShapeStartFingerprint(
+  raw: string | null | undefined,
+): ShapeStartFingerprint | null {
+  if (!raw?.trim()) return null;
+  try {
+    const o = JSON.parse(raw) as Partial<ShapeStartFingerprint>;
+    if (!o || typeof o !== "object") return null;
+    return {
+      prompt: typeof o.prompt === "string" ? o.prompt : "",
+      styleId: typeof o.styleId === "string" ? o.styleId : null,
+      programId: typeof o.programId === "string" ? o.programId : null,
+      programMode: typeof o.programMode === "string" ? o.programMode : null,
+      programSessions: Array.isArray(o.programSessions)
+        ? o.programSessions.filter((x): x is string => typeof x === "string")
+        : [],
+      journals: Array.isArray(o.journals)
+        ? o.journals
+            .filter((j): j is ShapeStartFingerprint["journals"][number] =>
+              Boolean(j && typeof j === "object" && typeof j.id === "string"),
+            )
+            .map((j) => ({
+              id: j.id,
+              title: typeof j.title === "string" ? j.title : "",
+              detail: typeof j.detail === "string" ? j.detail : null,
+              bodyPlain: typeof j.bodyPlain === "string" ? j.bodyPlain : null,
+            }))
+        : [],
+      goal:
+        o.goal && typeof o.goal === "object"
+          ? {
+              lifeAreaId:
+                typeof o.goal.lifeAreaId === "string" ? o.goal.lifeAreaId : "",
+              lifeAreaTitle:
+                typeof o.goal.lifeAreaTitle === "string"
+                  ? o.goal.lifeAreaTitle
+                  : "",
+              goalId:
+                typeof o.goal.goalId === "string" ? o.goal.goalId : null,
+            }
+          : null,
+      lengthMinutes:
+        typeof o.lengthMinutes === "number" && Number.isFinite(o.lengthMinutes)
+          ? o.lengthMinutes
+          : 5,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Human summary of Start-step edits for the Shape chat “Start updated” token.
+ */
+export function describeShapeStartChanges(
+  prevFingerprintJson: string | null | undefined,
+  state: CreateOneFlowState,
+): string {
+  const prev = parseShapeStartFingerprint(prevFingerprintJson);
+  const next = shapeStartFingerprintFromState(state);
+  if (!prev) return "Start step updated";
+
+  const bits: string[] = [];
+
+  if (prev.prompt !== next.prompt) {
+    if (!prev.prompt && next.prompt) bits.push("Brief added");
+    else if (prev.prompt && !next.prompt) bits.push("Brief cleared");
+    else bits.push("Brief updated");
+  }
+
+  if (prev.styleId !== next.styleId) {
+    if (!next.styleId) bits.push("Format removed");
+    else if (!prev.styleId) bits.push(`Format: ${next.styleId}`);
+    else bits.push(`Format: ${prev.styleId} → ${next.styleId}`);
+  }
+
+  if (
+    prev.programId !== next.programId ||
+    prev.programMode !== next.programMode ||
+    JSON.stringify(prev.programSessions) !== JSON.stringify(next.programSessions)
+  ) {
+    if (!next.programId) bits.push("Program removed");
+    else if (!prev.programId) {
+      bits.push(
+        `Program: ${state.program?.title?.trim() || next.programId}`,
+      );
+    } else if (prev.programId !== next.programId) {
+      bits.push(
+        `Program → ${state.program?.title?.trim() || next.programId}`,
+      );
+    } else if (
+      JSON.stringify(prev.programSessions) !==
+      JSON.stringify(next.programSessions)
+    ) {
+      bits.push("Program sessions updated");
+    } else {
+      bits.push("Program updated");
+    }
+  }
+
+  const prevJById = new Map(prev.journals.map((j) => [j.id, j]));
+  const nextJById = new Map(next.journals.map((j) => [j.id, j]));
+  for (const j of next.journals) {
+    const was = prevJById.get(j.id);
+    if (!was) {
+      bits.push(`Journal added: ${j.title || "entry"}`);
+    } else if (
+      was.title !== j.title ||
+      was.detail !== j.detail ||
+      was.bodyPlain !== j.bodyPlain
+    ) {
+      bits.push(`Journal updated: ${j.title || "entry"}`);
+    }
+  }
+  for (const j of prev.journals) {
+    if (!nextJById.has(j.id)) {
+      bits.push(`Journal removed: ${j.title || "entry"}`);
+    }
+  }
+
+  const prevGoalKey = prev.goal
+    ? `${prev.goal.lifeAreaId}:${prev.goal.goalId ?? ""}`
+    : "";
+  const nextGoalKey = next.goal
+    ? `${next.goal.lifeAreaId}:${next.goal.goalId ?? ""}`
+    : "";
+  if (prevGoalKey !== nextGoalKey) {
+    if (!next.goal) bits.push("Goal removed");
+    else if (!prev.goal) {
+      bits.push(
+        `Goal: ${next.goal.lifeAreaTitle || state.goal?.lifeAreaTitle || "added"}`,
+      );
+    } else {
+      bits.push(
+        `Goal → ${next.goal.lifeAreaTitle || state.goal?.lifeAreaTitle || "updated"}`,
+      );
+    }
+  }
+
+  if (prev.lengthMinutes !== next.lengthMinutes) {
+    bits.push(`Length ${prev.lengthMinutes} → ${next.lengthMinutes} min`);
+  }
+
+  return bits.length > 0 ? bits.join(" · ") : "Start step updated";
 }
 
 /**

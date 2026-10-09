@@ -32,6 +32,7 @@ import {
 import { listAllS3Objects } from "./_shared/s3-list-all";
 import {
   coerceBinauralHz,
+  coerceCoverWideCropY,
   getSoundRow,
   listAllSoundRows,
   normalizeTags,
@@ -86,6 +87,7 @@ function itemPayload(row: SoundCatalogRow) {
     coverImageUrl: row.coverImageUrl ?? null,
     coverImageThumbKey: row.coverImageThumbKey ?? null,
     coverImageThumbUrl: row.coverImageThumbUrl ?? null,
+    coverWideCropY: coerceCoverWideCropY(row.coverWideCropY),
     lastCoverPrompt: row.lastCoverPrompt ?? null,
     coverPromptHistory: row.coverPromptHistory ?? [],
     tags: row.tags ?? [],
@@ -217,6 +219,7 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
         coverImageUrl: null,
         coverImageThumbKey: null,
         coverImageThumbUrl: null,
+        coverWideCropY: 50,
         lastCoverPrompt: null,
         coverPromptHistory: [],
         tags: [],
@@ -590,12 +593,19 @@ async function handleUpdateMeta(
     body.adminFavourite === undefined
       ? row.adminFavourite === true
       : body.adminFavourite === true;
+  // Always persist a concrete 0–100 number so Put+removeUndefinedValues cannot
+  // drop a previously saved crop when the client omits the field.
+  const coverWideCropY =
+    body.coverWideCropY === undefined
+      ? coerceCoverWideCropY(row.coverWideCropY)
+      : coerceCoverWideCropY(body.coverWideCropY);
   const next: SoundCatalogRow = {
     ...row,
     name: nameRaw,
     binauralHz,
     customPackName,
     adminFavourite: adminFavourite || undefined,
+    coverWideCropY,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(next);

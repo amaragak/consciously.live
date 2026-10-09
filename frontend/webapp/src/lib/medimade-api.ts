@@ -2928,6 +2928,11 @@ export type BackgroundAudioItem = {
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */
   coverImageThumbUrl?: string | null;
+  /**
+   * Vertical focus for Create · Sound 4:1 cover band (CSS object-position Y %).
+   * Default centre (50) when unset.
+   */
+  coverWideCropY?: number | null;
 };
 
 /** Prefer CDN MP3 for previews and mixer jobs (`background-audio/…` beds). */
@@ -3960,6 +3965,9 @@ export const DEFAULT_COMPOSITION_TAG_TYPES: AdminCompositionTagType[] = [
   },
 ];
 
+/** Create · Sound cover band aspect (width ÷ height). Matches ~544×136 card. */
+export const SOUND_CARD_COVER_ASPECT = 4;
+
 export type AdminCompositionCoverItem = {
   key: string;
   name: string;
@@ -3968,6 +3976,8 @@ export type AdminCompositionCoverItem = {
   coverImageUrl: string | null;
   coverImageThumbKey: string | null;
   coverImageThumbUrl: string | null;
+  /** CSS object-position Y % for the widescreen sound-card crop. */
+  coverWideCropY: number;
   lastCoverPrompt: string | null;
   coverPromptHistory: string[];
   tags: string[];
@@ -4006,6 +4016,15 @@ function parseAdminCompositionCoverItem(
       typeof o.coverImageThumbUrl === "string" && o.coverImageThumbUrl.trim()
         ? o.coverImageThumbUrl.trim()
         : null,
+    coverWideCropY: (() => {
+      if (o.coverWideCropY == null || o.coverWideCropY === "") return 50;
+      const n =
+        typeof o.coverWideCropY === "number"
+          ? o.coverWideCropY
+          : Number(String(o.coverWideCropY).trim());
+      if (!Number.isFinite(n)) return 50;
+      return Math.min(100, Math.max(0, Math.round(n)));
+    })(),
     lastCoverPrompt:
       typeof o.lastCoverPrompt === "string" && o.lastCoverPrompt.trim()
         ? o.lastCoverPrompt.trim()
@@ -4175,6 +4194,8 @@ export async function updateAdminCompositionCoverMeta(params: {
   binauralHz?: number | null;
   customPackName?: string | null;
   adminFavourite?: boolean;
+  /** CSS object-position Y % for Create · Sound 4:1 cover band. */
+  coverWideCropY?: number;
 }): Promise<AdminCompositionCoverItem> {
   return postAdminCompositionCoverAction({
     action: "update-meta",
@@ -4188,6 +4209,9 @@ export async function updateAdminCompositionCoverMeta(params: {
       : {}),
     ...(params.adminFavourite !== undefined
       ? { adminFavourite: params.adminFavourite }
+      : {}),
+    ...(params.coverWideCropY !== undefined
+      ? { coverWideCropY: params.coverWideCropY }
       : {}),
   });
 }
@@ -7029,12 +7053,23 @@ function parseBackgroundAudioPayload(
             : NaN;
       const binauralHz =
         Number.isFinite(hzNum) && hzNum > 0 ? hzNum : null;
+      const cropRaw = (item as { coverWideCropY?: unknown }).coverWideCropY;
+      const cropNum =
+        typeof cropRaw === "number"
+          ? cropRaw
+          : typeof cropRaw === "string"
+            ? Number(cropRaw.trim())
+            : NaN;
+      const coverWideCropY = Number.isFinite(cropNum)
+        ? Math.min(100, Math.max(0, Math.round(cropNum)))
+        : undefined;
       return {
         ...item,
         tags: tags.length > 0 ? tags : undefined,
         binauralHz,
         adminFavourite: item.adminFavourite === true ? true : undefined,
         customPackName: customPackName || undefined,
+        ...(coverWideCropY != null ? { coverWideCropY } : {}),
       };
     });
   const compositionTagTypes: AdminCompositionTagType[] = [];

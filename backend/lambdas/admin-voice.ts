@@ -513,24 +513,24 @@ async function handlePost(event: APIGatewayProxyEventV2) {
     if (existing.brand !== "speechify") {
       return json(400, { error: "Portraits are Speechify-only for now" });
     }
+    // Fall back to the same defaults as buildSpeakerPortraitPrompt so Generate
+    // works before admin has filled appearance / background fields.
     const appearance =
       coerceAppearanceDescription(
         typeof body.appearanceDescription === "string"
           ? body.appearanceDescription
           : existing.appearanceDescription,
-      ) || coerceAppearanceDescription(existing.appearanceDescription);
+      ) ||
+      coerceAppearanceDescription(existing.appearanceDescription) ||
+      "a warm, friendly adult narrator with natural features";
     const bg =
       coercePortraitBgColor(
         typeof body.portraitBgColor === "string"
           ? body.portraitBgColor
           : existing.portraitBgColor,
-      ) || coercePortraitBgColor(existing.portraitBgColor);
-    if (!appearance) {
-      return json(400, { error: "appearanceDescription is required" });
-    }
-    if (!bg) {
-      return json(400, { error: "portraitBgColor is required" });
-    }
+      ) ||
+      coercePortraitBgColor(existing.portraitBgColor) ||
+      "a soft teal-to-blue gradient";
     const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
     if (!bucket) return json(500, { error: "MEDIA_BUCKET_NAME is not set" });
     const domain = (process.env.MEDIA_CLOUDFRONT_DOMAIN || "").trim();

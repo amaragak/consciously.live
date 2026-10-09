@@ -1,5 +1,5 @@
 /**
- * Encode Opus + MP3 siblings for dry/FX WAVs that predate voice-stem
+ * Encode AAC (.m4a) siblings for dry/FX WAVs that predate voice-stem
  * streaming (library meditations and Create speaker previews).
  *
  *   AWS_PROFILE=mm MEDIA_BUCKET_NAME=… npx tsx scripts/backfill-voice-stem-streams.ts
@@ -83,14 +83,13 @@ async function main(): Promise<void> {
   console.log(`found ${wavs.length} dry/wet wavs`);
   for (const wavKey of wavs) {
     const stem = wavKey.slice(0, -4);
-    const haveMp3 = await objectExists(`${stem}.mp3`);
-    const haveOpus = await objectExists(`${stem}.opus`);
-    if (haveMp3 && haveOpus) {
+    const aacKey = `${stem}.m4a`;
+    if (await objectExists(aacKey)) {
       console.log("skip", wavKey);
       continue;
     }
     if (dryRun) {
-      console.log("would encode", wavKey);
+      console.log("would encode", wavKey, "→", aacKey);
       continue;
     }
     const obj = await s3.send(

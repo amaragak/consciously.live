@@ -20,27 +20,30 @@ export function voiceStemPlaybackUrl(url: string): string {
   }
 }
 
-/** Prefer AAC; fall back to MP3 until backfill finishes. */
+/**
+ * User-facing stems are AAC-in-MP4 only (phase-locked dry/FX from one ffmpeg
+ * encode). Catalog keys may still end in `.wav` — remap via
+ * `voiceStemPlaybackUrl`; never fall back to WAV/MP3 for playback.
+ *
+ * Speechify Create Sound asks for paced keys (`r0-loud-dry.m4a`, …). When those
+ * are not on the CDN yet, fall back to the legacy centre stems
+ * (`loud-dry.m4a` / `loud-fx.m4a`) so audition still plays.
+ */
 export function voiceStemPlaybackCandidates(url: string): string[] {
   const trimmed = url.trim();
   if (!trimmed) return [];
   const m4a = voiceStemPlaybackUrl(trimmed);
-  let mp3 = trimmed;
-  try {
-    const u = new URL(trimmed, "https://local.invalid");
-    if (/\.(wav|mp3|opus|m4a)$/i.test(u.pathname)) {
-      u.pathname = u.pathname.replace(/\.(wav|mp3|opus|m4a)$/i, ".mp3");
-      mp3 = /^https?:\/\//i.test(trimmed)
-        ? u.toString()
-        : `${u.pathname}${u.search}${u.hash}`;
-    }
-  } catch {
-    mp3 = trimmed.replace(/\.(wav|mp3|opus|m4a)$/i, ".mp3");
-  }
-  return m4a === mp3 ? [m4a] : [m4a, mp3];
+  const out: string[] = [m4a];
+  // `…/r-20-loud-dry.m4a` → `…/loud-dry.m4a` (preserve query string).
+  const legacySpeechify = m4a.replace(
+    /\/r-?\d+-loud-(dry|fx|wet)\.m4a(?=\?|$)/i,
+    "/loud-$1.m4a",
+  );
+  if (legacySpeechify !== m4a) out.push(legacySpeechify);
+  return out;
 }
 
-/** Baked meditation / sample URL: prefer `.m4a`, fall back to `.mp3`. */
+/** Same as voice stems — AAC delivery only. */
 export function mediaPlaybackCandidates(url: string): string[] {
   return voiceStemPlaybackCandidates(url);
 }

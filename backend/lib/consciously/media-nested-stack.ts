@@ -40,6 +40,9 @@ export class ConsciouslyMediaNestedStack extends cdk.NestedStack {
       // RETAIN until cutover/restore tooling is proven; flip later if desired.
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       autoDeleteObjects: false,
+      // Keep prior object bodies when covers/audio are overwritten or deleted
+      // (e.g. composition cover regen) so accidental replaces can be restored.
+      versioned: true,
       cors: [
         {
           allowedMethods: [
@@ -54,7 +57,12 @@ export class ConsciouslyMediaNestedStack extends cdk.NestedStack {
         },
       ],
       lifecycleRules: [
-        { abortIncompleteMultipartUploadAfter: cdk.Duration.days(2) },
+        {
+          abortIncompleteMultipartUploadAfter: cdk.Duration.days(2),
+          // Cap version storage growth; 90d is enough to undo bad cover regens.
+          noncurrentVersionExpiration: cdk.Duration.days(90),
+          expiredObjectDeleteMarker: true,
+        },
       ],
     });
 

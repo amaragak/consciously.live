@@ -650,30 +650,37 @@ function SpeakerRow({
                   Admin › Pre-prompts → Speaker portrait style.
                 </span>
               </label>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-end gap-4">
                 {speaker.portraitImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={speaker.portraitImageUrl}
                     alt=""
-                    className="h-16 w-16 rounded-full object-cover"
+                    className="h-40 w-40 rounded-full border border-border object-cover shadow-sm"
                   />
                 ) : (
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-border text-[10px] text-muted">
+                  <span className="flex h-40 w-40 items-center justify-center rounded-full border border-dashed border-border text-xs text-muted">
                     No photo
                   </span>
                 )}
                 <button
                   type="button"
-                  disabled={
-                    busy !== null ||
-                    !appearanceDescription.trim() ||
-                    !portraitBgColor.trim()
+                  disabled={busy !== null}
+                  title={
+                    !appearanceDescription.trim() || !portraitBgColor.trim()
+                      ? "Uses placeholder appearance/background if those fields are empty"
+                      : undefined
                   }
                   onClick={() => void generatePortrait()}
                   className="rounded-xl accent-fill-gradient px-3 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
                 >
-                  {busy === "portrait" ? "Generating…" : "Generate portrait"}
+                  {busy === "portrait"
+                    ? speaker.portraitImageUrl
+                      ? "Regenerating…"
+                      : "Generating…"
+                    : speaker.portraitImageUrl
+                      ? "Regenerate portrait"
+                      : "Generate portrait"}
                 </button>
               </div>
             </>

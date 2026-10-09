@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import type { LibraryActiveTrack } from "@/components/library-player-provider";
+import { CompositionCoverWideCropper } from "@/components/composition-cover-wide-cropper";
 import {
   ADMIN_IMAGE_MODELS,
   backgroundAudioPlaybackKey,
@@ -27,13 +28,18 @@ type RowState = {
   tagDraft: string;
   nameDraft: string;
   binauralHzDraft: string;
+  coverWideCropYDraft: number;
+  cropOpen: boolean;
   busy: boolean;
   error: string | null;
 };
 
 function blankRowState(
   model: AdminImageModel = "gpt-image-1-mini",
-  item?: Pick<AdminCompositionCoverItem, "name" | "binauralHz">,
+  item?: Pick<
+    AdminCompositionCoverItem,
+    "name" | "binauralHz" | "coverWideCropY"
+  >,
 ): RowState {
   return {
     model,
@@ -44,6 +50,11 @@ function blankRowState(
       item?.binauralHz != null && Number.isFinite(item.binauralHz)
         ? String(item.binauralHz)
         : "",
+    coverWideCropYDraft:
+      item?.coverWideCropY != null && Number.isFinite(item.coverWideCropY)
+        ? Math.min(100, Math.max(0, Math.round(item.coverWideCropY)))
+        : 50,
+    cropOpen: false,
     busy: false,
     error: null,
   };
@@ -198,6 +209,8 @@ export function AdminCompositionCoversPanel() {
   const [query, setQuery] = useState("");
   const [coverFilter, setCoverFilter] = useState<CoverFilter>("all");
   const [rows, setRows] = useState<Record<string, RowState>>({});
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [defaultModel, setDefaultModel] =
     useState<AdminImageModel>("gpt-image-1-mini");
@@ -231,6 +244,10 @@ export function AdminCompositionCoversPanel() {
               ...(existing ?? blankRowState(defaultModel, it)),
               nameDraft: it.name,
               binauralHzDraft: formatBinauralHzDraft(it.binauralHz),
+              coverWideCropYDraft:
+                existing?.cropOpen
+                  ? existing.coverWideCropYDraft
+                  : (it.coverWideCropY ?? 50),
             };
           }
         }
@@ -535,9 +552,13 @@ export function AdminCompositionCoversPanel() {
     overrides?: {
       customPackName?: string | null;
       adminFavourite?: boolean;
+      coverWideCropY?: number;
     },
   ) {
-    const state = rows[item.key] ?? blankRowState(defaultModel, item);
+    // Prefer ref so Save crop always reads the latest drag position, not a
+    // stale render closure from before the last pointermove.
+    const state =
+      rowsRef.current[item.key] ?? blankRowState(defaultModel, item);
     const name = state.nameDraft.trim().slice(0, 200);
     if (!name) {
       patchRow(item.key, {
@@ -563,21 +584,42 @@ export function AdminCompositionCoversPanel() {
       overrides && "adminFavourite" in overrides
         ? Boolean(overrides.adminFavourite)
         : item.adminFavourite;
+    const cropRaw =
+      overrides && "coverWideCropY" in overrides
+        ? (overrides.coverWideCropY ?? state.coverWideCropYDraft)
+        : state.coverWideCropYDraft;
+    const cropRounded = Math.round(Number(cropRaw));
+    const coverWideCropY = Number.isFinite(cropRounded)
+      ? Math.min(100, Math.max(0, cropRounded))
+      : 50;
     if (
       name === item.name &&
       binauralHz === (item.binauralHz ?? null) &&
       customPackName === (item.customPackName ?? null) &&
       adminFavourite === item.adminFavourite &&
+      coverWideCropY === (item.coverWideCropY ?? 50) &&
       !overrides
     ) {
       patchRow(item.key, {
         nameDraft: item.name,
         binauralHzDraft: formatBinauralHzDraft(item.binauralHz),
+        coverWideCropYDraft: coverWideCropY,
         error: null,
       });
       return;
     }
-    patchRow(item.key, { busy: true, error: null });
+    // Optimistic: keep the crop where the admin put it. A missing/defaulted
+    // coverWideCropY on the response used to snap the band back to 50%.
+    patchRow(item.key, {
+      busy: true,
+      error: null,
+      coverWideCropYDraft: coverWideCropY,
+    });
+    setItems((prev) =>
+      prev.map((p) =>
+        p.key === item.key ? { ...p, coverWideCropY } : p,
+      ),
+    );
     try {
       const saved = await updateAdminCompositionCoverMeta({
         key: item.key,
@@ -585,20 +627,34 @@ export function AdminCompositionCoversPanel() {
         binauralHz,
         customPackName,
         adminFavourite,
+        coverWideCropY,
       });
       setItems((prev) =>
-        prev.map((p) => (p.key === saved.key ? { ...p, ...saved } : p)),
+        prev.map((p) =>
+          p.key === saved.key
+            ? { ...p, ...saved, coverWideCropY }
+            : p,
+        ),
       );
       patchRow(item.key, {
         busy: false,
         nameDraft: saved.name,
         binauralHzDraft: formatBinauralHzDraft(saved.binauralHz),
+        coverWideCropYDraft: coverWideCropY,
       });
     } catch (e) {
       patchRow(item.key, {
         busy: false,
+        coverWideCropYDraft: item.coverWideCropY ?? 50,
         error: e instanceof Error ? e.message : "Could not save",
       });
+      setItems((prev) =>
+        prev.map((p) =>
+          p.key === item.key
+            ? { ...p, coverWideCropY: item.coverWideCropY ?? 50 }
+            : p,
+        ),
+      );
     }
   }
 
@@ -1570,6 +1626,89 @@ export function AdminCompositionCoversPanel() {
                         ))}
                       </select>
                     </label>
+                    {covered &&
+                    (item.coverImageUrl || item.coverImageThumbUrl) ? (
+                      <div className="rounded-xl border border-border bg-background/60 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={state.busy || bulkBusy}
+                            onClick={() =>
+                              patchRow(item.key, {
+                                cropOpen: !state.cropOpen,
+                                coverWideCropYDraft:
+                                  state.coverWideCropYDraft ??
+                                  item.coverWideCropY ??
+                                  50,
+                              })
+                            }
+                            className="cursor-pointer rounded-full border border-border bg-card px-3 py-1 text-[12px] font-semibold text-foreground disabled:opacity-50"
+                          >
+                            {state.cropOpen
+                              ? "Hide widescreen crop"
+                              : "Widescreen crop (Sound card)"}
+                          </button>
+                          {!state.cropOpen ? (
+                            <span className="text-[11px] text-muted">
+                              Focus {item.coverWideCropY ?? 50}% · 4:1 band
+                            </span>
+                          ) : null}
+                        </div>
+                        {state.cropOpen ? (
+                          <div className="mt-3 space-y-2">
+                            <CompositionCoverWideCropper
+                              imageUrl={
+                                item.coverImageUrl ||
+                                item.coverImageThumbUrl ||
+                                ""
+                              }
+                              value={state.coverWideCropYDraft}
+                              disabled={state.busy || bulkBusy}
+                              onChange={(y) =>
+                                patchRow(item.key, {
+                                  coverWideCropYDraft: y,
+                                })
+                              }
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={
+                                  state.busy ||
+                                  bulkBusy ||
+                                  state.coverWideCropYDraft ===
+                                    (item.coverWideCropY ?? 50)
+                                }
+                                onClick={() => {
+                                  const draft =
+                                    rowsRef.current[item.key]
+                                      ?.coverWideCropYDraft ??
+                                    state.coverWideCropYDraft;
+                                  void persistMeta(item, {
+                                    coverWideCropY: draft,
+                                  });
+                                }}
+                                className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
+                              >
+                                Save crop
+                              </button>
+                              <button
+                                type="button"
+                                disabled={state.busy || bulkBusy}
+                                onClick={() =>
+                                  patchRow(item.key, {
+                                    coverWideCropYDraft: 50,
+                                  })
+                                }
+                                className="cursor-pointer rounded-xl border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground disabled:opacity-50"
+                              >
+                                Reset to centre
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {covered ? (
                       <label className="flex flex-col gap-1 text-xs text-muted">
                         What to change (regen)

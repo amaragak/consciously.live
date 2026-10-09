@@ -263,15 +263,24 @@ export function parseScriptIntoSegments(
   return segments;
 }
 
-/** Prompt block: scripts use named bands only, never seconds (standard / Script Lab). */
+/**
+ * Prompt block: named pause bands for natural flow; clocked/count spoken
+ * timings only when the creator explicitly steers that way.
+ */
 export const SCRIPT_PAUSE_PROMPT_RULES = [
-  "Use **liberal** natural pauses with inline markers `[[PAUSE short]]`, `[[PAUSE medium]]`, `[[PAUSE long]]`, or `[[PAUSE extra long]]` only — **never** write seconds (no `3s`, `6s`, `1.5s`, etc.). Optional `[[PAUSE extra short]]` for a very brief bridge.",
+  "Use **liberal** natural pauses with inline markers `[[PAUSE short]]`, `[[PAUSE medium]]`, `[[PAUSE long]]`, or `[[PAUSE extra long]]`. Optional `[[PAUSE extra short]]` for a very brief bridge. Prefer **named bands** — do not write timed seconds (`3s`, `6s`, etc.) for ordinary pacing.",
   "Include them **often**—after most sentences or sense-units, at **every** meaningful transition (arrival → practice, shifts in technique or imagery, closing), and wherever a human guide would breathe or let a phrase land—not only at rare dramatic beats.",
-  "Place **every** pause **intelligently**: each gap must fit the moment—what was just said, the emotional or somatic weight, the transition, and what comes next. Pauses are not filler; avoid random, uniform, or excessive markers that would break rhythm or feel mechanical.",
+  "Place **every** pause **intelligently**: think carefully how long each silence should be so the meditation flows naturally and the meditator has real space at reflection points. Each gap must fit the moment—what was just said, the emotional or somatic weight, the transition, and what comes next. Pauses are not filler; avoid random, uniform, or excessive markers that would break rhythm or feel mechanical.",
   "Choose the **band** by context: **short** when momentum matters; **medium** as the typical gap between lines; **long** after heavier invitations, imagery, or emotional lines; **extra long** when the listener is practising **on their own** with no imminent next cue (slow body scan, open visualization, resting in silence, counting several breaths alone). Default toward more frequent silence than a dense script—still never gratuitous.",
   "**Guided breath cycles (important):** when you sequence step-by-step breath cues the guide delivers in order—e.g. breathe in … then breathe out; inhale … exhale; hold … release—the pause **between those paired steps** must be **short** or **extra short** only. That gap is just long enough to finish that one phase before the next line; it is **not** self-paced practice. Never use **medium**, **long**, or **extra long** after “breathe in” (or similar) if the next section is “breathe out” (or the matching exhale/release). Use **long** / **extra long** only when the listener has real open time before the guide speaks again.",
   "When the listener truly follows in their own time—with no next instruction arriving soon—prefer **extra long** (sometimes several markers in a row when one sustained silence fits); never rush the next line while they are meant to be practising alone, and never stack extra-long silence where the script does not call for it.",
   "Place pause markers on their own or immediately after a sentence, never splitting words.",
+  "",
+  "### Explicit spoken timings (hard constraint)",
+  "**Only** invent clocked or count-based practice when the creator **explicitly steers** that in the conversation. Default / unprompted scripts must **never** do this.",
+  "Forbidden unless the user asked for it: spoken second recipes (“hold for five seconds”, “breathe in for four, hold for four, out for six”), count-along cues (“inhale for 4 — one, two, three, four”), metronomic box/ratio breathing with numbers, or any similar numeric timing recipe in the spoken words or as prescribed pause lengths the listener is meant to match.",
+  "This does **not** mean you should skimp on pause craft. On the contrary: always choose [[PAUSE …]] bands with care so silence lands where reflection needs space. What is gated is **announcing or prescribing** specific timings — not using silence markers for natural flow.",
+  "When the user **does** explicitly request count-based or second-precise timing (e.g. inhale for 4 with spoken 1, 2, 3, 4): size every gap to **real seconds**, not much more or less. Band map: extra-short ≈ 1.5s, short ≈ 2.5s, medium ≈ 4s, long ≈ 7s, extra-long ≈ 12s. For tight count-alongs, prefer timed markers such as `[[PAUSE 1s]]` between spoken counts so the listener is not left waiting ages for the next number, and not rushed through the phase. Spoken counts + silences in a phase should sum to roughly the named duration of that phase.",
 ].join("\n");
 
 /**
