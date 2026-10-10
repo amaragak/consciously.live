@@ -17,6 +17,8 @@ const lambda = new LambdaClient({});
 
 export const STREAMING_BAKE_DETAIL_EQ = "streaming-aac-eq";
 export const STREAMING_BAKE_DETAIL_TRIM = "streaming-aac-trim";
+/** Mass stereo re-encode; re-applies catalog EQ/trim when present. */
+export const STREAMING_BAKE_DETAIL_REBAKE = "streaming-aac-stereo-rebake";
 
 export type StreamingBakeWorkerEvent = {
   worker: true;

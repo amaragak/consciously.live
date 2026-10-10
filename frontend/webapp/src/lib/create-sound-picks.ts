@@ -17,6 +17,7 @@ import type {
   VoicePreferredTraits,
 } from "@/lib/medimade-api";
 import { coerceEnergies, hasVoicePrefs, VOICE_ENERGY_VALUES } from "@/lib/medimade-api";
+import { pickDefaultSpeechifySpeaker } from "@/lib/fish-speakers";
 import { MEDITATION_STYLE_LABELS } from "@/lib/meditation-style-intake";
 
 export const LAST_VOICE_STORAGE_KEY = "mm_last_fish_voice_v1";
@@ -387,10 +388,15 @@ export function computeSoundPicks(opts: {
       voiceId = lastVoice;
       voiceReason = "Your usual voice";
     } else {
-      voiceId = ranked[0]?.modelId ?? speakers[0]?.modelId ?? "";
-      voiceReason = style
-        ? `A good fit for ${style}`
-        : "A good fit for this practice";
+      const def = pickDefaultSpeechifySpeaker(speakers);
+      voiceId =
+        def?.modelId ?? ranked[0]?.modelId ?? speakers[0]?.modelId ?? "";
+      voiceReason =
+        def && voiceId === def.modelId
+          ? "Suggested voice"
+          : style
+            ? `A good fit for ${style}`
+            : "A good fit for this practice";
     }
   } else if (programSpeaker && voiceId === programSpeaker) {
     voiceReason = "This program's speaker";
@@ -436,7 +442,8 @@ export function computeSoundPicks(opts: {
       const ourPicks = soundscapes.filter((s) => s.adminFavourite);
       const pool = ourPicks.length > 0 ? ourPicks : soundscapes;
       const shuffled = shuffleInPlace([...pool]);
-      soundId = shuffled[0]?.key ?? SILENCE_SOUND_ID;
+      // Never default to silence when any soundscape exists.
+      soundId = shuffled[0]?.key ?? (soundscapes[0]?.key ?? SILENCE_SOUND_ID);
     }
   }
   // Initial pick only — cleared in UI when the user switches sound.
@@ -490,6 +497,10 @@ export function soundscapeCategoryLabel(item: BackgroundAudioItem | null): strin
   if (!item) return "Voice only";
   const pack = item.customPackName?.trim();
   if (pack) return pack;
+  // Composer credit when no custom pack is assigned (e.g. Consciously Originals).
+  if (item.composer?.trim() === "Consciously Originals") {
+    return "Consciously Original";
+  }
   return "Soundscape";
 }
 

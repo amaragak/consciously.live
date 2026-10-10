@@ -201,7 +201,10 @@ export async function bakeStreamingAac(
     if (eqAf) parts.push(eqAf);
     const filter = parts.length > 0 ? parts.join(",") : null;
 
-    await execFfmpeg(aacEncodeArgsWithFilter(inPath, outAac, filter));
+    // Beds stay stereo — voice stems use the mono default elsewhere.
+    await execFfmpeg(
+      aacEncodeArgsWithFilter(inPath, outAac, filter, { channels: 2 }),
+    );
 
     // Prove trim landed in the file (not just the catalog).
     if (startSec > 0.01 || endSec != null) {

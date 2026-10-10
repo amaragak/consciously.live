@@ -3,20 +3,32 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { randomUUID } from "crypto";
+import fs from "fs";
+import { pipeline } from "stream/promises";
+import type { Readable } from "stream";
 import { requireAdminJson } from "./_shared/admin-auth";
 import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
+  audioStemKey,
   BG_AUDIO_PREFIX,
+  BG_AUDIO_RAW_PREFIX,
   leafNameFromKey,
   mergeByStemPreferMp3,
   normalizeBgAudioCategory,
   parseAnyBgAudioKey,
 } from "./_shared/background-audio-keys";
+import {
+  loudnormReductionDbFromSource,
+  measureIntegratedLufs,
+} from "./_shared/bg-audio-loudnorm";
 import {
   compositionCoverThumbObjectKey,
   resizeCoverBufferToThumbJpeg,
@@ -31,21 +43,32 @@ import {
 } from "./_shared/meditation-cover";
 import { listAllS3Objects } from "./_shared/s3-list-all";
 import {
+  backfillMissingCompositionComposers,
   coerceBinauralHz,
   coerceCoverWideCropY,
+  coerceLoudnormRestorePct,
   getSoundRow,
   listAllSoundRows,
+  LOUDNORM_FULL_TARGET_LUFS,
+  loudnormTargetFromRestore,
   normalizeTags,
   putSoundRow,
   SOUND_PK,
   soundEnabledFromStatus,
   soundIsInCustomerPicker,
+  updateSoundLoudnorm,
+  updateSoundProcessing,
   type SoundCatalogRow,
 } from "./_shared/sound-catalog";
 import {
   loadCompositionTagTypes,
   saveCompositionTagTypes,
 } from "./_shared/composition-tag-types";
+import {
+  DEFAULT_COMPOSITION_COMPOSER,
+  normalizeCompositionComposer,
+  type CompositionComposer,
+} from "./_shared/composition-composers";
 import {
   loadCompositionPackNames,
   normalizeCompositionPackName,
@@ -94,8 +117,204 @@ function itemPayload(row: SoundCatalogRow) {
     binauralHz: row.binauralHz ?? null,
     adminFavourite: row.adminFavourite === true,
     customPackName: row.customPackName ?? null,
+    composer: normalizeCompositionComposer(row.composer),
+    processing: row.processing ?? null,
+    loudnormSourceLufs: row.loudnormSourceLufs ?? null,
+    loudnormOutputLufs: row.loudnormOutputLufs ?? null,
+    loudnormTargetLufs: row.loudnormTargetLufs ?? null,
+    loudnormReductionDb: row.loudnormReductionDb ?? null,
+    loudnormRestorePct: coerceLoudnormRestorePct(row.loudnormRestorePct, 0),
+    trimStartSec: row.trimStartSec ?? 0,
+    trimEndSec: row.trimEndSec ?? null,
+    fadeInSec: row.fadeInSec ?? 0,
+    fadeOutSec: row.fadeOutSec ?? 0,
+    streamingEditedAt: row.streamingEditedAt ?? null,
+    eqBands: row.eqBands ?? null,
     updatedAt: row.updatedAt || null,
   };
+}
+
+function rawCandidatesForComposition(row: SoundCatalogRow): string[] {
+  const out: string[] = [];
+  const pack = row.packPath?.trim();
+  if (pack) out.push(`${BG_AUDIO_RAW_PREFIX}${pack}`);
+  const parsed = parseAnyBgAudioKey(row.sk);
+  if (parsed) {
+    const stem = audioStemKey(parsed.rel);
+    out.push(
+      `${BG_AUDIO_RAW_PREFIX}${stem}.wav`,
+      `${BG_AUDIO_RAW_PREFIX}${stem}.mp3`,
+    );
+  }
+  return [...new Set(out.filter(Boolean))];
+}
+
+async function firstExistingRaw(
+  bucket: string,
+  candidates: string[],
+): Promise<string | null> {
+  for (const key of candidates) {
+    try {
+      await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      return key;
+    } catch {
+      /* next */
+    }
+  }
+  return null;
+}
+
+/**
+ * Measure raw LUFS only — updates catalog fields, does not write audio objects.
+ */
+async function handleMeasureLoudnorm(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const { bucket } = mediaConfig();
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  if (!key.startsWith(BG_AUDIO_PREFIX)) {
+    return json(400, { error: "key must be a background-audio object" });
+  }
+  const row = await getSoundRow(key);
+  if (!row) return json(404, { error: "Composition not found" });
+  const cat =
+    normalizeBgAudioCategory(row.category) ||
+    parseAnyBgAudioKey(key)?.folderCategory;
+  if (cat !== "compositions") {
+    return json(400, { error: "loudnorm measure is only for compositions" });
+  }
+
+  const rawKey = await firstExistingRaw(bucket, rawCandidatesForComposition(row));
+  if (!rawKey) {
+    return json(409, {
+      error: "No raw upload in S3 — re-upload or replace the file first.",
+    });
+  }
+
+  const lower = rawKey.toLowerCase();
+  const ext = lower.endsWith(".wav") ? "wav" : "mp3";
+  const tmpPath = `/tmp/loudnorm-measure-${randomUUID()}.${ext}`;
+  try {
+    const obj = await s3.send(
+      new GetObjectCommand({ Bucket: bucket, Key: rawKey }),
+    );
+    if (!obj.Body) throw new Error("Empty raw object");
+    await pipeline(obj.Body as Readable, fs.createWriteStream(tmpPath));
+    const sourceLufs = await measureIntegratedLufs(tmpPath);
+    if (sourceLufs == null) {
+      return json(500, { error: "Could not measure LUFS for this file" });
+    }
+    const reductionDb = loudnormReductionDbFromSource(sourceLufs);
+    const restorePct = coerceLoudnormRestorePct(row.loudnormRestorePct, 0);
+    // Keep existing target/output if already set — do not invent a re-encode.
+    const targetLufs =
+      row.loudnormTargetLufs ?? LOUDNORM_FULL_TARGET_LUFS;
+    const outputLufs = row.loudnormOutputLufs ?? targetLufs;
+    await updateSoundLoudnorm(key, {
+      loudnormSourceLufs: sourceLufs,
+      loudnormOutputLufs: outputLufs,
+      loudnormTargetLufs: targetLufs,
+      loudnormReductionDb: reductionDb,
+      loudnormRestorePct: restorePct,
+    });
+    const next = await getSoundRow(key);
+    return json(200, {
+      item: itemPayload(
+        next ?? {
+          ...row,
+          loudnormSourceLufs: sourceLufs,
+          loudnormOutputLufs: outputLufs,
+          loudnormTargetLufs: targetLufs,
+          loudnormReductionDb: reductionDb,
+          loudnormRestorePct: restorePct,
+        },
+      ),
+    });
+  } finally {
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      /* */
+    }
+  }
+}
+
+/**
+ * Set restore % and re-fire normalize from the raw upload (S3 copy onto self).
+ * 0 = full −16 LUFS loudnorm; 100 = target source LUFS (no intentional cut).
+ */
+async function handleApplyLoudnormRestore(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const { bucket } = mediaConfig();
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  if (!key.startsWith(BG_AUDIO_PREFIX)) {
+    return json(400, { error: "key must be a background-audio object" });
+  }
+  const row = await getSoundRow(key);
+  if (!row) return json(404, { error: "Composition not found" });
+  const cat =
+    normalizeBgAudioCategory(row.category) ||
+    parseAnyBgAudioKey(key)?.folderCategory;
+  if (cat !== "compositions") {
+    return json(400, { error: "loudnorm restore is only for compositions" });
+  }
+
+  const restorePct = coerceLoudnormRestorePct(body.restorePct, 0);
+  const rawKey = await firstExistingRaw(bucket, rawCandidatesForComposition(row));
+  if (!rawKey) {
+    return json(409, {
+      error: "No raw upload in S3 — re-upload or replace the file first.",
+    });
+  }
+
+  const sourceLufs = row.loudnormSourceLufs;
+  if (sourceLufs == null) {
+    return json(409, {
+      error: "Measure loudnorm first so restore has a source LUFS.",
+    });
+  }
+  // Persist the fader target before re-encode so normalize aims at this level.
+  const targetLufs = loudnormTargetFromRestore({ sourceLufs, restorePct });
+  const now = new Date().toISOString();
+  const detail =
+    restorePct <= 0
+      ? `loudnorm to ${targetLufs} LUFS (full −16)`
+      : `restoring to ${targetLufs} LUFS (${restorePct}% toward original ${sourceLufs})`;
+  await putSoundRow({
+    ...row,
+    loudnormRestorePct: restorePct,
+    loudnormTargetLufs: targetLufs,
+    processing: {
+      stage: "downloading",
+      detail,
+      updatedAt: now,
+    },
+    updatedAt: now,
+  });
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      Key: rawKey,
+      CopySource: `${bucket}/${encodeURIComponent(rawKey).replace(/%2F/g, "/")}`,
+      MetadataDirective: "REPLACE",
+      Metadata: {
+        loudnormRestoreAt: now,
+        loudnormRestorePct: String(restorePct),
+        loudnormTargetLufs: String(targetLufs),
+      },
+    }),
+  );
+  const next = await getSoundRow(key);
+  return json(200, {
+    item: itemPayload(
+      next ?? {
+        ...row,
+        loudnormRestorePct: restorePct,
+        loudnormTargetLufs: targetLufs,
+      },
+    ),
+  });
 }
 
 function catalogKeyVariants(key: string): string[] {
@@ -157,6 +376,8 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
     listAllS3Objects(s3, bucket, BG_AUDIO_PREFIX),
     listAllSoundRows(),
   ]);
+  // One-shot: existing compositions without a composer become zenmix.
+  await backfillMissingCompositionComposers(rows);
   const metaBySk = new Map(rows.map((r) => [r.sk, r]));
   const pickerKeys = new Set<string>();
   for (const row of rows) {
@@ -226,6 +447,19 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
         binauralHz: null,
         adminFavourite: false,
         customPackName: null,
+        composer: DEFAULT_COMPOSITION_COMPOSER,
+        processing: null,
+        loudnormSourceLufs: null,
+        loudnormOutputLufs: null,
+        loudnormTargetLufs: null,
+        loudnormReductionDb: null,
+        loudnormRestorePct: 0,
+        trimStartSec: 0,
+        trimEndSec: null,
+        fadeInSec: 0,
+        fadeOutSec: 0,
+        streamingEditedAt: null,
+        eqBands: null,
         updatedAt: null,
       });
     }
@@ -290,6 +524,7 @@ async function ensureCompositionRow(
     tags: [],
     status: "categorised",
     enabled: soundEnabledFromStatus("categorised"),
+    composer: DEFAULT_COMPOSITION_COMPOSER,
     updatedAt: now,
   };
   await putSoundRow(row);
@@ -310,6 +545,10 @@ async function handleGenerate(
       : undefined;
   const changeRequest =
     typeof body.changeRequest === "string" ? body.changeRequest.trim() : "";
+  const guidePrompt =
+    typeof body.guidePrompt === "string"
+      ? body.guidePrompt.trim().slice(0, 800)
+      : "";
   const model = coerceAdminImageModel(body.model);
 
   const row = await ensureCompositionRow(key, titleHint);
@@ -322,13 +561,18 @@ async function handleGenerate(
 
   let prompt: string;
   if (changeRequest) {
+    // Revision: LLM rewrites prior prompt(s) using the change note.
     prompt = await refineCompositionCoverPromptWithChange({
       title,
       previousPrompts,
       changeRequest,
     });
   } else {
-    prompt = buildCompositionCoverPrompt({ title });
+    // First gen or fresh idea — title + optional guide (ignores prior prompts).
+    prompt = buildCompositionCoverPrompt({
+      title,
+      guidePrompt: guidePrompt || undefined,
+    });
   }
 
   const { body: imageBody, mime } = await generateAdminImageFromPrompt({
@@ -589,6 +833,19 @@ async function handleUpdateMeta(
     const n = normalizeCompositionPackName(body.customPackName);
     customPackName = n || undefined;
   }
+  let composer: CompositionComposer =
+    normalizeCompositionComposer(row.composer) ?? DEFAULT_COMPOSITION_COMPOSER;
+  if (body.composer !== undefined) {
+    const nextComposer = normalizeCompositionComposer(body.composer, {
+      fallback: false,
+    });
+    if (!nextComposer) {
+      return json(400, {
+        error: "composer must be zenmix or Consciously Originals",
+      });
+    }
+    composer = nextComposer;
+  }
   const adminFavourite =
     body.adminFavourite === undefined
       ? row.adminFavourite === true
@@ -604,6 +861,7 @@ async function handleUpdateMeta(
     name: nameRaw,
     binauralHz,
     customPackName,
+    composer,
     adminFavourite: adminFavourite || undefined,
     coverWideCropY,
     updatedAt: new Date().toISOString(),
@@ -636,6 +894,12 @@ export async function handler(
       if (action === "clear-cover") return await handleClear(body);
       if (action === "set-tags") return await handleSetTags(body);
       if (action === "update-meta") return await handleUpdateMeta(body);
+      if (action === "measure-loudnorm") {
+        return await handleMeasureLoudnorm(body);
+      }
+      if (action === "apply-loudnorm-restore") {
+        return await handleApplyLoudnormRestore(body);
+      }
       if (action === "set-tag-types") return await handleSetTagTypes(body);
       if (action === "set-pack-names") return await handleSetPackNames(body);
       if (action === "rename-pack-name") return await handleRenamePackName(body);

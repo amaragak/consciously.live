@@ -3953,8 +3953,11 @@ export function CreateWorkspace({
         await new Promise((r) => setTimeout(r, remainingMs));
       }
 
-      const speakerName =
-        fishSpeakers.find((s) => s.modelId === speakerModelId)?.name ?? null;
+      const speakerRow =
+        fishSpeakers.find((s) => s.modelId === speakerModelId) ?? null;
+      const speakerName = speakerRow?.name ?? null;
+      const speakerPortraitUrl =
+        speakerRow?.portraitImageUrl?.trim() || null;
 
       const pending: PendingLibraryGeneration = {
         jobId,
@@ -3964,6 +3967,7 @@ export function CreateWorkspace({
         meditationStyle: styleForJob,
         speakerName,
         speakerModelId,
+        speakerPortraitUrl,
         ...(linkedLifeAreaId ? { lifeAreaId: linkedLifeAreaId } : {}),
       };
       appendPendingLibraryGeneration(pending);

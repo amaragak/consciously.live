@@ -226,9 +226,15 @@ async function encodeOne(job: Job): Promise<number> {
     const bytes = await obj.Body?.transformToByteArray();
     if (!bytes?.byteLength) throw new Error("empty source");
     fs.writeFileSync(inPath, Buffer.from(bytes));
-    await execFileAsync("ffmpeg", aacEncodeArgs(inPath, outPath), {
-      maxBuffer: 10 * 1024 * 1024,
-    });
+    // Beds must stay stereo; voice/sample stems stay mono.
+    const channels = job.label === "bg" ? 2 : 1;
+    await execFileAsync(
+      "ffmpeg",
+      aacEncodeArgs(inPath, outPath, { channels: channels === 2 ? 2 : 1 }),
+      {
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    );
     const body = fs.readFileSync(outPath);
     await s3.send(
       new PutObjectCommand({

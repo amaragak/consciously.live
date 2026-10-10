@@ -115,6 +115,13 @@ function buildRow(params: {
     binauralHz: existing?.binauralHz,
     adminFavourite: existing?.adminFavourite,
     customPackName: existing?.customPackName,
+    composer: existing?.composer,
+    coverWideCropY: existing?.coverWideCropY,
+    loudnormSourceLufs: existing?.loudnormSourceLufs,
+    loudnormOutputLufs: existing?.loudnormOutputLufs,
+    loudnormTargetLufs: existing?.loudnormTargetLufs,
+    loudnormReductionDb: existing?.loudnormReductionDb,
+    loudnormRestorePct: existing?.loudnormRestorePct,
   };
 }
 

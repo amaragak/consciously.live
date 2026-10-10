@@ -247,7 +247,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/admin-sounds-trim.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(180),
+        // Hour-long stereo bed bakes need headroom (was 180s).
+        timeout: cdk.Duration.minutes(15),
         memorySize: 3008,
         ephemeralStorageSize: cdk.Size.mebibytes(4096),
         layers: [ffmpegLayer],
@@ -277,7 +278,8 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/admin-sounds-eq.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(180),
+        // Stereo rebake + EQ on long compositions (was 180s).
+        timeout: cdk.Duration.minutes(15),
         memorySize: 3008,
         ephemeralStorageSize: cdk.Size.mebibytes(4096),
         layers: [ffmpegLayer],
@@ -351,8 +353,11 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/admin-composition-covers.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(180),
-        memorySize: 512,
+        // Measure / restore loudnorm on long compositions needs headroom.
+        timeout: cdk.Duration.minutes(15),
+        memorySize: 3008,
+        ephemeralStorageSize: cdk.Size.mebibytes(10240),
+        layers: [ffmpegLayer],
         role,
         environment: {
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,

@@ -1618,6 +1618,7 @@ export function CreateOneFlow({
           meditationStyle: styleForJob,
           speakerName: soundExtras.speakerName,
           speakerModelId: soundExtras.reference_id,
+          speakerPortraitUrl: soundExtras.speakerPortraitUrl,
         });
       }
 

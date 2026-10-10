@@ -104,6 +104,10 @@ import {
   writeLastSoundForStyle,
   writeLastVoiceId,
 } from "@/lib/create-sound-picks";
+import {
+  CONSCIOUSLY_ORIGINALS_PACK,
+  matchesConsciouslyOriginalsPack,
+} from "@/components/composition-artist-select";
 import { useSoundFavorites } from "@/lib/sound-favorites";
 import {
   SOUND_SETTING_KEYS,
@@ -166,10 +170,17 @@ const BRAINWAVE_SYMBOLS: Record<string, string> = {
   binaural: "∿",
 };
 
-function mediaFileUrl(base: string, key: string): string {
+function mediaFileUrl(
+  base: string,
+  key: string,
+  cacheBust?: string | null,
+): string {
   const b = base.replace(/\/$/, "");
   const path = key.split("/").map(encodeURIComponent).join("/");
-  return `${b}/${path}`;
+  const url = `${b}/${path}`;
+  const v = cacheBust?.trim();
+  if (!v) return url;
+  return `${url}?v=${encodeURIComponent(v)}`;
 }
 
 type SoloTrack = "nature" | "music" | "drums" | "noise";
@@ -181,6 +192,7 @@ export type CreateSoundStepJobExtras = {
   speed: number;
   longerBreaks?: boolean;
   speakerName: string | null;
+  speakerPortraitUrl: string | null;
   /** Bed-only seconds before voice (0 or 20). */
   leadInSeconds: 0 | 20;
   /** Fade beds out after the voice ends. */
@@ -252,6 +264,11 @@ type FlowSoundLock = {
   leadInSeconds: 0 | 20;
   fadeOut: boolean;
   longerBreaks: boolean;
+  /**
+   * User explicitly chose Voice only. Empty compositionKey alone is not enough —
+   * a race before the catalog loaded used to persist silence and block Our Picks.
+   */
+  choseSilence: boolean;
   programId: string | null;
   /** programId + session ids; overrides only restore when this matches. */
   sessionKey: string;
@@ -494,9 +511,12 @@ function TagTypeMultiSelect({
 
 let flowSoundLock: FlowSoundLock | null = null;
 
-/** Drop remembered per-session overrides (call once a flow has been generated). */
+/**
+ * Drop remembered sound-step lock after a flow has been generated so the next
+ * Create opens with fresh Our Picks (not a prior silence race).
+ */
 export function clearCreateSoundSessionOverridesLock(): void {
-  if (flowSoundLock) flowSoundLock.sessionOverrides = {};
+  flowSoundLock = null;
 }
 
 export const CreateSoundStep = forwardRef<
@@ -647,6 +667,7 @@ export const CreateSoundStep = forwardRef<
 
   const [soundMode, setSoundMode] = useState<CreateSoundBedMode>("soundscape");
   const [compositionKey, setCompositionKey] = useState("");
+  const [choseSilence, setChoseSilence] = useState(false);
   /** Selected soundscape/mix is what’s mounted and playing in the strip. */
   const selectedSoundPlaying =
     createBedPlaying &&
@@ -901,6 +922,10 @@ export const CreateSoundStep = forwardRef<
     setVoiceFxDial(next.voiceFxDial);
     setSoundMode(next.soundMode);
     setCompositionKey(next.compositionKey);
+    setChoseSilence(
+      next.soundMode === "soundscape" &&
+        next.compositionKey === SILENCE_SOUND_ID,
+    );
     setBackgroundNatureKey(next.backgroundNatureKey);
     setBackgroundMusicKey(next.backgroundMusicKey);
     setBackgroundDrumsKey(next.backgroundDrumsKey);
@@ -1079,25 +1104,70 @@ export const CreateSoundStep = forwardRef<
   useEffect(() => {
     if (picksReady) return;
     if (speakers.length === 0) return;
+    // Wait for the beds/compositions catalog — otherwise an empty list becomes
+    // silence and gets locked in before Our Picks can load (common on Skip to audio).
+    if (factoryMixesLoading) return;
+    // Catalog still empty after load → keep waiting; never lock silence as default.
+    if (compositions.length === 0) return;
     const lock = flowSoundLock;
+    // Silence without a voice was almost always a pre-catalog race — don't honor it.
+    const honorSilence =
+      Boolean(lock?.choseSilence) && Boolean(lock?.speakerModelId?.trim());
+    const lockedSoundId = honorSilence
+      ? SILENCE_SOUND_ID
+      : lock?.compositionKey
+        ? lock.compositionKey
+        : null;
     const picks = computeSoundPicks({
       speakers,
       soundscapes: compositions,
       style: meditationStyle,
       lockedVoiceId: lock?.speakerModelId,
-      lockedSoundId: lock ? lock.compositionKey : null,
+      lockedSoundId,
       voicePrefs,
       programSpeakerId: programSpeakerModelId,
       favoriteVoiceIds: favorites.voiceSet,
     });
     if (lock) {
       setSpeakerModelId(lock.speakerModelId || picks.voiceId);
-      setCompositionKey(lock.compositionKey);
-      setSoundMode(lock.soundMode);
+      const keepMixer = lock.soundMode === "mixer";
+      const keepLockedSoundscape =
+        !keepMixer &&
+        !honorSilence &&
+        Boolean(lock.compositionKey) &&
+        compositions.some((c) => c.key === lock.compositionKey);
+      if (keepMixer) {
+        setCompositionKey(lock.compositionKey);
+        setSoundMode("mixer");
+        setChoseSilence(false);
+      } else if (honorSilence) {
+        setCompositionKey(SILENCE_SOUND_ID);
+        setSoundMode("soundscape");
+        setChoseSilence(true);
+      } else if (keepLockedSoundscape) {
+        setCompositionKey(lock.compositionKey);
+        setSoundMode("soundscape");
+        setChoseSilence(false);
+      } else {
+        // Empty / stale silence from a pre-catalog race → random Our Pick.
+        setCompositionKey(picks.soundId);
+        setSoundMode("soundscape");
+        setChoseSilence(false);
+      }
       setVoiceAlts(lock.voiceAlts.length ? lock.voiceAlts : picks.voiceAlts);
-      setSoundAlts(lock.soundAlts.length ? lock.soundAlts : picks.soundAlts);
+      setSoundAlts(
+        keepLockedSoundscape || honorSilence || keepMixer
+          ? lock.soundAlts.length
+            ? lock.soundAlts
+            : picks.soundAlts
+          : picks.soundAlts,
+      );
       setShowVoiceReason(lock.showVoiceReason);
-      setShowSoundReason(lock.showSoundReason);
+      setShowSoundReason(
+        keepLockedSoundscape || honorSilence || keepMixer
+          ? lock.showSoundReason
+          : true,
+      );
       // Echo + Volume always open at recommended — ignore prior lock / session.
       setVoiceFxDial(VOICE_FX_DIAL_DEFAULT);
       setMusicLevel(SOUND_VOLUME_RECOMMENDED);
@@ -1109,6 +1179,7 @@ export const CreateSoundStep = forwardRef<
     } else {
       setSpeakerModelId(picks.voiceId);
       setCompositionKey(picks.soundId);
+      setChoseSilence(false);
       setVoiceAlts(picks.voiceAlts);
       setSoundAlts(picks.soundAlts);
       setVoiceReason(picks.voiceReason);
@@ -1120,8 +1191,67 @@ export const CreateSoundStep = forwardRef<
   }, [
     speakers,
     compositions,
+    factoryMixesLoading,
     meditationStyle,
     picksReady,
+    voicePrefs,
+    programSpeakerModelId,
+    favorites.voiceSet,
+  ]);
+
+  // Recover if picks settled without a voice/soundscape (catalog race / remount).
+  useEffect(() => {
+    if (!picksReady) return;
+    if (factoryMixesLoading) return;
+    if (speakers.length === 0) return;
+    const voiceOk =
+      Boolean(speakerModelId) &&
+      speakers.some((s) => s.modelId === speakerModelId);
+    const soundOk =
+      choseSilence ||
+      soundMode === "mixer" ||
+      (Boolean(compositionKey) &&
+        compositions.some((c) => c.key === compositionKey));
+    if (voiceOk && soundOk) return;
+    if (!choseSilence && !soundOk && compositions.length === 0) return;
+    const picks = computeSoundPicks({
+      speakers,
+      soundscapes: compositions,
+      style: meditationStyle,
+      lockedVoiceId: voiceOk ? speakerModelId : null,
+      lockedSoundId: soundOk
+        ? choseSilence
+          ? SILENCE_SOUND_ID
+          : compositionKey
+        : null,
+      voicePrefs,
+      programSpeakerId: programSpeakerModelId,
+      favoriteVoiceIds: favorites.voiceSet,
+    });
+    if (!voiceOk && picks.voiceId) {
+      setSpeakerModelId(picks.voiceId);
+      setVoiceAlts(picks.voiceAlts);
+      setVoiceReason(picks.voiceReason);
+      setShowVoiceReason(true);
+    }
+    if (!soundOk && picks.soundId) {
+      setCompositionKey(picks.soundId);
+      setSoundMode("soundscape");
+      setChoseSilence(false);
+      setSoundAlts(picks.soundAlts);
+      setSoundReason(picks.soundReason);
+      setShowSoundReason(true);
+    }
+  }, [
+    picksReady,
+    factoryMixesLoading,
+    speakers,
+    compositions,
+    speakerModelId,
+    compositionKey,
+    choseSilence,
+    soundMode,
+    meditationStyle,
     voicePrefs,
     programSpeakerModelId,
     favorites.voiceSet,
@@ -1157,6 +1287,7 @@ export const CreateSoundStep = forwardRef<
       leadInSeconds: base.leadInSeconds,
       fadeOut: base.fadeOut,
       longerBreaks: base.longerBreaks,
+      choseSilence,
       programId: sessionMode ? (programId ?? null) : null,
       sessionKey,
       sessionOverrides: sessionMode ? sessionOverrides : {},
@@ -1175,6 +1306,7 @@ export const CreateSoundStep = forwardRef<
     leadInSeconds,
     fadeOut,
     longerBreaks,
+    choseSilence,
     sessionMode,
     focusSessionId,
     programId,
@@ -1297,7 +1429,11 @@ export const CreateSoundStep = forwardRef<
         const keyChanged = prevKey !== key;
         const shouldPlay = keyChanged || playing[track];
         syncGaplessBed(el, {
-          url: mediaFileUrl(base, backgroundAudioPlaybackKey(key)),
+          url: mediaFileUrl(
+            base,
+            backgroundAudioPlaybackKey(key),
+            bedCacheBust(key),
+          ),
           fallbackUrl: null,
           volume,
           playing: shouldPlay,
@@ -1394,9 +1530,24 @@ export const CreateSoundStep = forwardRef<
     );
   }
 
+  function bedCacheBust(key: string): string | null {
+    if (!key) return null;
+    const hit =
+      compositions.find((c) => c.key === key) ||
+      backgroundMusic.find((c) => c.key === key) ||
+      backgroundNature.find((c) => c.key === key) ||
+      backgroundDrums.find((c) => c.key === key) ||
+      backgroundNoise.find((c) => c.key === key);
+    return hit?.updatedAt?.trim() || null;
+  }
+
   function soundscapePreviewUrl(key: string): string | null {
     if (!mediaBaseUrl || !key) return null;
-    return mediaFileUrl(mediaBaseUrl, backgroundAudioPlaybackKey(key));
+    return mediaFileUrl(
+      mediaBaseUrl,
+      backgroundAudioPlaybackKey(key),
+      bedCacheBust(key),
+    );
   }
 
   function selectedSoundLabelForPreview(): string {
@@ -1504,6 +1655,7 @@ export const CreateSoundStep = forwardRef<
         liveMix: false,
         musicKey,
         musicGain,
+        mediaCacheBust: bedCacheBust(musicKey),
         leadInSeconds: 0,
         fadeOut: true,
         ...(cover ? { coverImageUrl: cover } : {}),
@@ -1524,6 +1676,11 @@ export const CreateSoundStep = forwardRef<
       natureGain,
       drumsGain,
       noiseGain,
+      mediaCacheBust:
+        bedCacheBust(musicKey) ||
+        bedCacheBust(natureKey) ||
+        bedCacheBust(drumsKey) ||
+        bedCacheBust(noiseKey),
       leadInSeconds: 0,
       fadeOut: true,
       ...(cover ? { coverImageUrl: cover } : {}),
@@ -1935,6 +2092,7 @@ export const CreateSoundStep = forwardRef<
       speed: speechSpeed,
       ...(cfg.longerBreaks ? { longerBreaks: true as const } : {}),
       speakerName: speaker?.name ?? null,
+      speakerPortraitUrl: speaker?.portraitImageUrl?.trim() || null,
       leadInSeconds: cfg.leadInSeconds,
       fadeOut: cfg.fadeOut,
       ...(showCreateAudioDevControls
@@ -2090,14 +2248,18 @@ export const CreateSoundStep = forwardRef<
       : "Custom mix";
   const soundTitle = usingMix
     ? mixerSoundLabel
-    : compositionKey
-      ? (selectedSound?.name ?? "Soundscape")
-      : "Silence";
+    : !picksReady
+      ? "Choosing soundscape…"
+      : compositionKey
+        ? (selectedSound?.name ?? "Soundscape")
+        : "Silence";
   const soundDescription = usingMix
     ? "Your mix"
-    : compositionKey
-      ? soundscapeCategoryLabel(selectedSound)
-      : "Voice only";
+    : !picksReady
+      ? "Our Picks"
+      : compositionKey
+        ? soundscapeCategoryLabel(selectedSound)
+        : "Voice only";
 
   togglePreviewTransportRef.current = () => {
     if (!isCreateLibraryPreview) {
@@ -2148,6 +2310,52 @@ export const CreateSoundStep = forwardRef<
     voicePlayerRef.current?.setDial(voiceFxDial);
   }, [voiceFxDial]);
 
+  // Sound-card Volume fader → live library-strip bed gains (preview already playing).
+  useEffect(() => {
+    if (!isCreateLibraryPreview) return;
+    const api = bedVolumeApiRef.current;
+    if (!api) return;
+    const key = nowPlaying?.s3Key ?? "";
+    const isScape =
+      key.startsWith(`${CREATE_SOUND_PREVIEW_PREFIX}scape:`) ||
+      (key === `${CREATE_SOUND_PREVIEW_PREFIX}mix` &&
+        soundMode === "soundscape");
+    if (isScape) {
+      api.setBedVolume(
+        "music",
+        musicLevelToBedGain(musicLevel, SOUNDSCAPE_GAIN),
+      );
+      return;
+    }
+    if (key !== `${CREATE_SOUND_PREVIEW_PREFIX}mix`) return;
+    api.setBedVolume(
+      "music",
+      musicLevelToBedGain(musicLevel, backgroundMusicGain),
+    );
+    api.setBedVolume(
+      "nature",
+      musicLevelToBedGain(musicLevel, backgroundNatureGain),
+    );
+    api.setBedVolume(
+      "drums",
+      musicLevelToBedGain(musicLevel, backgroundDrumsGain),
+    );
+    api.setBedVolume(
+      "noise",
+      musicLevelToBedGain(musicLevel, backgroundNoiseGain),
+    );
+  }, [
+    musicLevel,
+    isCreateLibraryPreview,
+    nowPlaying?.s3Key,
+    soundMode,
+    backgroundMusicGain,
+    backgroundNatureGain,
+    backgroundDrumsGain,
+    backgroundNoiseGain,
+    bedVolumeApiRef,
+  ]);
+
   // Speechify pacing swaps pre-baked rate stems; reload while preview is active.
   useEffect(() => {
     const modelId = (voicePreviewId || speakerModelId).trim();
@@ -2161,9 +2369,13 @@ export const CreateSoundStep = forwardRef<
     const names = new Set<string>();
     for (const item of compositions) {
       const pack = item.customPackName?.trim();
-      if (pack) names.add(pack);
+      if (pack && pack !== CONSCIOUSLY_ORIGINALS_PACK) names.add(pack);
     }
-    return [...names].sort((a, b) => a.localeCompare(b));
+    // Always surface Consciously Originals in the pack row (composer filter).
+    return [
+      CONSCIOUSLY_ORIGINALS_PACK,
+      ...[...names].sort((a, b) => a.localeCompare(b)),
+    ];
   }, [compositions]);
   const soundTagFilterTypes = useMemo(() => {
     const list =
@@ -2194,6 +2406,8 @@ export const CreateSoundStep = forwardRef<
         if (!favorites.compositionSet.has(item.key)) return false;
       } else if (soundCategory === "our-picks") {
         if (!item.adminFavourite) return false;
+      } else if (soundCategory === CONSCIOUSLY_ORIGINALS_PACK) {
+        if (!matchesConsciouslyOriginalsPack(item)) return false;
       } else if (soundCategory !== "all") {
         if ((item.customPackName ?? "").trim() !== soundCategory) return false;
       }
@@ -2295,6 +2509,7 @@ export const CreateSoundStep = forwardRef<
     }
     setSoundMode("soundscape");
     setCompositionKey(id);
+    setChoseSilence(id === SILENCE_SOUND_ID);
     setShowSoundReason(asSuggestion);
     writeLastSoundForStyle(meditationStyle ?? "_general", id);
     stopAllAudioPreview();
@@ -2373,6 +2588,7 @@ export const CreateSoundStep = forwardRef<
   function commitSoundPanel() {
     if (soundPanelTab === "mixer" || stagedSoundId === "__mix__") {
       setSoundMode("mixer");
+      setChoseSilence(false);
       setShowSoundReason(false);
     } else {
       adoptSound(stagedSoundId, false);
@@ -2645,7 +2861,8 @@ export const CreateSoundStep = forwardRef<
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-display text-[21px] leading-snug text-foreground">
-                {selectedVoice?.name ?? "Choose a voice"}
+                {selectedVoice?.name ??
+                  (picksReady ? "Choose a voice" : "Choosing voice…")}
               </p>
               {selectedVoiceMeta ? (
                 <p className="mt-0.5 text-[13px] leading-snug text-muted">
@@ -2848,7 +3065,7 @@ export const CreateSoundStep = forwardRef<
             <>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                  Sound
+                  Music
                 </p>
                 <div className="flex items-center gap-[10px]">
                   {sessionFocused && !soundDiffers ? (
@@ -2960,7 +3177,7 @@ export const CreateSoundStep = forwardRef<
                 ) : null}
                 <span className="absolute inset-0 bg-gradient-to-b from-foreground/5 to-foreground/45" />
                 <p className="absolute left-5 top-4 text-[11px] font-semibold uppercase tracking-[1.4px] text-white">
-                  Sound
+                  Music
                 </p>
                 <button
                   ref={changeSoundBtnRef}

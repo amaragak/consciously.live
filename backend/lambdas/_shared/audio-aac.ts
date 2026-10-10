@@ -21,8 +21,21 @@ const AAC_BITRATE = "160k";
  */
 export const AAC_ENCODER = process.env.AAC_ENCODER?.trim() || "libfdk_aac";
 
-export function aacEncodeArgs(inputPath: string, outputPath: string): string[] {
-  return aacEncodeArgsWithFilter(inputPath, outputPath, null);
+export type AacEncodeOpts = {
+  /**
+   * Voice stems stay mono (smaller, centered under narration).
+   * Background beds / compositions must stay stereo — mono fold-down
+   * collapses the mix and sounds drastically flatter than the master.
+   */
+  channels?: 1 | 2;
+};
+
+export function aacEncodeArgs(
+  inputPath: string,
+  outputPath: string,
+  opts?: AacEncodeOpts,
+): string[] {
+  return aacEncodeArgsWithFilter(inputPath, outputPath, null, opts);
 }
 
 /** One-pass AAC encode; optional `-af` avoids a huge intermediate PCM WAV. */
@@ -30,18 +43,22 @@ export function aacEncodeArgsWithFilter(
   inputPath: string,
   outputPath: string,
   audioFilter: string | null,
+  opts?: AacEncodeOpts,
 ): string[] {
+  const channels = opts?.channels === 2 ? 2 : 1;
+  // Stereo beds need more bitrate; mono voice stays at 160k.
+  const bitrate = channels === 2 ? "256k" : AAC_BITRATE;
   const args = ["-hide_banner", "-y", "-i", inputPath];
   if (audioFilter) args.push("-af", audioFilter);
   args.push(
     "-ac",
-    "1",
+    String(channels),
     "-ar",
     "44100",
     "-c:a",
     AAC_ENCODER,
     "-b:a",
-    AAC_BITRATE,
+    bitrate,
     outputPath,
   );
   return args;

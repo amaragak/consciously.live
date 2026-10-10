@@ -17,6 +17,8 @@ export type BackgroundAudioItem = {
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */
   coverImageThumbUrl?: string | null;
+  /** Catalog row time — append as `?v=` on playback URLs after AAC replaces. */
+  updatedAt?: string | null;
 };
 
 /** Fields needed to build a strip track from a library row. */
@@ -29,7 +31,7 @@ export type LibraryMeditationFields = {
   wetAudioUrl?: string | null;
   /** CDN URL for square cover art (gpt-image), when generated. */
   coverImageUrl?: string | null;
-  /** Voice / speaker credit shown as artist under the title. */
+  /** Voice / speaker credit (library meta row + player strip). */
   speakerName?: string | null;
   voiceFxDial?: number | null;
   durationSeconds?: number | null;

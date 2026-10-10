@@ -2924,6 +2924,8 @@ export type BackgroundAudioItem = {
   adminFavourite?: boolean;
   /** Consumer-facing pack label (not the S3 folder). */
   customPackName?: string | null;
+  /** Composition credit (zenmix / Consciously Originals). */
+  composer?: string | null;
   /** Public CDN URL for composition / soundscape cover art when present. */
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */
@@ -2933,6 +2935,8 @@ export type BackgroundAudioItem = {
    * Default centre (50) when unset.
    */
   coverWideCropY?: number | null;
+  /** Catalog row time — use as `?v=` on AAC playback after in-place replaces. */
+  updatedAt?: string | null;
 };
 
 /** Prefer CDN MP3 for previews and mixer jobs (`background-audio/…` beds). */
@@ -3968,6 +3972,14 @@ export const DEFAULT_COMPOSITION_TAG_TYPES: AdminCompositionTagType[] = [
 /** Create · Sound cover band aspect (width ÷ height). Matches ~544×136 card. */
 export const SOUND_CARD_COVER_ASPECT = 4;
 
+/** Allowed composer credits for Music › Compositions. */
+export const COMPOSITION_COMPOSERS = [
+  "zenmix",
+  "Consciously Originals",
+] as const;
+export type CompositionComposer = (typeof COMPOSITION_COMPOSERS)[number];
+export const DEFAULT_COMPOSITION_COMPOSER: CompositionComposer = "zenmix";
+
 export type AdminCompositionCoverItem = {
   key: string;
   name: string;
@@ -3985,6 +3997,32 @@ export type AdminCompositionCoverItem = {
   binauralHz: number | null;
   adminFavourite: boolean;
   customPackName: string | null;
+  composer: CompositionComposer;
+  /** Raw → normalize pipeline (shown during replace). */
+  processing?: AdminSoundProcessing | null;
+  /** Integrated LUFS of raw before loudnorm. */
+  loudnormSourceLufs: number | null;
+  /** Nominal LUFS after last loudnorm pass. */
+  loudnormOutputLufs: number | null;
+  /** Target I used for last loudnorm pass. */
+  loudnormTargetLufs: number | null;
+  /** dB full −16 loudnorm would cut from the source. */
+  loudnormReductionDb: number | null;
+  /** 0 = full −16; 100 = restore toward source LUFS. */
+  loudnormRestorePct: number;
+  trimStartSec: number;
+  trimEndSec: number | null;
+  fadeInSec: number;
+  fadeOutSec: number;
+  /** Set only after AAC bake confirms; null means catalog EQ/trim are stale. */
+  streamingEditedAt: string | null;
+  eqBands: Array<{
+    type: string;
+    frequency: number;
+    Q: number;
+    gain: number;
+    enabled?: boolean;
+  }> | null;
   updatedAt: string | null;
 };
 
@@ -4055,6 +4093,135 @@ function parseAdminCompositionCoverItem(
       typeof o.customPackName === "string" && o.customPackName.trim()
         ? o.customPackName.trim().slice(0, 48)
         : null,
+    composer: (() => {
+      const raw = typeof o.composer === "string" ? o.composer.trim() : "";
+      if ((COMPOSITION_COMPOSERS as readonly string[]).includes(raw)) {
+        return raw as CompositionComposer;
+      }
+      return DEFAULT_COMPOSITION_COMPOSER;
+    })(),
+    processing: (() => {
+      if (!o.processing || typeof o.processing !== "object") return null;
+      const p = o.processing as Record<string, unknown>;
+      const stage = p.stage;
+      if (
+        stage !== "uploading" &&
+        stage !== "downloading" &&
+        stage !== "normalizing" &&
+        stage !== "encoding" &&
+        stage !== "storing" &&
+        stage !== "done" &&
+        stage !== "failed"
+      ) {
+        return null;
+      }
+      return {
+        stage,
+        error: typeof p.error === "string" ? p.error : undefined,
+        detail: typeof p.detail === "string" ? p.detail : undefined,
+        updatedAt: typeof p.updatedAt === "string" ? p.updatedAt : "",
+      };
+    })(),
+    loudnormSourceLufs: (() => {
+      if (o.loudnormSourceLufs == null || o.loudnormSourceLufs === "") return null;
+      const n =
+        typeof o.loudnormSourceLufs === "number"
+          ? o.loudnormSourceLufs
+          : Number(String(o.loudnormSourceLufs).trim());
+      return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+    })(),
+    loudnormOutputLufs: (() => {
+      if (o.loudnormOutputLufs == null || o.loudnormOutputLufs === "") return null;
+      const n =
+        typeof o.loudnormOutputLufs === "number"
+          ? o.loudnormOutputLufs
+          : Number(String(o.loudnormOutputLufs).trim());
+      return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+    })(),
+    loudnormTargetLufs: (() => {
+      if (o.loudnormTargetLufs == null || o.loudnormTargetLufs === "") return null;
+      const n =
+        typeof o.loudnormTargetLufs === "number"
+          ? o.loudnormTargetLufs
+          : Number(String(o.loudnormTargetLufs).trim());
+      return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+    })(),
+    loudnormReductionDb: (() => {
+      if (o.loudnormReductionDb == null || o.loudnormReductionDb === "") return null;
+      const n =
+        typeof o.loudnormReductionDb === "number"
+          ? o.loudnormReductionDb
+          : Number(String(o.loudnormReductionDb).trim());
+      return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null;
+    })(),
+    loudnormRestorePct: (() => {
+      if (o.loudnormRestorePct == null || o.loudnormRestorePct === "") return 0;
+      const n =
+        typeof o.loudnormRestorePct === "number"
+          ? o.loudnormRestorePct
+          : Number(String(o.loudnormRestorePct).trim());
+      if (!Number.isFinite(n)) return 0;
+      return Math.min(100, Math.max(0, Math.round(n)));
+    })(),
+    trimStartSec: (() => {
+      if (o.trimStartSec == null || o.trimStartSec === "") return 0;
+      const n =
+        typeof o.trimStartSec === "number"
+          ? o.trimStartSec
+          : Number(String(o.trimStartSec).trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })(),
+    trimEndSec: (() => {
+      if (o.trimEndSec == null || o.trimEndSec === "") return null;
+      const n =
+        typeof o.trimEndSec === "number"
+          ? o.trimEndSec
+          : Number(String(o.trimEndSec).trim());
+      return Number.isFinite(n) ? n : null;
+    })(),
+    fadeInSec: (() => {
+      if (o.fadeInSec == null || o.fadeInSec === "") return 0;
+      const n =
+        typeof o.fadeInSec === "number"
+          ? o.fadeInSec
+          : Number(String(o.fadeInSec).trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })(),
+    fadeOutSec: (() => {
+      if (o.fadeOutSec == null || o.fadeOutSec === "") return 0;
+      const n =
+        typeof o.fadeOutSec === "number"
+          ? o.fadeOutSec
+          : Number(String(o.fadeOutSec).trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })(),
+    streamingEditedAt:
+      typeof o.streamingEditedAt === "string" && o.streamingEditedAt.trim()
+        ? o.streamingEditedAt.trim()
+        : null,
+    eqBands: (() => {
+      if (!Array.isArray(o.eqBands)) return null;
+      const out: NonNullable<AdminCompositionCoverItem["eqBands"]> = [];
+      for (const row of o.eqBands) {
+        if (!row || typeof row !== "object") continue;
+        const b = row as Record<string, unknown>;
+        const type = typeof b.type === "string" ? b.type.trim() : "";
+        const frequency = Number(b.frequency);
+        const Q = Number(b.Q ?? b.q);
+        const gain = Number(b.gain ?? 0);
+        if (!type || !Number.isFinite(frequency) || !Number.isFinite(Q)) continue;
+        if (!Number.isFinite(gain)) continue;
+        out.push({
+          type,
+          frequency,
+          Q,
+          gain,
+          enabled: b.enabled !== false,
+        });
+        if (out.length >= 12) break;
+      }
+      return out.length > 0 ? out : null;
+    })(),
     updatedAt:
       typeof o.updatedAt === "string" && o.updatedAt.trim()
         ? o.updatedAt.trim()
@@ -4153,7 +4320,12 @@ export async function generateAdminCompositionCover(params: {
   key: string;
   title?: string;
   model?: AdminImageModel;
-  /** Refinement note for regen — empty = fresh title-based generate. */
+  /**
+   * Optional creative direction for first gen / fresh idea.
+   * Ignored when `changeRequest` is set (refine path).
+   */
+  guidePrompt?: string;
+  /** Refinement note for regen — uses prior prompts + LLM rewrite. */
   changeRequest?: string;
 }): Promise<AdminCompositionCoverItem> {
   return postAdminCompositionCoverAction({
@@ -4161,6 +4333,7 @@ export async function generateAdminCompositionCover(params: {
     key: params.key,
     title: params.title ?? "",
     model: params.model ?? "gpt-image-1-mini",
+    guidePrompt: params.guidePrompt ?? "",
     changeRequest: params.changeRequest ?? "",
   });
 }
@@ -4171,6 +4344,33 @@ export async function clearAdminCompositionCover(
   return postAdminCompositionCoverAction({
     action: "clear-cover",
     key,
+  });
+}
+
+/**
+ * Measure raw LUFS only — catalog metadata, no audio overwrite.
+ */
+export async function measureAdminCompositionLoudnorm(
+  key: string,
+): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "measure-loudnorm",
+    key,
+  });
+}
+
+/**
+ * Partial loudnorm restore for compositions.
+ * 0 = full −16 LUFS; 100 = target source LUFS. Re-runs normalize from raw.
+ */
+export async function applyAdminCompositionLoudnormRestore(params: {
+  key: string;
+  restorePct: number;
+}): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "apply-loudnorm-restore",
+    key: params.key,
+    restorePct: params.restorePct,
   });
 }
 
@@ -4193,6 +4393,7 @@ export async function updateAdminCompositionCoverMeta(params: {
   /** Pass null to clear; omit to leave unchanged on the server. */
   binauralHz?: number | null;
   customPackName?: string | null;
+  composer?: CompositionComposer;
   adminFavourite?: boolean;
   /** CSS object-position Y % for Create · Sound 4:1 cover band. */
   coverWideCropY?: number;
@@ -4207,6 +4408,7 @@ export async function updateAdminCompositionCoverMeta(params: {
     ...(params.customPackName !== undefined
       ? { customPackName: params.customPackName }
       : {}),
+    ...(params.composer !== undefined ? { composer: params.composer } : {}),
     ...(params.adminFavourite !== undefined
       ? { adminFavourite: params.adminFavourite }
       : {}),
@@ -4469,6 +4671,11 @@ export async function createAdminSoundUploads(params: {
   /** Pins the imported files to a category instead of letting the classifier pick. */
   category?: AdminSoundCategory;
   subcategory?: string;
+  /**
+   * Replace audio for an existing compositions catalog key (keeps name/tags/cover).
+   * Requires exactly one file.
+   */
+  replaceKey?: string;
   signal?: AbortSignal;
 }): Promise<{
   uploads: AdminSoundUpload[];
@@ -4477,6 +4684,7 @@ export async function createAdminSoundUploads(params: {
   /** Already in S3 but unprocessed: normalization was re-triggered, no re-upload. */
   reprocessedCount: number;
   reprocessed: string[];
+  replaced?: boolean;
 }> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
@@ -4486,7 +4694,10 @@ export async function createAdminSoundUploads(params: {
     body: JSON.stringify({
       files: params.files,
       ...(params.category ? { category: params.category } : {}),
-      ...(params.category && params.subcategory ? { subcategory: params.subcategory } : {}),
+      ...(params.category && params.subcategory
+        ? { subcategory: params.subcategory }
+        : {}),
+      ...(params.replaceKey ? { replaceKey: params.replaceKey } : {}),
     }),
     signal: params.signal,
   });
@@ -4496,6 +4707,7 @@ export async function createAdminSoundUploads(params: {
     skipped?: string[];
     reprocessedCount?: number;
     reprocessed?: string[];
+    replaced?: boolean;
     error?: string;
     detail?: string;
   };
@@ -4508,6 +4720,7 @@ export async function createAdminSoundUploads(params: {
     skipped: data.skipped ?? [],
     reprocessedCount: data.reprocessedCount ?? data.reprocessed?.length ?? 0,
     reprocessed: data.reprocessed ?? [],
+    replaced: data.replaced === true,
   };
 }
 
@@ -4638,6 +4851,37 @@ export async function reprocessAdminSound(key: string): Promise<void> {
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
   if (!res.ok) throw new Error(data.detail ?? data.error ?? res.statusText);
+}
+
+/** Presigned GET for the best available original (raw → archived → WAV → public). */
+export async function downloadAdminSoundOriginal(
+  key: string,
+): Promise<{ url: string; key: string; filename: string }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/sounds`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ downloadOriginal: { key } }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string;
+    key?: string;
+    filename?: string;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw new Error(data.detail ?? data.error ?? res.statusText);
+  const url = typeof data.url === "string" ? data.url.trim() : "";
+  if (!url) throw new Error("No download URL returned");
+  return {
+    url,
+    key: typeof data.key === "string" ? data.key : key,
+    filename:
+      typeof data.filename === "string" && data.filename.trim()
+        ? data.filename.trim()
+        : "sound",
+  };
 }
 
 export async function analyseAdminSoundTitles(keys: string[]): Promise<number> {
@@ -7046,6 +7290,13 @@ function parseBackgroundAudioPayload(
         typeof item.customPackName === "string" && item.customPackName.trim()
           ? item.customPackName.trim().slice(0, 48)
           : null;
+      const composerRaw =
+        typeof item.composer === "string" ? item.composer.trim() : "";
+      const composer = (COMPOSITION_COMPOSERS as readonly string[]).includes(
+        composerRaw,
+      )
+        ? (composerRaw as CompositionComposer)
+        : undefined;
       const hzRaw = (item as { binauralHz?: unknown }).binauralHz;
       const hzNum =
         typeof hzRaw === "number"
@@ -7065,13 +7316,20 @@ function parseBackgroundAudioPayload(
       const coverWideCropY = Number.isFinite(cropNum)
         ? Math.min(100, Math.max(0, Math.round(cropNum)))
         : undefined;
+      const updatedRaw = (item as { updatedAt?: unknown }).updatedAt;
+      const updatedAt =
+        typeof updatedRaw === "string" && updatedRaw.trim()
+          ? updatedRaw.trim()
+          : null;
       return {
         ...item,
         tags: tags.length > 0 ? tags : undefined,
         binauralHz,
         adminFavourite: item.adminFavourite === true ? true : undefined,
         customPackName: customPackName || undefined,
+        ...(composer ? { composer } : {}),
         ...(coverWideCropY != null ? { coverWideCropY } : {}),
+        ...(updatedAt ? { updatedAt } : {}),
       };
     });
   const compositionTagTypes: AdminCompositionTagType[] = [];

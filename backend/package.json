@@ -18,6 +18,7 @@
     "migrate-meditation-legacy-partition": "tsx scripts/migrate-meditation-legacy-partition.ts",
     "backfill-bg-audio-opus": "tsx scripts/backfill-bg-audio-opus.ts",
     "backfill-aac-streams": "tsx scripts/backfill-aac-streams.ts",
+    "backfill-bg-stereo-rebake": "tsx scripts/backfill-bg-stereo-rebake.ts",
     "compare-reverbs": "python3 scripts/compare-reverbs.py",
     "build-pedalboard-layer": "bash scripts/build-pedalboard-layer",
     "build-fastembed-layer": "bash scripts/build-fastembed-layer",

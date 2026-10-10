@@ -12,7 +12,25 @@ import {
   AAC_EXTENSION,
   aacEncodeArgs,
 } from "./_shared/audio-aac";
-import { updateSoundProcessing } from "./_shared/sound-catalog";
+import {
+  LOUDNORM_LRA,
+  LOUDNORM_TP,
+  loudnormReductionDbFromSource,
+  measureIntegratedLufs,
+} from "./_shared/bg-audio-loudnorm";
+import {
+  coerceLoudnormRestorePct,
+  clearStreamingEditedAt,
+  getSoundRow,
+  LOUDNORM_FULL_TARGET_LUFS,
+  loudnormTargetFromRestore,
+  updateSoundLoudnorm,
+  updateSoundProcessing,
+} from "./_shared/sound-catalog";
+import {
+  hasAppliedEq,
+  hasAppliedTrim,
+} from "./_shared/sound-streaming-bake";
 
 const s3 = new S3Client({});
 const execFileAsync = promisify(execFile);
@@ -149,13 +167,15 @@ async function probeSource(inputPath: string): Promise<SourceInfo> {
   }
 }
 
-/** Loud-normalized 24-bit PCM WAV at the source rate (capped), same loudness as the MP3. */
+/** Loud-normalized 24-bit PCM WAV at the source rate (capped). */
 async function loudnormToWav(
   inputPath: string,
   outputWavPath: string,
   sampleRate: number,
+  targetI: number,
 ): Promise<void> {
-  const filter = "loudnorm=I=-16:TP=-1.5:LRA=11:linear=true";
+  const i = Number.isFinite(targetI) ? targetI : LOUDNORM_FULL_TARGET_LUFS;
+  const filter = `loudnorm=I=${i}:TP=${LOUDNORM_TP}:LRA=${LOUDNORM_LRA}:linear=true`;
   await execFfmpeg([
     "-hide_banner",
     "-y",
@@ -173,17 +193,64 @@ async function loudnormToWav(
   ]);
 }
 
-async function wavToAac(wavPath: string, outputAacPath: string): Promise<void> {
-  await execFfmpeg(aacEncodeArgs(wavPath, outputAacPath));
+/** Resample / PCM copy of the original — no loudnorm. */
+async function passthroughToWav(
+  inputPath: string,
+  outputWavPath: string,
+  sampleRate: number,
+): Promise<void> {
+  await execFfmpeg([
+    "-hide_banner",
+    "-y",
+    "-i",
+    inputPath,
+    "-ar",
+    String(sampleRate),
+    "-c:a",
+    "pcm_s24le",
+    "-rf64",
+    "auto",
+    outputWavPath,
+  ]);
 }
 
-async function alreadyNormalized(bucket: string, key: string): Promise<boolean> {
+async function wavToAac(wavPath: string, outputAacPath: string): Promise<void> {
+  // Beds are stereo masters — never fold to mono.
+  await execFfmpeg(aacEncodeArgs(wavPath, outputAacPath, { channels: 2 }));
+}
+
+async function headObject(
+  bucket: string,
+  key: string,
+): Promise<{ LastModified?: Date } | null> {
   try {
-    await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-    return true;
+    return await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Skip only when WAV+AAC already exist and are at least as new as the raw
+ * upload. A replaced raw (newer LastModified) must re-normalize.
+ */
+async function outputsAreCurrent(
+  bucket: string,
+  rawKey: string,
+  wavKey: string,
+  aacKey: string,
+): Promise<boolean> {
+  const [raw, wav, aac] = await Promise.all([
+    headObject(bucket, rawKey),
+    headObject(bucket, wavKey),
+    headObject(bucket, aacKey),
+  ]);
+  if (!wav || !aac) return false;
+  const rawMs = raw?.LastModified?.getTime();
+  if (rawMs == null) return true;
+  const wavMs = wav.LastModified?.getTime() ?? 0;
+  const aacMs = aac.LastModified?.getTime() ?? 0;
+  return wavMs >= rawMs && aacMs >= rawMs;
 }
 
 function freeTmpMb(): number | null {
@@ -224,37 +291,125 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
         : `${Math.round(rawBytes / 1048576)}MB source`;
 
     try {
-      // Skip when WAV+AAC already exist. Catalog identity stays `.mp3`-shaped
-      // but we no longer write bed MP3 objects.
-      if (
-        (await alreadyNormalized(bucket, wavKey)) &&
-        (await alreadyNormalized(bucket, aacKey))
-      ) {
+      // Skip when WAV+AAC already exist and are not older than this raw upload.
+      // Catalog identity stays `.mp3`-shaped; we no longer write bed MP3 objects.
+      if (await outputsAreCurrent(bucket, key, wavKey, aacKey)) {
         console.log("bg audio already normalized, skipping", { key, wavKey, aacKey });
         await updateSoundProcessing(mp3Key, { stage: "done", detail: "already normalized" });
         continue;
       }
 
-      await updateSoundProcessing(mp3Key, { stage: "downloading" });
+      const catalogEarly = await getSoundRow(mp3Key);
+      const restorePctEarly = coerceLoudnormRestorePct(
+        catalogEarly?.loudnormRestorePct,
+        0,
+      );
+      const restoring = restorePctEarly > 0;
+      await updateSoundProcessing(mp3Key, {
+        stage: "downloading",
+        detail: restoring
+          ? `restore ${restorePctEarly}% — downloading raw`
+          : "downloading raw",
+      });
       rawBytes = await downloadToFile(bucket, key, inPath);
       source = await probeSource(inPath);
       const sampleRate = Math.min(source.sampleRate, MAX_SAMPLE_RATE);
 
+      const catalog = await getSoundRow(mp3Key);
+      const restorePct = coerceLoudnormRestorePct(
+        catalog?.loudnormRestorePct,
+        0,
+      );
+
       stage = "normalizing";
-      await updateSoundProcessing(mp3Key, { stage: "normalizing", detail: describeSource() });
-      await loudnormToWav(inPath, tmpWav, sampleRate);
+      await updateSoundProcessing(mp3Key, {
+        stage: "normalizing",
+        detail: `${describeSource()} · measuring LUFS`,
+      });
+      const sourceLufs = await measureIntegratedLufs(inPath);
+      // Prefer catalog target when apply-restore already wrote it (matches fader).
+      const catalogTarget = catalog?.loudnormTargetLufs;
+      const targetFromRestore =
+        sourceLufs != null
+          ? loudnormTargetFromRestore({ sourceLufs, restorePct })
+          : LOUDNORM_FULL_TARGET_LUFS;
+      const targetI =
+        catalogTarget != null &&
+        Number.isFinite(catalogTarget) &&
+        Math.abs(catalogTarget - targetFromRestore) <= 0.15
+          ? catalogTarget
+          : targetFromRestore;
+      const reductionDb =
+        sourceLufs != null ? loudnormReductionDbFromSource(sourceLufs) : 0;
+
+      // Always from the raw original (inPath). 100% restore → passthrough.
+      // Otherwise → same loudnorm on that original, with I interpolated by the
+      // fader (0% = −16, mid = milder target, never loudnorm-of-loudnorm).
+      const fullRestore =
+        restorePct >= 100 ||
+        (sourceLufs != null && Math.abs(targetI - sourceLufs) <= 0.3);
+      await updateSoundProcessing(mp3Key, {
+        stage: "normalizing",
+        detail:
+          sourceLufs != null
+            ? fullRestore
+              ? `${describeSource()} · passthrough original (${sourceLufs} LUFS)`
+              : `${describeSource()} · loudnorm original ${sourceLufs}→${targetI} LUFS (${restorePct}% restore)`
+            : describeSource(),
+      });
+      if (fullRestore) {
+        await passthroughToWav(inPath, tmpWav, sampleRate);
+      } else {
+        await loudnormToWav(inPath, tmpWav, sampleRate, targetI);
+      }
       fs.unlinkSync(inPath);
 
       stage = "encoding";
-      await updateSoundProcessing(mp3Key, { stage: "encoding", detail: describeSource() });
+      await updateSoundProcessing(mp3Key, {
+        stage: "encoding",
+        detail:
+          restorePct > 0
+            ? `${describeSource()} · encoding restored ${targetI} LUFS`
+            : describeSource(),
+      });
       await wavToAac(tmpWav, tmpAac);
 
       stage = "storing";
-      await updateSoundProcessing(mp3Key, { stage: "storing", detail: describeSource() });
+      await updateSoundProcessing(mp3Key, {
+        stage: "storing",
+        detail:
+          restorePct > 0
+            ? `${describeSource()} · storing restored ${targetI} LUFS`
+            : describeSource(),
+      });
       const wavBytes = await uploadFile(bucket, wavKey, tmpWav, "audio/wav");
       const aacBytes = await uploadFile(bucket, aacKey, tmpAac, AAC_CONTENT_TYPE);
 
-      await updateSoundProcessing(mp3Key, { stage: "done", detail: describeSource() });
+      if (sourceLufs != null) {
+        // Nominal output ≈ target (skip a second full-file measure — too slow on long comps).
+        await updateSoundLoudnorm(mp3Key, {
+          loudnormSourceLufs: sourceLufs,
+          loudnormOutputLufs: targetI,
+          loudnormTargetLufs: targetI,
+          loudnormReductionDb: reductionDb,
+          loudnormRestorePct: restorePct,
+        });
+      }
+
+      // Loudnorm rewrote WAV/AAC without EQ/trim — keep metadata, mark bake stale.
+      if (hasAppliedEq(catalog) || hasAppliedTrim(catalog)) {
+        await clearStreamingEditedAt(mp3Key);
+      }
+
+      await updateSoundProcessing(mp3Key, {
+        stage: "done",
+        detail:
+          sourceLufs != null
+            ? restorePct > 0
+              ? `restored to ${targetI} LUFS (${restorePct}% toward original ${sourceLufs})`
+              : `loudnorm ${sourceLufs}→${targetI} LUFS`
+            : describeSource(),
+      });
       console.log("normalized bg audio", {
         bucket,
         key,
@@ -266,6 +421,10 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
         aacBytes,
         sampleRate,
         durationSec: source.durationSec,
+        sourceLufs,
+        targetI,
+        restorePct,
+        reductionDb,
         elapsedMs: Date.now() - startedAt,
         freeTmpMb: freeTmpMb(),
       });

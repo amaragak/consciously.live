@@ -110,6 +110,8 @@ export type ListedBgItem = {
   adminFavourite?: boolean;
   /** Consumer-facing pack label (not the S3 folder). */
   customPackName?: string | null;
+  /** Composition credit (zenmix / Consciously Originals). */
+  composer?: string | null;
   /** Public CDN URL for composition / soundscape cover art when present. */
   coverImageUrl?: string | null;
   /** Smaller JPEG thumb for list / picker cards. */

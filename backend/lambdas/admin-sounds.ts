@@ -8,6 +8,7 @@ import {
   CopyObjectCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   ListMultipartUploadsCommand,
   ListPartsCommand,
@@ -21,6 +22,7 @@ import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
   BG_AUDIO_CATEGORIES,
   BG_AUDIO_PREFIX,
+  audioStemKey,
   BG_AUDIO_RAW_PREFIX,
   mergeByStemPreferMp3,
   normalizeBgAudioCategory,
@@ -33,11 +35,15 @@ import {
   spliceFilenameId,
   type BgAudioCategory,
 } from "./_shared/background-audio-keys";
+import {
+  DEFAULT_COMPOSITION_COMPOSER,
+} from "./_shared/composition-composers";
 import { coerceSoundSubcategory } from "./_shared/sound-taxonomy";
 import { listAllS3Objects } from "./_shared/s3-list-all";
 import { suggestSoundCategories } from "./_shared/sound-category-suggest";
 import {
   deleteSoundRow,
+  getSoundRow,
   listAllSoundRows,
   normalizeTags,
   parseSoundReviewStatus,
@@ -47,6 +53,7 @@ import {
   type SoundCatalogRow,
   type SoundReviewStatus,
 } from "./_shared/sound-catalog";
+import { AAC_EXTENSION } from "./_shared/audio-aac";
 
 const s3 = new S3Client({
   requestChecksumCalculation: "WHEN_REQUIRED",
@@ -101,6 +108,64 @@ async function objectExists(bucket: string, key: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function firstExistingKey(
+  bucket: string,
+  keys: string[],
+): Promise<string | null> {
+  for (const key of keys) {
+    if (!key) continue;
+    if (await objectExists(bucket, key)) return key;
+  }
+  return null;
+}
+
+/** Prefer raw upload → archived pre-trim master → public WAV → public key. */
+async function resolveOriginalDownloadKey(
+  bucket: string,
+  publicKey: string,
+  packPath?: string | null,
+  archivedOriginalKey?: string | null,
+): Promise<string | null> {
+  const candidates: string[] = [];
+  candidates.push(...rawKeysForPublicMp3(publicKey, packPath ?? undefined));
+
+  const archived = (archivedOriginalKey ?? "").trim();
+  if (archived) {
+    const archivedWav = siblingWavKey(archived);
+    if (archivedWav) candidates.push(archivedWav);
+    candidates.push(archived);
+  }
+
+  const origOfPublic = originalKeyForPublicKey(publicKey);
+  const publicWav = siblingWavKey(publicKey);
+  if (publicWav) candidates.push(originalKeyForPublicKey(publicWav));
+  candidates.push(origOfPublic);
+  if (publicWav) candidates.push(publicWav);
+  candidates.push(publicKey);
+
+  const seen = new Set<string>();
+  const unique = candidates.filter((k) => {
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return firstExistingKey(bucket, unique);
+}
+
+function downloadFilename(displayName: string, objectKey: string): string {
+  const base = objectKey.split("/").pop() || "sound";
+  const extMatch = base.match(/\.[a-z0-9]+$/i);
+  const ext = extMatch ? extMatch[0] : "";
+  const stemSource =
+    displayName.trim() || base.replace(/\.[^.]+$/, "") || "sound";
+  const stem = stemSource
+    .replace(/[^\w.\- ()[\]]+/g, "_")
+    .replace(/_+/g, "_")
+    .trim()
+    .slice(0, 80);
+  return `${stem || "sound"}${ext}`;
 }
 
 async function copyIfExists(bucket: string, fromKey: string, toKey: string): Promise<boolean> {
@@ -457,6 +522,10 @@ async function handlePatch(event: APIGatewayProxyEventV2, bucket: string) {
           ? true
           : undefined,
     customPackName: existing?.customPackName,
+    composer:
+      category === "compositions"
+        ? existing?.composer ?? DEFAULT_COMPOSITION_COMPOSER
+        : existing?.composer,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(row);
@@ -485,7 +554,46 @@ async function handlePost(event: APIGatewayProxyEventV2, bucket: string) {
   if (body.suggest && typeof body.suggest === "object") {
     return handleSuggest(body.suggest as Record<string, unknown>);
   }
+  if (body.downloadOriginal && typeof body.downloadOriginal === "object") {
+    return handleDownloadOriginal(
+      bucket,
+      body.downloadOriginal as Record<string, unknown>,
+    );
+  }
   return handleUploads(bucket, body);
+}
+
+async function handleDownloadOriginal(
+  bucket: string,
+  rec: Record<string, unknown>,
+) {
+  const key = typeof rec.key === "string" ? rec.key.trim() : "";
+  if (!key.startsWith(BG_AUDIO_PREFIX)) {
+    return json(400, { error: "downloadOriginal requires a background-audio key" });
+  }
+  const rows = await listAllSoundRows();
+  const existing = rows.find((r) => r.sk === key);
+  const objectKey = await resolveOriginalDownloadKey(
+    bucket,
+    key,
+    existing?.packPath,
+    existing?.originalKey ?? null,
+  );
+  if (!objectKey) {
+    return json(404, { error: "No original file found in S3 for this sound." });
+  }
+  const filename = downloadFilename(existing?.name ?? key, objectKey);
+  const safeAscii = filename.replace(/"/g, "").replace(/[^\x20-\x7E]/g, "_");
+  const url = await getSignedUrl(
+    s3 as never,
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      ResponseContentDisposition: `attachment; filename="${safeAscii}"`,
+    }),
+    { expiresIn: 15 * 60 },
+  );
+  return json(200, { url, key: objectKey, filename });
 }
 
 async function handleCompleteMultipart(bucket: string, rec: Record<string, unknown>) {
@@ -677,7 +785,216 @@ async function handleAnalyseTitles(bucket: string, rec: Record<string, unknown>)
   return json(200, { updated });
 }
 
+/**
+ * Replace the audio for an existing composition catalog key. Keeps metadata
+ * (name, tags, cover, composer) and re-uploads raw so normalize overwrites
+ * WAV/AAC under the same stem.
+ */
+async function handleReplaceUpload(
+  bucket: string,
+  body: Record<string, unknown>,
+  replaceKey: string,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  if (!replaceKey.startsWith(BG_AUDIO_PREFIX)) {
+    return json(400, { error: "replaceKey must be a background-audio object" });
+  }
+  const existing = await getSoundRow(replaceKey);
+  if (!existing) {
+    return json(404, { error: "No catalog row for replaceKey" });
+  }
+  const category =
+    normalizeBgAudioCategory(existing.category) ||
+    parseBgAudioKey(replaceKey)?.category ||
+    null;
+  if (category !== "compositions") {
+    return json(400, { error: "replaceKey is only supported for compositions" });
+  }
+
+  const files = Array.isArray(body.files) ? body.files : [];
+  if (files.length !== 1) {
+    return json(400, { error: "replace requires exactly one file" });
+  }
+  const rec = files[0];
+  if (!rec || typeof rec !== "object") {
+    return json(400, { error: "Invalid file entry" });
+  }
+  const fileRec = rec as Record<string, unknown>;
+  const relativePath =
+    (typeof fileRec.relativePath === "string" && fileRec.relativePath.trim()) ||
+    (typeof fileRec.filename === "string" ? fileRec.filename : "");
+  const leaf = relativePath.split(/[/\\]/).pop()?.trim() ?? "";
+  const lower = leaf.toLowerCase();
+  if (!lower.endsWith(".mp3") && !lower.endsWith(".wav")) {
+    return json(400, { error: "Replace file must be .mp3 or .wav" });
+  }
+  const ext = lower.endsWith(".wav") ? ".wav" : ".mp3";
+  const contentType =
+    typeof fileRec.contentType === "string" && fileRec.contentType.trim()
+      ? fileRec.contentType.trim()
+      : ext === ".wav"
+        ? "audio/wav"
+        : "audio/mpeg";
+  const size =
+    typeof fileRec.size === "number" && Number.isFinite(fileRec.size)
+      ? fileRec.size
+      : 0;
+
+  const parsed = parseAnyBgAudioKey(replaceKey);
+  if (!parsed) {
+    return json(400, { error: "replaceKey is not a valid audio key" });
+  }
+  // Keep catalog identity (mp3-shaped sk); raw ext follows the new upload.
+  const mp3Key = replaceKey.toLowerCase().endsWith(".wav")
+    ? `${audioStemKey(replaceKey)}.mp3`
+    : replaceKey;
+  const stemRel = audioStemKey(parsed.rel);
+  const rawRel = `${stemRel}${ext}`;
+  const rawKey = `${BG_AUDIO_RAW_PREFIX}${rawRel}`;
+  const wavKey = `${audioStemKey(mp3Key)}.wav`;
+  const aacKey = `${audioStemKey(mp3Key)}${AAC_EXTENSION}`;
+
+  // Drop prior normalized outputs so replace always re-encodes (and works even
+  // if an older normalize build still skipped on existence alone).
+  await Promise.all(
+    [wavKey, aacKey, mp3Key].map((k) =>
+      s3
+        .send(new DeleteObjectCommand({ Bucket: bucket, Key: k }))
+        .catch(() => undefined),
+    ),
+  );
+  // Remove sibling raw with the other extension so only the new file remains.
+  const otherRaw =
+    ext === ".wav"
+      ? `${BG_AUDIO_RAW_PREFIX}${stemRel}.mp3`
+      : `${BG_AUDIO_RAW_PREFIX}${stemRel}.wav`;
+  if (otherRaw !== rawKey) {
+    await s3
+      .send(new DeleteObjectCommand({ Bucket: bucket, Key: otherRaw }))
+      .catch(() => undefined);
+  }
+
+  const now = new Date().toISOString();
+  // Keep EQ/trim metadata for manual re-apply, but drop streamingEditedAt so
+  // the UI marks them stale (normalize will rewrite AAC without those edits).
+  // Clear originalKey — archive was for the previous mix.
+  const origMp3 = originalKeyForPublicKey(mp3Key);
+  const origWav = originalKeyForPublicKey(wavKey);
+  await Promise.all(
+    [origMp3, origWav].map((k) =>
+      s3
+        .send(new DeleteObjectCommand({ Bucket: bucket, Key: k }))
+        .catch(() => undefined),
+    ),
+  );
+  await putSoundRow({
+    pk: "SOUND",
+    sk: mp3Key,
+    name: existing.name,
+    category: "compositions",
+    subcategory: existing.subcategory,
+    categoryPinned: true,
+    suggestedCategory: existing.suggestedCategory,
+    suggestedSubcategory: existing.suggestedSubcategory,
+    suggestedName: existing.suggestedName,
+    packPath: rawRel,
+    tags: existing.tags ?? [],
+    status: existing.status === "pending" ? "categorised" : existing.status,
+    enabled: soundEnabledFromStatus(
+      existing.status === "pending" ? "categorised" : existing.status,
+    ),
+    notes: existing.notes,
+    trimStartSec: existing.trimStartSec,
+    trimEndSec: existing.trimEndSec,
+    fadeInSec: existing.fadeInSec,
+    fadeOutSec: existing.fadeOutSec,
+    eqBands: existing.eqBands,
+    // streamingEditedAt omitted → stale until admin re-bakes
+    coverImageKey: existing.coverImageKey,
+    coverImageUrl: existing.coverImageUrl,
+    coverImageThumbKey: existing.coverImageThumbKey,
+    coverImageThumbUrl: existing.coverImageThumbUrl,
+    coverWideCropY: existing.coverWideCropY,
+    lastCoverPrompt: existing.lastCoverPrompt,
+    coverPromptHistory: existing.coverPromptHistory,
+    binauralHz: existing.binauralHz,
+    adminFavourite: existing.adminFavourite,
+    customPackName: existing.customPackName,
+    composer: existing.composer ?? DEFAULT_COMPOSITION_COMPOSER,
+    importedAt: existing.importedAt ?? now,
+    processing: {
+      stage: "uploading",
+      detail: size
+        ? `replacing · ${Math.round(size / 1048576)}MB queued`
+        : "replacing audio",
+      updatedAt: now,
+    },
+    updatedAt: now,
+  });
+
+  const entry: Record<string, unknown> = {
+    filename: relativePath || leaf,
+    relativePath: rawRel,
+    rawKey,
+    key: mp3Key,
+    wavKey,
+    contentType,
+    replaced: true,
+  };
+
+  if (size >= MULTIPART_MIN) {
+    const created = await s3.send(
+      new CreateMultipartUploadCommand({
+        Bucket: bucket,
+        Key: rawKey,
+      }),
+    );
+    const uploadId = created.UploadId;
+    if (!uploadId) throw new Error(`Failed to start multipart upload for ${rawKey}`);
+    const partCount = Math.max(1, Math.ceil(size / PART_SIZE));
+    const urls: string[] = [];
+    for (let n = 1; n <= partCount; n++) {
+      urls.push(
+        await getSignedUrl(
+          s3 as never,
+          new UploadPartCommand({
+            Bucket: bucket,
+            Key: rawKey,
+            UploadId: uploadId,
+            PartNumber: n,
+          }),
+          PRESIGN,
+        ),
+      );
+    }
+    entry.multipart = { uploadId, partSize: PART_SIZE, urls };
+  } else {
+    entry.url = await getSignedUrl(
+      s3 as never,
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: rawKey,
+      }),
+      PRESIGN,
+    );
+  }
+
+  return json(200, {
+    uploads: [entry],
+    skipped: [],
+    skippedCount: 0,
+    reprocessed: [],
+    reprocessedCount: 0,
+    replaced: true,
+  });
+}
+
 async function handleUploads(bucket: string, body: Record<string, unknown>) {
+  const replaceKey =
+    typeof body.replaceKey === "string" ? body.replaceKey.trim() : "";
+  if (replaceKey) {
+    return handleReplaceUpload(bucket, body, replaceKey);
+  }
+
   const files = Array.isArray(body.files) ? body.files : [];
   // Set from the import panel when the admin already knows where the folder
   // belongs; it survives the classifier pass that follows the upload.
@@ -822,23 +1139,34 @@ async function handleUploads(bucket: string, body: Record<string, unknown>) {
 
   const now = new Date().toISOString();
   const uploads: Record<string, unknown>[] = [];
+  const isCompositionImport = pinnedCategory === "compositions";
   for (const p of prepared) {
     const prev = p.existing;
+    const category = pinnedCategory ?? prev?.category ?? "music";
+    // Composition-page imports skip the Sounds review queue — they land ready
+    // for cover/tags work (normalize still runs in the background).
+    const status: SoundReviewStatus = isCompositionImport
+      ? "categorised"
+      : "pending";
     await putSoundRow({
       pk: "SOUND",
       sk: p.keys.mp3Key,
       name: prev?.name ?? p.keys.name,
-      category: pinnedCategory ?? prev?.category ?? "music",
+      category,
       subcategory: pinnedCategory ? pinnedSubcategory || undefined : prev?.subcategory,
       categoryPinned: pinnedCategory ? true : prev?.categoryPinned,
       suggestedCategory: prev?.suggestedCategory,
       suggestedSubcategory: prev?.suggestedSubcategory,
       packPath: p.keys.rel,
       tags: prev?.tags ?? [],
-      status: "pending",
-      enabled: false,
+      status,
+      enabled: soundEnabledFromStatus(status),
       notes: prev?.notes,
       originalKey: prev?.originalKey,
+      composer:
+        category === "compositions"
+          ? prev?.composer ?? DEFAULT_COMPOSITION_COMPOSER
+          : prev?.composer,
       processing: {
         stage: "uploading",
         detail: p.size ? `${Math.round(p.size / 1048576)}MB queued` : undefined,

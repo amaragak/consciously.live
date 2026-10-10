@@ -13,6 +13,8 @@ export type PendingLibraryGeneration = {
   meditationStyle: string | null;
   speakerName: string | null;
   speakerModelId: string | null;
+  /** CDN portrait for the library meta row while generating. */
+  speakerPortraitUrl?: string | null;
   status?: "pending" | "running" | "failed";
   error?: string | null;
   /** Set once the job reports an audio key (used to swap pending → catalogued). */

@@ -9,6 +9,11 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { normalizeBgAudioCategory, type BgAudioCategory } from "./background-audio-keys";
 import { invalidateBgAudioListCache } from "./bg-audio-list-cache";
+import {
+  DEFAULT_COMPOSITION_COMPOSER,
+  normalizeCompositionComposer,
+  type CompositionComposer,
+} from "./composition-composers";
 import { normalizeCompositionPackName } from "./composition-pack-names";
 import { coerceSoundSubcategory } from "./sound-taxonomy";
 
@@ -174,8 +179,67 @@ export type SoundCatalogRow = {
   adminFavourite?: boolean;
   /** Consumer-facing pack label (not the S3 folder / subcategory). */
   customPackName?: string;
+  /** Composition credit — zenmix or Consciously Originals. */
+  composer?: CompositionComposer;
+  /** Integrated LUFS of the raw upload before loudnorm (when measured). */
+  loudnormSourceLufs?: number | null;
+  /** Integrated LUFS after the last loudnorm pass. */
+  loudnormOutputLufs?: number | null;
+  /** Target integrated LUFS used for the last pass (e.g. −16, or hotter if restore). */
+  loudnormTargetLufs?: number | null;
+  /**
+   * How many dB full loudnorm (−16) would cut from the source
+   * (`max(0, sourceLufs - (−16))`). Slider “restore” adds this back.
+   */
+  loudnormReductionDb?: number | null;
+  /**
+   * 0 = full loudnorm (−16 LUFS). 100 = target source LUFS (no intentional cut).
+   * Re-normalize from raw when this changes.
+   */
+  loudnormRestorePct?: number;
   updatedAt: string;
 };
+
+const LOUDNORM_FULL_TARGET_LUFS = -16;
+
+export function coerceLoudnormLufs(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n) || n < -70 || n > 0) return null;
+  return Math.round(n * 10) / 10;
+}
+
+export function coerceLoudnormReductionDb(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n) || n < 0 || n > 40) return null;
+  return Math.round(n * 10) / 10;
+}
+
+export function coerceLoudnormRestorePct(raw: unknown, fallback = 0): number {
+  if (raw == null || raw === "") return fallback;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+/** Target I for loudnorm given source level and restore slider. */
+export function loudnormTargetFromRestore(params: {
+  sourceLufs: number;
+  restorePct: number;
+  fullTargetLufs?: number;
+}): number {
+  const full = params.fullTargetLufs ?? LOUDNORM_FULL_TARGET_LUFS;
+  const source = params.sourceLufs;
+  const pct = coerceLoudnormRestorePct(params.restorePct, 0) / 100;
+  if (!Number.isFinite(source)) return full;
+  // Already at or quieter than full target — nothing useful to restore.
+  if (source <= full) return full;
+  const target = full + (source - full) * pct;
+  return Math.round(Math.min(source, Math.max(full, target)) * 10) / 10;
+}
+
+export { LOUDNORM_FULL_TARGET_LUFS };
 
 export function coerceBinauralHz(raw: unknown): number | null {
   if (raw == null || raw === "") return null;
@@ -328,8 +392,94 @@ function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
       const n = normalizeCompositionPackName(it.customPackName);
       return n || undefined;
     })(),
+    composer: normalizeCompositionComposer(it.composer, { fallback: false }),
+    loudnormSourceLufs: coerceLoudnormLufs(it.loudnormSourceLufs),
+    loudnormOutputLufs: coerceLoudnormLufs(it.loudnormOutputLufs),
+    loudnormTargetLufs: coerceLoudnormLufs(it.loudnormTargetLufs),
+    loudnormReductionDb: coerceLoudnormReductionDb(it.loudnormReductionDb),
+    loudnormRestorePct: (() => {
+      if (it.loudnormRestorePct == null || it.loudnormRestorePct === "") {
+        return undefined;
+      }
+      return coerceLoudnormRestorePct(it.loudnormRestorePct, 0);
+    })(),
     updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
   };
+}
+
+/** Patch loudnorm measurement / restore fields without wiping the rest of the row. */
+export async function updateSoundLoudnorm(
+  sk: string,
+  fields: {
+    loudnormSourceLufs: number;
+    loudnormOutputLufs: number;
+    loudnormTargetLufs: number;
+    loudnormReductionDb: number;
+    loudnormRestorePct: number;
+  },
+): Promise<void> {
+  const key = sk.trim();
+  if (!key) return;
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: tableName(),
+        Key: { pk: SOUND_PK, sk: key },
+        UpdateExpression:
+          "SET loudnormSourceLufs = :src, loudnormOutputLufs = :out, loudnormTargetLufs = :tgt, loudnormReductionDb = :red, loudnormRestorePct = :pct, updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":src": fields.loudnormSourceLufs,
+          ":out": fields.loudnormOutputLufs,
+          ":tgt": fields.loudnormTargetLufs,
+          ":red": fields.loudnormReductionDb,
+          ":pct": coerceLoudnormRestorePct(fields.loudnormRestorePct, 0),
+          ":u": new Date().toISOString(),
+        },
+        ConditionExpression: "attribute_exists(sk)",
+      }),
+    );
+    void invalidateBgAudioListCache();
+  } catch (e) {
+    const name = (e as { name?: string })?.name;
+    if (name === "ConditionalCheckFailedException") return;
+    console.warn("updateSoundLoudnorm failed", {
+      sk: key,
+      name,
+      msg: e instanceof Error ? e.message : e,
+    });
+  }
+}
+
+/**
+ * Drop the post-bake marker so catalog EQ/trim stay as metadata but UI shows
+ * them as stale (not in the current streaming AAC). Used after replace/normalize
+ * overwrite the AAC without re-applying those edits.
+ */
+export async function clearStreamingEditedAt(sk: string): Promise<void> {
+  const key = sk.trim();
+  if (!key) return;
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: tableName(),
+        Key: { pk: SOUND_PK, sk: key },
+        UpdateExpression: "REMOVE streamingEditedAt SET updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":u": new Date().toISOString(),
+        },
+        ConditionExpression: "attribute_exists(sk)",
+      }),
+    );
+    void invalidateBgAudioListCache();
+  } catch (e) {
+    const name = (e as { name?: string })?.name;
+    if (name === "ConditionalCheckFailedException") return;
+    console.warn("clearStreamingEditedAt failed", {
+      sk: key,
+      name,
+      msg: e instanceof Error ? e.message : e,
+    });
+  }
 }
 
 export async function listAllSoundRows(): Promise<SoundCatalogRow[]> {
@@ -425,4 +575,52 @@ export async function deleteSoundRow(sk: string): Promise<void> {
     }),
   );
   void invalidateBgAudioListCache();
+}
+
+/**
+ * Persist default composer on compositions that never had one set.
+ * Returns how many rows were written.
+ */
+export async function backfillMissingCompositionComposers(
+  rows: SoundCatalogRow[],
+): Promise<number> {
+  const missing = rows.filter((r) => {
+    const cat = normalizeBgAudioCategory(r.category) || r.category;
+    if (cat !== "compositions") return false;
+    return !normalizeCompositionComposer(r.composer, { fallback: false });
+  });
+  if (missing.length === 0) return 0;
+  let written = 0;
+  await Promise.all(
+    missing.map(async (r) => {
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: tableName(),
+            Key: { pk: SOUND_PK, sk: r.sk },
+            UpdateExpression: "SET composer = :c",
+            ConditionExpression:
+              "attribute_exists(sk) AND attribute_not_exists(composer)",
+            ExpressionAttributeValues: {
+              ":c": DEFAULT_COMPOSITION_COMPOSER,
+            },
+          }),
+        );
+        r.composer = DEFAULT_COMPOSITION_COMPOSER;
+        written += 1;
+      } catch (e) {
+        const name = (e as { name?: string })?.name;
+        if (name === "ConditionalCheckFailedException") {
+          r.composer = DEFAULT_COMPOSITION_COMPOSER;
+          return;
+        }
+        console.warn("backfillMissingCompositionComposers failed", {
+          sk: r.sk,
+          name,
+        });
+      }
+    }),
+  );
+  if (written > 0) void invalidateBgAudioListCache();
+  return written;
 }

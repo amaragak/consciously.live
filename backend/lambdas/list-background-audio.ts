@@ -12,6 +12,10 @@ import {
   type ListedBgItem,
 } from "./_shared/background-audio-keys";
 import {
+  DEFAULT_COMPOSITION_COMPOSER,
+  normalizeCompositionComposer,
+} from "./_shared/composition-composers";
+import {
   coerceCoverWideCropY,
   listAllSoundRows,
   normalizeTags,
@@ -174,6 +178,8 @@ async function buildBackgroundAudioPayload(params: {
   const tagsByKey = new Map<string, string[]>();
   const adminFavouriteByKey = new Map<string, boolean>();
   const customPackByKey = new Map<string, string>();
+  const composerByKey = new Map<string, string>();
+  const updatedAtByKey = new Map<string, string>();
   const catalogConfigured = Boolean(process.env.SOUND_CATALOG_TABLE_NAME);
   const catalogRows = catalogConfigured
     ? await listAllSoundRows().catch((e) => {
@@ -261,6 +267,26 @@ async function buildBackgroundAudioPayload(params: {
       customPackByKey.set(`${stem}.mp3`, pack);
       customPackByKey.set(`${stem}.wav`, pack);
     }
+    const cat = row.category;
+    if (cat === "compositions") {
+      const composer =
+        normalizeCompositionComposer(row.composer) ?? DEFAULT_COMPOSITION_COMPOSER;
+      composerByKey.set(row.sk, composer);
+      const stem = row.sk.replace(/\.(mp3|wav)$/i, "");
+      composerByKey.set(`${stem}.mp3`, composer);
+      composerByKey.set(`${stem}.wav`, composer);
+    }
+    const updated =
+      (typeof row.streamingEditedAt === "string" &&
+        row.streamingEditedAt.trim()) ||
+      (typeof row.updatedAt === "string" && row.updatedAt.trim()) ||
+      "";
+    if (updated) {
+      updatedAtByKey.set(row.sk, updated);
+      const stem = row.sk.replace(/\.(mp3|wav)$/i, "");
+      updatedAtByKey.set(`${stem}.mp3`, updated);
+      updatedAtByKey.set(`${stem}.wav`, updated);
+    }
   }
 
   function coverForKey(key: string): string | null {
@@ -313,6 +339,24 @@ async function buildBackgroundAudioPayload(params: {
       customPackByKey.get(key) ??
       customPackByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
       customPackByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
+      null
+    );
+  }
+
+  function composerForKey(key: string): string | null {
+    return (
+      composerByKey.get(key) ??
+      composerByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
+      composerByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
+      null
+    );
+  }
+
+  function updatedAtForKey(key: string): string | null {
+    return (
+      updatedAtByKey.get(key) ??
+      updatedAtByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".mp3") ??
+      updatedAtByKey.get(key.replace(/\.(mp3|wav)$/i, "") + ".wav") ??
       null
     );
   }
@@ -384,10 +428,16 @@ async function buildBackgroundAudioPayload(params: {
       tags: tagsForKey(row.sk),
       adminFavourite: adminFavouriteForKey(row.sk) || undefined,
       customPackName: customPackForKey(row.sk),
+      ...(composerForKey(row.sk)
+        ? { composer: composerForKey(row.sk) }
+        : {}),
       coverImageUrl: coverForKey(row.sk),
       coverImageThumbUrl: coverThumbForKey(row.sk),
       ...(coverWideCropYForKey(row.sk) != null
         ? { coverWideCropY: coverWideCropYForKey(row.sk) }
+        : {}),
+      ...(updatedAtForKey(row.sk)
+        ? { updatedAt: updatedAtForKey(row.sk) }
         : {}),
     });
   }
@@ -404,6 +454,8 @@ async function buildBackgroundAudioPayload(params: {
       const tags = tagsForKey(it.key);
       const pack = customPackForKey(it.key);
       const fav = adminFavouriteForKey(it.key);
+      const composer = composerForKey(it.key);
+      const updatedAt = updatedAtForKey(it.key);
       return {
         ...it,
         name:
@@ -417,11 +469,13 @@ async function buildBackgroundAudioPayload(params: {
         ...(tags.length > 0 ? { tags } : {}),
         ...(fav ? { adminFavourite: true } : {}),
         ...(pack ? { customPackName: pack } : {}),
+        ...(composer ? { composer } : {}),
         coverImageUrl: coverForKey(it.key),
         coverImageThumbUrl: coverThumbForKey(it.key),
         ...(coverWideCropYForKey(it.key) != null
           ? { coverWideCropY: coverWideCropYForKey(it.key) }
           : {}),
+        ...(updatedAt ? { updatedAt } : {}),
       };
     });
     buckets[c].sort((a, b) => a.name.localeCompare(b.name));

@@ -74,11 +74,12 @@ import {
   HEADER_SECTION_TABS_SELECTED,
   HEADER_SECTION_TABS_TRACK,
 } from "@/components/header-section-tabs";
+import { LibraryEditMixSidebar } from "@/components/library-edit-mix-sidebar";
 import {
-  MixEditorPanel,
   SOUNDSCAPE_MIX_GAIN,
   type MixEditorValues,
 } from "@/components/mix-editor-panel";
+import type { MixerFactoryPreset } from "@/lib/mixer-factory-presets";
 import {
   formatDuration,
   IconHeart,
@@ -782,6 +783,10 @@ export default function LibraryView({
   const [mixCompositions, setMixCompositions] = useState<BackgroundAudioItem[]>(
     [],
   );
+  const [mixFactoryMixes, setMixFactoryMixes] = useState<MixerFactoryPreset[]>(
+    [],
+  );
+  const [mixFactoryLoading, setMixFactoryLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -919,6 +924,8 @@ export default function LibraryView({
         setMixDrums(data.drums ?? []);
         setMixNoise(data.noise ?? []);
         setMixCompositions(data.compositions ?? []);
+        setMixFactoryMixes(data.factoryMixes ?? []);
+        setMixFactoryLoading(false);
       })
       .catch(() => {
         if (cancelled) return;
@@ -927,6 +934,8 @@ export default function LibraryView({
         setMixDrums([]);
         setMixNoise([]);
         setMixCompositions([]);
+        setMixFactoryMixes([]);
+        setMixFactoryLoading(false);
       });
     return () => {
       cancelled = true;
@@ -3101,37 +3110,68 @@ export default function LibraryView({
       </div>
     ) : null}
 
-    {mixEditor ? (
-      <MixEditorPanel
-        key={mixEditor.sk ?? mixEditor.s3Key}
-        title={mixEditor.title}
-        editorKey={mixEditor.sk ?? mixEditor.s3Key}
-        anchorEl={mixAnchorEl}
-        natureItems={mixNature}
-        musicItems={mixMusic}
-        drumsItems={mixDrums}
-        noiseItems={mixNoise}
-        compositionItems={mixCompositions}
-        error={mixError}
-        initialMix={mixValuesFromItem(mixEditor, "current")}
-        resetMix={mixValuesFromItem(
-          mixEditor,
-          libraryTab === "community" ? "publisher" : "created",
-        )}
-        onLiveVolume={(channel, gain) => {
-          if (nowPlaying?.s3Key !== mixEditor.s3Key) return;
-          bedVolumeApiRef.current?.setBedVolume(channel, gain);
-        }}
-        onLiveVoiceFx={(dial) => {
-          if (nowPlaying?.s3Key !== mixEditor.s3Key) return;
-          bedVolumeApiRef.current?.setVoiceFxDial(dial);
-        }}
-        onPreview={applyMixPreview}
-        onPersist={persistMix}
-        onClose={closeMixEditor}
-        closeRef={mixCloseRef}
-      />
-    ) : null}
+    <LibraryEditMixSidebar
+      open={Boolean(mixEditor)}
+      title={mixEditor?.title ?? "Background mix"}
+      natureItems={mixNature}
+      musicItems={mixMusic}
+      drumsItems={mixDrums}
+      noiseItems={mixNoise}
+      compositionItems={mixCompositions}
+      factoryMixes={mixFactoryMixes}
+      factoryMixesLoading={mixFactoryLoading}
+      error={mixError}
+      initialMix={
+        mixEditor
+          ? mixValuesFromItem(mixEditor, "current")
+          : {
+              natureKey: "",
+              musicKey: "",
+              drumsKey: "",
+              noiseKey: "",
+              natureGain: 25,
+              musicGain: 50,
+              drumsGain: 40,
+              noiseGain: 10,
+              voiceFxDial: 100,
+            }
+      }
+      resetMix={
+        mixEditor
+          ? mixValuesFromItem(
+              mixEditor,
+              libraryTab === "community" ? "publisher" : "created",
+            )
+          : {
+              natureKey: "",
+              musicKey: "",
+              drumsKey: "",
+              noiseKey: "",
+              natureGain: 25,
+              musicGain: 50,
+              drumsGain: 40,
+              noiseGain: 10,
+              voiceFxDial: 100,
+            }
+      }
+      stripPlayingMusicKey={
+        mixEditor && nowPlaying?.s3Key === mixEditor.s3Key
+          ? (nowPlaying.musicKey ?? null)
+          : null
+      }
+      onLiveVolume={(channel, gain) => {
+        if (!mixEditor || nowPlaying?.s3Key !== mixEditor.s3Key) return;
+        bedVolumeApiRef.current?.setBedVolume(channel, gain);
+      }}
+      onLiveVoiceFx={(dial) => {
+        if (!mixEditor || nowPlaying?.s3Key !== mixEditor.s3Key) return;
+        bedVolumeApiRef.current?.setVoiceFxDial(dial);
+      }}
+      onPreview={applyMixPreview}
+      onPersist={persistMix}
+      onClose={closeMixEditor}
+      closeRef={mixCloseRef}
+    />
 
     {archiveConfirm ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">

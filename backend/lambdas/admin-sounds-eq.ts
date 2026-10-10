@@ -12,13 +12,18 @@ import {
 } from "./_shared/background-audio-keys";
 import { AAC_EXTENSION, siblingAacKey } from "./_shared/audio-aac";
 import { coerceSoundEqBands } from "./_shared/sound-eq-bands";
-import { bakeStreamingAac } from "./_shared/sound-streaming-bake";
+import {
+  bakeStreamingAac,
+  hasAppliedEq,
+  hasAppliedTrim,
+} from "./_shared/sound-streaming-bake";
 import {
   enqueueStreamingBakeWorker,
   isStreamingBakeWorkerEvent,
   markStreamingBakeFailed,
   markStreamingBakeStarted,
   STREAMING_BAKE_DETAIL_EQ,
+  STREAMING_BAKE_DETAIL_REBAKE,
 } from "./_shared/sound-streaming-bake-async";
 import {
   getSoundRow,
@@ -42,6 +47,13 @@ type EqJob = {
   clear: boolean;
   bands: ReturnType<typeof coerceSoundEqBands>;
 };
+
+type RebakeJob = {
+  kind: "rebake";
+  mp3Key: string;
+};
+
+type WorkerJob = EqJob | RebakeJob;
 
 async function runEqBake(job: EqJob): Promise<{
   streamingEditedAt: string;
@@ -129,11 +141,101 @@ async function runEqBake(job: EqJob): Promise<{
   };
 }
 
+/**
+ * Stereo AAC from the current WAV master, re-applying catalog trim/EQ when set.
+ * Used to repair mono bed encodes without wiping loudnorm / cover metadata.
+ */
+async function runStereoRebake(job: RebakeJob): Promise<void> {
+  const { mp3Key } = job;
+  const bucket = process.env.MEDIA_BUCKET_NAME;
+  if (!bucket) throw new Error("MEDIA_BUCKET_NAME is not set");
+
+  const existing = await getSoundRow(mp3Key);
+  const bands = coerceSoundEqBands(existing?.eqBands);
+  const trimStart = Number(existing?.trimStartSec ?? 0);
+  const trimEndRaw = existing?.trimEndSec;
+  const trimEnd =
+    trimEndRaw === null || trimEndRaw === undefined ? null : Number(trimEndRaw);
+  const fadeInSec = Number(existing?.fadeInSec ?? 0);
+  const fadeOutSec = Number(existing?.fadeOutSec ?? 0);
+  const hasEdits =
+    hasAppliedEq(existing) ||
+    hasAppliedTrim(existing) ||
+    bands.length > 0;
+
+  const bake = await bakeStreamingAac({
+    s3,
+    bucket,
+    mp3Key,
+    // Loudnorm WAV is the customer master — do not jump to a pre-loudnorm archive.
+    preferOriginal: false,
+    trimStartSec: Number.isFinite(trimStart) && trimStart > 0 ? trimStart : 0,
+    trimEndSec: trimEnd != null && Number.isFinite(trimEnd) ? trimEnd : null,
+    fadeInSec: Number.isFinite(fadeInSec) && fadeInSec > 0 ? fadeInSec : 0,
+    fadeOutSec: Number.isFinite(fadeOutSec) && fadeOutSec > 0 ? fadeOutSec : 0,
+    eqBands: bands,
+  });
+
+  const now = new Date().toISOString();
+  if (existing) {
+    await putSoundRow({
+      ...existing,
+      enabled: soundEnabledFromStatus(existing.status),
+      streamingEditedAt: hasEdits ? now : existing.streamingEditedAt,
+      processing: {
+        stage: "done",
+        detail: hasEdits
+          ? `${STREAMING_BAKE_DETAIL_REBAKE}+edits`
+          : STREAMING_BAKE_DETAIL_REBAKE,
+        updatedAt: now,
+      },
+      updatedAt: now,
+    });
+  } else {
+    const parsed = parseBgAudioKey(mp3Key);
+    await putSoundRow({
+      pk: "SOUND",
+      sk: mp3Key,
+      name: parsed?.name ?? mp3Key,
+      category: parsed?.category ?? "music",
+      tags: [],
+      status: "categorised",
+      enabled: true,
+      processing: {
+        stage: "done",
+        detail: STREAMING_BAKE_DETAIL_REBAKE,
+        updatedAt: now,
+      },
+      updatedAt: now,
+    });
+  }
+  console.log("stereo rebake ok", {
+    mp3Key,
+    aacKey: bake.aacKey,
+    hasEdits,
+    filter: bake.filter,
+  });
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2 | Record<string, unknown>,
 ): Promise<APIGatewayProxyStructuredResultV2 | void> {
   if (isStreamingBakeWorkerEvent(event)) {
-    const job = event.job as EqJob;
+    const job = event.job as WorkerJob;
+    if (job?.kind === "rebake" && typeof job.mp3Key === "string") {
+      try {
+        await runStereoRebake(job);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("admin-sounds-eq rebake worker", msg);
+        await markStreamingBakeFailed(
+          job.mp3Key,
+          STREAMING_BAKE_DETAIL_REBAKE,
+          msg,
+        );
+      }
+      return;
+    }
     if (job?.kind !== "eq" || typeof job.mp3Key !== "string") {
       console.error("admin-sounds-eq worker: bad job", event.job);
       return;

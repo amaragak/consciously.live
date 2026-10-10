@@ -195,20 +195,29 @@ export function buildMeditationCoverPrompt(input: MeditationCoverInput): string 
 /** Cover art prompt for Music › Compositions, derived from the track title. */
 export function buildCompositionCoverPrompt(params: {
   title: string;
+  /** Optional editor direction — honored strongly when present. */
+  guidePrompt?: string;
 }): string {
   const title = params.title.trim() || "Untitled composition";
+  const guide = params.guidePrompt?.trim().slice(0, 800) ?? "";
   const cues = compositionTitleVisualCues(title);
   const motifLine = cues.length
     ? `Let these title-derived motifs guide the scene (poetically, not as text overlays): ${cues.join("; ")}.`
     : `Derive the subject freely from the title's wording, rhythm, and implied place or feeling.`;
+  const guideLine = guide
+    ? `Creative direction from the editor (honor this strongly): ${guide}.`
+    : "";
 
   return [
     `Photorealistic photograph capturing the mood of the instrumental piece titled "${title}".`,
     motifLine,
+    guideLine,
     `Subject matter is open: landscapes, interiors, people, objects, weather, architecture — whatever fits the title best. Make it specific and memorable to THIS title.`,
     `Visual style: editorial photography, natural or dramatic light, shallow depth of field where it helps, subtle film grain, rich color graded to the title's emotional register.`,
     `Square 1:1 composition. No overlaid text, logos, or UI chrome.`,
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";

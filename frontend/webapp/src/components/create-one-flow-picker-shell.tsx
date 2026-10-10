@@ -20,6 +20,13 @@ type Props = {
   panelWidth?: "default" | "voice" | "sound";
   /** Override the scrolling body classes. */
   bodyClassName?: string;
+  /**
+   * `parent` — absolute fill of a positioned ancestor (Create flow).
+   * `viewport` — fixed over the app content column (Library Edit mix).
+   */
+  host?: "parent" | "viewport";
+  /** Optional block between the scroll body and the confirm footer (e.g. Volume). */
+  preFooter?: ReactNode;
 };
 
 const CLOSE_MS = 300;
@@ -41,6 +48,8 @@ export function CreateOneFlowPickerShell({
   children,
   panelWidth = "default",
   bodyClassName,
+  host = "parent",
+  preFooter,
 }: Props) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(open);
@@ -86,8 +95,13 @@ export function CreateOneFlowPickerShell({
         ? "w-full max-w-[640px]"
         : "w-full max-w-[520px]";
 
+  const rootClass =
+    host === "viewport"
+      ? "fixed inset-x-0 bottom-0 top-14 z-[80] lg:left-[var(--app-sidebar-w,200px)]"
+      : "fixed inset-x-0 bottom-0 top-14 z-[60] md:absolute md:inset-0";
+
   return (
-    <div className="fixed inset-x-0 bottom-0 top-14 z-[60] md:absolute md:inset-0">
+    <div className={rootClass}>
       <button
         type="button"
         aria-label="Close picker"
@@ -142,6 +156,11 @@ export function CreateOneFlowPickerShell({
         >
           {children}
         </div>
+        {preFooter ? (
+          <div className="shrink-0 border-t border-border px-4 py-3 md:px-6">
+            {preFooter}
+          </div>
+        ) : null}
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2.5 md:px-6 md:py-3.5">
           <p className="hidden min-w-0 truncate text-[13px] text-foreground md:block">
             {footSummary ?? "\u00a0"}

@@ -25,7 +25,6 @@ import {
   BED_OUTRO_FADE_SECONDS,
   BED_OUTRO_HOLD_SECONDS,
   BED_VOICE_INTRO_SECONDS,
-  SOUNDSCAPE_ELEMENT_VOLUME,
   soundscapeListenVolume,
 } from "../audio/bed-volume";
 import type { BackgroundAudioItem, LibraryMeditationFields } from "./types";
@@ -50,6 +49,8 @@ export type LibraryActiveTrack = {
   musicGain?: number;
   drumsGain?: number;
   noiseGain?: number;
+  /** Bust CDN cache for bed `.m4a` rebuilds (catalog updatedAt). */
+  mediaCacheBust?: string | null;
   /**
    * Focus (and similar) bed without narration.
    * - `soundscape`: seekable main audio (same chrome as meditation)
@@ -77,10 +78,22 @@ export type LibraryBedVolumeApi = {
   setVoiceFxDial: (dial: number) => void;
 };
 
-export function mediaFileUrl(base: string, key: string): string {
+/**
+ * CDN URL for a media key. Pass `cacheBust` (catalog `updatedAt` / bake time)
+ * whenever the object can be replaced in place — AAC beds use long-lived
+ * CloudFront cache (`immutable`); without `?v=` clients keep hearing the old file.
+ */
+export function mediaFileUrl(
+  base: string,
+  key: string,
+  cacheBust?: string | null,
+): string {
   const b = base.replace(/\/$/, "");
   const path = key.split("/").map(encodeURIComponent).join("/");
-  return `${b}/${path}`;
+  const url = `${b}/${path}`;
+  const v = cacheBust?.trim();
+  if (!v) return url;
+  return `${url}?v=${encodeURIComponent(v)}`;
 }
 
 /** Optional strip subtitle — mixes / voice samples only (not soundscapes). */
@@ -268,10 +281,13 @@ export function trackFromFocusMix(
   const soundscape = isSoundscapeKey(opts.compositions, musicKey);
   if (soundscape && musicKey) {
     if (!opts.mediaBase) return null;
+    const bust =
+      opts.compositions.find((c) => c.key === musicKey)?.updatedAt ?? null;
     return {
       url: mediaFileUrl(
         opts.mediaBase,
         backgroundAudioPlaybackKey(musicKey),
+        bust,
       ),
       title: opts.title,
       s3Key: `${FOCUS_AMBIENT_S3_PREFIX}soundscape:${musicKey}`,
@@ -280,6 +296,7 @@ export function trackFromFocusMix(
       liveMix: false,
       musicKey,
       musicGain: mix.musicGain,
+      mediaCacheBust: bust,
       natureKey: "",
       drumsKey: "",
       noiseKey: "",
@@ -403,6 +420,8 @@ export function LibraryAudioStrip({
   const ambientMix = track?.ambientOnly === true && track.ambientKind === "mix";
   const ambientSoundscape =
     track?.ambientOnly === true && track.ambientKind === "soundscape";
+  const ambientSoundscapeRef = useRef(ambientSoundscape);
+  ambientSoundscapeRef.current = ambientSoundscape;
 
   const onPlayingChangeRef = useRef(onPlayingChange);
   onPlayingChangeRef.current = onPlayingChange;
@@ -470,6 +489,13 @@ export function LibraryAudioStrip({
         ? soundscapeListenVolume(gain)
         : bedElementVolume(gain);
     return base * Math.min(1, Math.max(0, bedOutroGainRef.current));
+  }
+
+  /** Ambient soundscape plays on the main `<audio>`, not the music bed channel. */
+  function applyAmbientSoundscapeVolume() {
+    const el = audioRef.current;
+    if (!el || !ambientSoundscapeRef.current) return;
+    el.volume = soundscapeListenVolume(liveBedGainsRef.current.music);
   }
 
   function applyLiveBedVolumes() {
@@ -608,7 +634,7 @@ export function LibraryAudioStrip({
     const el = audioRef.current;
     if (!el) return;
     if (ambientSoundscape) {
-      el.volume = SOUNDSCAPE_ELEMENT_VOLUME;
+      applyAmbientSoundscapeVolume();
       clearVoiceIntro();
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
@@ -686,6 +712,7 @@ export function LibraryAudioStrip({
       drums: track?.drumsGain ?? 0,
       noise: track?.noiseGain ?? 0,
     };
+    applyAmbientSoundscapeVolume();
   }, [track?.natureGain, track?.musicGain, track?.drumsGain, track?.noiseGain]);
 
   useEffect(() => {
@@ -693,6 +720,10 @@ export function LibraryAudioStrip({
     bedVolumeApiRef.current = {
       setBedVolume(channel, gain) {
         liveBedGainsRef.current[channel] = gain;
+        if (ambientSoundscapeRef.current && channel === "music") {
+          applyAmbientSoundscapeVolume();
+          return;
+        }
         const el =
           channel === "nature"
             ? natureRef.current
@@ -801,7 +832,7 @@ export function LibraryAudioStrip({
     const el = audioRef.current;
     if (!el) return;
     if (ambientSoundscape) {
-      el.volume = SOUNDSCAPE_ELEMENT_VOLUME;
+      applyAmbientSoundscapeVolume();
       if (shouldPlay) startOrResumePlayback();
       else {
         el.pause();
@@ -880,7 +911,11 @@ export function LibraryAudioStrip({
         continue;
       }
       syncGaplessBed(el, {
-        url: mediaFileUrl(mediaBase, backgroundAudioPlaybackKey(bed.key)),
+        url: mediaFileUrl(
+          mediaBase,
+          backgroundAudioPlaybackKey(bed.key),
+          track?.mediaCacheBust,
+        ),
         fallbackUrl: null,
         volume,
         playing,
@@ -904,6 +939,7 @@ export function LibraryAudioStrip({
     track?.musicGain,
     track?.drumsGain,
     track?.noiseGain,
+    track?.mediaCacheBust,
     track?.s3Key,
     playing,
     mediaBase,
@@ -1137,11 +1173,13 @@ export function LibraryAudioStrip({
       className={
         // Padding inside max-w-6xl so the pill matches page content width
         // (create/library columns use mx-auto max-w-6xl px-4 md:px-6).
+        // Sidebar inset must match AppChrome spacer (`lg:block`), not `md` —
+        // otherwise the strip is shifted right between 768–1023px.
         inline
           ? "pointer-events-none relative z-50 mx-auto w-full max-w-6xl px-4 pb-3 pt-2 md:px-6"
           : `pointer-events-none fixed z-50 mx-auto w-full max-w-6xl px-4 pt-3 md:px-6 ${
               besideSidebar
-                ? "left-0 right-0 md:left-[var(--app-sidebar-w,200px)]"
+                ? "left-0 right-0 lg:left-[var(--app-sidebar-w,200px)]"
                 : "left-0 right-0"
             }`
       }

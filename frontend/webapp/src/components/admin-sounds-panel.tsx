@@ -9,6 +9,7 @@ import {
   type AdminSoundProcessingStage,
   backgroundAudioPlaybackKey,
   createAdminSoundUploads,
+  downloadAdminSoundOriginal,
   reprocessAdminSound,
   uploadAdminSoundToS3,
   suggestAdminSoundCategories,
@@ -2248,9 +2249,44 @@ function SoundRow({
             {item.inCatalog ? "" : " · S3 only"}
             {item.ready ? "" : " · processing…"}
             {item.originalKey ? " · original archived for re-trim" : ""}
+            {item.hasRaw ? " · raw upload kept" : ""}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy !== null}
+            title="Download the original file (raw upload, archived master, or WAV)"
+            onClick={() => {
+              void (async () => {
+                setBusy("download");
+                setErr(null);
+                try {
+                  const { url, filename } = await downloadAdminSoundOriginal(
+                    item.key,
+                  );
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = filename;
+                  a.rel = "noopener";
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                } catch (e) {
+                  setErr(
+                    e instanceof Error
+                      ? e.message
+                      : "Could not download original",
+                  );
+                } finally {
+                  setBusy(null);
+                }
+              })();
+            }}
+            className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-sm font-medium text-foreground hover:border-accent/40 disabled:opacity-50"
+          >
+            {busy === "download" ? "Downloading…" : "Download original"}
+          </button>
           {item.category === "compositions" ? (
             <button
               type="button"
@@ -2701,18 +2737,21 @@ function SoundRow({
         </p>
       ) : null}
       {needsBakeForSure ? (
-        <div className="mt-4 border-t border-border pt-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            Not baked into streaming AAC
+        <div className="mt-4 border-t border-amber-500/40 bg-amber-500/10 px-3 py-3 rounded-xl">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-900 dark:text-amber-100">
+            Streaming edits stale
           </p>
-          <p className="mt-1 text-[11px] text-muted">{pendingBakeSummary()}</p>
+          <p className="mt-1 text-[11px] text-amber-900/80 dark:text-amber-100/80">
+            {pendingBakeSummary()} — saved in catalog but not in the current AAC
+            (e.g. after replace or loudnorm). Not applied automatically.
+          </p>
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => void bakeForSure()}
             className="mt-2 rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
           >
-            {busy === "bake" ? "Baking AAC…" : "Bake streaming AAC"}
+            {busy === "bake" ? "Baking AAC…" : "Re-apply to streaming AAC"}
           </button>
           <p className="mt-2 text-[11px] text-muted">
             Re-encodes from the master WAV with these markers (and any saved EQ).

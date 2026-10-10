@@ -41,16 +41,67 @@ export type SpeechifyEmotionPlayback = "neutral" | "warm" | "calm";
 const DESC_BLOCK_MIN_PX = 60;
 /** text-lg / leading-snug — one title line (covers never grow with wrapped titles). */
 const TITLE_LINE_PX = 25;
-/** Artist line under title (text-[13px] leading-snug + mt-0.5). */
-const ARTIST_LINE_PX = 18;
-/** text-xs meta row. */
-const META_LINE_PX = 16;
+/** Meta row with speaker avatar (h-4) + name · date · time. */
+const META_LINE_PX = 20;
 /**
- * List cover edge: 1 title row + artist + 3 desc rows + meta (desktop; pill sits on title row).
+ * List cover edge: 1 title row + 3 desc rows + meta (desktop; pill sits on title row).
  * Title wrap / show-more must not change this.
  */
 const LIST_COVER_EDGE_DESKTOP_PX =
-  TITLE_LINE_PX + ARTIST_LINE_PX + 4 + DESC_BLOCK_MIN_PX + 8 + META_LINE_PX;
+  TITLE_LINE_PX + 4 + DESC_BLOCK_MIN_PX + 8 + META_LINE_PX;
+
+function SpeakerMetaAvatar({
+  src,
+  label,
+}: {
+  src?: string | null;
+  label: string;
+}) {
+  const url = typeof src === "string" ? src.trim() : "";
+  return (
+    <span
+      aria-hidden
+      title={label}
+      className="relative inline-block h-4 w-4 shrink-0 overflow-hidden rounded-full bg-muted/40"
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function buildSpeakerDateTimeMetaBits(opts: {
+  speakerName?: string | null;
+  speakerPortraitUrl?: string | null;
+  createdAt?: string | null;
+  hideDateLine?: boolean;
+}): ReactNode[] {
+  const speakerLabel = opts.speakerName?.trim() || "";
+  const createdAt = opts.createdAt ?? null;
+  const dateOnly = opts.hideDateLine ? "" : formatDateOnly(createdAt);
+  const timeOnly = opts.hideDateLine ? "" : formatTimeOnly(createdAt);
+  const bits: ReactNode[] = [];
+  if (speakerLabel) {
+    bits.push(
+      <span key="speaker" className="inline-flex min-w-0 items-center gap-1.5">
+        <SpeakerMetaAvatar
+          src={opts.speakerPortraitUrl}
+          label={speakerLabel}
+        />
+        <span className="truncate">{speakerLabel}</span>
+      </span>,
+    );
+  }
+  if (dateOnly) bits.push(<span key="date">{dateOnly}</span>);
+  if (timeOnly) bits.push(<span key="time">{timeOnly}</span>);
+  return bits;
+}
 /** Mobile adds type pill under title + play control in the text column. */
 const LIST_COVER_EDGE_MOBILE_PX =
   TITLE_LINE_PX +
@@ -266,6 +317,8 @@ export type PendingLibraryMeditationItem = {
   meditationStyle: string | null;
   speakerName: string | null;
   speakerModelId: string | null;
+  /** CDN portrait for the speaker (meta row). */
+  speakerPortraitUrl?: string | null;
   status: "pending" | "running" | "failed";
   error: string | null;
 };
@@ -293,6 +346,7 @@ export function pendingGenerationToRow(
     meditationStyle: p.meditationStyle ?? null,
     speakerName: p.speakerName ?? null,
     speakerModelId: p.speakerModelId ?? null,
+    speakerPortraitUrl: p.speakerPortraitUrl ?? null,
     status: p.status ?? "pending",
     error: p.error ?? null,
   };
@@ -525,30 +579,30 @@ export function LibraryMeditationCard({
               style={{ minHeight: coverEdge }}
             >
               {titleSlot}
-              {item.speakerName?.trim() ? (
-                <p className="mt-0.5 truncate font-sans text-[13px] font-normal leading-snug text-muted">
-                  {item.speakerName.trim()}
-                </p>
-              ) : null}
               <div className="mt-1">{descSlot}</div>
               {isFailed ? (
                 <p className="mt-2 text-sm text-danger">
                   {item.error ?? "Generation failed."}
                 </p>
               ) : null}
-              <p className="mt-auto pt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                {formatDateOnly(item.createdAt) ? (
-                  <span>{formatDateOnly(item.createdAt)}</span>
-                ) : null}
-                {formatTimeOnly(item.createdAt) ? (
-                  <span className="inline-flex items-center gap-x-2">
-                    {formatDateOnly(item.createdAt) ? (
-                      <span aria-hidden>·</span>
-                    ) : null}
-                    <span>{formatTimeOnly(item.createdAt)}</span>
-                  </span>
-                ) : null}
-              </p>
+              {(() => {
+                const pendingMeta = buildSpeakerDateTimeMetaBits({
+                  speakerName: item.speakerName,
+                  speakerPortraitUrl: item.speakerPortraitUrl,
+                  createdAt: item.createdAt,
+                });
+                if (pendingMeta.length === 0) return null;
+                return (
+                  <p className="mt-auto pt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                    {pendingMeta.map((bit, i) => (
+                      <span key={i} className="inline-flex items-center gap-x-2">
+                        {i > 0 ? <span aria-hidden>·</span> : null}
+                        {bit}
+                      </span>
+                    ))}
+                  </p>
+                );
+              })()}
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
@@ -992,29 +1046,18 @@ export function LibraryMeditationCard({
     </div>
   ) : null;
 
-  const speakerLabel = m.speakerName?.trim() || "";
-  const artistLine = speakerLabel ? (
-    <p className="mt-0.5 truncate font-sans text-[13px] font-normal leading-snug text-muted">
-      {speakerLabel}
-    </p>
-  ) : null;
-  const dateOnly = formatDateOnly(m.createdAt);
-  const timeOnly = formatTimeOnly(m.createdAt);
-  const metaBits: ReactNode[] = [];
-  if (!hideDateLine) {
-    if (dateOnly) {
-      metaBits.push(<span key="date">{dateOnly}</span>);
-    }
-    if (timeOnly) {
-      metaBits.push(<span key="time">{timeOnly}</span>);
-    }
-  }
+  const metaBits = buildSpeakerDateTimeMetaBits({
+    speakerName: m.speakerName,
+    speakerPortraitUrl: m.speakerPortraitUrl,
+    createdAt: m.createdAt,
+    hideDateLine,
+  });
 
   const metaLine =
     metaBits.length > 0 ? (
-      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted sm:text-xs">
+      <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted sm:text-xs">
         {metaBits.map((bit, i) => (
-          <span key={i} className="inline-flex items-center gap-x-2">
+          <span key={i} className="inline-flex min-w-0 items-center gap-x-2">
             {i > 0 ? <span aria-hidden>·</span> : null}
             {bit}
           </span>
@@ -1062,7 +1105,6 @@ export function LibraryMeditationCard({
         <span className="font-display text-[15px] font-normal leading-[1.3] text-foreground line-clamp-2">
           {m.title}
         </span>
-        {artistLine}
         <span className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
           <span className="tabular-nums">{lengthLine}</span>
           {styleLine ? (
@@ -1131,7 +1173,6 @@ export function LibraryMeditationCard({
               <h2 className="font-display text-lg font-medium leading-snug">
                 {m.title}
               </h2>
-              {artistLine}
             </div>
             <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
               {lengthLine}
@@ -1205,7 +1246,6 @@ export function LibraryMeditationCard({
                   <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
                     {m.title}
                   </h2>
-                  {artistLine}
                 </div>
                 <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
                   {lengthLine}

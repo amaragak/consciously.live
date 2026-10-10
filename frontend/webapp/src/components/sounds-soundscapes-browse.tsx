@@ -18,6 +18,10 @@ import {
   type AdminCompositionTagType,
   type BackgroundAudioItem,
 } from "@/lib/medimade-api";
+import {
+  CONSCIOUSLY_ORIGINALS_PACK,
+  matchesConsciouslyOriginalsPack,
+} from "@/components/composition-artist-select";
 import { SoundsBrowseWell } from "@/components/sounds-browse-well";
 import { useSoundFavorites } from "@/lib/sound-favorites";
 
@@ -156,14 +160,18 @@ export function SoundsSoundscapesBrowse() {
     const packs = new Set<string>();
     for (const item of compositions) {
       const pack = item.customPackName?.trim();
-      if (pack) packs.add(pack);
+      if (pack && pack !== CONSCIOUSLY_ORIGINALS_PACK) packs.add(pack);
     }
-    return [...packs].sort((a, b) => a.localeCompare(b));
+    // Always surface Consciously Originals in the pack row (composer filter).
+    return [
+      CONSCIOUSLY_ORIGINALS_PACK,
+      ...[...packs].sort((a, b) => a.localeCompare(b)),
+    ];
   }, [compositions]);
 
-  /** First packs stay as chips; overflow (+ tag facets) go in Filter. */
-  const primaryPacks = soundPacks.slice(0, 4);
-  const overflowPacks = soundPacks.slice(4);
+  /** Consciously Originals + first real packs as chips; overflow (+ tags) in Filter. */
+  const primaryPacks = soundPacks.slice(0, 5);
+  const overflowPacks = soundPacks.slice(5);
   const filterFacetTags = useMemo(() => {
     const out: string[] = [...overflowPacks];
     for (const type of tagTypes) {
@@ -184,6 +192,8 @@ export function SoundsSoundscapesBrowse() {
         if (!favorites.compositionSet.has(item.key)) return false;
       } else if (soundCategory === "our-picks") {
         if (!item.adminFavourite) return false;
+      } else if (soundCategory === CONSCIOUSLY_ORIGINALS_PACK) {
+        if (!matchesConsciouslyOriginalsPack(item)) return false;
       } else if (soundCategory !== "all") {
         if ((item.customPackName ?? "").trim() !== soundCategory) return false;
       }
@@ -191,7 +201,11 @@ export function SoundsSoundscapesBrowse() {
         const pack = (item.customPackName ?? "").trim();
         const tags = item.tags ?? [];
         const ok = requiredExtra.every(
-          (t) => t === pack || tags.includes(t),
+          (t) =>
+            t === pack ||
+            tags.includes(t) ||
+            (t === CONSCIOUSLY_ORIGINALS_PACK &&
+              matchesConsciouslyOriginalsPack(item)),
         );
         if (!ok) return false;
       }
@@ -224,9 +238,13 @@ export function SoundsSoundscapesBrowse() {
     return `All soundscapes · ${n}`;
   })();
 
-  function previewUrl(key: string): string | null {
-    if (!mediaBase || !key) return null;
-    return mediaFileUrl(mediaBase, backgroundAudioPlaybackKey(key));
+  function previewUrl(item: BackgroundAudioItem): string | null {
+    if (!mediaBase || !item.key) return null;
+    return mediaFileUrl(
+      mediaBase,
+      backgroundAudioPlaybackKey(item.key),
+      item.updatedAt,
+    );
   }
 
   function togglePreview(item: BackgroundAudioItem) {
@@ -235,7 +253,7 @@ export function SoundsSoundscapesBrowse() {
       toggleCurrent();
       return;
     }
-    const url = previewUrl(item.key);
+    const url = previewUrl(item);
     if (!url) return;
     const cover =
       item.coverImageUrl?.trim() || item.coverImageThumbUrl?.trim() || "";
@@ -248,6 +266,7 @@ export function SoundsSoundscapesBrowse() {
       liveMix: false,
       musicKey: item.key,
       musicGain: SOUNDSCAPE_GAIN,
+      mediaCacheBust: item.updatedAt ?? null,
       leadInSeconds: 0,
       fadeOut: true,
       ...(cover ? { coverImageUrl: cover } : {}),
@@ -303,7 +322,7 @@ export function SoundsSoundscapesBrowse() {
               {pack}
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-2.5">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2.5">
             {filterFacetTags.length > 0 ? (
               <div className="relative">
                 <button

@@ -3,10 +3,19 @@ import { useLibraryPlayer } from "@/components/library-player-provider";
 import type { LibraryActiveTrack } from "@/components/library-player-provider";
 import { CompositionCoverWideCropper } from "@/components/composition-cover-wide-cropper";
 import {
+  CompositionImportModal,
+  type CompositionImportDraft,
+} from "@/components/composition-import-modal";
+import { SOUNDSCAPE_ELEMENT_VOLUME } from "@/lib/bed-volume";
+import {
   ADMIN_IMAGE_MODELS,
   backgroundAudioPlaybackKey,
   clearAdminCompositionCover,
+  createAdminSoundUploads,
   ensureAdminCompositionCoverThumbs,
+  applyAdminCompositionLoudnormRestore,
+  applyAdminSoundEq,
+  measureAdminCompositionLoudnorm,
   generateAdminCompositionCover,
   getMedimadeMediaBaseUrl,
   listAdminCompositionCovers,
@@ -14,16 +23,116 @@ import {
   saveAdminCompositionPackNames,
   saveAdminCompositionTagTypes,
   setAdminCompositionCoverTags,
+  trimAdminSound,
   updateAdminCompositionCoverMeta,
+  uploadAdminSoundToS3,
+  COMPOSITION_COMPOSERS,
   type AdminCompositionCoverItem,
   type AdminCompositionTagType,
   type AdminImageModel,
+  type CompositionComposer,
 } from "@/lib/medimade-api";
+
+function compositionHasCatalogTrim(
+  item: Pick<
+    AdminCompositionCoverItem,
+    "trimStartSec" | "trimEndSec" | "fadeInSec" | "fadeOutSec"
+  >,
+): boolean {
+  return (
+    (item.trimStartSec ?? 0) > 0.01 ||
+    item.trimEndSec != null ||
+    (item.fadeInSec ?? 0) > 0 ||
+    (item.fadeOutSec ?? 0) > 0
+  );
+}
+
+function compositionHasCatalogEq(
+  item: Pick<AdminCompositionCoverItem, "eqBands">,
+): boolean {
+  return (item.eqBands?.length ?? 0) > 0;
+}
+
+/** Catalog has EQ/trim but no confirmed AAC bake (e.g. after replace/normalize). */
+function compositionStreamingEditsStale(
+  item: AdminCompositionCoverItem,
+): boolean {
+  if (item.streamingEditedAt) return false;
+  return compositionHasCatalogTrim(item) || compositionHasCatalogEq(item);
+}
+
+function compositionPendingEditsSummary(
+  item: AdminCompositionCoverItem,
+): string {
+  const parts: string[] = [];
+  if (compositionHasCatalogTrim(item)) {
+    const end =
+      item.trimEndSec != null ? `${item.trimEndSec.toFixed(1)}s` : "end";
+    parts.push(`Trim ${(item.trimStartSec ?? 0).toFixed(1)}s → ${end}`);
+    if ((item.fadeInSec ?? 0) > 0) {
+      parts.push(`Fade in ${item.fadeInSec!.toFixed(1)}s`);
+    }
+    if ((item.fadeOutSec ?? 0) > 0) {
+      parts.push(`Fade out ${item.fadeOutSec!.toFixed(1)}s`);
+    }
+  }
+  if (compositionHasCatalogEq(item)) {
+    const eq = (item.eqBands ?? [])
+      .filter((b) => b.enabled !== false)
+      .map((b) => {
+        const g = b.gain >= 0 ? `+${b.gain}` : `${b.gain}`;
+        return `${b.frequency}Hz ${g}dB`;
+      })
+      .join(" · ");
+    if (eq) parts.push(`EQ ${eq}`);
+  }
+  return parts.join(" · ") || "Saved markers";
+}
+
+const LOUDNORM_FULL_TARGET_LUFS = -16;
+
+/** Target LUFS for a restore slider position (0 = −16, 100 = source). */
+function loudnormDraftTargetLufs(sourceLufs: number, restorePct: number): number {
+  const pct = Math.min(100, Math.max(0, restorePct)) / 100;
+  if (sourceLufs <= LOUDNORM_FULL_TARGET_LUFS) return LOUDNORM_FULL_TARGET_LUFS;
+  return (
+    LOUDNORM_FULL_TARGET_LUFS +
+    (sourceLufs - LOUDNORM_FULL_TARGET_LUFS) * pct
+  );
+}
+
+/**
+ * Client-side preview volume: `fileLufs` is the level of the audio element’s
+ * current src (frozen when preview starts). Boost/cut so the fader sounds like
+ * `restoreDraft` without re-encoding. Cap leaves ~6 dB headroom above listen vol.
+ */
+function loudnormPreviewElementVolume(
+  sourceLufs: number | null | undefined,
+  fileLufs: number,
+  restoreDraft: number,
+): number {
+  if (sourceLufs == null) return SOUNDSCAPE_ELEMENT_VOLUME;
+  const draftTarget = loudnormDraftTargetLufs(sourceLufs, restoreDraft);
+  const gainDb = draftTarget - fileLufs;
+  const linear = 10 ** (gainDb / 20);
+  return Math.min(1, Math.max(0, SOUNDSCAPE_ELEMENT_VOLUME * linear));
+}
+
+function committedFileLufs(item: AdminCompositionCoverItem): number {
+  return (
+    item.loudnormOutputLufs ??
+    item.loudnormTargetLufs ??
+    LOUDNORM_FULL_TARGET_LUFS
+  );
+}
 
 type CoverFilter = "all" | "missing" | "has";
 
 type RowState = {
   model: AdminImageModel;
+  /** Optional creative direction for first gen / fresh idea. */
+  guidePrompt: string;
+  /** Revision note — prior prompts + this → LLM rewrite. */
   changeRequest: string;
   tagDraft: string;
   nameDraft: string;
@@ -31,6 +140,10 @@ type RowState = {
   coverWideCropYDraft: number;
   cropOpen: boolean;
   busy: boolean;
+  /** Row-local status (e.g. replace upload progress). */
+  statusNote: string | null;
+  /** Draft for loudnorm restore slider (0 = full −16, 100 = source). */
+  loudnormRestoreDraft: number;
   error: string | null;
 };
 
@@ -43,6 +156,7 @@ function blankRowState(
 ): RowState {
   return {
     model,
+    guidePrompt: "",
     changeRequest: "",
     tagDraft: "",
     nameDraft: item?.name ?? "",
@@ -56,6 +170,8 @@ function blankRowState(
         : 50,
     cropOpen: false,
     busy: false,
+    statusNote: null,
+    loudnormRestoreDraft: 0,
     error: null,
   };
 }
@@ -96,15 +212,31 @@ function hasThumb(item: AdminCompositionCoverItem): boolean {
   return Boolean(item.coverImageThumbUrl || item.coverImageThumbKey);
 }
 
+function titleFromFilename(name: string): string {
+  const leaf = name.split(/[/\\]/).pop() ?? name;
+  const stem = leaf.replace(/\.(mp3|wav)$/i, "");
+  const pretty = stem.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return pretty || "Untitled";
+}
+
+type ImportPrompt = {
+  key: string;
+  filename: string;
+  initialName: string;
+};
+
 /** Cover present but no thumb — backfill without AI regen. */
 function needsThumb(item: AdminCompositionCoverItem): boolean {
   return hasCover(item) && !hasThumb(item);
 }
 
-function mediaFileUrl(base: string, key: string): string {
+function mediaFileUrl(base: string, key: string, cacheBust?: string | null): string {
   const b = base.replace(/\/$/, "");
   const path = key.split("/").map(encodeURIComponent).join("/");
-  return `${b}/${path}`;
+  const url = `${b}/${path}`;
+  const v = cacheBust?.trim();
+  if (!v) return url;
+  return `${url}?v=${encodeURIComponent(v)}`;
 }
 
 function compositionStripTrack(
@@ -117,7 +249,7 @@ function compositionStripTrack(
   const cover =
     item.coverImageThumbUrl?.trim() || item.coverImageUrl?.trim() || "";
   return {
-    url: mediaFileUrl(root, playKey),
+    url: mediaFileUrl(root, playKey, item.updatedAt),
     title: item.name,
     s3Key: `admin:composition-cover:${item.key}`,
     ambientOnly: true,
@@ -191,8 +323,14 @@ function missingTagTypesForItem(
 }
 
 export function AdminCompositionCoversPanel() {
-  const { playTrack, toggleCurrent, nowPlaying, playingS3Key } =
+  const { playTrack, toggleCurrent, nowPlaying, playingS3Key, dismiss } =
     useLibraryPlayer();
+  const loudnormPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
+  /** LUFS of the file currently loaded in the preview element (not live catalog). */
+  const loudnormPreviewFileLufsRef = useRef<number>(LOUDNORM_FULL_TARGET_LUFS);
+  const [loudnormPreviewKey, setLoudnormPreviewKey] = useState<string | null>(
+    null,
+  );
   const [items, setItems] = useState<AdminCompositionCoverItem[]>([]);
   const [tagTypes, setTagTypes] = useState<AdminCompositionTagType[]>([]);
   const [packNames, setPackNames] = useState<string[]>([]);
@@ -218,6 +356,15 @@ export function AdminCompositionCoversPanel() {
   const [thumbBusy, setThumbBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
   const bulkAbortRef = useRef(false);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement | null>(null);
+  /** Target catalog key for Replace file (ref so file-picker onChange isn’t stale). */
+  const replaceTargetKeyRef = useRef<string | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [importPrompt, setImportPrompt] = useState<ImportPrompt | null>(null);
+  const [importSaving, setImportSaving] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -248,6 +395,7 @@ export function AdminCompositionCoversPanel() {
                 existing?.cropOpen
                   ? existing.coverWideCropYDraft
                   : (it.coverWideCropY ?? 50),
+              loudnormRestoreDraft: it.loudnormRestorePct ?? 0,
             };
           }
         }
@@ -463,17 +611,33 @@ export function AdminCompositionCoversPanel() {
 
   async function onGenerate(
     item: AdminCompositionCoverItem,
-    regen: boolean,
+    mode: "fresh" | "refine" | "regen",
   ): Promise<boolean> {
     const state = rows[item.key] ?? blankRowState(defaultModel, item);
     const title = state.nameDraft.trim() || item.name;
+    const changeRequest = state.changeRequest.trim();
+    const guidePrompt = state.guidePrompt.trim();
+    // Regen: what-to-change → LLM refine; otherwise fresh idea (title + guide).
+    const resolved: "fresh" | "refine" =
+      mode === "regen"
+        ? changeRequest
+          ? "refine"
+          : "fresh"
+        : mode;
+    if (resolved === "refine" && !changeRequest) {
+      patchRow(item.key, {
+        error: "Add what to change for regen",
+      });
+      return false;
+    }
     patchRow(item.key, { busy: true, error: null });
     try {
       const saved = await generateAdminCompositionCover({
         key: item.key,
         title,
         model: state.model,
-        changeRequest: regen ? state.changeRequest : "",
+        guidePrompt: resolved === "fresh" ? guidePrompt : "",
+        changeRequest: resolved === "refine" ? changeRequest : "",
       });
       setItems((prev) =>
         prev.map((p) => (p.key === saved.key ? { ...p, ...saved } : p)),
@@ -482,7 +646,7 @@ export function AdminCompositionCoversPanel() {
         busy: false,
         nameDraft: saved.name,
         binauralHzDraft: formatBinauralHzDraft(saved.binauralHz),
-        ...(regen ? { changeRequest: "" } : {}),
+        ...(resolved === "refine" ? { changeRequest: "" } : {}),
       });
       return true;
     } catch (e) {
@@ -551,6 +715,7 @@ export function AdminCompositionCoversPanel() {
     item: AdminCompositionCoverItem,
     overrides?: {
       customPackName?: string | null;
+      composer?: CompositionComposer;
       adminFavourite?: boolean;
       coverWideCropY?: number;
     },
@@ -580,6 +745,10 @@ export function AdminCompositionCoversPanel() {
       overrides && "customPackName" in overrides
         ? overrides.customPackName ?? null
         : item.customPackName;
+    const composer =
+      overrides && "composer" in overrides
+        ? (overrides.composer ?? item.composer)
+        : item.composer;
     const adminFavourite =
       overrides && "adminFavourite" in overrides
         ? Boolean(overrides.adminFavourite)
@@ -596,6 +765,7 @@ export function AdminCompositionCoversPanel() {
       name === item.name &&
       binauralHz === (item.binauralHz ?? null) &&
       customPackName === (item.customPackName ?? null) &&
+      composer === item.composer &&
       adminFavourite === item.adminFavourite &&
       coverWideCropY === (item.coverWideCropY ?? 50) &&
       !overrides
@@ -626,6 +796,7 @@ export function AdminCompositionCoversPanel() {
         name,
         binauralHz,
         customPackName,
+        composer,
         adminFavourite,
         coverWideCropY,
       });
@@ -743,7 +914,18 @@ export function AdminCompositionCoversPanel() {
     }
   }
 
+  function stopLoudnormPreview() {
+    const el = loudnormPreviewAudioRef.current;
+    if (el) {
+      el.pause();
+      el.removeAttribute("src");
+      el.load();
+    }
+    setLoudnormPreviewKey(null);
+  }
+
   function togglePlay(item: AdminCompositionCoverItem) {
+    stopLoudnormPreview();
     const track = compositionStripTrack(baseUrl, item);
     if (!track) {
       patchRow(item.key, { error: "Media URL unavailable" });
@@ -755,6 +937,67 @@ export function AdminCompositionCoversPanel() {
     }
     playTrack(track);
   }
+
+  function toggleLoudnormPreview(item: AdminCompositionCoverItem) {
+    if (loudnormPreviewKey === item.key) {
+      stopLoudnormPreview();
+      return;
+    }
+    const track = compositionStripTrack(baseUrl, item);
+    if (!track?.url) {
+      patchRow(item.key, { error: "Media URL unavailable" });
+      return;
+    }
+    dismiss();
+    const state = rows[item.key] ?? blankRowState(defaultModel, item);
+    // Freeze the level of the file we’re about to load — catalog target can
+    // change mid-apply while this element still plays the old quieter encode.
+    loudnormPreviewFileLufsRef.current = committedFileLufs(item);
+    let el = loudnormPreviewAudioRef.current;
+    if (!el) {
+      el = new Audio();
+      el.preload = "auto";
+      loudnormPreviewAudioRef.current = el;
+      el.addEventListener("ended", () => setLoudnormPreviewKey(null));
+    }
+    el.pause();
+    el.src = track.url;
+    el.volume = loudnormPreviewElementVolume(
+      item.loudnormSourceLufs,
+      loudnormPreviewFileLufsRef.current,
+      state.loudnormRestoreDraft,
+    );
+    setLoudnormPreviewKey(item.key);
+    void el.play().catch(() => {
+      setLoudnormPreviewKey(null);
+      patchRow(item.key, { error: "Could not play loudnorm preview" });
+    });
+  }
+
+  // Live-update preview gain as the restore fader moves (baseline stays frozen).
+  useEffect(() => {
+    if (!loudnormPreviewKey) return;
+    const item = items.find((it) => it.key === loudnormPreviewKey);
+    if (!item) return;
+    const state = rows[loudnormPreviewKey] ?? blankRowState(defaultModel, item);
+    const el = loudnormPreviewAudioRef.current;
+    if (!el) return;
+    el.volume = loudnormPreviewElementVolume(
+      item.loudnormSourceLufs,
+      loudnormPreviewFileLufsRef.current,
+      state.loudnormRestoreDraft,
+    );
+  }, [loudnormPreviewKey, items, rows, defaultModel]);
+
+  useEffect(() => {
+    return () => {
+      const el = loudnormPreviewAudioRef.current;
+      if (el) {
+        el.pause();
+        el.removeAttribute("src");
+      }
+    };
+  }, []);
 
   function isStripPlaying(item: AdminCompositionCoverItem): boolean {
     const key = `admin:composition-cover:${item.key}`;
@@ -783,7 +1026,7 @@ export function AdminCompositionCoversPanel() {
       setBulkProgress(
         `Generating ${i + 1} of ${queue.length}: ${item.name}`,
       );
-      const succeeded = await onGenerate(item, false);
+      const succeeded = await onGenerate(item, "fresh");
       if (succeeded) ok += 1;
       else fail += 1;
     }
@@ -793,6 +1036,438 @@ export function AdminCompositionCoversPanel() {
         : `Done — ${ok} generated, ${fail} failed.`,
     );
     setBulkBusy(false);
+  }
+
+  async function onPickCompositionFile(file: File | null) {
+    if (!file || uploadBusy || bulkBusy) return;
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".mp3") && !lower.endsWith(".wav")) {
+      setError("Upload an .mp3 or .wav file.");
+      return;
+    }
+    setUploadBusy(true);
+    setUploadNote(`Uploading ${file.name}…`);
+    setError(null);
+    setImportError(null);
+    try {
+      const relativePath = `compositions/${file.name}`;
+      const contentType =
+        file.type ||
+        (lower.endsWith(".wav") ? "audio/wav" : "audio/mpeg");
+      const { uploads, skipped, reprocessed } = await createAdminSoundUploads({
+        files: [
+          {
+            relativePath,
+            contentType,
+            size: file.size,
+          },
+        ],
+        category: "compositions",
+      });
+      if (reprocessed.length > 0) {
+        setUploadNote(
+          `${file.name} was already in S3 — reprocessing. Refresh in a moment.`,
+        );
+        await refresh();
+        return;
+      }
+      if (skipped.length > 0 && uploads.length === 0) {
+        throw new Error(
+          `“${file.name}” is already on S3 (same filename). Rename the file or pick another.`,
+        );
+      }
+      const u = uploads[0];
+      if (!u) throw new Error("Upload was not accepted.");
+      setUploadNote(`Uploading ${file.name} to storage…`);
+      await uploadAdminSoundToS3(u, file, undefined, (loaded) => {
+        if (file.size > 0) {
+          const pct = Math.min(100, Math.round((loaded / file.size) * 100));
+          setUploadNote(`Uploading ${file.name}… ${pct}%`);
+        }
+      });
+      setUploadNote(null);
+      setImportPrompt({
+        key: u.key,
+        filename: file.name,
+        initialName: titleFromFilename(file.name),
+      });
+    } catch (e) {
+      setUploadNote(null);
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadBusy(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+    }
+  }
+
+  function startReplaceFile(item: AdminCompositionCoverItem) {
+    if (uploadBusy || bulkBusy) return;
+    replaceTargetKeyRef.current = item.key;
+    setError(null);
+    replaceInputRef.current?.click();
+  }
+
+  async function reapplyStreamingEdits(item: AdminCompositionCoverItem) {
+    if (!compositionStreamingEditsStale(item)) return;
+    patchRow(item.key, {
+      busy: true,
+      error: null,
+      statusNote: "Re-applying EQ/trim to streaming AAC…",
+    });
+    try {
+      const hasTrim = compositionHasCatalogTrim(item);
+      const hasEq = compositionHasCatalogEq(item);
+      let streamingEditedAt: string | null = null;
+      let eqBands = item.eqBands;
+      if (hasTrim) {
+        // Trim bake re-encodes from master and keeps catalog EQ bands.
+        const result = await trimAdminSound({
+          key: item.key,
+          startSec: item.trimStartSec ?? 0,
+          endSec: item.trimEndSec ?? null,
+          fadeInSec: item.fadeInSec ?? 0,
+          fadeOutSec: item.fadeOutSec ?? 0,
+        });
+        streamingEditedAt = result.streamingEditedAt;
+      } else if (hasEq && item.eqBands?.length) {
+        const result = await applyAdminSoundEq({
+          key: item.key,
+          bands: item.eqBands,
+        });
+        streamingEditedAt = result.streamingEditedAt;
+        eqBands = result.bands;
+      }
+      const now = streamingEditedAt || new Date().toISOString();
+      setItems((prev) =>
+        prev.map((p) =>
+          p.key === item.key
+            ? { ...p, streamingEditedAt: now, eqBands, updatedAt: now }
+            : p,
+        ),
+      );
+      patchRow(item.key, {
+        busy: false,
+        statusNote: "Streaming edits re-applied.",
+      });
+    } catch (e) {
+      patchRow(item.key, {
+        busy: false,
+        statusNote: null,
+        error: e instanceof Error ? e.message : "Re-apply failed",
+      });
+    }
+  }
+
+  async function measureLoudnormOnly(item: AdminCompositionCoverItem) {
+    patchRow(item.key, {
+      busy: true,
+      error: null,
+      statusNote: "Measuring loudness (raw only — no file overwrite)…",
+    });
+    try {
+      const saved = await measureAdminCompositionLoudnorm(item.key);
+      setItems((prev) =>
+        prev.map((p) => (p.key === saved.key ? { ...p, ...saved } : p)),
+      );
+      patchRow(item.key, {
+        busy: false,
+        loudnormRestoreDraft: saved.loudnormRestorePct,
+        statusNote:
+          saved.loudnormReductionDb != null && saved.loudnormReductionDb > 0.05
+            ? `Measured — full loudnorm would cut −${saved.loudnormReductionDb.toFixed(1)} dB`
+            : "Measured — already at or below −16 LUFS",
+      });
+    } catch (e) {
+      patchRow(item.key, {
+        busy: false,
+        statusNote: null,
+        error: e instanceof Error ? e.message : "Measure failed",
+      });
+    }
+  }
+
+  async function applyLoudnormRestore(item: AdminCompositionCoverItem) {
+    const state = rows[item.key] ?? blankRowState(defaultModel, item);
+    const restorePct = Math.min(
+      100,
+      Math.max(0, Math.round(state.loudnormRestoreDraft)),
+    );
+    const source = item.loudnormSourceLufs;
+    const aimLufs =
+      source != null
+        ? loudnormDraftTargetLufs(source, restorePct)
+        : LOUDNORM_FULL_TARGET_LUFS;
+    // Stop simulated preview — after encode, Play uses the real file level.
+    stopLoudnormPreview();
+    dismiss();
+    patchRow(item.key, {
+      busy: true,
+      error: null,
+      statusNote:
+        restorePct <= 0
+          ? `Encoding to full −16 LUFS…`
+          : `Encoding to ${aimLufs.toFixed(1)} LUFS (${restorePct}% toward original)…`,
+    });
+    try {
+      const saved = await applyAdminCompositionLoudnormRestore({
+        key: item.key,
+        restorePct,
+      });
+      setItems((prev) =>
+        prev.map((p) => (p.key === saved.key ? { ...p, ...saved } : p)),
+      );
+      const target =
+        saved.loudnormTargetLufs ??
+        (source != null
+          ? loudnormDraftTargetLufs(source, saved.loudnormRestorePct)
+          : aimLufs);
+      patchRow(item.key, {
+        loudnormRestoreDraft: saved.loudnormRestorePct,
+        statusNote:
+          saved.loudnormRestorePct <= 0
+            ? `Re-encoding to ${target.toFixed(1)} LUFS (full −16)…`
+            : `Re-encoding to ${target.toFixed(1)} LUFS (${saved.loudnormRestorePct}% original) — not cutting back to −16…`,
+      });
+      const done = await pollReplaceNormalize(item.key, {
+        mode: "restore",
+        aimLufs: target,
+        restorePct: saved.loudnormRestorePct,
+      });
+      const finalLufs =
+        done.loudnormOutputLufs ?? done.loudnormTargetLufs ?? target;
+      const stale = compositionStreamingEditsStale(done);
+      patchRow(item.key, {
+        busy: false,
+        loudnormRestoreDraft: done.loudnormRestorePct,
+        statusNote:
+          done.loudnormRestorePct <= 0
+            ? `Done — file is at ${finalLufs.toFixed(1)} LUFS (full −16). Play to hear.`
+            : `Done — loudness restored to ${finalLufs.toFixed(1)} LUFS (${done.loudnormRestorePct}% toward original${
+                done.loudnormSourceLufs != null
+                  ? ` ${done.loudnormSourceLufs.toFixed(1)}`
+                  : ""
+              }). Play to hear.${
+                stale
+                  ? " EQ/trim still saved but stale — re-apply if you want them."
+                  : ""
+              }`,
+      });
+    } catch (e) {
+      patchRow(item.key, {
+        busy: false,
+        statusNote: null,
+        error: e instanceof Error ? e.message : "Loudnorm restore failed",
+      });
+    }
+  }
+
+  async function pollReplaceNormalize(
+    targetKey: string,
+    opts?: {
+      mode?: "replace" | "restore";
+      aimLufs?: number;
+      restorePct?: number;
+    },
+  ): Promise<AdminCompositionCoverItem> {
+    const mode = opts?.mode ?? "replace";
+    const deadline = Date.now() + 15 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => window.setTimeout(r, 2500));
+      const { items: list } = await listAdminCompositionCovers();
+      const row = list.find((it) => it.key === targetKey);
+      if (!row) continue;
+      setItems((prev) =>
+        prev.map((p) => (p.key === row.key ? { ...p, ...row } : p)),
+      );
+      const stage = row.processing?.stage;
+      const detail = row.processing?.detail?.trim();
+      if (stage === "failed") {
+        throw new Error(
+          row.processing?.error?.trim() ||
+            (mode === "restore"
+              ? "Loudness restore encode failed"
+              : "Normalize failed after replace"),
+        );
+      }
+      if (stage === "done") {
+        if (mode === "replace") {
+          const stale = compositionStreamingEditsStale(row);
+          patchRow(targetKey, {
+            statusNote: stale
+              ? "Ready — EQ/trim still saved but stale; re-apply below if you want them."
+              : detail
+                ? `Ready — ${detail}`
+                : "Ready — new mix is live. Play to hear it.",
+          });
+        }
+        return row;
+      }
+      const aim =
+        opts?.aimLufs != null ? `${opts.aimLufs.toFixed(1)} LUFS` : null;
+      const pct =
+        opts?.restorePct != null && opts.restorePct > 0
+          ? `${opts.restorePct}% original`
+          : null;
+      const restoreHint = [aim, pct].filter(Boolean).join(", ");
+      const label =
+        mode === "restore"
+          ? stage === "uploading"
+            ? "Restore — waiting…"
+            : stage === "downloading"
+              ? `Restore — downloading raw${restoreHint ? ` → ${restoreHint}` : ""}…`
+              : stage === "normalizing"
+                ? `Restore — encoding to ${restoreHint || "fader level"}…`
+                : stage === "encoding"
+                  ? `Restore — writing AAC at ${aim || "fader level"}…`
+                  : stage === "storing"
+                    ? `Restore — uploading ${aim || "restored"} file…`
+                    : `Restore in progress${restoreHint ? ` (${restoreHint})` : ""}…`
+          : stage === "uploading"
+            ? "Waiting for upload…"
+            : stage === "downloading"
+              ? "Normalizing — downloading…"
+              : stage === "normalizing"
+                ? "Normalizing loudness…"
+                : stage === "encoding"
+                  ? "Encoding AAC…"
+                  : stage === "storing"
+                    ? "Storing files…"
+                    : "Normalizing…";
+      // Prefer restore-specific copy over raw pipeline detail (avoids “normalising”).
+      patchRow(targetKey, {
+        statusNote:
+          mode === "restore"
+            ? label
+            : detail
+              ? `${label} ${detail}`
+              : label,
+      });
+    }
+    throw new Error(
+      mode === "restore"
+        ? "Loudness restore is still running — wait a minute and Play again."
+        : "Normalize is still running — wait a minute and play again.",
+    );
+  }
+
+  async function onReplaceCompositionFile(file: File | null) {
+    const targetKey = replaceTargetKeyRef.current;
+    replaceTargetKeyRef.current = null;
+    if (!file || !targetKey || uploadBusy || bulkBusy) return;
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".mp3") && !lower.endsWith(".wav")) {
+      patchRow(targetKey, {
+        error: "Replace with an .mp3 or .wav file.",
+        statusNote: null,
+      });
+      return;
+    }
+    setUploadBusy(true);
+    setError(null);
+    patchRow(targetKey, {
+      busy: true,
+      error: null,
+      statusNote: `Uploading ${file.name}…`,
+    });
+    try {
+      const contentType =
+        file.type ||
+        (lower.endsWith(".wav") ? "audio/wav" : "audio/mpeg");
+      const { uploads, replaced } = await createAdminSoundUploads({
+        files: [
+          {
+            relativePath: `compositions/${file.name}`,
+            contentType,
+            size: file.size,
+          },
+        ],
+        category: "compositions",
+        replaceKey: targetKey,
+      });
+      if (!replaced) {
+        throw new Error(
+          "Server ignored replace (API not updated). Deploy backend, then try again.",
+        );
+      }
+      const u = uploads[0];
+      if (!u) throw new Error("Replace upload was not accepted.");
+      await uploadAdminSoundToS3(u, file, undefined, (loaded) => {
+        if (file.size > 0) {
+          const pct = Math.min(100, Math.round((loaded / file.size) * 100));
+          patchRow(targetKey, { statusNote: `Uploading ${file.name}… ${pct}%` });
+        }
+      });
+      patchRow(targetKey, {
+        statusNote: "Upload complete — waiting for normalize…",
+      });
+      await pollReplaceNormalize(targetKey);
+      patchRow(targetKey, { busy: false });
+    } catch (e) {
+      patchRow(targetKey, {
+        busy: false,
+        statusNote: null,
+        error: e instanceof Error ? e.message : "Replace failed",
+      });
+    } finally {
+      setUploadBusy(false);
+      if (replaceInputRef.current) replaceInputRef.current.value = "";
+    }
+  }
+
+  async function saveImportDetails(draft: CompositionImportDraft) {
+    if (!importPrompt) return;
+    setImportSaving(true);
+    setImportError(null);
+    try {
+      let binauralHz: number | null;
+      try {
+        binauralHz = parseBinauralHzDraft(draft.binauralHz);
+      } catch (e) {
+        throw e instanceof Error ? e : new Error("Invalid Hz");
+      }
+      const saved = await updateAdminCompositionCoverMeta({
+        key: importPrompt.key,
+        name: draft.name,
+        composer: draft.composer,
+        customPackName: draft.customPackName,
+        binauralHz,
+      });
+      const withTags =
+        draft.tags.length > 0
+          ? await setAdminCompositionCoverTags({
+              key: importPrompt.key,
+              tags: draft.tags,
+              title: draft.name,
+            })
+          : saved;
+      setItems((prev) => {
+        const exists = prev.some((p) => p.key === withTags.key);
+        if (exists) {
+          return prev.map((p) =>
+            p.key === withTags.key ? { ...p, ...withTags } : p,
+          );
+        }
+        return [...prev, withTags].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+      });
+      setRows((prev) => ({
+        ...prev,
+        [withTags.key]: blankRowState(defaultModel, withTags),
+      }));
+      setImportPrompt(null);
+      await refresh();
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Could not save details");
+    } finally {
+      setImportSaving(false);
+    }
+  }
+
+  async function skipImportDetails() {
+    setImportPrompt(null);
+    setImportError(null);
+    await refresh();
   }
 
   async function generateMissingThumbs() {
@@ -836,16 +1511,45 @@ export function AdminCompositionCoversPanel() {
 
   return (
     <div className="space-y-5">
+      <CompositionImportModal
+        open={Boolean(importPrompt)}
+        filename={importPrompt?.filename ?? ""}
+        initialName={importPrompt?.initialName ?? ""}
+        packNames={packNames}
+        tagTypes={tagTypes}
+        saving={importSaving}
+        error={importError}
+        onSave={(draft) => void saveImportDetails(draft)}
+        onSkip={() => void skipImportDetails()}
+      />
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          void onPickCompositionFile(file);
+        }}
+      />
+      <input
+        ref={replaceInputRef}
+        type="file"
+        accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          void onReplaceCompositionFile(file);
+        }}
+      />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-medium tracking-tight text-foreground">
             Compositions
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Edit titles, binaural Hz, and tags; generate cover art (~1K full +
-            list thumbnail). Select rows to generate in bulk, or one at a time.
-            Thumbnail backfill only resizes existing covers — no AI regen. Play
-            a row to hear it while tagging.
+            Upload one composition at a time, then set name, composer, pack, and
+            tags. Edit covers and metadata below; play a row while tagging.
           </p>
           <p className="mt-1 text-xs text-muted">
             {counts.total} total · {counts.missing} missing · {counts.withCover}{" "}
@@ -854,8 +1558,21 @@ export function AdminCompositionCoversPanel() {
               ? ` · ${counts.missingThumb} missing thumb`
               : ""}
           </p>
+          {uploadNote ? (
+            <p className="mt-1 text-xs font-medium text-accent-link">
+              {uploadNote}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <button
+            type="button"
+            disabled={uploadBusy || loading || bulkBusy}
+            onClick={() => uploadInputRef.current?.click()}
+            className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {uploadBusy ? "Uploading…" : "Upload composition"}
+          </button>
           <button
             type="button"
             disabled={
@@ -1393,10 +2110,161 @@ export function AdminCompositionCoversPanel() {
                           {isPlaying ? <IconPause size={12} /> : <IconPlay size={12} />}
                           {isPlaying ? "Pause" : "Play"}
                         </button>
+                        <button
+                          type="button"
+                          disabled={state.busy || bulkBusy || uploadBusy}
+                          onClick={() => startReplaceFile(item)}
+                          title="Upload a new mix for this composition (keeps name, tags, cover). EQ/trim stay saved but become stale until re-applied."
+                          className="inline-flex cursor-pointer items-center rounded-full border border-border bg-background px-2.5 py-0.5 text-[11px] font-semibold text-foreground hover:bg-card disabled:opacity-50"
+                        >
+                          Replace file
+                        </button>
                       </div>
                       <p className="mt-1 truncate text-[11px] text-muted">
                         {item.key}
                       </p>
+                      {compositionStreamingEditsStale(item) ? (
+                        <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+                          <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
+                            Streaming edits stale
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-amber-900/80 dark:text-amber-100/80">
+                            {compositionPendingEditsSummary(item)} — not in the
+                            current AAC (after replace or loudnorm). Not applied
+                            automatically.
+                          </p>
+                          <button
+                            type="button"
+                            disabled={state.busy || bulkBusy || uploadBusy}
+                            onClick={() => void reapplyStreamingEdits(item)}
+                            className="mt-2 cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-50"
+                          >
+                            {state.busy &&
+                            state.statusNote?.includes("Re-applying")
+                              ? "Re-applying…"
+                              : "Re-apply to streaming AAC"}
+                          </button>
+                        </div>
+                      ) : null}
+                      {state.statusNote ? (
+                        <p
+                          className="mt-1 text-xs font-medium text-accent-link"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {state.statusNote}
+                        </p>
+                      ) : null}
+                      {item.loudnormSourceLufs != null &&
+                      (item.loudnormReductionDb ?? 0) > 0.05 ? (
+                        <div className="mt-3 rounded-xl border border-border bg-background/60 px-3 py-2.5">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="text-xs font-semibold text-foreground">
+                              Loudness
+                            </p>
+                            <p className="text-[11px] text-muted">
+                              Original{" "}
+                              {item.loudnormSourceLufs.toFixed(1)} LUFS · file
+                              now{" "}
+                              {committedFileLufs(item).toFixed(1)} LUFS
+                              {(item.loudnormRestorePct ?? 0) > 0
+                                ? ` (${item.loudnormRestorePct}% restored)`
+                                : " (full −16)"}
+                            </p>
+                          </div>
+                          <label className="mt-2 flex flex-col gap-1 text-[11px] text-muted">
+                            Target level (
+                            {Math.round(state.loudnormRestoreDraft)}% toward
+                            original)
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={1}
+                              disabled={state.busy || bulkBusy || uploadBusy}
+                              value={state.loudnormRestoreDraft}
+                              onChange={(e) =>
+                                patchRow(item.key, {
+                                  loudnormRestoreDraft: Number(e.target.value),
+                                })
+                              }
+                              className="w-full accent-[var(--accent-button)] disabled:opacity-50"
+                            />
+                            <span className="flex justify-between text-[10px]">
+                              <span>Full −16 (quieter)</span>
+                              <span>
+                                Aim{" "}
+                                {loudnormDraftTargetLufs(
+                                  item.loudnormSourceLufs,
+                                  state.loudnormRestoreDraft,
+                                ).toFixed(1)}{" "}
+                                LUFS
+                              </span>
+                              <span>
+                                Original {item.loudnormSourceLufs.toFixed(1)}
+                              </span>
+                            </span>
+                          </label>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={state.busy || bulkBusy || uploadBusy}
+                              onClick={() => toggleLoudnormPreview(item)}
+                              title="Browser-only volume simulation of the fader (does not change the file). Stop and use Play after Apply to hear the real encode."
+                              className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-background disabled:opacity-50"
+                            >
+                              {loudnormPreviewKey === item.key ? (
+                                <IconPause size={12} />
+                              ) : (
+                                <IconPlay size={12} />
+                              )}
+                              {loudnormPreviewKey === item.key
+                                ? "Stop preview"
+                                : "Preview fader"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                state.busy ||
+                                bulkBusy ||
+                                uploadBusy ||
+                                state.loudnormRestoreDraft ===
+                                  (item.loudnormRestorePct ?? 0)
+                              }
+                              onClick={() => void applyLoudnormRestore(item)}
+                              className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-50"
+                            >
+                              {state.busy &&
+                              state.statusNote?.toLowerCase().includes("restore")
+                                ? "Encoding…"
+                                : `Apply ${loudnormDraftTargetLufs(
+                                    item.loudnormSourceLufs,
+                                    state.loudnormRestoreDraft,
+                                  ).toFixed(1)} LUFS`}
+                            </button>
+                          </div>
+                          <p className="mt-1.5 text-[10px] text-muted">
+                            Apply always re-runs from the original raw: 0% =
+                            full −16 loudnorm, mid = same loudnorm with a milder
+                            target, 100% = passthrough (no loudnorm). Preview is
+                            a temporary volume guess — use Play after Apply.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <p className="text-[10px] text-muted">
+                            No loudnorm measurement yet (needs raw in S3).
+                          </p>
+                          <button
+                            type="button"
+                            disabled={state.busy || bulkBusy || uploadBusy}
+                            onClick={() => void measureLoudnormOnly(item)}
+                            className="cursor-pointer rounded-lg border border-border px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-background disabled:opacity-50"
+                          >
+                            Measure loudnorm
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-end gap-3">
                       <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted">
@@ -1474,6 +2342,25 @@ export function AdminCompositionCoversPanel() {
                               {item.customPackName} (legacy)
                             </option>
                           ) : null}
+                        </select>
+                      </label>
+                      <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-xs text-muted">
+                        Composer
+                        <select
+                          value={item.composer}
+                          disabled={state.busy || bulkBusy}
+                          onChange={(e) =>
+                            void persistMeta(item, {
+                              composer: e.target.value as CompositionComposer,
+                            })
+                          }
+                          className="h-9 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                        >
+                          {COMPOSITION_COMPOSERS.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
                         </select>
                       </label>
                     </div>
@@ -1709,9 +2596,29 @@ export function AdminCompositionCoversPanel() {
                         ) : null}
                       </div>
                     ) : null}
+                    <label className="flex flex-col gap-1 text-xs text-muted">
+                      Guide prompt
+                      <input
+                        type="text"
+                        value={state.guidePrompt}
+                        disabled={state.busy || bulkBusy}
+                        onChange={(e) =>
+                          patchRow(item.key, {
+                            guidePrompt: e.target.value,
+                          })
+                        }
+                        placeholder="Optional — e.g. misty coastal cliffs at dusk…"
+                        className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                      />
+                      <span className="text-[10px] text-muted">
+                        {covered
+                          ? "Used by Regen when what-to-change is empty, or always by Fresh idea"
+                          : "Optional direction for the first cover (title alone is fine)"}
+                      </span>
+                    </label>
                     {covered ? (
                       <label className="flex flex-col gap-1 text-xs text-muted">
-                        What to change (regen)
+                        What to change
                         <input
                           type="text"
                           value={state.changeRequest}
@@ -1725,7 +2632,7 @@ export function AdminCompositionCoversPanel() {
                           className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         />
                         <span className="text-[10px] text-muted">
-                          Rewrites the next prompt from prior cover prompts + this note
+                          If set, Regen rewrites from prior prompts + this note
                           {item.lastCoverPrompt ? " · has prior prompt" : ""}
                         </span>
                       </label>
@@ -1735,7 +2642,7 @@ export function AdminCompositionCoversPanel() {
                         <button
                           type="button"
                           disabled={state.busy || bulkBusy}
-                          onClick={() => void onGenerate(item, false)}
+                          onClick={() => void onGenerate(item, "fresh")}
                           className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
                         >
                           {state.busy ? "Generating…" : "Generate"}
@@ -1745,19 +2652,24 @@ export function AdminCompositionCoversPanel() {
                           <button
                             type="button"
                             disabled={state.busy || bulkBusy}
-                            onClick={() => void onGenerate(item, true)}
-                            className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
+                            onClick={() => void onGenerate(item, "fresh")}
+                            className="cursor-pointer rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+                            title="Fresh generate from title + guide (ignores prior prompts and what-to-change)"
                           >
-                            {state.busy ? "Regenerating…" : "Regen"}
+                            Fresh idea
                           </button>
                           <button
                             type="button"
                             disabled={state.busy || bulkBusy}
-                            onClick={() => void onGenerate(item, false)}
-                            className="cursor-pointer rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
-                            title="Fresh generate from title (ignores change note)"
+                            onClick={() => void onGenerate(item, "regen")}
+                            className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
+                            title={
+                              state.changeRequest.trim()
+                                ? "Rewrite from prior prompts + what to change"
+                                : "Fresh from title + guide prompt"
+                            }
                           >
-                            Fresh from title
+                            {state.busy ? "Regenerating…" : "Regen"}
                           </button>
                           <button
                             type="button"
