@@ -33,10 +33,24 @@ export type { SegmentTagForPrompt, SegmentTagTierAverage } from "./script-segmen
  */
 export const GENDER_NEUTRAL_SCRIPT_RULES = [
   "GENDER (non-negotiable): use gender-neutral language throughout. Never assign a gender to the listener, a future self, an inner voice, a guide, a partner, a child, or anyone else in imagery — unless the creator's own words in the conversation already specified that gender.",
-  "Forbidden unless the user said it: she/he/her/his/him/hers, herself/himself, woman/man/girl/boy, lady/gentleman, sister/brother as the listener, 'the woman/man you will become', or any invented gendered name.",
+  "Forbidden unless the user said it: she/he/her/his/him/hers, herself/himself, woman/man/girl/boy, lady/gentleman, calling the listener sister/brother, 'the woman/man you will become', or any invented gendered name.",
+  "KEEP when the creator said it: kinship and gendered people they named (my sister, my brother, my mum, my daughter, she/he for that person) and proper names of people. That is personalization, not inventing gender for the listener.",
   "Address the listener as you. For a third person who is not gendered in the chat, use they/them, this person, the one, that future you, that version of you — never she/he.",
   "Bad: “Imagine the version of yourself in a year. She knows that she is clear.” Good: “Imagine the version of yourself in a year. They know they are clear.” or “That future you knows you are clear.”",
-  "If the user wrote she/he/her/his or named a gendered person, you MAY use that same language for that person only. Do not extend it to anyone else.",
+  "If the user wrote she/he/her/his or named a gendered person, you MUST keep that same language when referring to that person. Do not extend it to anyone else, and do not scrub it into they/them or 'someone close'.",
+].join(" ");
+
+/**
+ * Production create + Script Lab: concrete brief/chat facts must survive into
+ * the spoken script. Soft “match implied imagery” alone was dropping place
+ * names and companions (e.g. Benidorm, sister) into generic “a trip”.
+ */
+export const PERSONALIZATION_KEEP_RULES = [
+  "PERSONALIZATION (non-negotiable): the product’s value is that this script is for this person. Concrete facts from User lines / the brief / journal must appear in the spoken script — do not abstract them away.",
+  "Keep: place names (cities, hotels, beaches, streets), companions and roles (sister, partner, friend, named people), events and trips, body specifics, and other distinctive details the creator supplied.",
+  "Forbidden substitutions when the user was specific: “a trip” / “a holiday” for a named place; “someone close” / “the people you love” for a named companion; “that memory” for a named situation. Prefer the creator’s own nouns.",
+  "Required touchpoints (at least three, each earned): (1) opening acknowledgment of their concrete situation, (2) mid-script callback to a distinctive detail (place, person, or fact), (3) closing nod to the same thread. Technique structure (body scan, breath, etc.) must serve that personalization — not replace it.",
+  "When Guide paraphrases conflict with User/brief wording, prefer the User/brief. Whimsy and playfulness from the brief stay; still keep the practice calming and coherent.",
 ].join(" ");
 
 /**
@@ -118,8 +132,9 @@ export function buildMeditationScriptGenerationPrompt(params: {
     "Write the complete guided meditation script that a human guide would read aloud for recording.",
     spokenBudgetNote,
     "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
-    "Match the emotional tone, intentions, and imagery implied by the conversation.",
+    "Match the emotional tone, intentions, and imagery from the conversation — and keep concrete personal facts (see PERSONALIZATION rules), not only vague impressions.",
     "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
+    PERSONALIZATION_KEEP_RULES,
     GENDER_NEUTRAL_SCRIPT_RULES,
     "Phrase for natural text-to-speech: avoid single-word sentences or standalone one-word lines (they often get wrong stress or intonation). Prefer multi-word phrases and full sentences—for example, instead of ending with “Sleep.” alone, close with something like “When you’re ready, let yourself drift into sleep.”",
     SCRIPT_PAUSE_PROMPT_RULES,
@@ -238,6 +253,7 @@ export function buildMeditationScriptGenerationPrompt(params: {
     "Avoid self-referential product mentions. Do NOT mention Consciously/the app/this platform unless the user explicitly asks. If you must refer to it, use exactly: 'consciously.live' (lowercase) and nothing else.",
     "If the user is joking or playful, it is OK to include whimsical / funny subject matter (e.g. a monkey eating ice cream on a volcano) BUT the meditation itself should remain genuinely calming, coherent, and high-quality—never 'silly writing' or comedy bits. Use playful imagery as a vehicle for grounding, breath, and emotional regulation.",
     "Never generate hate/harassment, sexual content involving minors, non-consensual sexual content, graphic sexual content, instructions for wrongdoing, or glorification of self-harm. If the user asks for something socially unacceptable, refuse briefly and offer a safe alternative topic.",
+    PERSONALIZATION_KEEP_RULES,
     GENDER_NEUTRAL_SCRIPT_RULES,
     "You phrase lines for natural TTS: avoid isolated one-word sentences; use multi-word phrases where possible.",
     longerBreaks

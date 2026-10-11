@@ -68,6 +68,13 @@ import {
   PENDING_LIBRARY_GENERATIONS_LS_KEY,
   type PendingLibraryGeneration,
 } from "@/lib/pending-library-generations";
+import {
+  onMeditationGenerationReady,
+  registerLibraryGenerationSurface,
+  routeMeditationGenerationReady,
+} from "@/lib/library-generation-surface";
+import { notifyMeditationGenerationComplete } from "@/lib/meditation-generation-notifications";
+import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
@@ -1392,6 +1399,22 @@ export default function LibraryView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // While Library is open: gen complete → autoplay (no inbox). Elsewhere → notify.
+  useEffect(() => {
+    const unregister = registerLibraryGenerationSurface();
+    const offReady = onMeditationGenerationReady((detail) => {
+      setPendingAutoplay({
+        jobId: detail.jobId,
+        audioKey: detail.audioKey,
+      });
+      void load({ silent: true });
+    });
+    return () => {
+      unregister();
+      offReady();
+    };
+  }, [load]);
+
   useEffect(() => {
     const on = () => void load();
     window.addEventListener("medimade-session-changed", on);
@@ -1521,15 +1544,18 @@ export default function LibraryView({
               }
             }
             if (catalogued) {
-              setPendingAutoplay({ jobId: p.jobId, audioKey });
-              void import("@/lib/meditation-generation-notifications").then(
-                (m) =>
-                  m.notifyMeditationGenerationComplete({
-                    jobId: p.jobId,
-                    title: nextP.title || catalogued.title || "Your meditation",
-                    href: `/meditate/library/creations?focus=${encodeURIComponent(audioKey)}&play=1`,
-                  }),
-              );
+              const routed = routeMeditationGenerationReady({
+                jobId: p.jobId,
+                audioKey,
+                title: nextP.title || catalogued.title || "Your meditation",
+              });
+              if (routed === "notify") {
+                notifyMeditationGenerationComplete({
+                  jobId: p.jobId,
+                  title: nextP.title || catalogued.title || "Your meditation",
+                  href: `/meditate/library/creations?focus=${encodeURIComponent(audioKey)}&play=1`,
+                });
+              }
               continue;
             }
             next.push({ ...nextP, status: "running" });
@@ -1962,6 +1988,7 @@ export default function LibraryView({
   }
 
   function playLibraryItem(m: LibraryMeditationItem) {
+    unlockHtmlMediaPlayback();
     playItem(itemWithSpeechifyEmotion(m));
   }
 

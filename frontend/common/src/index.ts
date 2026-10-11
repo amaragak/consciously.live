@@ -63,6 +63,7 @@ export { isMelodicMusicKey } from "./audio/sound-taxonomy";
 export {
   DualStemPlayer,
   getLibraryVoicePlayer,
+  unlockLibraryVoicePlayback,
   startLibraryVoicePlayback,
   stopLibraryVoicePlayback,
 } from "./audio/dual-stem-player";

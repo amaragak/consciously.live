@@ -290,6 +290,7 @@ export function coerceSoundSubcategory(category: BgAudioCategory, raw: unknown):
   if (hasFreeformSubcategories(category)) return slug;
   const allowed = subcategoryOptions(category);
   if (allowed.length === 0) return "";
+  if (!slug) return "";
   if (allowed.some((o) => o.id === slug)) return slug;
   const aliases =
     category === "music"
@@ -301,7 +302,9 @@ export function coerceSoundSubcategory(category: BgAudioCategory, raw: unknown):
           : {};
   const mapped = aliases[slug];
   if (mapped && allowed.some((o) => o.id === mapped)) return mapped;
-  return allowed[0]!.id;
+  // Unknown / cross-category slug (e.g. ambience "nature" under music): do not
+  // dump into Synth Pads — callers should fall back to path inference.
+  return "";
 }
 
 /** Guess subcategory from a legacy S3 path / filename when catalog has none. */
@@ -319,7 +322,8 @@ export function inferSoundSubcategory(category: BgAudioCategory, path: string): 
     }
     if (/\b(melod|lead|lofi|lo-fi|cinematic)\b/.test(blob)) return "melodic";
     if (/\b(pad|drone|atmos)\b/.test(blob)) return "pads-drones";
-    return "pads-drones";
+    // No guess — do not dump uncategorised music into Synth Pads.
+    return "";
   }
   if (category === "ambience") {
     if (/\b(cafe|city|room|crowd|interior|urban|temple|street)\b/.test(blob)) return "spaces";

@@ -7,7 +7,6 @@ import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import {
   categoryLabel,
   channelSubcategoryOptions,
-  inferSoundSubcategory,
   prettySubcategoryLabel,
   soundDisplayName,
   subcategoryLabel,
@@ -60,12 +59,12 @@ function SampleButtons({
             }`}
             onClick={() => onPick(s.key)}
           >
-            {s.name}
+            {soundDisplayName(s.name)}
           </button>
           {onToggleFavorite ? (
             <FavoriteHeartButton
               pressed={Boolean(favoriteKeys?.has(s.key))}
-              label={s.name}
+              label={soundDisplayName(s.name)}
               onToggle={() => onToggleFavorite(s.key)}
             />
           ) : null}
@@ -108,7 +107,12 @@ export function SoundFolderSelect({
     ]
       .sort()
       .map((id) => ({ id, label: prettySubcategoryLabel(id) }));
-    return extra.length > 0 ? [...base, ...extra] : base;
+    const hasUncategorised = items.some((it) => !(it.subcategory ?? "").trim());
+    const withExtra = extra.length > 0 ? [...base, ...extra] : [...base];
+    if (hasUncategorised && !known.has("uncategorised")) {
+      withExtra.push({ id: "uncategorised", label: "Uncategorised" });
+    }
+    return withExtra;
   }, [category, items]);
   const selected = items.find((s) => s.key === value);
   // Prefer catalog name; if the key is set but items aren’t ready yet, show a
@@ -130,10 +134,8 @@ export function SoundFolderSelect({
   const bySub = useMemo(() => {
     const map = new Map<string, BackgroundAudioItem[]>();
     for (const item of items) {
-      const sub =
-        item.subcategory ||
-        inferSoundSubcategory(category, item.key) ||
-        (folders[0]?.id ?? "");
+      // Catalog subcategory only — never invent Synth Pads from path/name.
+      const sub = (item.subcategory ?? "").trim() || "uncategorised";
       const list = map.get(sub) ?? [];
       list.push(item);
       map.set(sub, list);
@@ -142,7 +144,7 @@ export function SoundFolderSelect({
       list.sort((a, b) => a.name.localeCompare(b.name));
     }
     return map;
-  }, [items, folders, category]);
+  }, [items]);
 
   const usePortal = Boolean(desk);
 

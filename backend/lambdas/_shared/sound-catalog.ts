@@ -7,7 +7,11 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { normalizeBgAudioCategory, type BgAudioCategory } from "./background-audio-keys";
+import {
+  catalogDisplayName,
+  normalizeBgAudioCategory,
+  type BgAudioCategory,
+} from "./background-audio-keys";
 import { invalidateBgAudioListCache } from "./bg-audio-list-cache";
 import {
   DEFAULT_COMPOSITION_COMPOSER,
@@ -193,7 +197,8 @@ export type SoundCatalogRow = {
    */
   loudnormReductionDb?: number | null;
   /**
-   * 0 = full loudnorm (−16 LUFS). 100 = target source LUFS (no intentional cut).
+   * 0 = full loudnorm (−16 LUFS). 100 = measured source + LOUDNORM_BOOST_ABOVE_SOURCE_LUFS.
+   * Measured/original sits between 0 and 100 (see loudnormMeasuredMarkPct).
    * Re-normalize from raw when this changes.
    */
   loudnormRestorePct?: number;
@@ -201,6 +206,8 @@ export type SoundCatalogRow = {
 };
 
 const LOUDNORM_FULL_TARGET_LUFS = -16;
+/** How far above the measured source the restore fader may aim (LUFS). */
+export const LOUDNORM_BOOST_ABOVE_SOURCE_LUFS = 5;
 
 export function coerceLoudnormLufs(raw: unknown): number | null {
   if (raw == null || raw === "") return null;
@@ -223,20 +230,98 @@ export function coerceLoudnormRestorePct(raw: unknown, fallback = 0): number {
   return Math.min(100, Math.max(0, Math.round(n)));
 }
 
-/** Target I for loudnorm given source level and restore slider. */
+/** Quiet end of the fader (−16, or source when quieter than −16). */
+export function loudnormRestoreMinLufs(
+  sourceLufs: number,
+  fullTargetLufs = LOUDNORM_FULL_TARGET_LUFS,
+): number {
+  if (!Number.isFinite(sourceLufs)) return fullTargetLufs;
+  return Math.min(fullTargetLufs, sourceLufs);
+}
+
+/** Hot end of the fader: measured source + boost headroom. */
+export function loudnormRestoreMaxLufs(
+  sourceLufs: number,
+  boostLufs = LOUDNORM_BOOST_ABOVE_SOURCE_LUFS,
+): number {
+  if (!Number.isFinite(sourceLufs)) {
+    return LOUDNORM_FULL_TARGET_LUFS + boostLufs;
+  }
+  return sourceLufs + boostLufs;
+}
+
+/**
+ * Slider % (0–100) where the measured/original loudness sits.
+ * 0 = quiet end, 100 = measured + boost.
+ */
+export function loudnormMeasuredMarkPct(
+  sourceLufs: number,
+  fullTargetLufs = LOUDNORM_FULL_TARGET_LUFS,
+  boostLufs = LOUDNORM_BOOST_ABOVE_SOURCE_LUFS,
+): number {
+  if (!Number.isFinite(sourceLufs)) return 100;
+  const min = loudnormRestoreMinLufs(sourceLufs, fullTargetLufs);
+  const max = loudnormRestoreMaxLufs(sourceLufs, boostLufs);
+  if (max <= min) return 100;
+  const pct = ((sourceLufs - min) / (max - min)) * 100;
+  return Math.min(100, Math.max(0, Math.round(pct * 10) / 10));
+}
+
+/** Map a target LUFS back onto the 0–100 fader (for loading drafts). */
+export function loudnormRestorePctFromTarget(params: {
+  sourceLufs: number;
+  targetLufs: number;
+  fullTargetLufs?: number;
+  boostLufs?: number;
+}): number {
+  const full = params.fullTargetLufs ?? LOUDNORM_FULL_TARGET_LUFS;
+  const boost = params.boostLufs ?? LOUDNORM_BOOST_ABOVE_SOURCE_LUFS;
+  const min = loudnormRestoreMinLufs(params.sourceLufs, full);
+  const max = loudnormRestoreMaxLufs(params.sourceLufs, boost);
+  if (max <= min) return 0;
+  const pct = ((params.targetLufs - min) / (max - min)) * 100;
+  return coerceLoudnormRestorePct(pct, 0);
+}
+
+/**
+ * Target I for loudnorm given source level and restore slider.
+ * 0% = quiet end (−16 or source), 100% = source + boost (+5 LUFS).
+ */
 export function loudnormTargetFromRestore(params: {
   sourceLufs: number;
   restorePct: number;
   fullTargetLufs?: number;
+  boostLufs?: number;
 }): number {
   const full = params.fullTargetLufs ?? LOUDNORM_FULL_TARGET_LUFS;
+  const boost = params.boostLufs ?? LOUDNORM_BOOST_ABOVE_SOURCE_LUFS;
   const source = params.sourceLufs;
   const pct = coerceLoudnormRestorePct(params.restorePct, 0) / 100;
   if (!Number.isFinite(source)) return full;
-  // Already at or quieter than full target — nothing useful to restore.
-  if (source <= full) return full;
-  const target = full + (source - full) * pct;
-  return Math.round(Math.min(source, Math.max(full, target)) * 10) / 10;
+  const min = loudnormRestoreMinLufs(source, full);
+  const max = loudnormRestoreMaxLufs(source, boost);
+  const target = min + (max - min) * pct;
+  return Math.round(Math.min(max, Math.max(min, target)) * 10) / 10;
+}
+
+/**
+ * Convert a legacy fader % (0 = −16, 100 = source only) onto the new scale
+ * (0 = −16, 100 = source + boost).
+ */
+export function migrateLegacyLoudnormRestorePct(
+  legacyPct: number,
+  sourceLufs: number,
+): number {
+  const full = LOUDNORM_FULL_TARGET_LUFS;
+  if (!Number.isFinite(sourceLufs) || sourceLufs <= full) {
+    return coerceLoudnormRestorePct(legacyPct, 0);
+  }
+  const oldPct = coerceLoudnormRestorePct(legacyPct, 0) / 100;
+  const oldTarget = full + (sourceLufs - full) * oldPct;
+  return loudnormRestorePctFromTarget({
+    sourceLufs,
+    targetLufs: oldTarget,
+  });
 }
 
 export { LOUDNORM_FULL_TARGET_LUFS };
@@ -297,7 +382,10 @@ function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
   return {
     pk: SOUND_PK,
     sk,
-    name: typeof it.name === "string" ? it.name : sk,
+    name: catalogDisplayName(
+      typeof it.name === "string" ? it.name : null,
+      sk,
+    ),
     category,
     subcategory:
       typeof it.subcategory === "string" && it.subcategory.trim()

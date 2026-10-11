@@ -53,6 +53,93 @@ export function leafNameFromKey(key: string): string {
   return (dot > 0 ? leaf.slice(0, dot) : leaf) || leaf;
 }
 
+/** True when a catalog `name` is actually an S3 key / path (bad for picker labels). */
+export function looksLikeBgAudioKeyName(name: string): boolean {
+  const n = name.trim();
+  if (!n) return true;
+  if (/[/\\]/.test(n)) return true;
+  if (/^(background-audio|background_audio)\b/i.test(n)) return true;
+  return false;
+}
+
+/** Prefer a human title; never surface the full `background-audio/…` key. */
+export function catalogDisplayName(name: string | undefined | null, sk: string): string {
+  const n = (name ?? "").trim();
+  if (!n || looksLikeBgAudioKeyName(n) || n === sk) return leafNameFromKey(sk);
+  return n;
+}
+
+/** Register `.mp3` + `.wav` stem aliases on a map (covers/tags/picker overlays). */
+export function setStemMapValue<T>(map: Map<string, T>, key: string, value: T): void {
+  map.set(key, value);
+  const stem = key.replace(/\.(mp3|wav)$/i, "");
+  if (!stem || stem === key) return;
+  map.set(`${stem}.mp3`, value);
+  map.set(`${stem}.wav`, value);
+}
+
+/**
+ * Like setStemMapValue for display names, but never let a leaf/key-shaped
+ * title clobber a human rename on the sibling extension (mp3 vs wav).
+ */
+export function setStemDisplayName(
+  map: Map<string, string>,
+  key: string,
+  name: string,
+): void {
+  const next = catalogDisplayName(name, key);
+  if (!next) return;
+  const apply = (k: string) => {
+    const prev = map.get(k);
+    if (!prev) {
+      map.set(k, next);
+      return;
+    }
+    const prevIsWeak =
+      looksLikeBgAudioKeyName(prev) ||
+      prev === leafNameFromKey(k) ||
+      prev === leafNameFromKey(key);
+    const nextIsStrong = !looksLikeBgAudioKeyName(next) && next !== leafNameFromKey(key);
+    if (prevIsWeak && nextIsStrong) map.set(k, next);
+    else if (!prevIsWeak && !nextIsStrong) return;
+    else if (nextIsStrong) map.set(k, next);
+  };
+  apply(key);
+  const stem = key.replace(/\.(mp3|wav)$/i, "");
+  if (!stem || stem === key) return;
+  apply(`${stem}.mp3`);
+  apply(`${stem}.wav`);
+}
+
+export function addStemSetValue(set: Set<string>, key: string): void {
+  set.add(key);
+  const stem = key.replace(/\.(mp3|wav)$/i, "");
+  if (!stem || stem === key) return;
+  set.add(`${stem}.mp3`);
+  set.add(`${stem}.wav`);
+}
+
+/**
+ * Path folders that clearly mean ambience even when catalog category is wrong
+ * (e.g. Splice packs under `…/Ambience/…` defaulted to music → Synth Pads).
+ */
+export function pathCategoryHint(relOrKey: string): BgAudioCategory | null {
+  const rel = relOrKey.startsWith(BG_AUDIO_PREFIX)
+    ? relOrKey.slice(BG_AUDIO_PREFIX.length)
+    : relOrKey;
+  const blob = rel.toLowerCase().replace(/\\/g, "/");
+  if (/(^|\/)ambience\//.test(blob) || /(^|\/)nature\//.test(blob)) {
+    return "ambience";
+  }
+  if (/binaural_environments\//.test(blob)) return "ambience";
+  if (/(^|\/)(drums|percussion)\//.test(blob)) return "drums";
+  if (/(^|\/)(noise|noisebeds)\//.test(blob)) return "noise";
+  if (/(^|\/)(music|compositions)\//.test(blob)) {
+    return blob.includes("/compositions/") ? "compositions" : "music";
+  }
+  return null;
+}
+
 export function audioStemKey(key: string): string {
   return key.replace(/\.(mp3|wav)$/i, "");
 }
@@ -174,12 +261,48 @@ export function sanitizeSoundFilename(filename: string): string | null {
   return `${cleaned}${ext}`;
 }
 
+/**
+ * Local folders named like the S3 root (`background_audio/`, `background-audio/`,
+ * raw/original variants) must not nest under `background-audio/` again.
+ */
+const REDUNDANT_BG_ROOT_DIRS = new Set([
+  "background-audio",
+  "background_audio",
+  "background-audio-raw",
+  "background_audio_raw",
+  "background-audio-original",
+  "background_audio_original",
+]);
+
+function stripRedundantBgRootDirs(parts: string[]): string[] {
+  let i = 0;
+  while (i < parts.length - 1) {
+    const seg = parts[i]!.trim().toLowerCase();
+    if (!REDUNDANT_BG_ROOT_DIRS.has(seg)) break;
+    i += 1;
+  }
+  return parts.slice(i);
+}
+
+/** True when rel under `background-audio/` accidentally re-includes that root. */
+export function isRedundantNestedBgRel(relOrKey: string): boolean {
+  const rel = relOrKey.startsWith(BG_AUDIO_PREFIX)
+    ? relOrKey.slice(BG_AUDIO_PREFIX.length)
+    : relOrKey.startsWith(BG_AUDIO_RAW_PREFIX)
+      ? relOrKey.slice(BG_AUDIO_RAW_PREFIX.length)
+      : relOrKey;
+  const first = rel.split(/[/\\]/)[0]?.trim().toLowerCase() ?? "";
+  return REDUNDANT_BG_ROOT_DIRS.has(first);
+}
+
 /** Keep Splice pack folders; reject `..` segments. */
 export function sanitizeRelativeAudioPath(rel: string): string | null {
-  const parts = rel
-    .split(/[/\\]/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const parts = stripRedundantBgRootDirs(
+    rel
+      .split(/[/\\]/)
+      .map((p) => p.trim())
+      .filter(Boolean),
+  );
   if (parts.length === 0) return null;
   if (parts.some((p) => p === "." || p === "..")) return null;
   const leaf = sanitizeSoundFilename(parts[parts.length - 1]!);
@@ -192,6 +315,26 @@ export function sanitizeRelativeAudioPath(rel: string): string | null {
   );
   const cleanDirs = dirs.filter(Boolean);
   return [...cleanDirs, leaf].join("/");
+}
+
+/** Rebuild stem keys for an existing catalog/public `sk` (keep leaf identity). */
+export function stemKeysFromPublicSk(
+  publicSk: string,
+  uploadRelativePath?: string,
+): ReturnType<typeof stemKeysFromRelativePath> {
+  const parsed = parseAnyBgAudioKey(publicSk);
+  if (!parsed) return null;
+  const stemRel = parsed.rel.replace(/\.(mp3|wav)$/i, "");
+  const uploadLeaf =
+    typeof uploadRelativePath === "string"
+      ? sanitizeSoundFilename(uploadRelativePath.split(/[/\\]/).pop() ?? "")
+      : null;
+  const ext =
+    uploadLeaf?.toLowerCase().endsWith(".wav") ||
+    (uploadRelativePath ?? "").toLowerCase().endsWith(".wav")
+      ? ".wav"
+      : ".mp3";
+  return stemKeysFromRelativePath(`${stemRel}${ext}`);
 }
 
 export function stemKeysFromRelativePath(relativePath: string): {

@@ -90,15 +90,75 @@ function compositionPendingEditsSummary(
 }
 
 const LOUDNORM_FULL_TARGET_LUFS = -16;
+/** Matches backend LOUDNORM_BOOST_ABOVE_SOURCE_LUFS. */
+const LOUDNORM_BOOST_ABOVE_SOURCE_LUFS = 5;
 
-/** Target LUFS for a restore slider position (0 = −16, 100 = source). */
+function loudnormRestoreMinLufs(sourceLufs: number): number {
+  return Math.min(LOUDNORM_FULL_TARGET_LUFS, sourceLufs);
+}
+
+function loudnormRestoreMaxLufs(sourceLufs: number): number {
+  return sourceLufs + LOUDNORM_BOOST_ABOVE_SOURCE_LUFS;
+}
+
+/** Slider % where measured/original sits (0 = quiet end, 100 = measured +5). */
+function loudnormMeasuredMarkPct(sourceLufs: number): number {
+  const min = loudnormRestoreMinLufs(sourceLufs);
+  const max = loudnormRestoreMaxLufs(sourceLufs);
+  if (max <= min) return 100;
+  const pct = ((sourceLufs - min) / (max - min)) * 100;
+  return Math.min(100, Math.max(0, Math.round(pct * 10) / 10));
+}
+
+/** Target LUFS for a restore slider position (0 = quiet end, 100 = source +5). */
 function loudnormDraftTargetLufs(sourceLufs: number, restorePct: number): number {
   const pct = Math.min(100, Math.max(0, restorePct)) / 100;
-  if (sourceLufs <= LOUDNORM_FULL_TARGET_LUFS) return LOUDNORM_FULL_TARGET_LUFS;
-  return (
-    LOUDNORM_FULL_TARGET_LUFS +
-    (sourceLufs - LOUDNORM_FULL_TARGET_LUFS) * pct
-  );
+  const min = loudnormRestoreMinLufs(sourceLufs);
+  const max = loudnormRestoreMaxLufs(sourceLufs);
+  return min + (max - min) * pct;
+}
+
+function loudnormRestorePctFromTarget(
+  sourceLufs: number,
+  targetLufs: number,
+): number {
+  const min = loudnormRestoreMinLufs(sourceLufs);
+  const max = loudnormRestoreMaxLufs(sourceLufs);
+  if (max <= min) return 0;
+  const pct = ((targetLufs - min) / (max - min)) * 100;
+  return Math.min(100, Math.max(0, Math.round(pct)));
+}
+
+/** Legacy fader was 0 = −16, 100 = source only — map onto the new scale. */
+function migrateLegacyLoudnormRestorePct(
+  legacyPct: number,
+  sourceLufs: number,
+): number {
+  const full = LOUDNORM_FULL_TARGET_LUFS;
+  if (sourceLufs <= full) {
+    return Math.min(100, Math.max(0, Math.round(legacyPct)));
+  }
+  const oldPct = Math.min(100, Math.max(0, legacyPct)) / 100;
+  const oldTarget = full + (sourceLufs - full) * oldPct;
+  return loudnormRestorePctFromTarget(sourceLufs, oldTarget);
+}
+
+function loudnormDraftFromItem(item: {
+  loudnormSourceLufs?: number | null;
+  loudnormTargetLufs?: number | null;
+  loudnormRestorePct?: number | null;
+}): number {
+  const source = item.loudnormSourceLufs;
+  if (source == null || !Number.isFinite(source)) {
+    return Math.min(100, Math.max(0, Math.round(item.loudnormRestorePct ?? 0)));
+  }
+  if (
+    item.loudnormTargetLufs != null &&
+    Number.isFinite(item.loudnormTargetLufs)
+  ) {
+    return loudnormRestorePctFromTarget(source, item.loudnormTargetLufs);
+  }
+  return migrateLegacyLoudnormRestorePct(item.loudnormRestorePct ?? 0, source);
 }
 
 /**
@@ -142,7 +202,7 @@ type RowState = {
   busy: boolean;
   /** Row-local status (e.g. replace upload progress). */
   statusNote: string | null;
-  /** Draft for loudnorm restore slider (0 = full −16, 100 = source). */
+  /** Draft for loudnorm restore slider (0 = quiet end, 100 = measured +5 LUFS). */
   loudnormRestoreDraft: number;
   error: string | null;
 };
@@ -395,7 +455,7 @@ export function AdminCompositionCoversPanel() {
                 existing?.cropOpen
                   ? existing.coverWideCropYDraft
                   : (it.coverWideCropY ?? 50),
-              loudnormRestoreDraft: it.loudnormRestorePct ?? 0,
+              loudnormRestoreDraft: loudnormDraftFromItem(it),
             };
           }
         }
@@ -1171,11 +1231,11 @@ export function AdminCompositionCoversPanel() {
       );
       patchRow(item.key, {
         busy: false,
-        loudnormRestoreDraft: saved.loudnormRestorePct,
+        loudnormRestoreDraft: loudnormDraftFromItem(saved),
         statusNote:
           saved.loudnormReductionDb != null && saved.loudnormReductionDb > 0.05
-            ? `Measured — full loudnorm would cut −${saved.loudnormReductionDb.toFixed(1)} dB`
-            : "Measured — already at or below −16 LUFS",
+            ? `Measured ${saved.loudnormSourceLufs?.toFixed(1) ?? "—"} LUFS — fader goes to +${LOUDNORM_BOOST_ABOVE_SOURCE_LUFS} above that`
+            : `Measured ${saved.loudnormSourceLufs?.toFixed(1) ?? "—"} LUFS — already at or below −16; fader can still boost +${LOUDNORM_BOOST_ABOVE_SOURCE_LUFS}`,
       });
     } catch (e) {
       patchRow(item.key, {
@@ -1206,7 +1266,11 @@ export function AdminCompositionCoversPanel() {
       statusNote:
         restorePct <= 0
           ? `Encoding to full −16 LUFS…`
-          : `Encoding to ${aimLufs.toFixed(1)} LUFS (${restorePct}% toward original)…`,
+          : source != null && Math.abs(aimLufs - source) <= 0.3
+            ? `Encoding passthrough at measured ${source.toFixed(1)} LUFS…`
+            : source != null && aimLufs > source
+              ? `Encoding boost to ${aimLufs.toFixed(1)} LUFS (+${(aimLufs - source).toFixed(1)} above measured)…`
+              : `Encoding to ${aimLufs.toFixed(1)} LUFS…`,
     });
     try {
       const saved = await applyAdminCompositionLoudnormRestore({
@@ -1222,11 +1286,8 @@ export function AdminCompositionCoversPanel() {
           ? loudnormDraftTargetLufs(source, saved.loudnormRestorePct)
           : aimLufs);
       patchRow(item.key, {
-        loudnormRestoreDraft: saved.loudnormRestorePct,
-        statusNote:
-          saved.loudnormRestorePct <= 0
-            ? `Re-encoding to ${target.toFixed(1)} LUFS (full −16)…`
-            : `Re-encoding to ${target.toFixed(1)} LUFS (${saved.loudnormRestorePct}% original) — not cutting back to −16…`,
+        loudnormRestoreDraft: loudnormDraftFromItem(saved),
+        statusNote: `Re-encoding to ${target.toFixed(1)} LUFS…`,
       });
       const done = await pollReplaceNormalize(item.key, {
         mode: "restore",
@@ -1236,21 +1297,23 @@ export function AdminCompositionCoversPanel() {
       const finalLufs =
         done.loudnormOutputLufs ?? done.loudnormTargetLufs ?? target;
       const stale = compositionStreamingEditsStale(done);
+      const measured = done.loudnormSourceLufs;
+      const vsMeasured =
+        measured != null
+          ? Math.abs(finalLufs - measured) <= 0.3
+            ? " (at measured)"
+            : finalLufs > measured
+              ? ` (+${(finalLufs - measured).toFixed(1)} above measured ${measured.toFixed(1)})`
+              : ` (${(measured - finalLufs).toFixed(1)} dB below measured ${measured.toFixed(1)})`
+          : "";
       patchRow(item.key, {
         busy: false,
-        loudnormRestoreDraft: done.loudnormRestorePct,
-        statusNote:
-          done.loudnormRestorePct <= 0
-            ? `Done — file is at ${finalLufs.toFixed(1)} LUFS (full −16). Play to hear.`
-            : `Done — loudness restored to ${finalLufs.toFixed(1)} LUFS (${done.loudnormRestorePct}% toward original${
-                done.loudnormSourceLufs != null
-                  ? ` ${done.loudnormSourceLufs.toFixed(1)}`
-                  : ""
-              }). Play to hear.${
-                stale
-                  ? " EQ/trim still saved but stale — re-apply if you want them."
-                  : ""
-              }`,
+        loudnormRestoreDraft: loudnormDraftFromItem(done),
+        statusNote: `Done — file is at ${finalLufs.toFixed(1)} LUFS${vsMeasured}. Play to hear.${
+          stale
+            ? " EQ/trim still saved but stale — re-apply if you want them."
+            : ""
+        }`,
       });
     } catch (e) {
       patchRow(item.key, {
@@ -2155,53 +2218,90 @@ export function AdminCompositionCoversPanel() {
                           {state.statusNote}
                         </p>
                       ) : null}
-                      {item.loudnormSourceLufs != null &&
-                      (item.loudnormReductionDb ?? 0) > 0.05 ? (
+                      {item.loudnormSourceLufs != null ? (
                         <div className="mt-3 rounded-xl border border-border bg-background/60 px-3 py-2.5">
                           <div className="flex flex-wrap items-baseline justify-between gap-2">
                             <p className="text-xs font-semibold text-foreground">
                               Loudness
                             </p>
                             <p className="text-[11px] text-muted">
-                              Original{" "}
+                              Measured{" "}
                               {item.loudnormSourceLufs.toFixed(1)} LUFS · file
                               now{" "}
                               {committedFileLufs(item).toFixed(1)} LUFS
-                              {(item.loudnormRestorePct ?? 0) > 0
-                                ? ` (${item.loudnormRestorePct}% restored)`
-                                : " (full −16)"}
                             </p>
                           </div>
                           <label className="mt-2 flex flex-col gap-1 text-[11px] text-muted">
-                            Target level (
-                            {Math.round(state.loudnormRestoreDraft)}% toward
-                            original)
-                            <input
-                              type="range"
-                              min={0}
-                              max={100}
-                              step={1}
-                              disabled={state.busy || bulkBusy || uploadBusy}
-                              value={state.loudnormRestoreDraft}
-                              onChange={(e) =>
-                                patchRow(item.key, {
-                                  loudnormRestoreDraft: Number(e.target.value),
-                                })
-                              }
-                              className="w-full accent-[var(--accent-button)] disabled:opacity-50"
-                            />
-                            <span className="flex justify-between text-[10px]">
-                              <span>Full −16 (quieter)</span>
-                              <span>
-                                Aim{" "}
-                                {loudnormDraftTargetLufs(
+                            Target{" "}
+                            {loudnormDraftTargetLufs(
+                              item.loudnormSourceLufs,
+                              state.loudnormRestoreDraft,
+                            ).toFixed(1)}{" "}
+                            LUFS
+                            <div className="relative pt-3">
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={1}
+                                disabled={state.busy || bulkBusy || uploadBusy}
+                                value={state.loudnormRestoreDraft}
+                                onChange={(e) =>
+                                  patchRow(item.key, {
+                                    loudnormRestoreDraft: Number(
+                                      e.target.value,
+                                    ),
+                                  })
+                                }
+                                className="relative z-[1] w-full accent-[var(--accent-button)] disabled:opacity-50"
+                              />
+                              {/* Measured mark on the scale */}
+                              <div
+                                aria-hidden
+                                className="pointer-events-none absolute inset-x-0 top-0 h-full"
+                              >
+                                <span
+                                  className="absolute top-0 flex -translate-x-1/2 flex-col items-center"
+                                  style={{
+                                    left: `${loudnormMeasuredMarkPct(
+                                      item.loudnormSourceLufs,
+                                    )}%`,
+                                  }}
+                                  title={`Measured ${item.loudnormSourceLufs.toFixed(1)} LUFS`}
+                                >
+                                  <span className="whitespace-nowrap rounded bg-accent-soft px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-accent-link">
+                                    Measured
+                                  </span>
+                                  <span className="mt-0.5 h-2 w-px bg-accent-link" />
+                                </span>
+                              </div>
+                            </div>
+                            <span className="relative mt-0.5 flex h-4 w-full text-[10px] text-muted">
+                              <span className="absolute left-0 top-0">
+                                {loudnormRestoreMinLufs(
                                   item.loudnormSourceLufs,
-                                  state.loudnormRestoreDraft,
-                                ).toFixed(1)}{" "}
-                                LUFS
+                                ).toFixed(0) === "-16"
+                                  ? "Full −16"
+                                  : loudnormRestoreMinLufs(
+                                      item.loudnormSourceLufs,
+                                    ).toFixed(1)}
                               </span>
-                              <span>
-                                Original {item.loudnormSourceLufs.toFixed(1)}
+                              <span
+                                className="absolute top-0 -translate-x-1/2 tabular-nums text-accent-link"
+                                style={{
+                                  left: `${loudnormMeasuredMarkPct(
+                                    item.loudnormSourceLufs,
+                                  )}%`,
+                                }}
+                              >
+                                {item.loudnormSourceLufs.toFixed(1)}
+                              </span>
+                              <span className="absolute right-0 top-0 tabular-nums">
+                                +
+                                {LOUDNORM_BOOST_ABOVE_SOURCE_LUFS} →{" "}
+                                {loudnormRestoreMaxLufs(
+                                  item.loudnormSourceLufs,
+                                ).toFixed(1)}
                               </span>
                             </span>
                           </label>
@@ -2228,26 +2328,42 @@ export function AdminCompositionCoversPanel() {
                                 state.busy ||
                                 bulkBusy ||
                                 uploadBusy ||
-                                state.loudnormRestoreDraft ===
-                                  (item.loudnormRestorePct ?? 0)
+                                Math.abs(
+                                  loudnormDraftTargetLufs(
+                                    item.loudnormSourceLufs,
+                                    state.loudnormRestoreDraft,
+                                  ) - committedFileLufs(item),
+                                ) < 0.15
                               }
                               onClick={() => void applyLoudnormRestore(item)}
                               className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-50"
                             >
                               {state.busy &&
-                              state.statusNote?.toLowerCase().includes("restore")
+                              state.statusNote?.toLowerCase().includes("encod")
                                 ? "Encoding…"
                                 : `Apply ${loudnormDraftTargetLufs(
                                     item.loudnormSourceLufs,
                                     state.loudnormRestoreDraft,
                                   ).toFixed(1)} LUFS`}
                             </button>
+                            <button
+                              type="button"
+                              disabled={state.busy || bulkBusy || uploadBusy}
+                              onClick={() => void measureLoudnormOnly(item)}
+                              className="cursor-pointer rounded-lg border border-border px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-background disabled:opacity-50"
+                            >
+                              Re-measure
+                            </button>
                           </div>
                           <p className="mt-1.5 text-[10px] text-muted">
-                            Apply always re-runs from the original raw: 0% =
-                            full −16 loudnorm, mid = same loudnorm with a milder
-                            target, 100% = passthrough (no loudnorm). Preview is
-                            a temporary volume guess — use Play after Apply.
+                            Apply re-runs from the original raw. Scale: full −16
+                            → measured ({item.loudnormSourceLufs.toFixed(1)}) →
+                            +{LOUDNORM_BOOST_ABOVE_SOURCE_LUFS} LUFS (
+                            {loudnormRestoreMaxLufs(
+                              item.loudnormSourceLufs,
+                            ).toFixed(1)}
+                            ). At the Measured mark = passthrough. Preview is a
+                            temporary volume guess — use Play after Apply.
                           </p>
                         </div>
                       ) : (

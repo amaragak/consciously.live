@@ -6,8 +6,15 @@ import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import {
   BG_AUDIO_CATEGORIES,
   BG_AUDIO_PREFIX,
+  addStemSetValue,
+  catalogDisplayName,
+  isRedundantNestedBgRel,
   mergeByStemPreferMp3,
   parseAnyBgAudioKey,
+  pathCategoryHint,
+  setStemDisplayName,
+  setStemMapValue,
+  spliceFilenameId,
   type BgAudioCategory,
   type ListedBgItem,
 } from "./_shared/background-audio-keys";
@@ -28,10 +35,7 @@ import {
   getBgAudioListCacheVersion,
   putBgAudioListCache,
 } from "./_shared/bg-audio-list-cache";
-import {
-  coerceSoundSubcategory,
-  inferSoundSubcategory,
-} from "./_shared/sound-taxonomy";
+import { coerceSoundSubcategory } from "./_shared/sound-taxonomy";
 
 const s3 = new S3Client({});
 
@@ -199,19 +203,29 @@ async function buildBackgroundAudioPayload(params: {
         return [];
       })
     : [];
-  for (const row of catalogRows) {
-    if (soundIsInCustomerPicker(row)) mixerKeys.add(row.sk);
-    const displayName = row.name.trim();
-    if (displayName) nameOverride.set(row.sk, displayName);
+  // Apply weaker rows first so loop_verified + human titles win on the stem.
+  const catalogForOverlay = [...catalogRows].sort((a, b) => {
+    const rank = (r: (typeof catalogRows)[number]) => {
+      let n = 0;
+      if (r.status === "loop_verified") n += 8;
+      else if (r.status === "categorised") n += 4;
+      if (/\.mp3$/i.test(r.sk)) n += 2;
+      const nm = (r.name ?? "").trim();
+      if (nm && nm !== r.sk && !nm.includes("/")) n += 1;
+      return n;
+    };
+    return rank(a) - rank(b);
+  });
+  for (const row of catalogForOverlay) {
+    if (soundIsInCustomerPicker(row)) addStemSetValue(mixerKeys, row.sk);
+    const displayName = catalogDisplayName(row.name, row.sk);
+    if (displayName) setStemDisplayName(nameOverride, row.sk, displayName);
     if (row.category && BG_AUDIO_CATEGORIES.includes(row.category)) {
-      categoryOverride.set(row.sk, row.category);
-      subcategoryOverride.set(
-        row.sk,
-        coerceSoundSubcategory(
-          row.category,
-          row.subcategory || inferSoundSubcategory(row.category, row.packPath || row.sk),
-        ),
-      );
+      setStemMapValue(categoryOverride, row.sk, row.category);
+      // Only emit an explicit catalog subcategory. Do not invent Synth Pads
+      // (or any folder) when the admin left subcategory blank.
+      const sub = coerceSoundSubcategory(row.category, row.subcategory ?? "");
+      if (sub) setStemMapValue(subcategoryOverride, row.sk, sub);
     }
     const coverUrl =
       (typeof row.coverImageUrl === "string" && row.coverImageUrl.trim()) ||
@@ -361,6 +375,15 @@ async function buildBackgroundAudioPayload(params: {
     );
   }
 
+  // Only treat a nested key as a duplicate when a flatter *picker-eligible*
+  // leaf exists — otherwise Loop-verified nested rows vanish entirely.
+  const flatPickerLeafIds = new Set<string>();
+  for (const key of mixerKeys) {
+    if (isRedundantNestedBgRel(key)) continue;
+    const id = spliceFilenameId(key);
+    if (id) flatPickerLeafIds.add(id);
+  }
+
   const rawItems: {
     key: string;
     name: string;
@@ -372,6 +395,10 @@ async function buildBackgroundAudioPayload(params: {
     if (!o.Key) continue;
     const parsed = parseAnyBgAudioKey(o.Key);
     if (!parsed) continue;
+    if (isRedundantNestedBgRel(parsed.rel)) {
+      const leaf = spliceFilenameId(parsed.key);
+      if (leaf && flatPickerLeafIds.has(leaf)) continue;
+    }
     const lower = parsed.key.toLowerCase();
     const catalogKey = lower.endsWith(".wav")
       ? `${parsed.key.slice(0, -4)}.mp3`
@@ -383,21 +410,25 @@ async function buildBackgroundAudioPayload(params: {
     ) {
       continue;
     }
-    const cat =
-      categoryOverride.get(catalogKey) ??
-      categoryOverride.get(parsed.key) ??
-      parsed.folderCategory;
+    const overrideCat =
+      categoryOverride.get(catalogKey) ?? categoryOverride.get(parsed.key);
+    const pathHint = pathCategoryHint(parsed.rel);
+    // Catalog category always wins when present — never second-guess admin
+    // categorisation from S3 folder / pack path. Path hints only fill gaps.
+    const cat = overrideCat || pathHint || parsed.folderCategory || null;
     if (!cat) continue;
     const subcategory =
-      subcategoryOverride.get(catalogKey) ??
-      subcategoryOverride.get(parsed.key) ??
-      coerceSoundSubcategory(cat, inferSoundSubcategory(cat, parsed.rel || parsed.key));
+      subcategoryOverride.get(catalogKey) ||
+      subcategoryOverride.get(parsed.key) ||
+      "";
     rawItems.push({
       key: parsed.key,
-      name:
+      name: catalogDisplayName(
         nameOverride.get(catalogKey) ??
-        nameOverride.get(parsed.key) ??
-        parsed.name,
+          nameOverride.get(parsed.key) ??
+          parsed.name,
+        parsed.key,
+      ),
       size: o.Size ?? null,
       category: cat,
       subcategory,
@@ -416,15 +447,17 @@ async function buildBackgroundAudioPayload(params: {
   for (const row of catalogRows) {
     if (!soundIsInCustomerPicker(row)) continue;
     if (seen.has(row.sk)) continue;
+    if (isRedundantNestedBgRel(row.sk)) {
+      const leaf = spliceFilenameId(row.sk) || spliceFilenameId(row.name);
+      if (leaf && flatPickerLeafIds.has(leaf)) continue;
+    }
     const cat = row.category;
     if (!BG_AUDIO_CATEGORIES.includes(cat)) continue;
     buckets[cat].push({
       key: row.sk,
-      name: row.name,
+      name: catalogDisplayName(row.name, row.sk),
       size: null,
-      subcategory:
-        subcategoryOverride.get(row.sk) ??
-        coerceSoundSubcategory(cat, inferSoundSubcategory(cat, row.packPath || row.sk)),
+      subcategory: subcategoryOverride.get(row.sk) || "",
       tags: tagsForKey(row.sk),
       adminFavourite: adminFavouriteForKey(row.sk) || undefined,
       customPackName: customPackForKey(row.sk),
@@ -458,14 +491,14 @@ async function buildBackgroundAudioPayload(params: {
       const updatedAt = updatedAtForKey(it.key);
       return {
         ...it,
-        name:
+        name: catalogDisplayName(
           nameOverride.get(it.key) ??
-          nameOverride.get(`${stem}.mp3`) ??
-          nameOverride.get(`${stem}.wav`) ??
-          it.name,
-        subcategory:
-          subByStem.get(stem) ??
-          coerceSoundSubcategory(c, inferSoundSubcategory(c, it.key)),
+            nameOverride.get(`${stem}.mp3`) ??
+            nameOverride.get(`${stem}.wav`) ??
+            it.name,
+          it.key,
+        ),
+        subcategory: subByStem.get(stem) || "",
         ...(tags.length > 0 ? { tags } : {}),
         ...(fav ? { adminFavourite: true } : {}),
         ...(pack ? { customPackName: pack } : {}),

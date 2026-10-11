@@ -17,7 +17,8 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 
 const META_PK = "SOUND_META";
 const VERSION_SK = "BG_AUDIO_LIST_VERSION";
-const CACHE_SK = "BG_AUDIO_LIST_CACHE";
+/** Bump suffix when list payload shape / filtering logic changes. */
+const CACHE_SK = "BG_AUDIO_LIST_CACHE_V5";
 
 function tableName(): string | null {
   return process.env.SOUND_CATALOG_TABLE_NAME?.trim() || null;

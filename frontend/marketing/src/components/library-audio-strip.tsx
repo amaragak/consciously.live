@@ -12,6 +12,7 @@ import {
   isSoundscapeKey,
   mediaFileUrl,
   FOCUS_AMBIENT_S3_PREFIX,
+  unlockLibraryVoicePlayback,
   startLibraryVoicePlayback,
   stopLibraryVoicePlayback,
   type LibraryActiveTrack,
@@ -30,6 +31,7 @@ export {
   isSoundscapeKey,
   mediaFileUrl,
   FOCUS_AMBIENT_S3_PREFIX,
+  unlockLibraryVoicePlayback,
   startLibraryVoicePlayback,
   stopLibraryVoicePlayback,
 };

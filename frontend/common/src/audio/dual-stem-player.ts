@@ -157,6 +157,11 @@ export class DualStemPlayer {
     }
   }
 
+  /** Resume AudioContext in a user gesture without starting stems. */
+  unlock(): void {
+    void this.ensureCtx().resume();
+  }
+
   /** Resume the context in the click, then decode and start together. */
   start(
     dryUrl: string,
@@ -489,6 +494,14 @@ let libraryVoice: DualStemPlayer | null = null;
 export function getLibraryVoicePlayer(): DualStemPlayer {
   if (!libraryVoice) libraryVoice = new DualStemPlayer();
   return libraryVoice;
+}
+
+/**
+ * Resume AudioContext in a user gesture without starting stems.
+ * Use for liveMix library plays so the strip can start voice+beds together.
+ */
+export function unlockLibraryVoicePlayback(): void {
+  getLibraryVoicePlayer().unlock();
 }
 
 /** Call from the card click — AudioContext.resume() must run in the user gesture. */

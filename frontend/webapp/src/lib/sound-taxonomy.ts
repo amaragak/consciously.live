@@ -107,7 +107,16 @@ export function prettySubcategoryLabel(id: string): string {
 const BRAINWAVE_BAND_PREFIX = /^\(\s*(?:delta|theta|alpha|beta|gamma)\b[^)]*\)\s*/i;
 
 export function soundDisplayName(name: string): string {
-  return name.replace(BRAINWAVE_BAND_PREFIX, "").trim() || name.trim();
+  let n = name.trim();
+  // Catalog sometimes stored the full S3 key as the title.
+  if (/[/\\]/.test(n) || /^(background-audio|background_audio)\b/i.test(n)) {
+    n = (n.replace(/\\/g, "/").split("/").pop() || n).replace(
+      /\.(mp3|wav|m4a|opus)$/i,
+      "",
+    );
+  }
+  n = n.replace(BRAINWAVE_BAND_PREFIX, "").trim();
+  return n || name.trim();
 }
 
 export function subcategoryLabel(category: SoundCategoryId, id: string): string {
@@ -124,8 +133,10 @@ export function coerceSoundSubcategory(category: SoundCategoryId, raw: unknown):
   if (hasFreeformSubcategories(category)) return slug;
   const allowed = subcategoryOptions(category);
   if (allowed.length === 0) return "";
+  if (!slug) return "";
   if (allowed.some((o) => o.id === slug)) return slug;
-  return allowed[0]!.id;
+  // Unknown slug — don't dump into the first folder (Synth Pads).
+  return "";
 }
 
 export function inferSoundSubcategory(category: SoundCategoryId, path: string): string {
@@ -143,7 +154,8 @@ export function inferSoundSubcategory(category: SoundCategoryId, path: string): 
     }
     if (/\b(melod|lead|lofi|lo-fi|cinematic)\b/.test(blob)) return "melodic";
     if (/\b(pad|drone|atmos)\b/.test(blob)) return "pads-drones";
-    return "pads-drones";
+    // No guess — do not dump uncategorised music into Synth Pads.
+    return "";
   }
   if (category === "ambience") {
     if (/\b(cafe|city|room|crowd|interior|urban|temple|street)\b/.test(blob)) return "spaces";

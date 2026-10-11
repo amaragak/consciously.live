@@ -1960,10 +1960,17 @@ function SoundRow({
           ) : subcategoryOptions(item.category).length > 0 ? (
             <select
               className="rounded-xl border border-border bg-background px-2 py-1.5 text-sm"
-              value={coerceSoundSubcategory(item.category, item.subcategory)}
+              value={
+                subcategoryOptions(item.category).some(
+                  (o) => o.id === (item.subcategory ?? ""),
+                )
+                  ? (item.subcategory ?? "")
+                  : ""
+              }
               disabled={busy !== null}
               onChange={(e) => void savePatch({ subcategory: e.target.value })}
             >
+              <option value="">Subcategory…</option>
               {subcategoryOptions(item.category).map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
@@ -1985,32 +1992,33 @@ function SoundRow({
               const tone =
                 value === "in_use"
                   ? selected
-                    ? "bg-success text-on-accent dark:bg-success dark:text-on-accent"
-                    : "text-success hover:bg-success/10 dark:text-success dark:hover:bg-success/15"
+                    ? "bg-success text-white shadow-sm ring-2 ring-success/50"
+                    : "text-success hover:bg-success/10"
                   : value === "categorised"
                     ? selected
-                      ? "bg-info text-on-accent dark:bg-info dark:text-on-accent"
-                      : "text-info hover:bg-info/10 dark:text-info dark:hover:bg-info/15"
+                      ? "bg-info text-white shadow-sm ring-2 ring-info/50"
+                      : "text-info hover:bg-info/10"
                     : value === "loop_verified"
                       ? selected
-                        ? "bg-accent text-on-accent dark:bg-accent dark:text-on-accent"
-                        : "text-accent-link hover:bg-accent-soft/50 dark:text-accent-link dark:hover:bg-accent-soft/30"
-                  : value === "unused"
-                    ? selected
-                      ? "bg-danger text-on-accent dark:bg-danger dark:text-on-accent"
-                      : "text-danger hover:bg-danger-soft dark:text-danger dark:hover:bg-danger-soft"
-                    : selected
-                      ? "bg-muted text-on-accent dark:bg-muted"
-                      : "text-muted hover:bg-background";
+                        ? "bg-accent text-on-accent shadow-sm ring-2 ring-accent/50"
+                        : "text-accent-link hover:bg-accent-soft/50"
+                      : value === "unused"
+                        ? selected
+                          ? "bg-danger text-white shadow-sm ring-2 ring-danger/50"
+                          : "text-danger hover:bg-danger-soft"
+                        : selected
+                          ? "bg-foreground text-background shadow-sm ring-2 ring-foreground/30"
+                          : "text-muted hover:bg-background";
               return (
                 <button
                   key={value}
                   type="button"
+                  aria-pressed={selected}
                   disabled={busy === "trim"}
                   onClick={() =>
                     void savePatch({ status: value, enabled: mixerEnabled(value) })
                   }
-                  className={`rounded-full px-2.5 py-1 font-medium ${tone}`}
+                  className={`rounded-full px-2.5 py-1 font-semibold ${tone}`}
                 >
                   {label}
                 </button>

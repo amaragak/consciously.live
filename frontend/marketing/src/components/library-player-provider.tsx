@@ -25,6 +25,7 @@ import {
 import {
   LibraryAudioStrip,
   liveMixTrack,
+  unlockLibraryVoicePlayback,
   startLibraryVoicePlayback,
   stopLibraryVoicePlayback,
   trackFromLibraryItem,
@@ -32,6 +33,7 @@ import {
   type LibraryBedVolumeApi,
   type BedVolumeChannel,
 } from "@/components/library-audio-strip";
+import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
 export { trackFromLibraryItem, liveMixTrack };
@@ -183,6 +185,13 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     // start the library voice singleton (create step plays voice separately).
     if (track.ambientOnly) {
       stopLibraryVoicePlayback();
+    } else if (
+      track.liveMix &&
+      !track.s3Key.startsWith("create:sound:")
+    ) {
+      unlockHtmlMediaPlayback();
+      unlockLibraryVoicePlayback();
+      stopLibraryVoicePlayback();
     } else {
       startLibraryVoicePlayback(track);
     }
@@ -195,7 +204,13 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     );
     const track = trackFromLibraryItem(item);
     setAutoplay(true);
-    startLibraryVoicePlayback(track);
+    unlockHtmlMediaPlayback();
+    unlockLibraryVoicePlayback();
+    if (track.liveMix) {
+      stopLibraryVoicePlayback();
+    } else {
+      startLibraryVoicePlayback(track);
+    }
     setNowPlaying(track);
   }, []);
 

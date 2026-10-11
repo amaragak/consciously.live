@@ -24,6 +24,7 @@ import {
 import {
   LibraryAudioStrip,
   liveMixTrack,
+  unlockLibraryVoicePlayback,
   startLibraryVoicePlayback,
   stopLibraryVoicePlayback,
   trackFromLibraryItem,
@@ -31,6 +32,7 @@ import {
   type LibraryBedVolumeApi,
   type BedVolumeChannel,
 } from "@/components/library-audio-strip";
+import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
 export { trackFromLibraryItem, liveMixTrack };
@@ -193,6 +195,14 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     // start the library voice singleton (create step plays voice separately).
     if (track.ambientOnly) {
       stopLibraryVoicePlayback();
+    } else if (
+      track.liveMix &&
+      !track.s3Key.startsWith("create:sound:")
+    ) {
+      // Library liveMix: unlock in-gesture; strip starts voice+beds together.
+      unlockHtmlMediaPlayback();
+      unlockLibraryVoicePlayback();
+      stopLibraryVoicePlayback();
     } else {
       startLibraryVoicePlayback(track);
     }
@@ -205,7 +215,14 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     );
     const track = trackFromLibraryItem(item);
     setAutoplay(true);
-    startLibraryVoicePlayback(track);
+    // liveMix: strip owns simultaneous voice + beds (lead-in). Unlock only.
+    unlockHtmlMediaPlayback();
+    unlockLibraryVoicePlayback();
+    if (track.liveMix) {
+      stopLibraryVoicePlayback();
+    } else {
+      startLibraryVoicePlayback(track);
+    }
     setNowPlaying(track);
   }, []);
 
@@ -270,6 +287,10 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const createBridgeActive =
+    Boolean(createSoundStripBridge) &&
+    Boolean(nowPlaying?.s3Key.startsWith("create:sound:"));
+
   const strip = (
     <LibraryAudioStrip
       key={nowPlaying?.s3Key ?? "none"}
@@ -282,8 +303,12 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       onHeightChange={setPlayerStripHeightPx}
       autoplay={autoplay}
       placement={stripDockHost ? "inline" : "fixed"}
-      externalPlaying={createSoundStripBridge?.playing ?? null}
-      onExternalTransportToggle={createSoundStripBridge?.onToggle ?? null}
+      externalPlaying={
+        createBridgeActive ? createSoundStripBridge?.playing ?? null : null
+      }
+      onExternalTransportToggle={
+        createBridgeActive ? createSoundStripBridge?.onToggle ?? null : null
+      }
       onPlayingChange={(s3Key, playing) => {
         setPlayingS3Key(playing ? s3Key : null);
         setAutoplay(playing);

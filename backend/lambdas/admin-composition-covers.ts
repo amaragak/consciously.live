@@ -241,7 +241,7 @@ async function handleMeasureLoudnorm(
 
 /**
  * Set restore % and re-fire normalize from the raw upload (S3 copy onto self).
- * 0 = full −16 LUFS loudnorm; 100 = target source LUFS (no intentional cut).
+ * 0 = quiet end (−16); measured sits mid-scale; 100 = measured + 5 LUFS.
  */
 async function handleApplyLoudnormRestore(
   body: Record<string, unknown>,
@@ -280,7 +280,11 @@ async function handleApplyLoudnormRestore(
   const detail =
     restorePct <= 0
       ? `loudnorm to ${targetLufs} LUFS (full −16)`
-      : `restoring to ${targetLufs} LUFS (${restorePct}% toward original ${sourceLufs})`;
+      : Math.abs(targetLufs - sourceLufs) <= 0.3
+        ? `passthrough original ${sourceLufs} LUFS (measured)`
+        : targetLufs > sourceLufs
+          ? `boosting to ${targetLufs} LUFS (+${(targetLufs - sourceLufs).toFixed(1)} above measured ${sourceLufs})`
+          : `restoring to ${targetLufs} LUFS (${restorePct}% fader · measured ${sourceLufs})`;
   await putSoundRow({
     ...row,
     loudnormRestorePct: restorePct,

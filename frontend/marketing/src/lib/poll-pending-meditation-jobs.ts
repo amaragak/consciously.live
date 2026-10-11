@@ -7,6 +7,7 @@ import {
   listLibraryMeditations,
 } from "@/lib/medimade-api";
 import { notifyMeditationGenerationComplete, notifyMeditationGenerationFailed } from "@/lib/meditation-generation-notifications";
+import { routeMeditationGenerationReady } from "@/lib/library-generation-surface";
 import {
   libraryItemSatisfiesPending,
   loadPendingGenerations,
@@ -105,11 +106,18 @@ async function tickPendingJobs(): Promise<void> {
               createdAt: p.createdAt,
             });
           }
-          notifyMeditationGenerationComplete({
+          const routed = routeMeditationGenerationReady({
             jobId: p.jobId,
+            audioKey,
             title: nextP.title || "Your meditation",
-            href: `/meditate/library/creations?focus=${encodeURIComponent(audioKey)}&play=1`,
           });
+          if (routed === "notify") {
+            notifyMeditationGenerationComplete({
+              jobId: p.jobId,
+              title: nextP.title || "Your meditation",
+              href: `/meditate/library/creations?focus=${encodeURIComponent(audioKey)}&play=1`,
+            });
+          }
           continue;
         }
 

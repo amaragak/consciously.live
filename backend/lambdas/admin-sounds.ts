@@ -31,6 +31,8 @@ import {
   parseBgAudioKey,
   publicKeysForCategoryMove,
   siblingWavKey,
+  isRedundantNestedBgRel,
+  stemKeysFromPublicSk,
   stemKeysFromRelativePath,
   spliceFilenameId,
   type BgAudioCategory,
@@ -297,13 +299,80 @@ async function listPendingRawUploads(bucket: string): Promise<Map<string, Pendin
   return out;
 }
 
+/**
+ * Drop nested `background_audio/…` duplicates when the same leaf already exists
+ * at a flatter key (common after uploading from a folder named background_audio).
+ */
+async function pruneRedundantNestedBgDuplicates(
+  bucket: string,
+  rows: Awaited<ReturnType<typeof listAllSoundRows>>,
+  publicKeys: Set<string>,
+): Promise<{
+  rows: Awaited<ReturnType<typeof listAllSoundRows>>;
+  droppedKeys: Set<string>;
+}> {
+  const byLeaf = new Map<string, string[]>();
+  for (const key of publicKeys) {
+    const id = spliceFilenameId(key);
+    if (!id) continue;
+    const list = byLeaf.get(id) ?? [];
+    list.push(key);
+    byLeaf.set(id, list);
+  }
+  for (const row of rows) {
+    const id = spliceFilenameId(row.sk) || spliceFilenameId(row.name);
+    if (!id) continue;
+    const list = byLeaf.get(id) ?? [];
+    if (!list.includes(row.sk)) list.push(row.sk);
+    byLeaf.set(id, list);
+  }
+
+  const drop: string[] = [];
+  for (const [, keys] of byLeaf) {
+    if (keys.length < 2) continue;
+    const nested = keys.filter((k) => isRedundantNestedBgRel(k));
+    const flat = keys.filter((k) => !isRedundantNestedBgRel(k));
+    if (nested.length === 0 || flat.length === 0) continue;
+    for (const k of nested) drop.push(k);
+  }
+
+  const droppedKeys = new Set<string>();
+  for (const key of drop) {
+    const stem = audioStemKey(key);
+    const toDelete = [
+      key,
+      `${stem}.mp3`,
+      `${stem}.wav`,
+      `${stem}.m4a`,
+      `${stem}.opus`,
+      ...rawKeysForPublicMp3(key),
+    ];
+    for (const k of new Set(toDelete)) {
+      droppedKeys.add(k);
+      await s3
+        .send(new DeleteObjectCommand({ Bucket: bucket, Key: k }))
+        .catch(() => undefined);
+    }
+    await deleteSoundRow(key).catch(() => undefined);
+  }
+
+  if (drop.length === 0) return { rows, droppedKeys };
+  return { rows: rows.filter((r) => !drop.includes(r.sk)), droppedKeys };
+}
+
 async function handleGet(bucket: string, baseUrl: string | undefined) {
-  const [objects, rawObjects, rows, pendingUploads] = await Promise.all([
+  const [objects, rawObjects, rowsIn, pendingUploads] = await Promise.all([
     listAllS3Objects(s3, bucket, BG_AUDIO_PREFIX),
     listAllS3Objects(s3, bucket, BG_AUDIO_RAW_PREFIX),
     listAllSoundRows(),
     listPendingRawUploads(bucket),
   ]);
+  const publicKeySet = s3KeySet(objects);
+  const { rows, droppedKeys } = await pruneRedundantNestedBgDuplicates(
+    bucket,
+    rowsIn,
+    publicKeySet,
+  );
   const rawKeySet = s3KeySet(rawObjects);
   const metaBySk = new Map(rows.map((r) => [r.sk, r]));
 
@@ -315,8 +384,28 @@ async function handleGet(bucket: string, baseUrl: string | undefined) {
   }[] = [];
   for (const o of objects) {
     if (!o.Key) continue;
+    if (droppedKeys.has(o.Key) || droppedKeys.has(audioStemKey(o.Key) + ".mp3")) {
+      continue;
+    }
     const parsed = parseAnyBgAudioKey(o.Key);
     if (!parsed) continue;
+    // Hide nested background_audio/… when a flatter sibling exists this request.
+    if (isRedundantNestedBgRel(parsed.rel)) {
+      const leaf = spliceFilenameId(parsed.key);
+      const hasFlat = leaf
+        ? [...publicKeySet].some(
+            (k) =>
+              spliceFilenameId(k) === leaf && !isRedundantNestedBgRel(k),
+          ) ||
+          rows.some(
+            (r) =>
+              (spliceFilenameId(r.sk) === leaf ||
+                spliceFilenameId(r.name) === leaf) &&
+              !isRedundantNestedBgRel(r.sk),
+          )
+        : false;
+      if (hasFlat) continue;
+    }
     parsedItems.push({
       key: parsed.key,
       name: parsed.name,
@@ -1056,10 +1145,19 @@ async function handleUploads(bucket: string, body: Record<string, unknown>) {
     const relativePath =
       (typeof rec.relativePath === "string" && rec.relativePath.trim()) ||
       (typeof rec.filename === "string" ? rec.filename : "");
-    const keys = stemKeysFromRelativePath(relativePath);
+    let keys = stemKeysFromRelativePath(relativePath);
     if (!keys) continue;
     const id = spliceFilenameId(keys.name) || spliceFilenameId(relativePath);
     if (!id) continue;
+
+    // Same leaf already in catalog → keep that sk (don't create background_audio/…).
+    const existingRow =
+      catalogById.get(id) ?? catalog.find((r) => r.sk === keys!.mp3Key);
+    if (existingRow?.sk) {
+      const reused = stemKeysFromPublicSk(existingRow.sk, relativePath);
+      if (reused) keys = reused;
+    }
+
     if (seenRawKeys.has(keys.rawKey)) {
       skipped.push(relativePath);
       continue;
@@ -1083,7 +1181,13 @@ async function handleUploads(bucket: string, body: Record<string, unknown>) {
       rawKeyBySpliceId.get(id) ??
       null;
     if (existingRawKey) {
-      toReprocess.push({ relativePath, rawKey: existingRawKey, mp3Key: keys.mp3Key });
+      toReprocess.push({
+        relativePath,
+        rawKey: existingRawKey,
+        mp3Key: existingRow?.sk?.endsWith(".mp3")
+          ? existingRow.sk
+          : keys.mp3Key,
+      });
       continue;
     }
     const contentType =
@@ -1098,7 +1202,7 @@ async function handleUploads(bucket: string, body: Record<string, unknown>) {
       keys,
       contentType,
       size,
-      existing: catalogById.get(id) ?? catalog.find((r) => r.sk === keys.mp3Key),
+      existing: existingRow,
     });
   }
 

@@ -342,22 +342,21 @@ export async function handler(event: S3Event, context?: Context): Promise<void> 
       const reductionDb =
         sourceLufs != null ? loudnormReductionDbFromSource(sourceLufs) : 0;
 
-      // Always from the raw original (inPath). 100% restore → passthrough.
-      // Otherwise → same loudnorm on that original, with I interpolated by the
-      // fader (0% = −16, mid = milder target, never loudnorm-of-loudnorm).
-      const fullRestore =
-        restorePct >= 100 ||
-        (sourceLufs != null && Math.abs(targetI - sourceLufs) <= 0.3);
+      // Always from the raw original (inPath). Target ≈ measured source →
+      // passthrough. Below/above → loudnorm to fader I (0% = −16, 100% =
+      // source + 5 LUFS). Never loudnorm-of-loudnorm.
+      const atMeasured =
+        sourceLufs != null && Math.abs(targetI - sourceLufs) <= 0.3;
       await updateSoundProcessing(mp3Key, {
         stage: "normalizing",
         detail:
           sourceLufs != null
-            ? fullRestore
+            ? atMeasured
               ? `${describeSource()} · passthrough original (${sourceLufs} LUFS)`
-              : `${describeSource()} · loudnorm original ${sourceLufs}→${targetI} LUFS (${restorePct}% restore)`
+              : `${describeSource()} · loudnorm original ${sourceLufs}→${targetI} LUFS (${restorePct}% fader)`
             : describeSource(),
       });
-      if (fullRestore) {
+      if (atMeasured) {
         await passthroughToWav(inPath, tmpWav, sampleRate);
       } else {
         await loudnormToWav(inPath, tmpWav, sampleRate, targetI);

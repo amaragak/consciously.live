@@ -682,14 +682,19 @@ export function LibraryAudioStrip({
       else startOrResumePlayback();
       return;
     }
-    if (useDual) {
-      if (playing || voiceIntroTimerRef.current != null) pausePlayback();
-      else startOrResumePlayback();
-      return;
-    }
-    const el = audioRef.current;
-    if (!el) return;
-    if (playing || voiceIntroTimerRef.current != null) pausePlayback();
+    // Prefer audible/transport reality over React state so pause always stops
+    // voice that raced ahead of beds (or desynced after async start).
+    const voiceAudible =
+      playing ||
+      voiceIntroTimerRef.current != null ||
+      Boolean(useDual && dualRef.current?.isPlaying) ||
+      Boolean(
+        !useDual &&
+          audioRef.current &&
+          !audioRef.current.paused &&
+          !audioRef.current.ended,
+      );
+    if (voiceAudible) pausePlayback();
     else startOrResumePlayback();
   }
 
@@ -791,6 +796,16 @@ export function LibraryAudioStrip({
           dual.pause();
           setPlaying(false);
           onPlayingChange?.(track.s3Key, false);
+        } else if (
+          trackHasLiveBeds() &&
+          shouldDelayVoice(0) &&
+          dual.currentTime < 0.5
+        ) {
+          // Voice raced ahead of beds (gesture start before strip mount).
+          // Reset so lead-in + beds start together.
+          dual.pause();
+          dual.seek(0);
+          startOrResumePlayback();
         } else {
           setPlaying(true);
           onPlayingChange?.(track.s3Key, true);
@@ -921,12 +936,13 @@ export function LibraryAudioStrip({
         playing,
         leadSec: ambientMix ? 0.4 : undefined,
         leadTimeoutMs: ambientMix ? 2000 : undefined,
-        onPlaybackBlocked: ambientMix
-          ? () => {
-              setPlaying(false);
-              if (track) onPlayingChange?.(track.s3Key, false);
-            }
-          : undefined,
+        onPlaybackBlocked:
+          ambientMix || track?.liveMix
+            ? () => {
+                setPlaying(false);
+                if (track) onPlayingChange?.(track.s3Key, false);
+              }
+            : undefined,
       });
     }
   }, [

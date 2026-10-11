@@ -6,8 +6,8 @@ import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import {
   categoryLabel,
   channelSubcategoryOptions,
-  inferSoundSubcategory,
   prettySubcategoryLabel,
+  soundDisplayName,
   subcategoryLabel,
   type SoundCategoryId,
 } from "@/lib/sound-taxonomy";
@@ -44,7 +44,7 @@ function SampleButtons({
           }`}
           onClick={() => onPick(s.key)}
         >
-          {s.name}
+          {soundDisplayName(s.name)}
         </button>
       ))}
     </>
@@ -71,7 +71,12 @@ export function SoundFolderSelect({
     const extra = [...new Set(items.map((it) => it.subcategory || "").filter((s) => s && !known.has(s)))]
       .sort()
       .map((id) => ({ id, label: prettySubcategoryLabel(id) }));
-    return extra.length > 0 ? [...base, ...extra] : base;
+    const hasUncategorised = items.some((it) => !(it.subcategory ?? "").trim());
+    const withExtra = extra.length > 0 ? [...base, ...extra] : [...base];
+    if (hasUncategorised && !known.has("uncategorised")) {
+      withExtra.push({ id: "uncategorised", label: "Uncategorised" });
+    }
+    return withExtra;
   }, [category, items]);
   const selected = items.find((s) => s.key === value);
   const label = selected?.name || "None";
@@ -79,10 +84,7 @@ export function SoundFolderSelect({
   const bySub = useMemo(() => {
     const map = new Map<string, BackgroundAudioItem[]>();
     for (const item of items) {
-      const sub =
-        item.subcategory ||
-        inferSoundSubcategory(category, item.key) ||
-        (folders[0]?.id ?? "");
+      const sub = (item.subcategory ?? "").trim() || "uncategorised";
       const list = map.get(sub) ?? [];
       list.push(item);
       map.set(sub, list);
@@ -91,7 +93,7 @@ export function SoundFolderSelect({
       list.sort((a, b) => a.name.localeCompare(b.name));
     }
     return map;
-  }, [items, folders, category]);
+  }, [items]);
 
   useEffect(() => {
     if (!open) return;

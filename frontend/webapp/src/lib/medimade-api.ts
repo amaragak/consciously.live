@@ -7165,7 +7165,7 @@ export async function generateAdminProgramDayDescription(params: {
 /** Treat day descriptions shorter than this as missing (auto-generate). */
 export const PROGRAM_DAY_DESCRIPTION_MIN_CHARS = 100;
 
-const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v5";
+const BG_AUDIO_CACHE_KEY = "mm_bg_audio_list_v8";
 
 type BgAudioClientCache = {
   version: string;
