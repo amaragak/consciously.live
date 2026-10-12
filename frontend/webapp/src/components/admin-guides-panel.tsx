@@ -175,6 +175,25 @@ function fillSummaryForPaste(g: GuidePasteGuide): string {
   return `Filled ${fields.join(", ")}. Try this: ${g.tryThisSteps.length} steps. Body: ${g.body.length} characters.`;
 }
 
+function pasteGuideToSaveInput(
+  g: GuidePasteGuide,
+  area: GuideArea,
+  existingId?: string,
+): Parameters<typeof saveAdminGuide>[0] {
+  return {
+    ...(existingId ? { id: existingId } : {}),
+    area,
+    title: g.title,
+    slug: g.slug,
+    category: g.category,
+    body: composeGuideBodyFromPaste(g),
+    practiceBrief: composePracticeBriefFromPaste(g),
+    status: g.draft ? "draft" : "published",
+    order: g.order,
+    ...(g.image !== null ? { coverImageUrl: g.image } : {}),
+  };
+}
+
 export function AdminGuidesPanel() {
   const [guides, setGuides] = useState<AdminGuide[]>([]);
   const [filter, setFilter] = useState<AreaFilter>("all");
@@ -199,6 +218,17 @@ export function AdminGuidesPanel() {
     null,
   );
   const [pasteFillNote, setPasteFillNote] = useState<string | null>(null);
+  const [bulkPasteOpen, setBulkPasteOpen] = useState(false);
+  const [bulkPasteText, setBulkPasteText] = useState("");
+  const [bulkPasteArea, setBulkPasteArea] = useState<GuideArea>("meditate");
+  const [bulkPasteErrors, setBulkPasteErrors] = useState<
+    GuidePasteIssue[] | null
+  >(null);
+  const [bulkPasteWarnings, setBulkPasteWarnings] = useState<
+    GuidePasteIssue[]
+  >([]);
+  const [bulkPasteBusy, setBulkPasteBusy] = useState(false);
+  const [bulkPasteStatus, setBulkPasteStatus] = useState<string | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -225,6 +255,12 @@ export function AdminGuidesPanel() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (filter === "meditate" || filter === "journal") {
+      setBulkPasteArea(filter);
+    }
+  }, [filter]);
 
   const selected = useMemo(
     () =>
@@ -523,11 +559,201 @@ export function AdminGuidesPanel() {
     }
   }
 
+  async function onBulkCreateFromPaste() {
+    setBulkPasteStatus(null);
+    const parsed = parseGuidePaste(bulkPasteText);
+    if ("errors" in parsed) {
+      setBulkPasteErrors(parsed.errors);
+      setBulkPasteWarnings([]);
+      return;
+    }
+    setBulkPasteErrors(null);
+    setBulkPasteWarnings(parsed.warnings);
+
+    setBulkPasteBusy(true);
+    let latest: AdminGuide[];
+    try {
+      // Fresh list so slug matches update the right rows.
+      latest = sortGuides(await fetchAdminGuides());
+      setGuides(latest);
+    } catch (e) {
+      setBulkPasteBusy(false);
+      setBulkPasteStatus(
+        e instanceof Error ? e.message : "Could not load guides",
+      );
+      return;
+    }
+    setBulkPasteBusy(false);
+
+    const area = bulkPasteArea;
+    const plans = parsed.guides.map((g) => {
+      const slug = g.slug.trim().toLowerCase();
+      const existing = latest.find(
+        (x) => x.area === area && x.slug.trim().toLowerCase() === slug,
+      );
+      return { g, existing };
+    });
+    const updates = plans.filter((p) => p.existing);
+    const creates = plans.filter((p) => !p.existing);
+    const lines = plans.map(
+      (p) =>
+        `• ${p.g.title} (${p.g.slug})${
+          p.existing ? ` — update “${p.existing.title}”` : " — create new"
+        }`,
+    );
+    const ok = window.confirm(
+      `${AREA_LABEL[area]}: ${creates.length} new, ${updates.length} update${
+        updates.length === 1 ? "" : "s"
+      }.\n\n` + lines.join("\n"),
+    );
+    if (!ok) return;
+
+    setBulkPasteBusy(true);
+    try {
+      const savedList: AdminGuide[] = [];
+      for (const { g, existing } of plans) {
+        // Pass id so save patches the existing guide instead of creating another.
+        const saved = await saveAdminGuide(
+          pasteGuideToSaveInput(g, area, existing?.id),
+        );
+        savedList.push(saved);
+      }
+      setGuides((prev) => {
+        const byId = new Map(prev.map((x) => [x.id, x]));
+        for (const s of savedList) byId.set(s.id, s);
+        return sortGuides([...byId.values()]);
+      });
+      invalidateGuidesCache();
+      const last = savedList[savedList.length - 1];
+      if (last) {
+        setSelectedId(last.id);
+        const next = draftFromGuide(last);
+        setDraft(next);
+        liveBodyRef.current = next.body;
+        setEditorNonce((n) => n + 1);
+        setSlugTouched(true);
+      }
+      const parts: string[] = [];
+      if (creates.length) parts.push(`created ${creates.length}`);
+      if (updates.length) parts.push(`updated ${updates.length}`);
+      setBulkPasteStatus(parts.length ? `${parts.join(", ")}.` : "No guides saved.");
+      setBulkPasteText("");
+    } catch (e) {
+      setBulkPasteStatus(
+        e instanceof Error ? e.message : "Could not create guides from paste",
+      );
+      await refresh();
+    } finally {
+      setBulkPasteBusy(false);
+    }
+  }
+
   const editing = selectedId === "new" || Boolean(selected);
   const liveMinutes = estimateGuideReadMinutes(draft.body);
   const publicPath = `${guidesBasePath(draft.area)}/${draft.slug || "…"}`;
 
   return (
+    <div className="flex flex-col gap-6">
+      <div className="rounded-xl border border-border bg-card">
+        <button
+          type="button"
+          aria-expanded={bulkPasteOpen}
+          onClick={() => setBulkPasteOpen((o) => !o)}
+          className="flex w-full cursor-pointer items-center justify-between gap-2 px-4 py-3 text-left sm:px-5"
+        >
+          <span className="text-sm font-medium text-foreground">
+            Paste guides
+          </span>
+          <ChevronDown
+            aria-hidden
+            className={`size-4 shrink-0 text-muted transition-transform ${
+              bulkPasteOpen ? "rotate-180" : ""
+            }`}
+            strokeWidth={2}
+          />
+        </button>
+        {bulkPasteOpen ? (
+          <div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:px-5">
+            <p className="text-xs text-muted">
+              Paste one or more{" "}
+              <span className="font-mono">=== GUIDE ===</span> blocks. Matching
+              slugs in the chosen area update that guide; new slugs create
+              pages.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Area
+              </label>
+              <select
+                value={bulkPasteArea}
+                disabled={bulkPasteBusy}
+                onChange={(e) =>
+                  setBulkPasteArea(
+                    e.target.value === "journal" ? "journal" : "meditate",
+                  )
+                }
+                className={INPUT_CLASS}
+              >
+                {(Object.keys(AREA_LABEL) as GuideArea[]).map((a) => (
+                  <option key={a} value={a}>
+                    {AREA_LABEL[a]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <textarea
+              value={bulkPasteText}
+              disabled={bulkPasteBusy}
+              onChange={(e) => {
+                setBulkPasteText(e.target.value);
+                setBulkPasteErrors(null);
+                setBulkPasteStatus(null);
+              }}
+              rows={12}
+              className={`${INPUT_CLASS} resize-y font-mono text-[12px] leading-relaxed`}
+              placeholder={"=== GUIDE ===\n…\n=== END ===\n\n=== GUIDE ===\n…\n=== END ==="}
+              spellCheck={false}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={bulkPasteBusy || !bulkPasteText.trim()}
+                onClick={() => void onBulkCreateFromPaste()}
+                className="rounded-lg accent-fill-gradient px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+              >
+                {bulkPasteBusy ? "Creating…" : "Create guides"}
+              </button>
+            </div>
+            {bulkPasteErrors?.length ? (
+              <ul
+                className="rounded-lg border border-danger/40 bg-background px-3 py-2 text-xs text-danger"
+                role="alert"
+              >
+                {bulkPasteErrors.map((err, i) => (
+                  <li key={`${err.line}-${i}`}>
+                    Line {err.line}: {err.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {bulkPasteWarnings.length ? (
+              <ul className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
+                {bulkPasteWarnings.map((w, i) => (
+                  <li key={`${w.line}-${i}`}>
+                    Line {w.line}: {w.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {bulkPasteStatus ? (
+              <p className="text-xs text-muted" role="status">
+                {bulkPasteStatus}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <aside className="w-full shrink-0 lg:w-72">
         <div className="flex items-center justify-between gap-2">
@@ -1051,6 +1277,7 @@ export function AdminGuidesPanel() {
           </div>
         )}
       </section>
+    </div>
     </div>
   );
 }
