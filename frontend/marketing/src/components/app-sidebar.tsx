@@ -65,8 +65,10 @@ function NavSectionBlock({
   section,
   items,
   expanded,
+  nestedExpanded,
   showChildren,
   onToggle,
+  onToggleNested,
   pathname,
   hash,
   search,
@@ -77,9 +79,11 @@ function NavSectionBlock({
   /** Override static section.children when provided. */
   items?: AppNavSubItem[];
   expanded: boolean;
+  nestedExpanded: Record<string, boolean>;
   /** False while the rail is still widening — hide nested rows until settled. */
   showChildren: boolean;
   onToggle: () => void;
+  onToggleNested: (id: string) => void;
   pathname: string;
   hash: string;
   search: string;
@@ -91,6 +95,47 @@ function NavSectionBlock({
   const hasChildren = subs.length > 0 || Boolean(emptyAction);
   const sectionActive = activeNavSectionId(pathname) === section.id;
   const icon = SECTION_ICONS[section.id];
+
+  function renderSubLink(sub: AppNavSubItem) {
+    const active = isSubItemActive(
+      pathname,
+      hash,
+      search,
+      sub,
+      section.id,
+    );
+    return (
+      <li key={sub.id} className="flex items-center gap-0.5">
+        <Link
+          href={sub.href}
+          onClick={onNavigate}
+          aria-current={active ? "page" : undefined}
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
+            active ? "font-bold text-accent-link" : "text-muted"
+          }`}
+        >
+          <span
+            className={`size-1 shrink-0 rounded-full ${
+              active ? "bg-accent-link" : "bg-muted/50"
+            }`}
+            aria-hidden
+          />
+          <span className="min-w-0 truncate">{sub.label}</span>
+        </Link>
+        {sub.actionHref ? (
+          <Link
+            href={sub.actionHref}
+            onClick={onNavigate}
+            aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
+            title={sub.actionAriaLabel ?? `New ${sub.label}`}
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-background hover:text-accent-link"
+          >
+            +
+          </Link>
+        ) : null}
+      </li>
+    );
+  }
 
   return (
     <div className="px-2">
@@ -134,48 +179,60 @@ function NavSectionBlock({
         <CollapsibleNavChildren open={expanded && showChildren}>
           <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
             {subs.map((sub) => {
-              const active = isSubItemActive(
-                pathname,
-                hash,
-                search,
-                sub,
-                section.id,
-              );
-              return (
-                <li key={sub.id} className="flex items-center gap-0.5">
-                  <Link
-                    href={sub.href}
-                    onClick={onNavigate}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
-                      active
-                        ? "font-bold text-accent-link"
-                        : "text-muted"
-                    }`}
-                  >
-                    <span
-                      className={`size-1 shrink-0 rounded-full ${
-                        active
-                          ? "bg-accent-link"
-                          : "bg-muted/50"
-                      }`}
-                      aria-hidden
-                    />
-                    <span className="min-w-0 truncate">{sub.label}</span>
-                  </Link>
-                  {sub.actionHref ? (
-                    <Link
-                      href={sub.actionHref}
-                      onClick={onNavigate}
-                      aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
-                      title={sub.actionAriaLabel ?? `New ${sub.label}`}
-                      className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-background hover:text-accent-link"
-                    >
-                      +
-                    </Link>
-                  ) : null}
-                </li>
-              );
+              const nested = sub.children ?? [];
+              if (nested.length > 0) {
+                const open = Boolean(nestedExpanded[sub.id]);
+                const hubActive = nested.some((child) =>
+                  isSubItemActive(pathname, hash, search, child, section.id),
+                );
+                return (
+                  <li key={sub.id}>
+                    <div className="flex min-w-0 items-center gap-0.5">
+                      <Link
+                        href={sub.href}
+                        onClick={onNavigate}
+                        title={sub.label}
+                        className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
+                          hubActive
+                            ? "font-bold text-accent-link"
+                            : "text-muted"
+                        }`}
+                      >
+                        <span
+                          className={`size-1 shrink-0 rounded-full ${
+                            hubActive ? "bg-accent-link" : "bg-muted/50"
+                          }`}
+                          aria-hidden
+                        />
+                        <span className="min-w-0 truncate">{sub.label}</span>
+                      </Link>
+                      <button
+                        type="button"
+                        aria-label={
+                          open
+                            ? `Collapse ${sub.label}`
+                            : `Expand ${sub.label}`
+                        }
+                        aria-expanded={open}
+                        onClick={() => onToggleNested(sub.id)}
+                        className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-background ${
+                          hubActive
+                            ? "text-accent-link"
+                            : "text-muted hover:text-foreground"
+                        }`}
+                      >
+                        <SelectChevron open={open} />
+                      </button>
+                    </div>
+                    <CollapsibleNavChildren open={open && showChildren}>
+                      <ul className="mb-0.5 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
+                        {nested.map(renderSubLink)}
+                      </ul>
+                    </CollapsibleNavChildren>
+                  </li>
+                );
+              }
+              return renderSubLink(sub);
             })}
             {emptyAction ? (
               <li>
@@ -404,8 +461,10 @@ export function AppSidebar({
                   : undefined
               }
               expanded={Boolean(expanded[section.id])}
+              nestedExpanded={expanded}
               showChildren={childrenReady}
               onToggle={() => toggleSection(section.id)}
+              onToggleNested={toggleSection}
               pathname={pathname}
               hash={hash}
               search={search}

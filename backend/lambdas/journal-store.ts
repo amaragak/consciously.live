@@ -60,6 +60,17 @@ function legacyStoreKey(ownerId: string): string {
   return `journal/stores/${ownerId}.json`;
 }
 
+type JournalMeditationSource = "own" | "community" | "program";
+
+type JournalMeditationSnapshot = {
+  title: string;
+  coverImageUrl?: string | null;
+  speakerName?: string | null;
+  styleLabel?: string | null;
+  durationSeconds?: number | null;
+  openHref?: string | null;
+};
+
 type JournalEntry = {
   id: string;
   createdAt: string;
@@ -75,6 +86,9 @@ type JournalEntry = {
   sourceMetadata?: Record<string, unknown>;
   mediaRefs?: string[];
   folderId?: string;
+  meditationId?: string;
+  meditationSource?: JournalMeditationSource;
+  meditationSnapshot?: JournalMeditationSnapshot;
 };
 
 type JournalFolder = { id: string; name: string };
@@ -203,6 +217,41 @@ function journalEntryFromItem(
     typeof item.folderId === "string" && item.folderId.trim()
       ? item.folderId.trim().slice(0, 80)
       : undefined;
+  const meditationId =
+    typeof item.meditationId === "string" && item.meditationId.trim()
+      ? item.meditationId.trim().slice(0, 400)
+      : undefined;
+  const meditationSource =
+    item.meditationSource === "own" ||
+    item.meditationSource === "community" ||
+    item.meditationSource === "program"
+      ? (item.meditationSource as JournalMeditationSource)
+      : undefined;
+  const snapRaw = item.meditationSnapshot;
+  let meditationSnapshot: JournalMeditationSnapshot | undefined;
+  if (snapRaw && typeof snapRaw === "object" && !Array.isArray(snapRaw)) {
+    const s = snapRaw as Record<string, unknown>;
+    if (typeof s.title === "string" && s.title.trim()) {
+      meditationSnapshot = {
+        title: s.title.trim().slice(0, 200),
+        ...(typeof s.coverImageUrl === "string" || s.coverImageUrl === null
+          ? { coverImageUrl: s.coverImageUrl as string | null }
+          : {}),
+        ...(typeof s.speakerName === "string" || s.speakerName === null
+          ? { speakerName: s.speakerName as string | null }
+          : {}),
+        ...(typeof s.styleLabel === "string" || s.styleLabel === null
+          ? { styleLabel: s.styleLabel as string | null }
+          : {}),
+        ...(typeof s.durationSeconds === "number" || s.durationSeconds === null
+          ? { durationSeconds: s.durationSeconds as number | null }
+          : {}),
+        ...(typeof s.openHref === "string" || s.openHref === null
+          ? { openHref: s.openHref as string | null }
+          : {}),
+      };
+    }
+  }
   return {
     id,
     createdAt: item.createdAt,
@@ -217,6 +266,9 @@ function journalEntryFromItem(
     ...(sourceMetadata ? { sourceMetadata } : {}),
     ...(mediaRefs?.length ? { mediaRefs } : {}),
     ...(folderId ? { folderId } : {}),
+    ...(meditationId ? { meditationId } : {}),
+    ...(meditationSource ? { meditationSource } : {}),
+    ...(meditationSnapshot ? { meditationSnapshot } : {}),
   };
 }
 
@@ -448,6 +500,45 @@ async function persistStoreToDdb(
     }
     if (typeof e.folderId === "string" && e.folderId.trim()) {
       item.folderId = e.folderId.trim().slice(0, 80);
+    }
+    if (typeof e.meditationId === "string" && e.meditationId.trim()) {
+      item.meditationId = e.meditationId.trim().slice(0, 400);
+    }
+    if (
+      e.meditationSource === "own" ||
+      e.meditationSource === "community" ||
+      e.meditationSource === "program"
+    ) {
+      item.meditationSource = e.meditationSource;
+    }
+    if (
+      e.meditationSnapshot &&
+      typeof e.meditationSnapshot === "object" &&
+      !Array.isArray(e.meditationSnapshot) &&
+      typeof e.meditationSnapshot.title === "string" &&
+      e.meditationSnapshot.title.trim()
+    ) {
+      const snap = e.meditationSnapshot;
+      const meditationSnapshot: JournalMeditationSnapshot = {
+        title: snap.title.trim().slice(0, 200),
+        ...(typeof snap.coverImageUrl === "string" || snap.coverImageUrl === null
+          ? { coverImageUrl: snap.coverImageUrl }
+          : {}),
+        ...(typeof snap.speakerName === "string" || snap.speakerName === null
+          ? { speakerName: snap.speakerName }
+          : {}),
+        ...(typeof snap.styleLabel === "string" || snap.styleLabel === null
+          ? { styleLabel: snap.styleLabel }
+          : {}),
+        ...(typeof snap.durationSeconds === "number" ||
+        snap.durationSeconds === null
+          ? { durationSeconds: snap.durationSeconds }
+          : {}),
+        ...(typeof snap.openHref === "string" || snap.openHref === null
+          ? { openHref: snap.openHref }
+          : {}),
+      };
+      item.meditationSnapshot = meditationSnapshot;
     }
     ops.push({
       op: "put",

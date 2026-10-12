@@ -33,6 +33,17 @@ import {
   type BedVolumeChannel,
 } from "@/components/library-audio-strip";
 import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
+import {
+  armReflectMeditationHandoff,
+  isLibraryMeditationTrack,
+  reflectHandoffFromTrack,
+  reflectMeditationJournalHref,
+} from "@/lib/journal-meditation-reflect";
+import {
+  loadJournalStoreRaw,
+  subscribeJournalStore,
+} from "@/lib/journal-storage";
+import { usePathname, useRouter } from "@/lib/spa-nav";
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
 export { trackFromLibraryItem, liveMixTrack };
@@ -50,6 +61,8 @@ export type CreateSoundStripBridge = {
 type LibraryPlayerContextValue = {
   nowPlaying: LibraryActiveTrack | null;
   playingS3Key: string | null;
+  /** Elapsed seconds for the current strip track (updates ~4×/sec while playing). */
+  playbackTimeSeconds: number;
   playerStripHeightPx: number;
   /** True when strip is docked into create-flow chrome (above length nav). */
   playerStripDocked: boolean;
@@ -81,9 +94,13 @@ function meditationIdFromTrack(track: LibraryActiveTrack): string {
 }
 
 export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname() || "/";
   const [nowPlaying, setNowPlaying] = useState<LibraryActiveTrack | null>(null);
   const [playingS3Key, setPlayingS3Key] = useState<string | null>(null);
+  const [playbackTimeSeconds, setPlaybackTimeSeconds] = useState(0);
   const [playbackToggleNonce, setPlaybackToggleNonce] = useState(0);
+  const [journalTick, setJournalTick] = useState(0);
   const [playerStripHeightPx, setPlayerStripHeightPx] = useState(0);
   /** Strip remounts (HMR) must not restart audio unless we still intend to play. */
   const [autoplay, setAutoplay] = useState(false);
@@ -124,11 +141,39 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => subscribeJournalStore(() => setJournalTick((n) => n + 1)), []);
+
+  const reflectActive = useMemo(() => {
+    void journalTick;
+    if (!nowPlaying || !isLibraryMeditationTrack(nowPlaying)) return false;
+    const m = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+    if (!m?.[1]) return false;
+    let entryId: string;
+    try {
+      entryId = decodeURIComponent(m[1]);
+    } catch {
+      entryId = m[1];
+    }
+    const entry = loadJournalStoreRaw().entries.find((e) => e.id === entryId);
+    return Boolean(entry?.meditationId && entry.meditationId === nowPlaying.s3Key);
+  }, [nowPlaying, pathname, journalTick]);
+
+  const onReflect = useCallback(() => {
+    if (!nowPlaying || !isLibraryMeditationTrack(nowPlaying)) return;
+    const handoff = reflectHandoffFromTrack(nowPlaying, "own");
+    if (!handoff) return;
+    // If already on a linked entry for this meditation, stay.
+    if (reflectActive) return;
+    armReflectMeditationHandoff(handoff);
+    router.push(reflectMeditationJournalHref());
+  }, [nowPlaying, reflectActive, router]);
+
   // Reset listen accumulator when the active track changes.
   useEffect(() => {
     listenAccumRef.current = 0;
     progressLoggedRef.current = false;
     startedLoggedKeyRef.current = null;
+    setPlaybackTimeSeconds(0);
   }, [nowPlaying?.s3Key]);
 
   // Log play_started when the user actually starts listening.
@@ -259,6 +304,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     () => ({
       nowPlaying,
       playingS3Key,
+      playbackTimeSeconds,
       playerStripHeightPx,
       playerStripDocked: Boolean(stripDockHost),
       bedVolumeApiRef,
@@ -274,6 +320,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     [
       nowPlaying,
       playingS3Key,
+      playbackTimeSeconds,
       playerStripHeightPx,
       stripDockHost,
       playItem,
@@ -290,6 +337,8 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   const createBridgeActive =
     Boolean(createSoundStripBridge) &&
     Boolean(nowPlaying?.s3Key.startsWith("create:sound:"));
+
+  const showReflect = isLibraryMeditationTrack(nowPlaying);
 
   const strip = (
     <LibraryAudioStrip
@@ -309,12 +358,15 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       onExternalTransportToggle={
         createBridgeActive ? createSoundStripBridge?.onToggle ?? null : null
       }
+      onReflect={showReflect ? onReflect : null}
+      reflectActive={reflectActive}
       onPlayingChange={(s3Key, playing) => {
         setPlayingS3Key(playing ? s3Key : null);
         setAutoplay(playing);
       }}
       onPlaybackTimeChange={(s3Key, timeSeconds) => {
-        if (playingS3KeyRef.current !== s3Key) return;
+        if (nowPlayingRef.current?.s3Key !== s3Key) return;
+        setPlaybackTimeSeconds(timeSeconds);
         timeListenerRef.current?.(s3Key, timeSeconds);
       }}
     />

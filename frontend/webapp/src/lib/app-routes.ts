@@ -151,8 +151,8 @@ export function isPublicAuthPath(pathname: string): boolean {
  * redirects to the SPA in `app/page.tsx` so the marketing landing stays public.
  */
 const MARKETING_ROOT_APP_DESTINATIONS: Record<string, string> = {
-  "/meditate": "__SPA__/meditate/library/creations",
-  "/journal": "__SPA__/journal/my",
+  "/meditate": "__SPA__/meditate",
+  "/journal": "__SPA__/journal",
   "/manifest": "__SPA__/manifest/my",
   "/ideate": "__SPA__/manifest/my",
   "/dream": "__SPA__/manifest/my",

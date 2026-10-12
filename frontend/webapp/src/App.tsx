@@ -3,6 +3,7 @@ import { AdminAiCostsPanel } from "./components/admin-ai-costs-panel";
 import { AdminCompositionCoversPanel } from "./components/admin-composition-covers-panel";
 import { AdminAnalyticsPanel } from "./components/admin-analytics-panel";
 import { AdminReadPanel } from "./components/admin-blog-panel";
+import { AdminGuidesPanel } from "./components/admin-guides-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
 import { AdminPrepromptsPanel } from "./components/admin-preprompts-panel";
 import { AdminLibraryCategoriesPanel } from "./components/admin-library-categories-panel";
@@ -25,6 +26,14 @@ import { LibraryPage } from "./pages/library-page";
 import { ManifestGoalPage } from "./pages/manifest-goal-page";
 import { ManifestHomePage } from "./pages/manifest-home-page";
 import { ManifestVisionBoardPage } from "./pages/manifest-vision-board-page";
+import { JournalOverviewPage } from "./pages/journal-overview-page";
+import {
+  JournalGuideArticlePage,
+  JournalGuidesIndexPage,
+  MeditateGuideArticlePage,
+  MeditateGuidesIndexPage,
+} from "./pages/meditate-guides-page";
+import { MeditateOverviewPage } from "./pages/meditate-overview-page";
 import { SchedulePage } from "./pages/schedule-page";
 import { SettingsPage } from "./pages/settings-page";
 import { PricingPage } from "./pages/pricing-page";
@@ -40,8 +49,12 @@ export function App() {
         <Route index element={<HomePage />} />
         <Route path="focus" element={<FocusPage />} />
         <Route path="focus/my" element={<Navigate to="/focus" replace />} />
-        <Route path="journal" element={<Navigate to="/journal/my" replace />} />
-        <Route path="journal/my/*" element={<JournalPage />} />
+        <Route path="journal">
+          <Route index element={<JournalOverviewPage />} />
+          <Route path="guides" element={<JournalGuidesIndexPage />} />
+          <Route path="guides/:slug" element={<JournalGuideArticlePage />} />
+          <Route path="my/*" element={<JournalPage />} />
+        </Route>
         <Route path="chat" element={<Navigate to="/chat/my" replace />} />
         <Route path="chat/my/*" element={<ChatPage />} />
         <Route path="manifest" element={<Navigate to="/manifest/my" replace />} />
@@ -51,14 +64,19 @@ export function App() {
           element={<ManifestVisionBoardPage />}
         />
         <Route path="manifest/goal/:id" element={<ManifestGoalPage />} />
-        <Route path="meditate/create" element={<CreatePage />} />
-        <Route path="meditate/create/*" element={<CreatePage />} />
-        <Route
-          path="meditate/library"
-          element={<Navigate to="/meditate/library/creations" replace />}
-        />
-        <Route path="meditate/library/*" element={<LibraryPage />} />
-        <Route path="meditate/sounds/*" element={<SoundsPage />} />
+        <Route path="meditate">
+          <Route index element={<MeditateOverviewPage />} />
+          <Route path="guides" element={<MeditateGuidesIndexPage />} />
+          <Route path="guides/:slug" element={<MeditateGuideArticlePage />} />
+          <Route path="create" element={<CreatePage />} />
+          <Route path="create/*" element={<CreatePage />} />
+          <Route
+            path="library"
+            element={<Navigate to="/meditate/library/creations" replace />}
+          />
+          <Route path="library/*" element={<LibraryPage />} />
+          <Route path="sounds/*" element={<SoundsPage />} />
+        </Route>
         <Route path="create" element={<Navigate to="/meditate/create" replace />} />
         <Route
           path="library"
@@ -88,6 +106,7 @@ export function App() {
           <Route path="programs" element={<AdminProgramsPanel />} />
           <Route path="blog" element={<AdminReadPanel />} />
           <Route path="read" element={<AdminReadPanel />} />
+          <Route path="guides" element={<AdminGuidesPanel />} />
           <Route path="analytics" element={<AdminAnalyticsPanel />} />
           <Route path="ai-costs" element={<AdminAiCostsPanel />} />
           <Route path="script-lab" element={<AdminScriptLabPanel />} />

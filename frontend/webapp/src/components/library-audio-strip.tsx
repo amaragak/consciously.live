@@ -52,6 +52,8 @@ export function LibraryAudioStrip(
     placement?: "fixed" | "inline";
     externalPlaying?: boolean | null;
     onExternalTransportToggle?: (() => void) | null;
+    onReflect?: (() => void) | null;
+    reflectActive?: boolean;
   },
 ) {
   const inline = props.placement === "inline";

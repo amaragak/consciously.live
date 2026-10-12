@@ -65,7 +65,8 @@ export const AppPrimaryTabsSlot = forwardRef<
 });
 
 /**
- * Renders primary page tabs / create stepper into the top-bar centre (all breakpoints).
+ * Renders primary page tabs / create stepper into the top-bar centre (md+;
+ * matches wordmark reveal — phone uses sidebar / in-page copies).
  */
 export function AppPrimaryTabsDesktop({ children }: { children: ReactNode }) {
   const ctx = usePrimaryTabsContext();

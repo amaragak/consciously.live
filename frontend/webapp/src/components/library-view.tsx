@@ -82,6 +82,19 @@ import {
   HEADER_SECTION_TABS_TRACK,
 } from "@/components/header-section-tabs";
 import { LibraryEditMixSidebar } from "@/components/library-edit-mix-sidebar";
+import MeditationDetail, {
+  type MeditationDetailSource,
+} from "@/components/meditation-detail";
+import {
+  findLibraryItemByDetailId,
+  isLibraryDetailFrom,
+  LIBRARY_DETAIL_FROM_LABEL,
+  libraryDetailIdFromPathname,
+  libraryMeditationDetailHref,
+  meditationSoundscapeName,
+  setLibraryDetailTitle,
+  type LibraryDetailFrom,
+} from "@/lib/library-meditation-detail";
 import {
   SOUNDSCAPE_MIX_GAIN,
   type MixEditorValues,
@@ -96,6 +109,18 @@ import {
   type LibraryMeditationRow,
   type SpeechifyEmotionPlayback,
 } from "@/components/library-meditation-card";
+import {
+  armReflectMeditationHandoff,
+  findReflectionEntryForMeditation,
+  meditationIdFromLibraryItem,
+  reflectHandoffFromLibraryItem,
+  reflectMeditationJournalHref,
+  reflectionCountForMeditation,
+} from "@/lib/journal-meditation-reflect";
+import {
+  subscribeJournalStore,
+  type JournalMeditationSource,
+} from "@/lib/journal-storage";
 
 function formatGenerationElapsed(ms: number | null | undefined): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
@@ -728,6 +753,14 @@ export default function LibraryView({
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const pathSegs = libraryPathSegments(pathname);
+  /** `/meditate/library/:id` — any single segment that is not a tab. */
+  const detailId = libraryDetailIdFromPathname(pathname);
+  const fromParam = searchParams.get("from");
+  const detailFrom: LibraryDetailFrom = isLibraryDetailFrom(fromParam)
+    ? fromParam
+    : "creations";
+  const detailProgramSlug = searchParams.get("program");
+  const listScrollRef = useRef<number | null>(null);
   const programDurationProbeTriedRef = useRef(new Set<string>());
   const {
     nowPlaying,
@@ -750,8 +783,14 @@ export default function LibraryView({
   // IMPORTANT: keep initial render consistent between SSR and client hydration.
   // Pending generations are stored in localStorage (client-only), so we load them after mount.
   const [pending, setPending] = useState<PendingLibraryGeneration[]>([]);
+  const [journalTick, setJournalTick] = useState(0);
   const [loading, setLoading] = useState(!Array.isArray(initialItems));
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(
+    () => subscribeJournalStore(() => setJournalTick((n) => n + 1)),
+    [],
+  );
   const [expandedSk, setExpandedSk] = useState<string | null>(null);
   /** Mobile-only: which library cards show full details (multiple allowed). */
   const [mobileCardOpen, setMobileCardOpen] = useState<Record<string, boolean>>(
@@ -813,15 +852,15 @@ export default function LibraryView({
     return () => mq.removeEventListener("change", sync);
   }, []);
   const [libraryTab, setLibraryTab] = useState<LibraryMainTab>(() =>
-    libraryTabFromPath(pathSegs.tab),
+    libraryTabFromPath(detailId ? detailFrom : pathSegs.tab),
   );
   const [programs, setPrograms] = useState<LibraryProgram[]>(
     () => programsMemoryCache ?? [],
   );
   const [programsLoading, setProgramsLoading] = useState(
     () =>
-      libraryTabFromPath(pathSegs.tab) === "programs" &&
-      programsMemoryCache === null,
+      libraryTabFromPath(detailId ? detailFrom : pathSegs.tab) ===
+        "programs" && programsMemoryCache === null,
   );
   const [programsReady, setProgramsReady] = useState(
     () => programsMemoryCache !== null,
@@ -872,6 +911,14 @@ export default function LibraryView({
 
   useEffect(() => {
     const { tab, programSlug } = libraryPathSegments(pathname);
+    if (libraryDetailIdFromPathname(pathname)) {
+      // Detail keeps the shell + the tab the user came from.
+      const next = libraryTabFromPath(detailFrom);
+      setLibraryTab((cur) => (cur === next ? cur : next));
+      setProgramPathKey(null);
+      setExploringProgramId(null);
+      return;
+    }
     if (tab === "creations" || tab === "programs" || tab === "community") {
       const next = libraryTabFromPath(tab);
       setLibraryTab((cur) => (cur === next ? cur : next));
@@ -883,7 +930,8 @@ export default function LibraryView({
       setProgramPathKey(null);
       setExploringProgramId(null);
     }
-  }, [pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, detailFrom]);
   const [page, setPage] = useState(1);
   const [playingTimeSeconds, setPlayingTimeSeconds] = useState(0);
   const [pendingAutoplay, setPendingAutoplay] = useState<{
@@ -2047,11 +2095,262 @@ export default function LibraryView({
     playItem(next);
   }
 
+  function shareLibraryItem(m: LibraryMeditationItem, isCommunity: boolean) {
+    const shareId = m.id?.trim() || "";
+    void (async () => {
+      try {
+        let url: string;
+        let copiedKey: string;
+        if (isCommunity) {
+          if (!shareId) return;
+          url = marketingHref(`/library/${encodeURIComponent(shareId)}`);
+          copiedKey = shareId;
+        } else {
+          if (!m.sk) return;
+          const sk = m.sk;
+          let token =
+            typeof m.shareToken === "string" && m.shareToken.trim()
+              ? m.shareToken.trim()
+              : null;
+          if (!token) {
+            token = await patchMeditationShare(sk, "create");
+            if (token) {
+              setItems((prev) =>
+                prev.map((x) =>
+                  x.sk === sk ? { ...x, shareToken: token } : x,
+                ),
+              );
+            }
+          }
+          if (!token) throw new Error("Could not create share link");
+          url = marketingHref(`/listen/${encodeURIComponent(token)}`);
+          copiedKey = sk;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          setShareCopiedId(copiedKey);
+          window.setTimeout(() => {
+            setShareCopiedId((cur) => (cur === copiedKey ? null : cur));
+          }, 2000);
+        } catch {
+          window.prompt("Copy this link:", url);
+        }
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Could not create share link",
+        );
+      }
+    })();
+  }
+
+  /* ---------------- Meditation detail (/meditate/library/:id) ---------------- */
+
+  const detailMatch = useMemo((): {
+    item: LibraryMeditationItem;
+    source: MeditationDetailSource;
+  } | null => {
+    if (!detailId) return null;
+    const programDayItems = programs.flatMap((p) =>
+      p.days.map((d) => libraryItemFromProgramDay(d, p)),
+    );
+    const sources: Array<{
+      source: MeditationDetailSource;
+      list: LibraryMeditationItem[];
+    }> = [
+      { source: "own", list: items },
+      { source: "community", list: communityItems },
+      { source: "program", list: programDayItems },
+    ];
+    if (detailFrom === "community") sources.unshift(sources.splice(1, 1)[0]!);
+    else if (detailFrom === "programs") sources.unshift(sources.splice(2, 1)[0]!);
+    for (const { source, list } of sources) {
+      const hit = findLibraryItemByDetailId(list, detailId);
+      if (hit) return { item: hit, source };
+    }
+    return null;
+  }, [detailId, detailFrom, items, communityItems, programs]);
+
+  // Opened a program lesson by URL without the Programs tab loaded.
+  const programsFallbackTriedRef = useRef(false);
+  useEffect(() => {
+    if (!detailId || loading || detailMatch || programsReady) return;
+    if (programsFallbackTriedRef.current) return;
+    programsFallbackTriedRef.current = true;
+    void listLibraryPrograms()
+      .then((list) => {
+        programsMemoryCache = list;
+        setPrograms(list);
+      })
+      .catch(() => undefined)
+      .finally(() => setProgramsReady(true));
+  }, [detailId, loading, detailMatch, programsReady]);
+
+  const detailBackHref = useMemo(() => {
+    if (detailFrom === "programs") {
+      let slug = detailProgramSlug?.trim() || "";
+      if (!slug && detailMatch?.source === "program") {
+        const prog = programs.find((p) =>
+          p.days.some((d) => d.audioKey === detailMatch.item.s3Key),
+        );
+        if (prog) slug = programUrlSlug(prog, programs);
+      }
+      return slug
+        ? `/meditate/library/programs/${encodeURIComponent(slug)}`
+        : "/meditate/library/programs";
+    }
+    return `/meditate/library/${detailFrom}`;
+  }, [detailFrom, detailProgramSlug, detailMatch, programs]);
+
+  useEffect(() => {
+    setLibraryDetailTitle(detailMatch?.item.title ?? null);
+    return () => setLibraryDetailTitle(null);
+  }, [detailMatch?.item.title]);
+
+  // Restore the list scroll when coming back; start detail at the top.
+  useEffect(() => {
+    const main = document.querySelector("main");
+    if (detailId) {
+      main?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      return;
+    }
+    const y = listScrollRef.current;
+    if (y == null) return;
+    listScrollRef.current = null;
+    requestAnimationFrame(() => {
+      document.querySelector("main")?.scrollTo({ top: y, left: 0, behavior: "auto" });
+    });
+  }, [detailId]);
+
+  /** Detail href for a list card (remembers which tab / program it came from). */
+  function detailHrefForItem(m: LibraryMeditationItem): string {
+    const from: LibraryDetailFrom =
+      libraryTab === "community"
+        ? "community"
+        : libraryTab === "programs"
+          ? "programs"
+          : "creations";
+    const program =
+      from === "programs" && exploringProgramId
+        ? (() => {
+            const prog = programs.find((p) => p.id === exploringProgramId);
+            return prog ? programUrlSlug(prog, programs) : null;
+          })()
+        : null;
+    return libraryMeditationDetailHref(m, { from, program });
+  }
+
+  function rememberListScroll() {
+    listScrollRef.current =
+      document.querySelector("main")?.scrollTop ?? null;
+  }
+
+  function reflectOnItem(
+    m: LibraryMeditationItem,
+    source: JournalMeditationSource,
+  ) {
+    const handoff = reflectHandoffFromLibraryItem(m, source);
+    if (!handoff) return;
+    armReflectMeditationHandoff(handoff);
+    navigate(reflectMeditationJournalHref());
+  }
+
+  function renderDetail() {
+    if (!detailMatch) {
+      const stillLoading = loading || !programsReady;
+      return (
+        <div className="mt-4 w-full min-w-0 px-4 md:px-0">
+          <Link
+            to={detailBackHref}
+            className="inline-flex items-center text-sm font-semibold text-accent-link"
+          >
+            ‹ {LIBRARY_DETAIL_FROM_LABEL[detailFrom]}
+          </Link>
+          {stillLoading ? (
+            <p className="mt-4 text-sm text-muted">Loading…</p>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-border bg-card px-5 py-10 text-center">
+              <h2 className="font-display text-xl font-medium tracking-tight">
+                Meditation not found
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
+                This meditation isn&apos;t in your library (or the link is
+                outdated).
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    const { item, source } = detailMatch;
+    const isCommunity = source === "community";
+    const own = source === "own";
+    const shareId = item.id?.trim() || "";
+    const allowShare =
+      source !== "program" &&
+      !item.isDraft &&
+      (isCommunity ? Boolean(shareId) : Boolean(item.sk) && own);
+    const reflectSource: JournalMeditationSource = isCommunity
+      ? "community"
+      : source === "program"
+        ? "program"
+        : "own";
+    const soundscapeName = meditationSoundscapeName(item, {
+      nature: mixNature,
+      music: mixMusic,
+      drums: mixDrums,
+      noise: mixNoise,
+      compositions: mixCompositions,
+    });
+    return (
+      <MeditationDetail
+        item={item}
+        source={source}
+        isMobile={isMobileLayout}
+        backLabel={LIBRARY_DETAIL_FROM_LABEL[detailFrom]}
+        backHref={detailBackHref}
+        soundscapeName={soundscapeName}
+        onPlay={() => {
+          if (nowPlaying?.s3Key === item.s3Key) toggleCurrent();
+          else playLibraryItem(item);
+        }}
+        onReflect={() => reflectOnItem(item, reflectSource)}
+        onRating={own ? (rating) => void setRating(item, rating) : undefined}
+        ratingBusy={item.sk != null && ratingBusy === item.sk}
+        onFavourite={
+          own ? (favourite) => void setFavourite(item, favourite) : undefined
+        }
+        favouriteBusy={item.sk != null && favouriteBusySk === item.sk}
+        onShare={
+          allowShare ? () => shareLibraryItem(item, isCommunity) : undefined
+        }
+        shareCopied={
+          shareCopiedId != null &&
+          shareCopiedId === (isCommunity ? shareId : item.sk)
+        }
+        onPublicChange={
+          own ? (isPublic) => void setPublic(item, isPublic) : undefined
+        }
+        onArchive={
+          own && item.sk
+            ? () => setArchiveConfirm({ sk: item.sk!, title: item.title })
+            : undefined
+        }
+        onOpenMix={(anchorEl) => {
+          setMixAnchorEl(anchorEl);
+          openMixEditor(item);
+        }}
+        mixOpen={mixEditor?.sk != null && mixEditor.sk === item.sk}
+        onCloseMix={() => mixCloseRef.current?.()}
+      />
+    );
+  }
+
   function renderItem(m: LibraryMeditationRow) {
     const rowKey = isPendingRow(m) ? m.pendingKey : m.s3Key;
     const isCommunity = libraryTab === "community";
     const isProgramShelf = libraryTab === "programs";
     const hideOwnerActions = isCommunity || isProgramShelf;
+    void journalTick;
 
     if (isPendingRow(m)) {
       return (
@@ -2067,6 +2366,31 @@ export default function LibraryView({
         />
       );
     }
+
+    const reflectSource: JournalMeditationSource = isCommunity
+      ? "community"
+      : isProgramShelf
+        ? "program"
+        : "own";
+    const meditationId = meditationIdFromLibraryItem(m);
+    const reflectionCount = reflectionCountForMeditation(meditationId);
+    const onReflect = () => {
+      const handoff = reflectHandoffFromLibraryItem(m, reflectSource);
+      if (!handoff) return;
+      armReflectMeditationHandoff(handoff);
+      navigate(reflectMeditationJournalHref());
+    };
+    const onOpenReflections = () => {
+      // Same entry Reflect opens — one reflection journal page per meditation.
+      const existing = findReflectionEntryForMeditation(meditationId);
+      if (existing) {
+        navigate(`/journal/my/${encodeURIComponent(existing.id)}`);
+        return;
+      }
+      navigate(
+        `/journal/my?meditationId=${encodeURIComponent(meditationId)}`,
+      );
+    };
 
     const cardKey = m.s3Key;
     const fishCostText = showFishCostTooltip ? fishCostTooltipText(m) : null;
@@ -2119,6 +2443,13 @@ export default function LibraryView({
         archiveBusy={m.sk != null && archiveBusySk === m.sk}
         onRating={(rating) => void setRating(m, rating)}
         onFavourite={(favourite) => void setFavourite(m, favourite)}
+        onReflect={onReflect}
+        detailHref={m.isDraft ? undefined : detailHrefForItem(m)}
+        onOpenDetail={rememberListScroll}
+        reflectionCount={reflectionCount}
+        onOpenReflections={
+          reflectionCount > 0 ? onOpenReflections : undefined
+        }
         onArchive={() => {
           if (!m.sk) return;
           setArchiveConfirm({ sk: m.sk, title: m.title });
@@ -2131,54 +2462,7 @@ export default function LibraryView({
         mixEditorSk={mixEditor?.sk ?? null}
         onCloseMix={() => mixCloseRef.current?.()}
         shareCopiedId={shareCopiedId}
-        onShare={() => {
-          void (async () => {
-            try {
-              let url: string;
-              let copiedKey: string;
-              if (isCommunity) {
-                if (!shareId) return;
-                url = marketingHref(`/library/${encodeURIComponent(shareId)}`);
-                copiedKey = shareId;
-              } else {
-                if (!m.sk) return;
-                const sk = m.sk;
-                let token =
-                  typeof m.shareToken === "string" && m.shareToken.trim()
-                    ? m.shareToken.trim()
-                    : null;
-                if (!token) {
-                  token = await patchMeditationShare(sk, "create");
-                  if (token) {
-                    setItems((prev) =>
-                      prev.map((x) =>
-                        x.sk === sk ? { ...x, shareToken: token } : x,
-                      ),
-                    );
-                  }
-                }
-                if (!token) throw new Error("Could not create share link");
-                url = marketingHref(`/listen/${encodeURIComponent(token)}`);
-                copiedKey = sk;
-              }
-              try {
-                await navigator.clipboard.writeText(url);
-                setShareCopiedId(copiedKey);
-                window.setTimeout(() => {
-                  setShareCopiedId((cur) =>
-                    cur === copiedKey ? null : cur,
-                  );
-                }, 2000);
-              } catch {
-                window.prompt("Copy this link:", url);
-              }
-            } catch (e) {
-              setError(
-                e instanceof Error ? e.message : "Could not create share link",
-              );
-            }
-          })();
-        }}
+        onShare={() => shareLibraryItem(m, isCommunity)}
         itemRef={(el) => {
           if (el) itemElsRef.current.set(m.s3Key, el);
           else itemElsRef.current.delete(m.s3Key);
@@ -2544,6 +2828,7 @@ export default function LibraryView({
           />
         </AppPrimaryTabsDesktop>
 
+        {detailId ? null : (
         <h1 className="sr-only">
           {libraryTab === "community"
             ? "Community"
@@ -2553,8 +2838,9 @@ export default function LibraryView({
                 : "Programs"
               : "Library"}
         </h1>
+        )}
 
-        {/* Mobile top block — section tabs live in the header at all sizes. */}
+        {/* Mobile top block — section tabs in header from md+ (sidebar below). */}
         <div className="flex flex-col gap-3.5 md:hidden">
           {libraryTab === "programs" && exploringProgram ? (
             <>
@@ -2601,7 +2887,8 @@ export default function LibraryView({
               </div>
             </>
           ) : null}
-          {libraryTab === "meditations" || libraryTab === "community"
+          {!detailId &&
+          (libraryTab === "meditations" || libraryTab === "community")
             ? mobileSearchBlock
             : null}
         </div>
@@ -2621,7 +2908,8 @@ export default function LibraryView({
             </Link>
           </div>
         ) : null}
-        {libraryTab === "meditations" || libraryTab === "community" ? (
+        {!detailId &&
+        (libraryTab === "meditations" || libraryTab === "community") ? (
           <div className="mt-3 hidden w-full flex-wrap items-center gap-3 md:mt-2 md:flex">
             <div className="flex shrink-0 items-center gap-3">
               <button
@@ -2706,6 +2994,10 @@ export default function LibraryView({
         ) : null}
       </header>
 
+      {detailId ? (
+        renderDetail()
+      ) : (
+      <>
       {libraryTab === "programs" ? (
         programsError && programs.length === 0 && programsReady ? (
           <p className="mt-3 w-full min-w-0 rounded-xl border border-border bg-card px-4 py-3 text-sm text-danger md:mt-2">
@@ -2784,7 +3076,7 @@ export default function LibraryView({
                 {exploring.days.length === 0 ? (
                   <p className="px-4 text-sm text-muted md:px-0">No lessons ready yet.</p>
                 ) : (
-                  <ul className="mt-2 flex w-full min-w-0 max-w-full flex-col max-md:gap-0 md:gap-3">
+                  <ul className="mt-2 flex w-full min-w-0 max-w-full flex-col max-sm:gap-2.5 sm:max-md:gap-0 md:gap-3">
                     {exploring.days.map((day) =>
                       renderItem(libraryItemFromProgramDay(day, exploring)),
                     )}
@@ -2935,7 +3227,7 @@ export default function LibraryView({
           className={
             viewMode === "grid" && !isMobileLayout
               ? `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-4 lg:grid-cols-3`
-              : `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col max-md:mt-2 max-md:gap-0 md:gap-3`
+              : `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col max-md:mt-2 max-sm:gap-2.5 sm:max-md:gap-0 md:gap-3`
           }
         >
           {pagedVisibleItems.map((m, i) => {
@@ -2954,7 +3246,7 @@ export default function LibraryView({
               <Fragment key={rowKey}>
                 {insertMarker && marker ? (
                   <li
-                    className={`col-span-full list-none max-md:px-4 max-md:pb-1.5 max-md:pt-[18px] ${
+                    className={`col-span-full list-none max-sm:px-3 sm:max-md:px-4 max-md:pb-1.5 max-md:pt-[18px] ${
                       i === 0 ? "" : "md:pt-2"
                     }`}
                   >
@@ -3047,6 +3339,8 @@ export default function LibraryView({
           </button>
         </div>
       ) : null}
+      </>
+      )}
     </div>
 
     {mobileFilterOpen ? (
@@ -3228,6 +3522,7 @@ export default function LibraryView({
                 const item = items.find((x) => x.sk === sk);
                 setArchiveConfirm(null);
                 if (item) void setArchived(item, true);
+                if (detailId) navigate(detailBackHref);
               }}
               className="cursor-pointer rounded-lg accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >

@@ -88,7 +88,10 @@ type Props = {
 };
 
 function postHref(slug: string): string {
-  return `/read/${encodeURIComponent(slug.trim())}`;
+  const t = slug.trim();
+  // Absolute app paths (e.g. /meditate/guides/…) — use as-is.
+  if (t.startsWith("/")) return t;
+  return `/read/${encodeURIComponent(t)}`;
 }
 
 /** Allow app-relative paths and http(s)/mailto links. */

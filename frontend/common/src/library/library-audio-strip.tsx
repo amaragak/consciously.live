@@ -353,6 +353,9 @@ export function LibraryAudioStrip({
    */
   externalPlaying = null,
   onExternalTransportToggle = null,
+  /** Optional Reflect action (meditations only). */
+  onReflect = null,
+  reflectActive = false,
 }: {
   track: LibraryActiveTrack | null;
   musicItems: BackgroundAudioItem[];
@@ -376,6 +379,9 @@ export function LibraryAudioStrip({
   externalPlaying?: boolean | null;
   /** When set, strip play button calls this instead of internal toggle. */
   onExternalTransportToggle?: (() => void) | null;
+  onReflect?: (() => void) | null;
+  /** Accent outline when viewing this meditation’s linked journal entry. */
+  reflectActive?: boolean;
 }) {
   const inline = placement === "inline";
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1486,6 +1492,53 @@ export function LibraryAudioStrip({
             </span>
           </div>
         </div>
+
+        {onReflect ? (
+          <button
+            type="button"
+            onClick={onReflect}
+            aria-label="Reflect on this meditation"
+            aria-pressed={reflectActive}
+            className="library-strip-reflect"
+            style={{
+              flexShrink: 0,
+              height: 36,
+              padding: "0 14px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              borderRadius: 999,
+              border: reflectActive
+                ? "1.5px solid rgba(232, 196, 140, 0.85)"
+                : "1.5px solid rgba(243, 237, 226, 0.55)",
+              background: reflectActive
+                ? "rgba(232, 196, 140, 0.18)"
+                : "transparent",
+              color: ivory,
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "inherit",
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            <span className="hidden sm:inline">Reflect</span>
+          </button>
+        ) : null}
 
         <button
           type="button"

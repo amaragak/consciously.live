@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import * as Switch from "@radix-ui/react-switch";
 import {
   useEffect,
@@ -23,6 +23,7 @@ import {
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
 import { CoverArtThumb, TypewriterReveal } from "@consciously/common";
+import { BookOpen, SquarePen } from "lucide-react";
 import { isLocalDevHost } from "@/lib/dev-ui-settings";
 
 function isPendingMetaReady(raw: string | null | undefined): boolean {
@@ -394,6 +395,15 @@ export type LibraryMeditationCardProps = {
   /** Dev: selected Speechify emotion stem (neutral = default dry/wet). */
   speechifyEmotion?: SpeechifyEmotionPlayback;
   onSpeechifyEmotionChange?: (emotion: SpeechifyEmotionPlayback) => void;
+  /** Reflect → new journal entry linked to this meditation. */
+  onReflect?: () => void;
+  /** Entries already linked to this meditation. */
+  reflectionCount?: number;
+  onOpenReflections?: () => void;
+  /** Meditation detail page (`/meditate/library/:id`). Card body taps open it. */
+  detailHref?: string;
+  /** Runs just before navigating to the detail page (e.g. remember scroll). */
+  onOpenDetail?: () => void;
 };
 
 export function LibraryMeditationCard({
@@ -427,6 +437,11 @@ export function LibraryMeditationCard({
   shareCopiedId = null,
   onShare,
   onRemovePending,
+  onReflect,
+  reflectionCount = 0,
+  onOpenReflections,
+  detailHref,
+  onOpenDetail,
   itemRef,
   devOverlay,
   onDevRegenCover,
@@ -438,13 +453,23 @@ export function LibraryMeditationCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [howMadeOpen, setHowMadeOpen] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
+  const navigate = useNavigate();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  /** Phone footer ⋯ — same menu state, its own anchor. */
+  const mobileMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
     function onDoc(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+      const t = e.target as Node;
+      if (
+        !menuRef.current?.contains(t) &&
+        !mobileMenuRef.current?.contains(t)
+      ) {
+        setMenuOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setMenuOpen(false);
@@ -822,9 +847,14 @@ export function LibraryMeditationCard({
   const menuItemClass =
     "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40";
 
-  const cardMenu = hasMenuItems ? (
+  const renderCardMenu = (variant: "desktop" | "mobile") => {
+    if (!hasMenuItems) return null;
+    const mobile = variant === "mobile";
+    const wrapRef = mobile ? mobileMenuRef : menuRef;
+    const btnRef = mobile ? mobileMenuButtonRef : menuButtonRef;
+    return (
     <div
-      ref={menuRef}
+      ref={wrapRef}
       className={`relative shrink-0 transition-opacity ${
         menuOpen || alwaysShowRowChrome
           ? "opacity-100 pointer-events-auto"
@@ -832,7 +862,7 @@ export function LibraryMeditationCard({
       }`}
     >
       <button
-        ref={menuButtonRef}
+        ref={btnRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
@@ -841,7 +871,11 @@ export function LibraryMeditationCard({
         aria-label="More actions"
         aria-expanded={menuOpen}
         aria-haspopup="menu"
-        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-background/80 hover:text-foreground"
+        className={
+          mobile
+            ? "flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-background/80 hover:text-foreground"
+            : "flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-background/80 hover:text-foreground"
+        }
       >
         <IconDotsHorizontal />
       </button>
@@ -874,7 +908,7 @@ export function LibraryMeditationCard({
               type="button"
               role="menuitem"
               onClick={() => {
-                const anchor = menuButtonRef.current;
+                const anchor = btnRef.current;
                 setMenuOpen(false);
                 if (!anchor) return;
                 if (mixEditorSk === m.sk) {
@@ -1044,7 +1078,10 @@ export function LibraryMeditationCard({
         </div>
       ) : null}
     </div>
-  ) : null;
+    );
+  };
+  const cardMenu = renderCardMenu("desktop");
+  const mobileMenu = renderCardMenu("mobile");
 
   const metaBits = buildSpeakerDateTimeMetaBits({
     speakerName: m.speakerName,
@@ -1065,11 +1102,48 @@ export function LibraryMeditationCard({
       </span>
     ) : null;
 
+  const reflectionsLink =
+    reflectionCount > 0 && onOpenReflections ? (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenReflections();
+        }}
+        className="ml-2 inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-accent-link transition-opacity hover:opacity-80"
+      >
+        <BookOpen className="size-3" strokeWidth={2} aria-hidden />
+        {reflectionCount === 1
+          ? "1 reflection"
+          : `${reflectionCount} reflections`}
+      </button>
+    ) : null;
+
+  const reflectButton = onReflect ? (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onReflect();
+      }}
+      aria-label="Reflect on this meditation"
+      className="inline-flex h-[34px] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 text-[13px] font-semibold text-foreground transition-colors hover:border-accent/40 max-sm:w-[34px] max-sm:px-0"
+    >
+      <SquarePen
+        className="size-3.5 shrink-0 text-accent-link"
+        strokeWidth={2}
+        aria-hidden
+      />
+      <span className="max-sm:hidden">Reflect</span>
+    </button>
+  ) : null;
+
   const metaRow =
-    metaLine || stars ? (
+    metaLine || stars || reflectionsLink ? (
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
         {metaLine}
         {stars}
+        {reflectionsLink}
       </div>
     ) : null;
 
@@ -1088,56 +1162,184 @@ export function LibraryMeditationCard({
       </div>
     ) : null;
 
-  /** Mobile library: full-bleed row matching LibraryMobile design. */
-  const mobileBleedRow = (
-    <button
-      type="button"
-      onClick={() => (isSelected ? onTogglePlay?.() : onPlay?.())}
-      className="flex w-full cursor-pointer items-start gap-3 bg-transparent p-0 text-left"
+  const titleNode: ReactNode = detailHref ? (
+    <Link
+      to={detailHref}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        onOpenDetail?.();
+        navigate(detailHref);
+      }}
+      className="text-inherit"
     >
-      <CoverArtThumb
-        src={m.coverImageUrl}
-        alt=""
-        edgePx={64}
-        className="shrink-0 self-start [&_img]:rounded-[10px] [&]:!rounded-[10px]"
-      />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="font-display text-[15px] font-normal leading-[1.3] text-foreground line-clamp-2">
-          {m.title}
-        </span>
-        <span className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
-          <span className="tabular-nums">{lengthLine}</span>
-          {styleLine ? (
-            <MeditationTypePill
-              label={styleLine}
-              className="!px-2 !py-0.5 !text-[11px] max-w-[140px] truncate"
-            />
-          ) : null}
-        </span>
-        <span className="line-clamp-2 text-[13px] leading-[1.45] text-muted">
-          {m.description?.trim() || "—"}
-        </span>
-        <span className="flex items-center justify-between gap-2">
-          {metaLine ?? <span />}
-          {stars}
-        </span>
-      </span>
-    </button>
+      {m.title}
+    </Link>
+  ) : (
+    m.title
   );
 
+  /** Mobile (below `sm`): LibraryCardMobile — three rows, one action line. */
+  const mobileTypeLabel = styleLine && styleLine !== "—" ? styleLine : "";
+  const mobileDate =
+    !hideDateLine && m.createdAt
+      ? new Date(m.createdAt).toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+        })
+      : "";
+  const mobileSpeaker = m.speakerName?.trim() || "";
+  const mobileFooterMeta = [mobileSpeaker, mobileDate === "Invalid Date" ? "" : mobileDate]
+    .filter(Boolean)
+    .join(" · ");
+  const mobileIconBtn =
+    "relative flex h-[34px] w-[34px] shrink-0 cursor-pointer items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-background/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40";
+  const mobileHeart =
+    canFavourite && onFavourite ? (
+      <button
+        type="button"
+        disabled={favouriteDisabled}
+        aria-label={m.favourite ? "Remove from favourites" : "Add to favourites"}
+        aria-pressed={m.favourite}
+        onClick={(e) => {
+          e.stopPropagation();
+          onFavourite(!m.favourite);
+        }}
+        className={`${mobileIconBtn} ${m.favourite ? "!text-gold" : ""}`}
+      >
+        <IconHeart filled={m.favourite} strokeWidth={2} className="h-[18px] w-[18px]" />
+      </button>
+    ) : null;
+  const mobileReflect = onReflect ? (
+    <button
+      type="button"
+      aria-label={
+        reflectionCount > 0
+          ? `Reflect on this meditation (${reflectionCount} reflection${reflectionCount === 1 ? "" : "s"})`
+          : "Reflect on this meditation"
+      }
+      onClick={(e) => {
+        e.stopPropagation();
+        onReflect();
+      }}
+      className={mobileIconBtn}
+    >
+      <SquarePen className="size-[18px]" strokeWidth={2} aria-hidden />
+      {reflectionCount > 0 ? (
+        <span className="absolute -right-[3px] -top-[3px] flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-bold leading-none text-white">
+          {reflectionCount}
+        </span>
+      ) : null}
+    </button>
+  ) : null;
+
   const mobileCardBody = (
-    <div className="sm:hidden">
-      {mobileBleedRow}
-      {scriptBlock ? <div className="mt-3">{scriptBlock}</div> : null}
+    <div className="flex flex-col gap-2.5 sm:hidden">
+      <div className="flex items-start gap-3">
+        <span className="relative block h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[10px]">
+          <CoverArtThumb
+            src={m.coverImageUrl}
+            alt=""
+            edgePx={72}
+            className="shrink-0 self-start [&_img]:rounded-[10px] [&]:!rounded-[10px]"
+          />
+          <button
+            type="button"
+            aria-label={isPlaying ? "Pause" : "Play"}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isPlaying || isSelected) onTogglePlay?.();
+              else onPlay?.();
+            }}
+            className="accent-fill-gradient absolute left-1/2 top-1/2 flex h-[30px] w-[30px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-black/10 text-on-accent"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="currentColor"
+              aria-hidden
+            >
+              {isPlaying ? (
+                <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+              ) : (
+                <path d="M8 5v14l11-7L8 5z" />
+              )}
+            </svg>
+          </button>
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[1.2px] text-accent-link">
+            {mobileTypeLabel ? (
+              <span className="min-w-0 truncate">{mobileTypeLabel}</span>
+            ) : null}
+            {lengthLine !== "—" ? (
+              <span className="shrink-0 text-[12px] font-normal normal-case tracking-normal text-muted">
+                {mobileTypeLabel ? "· " : ""}
+                {lengthLine}
+              </span>
+            ) : null}
+          </span>
+          <span className="line-clamp-2 font-display text-base font-normal leading-[1.3] text-foreground">
+            {titleNode}
+          </span>
+        </span>
+      </div>
+      <span className="line-clamp-2 text-[13px] leading-[1.45] text-foreground/80">
+        {m.description?.trim() || "—"}
+      </span>
+      <div className="flex items-center gap-1.5 border-t border-border pt-2">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted">
+          {mobileSpeaker ? (
+            <span
+              aria-hidden
+              className="relative inline-block h-[18px] w-[18px] shrink-0 overflow-hidden rounded-full bg-muted/40"
+            >
+              {m.speakerPortraitUrl?.trim() ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={m.speakerPortraitUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : null}
+            </span>
+          ) : null}
+          <span className="min-w-0 truncate">{mobileFooterMeta}</span>
+        </span>
+        {mobileReflect}
+        {mobileHeart}
+        {mobileMenu}
+      </div>
+      {scriptBlock ? <div className="mt-1">{scriptBlock}</div> : null}
     </div>
   );
+
+  /** Card body → detail page (play / menu / reflect / links keep their own clicks). */
+  const openDetailFromBody = detailHref
+    ? (e: React.MouseEvent<HTMLElement>) => {
+        const t = e.target as HTMLElement;
+        if (
+          t.closest(
+            "button, a, input, label, select, textarea, [role='menu'], [role='menuitem'], [role='tooltip']",
+          )
+        ) {
+          return;
+        }
+        if (window.getSelection()?.toString()) return;
+        onOpenDetail?.();
+        navigate(detailHref);
+      }
+    : undefined;
+  const detailCursor = detailHref ? "cursor-pointer" : "";
 
   if (viewMode === "grid") {
     return (
       <>
       <li
         ref={itemRef}
-        className={`group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
+        onClick={openDetailFromBody}
+        className={`${detailCursor} group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
           menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
         } ${
           isPlaying
@@ -1171,7 +1373,7 @@ export function LibraryMeditationCard({
           <div className="mt-2 flex items-start gap-3">
             <div className="min-w-0">
               <h2 className="font-display text-lg font-medium leading-snug">
-                {m.title}
+                {titleNode}
               </h2>
             </div>
             <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">
@@ -1183,6 +1385,7 @@ export function LibraryMeditationCard({
           {scriptBlock ? <div className="mt-4">{scriptBlock}</div> : null}
           <div className="mt-auto flex translate-y-2 items-center justify-end gap-3">
             {playControl}
+            {reflectButton}
           </div>
         </div>
       </li>
@@ -1201,9 +1404,10 @@ export function LibraryMeditationCard({
     <>
     <li
       ref={itemRef}
-      className={`group relative min-w-0 overflow-visible bg-card ${
+      onClick={openDetailFromBody}
+      className={`${detailCursor} group relative min-w-0 overflow-visible bg-card ${
         menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
-      } max-sm:rounded-none max-sm:border-x-0 max-sm:border-y max-sm:border-border max-sm:-mb-px max-sm:px-4 max-sm:py-3 max-sm:shadow-none sm:rounded-[6px] sm:border sm:p-4 sm:shadow-sm ${
+      } max-sm:mx-3 max-sm:rounded-[14px] max-sm:border max-sm:border-border max-sm:p-3 max-sm:shadow-none sm:rounded-[6px] sm:border sm:p-4 sm:shadow-sm ${
         isPlaying
           ? "sm:border-accent hybrid:sm:!border-surface-2-edge"
           : "sm:border-border sm:hover:border-accent/80 hybrid:sm:hover:!border-surface-2-edge sm:transition-colors"
@@ -1220,15 +1424,16 @@ export function LibraryMeditationCard({
         <div className="absolute right-2 top-2 z-20 hidden sm:hidden">{cardMenu}</div>
       ) : null}
       {mobileCardBody}
-      {/* Desktop: play at card center; menu flush to card-edge inset. */}
+      {/* Desktop: play at card center; menu flush to card-edge inset; Reflect under. */}
       <div className="pointer-events-none absolute inset-0 z-10 hidden sm:block">
         {cardMenu ? (
           <div className="pointer-events-auto absolute right-1.5 top-1.5 z-20">
             {cardMenu}
           </div>
         ) : null}
-        <div className="pointer-events-auto absolute right-3 top-1/2 -translate-y-1/2">
+        <div className="pointer-events-auto absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-end gap-2">
           {playControl}
+          {reflectButton}
         </div>
       </div>
       <div className="relative hidden min-w-0 pr-[8.5rem] sm:block">
@@ -1244,7 +1449,7 @@ export function LibraryMeditationCard({
               <div className="flex min-w-0 items-start gap-3">
                 <div className="min-w-0">
                   <h2 className="min-w-0 font-display text-lg font-medium leading-snug">
-                    {m.title}
+                    {titleNode}
                   </h2>
                 </div>
                 <span className="mt-1.5 shrink-0 tabular-nums text-xs font-semibold text-muted">

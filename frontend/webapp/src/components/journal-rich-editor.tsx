@@ -55,6 +55,10 @@ type Props = {
   headerBefore?: ReactNode;
   /** Connections / meta row below the title. */
   headerAfter?: ReactNode;
+  /** Slot under title/meta, above the toolbar (e.g. Reflect meditation card). */
+  belowHeader?: ReactNode;
+  /** Prompt chips when the body is empty (Reflect). */
+  emptyBodyPrompts?: readonly string[];
   /** Sticky bottom bar (word count + actions). */
   bottomBar?: ReactNode;
   /** Hide the created-date line when date is shown elsewhere. */
@@ -83,6 +87,8 @@ export function JournalRichEditor({
   entryMenuBefore,
   headerBefore,
   headerAfter,
+  belowHeader,
+  emptyBodyPrompts,
   bottomBar,
   hideCreatedDate = false,
   highlightQuote = null,
@@ -97,6 +103,7 @@ export function JournalRichEditor({
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [bodyEmpty, setBodyEmpty] = useState(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderMimeRef = useRef<string>("");
   const mediaChunksRef = useRef<BlobPart[]>([]);
@@ -165,6 +172,20 @@ export function JournalRichEditor({
     }
   }, [transcribeApiBase, voiceBusy]);
 
+  // Overview “Talk it out” sets this before navigating to a new entry.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("journal-autostart-voice") !== "1") return;
+      sessionStorage.removeItem("journal-autostart-voice");
+    } catch {
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void startVoiceRecording();
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [startVoiceRecording]);
+
   const finishRecordingIntoEditor = useCallback(async () => {
     const ed = editorRef.current;
     if (!ed || voiceBusy) return;
@@ -231,10 +252,12 @@ export function JournalRichEditor({
     },
     onUpdate: ({ editor: ed }) => {
       editorRef.current = ed;
+      setBodyEmpty(ed.isEmpty);
       onHtmlChange(ed.getHTML());
     },
     onCreate: ({ editor: ed }) => {
       editorRef.current = ed;
+      setBodyEmpty(ed.isEmpty);
     },
   });
 
@@ -249,6 +272,7 @@ export function JournalRichEditor({
     if (editorSeededForEntryRef.current === entryId) return;
     editorSeededForEntryRef.current = entryId;
     editor.commands.setContent(initialHtml, { emitUpdate: false });
+    setBodyEmpty(editor.isEmpty);
   }, [entryId, initialHtml, editor]);
 
   useEffect(() => {
@@ -480,6 +504,9 @@ export function JournalRichEditor({
               </div>
             ) : null}
           </div>
+          {belowHeader ? (
+            <div className="px-7 pb-3">{belowHeader}</div>
+          ) : null}
         {/* sm+: full toolbar (unchanged wrapping behavior) */}
         <div className="hidden flex-wrap items-center gap-1 border-t border-border px-3 py-2 sm:flex">
             {transcribeApiBase ? (
@@ -789,6 +816,31 @@ export function JournalRichEditor({
         <JournalTranscribeApiContext.Provider value={transcribeApiBase}>
           <EditorContent editor={editor} />
         </JournalTranscribeApiContext.Provider>
+        {bodyEmpty && emptyBodyPrompts && emptyBodyPrompts.length > 0 ? (
+          <div className="flex flex-wrap gap-2 px-7 pb-3 pt-1">
+            {emptyBodyPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => {
+                  const ed = editorRef.current ?? editor;
+                  if (!ed) return;
+                  ed
+                    .chain()
+                    .focus()
+                    .insertContent(`<p>${prompt}</p><p></p>`)
+                    .run();
+                }}
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 text-[13px] text-foreground transition-colors hover:border-accent/40"
+              >
+                <span className="text-accent-link" aria-hidden>
+                  ✦
+                </span>
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {children ? <div className="px-7 pb-4">{children}</div> : null}
       </div>
       {bottomBar ? (

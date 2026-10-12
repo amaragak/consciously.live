@@ -1500,6 +1500,81 @@ export class MedimadeStack extends cdk.Stack {
       integration: publicBlogIntegration,
     });
 
+    const adminGuides = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminGuidesFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/admin-guides.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        },
+      },
+    );
+    voiceAdminTable.grantReadWriteData(adminGuides);
+    authJwtSecret.grantRead(adminGuides);
+    mediaBucket.grantPut(adminGuides);
+    mediaBucket.grantRead(adminGuides);
+    mediaBucket.grantDelete(adminGuides);
+
+    httpApi.addRoutes({
+      path: "/admin/guides",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminGuidesIntegration",
+        adminGuides,
+      ),
+    });
+
+    const publicGuides = new lambda_nodejs.NodejsFunction(
+      this,
+      "PublicGuidesFunction",
+      {
+        entry: path.join(__dirname, "../lambdas/public-guides.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+        },
+      },
+    );
+    // Read + write: helpful votes bump counters on the guide row.
+    voiceAdminTable.grantReadWriteData(publicGuides);
+
+    const publicGuidesIntegration = new integrations.HttpLambdaIntegration(
+      "PublicGuidesIntegration",
+      publicGuides,
+    );
+    httpApi.addRoutes({
+      path: "/public/guides",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: publicGuidesIntegration,
+    });
+    httpApi.addRoutes({
+      path: "/public/guides/{area}/{slug}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: publicGuidesIntegration,
+    });
+    httpApi.addRoutes({
+      path: "/public/guides/{area}/{slug}/helpful",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: publicGuidesIntegration,
+    });
+
     const adminVoice = new lambda_nodejs.NodejsFunction(this, "AdminVoiceFunction", {
       entry: path.join(__dirname, "../lambdas/admin-voice.ts"),
       handler: "handler",

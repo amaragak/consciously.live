@@ -20,7 +20,13 @@ import {
 } from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
-import { Calendar, Folder } from "lucide-react";
+import { Calendar, Folder, SquarePen } from "lucide-react";
+import { JournalReflectMeditationCard } from "@/components/journal-reflect-meditation-card";
+import {
+  consumeReflectMeditationHandoff,
+  findReflectionEntryForMeditation,
+  reflectionTitleForMeditation,
+} from "@/lib/journal-meditation-reflect";
 import { JournalLockGate } from "@/components/journal-lock-gate";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
@@ -390,7 +396,7 @@ export function JournalView() {
   >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
-  const { pathname: pathnameRaw } = useLocation();
+  const { pathname: pathnameRaw, search: locationSearch } = useLocation();
   const pathname = pathnameRaw || "/journal/my";
   const navigate = useNavigate();
   const section = journalSectionFromPath(pathname);
@@ -675,10 +681,23 @@ export function JournalView() {
           return;
         }
 
-        // Cloud wins: replace device cache (including any leftover demos).
-        skipCloudPushRef.current = true;
+        // Cloud wins for shared rows; keep in-flight local creates (Reflect, etc.).
+        // If cloud is missing a meditation link that local still has (older PUT
+        // path dropped those fields), keep the local link and push it back up.
+        const remoteMissingLocalMeditation = localEntries.some(
+          (local) =>
+            Boolean(local.meditationId?.trim()) &&
+            remote.entries.some(
+              (r) =>
+                r.id === local.id && !String(r.meditationId ?? "").trim(),
+            ),
+        );
+        skipCloudPushRef.current = !remoteMissingLocalMeditation;
         const merged = pruneEmptyJournalEntries(
-          mergeRemoteJournalKeepingLocalOnly(remote, localEntries),
+          mergeRemoteJournalKeepingLocalOnly(remote, localEntries, {
+            preferActiveId: activeIdRef.current,
+          }),
+          activeIdRef.current,
         );
         const preferred =
           merged.activeEntryId &&
@@ -918,6 +937,32 @@ export function JournalView() {
     orderedIds: algoliaOrderedIds,
   } = useUserContentSearchIds(searchQuery, algoliaType);
 
+  const meditationFilterId = useMemo(() => {
+    try {
+      return (
+        new URLSearchParams(locationSearch).get("meditationId")?.trim() || null
+      );
+    } catch {
+      return null;
+    }
+  }, [locationSearch]);
+
+  const [unlinkUndo, setUnlinkUndo] = useState<{
+    meditationId: string;
+    meditationSource?: JournalEntry["meditationSource"];
+    meditationSnapshot?: JournalEntry["meditationSnapshot"];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!unlinkUndo) return;
+    const t = window.setTimeout(() => setUnlinkUndo(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [unlinkUndo]);
+
+  useEffect(() => {
+    setUnlinkUndo(null);
+  }, [activeEntryId]);
+
   const filteredTabEntries = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = tabEntries.filter((e) => {
@@ -931,6 +976,13 @@ export function JournalView() {
         journalTab === "journal" &&
         selectedFolderId &&
         e.folderId !== selectedFolderId
+      ) {
+        return false;
+      }
+      if (
+        journalTab === "journal" &&
+        meditationFilterId &&
+        e.meditationId !== meditationFilterId
       ) {
         return false;
       }
@@ -955,6 +1007,7 @@ export function JournalView() {
     importBatchId,
     journalTab,
     selectedFolderId,
+    meditationFilterId,
     algoliaIds,
     algoliaOrderedIds,
   ]);
@@ -1171,22 +1224,51 @@ export function JournalView() {
     setSidebarMenu(null);
   }, []);
 
-  const createEntry = useCallback(() => {
-    flushSaveSync();
-    const e = newJournalEntry(
-      selectedFolderId ? { folderId: selectedFolderId } : undefined,
-    );
-    const next = [e, ...entriesRef.current];
-    entriesRef.current = next;
-    setEntries(next);
-    persist(next, e.id);
-    setActiveEntryId(e.id);
-    latestHtmlRef.current = e.contentHtml;
-    latestTitleRef.current = e.title;
-    latestGratitudeRef.current = emptyGratitudeLines();
-    setGratitudeDraft(latestGratitudeRef.current);
-    navigate(`/journal/my/${encodeURIComponent(e.id)}`);
-  }, [flushSaveSync, persist, selectedFolderId, navigate]);
+  const createEntry = useCallback(
+    (opts?: {
+      title?: string;
+      voice?: boolean;
+      meditationId?: string;
+      meditationSource?: JournalEntry["meditationSource"];
+      meditationSnapshot?: JournalEntry["meditationSnapshot"];
+    }) => {
+      flushSaveSync();
+      const title = opts?.title?.trim() ?? "";
+      const e = newJournalEntry({
+        ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
+        ...(title ? { title } : {}),
+        ...(opts?.meditationId
+          ? {
+              meditationId: opts.meditationId,
+              ...(opts.meditationSource
+                ? { meditationSource: opts.meditationSource }
+                : {}),
+              ...(opts.meditationSnapshot
+                ? { meditationSnapshot: opts.meditationSnapshot }
+                : {}),
+            }
+          : {}),
+      });
+      if (opts?.voice) {
+        try {
+          sessionStorage.setItem("journal-autostart-voice", "1");
+        } catch {
+          /* ignore */
+        }
+      }
+      const next = [e, ...entriesRef.current];
+      entriesRef.current = next;
+      setEntries(next);
+      persist(next, e.id);
+      setActiveEntryId(e.id);
+      latestHtmlRef.current = e.contentHtml;
+      latestTitleRef.current = e.title;
+      latestGratitudeRef.current = emptyGratitudeLines();
+      setGratitudeDraft(latestGratitudeRef.current);
+      navigate(`/journal/my/${encodeURIComponent(e.id)}`);
+    },
+    [flushSaveSync, persist, selectedFolderId, navigate],
+  );
 
   const generateMeditationFromActive = useCallback(() => {
     const entry = activeEntry;
@@ -1239,7 +1321,7 @@ export function JournalView() {
     navigate(`/journal/my/gratitudes/${encodeURIComponent(e.id)}`);
   }, [flushSaveSync, persist, navigate]);
 
-  // Sidebar deep-links: `/journal/my?new=1` and `/journal/my/gratitudes?new=1`.
+  // Sidebar / overview deep-links: `?new=1`, optional `title=` + `voice=1`.
   const newEntryHandledRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1257,7 +1339,53 @@ export function JournalView() {
       createGratitudeEntry();
       return;
     }
-    createEntry();
+    if (params.get("reflect") === "1") {
+      const handoff = consumeReflectMeditationHandoff();
+      if (handoff) {
+        // One reflection entry per meditation — reopen instead of creating again.
+        const existing = findReflectionEntryForMeditation(
+          handoff.meditationId,
+          entriesRef.current,
+        );
+        if (existing) {
+          const next = entriesRef.current.map((e) =>
+            e.id === existing.id
+              ? {
+                  ...e,
+                  meditationId: handoff.meditationId,
+                  meditationSource: handoff.meditationSource,
+                  meditationSnapshot: handoff.snapshot,
+                  updatedAt: new Date().toISOString(),
+                }
+              : e,
+          );
+          entriesRef.current = next;
+          setEntries(next);
+          persist(next, existing.id);
+          setActiveEntryId(existing.id);
+          latestHtmlRef.current = existing.contentHtml;
+          latestTitleRef.current = existing.title;
+          latestGratitudeRef.current = emptyGratitudeLines();
+          setGratitudeDraft(latestGratitudeRef.current);
+          navigate(`/journal/my/${encodeURIComponent(existing.id)}`, {
+            replace: true,
+          });
+        } else {
+          createEntry({
+            title: reflectionTitleForMeditation(handoff.snapshot.title),
+            meditationId: handoff.meditationId,
+            meditationSource: handoff.meditationSource,
+            meditationSnapshot: handoff.snapshot,
+          });
+        }
+      }
+      // Never fall through to a blank New entry — Strict Mode remounts can
+      // re-run after the handoff was already consumed.
+      return;
+    }
+    const title = params.get("title")?.trim() || undefined;
+    const voice = params.get("voice") === "1";
+    createEntry({ title, voice });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
   const commitImport = useCallback(
@@ -1485,7 +1613,7 @@ export function JournalView() {
             options={JOURNAL_SECTION_TABS}
           />
         </AppPrimaryTabsDesktop>
-        {/* Support link only — section tabs live in the header at all sizes. */}
+        {/* Support link only — section tabs in header from md+ (sidebar below). */}
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 py-1.5 md:hidden">
           <InsightsNeedSupportLink className="shrink-0" />
         </div>
@@ -1540,7 +1668,7 @@ export function JournalView() {
             </button>
             <PrimaryCreateButton
               variant="compact"
-              onClick={createEntry}
+              onClick={() => createEntry()}
               aria-label="New entry"
               className="relative z-[1]"
             />
@@ -1571,7 +1699,7 @@ export function JournalView() {
                   <JournalSidebarChevron dir="left" />
             </button>
             <PrimaryCreateButton
-              onClick={createEntry}
+              onClick={() => createEntry()}
               className="min-w-0 flex-1"
             >
               New entry
@@ -1710,7 +1838,7 @@ export function JournalView() {
                   />
                 </span>
           <PrimaryCreateButton
-            onClick={createEntry}
+            onClick={() => createEntry()}
             aria-label="New entry"
             className="shrink-0 py-2 sm:hidden"
           >
@@ -2014,7 +2142,16 @@ export function JournalView() {
                                     {formatJournalEntryDate(e.createdAt)}
                                   </time>
                                 </span>
-                                {lifeArea ? (
+                                {e.meditationId ? (
+                                  <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-accent-link">
+                                    <SquarePen
+                                      className="size-[11px]"
+                                      strokeWidth={2}
+                                      aria-hidden
+                                    />
+                                    Reflection
+                                  </span>
+                                ) : lifeArea ? (
                                   <span className="min-w-0 truncate font-medium">
                                     {lifeArea.title}
                                   </span>
@@ -2108,7 +2245,7 @@ export function JournalView() {
             activeEntryId &&
             activeEntry &&
             !isGratitudeEntry(activeEntry) ? (
-            <>
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <JournalRichEditor
                 key={`${activeEntryId}-${editorExternalSyncKey}`}
                 entryId={activeEntryId}
@@ -2183,6 +2320,20 @@ export function JournalView() {
                     : "Connect to life area"
                 }
                 onGenerateMeditation={generateMeditationFromActive}
+                placeholder={
+                  activeEntry.meditationId
+                    ? "What came up for you?"
+                    : undefined
+                }
+                emptyBodyPrompts={
+                  activeEntry.meditationId
+                    ? [
+                        "What did you notice in your body?",
+                        "Did anything shift?",
+                        "What will you take into today?",
+                      ]
+                    : undefined
+                }
                 headerAfter={
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px] text-muted">
                     <time dateTime={activeEntry.createdAt}>
@@ -2198,6 +2349,26 @@ export function JournalView() {
                     />
                   </div>
                 }
+                belowHeader={
+                  activeEntry.meditationId ? (
+                    <JournalReflectMeditationCard
+                      meditationId={activeEntry.meditationId}
+                      snapshot={activeEntry.meditationSnapshot}
+                      onUnlink={() => {
+                        setUnlinkUndo({
+                          meditationId: activeEntry.meditationId!,
+                          meditationSource: activeEntry.meditationSource,
+                          meditationSnapshot: activeEntry.meditationSnapshot,
+                        });
+                        patchActive({
+                          meditationId: undefined,
+                          meditationSource: undefined,
+                          meditationSnapshot: undefined,
+                        });
+                      }}
+                    />
+                  ) : null
+                }
               >
                 <JournalEntryMeta
                   variant="tags"
@@ -2207,7 +2378,28 @@ export function JournalView() {
                   onTagsChange={(tags) => patchActive({ tags })}
                 />
               </JournalRichEditor>
-            </>
+              {unlinkUndo ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-card px-4 py-2 text-sm shadow-lg">
+                    <span className="text-foreground">Meditation unlinked</span>
+                    <button
+                      type="button"
+                      className="cursor-pointer font-semibold text-accent-link"
+                      onClick={() => {
+                        patchActive({
+                          meditationId: unlinkUndo.meditationId,
+                          meditationSource: unlinkUndo.meditationSource,
+                          meditationSnapshot: unlinkUndo.meditationSnapshot,
+                        });
+                        setUnlinkUndo(null);
+                      }}
+                    >
+                      Undo
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="min-h-[12rem] flex-1 bg-[color:var(--journal-warm-bg)]" />
           )}

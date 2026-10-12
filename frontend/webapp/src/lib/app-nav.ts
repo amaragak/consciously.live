@@ -4,6 +4,8 @@ import {
   parseCreateMeditationPathname,
 } from "@/lib/create-meditation-path";
 import { loadAssistantChatStore } from "@/lib/assistant-chat-storage";
+import { peekGuideTitle } from "@/content/guides";
+import { libraryDetailIdFromPathname } from "@/lib/library-meditation-detail";
 
 /**
  * Logged-in sidebar navigation tree + breadcrumb helpers.
@@ -16,6 +18,11 @@ export type AppNavSubItem = {
   /** Optional trailing control (e.g. Gratitudes “+”) with its own destination. */
   actionHref?: string;
   actionAriaLabel?: string;
+  /**
+   * Nested destinations (e.g. Library / Sounds hub tabs). When present, the
+   * sidebar renders this row as a group label with these as nested links.
+   */
+  children?: AppNavSubItem[];
 };
 
 export type AppNavSection = {
@@ -30,17 +37,59 @@ export const APP_NAV_MAIN: AppNavSection[] = [
   {
     id: "meditate",
     label: "Meditate",
-    href: "/meditate/library/creations",
+    href: "/meditate",
     children: [
       { id: "create", label: "Create", href: "/meditate/create" },
-      { id: "library", label: "Library", href: "/meditate/library/creations" },
-      { id: "sounds", label: "Sounds", href: "/meditate/sounds" },
+      {
+        id: "library",
+        label: "Library",
+        href: "/meditate/library/creations",
+        children: [
+          {
+            id: "library-creations",
+            label: "My creations",
+            href: "/meditate/library/creations",
+          },
+          {
+            id: "library-community",
+            label: "Community",
+            href: "/meditate/library/community",
+          },
+          {
+            id: "library-programs",
+            label: "Programs",
+            href: "/meditate/library/programs",
+          },
+        ],
+      },
+      {
+        id: "sounds",
+        label: "Sounds",
+        href: "/meditate/sounds",
+        children: [
+          {
+            id: "sounds-soundscapes",
+            label: "Soundscapes",
+            href: "/meditate/sounds/soundscapes",
+          },
+          {
+            id: "sounds-voices",
+            label: "Voices",
+            href: "/meditate/sounds/voices",
+          },
+          {
+            id: "sounds-custom",
+            label: "Custom sounds",
+            href: "/meditate/sounds",
+          },
+        ],
+      },
     ],
   },
   {
     id: "journal",
     label: "Journal",
-    href: "/journal/my", // Next redirects → frontend/webapp /journal/my
+    href: "/journal",
     children: [
       { id: "new", label: "New entry", href: "/journal/my?new=1" },
       {
@@ -135,15 +184,63 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
   const pathOnly = href.split("#")[0]?.split("?")[0] ?? href;
   if (pathOnly === "/") return pathname === "/";
   if (pathname === pathOnly) return true;
-  // Library tabs share a prefix.
+  // Meditate overview only — children (create / library / sounds / guides) are siblings.
+  if (pathOnly === "/meditate") {
+    return pathname === "/meditate";
+  }
+  // Library hub tabs — match each leaf precisely (not the whole /library tree).
   if (pathOnly === "/meditate/library/creations") {
-    return pathname.startsWith("/meditate/library");
+    return (
+      pathname === "/meditate/library/creations" ||
+      pathname === "/meditate/library" ||
+      pathname === "/meditate/library/" ||
+      (pathname.startsWith("/meditate/library/") &&
+        !pathname.startsWith("/meditate/library/community") &&
+        !pathname.startsWith("/meditate/library/programs"))
+    );
+  }
+  if (pathOnly === "/meditate/library/community") {
+    return (
+      pathname === "/meditate/library/community" ||
+      pathname.startsWith("/meditate/library/community/")
+    );
+  }
+  if (pathOnly === "/meditate/library/programs") {
+    return (
+      pathname === "/meditate/library/programs" ||
+      pathname.startsWith("/meditate/library/programs/")
+    );
   }
   if (pathOnly === "/meditate/create") {
     return pathname === "/meditate/create" || pathname.startsWith("/meditate/create/");
   }
+  // Sounds hub tabs — Custom is the bare /sounds root (not soundscapes/voices).
+  if (pathOnly === "/meditate/sounds/soundscapes") {
+    return (
+      pathname === "/meditate/sounds/soundscapes" ||
+      pathname.startsWith("/meditate/sounds/soundscapes/")
+    );
+  }
+  if (pathOnly === "/meditate/sounds/voices") {
+    return (
+      pathname === "/meditate/sounds/voices" ||
+      pathname.startsWith("/meditate/sounds/voices/")
+    );
+  }
   if (pathOnly === "/meditate/sounds") {
-    return pathname === "/meditate/sounds" || pathname.startsWith("/meditate/sounds/");
+    if (
+      pathname.startsWith("/meditate/sounds/soundscapes") ||
+      pathname.startsWith("/meditate/sounds/voices")
+    ) {
+      return false;
+    }
+    return (
+      pathname === "/meditate/sounds" || pathname.startsWith("/meditate/sounds/")
+    );
+  }
+  // Journal overview only — children (entries / gratitudes / insights / guides) are siblings.
+  if (pathOnly === "/journal") {
+    return pathname === "/journal";
   }
   if (pathOnly === "/journal/my") {
     // Exact journal list / freeform entries — not gratitudes or insights.
@@ -277,6 +374,37 @@ export type AppBreadcrumbCrumb = {
   href: string | null;
 };
 
+/**
+ * Phone-only (&lt; md) leaf for Library / Sounds hubs — tabs are hidden there, so
+ * the crumb shows the active child (e.g. “My creations”) instead of the hub name.
+ * Returns null on other routes.
+ */
+export function librarySoundsPhoneLeafLabel(pathname: string): string | null {
+  // Meditation detail shows the full trail (… › Library › title).
+  if (libraryDetailIdFromPathname(pathname)) return null;
+  if (pathname.startsWith("/meditate/library")) {
+    const library = APP_NAV_MAIN.find((s) => s.id === "meditate")?.children?.find(
+      (c) => c.id === "library",
+    );
+    const child =
+      library?.children?.find((c) => pathMatchesHref(pathname, c.href)) ??
+      library?.children?.[0];
+    return child?.label ?? "Library";
+  }
+  if (pathname.startsWith("/meditate/sounds")) {
+    const sounds = APP_NAV_MAIN.find((s) => s.id === "meditate")?.children?.find(
+      (c) => c.id === "sounds",
+    );
+    const child =
+      sounds?.children?.find(
+        (c) => c.id !== "sounds-custom" && pathMatchesHref(pathname, c.href),
+      ) ??
+      sounds?.children?.find((c) => c.id === "sounds-custom");
+    return child?.label ?? "Sounds";
+  }
+  return null;
+}
+
 export type AppBreadcrumbOpts = {
   lifeAreaTitle?: string | null;
   createMeditationStyle?: string | null;
@@ -286,6 +414,8 @@ export type AppBreadcrumbOpts = {
   createProgramTitle?: string | null;
   /** Title for `/journal/my/[entryId]` (mobile entry editor). */
   journalEntryTitle?: string | null;
+  /** Title for `/meditate/library/[id]` (meditation detail). */
+  meditationTitle?: string | null;
   /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
   gratitudeEntryLabel?: string | null;
   hash?: string;
@@ -299,7 +429,8 @@ export type AppHeaderLocation = {
   href: string;
   /**
    * Trail after the brand phrase divider: sidebar leaf (Create, Library, …)
-   * and any deeper levels. Empty on dashboard / bare section homes (e.g. Focus).
+   * and any deeper levels. Empty on dashboard and section homes (Meditate,
+   * Journal, Manifest, Focus) — the italic verb is enough; no "| Overview".
    */
   trail: AppBreadcrumbCrumb[];
 };
@@ -403,7 +534,7 @@ export function buildAppBreadcrumbs(
 
   if (pathname.startsWith("/meditate/create") || pathname.startsWith("/create")) {
     const crumbs: AppBreadcrumbCrumb[] = [
-      { label: "Meditate", href: "/meditate/library/creations" },
+      { label: "Meditate", href: "/meditate" },
     ];
     // One-flow: Create › Shape / Sound from `?step=`.
     const createStep = new URLSearchParams(search).get("step")?.toLowerCase();
@@ -512,21 +643,76 @@ export function buildAppBreadcrumbs(
     }
     return crumbs;
   }
-  if (pathname.startsWith("/meditate/library") || pathname.startsWith("/meditate/sounds")) {
-    const leaf = pathname.startsWith("/meditate/sounds") ? "Sounds" : "Library";
+  if (pathname.startsWith("/meditate/library")) {
+    // Meditation detail: Library becomes a link back to the list.
+    if (libraryDetailIdFromPathname(pathname)) {
+      return [
+        { label: "Meditate", href: "/meditate" },
+        { label: "Library", href: "/meditate/library/creations" },
+        { label: opts?.meditationTitle?.trim() || "Meditation", href: null },
+      ];
+    }
+    // md+: hub name — centre tabs show the child. Phone trail swaps in the
+    // child via {@link librarySoundsPhoneLeafLabel}.
     return [
-      { label: "Meditate", href: "/meditate/library/creations" },
-      { label: leaf, href: null },
+      { label: "Meditate", href: "/meditate" },
+      { label: "Library", href: null },
+    ];
+  }
+  if (pathname.startsWith("/meditate/sounds")) {
+    return [
+      { label: "Meditate", href: "/meditate" },
+      { label: "Sounds", href: null },
+    ];
+  }
+  if (
+    pathname === "/meditate/guides" ||
+    pathname.startsWith("/meditate/guides/")
+  ) {
+    const slugMatch = /^\/meditate\/guides\/([^/]+)\/?$/.exec(pathname);
+    if (slugMatch?.[1]) {
+      const slug = decodeURIComponent(slugMatch[1]);
+      const title = peekGuideTitle(slug, "meditate");
+      return [
+        { label: "Meditate", href: "/meditate" },
+        { label: "Guides", href: "/meditate/guides" },
+        { label: title, href: null },
+      ];
+    }
+    return [
+      { label: "Meditate", href: "/meditate" },
+      { label: "Guides", href: null },
     ];
   }
   if (pathname === "/meditate" || pathname.startsWith("/meditate/")) {
-    return [
-      { label: "Meditate", href: "/meditate/library/creations" },
-      { label: "Overview", href: null },
-    ];
+    // Section home: verb alone in the brand phrase (no "| Overview" trail).
+    return [{ label: "Meditate", href: "/meditate" }];
   }
 
   if (pathname.startsWith("/journal")) {
+    if (
+      pathname === "/journal/guides" ||
+      pathname.startsWith("/journal/guides/")
+    ) {
+      const slugMatch = /^\/journal\/guides\/([^/]+)\/?$/.exec(pathname);
+      if (slugMatch?.[1]) {
+        const slug = decodeURIComponent(slugMatch[1]);
+        const title = peekGuideTitle(slug, "journal");
+        return [
+          { label: "Journal", href: "/journal" },
+          { label: "Guides", href: "/journal/guides" },
+          { label: title, href: null },
+        ];
+      }
+      return [
+        { label: "Journal", href: "/journal" },
+        { label: "Guides", href: null },
+      ];
+    }
+    if (pathname === "/journal") {
+      // Section home: verb alone in the brand phrase (no "| Overview" trail).
+      return [{ label: "Journal", href: "/journal" }];
+    }
     if (
       pathname === "/journal/my/gratitudes" ||
       pathname.startsWith("/journal/my/gratitudes/")
@@ -537,13 +723,13 @@ export function buildAppBreadcrumbs(
       if (gratitudeEntryMatch?.[1]) {
         const label = opts?.gratitudeEntryLabel?.trim() || "Gratitude";
         return [
-          { label: "Journal", href: "/journal/my" },
+          { label: "Journal", href: "/journal" },
           { label: "Gratitudes", href: "/journal/my/gratitudes" },
           { label, href: null },
         ];
       }
       return [
-        { label: "Journal", href: "/journal/my" },
+        { label: "Journal", href: "/journal" },
         { label: isNew ? "New gratitude" : "Gratitudes", href: null },
       ];
     }
@@ -552,13 +738,13 @@ export function buildAppBreadcrumbs(
       pathname.startsWith("/journal/my/insights/")
     ) {
       return [
-        { label: "Journal", href: "/journal/my" },
+        { label: "Journal", href: "/journal" },
         { label: "Insights", href: null },
       ];
     }
     if (new URLSearchParams(search).get("new") === "1") {
       return [
-        { label: "Journal", href: "/journal/my" },
+        { label: "Journal", href: "/journal" },
         { label: "New entry", href: null },
       ];
     }
@@ -566,11 +752,17 @@ export function buildAppBreadcrumbs(
     if (entryMatch?.[1]) {
       const title = opts?.journalEntryTitle?.trim() || "Entry";
       return [
-        { label: "Journal", href: "/journal/my" },
+        { label: "Journal", href: "/journal" },
         { label: title, href: null },
       ];
     }
-    return [{ label: "Journal", href: null }];
+    if (pathname === "/journal/my" || pathname.startsWith("/journal/my/")) {
+      return [
+        { label: "Journal", href: "/journal" },
+        { label: "Entries", href: null },
+      ];
+    }
+    return [{ label: "Journal", href: "/journal" }];
   }
 
   if (pathname.startsWith("/manifest/goal/")) {
@@ -588,10 +780,8 @@ export function buildAppBreadcrumbs(
       ];
     }
     if (pathname.startsWith("/manifest/my")) {
-      return [
-        { label: "Manifest", href: "/manifest/my" },
-        { label: "Manifesto", href: null },
-      ];
+      // Section home: verb alone in the brand phrase (no "| Manifesto" trail).
+      return [{ label: "Manifest", href: "/manifest/my" }];
     }
     return [{ label: "Manifest", href: null }];
   }
@@ -662,6 +852,10 @@ export function defaultSidebarExpandState(): Record<string, boolean> {
   const next: Record<string, boolean> = {};
   for (const section of [...APP_NAV_MAIN, ...APP_NAV_ADMIN]) {
     if (section.children?.length) next[section.id] = true;
+    for (const sub of section.children ?? []) {
+      // Nested hubs (Library / Sounds) start collapsed; path resolve opens them.
+      if (sub.children?.length) next[sub.id] = false;
+    }
   }
   return next;
 }
@@ -669,6 +863,7 @@ export function defaultSidebarExpandState(): Record<string, boolean> {
 /**
  * Merge stored prefs onto defaults. Missing keys stay expanded; explicit `false` sticks.
  * Active section is forced open unless the user explicitly collapsed it.
+ * Nested hubs (Library / Sounds) open when their routes are active.
  */
 export function resolveSidebarExpandState(
   pathname: string,
@@ -684,6 +879,12 @@ export function resolveSidebarExpandState(
     APP_NAV_MAIN.some((s) => s.id === active && s.children?.length)
   ) {
     if (stored[active] !== false) next[active] = true;
+  }
+  if (pathname.startsWith("/meditate/library")) {
+    if (stored.library !== false) next.library = true;
+  }
+  if (pathname.startsWith("/meditate/sounds")) {
+    if (stored.sounds !== false) next.sounds = true;
   }
   return next;
 }

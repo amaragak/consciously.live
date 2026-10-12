@@ -11,6 +11,20 @@ export type JournalEntryKind = "freeform" | "gratitude";
 /** Daily gratitude lines — UI starts with 3 optional slots; chat may append more. */
 export type JournalGratitudeLines = string[];
 
+/** Where a Reflect-linked meditation came from. */
+export type JournalMeditationSource = "own" | "community" | "program";
+
+/** Denormalized meditation fields for Reflect cards when the library row isn’t loaded. */
+export type JournalMeditationSnapshot = {
+  title: string;
+  coverImageUrl?: string | null;
+  speakerName?: string | null;
+  styleLabel?: string | null;
+  durationSeconds?: number | null;
+  /** Library deep-link (creations / community / programs). */
+  openHref?: string | null;
+};
+
 export type JournalEntry = {
   id: string;
   createdAt: string;
@@ -39,6 +53,13 @@ export type JournalEntry = {
   mediaRefs?: string[];
   /** Notebook this page lives in. Omitted = unfiled. */
   folderId?: string;
+  /**
+   * Optional link to a library meditation (usually `s3Key`).
+   * Set when the entry was created via Reflect.
+   */
+  meditationId?: string;
+  meditationSource?: JournalMeditationSource;
+  meditationSnapshot?: JournalMeditationSnapshot;
 };
 
 export type JournalFolder = {
@@ -643,6 +664,48 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
     e.sourceMetadata && typeof e.sourceMetadata === "object" && !Array.isArray(e.sourceMetadata)
       ? (e.sourceMetadata as Record<string, unknown>)
       : undefined;
+  const meditationId =
+    typeof e.meditationId === "string" && e.meditationId.trim()
+      ? e.meditationId.trim().slice(0, 400)
+      : undefined;
+  const meditationSource =
+    e.meditationSource === "own" ||
+    e.meditationSource === "community" ||
+    e.meditationSource === "program"
+      ? e.meditationSource
+      : undefined;
+  const snapRaw = e.meditationSnapshot;
+  const meditationSnapshot =
+    snapRaw && typeof snapRaw === "object" && typeof snapRaw.title === "string"
+      ? {
+          title: snapRaw.title.trim().slice(0, 200) || "Meditation",
+          ...(typeof snapRaw.coverImageUrl === "string"
+            ? { coverImageUrl: snapRaw.coverImageUrl }
+            : snapRaw.coverImageUrl === null
+              ? { coverImageUrl: null }
+              : {}),
+          ...(typeof snapRaw.speakerName === "string"
+            ? { speakerName: snapRaw.speakerName }
+            : snapRaw.speakerName === null
+              ? { speakerName: null }
+              : {}),
+          ...(typeof snapRaw.styleLabel === "string"
+            ? { styleLabel: snapRaw.styleLabel }
+            : snapRaw.styleLabel === null
+              ? { styleLabel: null }
+              : {}),
+          ...(typeof snapRaw.durationSeconds === "number"
+            ? { durationSeconds: snapRaw.durationSeconds }
+            : snapRaw.durationSeconds === null
+              ? { durationSeconds: null }
+              : {}),
+          ...(typeof snapRaw.openHref === "string"
+            ? { openHref: snapRaw.openHref }
+            : snapRaw.openHref === null
+              ? { openHref: null }
+              : {}),
+        }
+      : undefined;
   return {
     ...e,
     title: typeof e.title === "string" ? e.title : deriveEntryTitle(e.contentHtml),
@@ -656,21 +719,74 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
     ...(sourceMetadata ? { sourceMetadata } : { sourceMetadata: undefined }),
     ...(mediaRefs?.length ? { mediaRefs } : { mediaRefs: undefined }),
     ...(folderId ? { folderId } : { folderId: undefined }),
+    ...(meditationId ? { meditationId } : { meditationId: undefined }),
+    ...(meditationSource
+      ? { meditationSource }
+      : { meditationSource: undefined }),
+    ...(meditationSnapshot
+      ? { meditationSnapshot }
+      : { meditationSnapshot: undefined }),
   };
 }
 
 /**
- * Apply cloud store as source of truth. Does not re-attach guest demos or
- * other local-only rows (offline/local-first can return later).
+ * Apply cloud store as source of truth for shared rows, but keep local entries
+ * that are not on the remote yet (e.g. a Reflect / New entry created while the
+ * GET was in flight). Drops leftover demos. Local-only rows stay local-only.
+ *
+ * `preferActiveId` keeps the entry the user just opened (local) selected when
+ * the remote snapshot still points at an older active row.
  */
 export function mergeRemoteJournalKeepingLocalOnly(
   remote: JournalStoreV2,
-  _localEntries: JournalEntry[],
+  localEntries: JournalEntry[],
+  opts?: { preferActiveId?: string | null },
 ): JournalStoreV2 {
+  const localById = new Map(
+    localEntries.filter((e) => !isDemoJournalEntry(e)).map((e) => [e.id, e]),
+  );
+  const remoteNormalized = remote.entries.map((remoteEntry) => {
+    const normalized = normalizeEntry(remoteEntry);
+    const local = localById.get(normalized.id);
+    // Cloud used to drop meditation fields on PUT — keep a local link until
+    // the remote entry carries one.
+    if (
+      local?.meditationId?.trim() &&
+      !normalized.meditationId?.trim()
+    ) {
+      return normalizeEntry({
+        ...normalized,
+        meditationId: local.meditationId,
+        meditationSource: local.meditationSource,
+        meditationSnapshot: local.meditationSnapshot,
+      });
+    }
+    return normalized;
+  });
+  const remoteIds = new Set(remoteNormalized.map((e) => e.id));
+  const localExtras = localEntries
+    .filter(
+      (e) =>
+        !remoteIds.has(e.id) &&
+        !isDemoJournalEntry(e) &&
+        (e.localOnly === true ||
+          journalEntryHasMeaningfulContent(e) ||
+          Boolean(e.meditationId?.trim())),
+    )
+    .map(normalizeEntry);
+  const entries = [...localExtras, ...remoteNormalized];
+  const prefer = opts?.preferActiveId?.trim() || null;
+  const activeEntryId =
+    prefer && entries.some((e) => e.id === prefer)
+      ? prefer
+      : remote.activeEntryId &&
+          entries.some((e) => e.id === remote.activeEntryId)
+        ? remote.activeEntryId
+        : (localExtras[0]?.id ?? entries[0]?.id ?? null);
   return {
     version: 2,
-    activeEntryId: remote.activeEntryId,
-    entries: remote.entries.map(normalizeEntry),
+    activeEntryId,
+    entries,
     ...(remote.folders?.length ? { folders: remote.folders } : {}),
   };
 }
@@ -916,6 +1032,8 @@ export function journalEntryHasMeaningfulContent(e: JournalEntry): boolean {
       || stripHtmlToText(e.contentHtml).trim().length > 0;
   }
   if (e.title.trim().length > 0) return true;
+  // Reflect stubs are kept even before the first keystroke.
+  if (e.meditationId?.trim()) return true;
   if (/<img\b/i.test(e.contentHtml)) return true;
   return stripHtmlToText(e.contentHtml).trim().length > 0;
 }

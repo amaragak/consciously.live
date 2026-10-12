@@ -556,6 +556,78 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       integration: publicBlogIntegration,
     });
 
+    const adminGuides = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminGuidesFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-guides.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
+        role,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+          MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminGuidesRoute",
+      path: "/admin/guides",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminGuidesIntegration",
+        adminGuides,
+      ),
+    });
+
+    const publicGuides = new lambda_nodejs.NodejsFunction(
+      this,
+      "PublicGuidesFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/public-guides.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        role,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+        },
+      },
+    );
+    const publicGuidesIntegration = new integrations.HttpLambdaIntegration(
+      "PublicGuidesIntegration",
+      publicGuides,
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "PublicGuidesListRoute",
+      path: "/public/guides",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: publicGuidesIntegration,
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "PublicGuidesDetailRoute",
+      path: "/public/guides/{area}/{slug}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: publicGuidesIntegration,
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "PublicGuidesHelpfulRoute",
+      path: "/public/guides/{area}/{slug}/helpful",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: publicGuidesIntegration,
+    });
+
     const adminVoice = new lambda_nodejs.NodejsFunction(this, "AdminVoiceFunction", {
       entry: path.join(__dirname, "../../lambdas/admin-voice.ts"),
       handler: "handler",

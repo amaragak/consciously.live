@@ -17,9 +17,11 @@ import {
 } from "@/components/app-breadcrumb";
 import {
   resolveAppHeaderLocation,
+  librarySoundsPhoneLeafLabel,
   APP_SIDEBAR_ICON_INSET_PX,
   isOwnerAdminAccount,
   type AppHeaderLocation,
+  type AppBreadcrumbCrumb,
 } from "@/lib/app-nav";
 import { ASSISTANT_CHAT_STORE_CHANGED } from "@/lib/assistant-chat-storage";
 import { appHref, isCrossOriginApp } from "@/lib/app-origins";
@@ -30,6 +32,11 @@ import {
 } from "@/lib/auth-session";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
+import { subscribeGuides } from "@/content/guides";
+import {
+  peekLibraryDetailTitle,
+  subscribeLibraryDetailTitle,
+} from "@/lib/library-meditation-detail";
 import {
   CREATE_SESSION_CHANGED_EVENT,
   readCreateSession,
@@ -221,6 +228,7 @@ function gratitudeEntryLabelFromPath(pathname: string): string | null {
 
 function BrandPhrase({
   verb,
+  verbHref,
   size,
   className,
   showWordmark = true,
@@ -228,6 +236,8 @@ function BrandPhrase({
   wordmarkFromMd = false,
 }: {
   verb: string;
+  /** Section home (e.g. `/meditate`) — makes the italic verb clickable. */
+  verbHref?: string | null;
   size: "desktop" | "mobile";
   className?: string;
   /** When false, only the sun mark (narrow phones). */
@@ -238,6 +248,7 @@ function BrandPhrase({
   const textPx = size === "desktop" ? 22 : 19;
   const wordmarkReveal = wordmarkFromMd ? " hidden md:inline" : "";
   const showMarkGap = showWordmark && !wordmarkFromMd;
+  const verbClass = `app-header-section-verb ml-[7px] shrink-0 font-display font-normal italic leading-none tracking-tight${wordmarkReveal}`;
   return (
     <span
       className={`relative top-[2px] inline-flex shrink-0 items-center ${className ?? ""}`}
@@ -264,12 +275,20 @@ function BrandPhrase({
         ) : null}
       </Link>
       {verb ? (
-        <span
-          className={`app-header-section-verb ml-[7px] shrink-0 font-display font-normal italic leading-none tracking-tight${wordmarkReveal}`}
-          style={{ fontSize: textPx }}
-        >
-          {verb}
-        </span>
+        verbHref ? (
+          <Link
+            href={verbHref}
+            className={verbClass}
+            style={{ fontSize: textPx }}
+            title={verb}
+          >
+            {verb}
+          </Link>
+        ) : (
+          <span className={verbClass} style={{ fontSize: textPx }}>
+            {verb}
+          </span>
+        )
       ) : null}
     </span>
   );
@@ -325,6 +344,7 @@ export function AppTopBar({
             createProgramTitle: createProgramTitleFromSession(pathname),
             createRandomScript: Boolean(readCreateSession()?.randomScript),
             journalEntryTitle: journalEntryTitleFromPath(pathname),
+            meditationTitle: peekLibraryDetailTitle(),
             gratitudeEntryLabel: gratitudeEntryLabelFromPath(pathname),
             hash: typeof window !== "undefined" ? window.location.hash : "",
             search: typeof window !== "undefined" ? window.location.search : "",
@@ -336,6 +356,8 @@ export function AppTopBar({
     const unsubIdeate = subscribeIdeateCloud(rebuild);
     const unsubJournal = subscribeJournalStore(rebuild);
     const unsubLiveTitle = subscribeJournalEntryLiveTitle(rebuild);
+    const unsubGuides = subscribeGuides(rebuild);
+    const unsubDetailTitle = subscribeLibraryDetailTitle(rebuild);
     window.addEventListener("storage", rebuild);
     window.addEventListener(CREATE_SESSION_CHANGED_EVENT, rebuild);
     window.addEventListener(ASSISTANT_CHAT_STORE_CHANGED, rebuild);
@@ -343,6 +365,8 @@ export function AppTopBar({
       unsubIdeate();
       unsubJournal();
       unsubLiveTitle();
+      unsubGuides();
+      unsubDetailTitle();
       window.removeEventListener("storage", rebuild);
       window.removeEventListener(CREATE_SESSION_CHANGED_EVENT, rebuild);
       window.removeEventListener(ASSISTANT_CHAT_STORE_CHANGED, rebuild);
@@ -389,16 +413,34 @@ export function AppTopBar({
 
   const trail = location.trail;
   /**
-   * Mobile: no italic section verb in the brand phrase — that width is for the
-   * trail. Mirror desktop’s post-divider crumbs; only surface the section name
-   * when there is no deeper trail (e.g. Focus home).
+   * Compact (&lt; lg): mirror desktop’s post-divider crumbs.
+   * Below `md` (no italic verb, no hub tabs): Meditate › My creations.
+   * From `md` up: italic verb + hub trail (Library) — tabs show the child.
    */
-  const mobileCrumbs =
-    trail.length > 0
-      ? trail
-      : location.verb
-        ? [{ label: location.verb, href: null as string | null }]
-        : [];
+  const phoneHubLeaf = librarySoundsPhoneLeafLabel(pathname);
+  const phoneTrail: AppBreadcrumbCrumb[] =
+    location.verb && phoneHubLeaf
+      ? [
+          { label: location.verb, href: location.href || null },
+          { label: phoneHubLeaf, href: null },
+        ]
+      : location.verb &&
+          trail.length > 0 &&
+          trail[0]?.label !== location.verb
+        ? [
+            { label: location.verb, href: location.href || null },
+            ...trail,
+          ]
+        : trail.length > 0
+          ? trail
+          : location.verb
+            ? [{ label: location.verb, href: null }]
+            : [];
+  const phoneTrailUsesVerbPrefix =
+    phoneTrail.length > 0 &&
+    (trail.length === 0 ||
+      Boolean(phoneHubLeaf) ||
+      (Boolean(location.verb) && trail[0]?.label !== location.verb));
 
   return (
     <header
@@ -428,6 +470,7 @@ export function AppTopBar({
           <div ref={phraseDesktopRef} className="shrink-0">
             <BrandPhrase
               verb={location.verb}
+              verbHref={location.href || null}
               size="desktop"
             />
           </div>
@@ -443,43 +486,70 @@ export function AppTopBar({
         </div>
       </div>
 
-      {/* Compact (&lt; lg): hamburger nav. Phone = sun only; md–lg keeps wordmark.
-          Shrink-wrap so the flex-1 middle can centre in the free band. */}
+      {/* Compact (&lt; lg): hamburger nav. Phone = sun only; use free band for
+          crumbs (tabs are hidden). md–lg: shrink-wrap so centre tabs fit. */}
       <div
-        className={`relative z-10 flex w-fit max-w-[min(100%,42%)] shrink-0 items-center overflow-hidden py-0 pl-3 pr-2 transition-transform duration-200 ease-out lg:hidden ${
+        className={`relative z-10 flex min-w-0 items-center overflow-hidden py-0 pl-3 pr-2 transition-transform duration-200 ease-out max-md:flex-1 md:w-fit md:max-w-[min(100%,42%)] md:shrink-0 lg:hidden ${
           mobileSearchOpen
             ? "pointer-events-none -translate-x-full"
             : "translate-x-0"
         }`}
         aria-hidden={mobileSearchOpen}
       >
-        <div className="flex items-center">
+        <div className="flex min-w-0 max-w-full items-center">
           <div ref={phraseCompactRef} className="shrink-0">
             <BrandPhrase
               verb={location.verb}
+              verbHref={location.href || null}
               size="mobile"
               showWordmark
               wordmarkFromMd
               className="shrink-0"
             />
           </div>
-          {mobileCrumbs.length > 0 ? (
+          {phoneTrailUsesVerbPrefix ? (
+            <>
+              {/* Phone: section › leaf (italic verb hidden with wordmark). */}
+              <span
+                className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center md:hidden"
+                aria-hidden
+              />
+              <AppBreadcrumb
+                crumbs={phoneTrail}
+                className="min-w-0 flex-1 text-[13px] md:hidden"
+              />
+              {/* md–lg: leaf only — italic verb is visible in BrandPhrase. */}
+              {trail.length > 0 ? (
+                <>
+                  <span
+                    className="app-header-crumb-divider mx-2 hidden h-[16px] w-px shrink-0 self-center md:inline-block"
+                    aria-hidden
+                  />
+                  <AppBreadcrumb
+                    crumbs={trail}
+                    className="hidden min-w-0 text-[13px] md:inline-flex md:shrink-0"
+                  />
+                </>
+              ) : null}
+            </>
+          ) : phoneTrail.length > 0 ? (
             <>
               <span
                 className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center"
                 aria-hidden
               />
               <AppBreadcrumb
-                crumbs={mobileCrumbs}
-                className="min-w-0 shrink text-[13px] md:shrink-0"
+                crumbs={phoneTrail}
+                className="min-w-0 flex-1 text-[13px] md:flex-none md:shrink-0"
               />
             </>
           ) : null}
         </div>
       </div>
 
-      {/* &lt;lg: flex-1 band between left + right. lg+: absolute true viewport centre. */}
-      <div className="pointer-events-none relative z-[15] flex min-w-0 flex-1 items-center justify-center lg:absolute lg:inset-0 lg:flex-none">
+      {/* md+: tabs/stepper in header (same breakpoint as wordmark). Phone uses
+          sidebar / in-page copies. &lt;lg: free band; lg+: true viewport centre. */}
+      <div className="pointer-events-none relative z-[15] hidden min-w-0 flex-1 items-center justify-center md:flex lg:absolute lg:inset-0 lg:flex-none">
         <AppPrimaryTabsSlot
           ref={tabsSlotRef}
           className="pointer-events-auto flex w-max max-w-full items-center justify-center overflow-x-auto"

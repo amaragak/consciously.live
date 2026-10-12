@@ -49,6 +49,7 @@ import {
   type MeditationLengthMinutes,
 } from "@/lib/create-one-flow-state";
 import { CREATE_MEDITATE_ROOT } from "@/lib/create-meditation-path";
+import { consumeGuidePracticeBrief } from "@/lib/guide-practice-handoff";
 import {
   categoryImageUrlForTile,
   createContextCoverFallbacks,
@@ -321,6 +322,15 @@ export function CreateOneFlow({
     clearCreateOneFlowState();
     return emptyCreateOneFlowState(5);
   });
+
+  // Guide "Make this meditation": pre-fill the Start brief once.
+  const guideBriefConsumedRef = useRef(false);
+  useEffect(() => {
+    if (guideBriefConsumedRef.current) return;
+    guideBriefConsumedRef.current = true;
+    const brief = consumeGuidePracticeBrief();
+    if (brief) setState((p) => ({ ...p, prompt: brief }));
+  }, []);
 
   // Fresh mount has no draft — don't keep a mid-flow ?step= from a prior visit.
   useEffect(() => {
@@ -1898,22 +1908,30 @@ export function CreateOneFlow({
     </button>
   );
 
+  const onStepperStepClick = (s: typeof step) => {
+    if (
+      s === "start" ||
+      (s === "shape" && step !== "start") ||
+      s === step
+    ) {
+      goStep(s);
+    }
+  };
+
+  /** Header portal (md+). Phone copy sits in-page — header middle is hidden with wordmark. */
   const stepper = (
-    <AppPrimaryTabsDesktop>
-      <CreateOneFlowStepper
-        compact
-        step={step}
-        onStepClick={(s) => {
-          if (
-            s === "start" ||
-            (s === "shape" && step !== "start") ||
-            s === step
-          ) {
-            goStep(s);
-          }
-        }}
-      />
-    </AppPrimaryTabsDesktop>
+    <>
+      <AppPrimaryTabsDesktop>
+        <CreateOneFlowStepper
+          compact
+          step={step}
+          onStepClick={onStepperStepClick}
+        />
+      </AppPrimaryTabsDesktop>
+      <div className="md:hidden">
+        <CreateOneFlowStepper step={step} onStepClick={onStepperStepClick} />
+      </div>
+    </>
   );
 
   const renderShapeAddChips = (

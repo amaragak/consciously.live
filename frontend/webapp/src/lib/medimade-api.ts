@@ -7131,6 +7131,326 @@ export async function deleteAdminBlogPost(id: string): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Guides (database-backed Meditate / Journal guides)
+// ---------------------------------------------------------------------------
+
+export type GuideArea = "meditate" | "journal";
+export type GuideStatus = "draft" | "published";
+
+export type AdminGuide = {
+  id: string;
+  area: GuideArea;
+  title: string;
+  slug: string;
+  summary: string;
+  category: string;
+  coverImageUrl: string | null;
+  body: string;
+  practiceBrief: string;
+  status: GuideStatus;
+  order: number;
+  readMinutes: number;
+  createdAt: string;
+  updatedAt: string;
+  helpfulYes: number;
+  helpfulNo: number;
+};
+
+/** Writable subset sent to PATCH /admin/guides (id omitted for new guides). */
+export type AdminGuideInput = Partial<
+  Pick<
+    AdminGuide,
+    | "area"
+    | "title"
+    | "slug"
+    | "summary"
+    | "category"
+    | "coverImageUrl"
+    | "body"
+    | "practiceBrief"
+    | "status"
+    | "order"
+  >
+> & { id?: string };
+
+/** Seed payload for POST /admin/guides `seedStatic`. */
+export type AdminGuideSeed = AdminGuideInput & {
+  area: GuideArea;
+  title: string;
+};
+
+export type PublicGuideListItem = {
+  id: string;
+  area: GuideArea;
+  slug: string;
+  title: string;
+  summary: string;
+  category: string;
+  coverImageUrl: string | null;
+  practiceBrief: string;
+  readMinutes: number;
+  order: number;
+  updatedAt: string;
+};
+
+export type PublicGuide = PublicGuideListItem & {
+  body: string;
+  status: GuideStatus;
+  createdAt: string;
+  helpfulYes: number;
+  helpfulNo: number;
+};
+
+function guideStr(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function guideInt(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+function normalizeGuideListItem(raw: unknown): PublicGuideListItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = guideStr(o.id).trim();
+  const slug = guideStr(o.slug).trim();
+  const title = guideStr(o.title).trim();
+  if (!id || !slug || !title) return null;
+  if (o.area !== "meditate" && o.area !== "journal") return null;
+  const cover = guideStr(o.coverImageUrl).trim();
+  return {
+    id,
+    area: o.area,
+    slug,
+    title,
+    summary: guideStr(o.summary),
+    category: guideStr(o.category),
+    coverImageUrl: cover || null,
+    practiceBrief: guideStr(o.practiceBrief),
+    readMinutes: Math.max(1, guideInt(o.readMinutes)),
+    order: guideInt(o.order),
+    updatedAt: guideStr(o.updatedAt),
+  };
+}
+
+function normalizePublicGuide(raw: unknown): PublicGuide | null {
+  const base = normalizeGuideListItem(raw);
+  if (!base) return null;
+  const o = raw as Record<string, unknown>;
+  return {
+    ...base,
+    body: guideStr(o.body),
+    status: o.status === "published" ? "published" : "draft",
+    createdAt: guideStr(o.createdAt),
+    helpfulYes: Math.max(0, guideInt(o.helpfulYes)),
+    helpfulNo: Math.max(0, guideInt(o.helpfulNo)),
+  };
+}
+
+function normalizeAdminGuide(raw: unknown): AdminGuide | null {
+  const pub = normalizePublicGuide(raw);
+  if (!pub) return null;
+  const o = raw as Record<string, unknown>;
+  return {
+    id: pub.id,
+    area: pub.area,
+    title: pub.title,
+    slug: pub.slug,
+    summary: pub.summary,
+    category: pub.category,
+    coverImageUrl: pub.coverImageUrl,
+    body: pub.body,
+    practiceBrief: pub.practiceBrief,
+    status: o.status === "published" ? "published" : "draft",
+    order: pub.order,
+    readMinutes: pub.readMinutes,
+    createdAt: pub.createdAt,
+    updatedAt: pub.updatedAt,
+    helpfulYes: pub.helpfulYes,
+    helpfulNo: pub.helpfulNo,
+  };
+}
+
+function guideApiError(
+  data: { error?: string; detail?: string },
+  res: Response,
+): Error {
+  return new Error(data.detail ?? data.error ?? res.statusText);
+}
+
+function requireGuideApiBase(): string {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  return base;
+}
+
+async function postAdminGuides(
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const base = requireGuideApiBase();
+  const res = await medimadeFetch(`${base}/admin/guides`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json()) as Record<string, unknown> & {
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw guideApiError(data, res);
+  return data;
+}
+
+function normalizeAdminGuideList(raw: unknown): AdminGuide[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeAdminGuide)
+    .filter((g): g is AdminGuide => Boolean(g));
+}
+
+export async function fetchAdminGuides(): Promise<AdminGuide[]> {
+  const base = requireGuideApiBase();
+  const res = await medimadeFetch(`${base}/admin/guides`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as {
+    guides?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw guideApiError(data, res);
+  return normalizeAdminGuideList(data.guides);
+}
+
+export async function saveAdminGuide(
+  guide: AdminGuideInput,
+): Promise<AdminGuide> {
+  const base = requireGuideApiBase();
+  const res = await medimadeFetch(`${base}/admin/guides`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(guide),
+  });
+  const data = (await res.json()) as {
+    guide?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw guideApiError(data, res);
+  const saved = normalizeAdminGuide(data.guide);
+  if (!saved) throw new Error("Invalid guide response");
+  return saved;
+}
+
+export async function deleteAdminGuide(id: string): Promise<void> {
+  await postAdminGuides({ action: "delete", id });
+}
+
+/** Upload a guide cover; returns the CDN URL (then save via `coverImageUrl`). */
+export async function uploadAdminGuideCover(params: {
+  imageBase64: string;
+  mimeType: string;
+}): Promise<{ url: string }> {
+  const data = await postAdminGuides({
+    action: "uploadCover",
+    imageBase64: params.imageBase64,
+    mimeType: params.mimeType,
+  });
+  const url = typeof data.url === "string" ? data.url.trim() : "";
+  if (!url) {
+    throw new Error(
+      "Server did not return an image URL — redeploy backend, then try again",
+    );
+  }
+  return { url };
+}
+
+export async function reorderAdminGuides(ids: string[]): Promise<AdminGuide[]> {
+  const data = await postAdminGuides({ action: "reorder", ids });
+  return normalizeAdminGuideList(data.guides);
+}
+
+export async function seedAdminGuides(
+  guides: AdminGuideSeed[],
+  opts?: { upsert?: boolean },
+): Promise<{ seeded: number; guides: AdminGuide[] }> {
+  const data = await postAdminGuides({
+    action: "seedStatic",
+    guides,
+    upsert: opts?.upsert === true,
+  });
+  return {
+    seeded: guideInt(data.seeded),
+    guides: normalizeAdminGuideList(data.guides),
+  };
+}
+
+export async function fetchPublicGuides(
+  area?: GuideArea,
+): Promise<PublicGuideListItem[]> {
+  const base = requireGuideApiBase();
+  const qs = area ? `?area=${encodeURIComponent(area)}` : "";
+  const res = await medimadeFetch(`${base}/public/guides${qs}`);
+  const data = (await res.json()) as {
+    guides?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw guideApiError(data, res);
+  if (!Array.isArray(data.guides)) return [];
+  return data.guides
+    .map(normalizeGuideListItem)
+    .filter((g): g is PublicGuideListItem => Boolean(g));
+}
+
+/** Returns null when the guide doesn't exist (or isn't published). */
+export async function fetchPublicGuide(
+  area: GuideArea,
+  slug: string,
+): Promise<PublicGuide | null> {
+  const base = requireGuideApiBase();
+  const res = await medimadeFetch(
+    `${base}/public/guides/${encodeURIComponent(area)}/${encodeURIComponent(slug)}`,
+  );
+  if (res.status === 404) return null;
+  const data = (await res.json()) as {
+    guide?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw guideApiError(data, res);
+  return normalizePublicGuide(data.guide);
+}
+
+export async function votePublicGuideHelpful(
+  area: GuideArea,
+  slug: string,
+  vote: "yes" | "no",
+): Promise<{ helpfulYes: number; helpfulNo: number }> {
+  const base = requireGuideApiBase();
+  const res = await medimadeFetch(
+    `${base}/public/guides/${encodeURIComponent(area)}/${encodeURIComponent(slug)}/helpful`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vote }),
+    },
+  );
+  const data = (await res.json()) as {
+    helpfulYes?: unknown;
+    helpfulNo?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw guideApiError(data, res);
+  return {
+    helpfulYes: Math.max(0, guideInt(data.helpfulYes)),
+    helpfulNo: Math.max(0, guideInt(data.helpfulNo)),
+  };
+}
+
 /** LLM ~50-word blurb from a program day one-shot prompt. */
 export async function generateAdminProgramDayDescription(params: {
   prompt: string;

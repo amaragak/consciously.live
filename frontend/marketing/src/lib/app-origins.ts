@@ -70,6 +70,9 @@ export function isSpaAppPath(pathname: string): boolean {
   ) {
     return true;
   }
+  // Exact overview roots + nested app routes (marketing `/meditate` / `/journal`
+  // pages stay public for logged-out; signed-in bounce uses MARKETING_ROOT).
+  if (path === "/meditate" || pathMatches(path, "/meditate/guides")) return true;
   if (
     pathMatches(path, "/meditate/create") ||
     pathMatches(path, "/meditate/library") ||
@@ -78,6 +81,7 @@ export function isSpaAppPath(pathname: string): boolean {
     return true;
   }
   if (path === "/create") return true;
+  if (path === "/journal" || pathMatches(path, "/journal/guides")) return true;
   // Public marketing Community library: `/library`, `/library/[slug]` stay here.
   // Logged-in library is `/meditate/library/*` on the SPA.
   if (pathMatches(path, "/chat/my")) return true;
