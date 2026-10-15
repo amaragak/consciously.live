@@ -73,7 +73,21 @@ import {
   saveIdeateQuotesStore,
   type IdeateQuote,
 } from "@/lib/ideate-quotes";
-import { fetchFamousQuotes } from "@/lib/medimade-api";
+import {
+  fetchFamousQuotes,
+  listLibraryMeditations,
+  type LibraryMeditationItem,
+} from "@/lib/medimade-api";
+import {
+  ensureMedimadeSession,
+  getMedimadeSessionDisplayName,
+  getMedimadeSessionEmail,
+  getMedimadeSessionJwt,
+  isMedimadeSessionActive,
+} from "@/lib/auth-session";
+import { firstNameFromAccount } from "@/lib/manifesto-print";
+import { resolveNarratedStoryPlacement } from "@/lib/manifesto-story-placement";
+import { StoryPlacementCard } from "@/components/plan/story-placement-card";
 import { writeManifestoMeditationHandoff } from "@/lib/manifesto-meditation-handoff";
 import {
   goalSummaryForLifeArea,
@@ -370,6 +384,7 @@ export function PlanHomeClient() {
   const [heroBg, setHeroBg] = useState<IdeateHeroBgId>("black");
   const [heroBgPickerOpen, setHeroBgPickerOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [libraryItems, setLibraryItems] = useState<LibraryMeditationItem[]>([]);
   const addPickerRef = useRef<HTMLDivElement>(null);
   const heroBgPickerRef = useRef<HTMLDivElement>(null);
   const mobileHeroBgPickerRef = useRef<HTMLDivElement>(null);
@@ -391,6 +406,33 @@ export function PlanHomeClient() {
 
   useEffect(() => {
     setHeroBg(loadIdeateHeroBg());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!isMedimadeSessionActive()) {
+        if (!cancelled) setLibraryItems([]);
+        return;
+      }
+      try {
+        await ensureMedimadeSession();
+        if (cancelled || !getMedimadeSessionJwt()) return;
+        const items = await listLibraryMeditations();
+        if (!cancelled) setLibraryItems(items);
+      } catch {
+        if (!cancelled) setLibraryItems([]);
+      }
+    };
+    void load();
+    const onSession = () => {
+      void load();
+    };
+    window.addEventListener("medimade-session-changed", onSession);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("medimade-session-changed", onSession);
+    };
   }, []);
 
   useEffect(() => {
@@ -1083,6 +1125,16 @@ export function PlanHomeClient() {
   const hasImages = visionItems.some(visionItemHasImage);
   /** No statement and no images: the hero becomes the empty-manifesto prompt. */
   const emptyManifesto = !statement && !hasImages && !manifestoLoading;
+  const storyPlacement = useMemo(
+    () => resolveNarratedStoryPlacement(libraryItems),
+    [libraryItems],
+  );
+  const storyFirstName =
+    firstNameFromAccount(
+      getMedimadeSessionDisplayName(),
+      getMedimadeSessionEmail(),
+    ) || "Your";
+
   const heroImageCount = mosaicImages(visionItems, visionTileUrls).length;
   /** First empty grid slot becomes the "Add image" tile. */
   const addImageSlot =
@@ -1610,6 +1662,26 @@ export function PlanHomeClient() {
           </div>
         </div>
       </section>
+
+      {storyPlacement ? (
+        <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+          <div className="md:hidden">
+            <StoryPlacementCard
+              placement={storyPlacement}
+              firstName={storyFirstName}
+              variant="manifest"
+              compact
+            />
+          </div>
+          <div className="hidden md:block">
+            <StoryPlacementCard
+              placement={storyPlacement}
+              firstName={storyFirstName}
+              variant="manifest"
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
         {resistanceThreads[0] ? (

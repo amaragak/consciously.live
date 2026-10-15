@@ -239,6 +239,8 @@ export type CreateSoundStepHandle = {
   openVoicePicker: () => void;
   /** Open the right-sidebar soundscape picker (same as Change · Sound). */
   openSoundPicker: () => void;
+  /** Open pacing controls (lives on the voice panel). */
+  openPacePicker: () => void;
 };
 
 type CreateSoundStepProps = {
@@ -269,6 +271,11 @@ type CreateSoundStepProps = {
   freshOurPickSound?: boolean;
   /** Fired when voice or soundscape selection labels change. */
   onPickLabelsChange?: (labels: {
+    /** Speechify pacing offset (−5…5). */
+    pacingPercent: number;
+    pace: string;
+    voiceId: string;
+    soundKey: string;
     voice: string;
     sound: string;
   }) => void;
@@ -2254,6 +2261,7 @@ export const CreateSoundStep = forwardRef<
         sessionApiRef.current.resetSoundOverrideForFocus(),
       openVoicePicker: () => openVoicePanel(),
       openSoundPicker: () => openSoundPanel(),
+      openPacePicker: () => openVoicePanel(),
     }),
     [stopAllAudioPreview, previewMixPlaying],
   );
@@ -2310,18 +2318,35 @@ export const CreateSoundStep = forwardRef<
 
   useEffect(() => {
     if (!onPickLabelsChange) return;
+    const pace =
+      pacingPercent <= -2 ? "Slow" : pacingPercent >= 2 ? "Fast" : "Natural";
     onPickLabelsChange({
       voice: selectedVoice?.name?.trim() || "Choose voice",
       sound:
         !picksReady || soundTitle === "Choosing soundscape…"
           ? "Choose sound"
           : soundTitle,
+      pacingPercent,
+      pace,
+      voiceId: speakerModelId?.trim() || "",
+      soundKey:
+        soundMode === "soundscape"
+          ? compositionKey?.trim() || ""
+          : backgroundNatureKey?.trim() ||
+            backgroundMusicKey?.trim() ||
+            "",
     });
   }, [
     onPickLabelsChange,
     picksReady,
     selectedVoice?.name,
     soundTitle,
+    pacingPercent,
+    speakerModelId,
+    soundMode,
+    compositionKey,
+    backgroundNatureKey,
+    backgroundMusicKey,
   ]);
 
   togglePreviewTransportRef.current = () => {

@@ -7,7 +7,10 @@ import {
   listLibraryMeditations,
 } from "@/lib/medimade-api";
 import { notifyMeditationGenerationComplete, notifyMeditationGenerationFailed } from "@/lib/meditation-generation-notifications";
-import { routeMeditationGenerationReady } from "@/lib/library-generation-surface";
+import {
+  dispatchMeditationGenerationFailed,
+  routeMeditationGenerationReady,
+} from "@/lib/library-generation-surface";
 import {
   libraryItemSatisfiesPending,
   loadPendingGenerations,
@@ -123,15 +126,21 @@ async function tickPendingJobs(): Promise<void> {
 
         if (st.status === "failed") {
           changed = true;
+          const err = st.error ?? "Generation failed";
           notifyMeditationGenerationFailed({
             jobId: p.jobId,
             title: nextP.title,
-            error: st.error ?? "Generation failed",
+            error: err,
+          });
+          dispatchMeditationGenerationFailed({
+            jobId: p.jobId,
+            title: nextP.title || "Your meditation",
+            error: err,
           });
           patchFocusPreflightLinkByJobId(p.jobId, {
             status: "failed",
             title: nextP.title,
-            error: st.error ?? "Generation failed",
+            error: err,
           });
           if (p.focusSubtaskId?.trim()) {
             upsertFocusPreflightLink({
@@ -139,14 +148,14 @@ async function tickPendingJobs(): Promise<void> {
               jobId: p.jobId,
               title: nextP.title,
               status: "failed",
-              error: st.error ?? "Generation failed",
+              error: err,
               createdAt: p.createdAt,
             });
           }
           next.push({
             ...nextP,
             status: "failed",
-            error: st.error ?? "Generation failed",
+            error: err,
           });
           continue;
         }

@@ -1,11 +1,14 @@
 /**
- * Increment Manifesto Story listen count when a narrated Story plays past 80%.
+ * Increment Manifesto Story listen count when a narrated Story plays past 90%.
+ * Also records the local noon-to-noon night for streak.
  */
 
+import { recordLocalStoryListen } from "@/lib/daily-habits";
 import {
   incrementStoryListenCount,
   loadManifestoStoryStore,
   saveManifestoStoryStore,
+  storyListenNightKey,
 } from "@/lib/manifesto-story";
 
 const firedKeys = new Set<string>();
@@ -31,8 +34,11 @@ export function maybeCountManifestoStoryListen(opts: {
     // Fallback until the strip reports duration: ~140 wpm + short bed outro.
     dur = Math.max(60, (match.wordCount / 140) * 60 + 25);
   }
-  if (opts.timeSeconds / dur < 0.8) return;
+  if (opts.timeSeconds / dur < 0.9) return;
 
   firedKeys.add(key);
-  saveManifestoStoryStore(incrementStoryListenCount(store));
+  saveManifestoStoryStore(
+    incrementStoryListenCount(store, { nightKey: storyListenNightKey() }),
+  );
+  recordLocalStoryListen();
 }

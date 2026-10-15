@@ -53,6 +53,22 @@ export type StoryVersion = {
   /** Text fingerprint at last successful narration (detect “changed since”). */
   narratedTextHash?: string;
   narratedAt?: string;
+  /** Duration of the last recording (seconds), when known. */
+  narrationDurationSec?: number;
+  /** Voice / sound / pace / settle prefs used for the last recording. */
+  narrationSettings?: StoryNarrationSettings;
+};
+
+/** Snapshot of Narrate-card settings baked into a recording. */
+export type StoryNarrationSettings = {
+  voiceId: string;
+  voiceName: string;
+  soundKey: string;
+  soundName: string;
+  pace: number;
+  paceLabel: string;
+  settleIn: boolean;
+  fadeOut: boolean;
 };
 
 export type StoryOnPrintMode = "full" | "summary" | "choose" | "off";
@@ -112,6 +128,11 @@ export type ManifestoStoryStoreV1 = {
   /** YYYY-MM-DD last in-app reminder fired. */
   reminderLastFiredDate: string | null;
   listenCount: number;
+  /**
+   * Local noon-to-noon night keys (YYYY-MM-DD of the night’s start) when the
+   * narrated story was played past 90%. Used for listening streak.
+   */
+  listenNights: string[];
   updatedAt: string;
 };
 
@@ -234,8 +255,65 @@ export function emptyManifestoStoryStore(): ManifestoStoryStoreV1 {
     reminderTime: "22:30",
     reminderLastFiredDate: null,
     listenCount: 0,
+    listenNights: [],
     updatedAt: safeIso(),
   };
+}
+
+function normalizeListenNights(raw: unknown, max = 120): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (typeof row !== "string") continue;
+    const k = row.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || seen.has(k)) continue;
+    seen.add(k);
+    out.push(k);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** Local night key: noon-to-noon; before noon counts as the previous calendar day. */
+export function storyListenNightKey(d = new Date()): string {
+  const x = new Date(d.getTime());
+  if (x.getHours() < 12) x.setDate(x.getDate() - 1);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function prevCalendarDateKey(key: string): string {
+  const [ys, ms, ds] = key.split("-").map(Number);
+  const d = new Date(ys!, (ms ?? 1) - 1, ds ?? 1);
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Consecutive nights ending at the current (or last completed) night. */
+export function storyListeningStreak(
+  nights: readonly string[],
+  now = new Date(),
+): number {
+  if (nights.length === 0) return 0;
+  const set = new Set(nights);
+  let cursor = storyListenNightKey(now);
+  // If tonight isn’t counted yet, start from last night.
+  if (!set.has(cursor)) {
+    cursor = prevCalendarDateKey(cursor);
+    if (!set.has(cursor)) return 0;
+  }
+  let streak = 0;
+  while (set.has(cursor)) {
+    streak += 1;
+    cursor = prevCalendarDateKey(cursor);
+  }
+  return streak;
 }
 
 function asTimeHHMM(raw: unknown, fallback: string): string {
@@ -352,7 +430,111 @@ function normalizeVersion(x: unknown): StoryVersion | null {
       ? { narratedTextHash: o.narratedTextHash }
       : {}),
     ...(typeof o.narratedAt === "string" ? { narratedAt: o.narratedAt } : {}),
+    ...(typeof o.narrationDurationSec === "number" &&
+    Number.isFinite(o.narrationDurationSec) &&
+    o.narrationDurationSec > 0
+      ? { narrationDurationSec: Math.round(o.narrationDurationSec) }
+      : {}),
+    ...(normalizeNarrationSettings(o.narrationSettings)
+      ? { narrationSettings: normalizeNarrationSettings(o.narrationSettings)! }
+      : {}),
   };
+}
+
+function normalizeNarrationSettings(
+  raw: unknown,
+): StoryNarrationSettings | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const voiceId = typeof o.voiceId === "string" ? o.voiceId.trim() : "";
+  const voiceName = typeof o.voiceName === "string" ? o.voiceName.trim() : "";
+  const soundKey = typeof o.soundKey === "string" ? o.soundKey.trim() : "";
+  const soundName = typeof o.soundName === "string" ? o.soundName.trim() : "";
+  const pace =
+    typeof o.pace === "number" && Number.isFinite(o.pace)
+      ? Math.round(o.pace)
+      : 0;
+  const paceLabel =
+    typeof o.paceLabel === "string" && o.paceLabel.trim()
+      ? o.paceLabel.trim().slice(0, 32)
+      : storyPaceLabel(pace);
+  return {
+    voiceId,
+    voiceName: voiceName.slice(0, 80),
+    soundKey,
+    soundName: soundName.slice(0, 80),
+    pace,
+    paceLabel,
+    settleIn: o.settleIn === true,
+    fadeOut: o.fadeOut !== false,
+  };
+}
+
+/** Display label for Speechify pacing offset (−5…5). */
+export function storyPaceLabel(pace: number): string {
+  if (pace <= -2) return "Slow";
+  if (pace >= 2) return "Fast";
+  return "Natural";
+}
+
+export type StoryNarrationSettingsDiff = {
+  voice: boolean;
+  sound: boolean;
+  pace: boolean;
+  settleIn: boolean;
+  fadeOut: boolean;
+};
+
+export function diffStoryNarrationSettings(
+  recorded: StoryNarrationSettings | null | undefined,
+  current: StoryNarrationSettings,
+): StoryNarrationSettingsDiff {
+  if (!recorded) {
+    return {
+      voice: false,
+      sound: false,
+      pace: false,
+      settleIn: false,
+      fadeOut: false,
+    };
+  }
+  return {
+    voice:
+      Boolean(recorded.voiceId || current.voiceId) &&
+      recorded.voiceId !== current.voiceId,
+    sound:
+      Boolean(recorded.soundKey || current.soundKey) &&
+      recorded.soundKey !== current.soundKey,
+    pace: recorded.pace !== current.pace,
+    settleIn: recorded.settleIn !== current.settleIn,
+    fadeOut: recorded.fadeOut !== current.fadeOut,
+  };
+}
+
+export function storyNarrationSettingsChanged(
+  recorded: StoryNarrationSettings | null | undefined,
+  current: StoryNarrationSettings,
+): boolean {
+  const d = diffStoryNarrationSettings(recorded, current);
+  return d.voice || d.sound || d.pace || d.settleIn || d.fadeOut;
+}
+
+/** Human note for settings that differ from the last recording. */
+export function storyNarrationSettingsChangeNote(
+  recorded: StoryNarrationSettings | null | undefined,
+  current: StoryNarrationSettings,
+): string | null {
+  const d = diffStoryNarrationSettings(recorded, current);
+  const names: string[] = [];
+  if (d.voice) names.push("Voice");
+  if (d.sound) names.push("Sound");
+  if (d.pace) names.push("Pace");
+  if (d.settleIn || d.fadeOut) names.push("Settings");
+  if (names.length === 0) return null;
+  if (names.length === 1) {
+    return `${names[0]} changed since this narration`;
+  }
+  return "Settings changed since this narration";
 }
 
 /** Draft section keys that no longer match the prepared version’s sourceHash. */
@@ -477,6 +659,7 @@ export function normalizeManifestoStoryStore(
       typeof o.listenCount === "number" && o.listenCount >= 0
         ? Math.floor(o.listenCount)
         : 0,
+    listenNights: normalizeListenNights(o.listenNights),
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : safeIso(),
   };
 }
@@ -887,10 +1070,29 @@ export function markVersionNarrationPending(
   };
 }
 
+/** Drop a stuck / failed pending job without marking the version narrated. */
+export function clearVersionNarrationPending(
+  store: ManifestoStoryStoreV1,
+  versionId: string,
+): ManifestoStoryStoreV1 {
+  return {
+    ...store,
+    versions: store.versions.map((v) =>
+      v.id === versionId ? { ...v, pendingJobId: undefined } : v,
+    ),
+    updatedAt: safeIso(),
+  };
+}
+
 export function markVersionNarrated(
   store: ManifestoStoryStoreV1,
   versionId: string,
-  opts: { audioId: string; text: string },
+  opts: {
+    audioId: string;
+    text: string;
+    settings?: StoryNarrationSettings;
+    durationSec?: number;
+  },
 ): ManifestoStoryStoreV1 {
   const at = safeIso();
   return {
@@ -903,6 +1105,12 @@ export function markVersionNarrated(
             pendingJobId: undefined,
             narratedTextHash: storyTextHash(opts.text),
             narratedAt: at,
+            ...(opts.settings ? { narrationSettings: opts.settings } : {}),
+            ...(typeof opts.durationSec === "number" &&
+            Number.isFinite(opts.durationSec) &&
+            opts.durationSec > 0
+              ? { narrationDurationSec: Math.round(opts.durationSec) }
+              : {}),
           }
         : v,
     ),
@@ -912,10 +1120,16 @@ export function markVersionNarrated(
 
 export function incrementStoryListenCount(
   store: ManifestoStoryStoreV1,
+  opts?: { nightKey?: string },
 ): ManifestoStoryStoreV1 {
+  const nightKey = opts?.nightKey ?? storyListenNightKey();
+  const nights = store.listenNights.includes(nightKey)
+    ? store.listenNights
+    : [...store.listenNights, nightKey].slice(-120);
   return {
     ...store,
     listenCount: store.listenCount + 1,
+    listenNights: nights,
     updatedAt: safeIso(),
   };
 }

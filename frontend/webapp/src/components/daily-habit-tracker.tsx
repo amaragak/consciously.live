@@ -37,6 +37,10 @@ type Props = {
   /** Meditation suggested on the “Ready when you are” card. */
   readyMeditationTitle?: string | null;
   onPlayReadyMeditation?: (() => void) | null;
+  /** When a narrated Story exists, show a fourth daily check. */
+  storyAvailable?: boolean;
+  storyMinutes?: number | null;
+  onPlayStory?: (() => void) | null;
   /** Next incomplete goal step; when absent, fall back to life-area wording. */
   goalStep?: TodayGoalStep | null;
   /** Tighter single-column layout for the mobile dashboard. */
@@ -48,6 +52,7 @@ function emptyStatus(): DailyStatus {
     gratitude: false,
     meditation: false,
     lifeArea: false,
+    story: false,
     streak: 0,
     fullStreak: 0,
     partialStreak: 0,
@@ -65,13 +70,23 @@ function localStatusNow(): DailyStatus {
 }
 
 function mergeRemoteDailyStatus(
-  remote: DailyStatus,
+  remote: Pick<
+    DailyStatus,
+    | "gratitude"
+    | "meditation"
+    | "lifeArea"
+    | "fullStreak"
+    | "partialStreak"
+    | "fullStreakRecord"
+    | "partialStreakRecord"
+  >,
   local: DailyStatus,
 ): DailyStatus {
   return {
     gratitude: remote.gratitude || local.gratitude,
     meditation: remote.meditation || local.meditation,
     lifeArea: remote.lifeArea || local.lifeArea,
+    story: local.story,
     streak: remote.fullStreak,
     fullStreak: remote.fullStreak,
     partialStreak: remote.partialStreak,
@@ -114,6 +129,9 @@ function HabitCheckbox({
 export function DailyHabitTracker({
   readyMeditationTitle = null,
   onPlayReadyMeditation = null,
+  storyAvailable = false,
+  storyMinutes = null,
+  onPlayStory = null,
   goalStep = null,
   compact = false,
 }: Props) {
@@ -162,41 +180,43 @@ export function DailyHabitTracker({
     };
   }, [dateKey]);
 
+  const totalCount = storyAvailable ? 4 : 3;
   const doneCount =
     (status.gratitude ? 1 : 0) +
     (status.meditation ? 1 : 0) +
-    (status.lifeArea ? 1 : 0);
+    (status.lifeArea ? 1 : 0) +
+    (storyAvailable && status.story ? 1 : 0);
 
   const toggle = (pillar: DailyHabitPillar) => {
     const next = !status[pillar];
     setLocalManualCheck(pillar, next, dateKey);
     setStatus(localStatusNow());
-    if (isMedimadeSessionActive()) {
-      void putDashboardDailyManualCheck({
-        dateKey,
-        pillar,
-        checked: next,
-      })
-        .then(() =>
-          fetchDashboardDailyStatus({ dateKey }).then((remote) => {
-            const local = localStatusNow();
-            setStatus({
-              ...mergeRemoteDailyStatus(remote, local),
-              [pillar]: next || remote[pillar] || local[pillar],
-            });
-          }),
-        )
-        .catch(() => {
-          setStatus(localStatusNow());
-        });
-    }
+    // Story is local-only — the API only accepts the original three pillars.
+    if (pillar === "story" || !isMedimadeSessionActive()) return;
+    void putDashboardDailyManualCheck({
+      dateKey,
+      pillar,
+      checked: next,
+    })
+      .then(() =>
+        fetchDashboardDailyStatus({ dateKey }).then((remote) => {
+          const local = localStatusNow();
+          setStatus({
+            ...mergeRemoteDailyStatus(remote, local),
+            [pillar]: next || remote[pillar] || local[pillar],
+          });
+        }),
+      )
+      .catch(() => {
+        setStatus(localStatusNow());
+      });
   };
 
   const streak = status.partialStreak;
   const streakLine =
     streak > 0
-      ? `${streak}-day streak · ${doneCount} of 3 done`
-      : `${doneCount} of 3 done`;
+      ? `${streak}-day streak · ${doneCount} of ${totalCount} done`
+      : `${doneCount} of ${totalCount} done`;
 
   const lifeAreaName = goalStep
     ? "Next step on your goal"
@@ -246,6 +266,26 @@ export function DailyHabitTracker({
         router.push("/meditate/library/creations");
       },
     },
+    ...(storyAvailable
+      ? [
+          {
+            pillar: "story" as const,
+            name: "Listen to your story",
+            help:
+              typeof storyMinutes === "number" && storyMinutes > 0
+                ? `About ${storyMinutes} min`
+                : null,
+            actionLabel: onPlayStory ? "Listen →" : "Open →",
+            onAction: () => {
+              if (onPlayStory) {
+                onPlayStory();
+                return;
+              }
+              router.push("/manifest/my?view=story&tab=narration");
+            },
+          },
+        ]
+      : []),
     {
       pillar: "lifeArea",
       name: lifeAreaName,
@@ -336,7 +376,7 @@ export function DailyHabitTracker({
             <>
               <span className="font-semibold text-foreground">{streak}-day streak</span>
               {" · "}
-              {doneCount} of 3 done
+              {doneCount} of {totalCount} done
             </>
           ) : (
             streakLine

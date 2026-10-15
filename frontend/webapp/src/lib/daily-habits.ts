@@ -20,12 +20,19 @@ import { getMedimadeSessionEmail } from "@/lib/auth-session";
 
 export { localDateKey };
 
-export type DailyHabitPillar = "gratitude" | "meditation" | "lifeArea";
+export type DailyHabitPillar =
+  | "gratitude"
+  | "meditation"
+  | "lifeArea"
+  /** Local-only: Listen to your story (shown when a narration exists). */
+  | "story";
 
 export type DailyStatus = {
   gratitude: boolean;
   meditation: boolean;
   lifeArea: boolean;
+  /** Present when tracked locally; not part of the server three-pillar streak. */
+  story: boolean;
   /** Full streak — all three dailies. Alias of fullStreak for older callers. */
   streak: number;
   fullStreak: number;
@@ -40,6 +47,8 @@ type PlayDayRecord = {
   playStartedAt?: string;
   playProgress60At?: string;
   meditationId?: string;
+  /** ISO time when the narrated Story was listened through today. */
+  storyListenAt?: string;
 };
 
 type PlayEventsStore = Record<string, PlayDayRecord>;
@@ -122,6 +131,60 @@ export function hasLocalMeditationProgress(dateKey = localDateKey()): boolean {
   return Boolean(loadLocalPlayDay(dateKey).playProgress60At);
 }
 
+export function hasLocalStoryListen(dateKey = localDateKey()): boolean {
+  return Boolean(loadLocalPlayDay(dateKey).storyListenAt);
+}
+
+/** Mark today’s story listen done (calendar day — same clock as other dailies). */
+export function recordLocalStoryListen(opts?: {
+  at?: string;
+  dateKey?: string;
+}): void {
+  const dateKey = opts?.dateKey ?? localDateKey();
+  const store = readPlayStore();
+  const prev = store[dateKey] ?? {};
+  if (prev.storyListenAt) return;
+  store[dateKey] = {
+    ...prev,
+    storyListenAt: opts?.at ?? new Date().toISOString(),
+  };
+  writePlayStore(store);
+  notifyHabitsChanged();
+}
+
+function playedIdsLsKey(scope = accountScopeKey()): string {
+  return `mm_library_played_ids_v1:${scope}`;
+}
+
+function readPlayedIds(): string[] {
+  return readJson<string[]>(playedIdsLsKey(), []);
+}
+
+function writePlayedIds(ids: string[]): void {
+  writeJson(playedIdsLsKey(), ids.slice(-500));
+}
+
+/** Persist that a library meditation has been started at least once. */
+export function recordLibraryMeditationPlayed(meditationId: string): void {
+  const id = meditationId.trim();
+  if (!id) return;
+  const prev = readPlayedIds();
+  if (prev.includes(id)) return;
+  writePlayedIds([...prev, id]);
+}
+
+/** True when this meditation id / s3 key has a local play-started record. */
+export function hasLibraryMeditationBeenPlayed(meditationId: string): boolean {
+  const id = meditationId.trim();
+  if (!id) return false;
+  if (readPlayedIds().includes(id)) return true;
+  const store = readPlayStore();
+  for (const day of Object.values(store)) {
+    if (day.meditationId === id) return true;
+  }
+  return false;
+}
+
 export function recordLocalPlayStarted(opts: {
   meditationId: string;
   at?: string;
@@ -143,6 +206,7 @@ export function recordLocalPlayStarted(opts: {
     };
   }
   writePlayStore(store);
+  recordLibraryMeditationPlayed(opts.meditationId);
   notifyHabitsChanged();
 }
 
@@ -380,6 +444,7 @@ export function computeLocalDailyStatus(
     meditation:
       Boolean(manual.meditation) || hasLocalMeditationProgress(dateKey),
     lifeArea: Boolean(manual.lifeArea) || lifeAreaDoneForDate(ideate, dateKey),
+    story: Boolean(manual.story) || hasLocalStoryListen(dateKey),
     streak: fullStreak,
     fullStreak,
     partialStreak,

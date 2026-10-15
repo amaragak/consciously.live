@@ -1,6 +1,8 @@
 /**
  * Library Creations surface presence + completion routing.
  * When Library is mounted, completed gens autoplay there; otherwise inbox notify.
+ * Ready/failed events always fire so non-Library listeners (e.g. Story Narrate)
+ * can clear pending UI even when the inbox path is used.
  */
 
 export type MeditationGenerationReadyDetail = {
@@ -9,7 +11,14 @@ export type MeditationGenerationReadyDetail = {
   title: string;
 };
 
+export type MeditationGenerationFailedDetail = {
+  jobId: string;
+  title: string;
+  error: string;
+};
+
 const READY_EVENT = "mm-meditation-generation-ready";
+const FAILED_EVENT = "mm-meditation-generation-failed";
 const HANDLED_KEY = "mm_meditation_ready_handled_v1";
 
 let surfaceCount = 0;
@@ -73,9 +82,29 @@ export function onMeditationGenerationReady(
   return () => window.removeEventListener(READY_EVENT, fn);
 }
 
+export function dispatchMeditationGenerationFailed(
+  detail: MeditationGenerationFailedDetail,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(FAILED_EVENT, { detail }));
+}
+
+export function onMeditationGenerationFailed(
+  handler: (detail: MeditationGenerationFailedDetail) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const fn = (e: Event) => {
+    const ce = e as CustomEvent<MeditationGenerationFailedDetail>;
+    if (ce.detail?.jobId) handler(ce.detail);
+  };
+  window.addEventListener(FAILED_EVENT, fn);
+  return () => window.removeEventListener(FAILED_EVENT, fn);
+}
+
 /**
  * Single completion side-effect: autoplay on Library, inbox elsewhere.
  * Deduped so global + Library pollers can both call safely.
+ * Always dispatches ready so Story / other listeners clear pending state.
  */
 export function routeMeditationGenerationReady(params: {
   jobId: string;
@@ -87,12 +116,9 @@ export function routeMeditationGenerationReady(params: {
   if (!jobId || !audioKey) return "skipped";
   if (alreadyHandled(jobId)) return "skipped";
   rememberHandled(jobId);
+  const title = params.title.trim() || "Your meditation";
+  dispatchMeditationGenerationReady({ jobId, audioKey, title });
   if (isLibraryGenerationSurfaceActive()) {
-    dispatchMeditationGenerationReady({
-      jobId,
-      audioKey,
-      title: params.title.trim() || "Your meditation",
-    });
     return "autoplay";
   }
   return "notify";

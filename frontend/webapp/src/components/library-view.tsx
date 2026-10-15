@@ -121,6 +121,16 @@ import {
   subscribeJournalStore,
   type JournalMeditationSource,
 } from "@/lib/journal-storage";
+import {
+  getMedimadeSessionDisplayName,
+  getMedimadeSessionEmail,
+} from "@/lib/auth-session";
+import { firstNameFromAccount } from "@/lib/manifesto-print";
+import {
+  resolveNarratedStoryPlacement,
+  storyMatchesSearch,
+} from "@/lib/manifesto-story-placement";
+import { StoryPlacementCard } from "@/components/plan/story-placement-card";
 
 function formatGenerationElapsed(ms: number | null | undefined): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
@@ -1180,6 +1190,25 @@ export default function LibraryView({
     enabled: libraryTab === "meditations",
   });
 
+  const storyPlacement = useMemo(
+    () => resolveNarratedStoryPlacement(sortedItems),
+    [sortedItems],
+  );
+  const storyFirstName = useMemo(
+    () =>
+      firstNameFromAccount(
+        getMedimadeSessionDisplayName(),
+        getMedimadeSessionEmail(),
+      ) || "Your",
+    [],
+  );
+  const showLibraryStoryPin =
+    libraryTab === "meditations" &&
+    Boolean(storyPlacement) &&
+    (!searchQuery.trim() ||
+      (storyPlacement != null &&
+        storyMatchesSearch(storyPlacement, searchQuery, storyFirstName)));
+
   const visibleItems: LibraryMeditationRow[] = useMemo(() => {
     const tokens = librarySearchTokens(searchQuery);
     if (libraryTab === "programs") return [];
@@ -1195,8 +1224,13 @@ export default function LibraryView({
             );
       return list.filter((x) => libraryRowMatchesSearch(x, tokens));
     }
+    const pinnedAudioId = storyPlacement?.libraryItem.s3Key ?? null;
     const base = sortedItems.filter(
-      (x) => x.catalogued && x.archived !== true && x.isDraft !== true,
+      (x) =>
+        x.catalogued &&
+        x.archived !== true &&
+        x.isDraft !== true &&
+        !(pinnedAudioId && x.s3Key === pinnedAudioId),
     );
     const afterFav = favouritesOnly ? base.filter((x) => x.favourite) : base;
     const afterCat =
@@ -1234,6 +1268,7 @@ export default function LibraryView({
     searchQuery,
     algoliaMeditationIds,
     algoliaMeditationOrderedIds,
+    storyPlacement,
   ]);
 
   useEffect(() => {
@@ -3220,9 +3255,12 @@ export default function LibraryView({
       {libraryTab !== "programs" &&
       libraryTab === "meditations" &&
       loading &&
-      pagedVisibleItems.length === 0 ? (
+      pagedVisibleItems.length === 0 &&
+      !showLibraryStoryPin ? (
         <p className="mt-6 text-sm text-muted">Loading…</p>
-      ) : libraryTab !== "programs" && pagedVisibleItems.length === 0 ? (
+      ) : libraryTab !== "programs" &&
+        pagedVisibleItems.length === 0 &&
+        !showLibraryStoryPin ? (
         <p className={`${libraryTab === "community" ? "mt-4" : "mt-6"} w-full min-w-0 text-sm text-muted`}>
           {searchQuery.trim() ? (
             "No meditations match your search."
@@ -3246,6 +3284,25 @@ export default function LibraryView({
               : `${libraryTab === "community" ? "mt-4" : "mt-6"} flex w-full min-w-0 max-w-full flex-col max-md:mt-2 max-sm:gap-2.5 sm:max-md:gap-0 md:gap-3`
           }
         >
+          {showLibraryStoryPin && storyPlacement ? (
+            <li className="col-span-full list-none">
+              <div className="md:hidden">
+                <StoryPlacementCard
+                  placement={storyPlacement}
+                  firstName={storyFirstName}
+                  variant="library"
+                  compact
+                />
+              </div>
+              <div className="hidden md:block">
+                <StoryPlacementCard
+                  placement={storyPlacement}
+                  firstName={storyFirstName}
+                  variant="library"
+                />
+              </div>
+            </li>
+          ) : null}
           {pagedVisibleItems.map((m, i) => {
             const rowKey = isPendingRow(m) ? m.pendingKey : m.sk || m.s3Key;
             const showDateMarkers = sortBy === "newest" || sortBy === "oldest";

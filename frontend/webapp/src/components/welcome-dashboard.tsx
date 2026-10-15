@@ -51,6 +51,16 @@ import {
   type VisionBoardItem,
 } from "@/lib/ideate-vision-board";
 import { creationPathDisplayLabel } from "@/lib/meditation-creation-provenance";
+import { firstNameFromAccount } from "@/lib/manifesto-print";
+import {
+  pickUnplayedNewMeditation,
+  resolveNarratedStoryPlacement,
+  isLibraryStoryItem,
+} from "@/lib/manifesto-story-placement";
+import {
+  DashboardStoryManifestRow,
+  DashboardStoryTopSlot,
+} from "@/components/dashboard-story-slot";
 
 const JOURNAL_PREVIEW_LS = "mm_home_journal_show_previews_v1";
 
@@ -76,29 +86,7 @@ function provenanceLine(m: LibraryMeditationItem): string | null {
   return null;
 }
 
-/** Pick one meditation: goal-linked if possible, else newest creation. */
-function pickReadyMeditation(
-  items: LibraryMeditationItem[],
-  focusLifeAreaId: string | null,
-): LibraryMeditationItem | null {
-  if (items.length === 0) return null;
-  const byCreated = [...items].sort((a, b) =>
-    (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
-  );
-  if (focusLifeAreaId) {
-    const linked = byCreated.find(
-      (m) =>
-        m.lifeAreaId === focusLifeAreaId ||
-        m.creationProvenance?.creationPath === "goal",
-    );
-    if (linked) return linked;
-  }
-  const fromGoal = byCreated.find(
-    (m) => m.creationProvenance?.creationPath === "goal",
-  );
-  if (fromGoal) return fromGoal;
-  return byCreated[0] ?? null;
-}
+type TopSlotKind = "unplayed" | "story" | "create";
 
 type LifeAreaProgress = {
   dream: PlanDream;
@@ -362,20 +350,40 @@ export function WelcomeDashboard() {
     [ideateStore, dreams],
   );
 
-  const ready = useMemo(
-    () =>
-      pickReadyMeditation(
-        meditations,
-        chip
-          ? dreams.find((d) =>
-              lifeAreas.some(
-                (r) => r.subtaskId === chip.subtaskId && r.dream.id === d.id,
-              ),
-            )?.id ?? null
-          : null,
-      ),
-    [meditations, chip, dreams, lifeAreas],
+  const storyPlacement = useMemo(
+    () => resolveNarratedStoryPlacement(meditations),
+    [meditations],
   );
+  const storyFirstName =
+    firstNameFromAccount(
+      getMedimadeSessionDisplayName(),
+      getMedimadeSessionEmail(),
+    ) || name;
+
+  const unplayedReady = useMemo(
+    () => pickUnplayedNewMeditation(meditations),
+    [meditations],
+  );
+
+  // Never put the Manifest Story under “Ready when you are” — that label is
+  // for a new unplayed meditation only.
+  const topSlotKind: TopSlotKind = storyPlacement
+    ? unplayedReady &&
+      !isLibraryStoryItem(unplayedReady) &&
+      unplayedReady.s3Key !== storyPlacement.libraryItem.s3Key
+      ? "unplayed"
+      : "story"
+    : unplayedReady
+      ? "unplayed"
+      : "create";
+
+  const ready = topSlotKind === "unplayed" ? unplayedReady : null;
+
+  /** Meditation Try line only — story has its own Today check when narrated. */
+  const todayTryTitle =
+    topSlotKind === "unplayed" && ready
+      ? ready.title?.trim() || null
+      : null;
 
   const goalStep: TodayGoalStep | null = useMemo(() => {
     if (!chip) return null;
@@ -394,14 +402,23 @@ export function WelcomeDashboard() {
     };
   }, [chip, lifeAreas]);
 
-  const recentMeditations = meditations.slice(0, 2);
+  const recentMeditations = meditations
+    .filter((m) => !isLibraryStoryItem(m))
+    .slice(0, 2);
   const recentJournal = journalEntries.slice(0, 2);
   const visibleLifeAreas = lifeAreas.slice(0, 3);
   const moreLifeAreas = Math.max(0, lifeAreas.length - 3);
+  const showManifestStoryRow =
+    Boolean(storyPlacement) && topSlotKind !== "story";
 
   function playReady() {
     if (!ready) return;
     playItem(ready);
+  }
+
+  function playStory() {
+    if (!storyPlacement) return;
+    playItem(storyPlacement.libraryItem);
   }
 
   function toggleJournalPreviews() {
@@ -447,65 +464,82 @@ export function WelcomeDashboard() {
         </header>
 
         <div className="flex flex-col gap-[22px] px-4">
-          <section
-            aria-label="Ready when you are"
-            className="flex flex-col gap-3 rounded-2xl bg-[var(--deep)] p-4 text-[color-mix(in_srgb,white_92%,var(--gold))]"
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-gold">
-              Ready when you are
-            </p>
-            {ready ? (
-              <>
-                <div className="flex items-center gap-3.5">
-                  <PrimaryCreateButton
-                    variant="compact"
-                    leadingPlus={false}
-                    aria-label={`Play ${ready.title?.trim() || "meditation"}`}
-                    onClick={playReady}
-                    className="!rounded-full"
-                    style={{ width: 48, height: 48, borderRadius: 9999 }}
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      aria-hidden
+          {topSlotKind === "story" && storyPlacement ? (
+            <DashboardStoryTopSlot
+              placement={storyPlacement}
+              firstName={storyFirstName}
+              onPlay={playStory}
+              waveform={<Waveform compact />}
+              compact
+            />
+          ) : (
+            <section
+              aria-label={
+                topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"
+              }
+              className="flex flex-col gap-3 rounded-2xl bg-[var(--deep)] p-4 text-[color-mix(in_srgb,white_92%,var(--gold))]"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-gold">
+                {topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"}
+              </p>
+              {topSlotKind === "unplayed" && ready ? (
+                <>
+                  <div className="flex items-center gap-3.5">
+                    <PrimaryCreateButton
+                      variant="compact"
+                      leadingPlus={false}
+                      aria-label={`Play ${ready.title?.trim() || "meditation"}`}
+                      onClick={playReady}
+                      className="!rounded-full"
+                      style={{ width: 48, height: 48, borderRadius: 9999 }}
                     >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </PrimaryCreateButton>
-                  <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                    <p className="font-display text-[18px] leading-[1.25]">
-                      {ready.title?.trim() || "Untitled"}
-                    </p>
-                    <p className="text-[12px] text-[color-mix(in_srgb,white_65%,transparent)]">
-                      {formatDuration(ready.durationSeconds)}
-                    </p>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </PrimaryCreateButton>
+                    <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+                      <p className="font-display text-[18px] leading-[1.25]">
+                        {ready.title?.trim() || "Untitled"}
+                      </p>
+                      <p className="text-[12px] text-[color-mix(in_srgb,white_65%,transparent)]">
+                        {formatDuration(ready.durationSeconds)}
+                      </p>
+                    </div>
                   </div>
+                  <Waveform compact />
+                </>
+              ) : (
+                <div className="flex flex-col gap-3 py-1">
+                  <p className="font-display text-[18px] leading-[1.25]">
+                    {libraryReady
+                      ? "Make something for today"
+                      : "Loading your library…"}
+                  </p>
+                  {libraryReady ? (
+                    <PrimaryCreateButton to="/meditate/create" className="w-fit">
+                      Create a meditation
+                    </PrimaryCreateButton>
+                  ) : null}
                 </div>
-                <Waveform compact />
-              </>
-            ) : (
-              <div className="flex flex-col gap-3 py-1">
-                <p className="font-display text-[18px] leading-[1.25]">
-                  {libraryReady
-                    ? "Create your first meditation"
-                    : "Loading your library…"}
-                </p>
-                {libraryReady ? (
-                  <PrimaryCreateButton to="/meditate/create" className="w-fit">
-                    Create a meditation
-                  </PrimaryCreateButton>
-                ) : null}
-              </div>
-            )}
-          </section>
+              )}
+            </section>
+          )}
 
           <DailyHabitTracker
             compact
-            readyMeditationTitle={ready?.title?.trim() || null}
-            onPlayReadyMeditation={ready ? playReady : null}
+            readyMeditationTitle={todayTryTitle}
+            onPlayReadyMeditation={
+              topSlotKind === "unplayed" && ready ? playReady : null
+            }
+            storyAvailable={Boolean(storyPlacement)}
+            storyMinutes={storyPlacement?.minutes ?? null}
+            onPlayStory={storyPlacement ? playStory : null}
             goalStep={goalStep}
           />
 
@@ -654,6 +688,14 @@ export function WelcomeDashboard() {
                 Open →
               </Link>
             </div>
+            {showManifestStoryRow && storyPlacement ? (
+              <DashboardStoryManifestRow
+                placement={storyPlacement}
+                firstName={storyFirstName}
+                onPlay={playStory}
+                compact
+              />
+            ) : null}
             <h2 className="font-display text-[21px] font-normal leading-[1.2] text-foreground">
               Your life areas
             </h2>
@@ -812,71 +854,87 @@ export function WelcomeDashboard() {
 
         {/* Ready + Today */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-          <section
-            aria-label="Ready when you are"
-            className="flex flex-col gap-5 rounded-[22px] bg-[var(--deep)] p-7 text-[color-mix(in_srgb,white_92%,var(--gold))] lg:col-span-7"
-          >
-            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-gold">
-              Ready when you are
-            </p>
-            {ready ? (
-              <>
-                <div className="flex items-center gap-4">
-                  <PrimaryCreateButton
-                    variant="compact"
-                    leadingPlus={false}
-                    aria-label={`Play ${ready.title?.trim() || "meditation"}`}
-                    onClick={playReady}
-                    className="!rounded-full"
-                    style={{ width: 60, height: 60, borderRadius: 9999 }}
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      aria-hidden
+          {topSlotKind === "story" && storyPlacement ? (
+            <DashboardStoryTopSlot
+              placement={storyPlacement}
+              firstName={storyFirstName}
+              onPlay={playStory}
+              waveform={<Waveform />}
+            />
+          ) : (
+            <section
+              aria-label={
+                topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"
+              }
+              className="flex flex-col gap-5 rounded-[22px] bg-[var(--deep)] p-7 text-[color-mix(in_srgb,white_92%,var(--gold))] lg:col-span-7"
+            >
+              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-gold">
+                {topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"}
+              </p>
+              {topSlotKind === "unplayed" && ready ? (
+                <>
+                  <div className="flex items-center gap-4">
+                    <PrimaryCreateButton
+                      variant="compact"
+                      leadingPlus={false}
+                      aria-label={`Play ${ready.title?.trim() || "meditation"}`}
+                      onClick={playReady}
+                      className="!rounded-full"
+                      style={{ width: 60, height: 60, borderRadius: 9999 }}
                     >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </PrimaryCreateButton>
-                  <div className="min-w-0 flex flex-col gap-1">
-                    <p className="font-display text-[22px] font-medium leading-snug sm:text-[24px]">
-                      {ready.title?.trim() || "Untitled"}
-                    </p>
-                    <p className="text-[14px] text-[color-mix(in_srgb,white_65%,transparent)]">
-                      {[
-                        ready.meditationStyle?.trim() || null,
-                        formatDuration(ready.durationSeconds),
-                        provenanceLine(ready),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </PrimaryCreateButton>
+                    <div className="min-w-0 flex flex-col gap-1">
+                      <p className="font-display text-[22px] font-medium leading-snug sm:text-[24px]">
+                        {ready.title?.trim() || "Untitled"}
+                      </p>
+                      <p className="text-[14px] text-[color-mix(in_srgb,white_65%,transparent)]">
+                        {[
+                          ready.meditationStyle?.trim() || null,
+                          formatDuration(ready.durationSeconds),
+                          provenanceLine(ready),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
                   </div>
+                  <Waveform />
+                </>
+              ) : (
+                <div className="flex flex-col gap-4 py-2">
+                  <p className="font-display text-[22px] font-medium sm:text-[24px]">
+                    {libraryReady
+                      ? "Make something for today"
+                      : "Loading your library…"}
+                  </p>
+                  {libraryReady ? (
+                    <PrimaryCreateButton to="/meditate/create" className="w-fit">
+                      Create a meditation
+                    </PrimaryCreateButton>
+                  ) : null}
                 </div>
-                <Waveform />
-              </>
-            ) : (
-              <div className="flex flex-col gap-4 py-2">
-                <p className="font-display text-[22px] font-medium sm:text-[24px]">
-                  {libraryReady
-                    ? "Create your first meditation"
-                    : "Loading your library…"}
-                </p>
-                {libraryReady ? (
-                  <PrimaryCreateButton to="/meditate/create" className="w-fit">
-                    Create a meditation
-                  </PrimaryCreateButton>
-                ) : null}
-              </div>
-            )}
-          </section>
+              )}
+            </section>
+          )}
 
           <div className="lg:col-span-5">
             <DailyHabitTracker
-              readyMeditationTitle={ready?.title?.trim() || null}
-              onPlayReadyMeditation={ready ? playReady : null}
+              readyMeditationTitle={todayTryTitle}
+              onPlayReadyMeditation={
+                topSlotKind === "unplayed" && ready ? playReady : null
+              }
+              storyAvailable={Boolean(storyPlacement)}
+              storyMinutes={storyPlacement?.minutes ?? null}
+              onPlayStory={storyPlacement ? playStory : null}
               goalStep={goalStep}
             />
           </div>
@@ -1033,6 +1091,14 @@ export function WelcomeDashboard() {
               Open Manifest →
             </Link>
           </div>
+
+          {showManifestStoryRow && storyPlacement ? (
+            <DashboardStoryManifestRow
+              placement={storyPlacement}
+              firstName={storyFirstName}
+              onPlay={playStory}
+            />
+          ) : null}
 
           <div className="grid grid-cols-1 gap-7 md:grid-cols-12 md:items-start">
             <div className="flex flex-col gap-2.5 md:col-span-8">

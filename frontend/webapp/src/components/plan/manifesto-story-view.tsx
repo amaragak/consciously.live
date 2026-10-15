@@ -107,7 +107,10 @@ import {
 } from "@/lib/manifesto-story-prompts";
 import { loadPlanDreamsStore } from "@/lib/plan-dreams";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
-import { ManifestoStoryNarrateRail } from "@/components/plan/manifesto-story-narrate-rail";
+import {
+  ManifestoStoryNarrateRail,
+  type NarrationCardState,
+} from "@/components/plan/manifesto-story-narrate-rail";
 import {
   ManifestoStoryPrepareCheck,
   type PrepareCheckDecision,
@@ -417,6 +420,7 @@ function PageHeader({
   showSubline?: boolean;
   holdBackSubline?: boolean;
 }) {
+  const meter = <ListeningMeter words={words} compact={!wide} />;
   const subline = holdBackSubline ? (
     <p
       className={`font-display italic leading-[1.45] text-accent-link ${
@@ -447,7 +451,7 @@ function PageHeader({
           </div>
           {mobileTabs}
           {showSubline ? subline : null}
-          <ListeningMeter words={words} compact />
+          {meter}
           {mobileFooter}
         </div>
       );
@@ -470,7 +474,7 @@ function PageHeader({
           </div>
           {mobileTitleRight}
         </div>
-        <ListeningMeter words={words} compact />
+        {meter}
       </div>
     );
   }
@@ -491,7 +495,7 @@ function PageHeader({
           </h2>
           {showSubline ? subline : null}
         </div>
-        <ListeningMeter words={words} />
+        {meter}
       </div>
       {toolbar}
     </div>
@@ -2508,6 +2512,8 @@ export function ManifestoStoryView() {
   const [prepareAnotherBusyId, setPrepareAnotherBusyId] = useState<
     string | null
   >(null);
+  const [narrationCardState, setNarrationCardState] =
+    useState<NarrationCardState>(1);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [highlightKeys, setHighlightKeys] = useState<string[]>([]);
   const sectionEls = useRef(new Map<string, HTMLElement>());
@@ -3609,6 +3615,20 @@ export function ManifestoStoryView() {
       const when =
         formatPreparedAt(activeVersion.preparedAt ?? activeVersion.createdAt) ||
         "recently";
+      if (narrationCardState === 2) {
+        return (
+          <span className="text-[13px] font-semibold text-accent-link">
+            ✓ Narrated
+          </span>
+        );
+      }
+      if (narrationCardState === 1 || narrationCardState === 3) {
+        return (
+          <span className="text-[13px] font-semibold text-accent-link">
+            ✓ Ready to narrate
+          </span>
+        );
+      }
       return (
         <span className="text-[13px] text-muted">
           Prepared {when} · edits here don’t change your draft
@@ -3680,12 +3700,23 @@ export function ManifestoStoryView() {
         </button>
       </div>
     ) : activeVersion ? (
-      <span className="text-center text-[12px] text-muted">
-        Prepared{" "}
-        {formatPreparedAt(activeVersion.preparedAt ?? activeVersion.createdAt) ||
-          "recently"}{" "}
-        · edits here don’t change your draft
-      </span>
+      narrationCardState === 2 ? (
+        <span className="text-center text-[12px] font-semibold text-accent-link">
+          ✓ Narrated
+        </span>
+      ) : narrationCardState === 1 || narrationCardState === 3 ? (
+        <span className="text-center text-[12px] font-semibold text-accent-link">
+          ✓ Ready to narrate
+        </span>
+      ) : (
+        <span className="text-center text-[12px] text-muted">
+          Prepared{" "}
+          {formatPreparedAt(
+            activeVersion.preparedAt ?? activeVersion.createdAt,
+          ) || "recently"}{" "}
+          · edits here don’t change your draft
+        </span>
+      )
     ) : null;
 
   const howToButton = (cls: string, icon: string) => (
@@ -3889,6 +3920,7 @@ export function ManifestoStoryView() {
         onStoreChange={update}
         changedCount={changedCount}
         onUpdateFirst={() => runPrepareOrUpdate()}
+        onCardStateChange={setNarrationCardState}
       />
     ) : (
       <aside className="flex w-full flex-col gap-[14px] md:w-[320px] md:shrink-0">
