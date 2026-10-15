@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlanSubtaskCard } from "@/components/plan/plan-subtask-card";
 import {
   allSubtasksDone,
@@ -44,9 +44,10 @@ export function PlanSubtasksPanel({
   storeTick = 0,
   embedded = false,
 }: Props) {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const focusTaskId = (searchParams.get("task") ?? "").trim() || null;
   const [newTitle, setNewTitle] = useState("");
+  const newGoalInputRef = useRef<HTMLInputElement>(null);
   const [sort, setSort] = useState<SubtaskSortKey>("created_asc");
 
   const refresh = useCallback(() => {
@@ -61,6 +62,22 @@ export function PlanSubtasksPanel({
   const subtasks = useMemo(() => {
     return sortSubtasks(subtasksForProject(store, project.id), sort);
   }, [project.id, sort, store]);
+
+  // "Set a goal" / guide practice: `?newGoal=1&goalTitle=…` starts a new goal in the
+  // existing "Add a goal…" field. Prefill only — nothing is saved until Add.
+  const newGoalRequested = searchParams.get("newGoal") === "1";
+  const newGoalDraft = searchParams.get("goalTitle") ?? "";
+  useEffect(() => {
+    if (!newGoalRequested) return;
+    if (newGoalDraft.trim()) setNewTitle(newGoalDraft.slice(0, 200));
+    newGoalInputRef.current?.focus();
+    newGoalInputRef.current?.scrollIntoView({ block: "center" });
+    const next = new URLSearchParams(searchParams);
+    next.delete("newGoal");
+    next.delete("goalTitle");
+    setSearchParams(next, { replace: true, preventScrollReset: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per request
+  }, [newGoalRequested, newGoalDraft]);
 
   // From chat “Open” links: bring the target task into view once.
   useEffect(() => {
@@ -142,6 +159,7 @@ export function PlanSubtasksPanel({
 
         <div className="flex flex-wrap items-center gap-3">
           <input
+            ref={newGoalInputRef}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="Add a goal..."

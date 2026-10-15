@@ -62,6 +62,7 @@ type IdeateCloudBundle = {
   regrets?: unknown;
   quotes?: unknown;
   manifesto?: unknown;
+  story?: unknown;
 };
 
 function isBundle(x: unknown): x is IdeateCloudBundle {
@@ -240,6 +241,101 @@ function stripManifesto(manifesto: unknown): unknown {
   };
 }
 
+function stripStory(story: unknown): unknown {
+  if (!story || typeof story !== "object") {
+    return {
+      v: 1,
+      draft: "",
+      includeLifeAreas: true,
+      includeValues: true,
+      promptsDone: [],
+      versions: [],
+      activeVersionId: null,
+      settleInFirst: true,
+      fadeOutAtEnd: true,
+      reminderEnabled: false,
+      reminderTime: "22:30",
+      reminderLastFiredDate: null,
+      listenCount: 0,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  const o = story as Record<string, unknown>;
+  const versions = Array.isArray(o.versions)
+    ? o.versions
+        .filter((v) => v && typeof v === "object")
+        .slice(0, 40)
+        .map((v) => {
+          const row = v as Record<string, unknown>;
+          const thirdPersonText =
+            typeof row.thirdPersonText === "string"
+              ? row.thirdPersonText.slice(0, 80_000)
+              : "";
+          return {
+            id: typeof row.id === "string" ? row.id.slice(0, 80) : "",
+            number: typeof row.number === "number" ? row.number : 1,
+            thirdPersonText,
+            wordCount:
+              typeof row.wordCount === "number" ? row.wordCount : 0,
+            createdAt:
+              typeof row.createdAt === "string"
+                ? row.createdAt
+                : new Date().toISOString(),
+            ...(typeof row.audioId === "string"
+              ? { audioId: row.audioId.slice(0, 240) }
+              : {}),
+            ...(typeof row.pendingJobId === "string"
+              ? { pendingJobId: row.pendingJobId.slice(0, 120) }
+              : {}),
+            ...(typeof row.narratedTextHash === "string"
+              ? { narratedTextHash: row.narratedTextHash.slice(0, 80) }
+              : {}),
+            ...(typeof row.narratedAt === "string"
+              ? { narratedAt: row.narratedAt }
+              : {}),
+          };
+        })
+        .filter((v) => v.id && v.thirdPersonText)
+    : [];
+  const promptsDone = Array.isArray(o.promptsDone)
+    ? o.promptsDone
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id.slice(0, 120))
+        .slice(0, 200)
+    : [];
+  return {
+    v: 1,
+    draft: typeof o.draft === "string" ? o.draft.slice(0, 120_000) : "",
+    includeLifeAreas: o.includeLifeAreas !== false,
+    includeValues: o.includeValues !== false,
+    promptsDone,
+    versions,
+    activeVersionId:
+      typeof o.activeVersionId === "string"
+        ? o.activeVersionId.slice(0, 80)
+        : null,
+    settleInFirst: o.settleInFirst !== false,
+    fadeOutAtEnd: o.fadeOutAtEnd !== false,
+    reminderEnabled: o.reminderEnabled === true,
+    reminderTime:
+      typeof o.reminderTime === "string" && /^\d{1,2}:\d{2}$/.test(o.reminderTime)
+        ? o.reminderTime
+        : "22:30",
+    reminderLastFiredDate:
+      typeof o.reminderLastFiredDate === "string"
+        ? o.reminderLastFiredDate.slice(0, 32)
+        : null,
+    listenCount:
+      typeof o.listenCount === "number" && o.listenCount >= 0
+        ? Math.min(100_000, Math.floor(o.listenCount))
+        : 0,
+    updatedAt:
+      typeof o.updatedAt === "string" && o.updatedAt.trim()
+        ? o.updatedAt.trim()
+        : new Date().toISOString(),
+  };
+}
+
 function bundleHasUserContent(bundle: IdeateCloudBundle): boolean {
   const ideate = bundle.ideate as { dreams?: unknown[] } | null | undefined;
   const vision = bundle.visionBoard as
@@ -257,6 +353,10 @@ function bundleHasUserContent(bundle: IdeateCloudBundle): boolean {
   const regrets = bundle.regrets as { regrets?: unknown[] } | null | undefined;
   const quotes = bundle.quotes as { quotes?: unknown[] } | null | undefined;
   const manifesto = bundle.manifesto as { text?: string } | null | undefined;
+  const story = bundle.story as
+    | { draft?: string; versions?: unknown[] }
+    | null
+    | undefined;
   if ((ideate?.dreams?.length ?? 0) > 0) return true;
   if ((vision?.items?.length ?? 0) > 0) return true;
   if (vision?.selfReference?.url || vision?.selfReference?.key) return true;
@@ -265,6 +365,8 @@ function bundleHasUserContent(bundle: IdeateCloudBundle): boolean {
   if ((regrets?.regrets?.length ?? 0) > 0) return true;
   if ((quotes?.quotes?.length ?? 0) > 0) return true;
   if ((manifesto?.text?.trim().length ?? 0) > 0) return true;
+  if ((story?.draft?.trim().length ?? 0) > 0) return true;
+  if ((story?.versions?.length ?? 0) > 0) return true;
   return false;
 }
 
@@ -347,6 +449,7 @@ export async function handler(
       text: "",
       updatedAt: new Date().toISOString(),
     };
+    let existingStory: unknown = null;
     try {
       const existingOut = await ddb.send(
         new GetCommand({
@@ -367,11 +470,13 @@ export async function handler(
           regrets?: unknown;
           quotes?: unknown;
           manifesto?: unknown;
+          story?: unknown;
         };
         if ("values" in es) existingValues = es.values;
         if ("regrets" in es) existingRegrets = es.regrets;
         if ("quotes" in es) existingQuotes = es.quotes;
         if ("manifesto" in es) existingManifesto = es.manifesto;
+        if ("story" in es) existingStory = es.story;
       }
     } catch {
       /* fall through */
@@ -396,6 +501,7 @@ export async function handler(
         "manifesto" in o
           ? stripManifesto(o.manifesto)
           : stripManifesto(existingManifesto),
+      story: "story" in o ? stripStory(o.story) : stripStory(existingStory),
     };
 
     // Never let an empty PUT overwrite a non-empty account.

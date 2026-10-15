@@ -1,6 +1,12 @@
 import * as Switch from "@radix-ui/react-switch";
-import { ChevronLeft, MoreHorizontal, Pause, Play, SquarePen } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { MoreHorizontal, Pause, Play, SquarePen } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import { LibraryHowMadeModal } from "@/components/library-how-made-modal";
 import {
@@ -22,12 +28,33 @@ import {
   formatRelativeDay,
   meditationMadeFrom,
   plainFromHtml,
-  scriptChunksFromPlainText,
+  scriptChunksFromLibraryItem,
   scriptChunksHaveTimings,
   scriptChunksPlainText,
   scriptWordCount,
   type ScriptChunk,
 } from "@/lib/library-meditation-detail";
+
+const FOLLOW_ALONG_PREF_KEY = "consciously.library.followAlong";
+
+function readFollowAlongPref(): boolean {
+  try {
+    const v = window.localStorage.getItem(FOLLOW_ALONG_PREF_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch {
+    /* */
+  }
+  return true;
+}
+
+function writeFollowAlongPref(on: boolean) {
+  try {
+    window.localStorage.setItem(FOLLOW_ALONG_PREF_KEY, on ? "1" : "0");
+  } catch {
+    /* */
+  }
+}
 import {
   libraryMeditationCategoryLabel,
   type LibraryMeditationItem,
@@ -40,8 +67,6 @@ export type MeditationDetailProps = {
   item: LibraryMeditationItem;
   source: MeditationDetailSource;
   isMobile: boolean;
-  backLabel: string;
-  backHref: string;
   soundscapeName: string | null;
   /** Play / pause through the global player. */
   onPlay: () => void;
@@ -388,27 +413,54 @@ function DetailMenu({
 /* Script                                                              */
 /* ------------------------------------------------------------------ */
 
+/** Sticky bar under the app header (title row + tabs + bottom border). */
+const MOBILE_STICKY_BAR_PX = 64;
+
 function ScriptCard({
   chunks,
   wordCount,
   mobile,
   activeIndex,
+  scrollMarginTopPx = 0,
+  onSeekChunk,
 }: {
   chunks: ScriptChunk[];
   wordCount: number;
   mobile: boolean;
   /** Only ever set when chunks carry timings. */
   activeIndex: number | null;
+  /** Extra offset while the mobile sticky bar overlays the scroller. */
+  scrollMarginTopPx?: number;
+  /** Click-to-seek when timings exist. */
+  onSeekChunk?: (startMs: number) => void;
 }) {
   const timed = scriptChunksHaveTimings(chunks);
-  const [followAlong, setFollowAlong] = useState(true);
+  const [followAlong, setFollowAlong] = useState(readFollowAlongPref);
   const [copied, setCopied] = useState(false);
   const activeRef = useRef<HTMLDivElement | null>(null);
+  const followPausedUntilRef = useRef(0);
 
   useEffect(() => {
     if (!timed || !followAlong || activeIndex == null) return;
+    if (Date.now() < followPausedUntilRef.current) return;
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [timed, followAlong, activeIndex]);
+
+  useEffect(() => {
+    if (!timed) return;
+    const scroller = document.querySelector("main");
+    if (!(scroller instanceof HTMLElement)) return;
+    const onScroll = () => {
+      followPausedUntilRef.current = Date.now() + 5000;
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, [timed]);
+
+  function setFollowAlongPref(on: boolean) {
+    setFollowAlong(on);
+    writeFollowAlongPref(on);
+  }
 
   async function copyScript() {
     try {
@@ -419,6 +471,21 @@ function ScriptCard({
       setCopied(false);
     }
   }
+
+  const followToggle =
+    timed ? (
+      <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-foreground/80">
+        <Switch.Root
+          checked={followAlong}
+          onCheckedChange={setFollowAlongPref}
+          aria-label="Follow along"
+          className="relative h-[18px] w-8 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button"
+        >
+          <Switch.Thumb className="block h-3.5 w-3.5 translate-x-[1px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[15px]" />
+        </Switch.Root>
+        Follow along
+      </label>
+    ) : null;
 
   if (chunks.length === 0) {
     return (
@@ -447,19 +514,7 @@ function ScriptCard({
             {wordCount.toLocaleString()} words
           </span>
           <div className="ml-auto flex items-center gap-3.5">
-            {timed ? (
-              <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-foreground/80">
-                <Switch.Root
-                  checked={followAlong}
-                  onCheckedChange={setFollowAlong}
-                  aria-label="Follow along"
-                  className="relative h-[18px] w-8 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button"
-                >
-                  <Switch.Thumb className="block h-3.5 w-3.5 translate-x-[1px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[15px]" />
-                </Switch.Root>
-                Follow along
-              </label>
-            ) : null}
+            {followToggle}
             <button
               type="button"
               onClick={() => void copyScript()}
@@ -470,15 +525,18 @@ function ScriptCard({
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-between px-4 pt-3 text-[13px]">
+        <div className="flex items-center justify-between gap-3 px-4 pt-3 text-[13px]">
           <span className="text-muted">{wordCount.toLocaleString()} words</span>
-          <button
-            type="button"
-            onClick={() => void copyScript()}
-            className="cursor-pointer font-semibold text-accent-link"
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
+          <div className="flex items-center gap-3">
+            {followToggle}
+            <button
+              type="button"
+              onClick={() => void copyScript()}
+              className="cursor-pointer font-semibold text-accent-link"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
         </div>
       )}
       <div className={mobile ? "px-1 pb-3 pt-1.5" : "px-2.5 pb-4 pt-2"}>
@@ -486,6 +544,8 @@ function ScriptCard({
           const showSection = c.section && c.section !== lastSection;
           lastSection = c.section ?? lastSection;
           const active = timed && activeIndex === c.index;
+          const seekable =
+            timed && typeof c.startMs === "number" && Boolean(onSeekChunk);
           return (
             <div key={c.index}>
               {showSection ? (
@@ -495,7 +555,31 @@ function ScriptCard({
               ) : null}
               <div
                 ref={active ? activeRef : undefined}
+                role={seekable ? "button" : undefined}
+                tabIndex={seekable ? 0 : undefined}
+                onClick={
+                  seekable
+                    ? () => onSeekChunk?.(c.startMs as number)
+                    : undefined
+                }
+                onKeyDown={
+                  seekable
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSeekChunk?.(c.startMs as number);
+                        }
+                      }
+                    : undefined
+                }
+                style={
+                  scrollMarginTopPx > 0
+                    ? { scrollMarginTop: scrollMarginTopPx }
+                    : undefined
+                }
                 className={`flex gap-4 rounded-[10px] px-3.5 py-2.5 ${
+                  seekable ? "cursor-pointer" : ""
+                } ${
                   active
                     ? "bg-accent-soft shadow-[inset_3px_0_0_var(--accent)]"
                     : ""
@@ -698,8 +782,6 @@ export default function MeditationDetail(props: MeditationDetailProps) {
     item,
     source,
     isMobile,
-    backLabel,
-    backHref,
     soundscapeName,
     onPlay,
     onReflect,
@@ -708,10 +790,19 @@ export default function MeditationDetail(props: MeditationDetailProps) {
     onFavourite,
     favouriteBusy,
   } = props;
-  const { nowPlaying, playingS3Key, playbackTimeSeconds, playerStripHeightPx } =
-    useLibraryPlayer();
+  const {
+    nowPlaying,
+    playingS3Key,
+    playbackTimeSeconds,
+    playerStripHeightPx,
+    playItem,
+    seekTo,
+  } = useLibraryPlayer();
   const [howMadeOpen, setHowMadeOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("script");
+  const [stickyBarVisible, setStickyBarVisible] = useState(false);
+  const tabsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const tabPanelRef = useRef<HTMLDivElement | null>(null);
 
   const own = source === "own";
   const isCurrent = nowPlaying?.s3Key === item.s3Key;
@@ -725,23 +816,28 @@ export default function MeditationDetail(props: MeditationDetailProps) {
   const entries = useLinkedEntries(meditationId);
 
   const chunks = useMemo(
-    () => scriptChunksFromPlainText(item.scriptText),
-    [item.scriptText],
+    () => scriptChunksFromLibraryItem(item),
+    [item.scriptText, item.scriptChunks],
   );
   const wordCount = useMemo(() => scriptWordCount(chunks), [chunks]);
   const timed = scriptChunksHaveTimings(chunks);
   const activeIndex = useMemo(() => {
     if (!timed || !isCurrent) return null;
     const ms = playbackTimeSeconds * 1000;
-    const hit = chunks.find(
-      (c) =>
-        typeof c.startMs === "number" &&
-        typeof c.endMs === "number" &&
-        c.startMs <= ms &&
-        ms < c.endMs,
-    );
+    let hit: ScriptChunk | null = null;
+    for (const c of chunks) {
+      if (typeof c.startMs !== "number") break;
+      if (c.startMs > ms) break;
+      hit = c;
+    }
     return hit ? hit.index : null;
   }, [timed, isCurrent, chunks, playbackTimeSeconds]);
+
+  function handleSeekChunk(startMs: number) {
+    if (!isCurrent) playItem(item);
+    else if (!isPlaying) playItem(item);
+    seekTo(Math.max(0, startMs) / 1000);
+  }
 
   const provenance = useMemo(
     () =>
@@ -795,16 +891,6 @@ export default function MeditationDetail(props: MeditationDetailProps) {
     <span className="block h-full w-full bg-muted/35" />
   );
 
-  const backLink = (
-    <Link
-      to={backHref}
-      className="inline-flex w-fit items-center gap-0.5 text-sm font-semibold text-accent-link hover:opacity-80"
-    >
-      <ChevronLeft className="size-3.5" strokeWidth={2.5} aria-hidden />
-      {backLabel}
-    </Link>
-  );
-
   const stripPad = { paddingBottom: Math.max(playerStripHeightPx, 0) + 24 };
 
   const howMadeModal = (
@@ -818,6 +904,27 @@ export default function MeditationDetail(props: MeditationDetailProps) {
   );
 
   /* ---------------- Mobile ---------------- */
+  useEffect(() => {
+    if (!isMobile) {
+      setStickyBarVisible(false);
+      return;
+    }
+    const tabs = tabsSentinelRef.current;
+    const scroller = document.querySelector("main");
+    if (!tabs || !(scroller instanceof HTMLElement)) return;
+
+    // Tabs fully leave the main viewport → sticky bar. Header sits above main,
+    // so root = main (no extra top margin). Instant show/hide, no fade.
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        setStickyBarVisible(!(entry?.isIntersecting ?? true));
+      },
+      { root: scroller, threshold: 0, rootMargin: "0px" },
+    );
+    io.observe(tabs);
+    return () => io.disconnect();
+  }, [isMobile]);
+
   if (isMobile) {
     const meta: ReactNode[] = [];
     if (voice) {
@@ -850,9 +957,101 @@ export default function MeditationDetail(props: MeditationDetailProps) {
       );
     }
 
+    const tabOptions: { id: MobileTab; label: string }[] = [
+      { id: "script", label: "Script" },
+      { id: "details", label: "Details" },
+      { id: "reflections", label: `Reflections · ${entries.length}` },
+    ];
+
+    const stickyScrollMargin = stickyBarVisible ? MOBILE_STICKY_BAR_PX : 0;
+
+    function selectMobileTab(next: MobileTab) {
+      setMobileTab(next);
+      if (!stickyBarVisible) return;
+      requestAnimationFrame(() => {
+        tabPanelRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+
+    function scrollPageToTop() {
+      document.querySelector("main")?.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "smooth",
+      });
+    }
+
     return (
-      <div className="flex flex-col gap-3 px-3 pt-2" style={stripPad}>
-        {backLink}
+      <div className="flex flex-col gap-3 px-3 pt-3" style={stripPad}>
+        {/* Slides down from under the app header (z-130); stays mounted for exit. */}
+        <div
+          className={`fixed inset-x-0 top-14 z-40 border-b border-border bg-card shadow-[0_4px_10px_rgb(15_27_45_/_0.06)] transition-transform duration-200 ease-out md:hidden ${
+            stickyBarVisible
+              ? "translate-y-0"
+              : "pointer-events-none -translate-y-full"
+          }`}
+          role="region"
+          aria-label="Meditation shortcuts"
+          aria-hidden={!stickyBarVisible}
+        >
+          <div className="flex items-center gap-2 py-1.5 pl-4 pr-3">
+            <button
+              type="button"
+              tabIndex={stickyBarVisible ? 0 : -1}
+              onClick={scrollPageToTop}
+              className="min-w-0 flex-1 cursor-pointer truncate text-left font-display text-[15px] leading-snug text-foreground"
+            >
+              {item.title}
+            </button>
+            {!isCurrent ? (
+              <button
+                type="button"
+                tabIndex={stickyBarVisible ? 0 : -1}
+                aria-label="Play"
+                onClick={onPlay}
+                className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-black/10 text-on-accent"
+                style={PRIMARY_ACCENT_FILL_STYLE}
+              >
+                <Play
+                  className="size-2.5 translate-x-px"
+                  fill="currentColor"
+                  strokeWidth={0}
+                  aria-hidden
+                />
+              </button>
+            ) : null}
+          </div>
+          <div
+            className="-mt-0.5 flex px-2"
+            role="tablist"
+            aria-label="Meditation sections"
+          >
+            {tabOptions.map((opt) => {
+              const active = mobileTab === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="tab"
+                  tabIndex={stickyBarVisible ? 0 : -1}
+                  aria-selected={active}
+                  onClick={() => selectMobileTab(opt.id)}
+                  className={`flex h-7 flex-1 cursor-pointer items-center justify-center text-[13px] ${
+                    active
+                      ? "font-semibold text-foreground shadow-[inset_0_-2px_0_var(--accent)]"
+                      : "font-normal text-foreground/80"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className={`${CARD} overflow-hidden`}>
           <div className="h-[200px] w-full bg-muted/35">{cover}</div>
           <div className="flex flex-col gap-2.5 p-4">
@@ -894,38 +1093,47 @@ export default function MeditationDetail(props: MeditationDetailProps) {
           </div>
         </div>
 
-        <SegmentedPillTabs<MobileTab>
-          aria-label="Meditation sections"
-          value={mobileTab}
-          onChange={setMobileTab}
-          equalWidth
-          className="w-full gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]"
-          selectedClassName="rounded-[9px] bg-card py-2 text-[13px] font-semibold text-foreground shadow-sm"
-          idleClassName="rounded-[9px] py-2 text-[13px] font-normal text-muted"
-          options={[
-            { id: "script", label: "Script" },
-            { id: "details", label: "Details" },
-            { id: "reflections", label: `Reflections · ${entries.length}` },
-          ]}
-        />
-
-        {mobileTab === "script" ? (
-          <ScriptCard
-            chunks={chunks}
-            wordCount={wordCount}
-            mobile
-            activeIndex={activeIndex}
+        <div ref={tabsSentinelRef}>
+          <SegmentedPillTabs<MobileTab>
+            aria-label="Meditation sections"
+            value={mobileTab}
+            onChange={selectMobileTab}
+            equalWidth
+            className="w-full gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]"
+            selectedClassName="rounded-[9px] bg-card py-2 text-[13px] font-semibold text-foreground shadow-sm"
+            idleClassName="rounded-[9px] py-2 text-[13px] font-normal text-muted"
+            options={tabOptions}
           />
-        ) : null}
-        {mobileTab === "details" ? (
-          <div className="flex flex-col gap-3">
-            {own ? <MadeFromCard item={item} /> : null}
-            <SoundVoiceCard item={item} soundscapeName={soundscapeName} />
-          </div>
-        ) : null}
-        {mobileTab === "reflections" ? (
-          <ReflectionsList entries={entries} onReflect={onReflect} asCard />
-        ) : null}
+        </div>
+
+        <div
+          ref={tabPanelRef}
+          style={
+            stickyScrollMargin > 0
+              ? { scrollMarginTop: stickyScrollMargin }
+              : undefined
+          }
+        >
+          {mobileTab === "script" ? (
+            <ScriptCard
+              chunks={chunks}
+              wordCount={wordCount}
+              mobile
+              activeIndex={activeIndex}
+              scrollMarginTopPx={stickyScrollMargin}
+              onSeekChunk={timed ? handleSeekChunk : undefined}
+            />
+          ) : null}
+          {mobileTab === "details" ? (
+            <div className="flex flex-col gap-3">
+              {own ? <MadeFromCard item={item} /> : null}
+              <SoundVoiceCard item={item} soundscapeName={soundscapeName} />
+            </div>
+          ) : null}
+          {mobileTab === "reflections" ? (
+            <ReflectionsList entries={entries} onReflect={onReflect} asCard />
+          ) : null}
+        </div>
         {howMadeModal}
       </div>
     );
@@ -962,8 +1170,6 @@ export default function MeditationDetail(props: MeditationDetailProps) {
 
   return (
     <div className="mt-2 flex flex-col gap-3.5" style={stripPad}>
-      {backLink}
-
       <div className={CARD}>
         <div className="flex gap-7 p-6">
           <span className="block h-[240px] w-[240px] shrink-0 overflow-hidden rounded-[14px] bg-muted/35">
@@ -1033,6 +1239,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
           wordCount={wordCount}
           mobile={false}
           activeIndex={activeIndex}
+          onSeekChunk={timed ? handleSeekChunk : undefined}
         />
         <aside className="flex w-[320px] shrink-0 flex-col gap-3.5">
           {own ? <MadeFromCard item={item} /> : null}

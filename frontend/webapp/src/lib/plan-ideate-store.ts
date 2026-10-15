@@ -365,8 +365,36 @@ export function saveIdeateStoreLocal(store: IdeateStoreV2) {
 
 /** Persist and schedule cloud PUT when signed in. */
 export function saveIdeateStore(store: IdeateStoreV2) {
+  let removedDreamIds: string[] = [];
+  if (typeof window !== "undefined") {
+    try {
+      const prev = isSignedIn() ? memoryStore : loadIdeateStoreRaw();
+      if (prev?.dreams?.length) {
+        const nextIds = new Set(store.dreams.map((d) => d.id));
+        removedDreamIds = prev.dreams
+          .map((d) => d.id)
+          .filter((id) => !nextIds.has(id));
+      }
+    } catch {
+      /* */
+    }
+  }
   saveIdeateStoreLocal(store);
   if (typeof window !== "undefined") {
+    if (removedDreamIds.length) {
+      void import("@/lib/ideate-vision-board").then((vb) => {
+        let board = vb.loadIdeateVisionBoardStore();
+        let changed = false;
+        for (const id of removedDreamIds) {
+          const next = vb.removeLifeAreaIdFromVisionBoard(board, id);
+          if (next !== board) {
+            board = next;
+            changed = true;
+          }
+        }
+        if (changed) vb.saveIdeateVisionBoardStore(board);
+      });
+    }
     void import("@/lib/ideate-cloud").then((m) => {
       m.notifyIdeateStoreChanged();
       if (isSignedIn()) m.scheduleIdeateCloudPush();

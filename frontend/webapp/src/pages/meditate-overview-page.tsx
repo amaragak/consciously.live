@@ -339,7 +339,7 @@ export function MeditateOverviewPage() {
             <ExploreMiniGroupLabel>Library</ExploreMiniGroupLabel>
             <ExploreMiniCard
               href="/meditate/library/creations"
-              title="My creations"
+              title="My Creations"
               description="Everything you've made, ready to play again."
               count={creationsCount}
               imageSrc={`${HERO}/adobestock-2162625652.webp`}

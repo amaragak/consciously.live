@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type Turn = { role: "user" | "assistant"; content: string };
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-haiku-4-5";
+const DEFAULT_MODEL = "claude-haiku-5-5";
 
 function sseResponse(stream: ReadableStream<Uint8Array>): Response {
   return new Response(stream, {

@@ -15,8 +15,16 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 
 export const GUIDE_PK = "GUIDE";
 
-export const GUIDE_AREAS = ["meditate", "journal"] as const;
+export const GUIDE_AREAS = ["meditate", "journal", "manifest"] as const;
 export type GuideArea = (typeof GUIDE_AREAS)[number];
+
+/** Practice-card action for `manifest` guides (ignored for other areas). */
+export const GUIDE_PRACTICE_ACTIONS = ["lifeArea", "create"] as const;
+export type GuidePracticeAction = (typeof GUIDE_PRACTICE_ACTIONS)[number];
+
+export function isGuidePracticeAction(raw: unknown): raw is GuidePracticeAction {
+  return raw === "lifeArea" || raw === "create";
+}
 export type GuideStatus = "draft" | "published";
 
 export type Guide = {
@@ -32,6 +40,8 @@ export type Guide = {
   body: string;
   /** Short brief that seeds the “practice this” flow. */
   practiceBrief: string;
+  /** Manifest only: what the practice card does. Null for other areas. */
+  practiceAction: GuidePracticeAction | null;
   status: GuideStatus;
   /** Ascending sort key (0..n). */
   order: number;
@@ -53,6 +63,7 @@ export type GuideSeed = {
   coverImageUrl?: string | null;
   body?: string;
   practiceBrief?: string;
+  practiceAction?: GuidePracticeAction | null;
   status?: GuideStatus;
   order?: number;
 };
@@ -80,7 +91,7 @@ function skForId(id: string): string {
 }
 
 export function isGuideArea(raw: unknown): raw is GuideArea {
-  return raw === "meditate" || raw === "journal";
+  return raw === "meditate" || raw === "journal" || raw === "manifest";
 }
 
 export function slugifyGuideTitle(title: string): string {
@@ -149,6 +160,12 @@ function coerceGuide(raw: Record<string, unknown>): Guide | null {
       typeof raw.practiceBrief === "string"
         ? raw.practiceBrief.trim().slice(0, MAX_PRACTICE_BRIEF)
         : "",
+    practiceAction:
+      raw.area === "manifest"
+        ? isGuidePracticeAction(raw.practiceAction)
+          ? raw.practiceAction
+          : "lifeArea"
+        : null,
     status: raw.status === "published" ? "published" : "draft",
     order: Math.max(0, Math.round(num(raw.order, 0))),
     readMinutes: computeGuideReadMinutes(body),
@@ -250,7 +267,7 @@ export async function putGuide(input: Record<string, unknown>): Promise<Guide> {
   const existing = existingId ? await getGuideById(existingId) : null;
 
   const area = isGuideArea(input.area) ? input.area : existing?.area;
-  if (!area) throw new Error("`area` must be 'meditate' or 'journal'");
+  if (!area) throw new Error("`area` must be 'meditate', 'journal' or 'manifest'");
 
   const title =
     typeof input.title === "string" && input.title.trim()
@@ -312,6 +329,12 @@ export async function putGuide(input: Record<string, unknown>): Promise<Guide> {
         ? input.practiceBrief.trim().slice(0, MAX_PRACTICE_BRIEF)
         : ""
       : (existing?.practiceBrief ?? ""),
+    practiceAction:
+      area !== "manifest"
+        ? null
+        : has(input, "practiceAction") && isGuidePracticeAction(input.practiceAction)
+          ? input.practiceAction
+          : (existing?.practiceAction ?? "lifeArea"),
     status:
       input.status === "published" || input.status === "draft"
         ? input.status
@@ -410,7 +433,7 @@ export async function seedGuidesIfEmpty(
 ): Promise<number> {
   const existing = await listGuides();
   if (existing.length > 0) return 0;
-  const counters: Record<GuideArea, number> = { meditate: 0, journal: 0 };
+  const counters: Record<GuideArea, number> = { meditate: 0, journal: 0, manifest: 0 };
   let written = 0;
   for (const seed of staticGuides) {
     if (!seed || !isGuideArea(seed.area)) continue;
@@ -430,7 +453,7 @@ export async function upsertGuidesByAreaSlug(
   staticGuides: GuideSeed[],
 ): Promise<number> {
   const existing = await listGuides();
-  const counters: Record<GuideArea, number> = { meditate: 0, journal: 0 };
+  const counters: Record<GuideArea, number> = { meditate: 0, journal: 0, manifest: 0 };
   let written = 0;
   for (const seed of staticGuides) {
     if (!seed || !isGuideArea(seed.area)) continue;

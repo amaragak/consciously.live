@@ -250,20 +250,23 @@ export function AppBreadcrumb({
         aria-hidden
         className="pointer-events-none absolute left-0 top-0 -z-10 flex list-none items-center whitespace-nowrap opacity-0"
       >
-        {crumbs.map((c, i) => (
-          <li key={`m-${c.label}-${i}`} className="flex items-center">
-            {i > 0 ? <TrailSeparator /> : null}
-            <span
-              className={
-                i === crumbs.length - 1
-                  ? "max-w-[240px] truncate font-semibold"
-                  : undefined
-              }
-            >
-              {c.label}
-            </span>
-          </li>
-        ))}
+        {crumbs.map((c, i) => {
+          const isCurrentPage = i === crumbs.length - 1 && !c.href;
+          return (
+            <li key={`m-${c.label}-${i}`} className="flex items-center">
+              {i > 0 ? <TrailSeparator /> : null}
+              <span
+                className={
+                  isCurrentPage
+                    ? "max-w-[240px] truncate font-semibold"
+                    : undefined
+                }
+              >
+                {c.label}
+              </span>
+            </li>
+          );
+        })}
       </ol>
       <ol className="m-0 flex list-none items-center p-0">
         {visible.map((item, i) => {
@@ -276,13 +279,16 @@ export function AppBreadcrumb({
             );
           }
           const last = item.index === crumbs.length - 1;
+          // Last crumb is only "current page" when it has no href. A trailing
+          // parent (e.g. My Creations on meditation detail) stays a normal link.
+          const isCurrentPage = last && !item.crumb.href;
           return (
             <li
               key={`${item.crumb.label}-${item.index}`}
               className={`flex items-center ${last ? "min-w-0" : "shrink-0"}`}
             >
               {i > 0 ? <TrailSeparator /> : null}
-              <TrailCrumb crumb={item.crumb} current={last} />
+              <TrailCrumb crumb={item.crumb} current={isCurrentPage} />
             </li>
           );
         })}

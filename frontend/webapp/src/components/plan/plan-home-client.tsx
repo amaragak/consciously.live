@@ -1,7 +1,21 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconChevronDown, IconEye, IconLoader2, IconPencil, IconRefresh, IconSparkles, IconWind } from "@tabler/icons-react";
+import { BookOpen, ChevronRight, Plus } from "lucide-react";
 import { LifeAreaCard } from "@/components/plan/life-area-card";
+import {
+  BAND_REVEAL_CLASS,
+  LIGHT_ACCENT_BORDER,
+  LIGHT_ACCENT_TEXT,
+  MANIFESTO_EYEBROW_CLASS,
+  ManifestoAddItem,
+  ManifestoEditPill,
+  ManifestoHeaderAction,
+  ManifestoHeaderLink,
+  ManifestoSectionHeader,
+} from "@/components/plan/manifesto-section";
+import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
+import { useGuides } from "@/content/guides";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   createPlanDream,
@@ -12,12 +26,13 @@ import {
   type PlanDream,
 } from "@/lib/plan-dreams";
 import { PlanResistanceThreadBanner } from "@/components/plan/plan-resistance-thread-banner";
-import { IdeateCollapsibleSection } from "@/components/plan/ideate-collapsible-section";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { IdeateCollapsibleSection } from "@/components/plan/ideate-collapsible-section";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { globalResistanceThreads } from "@/lib/plan-resistance-threads";
 import {
   loadIdeateVisionBoardStore,
+  visionItemHasImage,
   type VisionBoardItem,
 } from "@/lib/ideate-vision-board";
 import {
@@ -59,16 +74,21 @@ import {
   type IdeateQuote,
 } from "@/lib/ideate-quotes";
 import { fetchFamousQuotes } from "@/lib/medimade-api";
+import { writeManifestoMeditationHandoff } from "@/lib/manifesto-meditation-handoff";
 import {
-  loadIdeateSectionCollapse,
-  saveIdeateSectionCollapse,
-  type IdeateCollapsibleSectionId,
-  type IdeateSectionCollapseState,
-} from "@/lib/ideate-section-collapse";
+  goalSummaryForLifeArea,
+  lastActivityMs,
+  lifeAreaActivityMeta,
+  lifeAreaHref,
+  lifeAreaStepHref,
+  newGoalHref,
+} from "@/lib/life-area-summary";
 import {
-  writePlanCreateHandoff,
-  type PlanCreateHandoffV2,
-} from "@/lib/plan-create-handoff";
+  startLifeAreaFocus,
+  startLifeAreaMeditation,
+} from "@/lib/life-area-card-actions";
+import { hasMonthStats, manifestMonthStats } from "@/lib/manifest-month-stats";
+import { addVisionBoardImageFromFile } from "@/lib/ideate-vision-upload";
 import {
   VisionBoardMosaic,
   VISION_BOARD_EMPTY_COLORS,
@@ -117,23 +137,14 @@ function mosaicImages(
   return urls;
 }
 
+const VISION_GUIDE_SLUG = "writing-a-vision";
+
+/** Full-bleed Manifesto band: 1px top rule, hairline bottom; `group/band` drives hover reveal. */
+const BAND_CLASS =
+  "group/band w-full border-t border-b-[0.5px] border-marketing-ink/15";
+
 function formatIndex(n: number): string {
   return String(n).padStart(2, "0");
-}
-
-function formatCheckInDate(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
 }
 
 function BandRowsSkeleton({
@@ -224,19 +235,17 @@ function ManifestOverviewSkeleton({
 
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <section
-          className="scroll-mt-20 pb-8 pt-8 sm:pb-10 sm:pt-10"
+          className="scroll-mt-20 pb-11 pt-10"
           aria-labelledby="ideate-life-areas-heading-skel"
         >
-          <h2
-            id="ideate-life-areas-heading-skel"
-            className="mb-1.5 font-sans text-[15px] font-medium uppercase tracking-[0.08em] text-muted"
-          >
-            Your life areas
-          </h2>
-          <p className="mb-5 max-w-xl font-sans text-sm text-muted sm:mb-6">
-            Add the areas of your life you want to grow.
-          </p>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:gap-[10px]">
+          <div className="mb-5">
+            <ManifestoSectionHeader
+              id="ideate-life-areas-heading-skel"
+              title="Your life areas"
+              subline="The areas of your life you want to grow."
+            />
+          </div>
+          <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
               <li key={i} className="min-w-0">
                 <LifeAreaCard loading creationIndex={i} />
@@ -308,13 +317,13 @@ export function PlanHomeClient() {
   const [values, setValues] = useState<IdeateValue[]>([]);
   const [regrets, setRegrets] = useState<IdeateRegret[]>([]);
   const [quotes, setQuotes] = useState<IdeateQuote[]>([]);
-  const [collapsed, setCollapsed] = useState<IdeateSectionCollapseState>({
-    values: false,
-    questions: false,
-    regrets: false,
-    quotes: false,
-    lifeAreas: false,
-  });
+  const [manageValues, setManageValues] = useState(false);
+  const [manageQuotes, setManageQuotes] = useState(false);
+  const [manageQuestions, setManageQuestions] = useState(false);
+  const [addImageBusy, setAddImageBusy] = useState(false);
+  const [addImageError, setAddImageError] = useState<string | null>(null);
+  const addImageInputRef = useRef<HTMLInputElement>(null);
+  const { guides: manifestGuides } = useGuides("manifest");
   const [manifesto, setManifesto] = useState<string>("");
   const [manifestoLoading, setManifestoLoading] = useState(false);
   const [editingManifesto, setEditingManifesto] = useState(false);
@@ -381,7 +390,6 @@ export function PlanHomeClient() {
   }, []);
 
   useEffect(() => {
-    setCollapsed(loadIdeateSectionCollapse());
     setHeroBg(loadIdeateHeroBg());
   }, []);
 
@@ -406,14 +414,6 @@ export function PlanHomeClient() {
       document.removeEventListener("keydown", onKey);
     };
   }, [heroBgPickerOpen]);
-
-  const toggleSection = useCallback((id: IdeateCollapsibleSectionId) => {
-    setCollapsed((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      saveIdeateSectionCollapse(next);
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     const hero = heroRef.current;
@@ -472,6 +472,8 @@ export function PlanHomeClient() {
 
   // Sidebar "Add a life area" deep-link (`/manifest/my?new=1`).
   const newLifeAreaHandledRef = useRef(false);
+  /** Set when "New life area" came from a guide: open a drafted goal after create. */
+  const pendingGoalDraftRef = useRef<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -482,7 +484,13 @@ export function PlanHomeClient() {
     if (!hydrated || !cloudReady || newLifeAreaHandledRef.current) return;
     newLifeAreaHandledRef.current = true;
     setModalOpen(true);
+    // Guide practice card → "New life area": continue to a drafted goal after create.
+    if (params.get("then") === "goal") {
+      pendingGoalDraftRef.current = params.get("goalTitle") ?? "";
+    }
     params.delete("new");
+    params.delete("then");
+    params.delete("goalTitle");
     const qs = params.toString();
     navigate(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
   }, [hydrated, cloudReady, navigate]);
@@ -621,9 +629,9 @@ export function PlanHomeClient() {
 
   useEffect(() => {
     if (valueTexts.length === 0) {
-      setManifesto("");
+      // No values to distil from — keep a statement the user wrote by hand.
+      setManifesto(loadStoredManifesto() ?? "");
       setManifestoLoading(false);
-      setEditingManifesto(false);
       return;
     }
     const stored = loadStoredManifesto();
@@ -661,8 +669,14 @@ export function PlanHomeClient() {
     setManifestoDraft("");
   }
 
+  /** Empty manifesto: write a statement from scratch (same editor as Edit). */
+  function beginWriteManifesto() {
+    if (manifestoRefreshing) return;
+    setManifestoDraft(manifesto);
+    setEditingManifesto(true);
+  }
+
   function saveEditManifesto() {
-    if (valueTexts.length === 0) return;
     const text = saveIdeateManifestoManual({
       values: valueTexts,
       lifeAreaTitles,
@@ -671,6 +685,36 @@ export function PlanHomeClient() {
     if (text) setManifesto(text);
     setEditingManifesto(false);
     setManifestoDraft("");
+  }
+
+  /** "✦ Meditate on this": Create with the statement as brief + manifesto as context. */
+  function meditateOnManifesto() {
+    const statement = manifesto.trim();
+    if (!statement) return;
+    navigate(
+      writeManifestoMeditationHandoff({
+        statement,
+        values: valueTexts,
+        lifeAreaTitles,
+      }),
+    );
+  }
+
+  async function onAddImageFile(file: File | null) {
+    if (!file || addImageBusy) return;
+    setAddImageBusy(true);
+    setAddImageError(null);
+    try {
+      await addVisionBoardImageFromFile(file, signedIn);
+      refresh();
+    } catch (e) {
+      setAddImageError(
+        e instanceof Error ? e.message : "Could not add that image",
+      );
+    } finally {
+      setAddImageBusy(false);
+      if (addImageInputRef.current) addImageInputRef.current.value = "";
+    }
   }
 
   function refreshManifesto() {
@@ -709,6 +753,11 @@ export function PlanHomeClient() {
     setNewVision("");
     setModalOpen(false);
     refresh();
+    const pendingGoal = pendingGoalDraftRef.current;
+    if (pendingGoal !== null) {
+      pendingGoalDraftRef.current = null;
+      navigate(newGoalHref(dream.id, pendingGoal));
+    }
   }
 
   function persistQuestions(next: IdeateReflectionQuestion[]) {
@@ -962,7 +1011,8 @@ export function PlanHomeClient() {
     }
   }
 
-  const resistanceThreads = globalResistanceThreads(loadIdeateStore());
+  const ideateStore = loadIdeateStore();
+  const resistanceThreads = globalResistanceThreads(ideateStore);
   const questionCells =
     orderedQuestions.length > 0
       ? orderedQuestions
@@ -983,26 +1033,10 @@ export function PlanHomeClient() {
     );
   }
 
-  const valuesSummary =
-    orderedValues.length === 0
-      ? "No values yet"
-      : orderedValues
-          .map((v) => v.text.trim())
-          .filter(Boolean)
-          .slice(0, 3)
-          .join(" · ");
-  const questionsSummary =
-    orderedQuestions.length === 0
-      ? "No questions yet"
-      : orderedQuestions[0]!.text.trim() || "Untitled question";
   const regretsSummary =
     orderedRegrets.length === 0
       ? "No entries yet"
       : orderedRegrets[0]!.statement.trim() || "Untitled";
-  const quotesSummary =
-    orderedQuotes.length === 0
-      ? "No quotes yet"
-      : orderedQuotes[0]!.text.trim() || "Untitled";
 
   const heroBgOption = getIdeateHeroBgOption(heroBg);
 
@@ -1045,21 +1079,157 @@ export function PlanHomeClient() {
       </div>
     ) : null;
 
+  const statement = manifesto.trim();
+  const hasImages = visionItems.some(visionItemHasImage);
+  /** No statement and no images: the hero becomes the empty-manifesto prompt. */
+  const emptyManifesto = !statement && !hasImages && !manifestoLoading;
+  const heroImageCount = mosaicImages(visionItems, visionTileUrls).length;
+  /** First empty grid slot becomes the "Add image" tile. */
+  const addImageSlot =
+    heroImageCount < VISION_BOARD_GRID_SLOT_COUNT ? heroImageCount : null;
+  const monthStats = manifestMonthStats(ideateStore);
+  const publishedManifestGuides = manifestGuides.filter(
+    (g) => !g.status || g.status === "published",
+  );
+  const guidesForSection = publishedManifestGuides.slice(0, 4);
+  const visionGuide = publishedManifestGuides.find(
+    (g) => g.slug === VISION_GUIDE_SLUG,
+  );
+
+  const heroVisionBoardLink = (
+    <Link
+      to="/manifest/my/vision-board"
+      className="inline-flex h-11 items-center justify-center gap-0.5 rounded-full border border-white/70 bg-[rgb(30_37_48/0.25)] pl-[18px] pr-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+    >
+      Open vision board
+      <ChevronRight aria-hidden className="size-4" strokeWidth={1.8} />
+    </Link>
+  );
+  const heroMeditateButton = statement ? (
+    <button
+      type="button"
+      onClick={meditateOnManifesto}
+      className="accent-fill-gradient inline-flex h-11 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-[18px] text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+    >
+      ✦ Meditate on this
+    </button>
+  ) : null;
+
+  const renderEmptyManifestoCard = (idSuffix: string) => (
+    <div className="flex w-full max-w-[440px] flex-col items-center gap-3 rounded-2xl border border-border bg-card px-7 py-6 text-center shadow-[0_8px_24px_rgb(15_27_45_/_0.08)]">
+      <span className={`${MANIFESTO_EYEBROW_CLASS} text-accent-link`}>
+        My manifesto
+      </span>
+      <p className="font-display text-2xl font-normal leading-[1.3] text-foreground">
+        Write the sentence you want to grow into.
+      </p>
+      {editingManifesto ? (
+        <form
+          className="flex w-full flex-col gap-2.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveEditManifesto();
+          }}
+        >
+          <label className="sr-only" htmlFor={`ideate-manifesto-edit-${idSuffix}`}>
+            Edit manifesto
+          </label>
+          <textarea
+            id={`ideate-manifesto-edit-${idSuffix}`}
+            autoFocus
+            rows={3}
+            value={manifestoDraft}
+            onChange={(e) => setManifestoDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEditManifesto();
+              }
+            }}
+            className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-left font-display text-lg font-normal italic leading-[1.4] text-foreground outline-none ring-accent/30 focus:ring-2"
+          />
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={cancelEditManifesto}
+              className="cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!manifestoDraft.trim()}
+              className="accent-fill-gradient cursor-pointer rounded-full px-4 py-2 text-xs font-semibold text-on-accent disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <button
+            type="button"
+            onClick={beginWriteManifesto}
+            className="accent-fill-gradient inline-flex h-[42px] cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-[18px] text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
+          >
+            Write my statement
+          </button>
+          <Link
+            to="/manifest/my/vision-board"
+            className="inline-flex h-[42px] items-center justify-center whitespace-nowrap rounded-full border border-border bg-card px-[18px] text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
+          >
+            Add images
+          </Link>
+        </div>
+      )}
+      {visionGuide ? (
+        <Link
+          to={`/manifest/guides/${encodeURIComponent(visionGuide.slug)}`}
+          className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-link transition-opacity hover:opacity-80"
+        >
+          <BookOpen aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
+          <span>How to write a vision that pulls you forward</span>
+          <ChevronRight aria-hidden className="size-4 shrink-0" strokeWidth={1.8} />
+        </Link>
+      ) : null}
+    </div>
+  );
+  const emptyManifestoCardMobile = renderEmptyManifestoCard("empty-mobile");
+  const emptyManifestoCard = renderEmptyManifestoCard("empty");
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] pb-20">
+      <input
+        ref={addImageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(e) => void onAddImageFile(e.target.files?.[0] ?? null)}
+      />
+
       {/* Mobile: photo strip + quote on plain page bg (no text overlay on photos) */}
       <div className="sm:hidden">
         <section
-          className={`home-hero group/hero relative w-full ${heroBgOption.className}`}
+          className={`group/hero relative w-full ${
+            emptyManifesto
+              ? "bg-accent-soft py-3"
+              : `home-hero ${heroBgOption.className}`
+          }`}
           aria-label="Vision board"
         >
           <div className="w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]">
             <div
-              className="w-max min-w-full"
-              style={{
-                filter:
-                  "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
-              }}
+              className={emptyManifesto ? "w-max min-w-full px-4" : "w-max min-w-full"}
+              style={
+                emptyManifesto
+                  ? undefined
+                  : {
+                      filter:
+                        "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
+                    }
+              }
             >
               <VisionBoardMosaic
                 layout="strip"
@@ -1068,30 +1238,41 @@ export function PlanHomeClient() {
                 sizeClassName="w-max min-w-full"
                 gapClassName="gap-1"
                 radiusClassName="rounded-none"
-                cellRadiusClassName="rounded-none"
+                cellRadiusClassName={emptyManifesto ? "rounded-xl" : "rounded-none"}
+                dashedSlots={emptyManifesto}
               />
             </div>
           </div>
-          <div
-            ref={mobileHeroBgPickerRef}
-            className="home-hero-chrome absolute right-3 top-2.5 z-[5]"
-          >
-            <button
-              type="button"
-              onClick={() => setHeroBgPickerOpen((o) => !o)}
-              aria-label="Change hero background"
-              aria-expanded={heroBgPickerOpen}
-              title="Background"
-              className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/50 bg-black/60 text-white opacity-90 shadow-[0_2px_10px_rgb(0_0_0_/_0.35)] backdrop-blur-sm transition-[opacity,colors] hover:border-white hover:bg-black/80 hover:text-white"
+          {!emptyManifesto ? (
+            <div
+              ref={mobileHeroBgPickerRef}
+              className="home-hero-chrome absolute right-3 top-2.5 z-[5]"
             >
-              <IconPencil size={15} stroke={1.75} aria-hidden />
-            </button>
-            {renderHeroBgPickerMenu()}
-          </div>
+              <button
+                type="button"
+                onClick={() => setHeroBgPickerOpen((o) => !o)}
+                aria-label="Change hero background"
+                aria-expanded={heroBgPickerOpen}
+                title="Background"
+                className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/50 bg-black/60 text-white opacity-90 shadow-[0_2px_10px_rgb(0_0_0_/_0.35)] backdrop-blur-sm transition-[opacity,colors] hover:border-white hover:bg-black/80 hover:text-white"
+              >
+                <IconPencil size={15} stroke={1.75} aria-hidden />
+              </button>
+              {renderHeroBgPickerMenu()}
+            </div>
+          ) : null}
         </section>
 
+        {emptyManifesto ? (
+          <div className="flex justify-center px-4 py-5">{emptyManifestoCardMobile}</div>
+        ) : (
         <div className="bg-black px-4 pb-5 pt-4">
-          {valueTexts.length === 0 ? (
+          <span
+            className={`mb-2 block text-center ${MANIFESTO_EYEBROW_CLASS} ${LIGHT_ACCENT_TEXT}`}
+          >
+            My manifesto
+          </span>
+          {!statement && !manifestoLoading ? (
             <p className="font-display text-[18px] font-normal italic leading-[1.4] text-white/80">
               Add a few values below — we&apos;ll distil what you stand for into
               one sentence.
@@ -1145,7 +1326,7 @@ export function PlanHomeClient() {
           ) : (
             <div className="group/manifesto relative">
               <p
-                className={`font-display text-[18px] font-normal italic leading-[1.4] text-white transition-opacity ${
+                className={`font-display text-[18px] font-normal italic leading-[1.4] text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.25)] transition-opacity ${
                   manifestoRefreshing ? "opacity-60" : ""
                 }`}
               >
@@ -1184,49 +1365,58 @@ export function PlanHomeClient() {
             </div>
           )}
 
-          <Link
-            to="/manifest/my/vision-board"
-            className="mx-auto mt-3 flex w-fit items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          >
-            Open vision board →
-          </Link>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+            {heroVisionBoardLink}
+            {heroMeditateButton}
+          </div>
         </div>
+        )}
       </div>
 
-      {/* Desktop / tablet: existing overlay hero — unchanged */}
+      {/* Desktop / tablet: image grid with the manifesto laid over it */}
       <section
         ref={heroRef}
-        className={`home-hero home-hero--ideate-depth group/hero relative hidden w-full sm:block ${heroBgOption.className}`}
+        className={`group/hero relative hidden w-full sm:block ${
+          emptyManifesto
+            ? "bg-accent-soft"
+            : `home-hero home-hero--ideate-depth ${heroBgOption.className}`
+        }`}
         aria-label="Vision board"
       >
-        <div
-          ref={heroBgPickerRef}
-          className="home-hero-chrome absolute right-3 top-3 z-[5] sm:right-5 sm:top-4"
-        >
-          <button
-            type="button"
-            onClick={() => setHeroBgPickerOpen((o) => !o)}
-            aria-label="Change hero background"
-            aria-expanded={heroBgPickerOpen}
-            title="Background"
-            className={`inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/50 bg-black/60 text-white shadow-[0_2px_10px_rgb(0_0_0_/_0.35)] backdrop-blur-sm transition-[opacity,colors] hover:border-white hover:bg-black/80 hover:text-white ${
-              heroBgPickerOpen
-                ? "opacity-100"
-                : "opacity-0 group-hover/hero:opacity-100 group-focus-within/hero:opacity-100 max-md:opacity-70"
-            }`}
+        {!emptyManifesto ? (
+          <div
+            ref={heroBgPickerRef}
+            className="home-hero-chrome absolute right-3 top-3 z-[5] sm:right-5 sm:top-4"
           >
-            <IconPencil size={15} stroke={1.75} aria-hidden />
-          </button>
-          {renderHeroBgPickerMenu()}
-        </div>
+            <button
+              type="button"
+              onClick={() => setHeroBgPickerOpen((o) => !o)}
+              aria-label="Change hero background"
+              aria-expanded={heroBgPickerOpen}
+              title="Background"
+              className={`inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/50 bg-black/60 text-white shadow-[0_2px_10px_rgb(0_0_0_/_0.35)] backdrop-blur-sm transition-[opacity,colors] hover:border-white hover:bg-black/80 hover:text-white ${
+                heroBgPickerOpen
+                  ? "opacity-100"
+                  : "opacity-0 group-hover/hero:opacity-100 group-focus-within/hero:opacity-100 max-md:opacity-70"
+              }`}
+            >
+              <IconPencil size={15} stroke={1.75} aria-hidden />
+            </button>
+            {renderHeroBgPickerMenu()}
+          </div>
+        ) : null}
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
           <div className="relative w-full">
             <div
               className="w-full"
-              style={{
-                filter:
-                  "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
-              }}
+              style={
+                emptyManifesto
+                  ? undefined
+                  : {
+                      filter:
+                        "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
+                    }
+              }
             >
               <VisionBoardMosaic
                 layout="grid"
@@ -1235,43 +1425,85 @@ export function PlanHomeClient() {
                 sizeClassName="w-full"
                 gapClassName="gap-2.5 sm:gap-3"
                 radiusClassName="rounded-none"
-                cellRadiusClassName="rounded-md shadow-[0_12px_32px_rgb(30_37_48_/_0.42),0_4px_12px_rgb(30_37_48_/_0.28)]"
+                cellRadiusClassName={
+                  emptyManifesto
+                    ? "rounded-xl"
+                    : "rounded-md shadow-[0_12px_32px_rgb(30_37_48_/_0.42),0_4px_12px_rgb(30_37_48_/_0.28)]"
+                }
+                dashedSlots={emptyManifesto}
               />
             </div>
 
-            <div className="absolute left-1/2 top-1/2 z-[2] w-[min(100%,34rem)] -translate-x-1/2 -translate-y-1/2 px-6 text-center sm:w-[min(100%,38rem)]">
-              <div
-                className="pointer-events-none absolute -inset-x-4 -inset-y-5 -z-10 sm:-inset-x-5 sm:-inset-y-6"
-                style={{
-                  filter:
-                    "drop-shadow(0 10px 24px rgba(0,0,0,0.4)) drop-shadow(0 2px 8px rgba(0,0,0,0.25))",
-                }}
-                aria-hidden
-              >
+            {emptyManifesto ? (
+              <div className="absolute inset-0 z-[2] flex items-center justify-center px-6">
+                {emptyManifestoCard}
+              </div>
+            ) : (
+              <>
+                {/* Navy tint over the whole grid + a radial shade behind the text */}
                 <div
-                  className="absolute inset-0 overflow-hidden rounded-2xl"
+                  className="pointer-events-none absolute inset-0 z-[1] rounded-md"
                   style={{
                     background:
-                      "radial-gradient(ellipse 85% 80% at center, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.52) 45%, rgba(0,0,0,0.24) 72%, transparent 100%)",
-                    backdropFilter: "blur(8px)",
-                    WebkitBackdropFilter: "blur(8px)",
-                    maskImage:
-                      "radial-gradient(ellipse 85% 80% at center, #000 0%, #000 45%, rgba(0,0,0,0.65) 72%, transparent 100%)",
-                    WebkitMaskImage:
-                      "radial-gradient(ellipse 85% 80% at center, #000 0%, #000 45%, rgba(0,0,0,0.65) 72%, transparent 100%)",
+                      "linear-gradient(rgb(30 37 48 / 0.3), rgb(30 37 48 / 0.3)), radial-gradient(ellipse 60% 65% at 50% 50%, rgb(30 37 48 / 0.62), rgb(30 37 48 / 0) 75%)",
                   }}
+                  aria-hidden
                 />
-              </div>
-              {valueTexts.length === 0 ? (
-                <p className="font-display text-[23px] font-normal italic leading-[1.45] text-white/80">
-                  Add a few values below — we&apos;ll distil what you stand for
-                  into one sentence.
-                </p>
-              ) : manifestoLoading && !manifesto ? (
-                <p className="font-display text-[23px] font-normal italic leading-[1.45] text-white/80">
-                  Distilling…
-                </p>
-              ) : editingManifesto ? (
+
+                {/* First empty slot: "Add image" tile, above the overlay */}
+                {addImageSlot !== null ? (
+                  <div className="pointer-events-none absolute inset-0 z-[2] grid grid-cols-4 gap-2.5 sm:gap-3">
+                    {Array.from({ length: VISION_BOARD_GRID_SLOT_COUNT }, (_, i) =>
+                      i === addImageSlot ? (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => addImageInputRef.current?.click()}
+                          disabled={addImageBusy}
+                          className={`pointer-events-auto flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-[1.5px] border-dashed bg-background text-[13px] font-semibold text-accent-link transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-70 ${LIGHT_ACCENT_BORDER}`}
+                        >
+                          {addImageBusy ? (
+                            <IconLoader2
+                              size={18}
+                              stroke={1.75}
+                              className="animate-spin"
+                              aria-hidden
+                            />
+                          ) : (
+                            <Plus aria-hidden className="size-[18px]" strokeWidth={1.75} />
+                          )}
+                          {addImageBusy ? "Adding…" : "Add image"}
+                        </button>
+                      ) : (
+                        <div key={i} className="aspect-square w-full" aria-hidden />
+                      ),
+                    )}
+                  </div>
+                ) : null}
+                {addImageError ? (
+                  <p
+                    role="alert"
+                    className="absolute bottom-2 left-3 z-[3] rounded-md bg-black/60 px-2 py-1 text-xs text-white"
+                  >
+                    {addImageError}
+                  </p>
+                ) : null}
+
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-[3] flex w-[min(100%,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-[22px] px-6 text-center">
+                  <span className={`${MANIFESTO_EYEBROW_CLASS} ${LIGHT_ACCENT_TEXT}`}>
+                    My manifesto
+                  </span>
+                  {!statement && !manifestoLoading ? (
+                    <p className="font-display text-[23px] font-normal italic leading-[1.45] text-white/80">
+                      Add a few values below — we&apos;ll distil what you stand
+                      for into one sentence.
+                    </p>
+                  ) : manifestoLoading && !manifesto ? (
+                    <p className="font-display text-[23px] font-normal italic leading-[1.45] text-white/80">
+                      Distilling…
+                    </p>
+                  ) : editingManifesto ? (
+                    <div className="pointer-events-auto w-full">
                 <form
                   className="flex flex-col items-center gap-3"
                   onSubmit={(e) => {
@@ -1313,67 +1545,68 @@ export function PlanHomeClient() {
                     </button>
                   </div>
                 </form>
-              ) : (
-                <div className="group/manifesto relative">
-                  <p
-                    className={`font-display text-[23px] font-normal italic leading-[1.45] text-white transition-opacity ${
-                      manifestoRefreshing ? "opacity-60" : ""
-                    }`}
-                  >
-                    &ldquo;{manifesto}&rdquo;
-                  </p>
-                  <div className="pointer-events-none absolute -right-1 -top-1 flex items-center gap-1 opacity-0 transition-opacity group-hover/manifesto:pointer-events-auto group-hover/manifesto:opacity-100 group-focus-within/manifesto:pointer-events-auto group-focus-within/manifesto:opacity-100 sm:-right-2 sm:-top-2">
-                    <button
-                      type="button"
-                      onClick={beginEditManifesto}
-                      aria-label="Edit manifesto"
-                      title="Edit"
-                      className="pointer-events-auto inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:border-white hover:bg-black/75 hover:text-white"
-                    >
-                      <IconPencil size={14} stroke={1.75} aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={refreshManifesto}
-                      disabled={manifestoRefreshing}
-                      aria-label="Regenerate manifesto"
-                      title="Regenerate"
-                      className="pointer-events-auto inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:border-white hover:bg-black/75 hover:text-white disabled:cursor-wait disabled:opacity-70"
-                    >
-                      {manifestoRefreshing ? (
-                        <IconLoader2
-                          size={14}
-                          stroke={1.75}
-                          className="animate-spin"
-                          aria-hidden
-                        />
-                      ) : (
-                        <IconRefresh size={14} stroke={1.75} aria-hidden />
-                      )}
-                    </button>
+                    </div>
+                  ) : (
+                    <div className="group/manifesto pointer-events-auto relative">
+                      <p
+                        className={`font-display text-[23px] font-normal italic leading-[1.45] text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.25)] transition-opacity ${
+                          manifestoRefreshing ? "opacity-60" : ""
+                        }`}
+                      >
+                        &ldquo;{manifesto}&rdquo;
+                      </p>
+                      <div className="pointer-events-none absolute -right-1 -top-1 flex items-center gap-1 opacity-0 transition-opacity group-hover/manifesto:pointer-events-auto group-hover/manifesto:opacity-100 group-focus-within/manifesto:pointer-events-auto group-focus-within/manifesto:opacity-100 sm:-right-2 sm:-top-2">
+                        <button
+                          type="button"
+                          onClick={beginEditManifesto}
+                          aria-label="Edit manifesto"
+                          title="Edit"
+                          className="pointer-events-auto inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:border-white hover:bg-black/75 hover:text-white"
+                        >
+                          <IconPencil size={14} stroke={1.75} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={refreshManifesto}
+                          disabled={manifestoRefreshing}
+                          aria-label="Regenerate manifesto"
+                          title="Regenerate"
+                          className="pointer-events-auto inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:border-white hover:bg-black/75 hover:text-white disabled:cursor-wait disabled:opacity-70"
+                        >
+                          {manifestoRefreshing ? (
+                            <IconLoader2
+                              size={14}
+                              stroke={1.75}
+                              className="animate-spin"
+                              aria-hidden
+                            />
+                          ) : (
+                            <IconRefresh size={14} stroke={1.75} aria-hidden />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2.5">
+                    {heroVisionBoardLink}
+                    {heroMeditateButton}
                   </div>
                 </div>
-              )}
 
-              <Link
-                to="/manifest/my/vision-board"
-                className="mt-6 inline-flex items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              >
-                Open vision board →
-              </Link>
-            </div>
-
-            <div
-              className="absolute bottom-3 left-1/2 z-[1] -translate-x-1/2 transition-opacity duration-300"
-              style={{ opacity: scrollHintVisible ? 1 : 0 }}
-              aria-hidden={!scrollHintVisible}
-            >
-              <IconChevronDown
-                size={18}
-                stroke={1.75}
-                className="ideate-scroll-hint text-white/70"
-              />
-            </div>
+                <div
+                  className="absolute bottom-3 left-1/2 z-[1] -translate-x-1/2 transition-opacity duration-300"
+                  style={{ opacity: scrollHintVisible ? 1 : 0 }}
+                  aria-hidden={!scrollHintVisible}
+                >
+                  <IconChevronDown
+                    size={18}
+                    stroke={1.75}
+                    className="ideate-scroll-hint text-white/70"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -1388,100 +1621,116 @@ export function PlanHomeClient() {
         {/* —— Life areas —— */}
         <section
           id="life-areas"
-          className="scroll-mt-20 pb-8 pt-8 sm:pb-10 sm:pt-10"
+          className="flex scroll-mt-20 flex-col gap-5 pb-11 pt-10"
           aria-labelledby="ideate-life-areas-heading"
         >
-          <h2
+          <ManifestoSectionHeader
             id="ideate-life-areas-heading"
-            className="mb-1.5 font-sans text-[15px] font-medium uppercase tracking-[0.08em] text-muted"
-          >
-            Your life areas
-          </h2>
-          <p className="mb-5 max-w-xl font-sans text-sm text-muted sm:mb-6">
-            Add the areas of your life you want to grow.
-          </p>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:gap-[10px]">
+            title="Your life areas"
+            subline="The areas of your life you want to grow."
+            right={
+              <ManifestoHeaderAction onClick={() => setModalOpen(true)}>
+                Add life area
+              </ManifestoHeaderAction>
+            }
+          />
+          <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
             {orderedDreams.map((d) => {
-              const snippet = lifeAreaSnippet(d);
-              const lastInteracted = formatCheckInDate(
-                d.updatedAt || d.createdAt,
-              );
+              const goal = goalSummaryForLifeArea(ideateStore, d.id);
               return (
-                <li key={d.id} className="min-w-0">
+                <li key={d.id} className="flex min-w-0 flex-col [&>*]:flex-1">
                   <LifeAreaCard
-                    href={`/manifest/goal/${encodeURIComponent(d.id)}`}
+                    href={lifeAreaHref(d.id)}
                     title={d.title}
-                    snippet={snippet}
-                    lastInteracted={lastInteracted}
+                    snippet={lifeAreaSnippet(d)}
+                    activity={lifeAreaActivityMeta(lastActivityMs(ideateStore, d))}
+                    goal={
+                      goal
+                        ? {
+                            title: goal.subtask.title,
+                            done: goal.done,
+                            total: goal.total,
+                            next: goal.nextStep
+                              ? {
+                                  title: goal.nextStep.title,
+                                  href: lifeAreaStepHref(d.id, goal.subtask.id),
+                                }
+                              : null,
+                          }
+                        : null
+                    }
+                    setGoalHref={newGoalHref(d.id)}
+                    onFocus={
+                      goal
+                        ? () => navigate(startLifeAreaFocus(goal.subtask.id))
+                        : undefined
+                    }
+                    onMeditate={
+                      goal
+                        ? () => {
+                            const href = startLifeAreaMeditation(
+                              d.id,
+                              goal.subtask.title,
+                            );
+                            if (href) navigate(href);
+                          }
+                        : undefined
+                    }
                     creationIndex={lifeAreaCreationIndex.get(d.id) ?? 0}
                   />
                 </li>
               );
             })}
 
-            {/* Incomplete row: dashed tile fills remaining slots. Full rows of 4: compact button below. */}
-            {orderedDreams.length === 0 || orderedDreams.length % 4 !== 0 ? (
+            {orderedDreams.length === 0 ? (
               <li className="min-w-0">
                 <button
                   type="button"
                   onClick={() => setModalOpen(true)}
                   aria-label="Add new life area"
-                  className="group flex min-h-[56px] w-full cursor-pointer flex-row items-center justify-center gap-2 rounded-[4px] border-2 border-dashed bg-transparent transition-[border-color] duration-200 sm:aspect-square sm:min-h-0 sm:flex-col"
-                  style={{
-                    borderColor: "rgba(180,140,80,0.35)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(180,140,80,0.6)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(180,140,80,0.35)";
-                  }}
+                  className={`group flex min-h-[56px] w-full cursor-pointer flex-row items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed bg-transparent text-accent-link transition-opacity hover:opacity-80 sm:aspect-square sm:min-h-0 sm:flex-col ${LIGHT_ACCENT_BORDER}`}
                 >
-                  <span className="order-2 px-2 text-center font-sans text-[13px] font-bold uppercase tracking-[0.06em] text-[#1E2530] opacity-100 transition-opacity duration-200 ease-out sm:order-1 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-visible:opacity-100 sm:text-[14px] dark:text-[#F4F0E8]">
-                    Add new life area
-                  </span>
-                  <span
-                    className="order-1 font-sans text-[28px] font-light leading-none text-[rgba(180,140,80,0.45)] transition-[transform,color] duration-200 ease-out group-hover:scale-125 group-hover:text-[#1E2530] group-focus-visible:scale-125 group-focus-visible:text-[#1E2530] sm:order-2 sm:text-[36px] dark:group-hover:text-[#F4F0E8] dark:group-focus-visible:text-[#F4F0E8]"
-                    aria-hidden
-                  >
-                    +
+                  <Plus aria-hidden className="size-6" strokeWidth={1.5} />
+                  <span className="px-2 text-center text-[13px] font-semibold">
+                    Add life area
                   </span>
                 </button>
               </li>
             ) : null}
           </ul>
-          {orderedDreams.length > 0 && orderedDreams.length % 4 === 0 ? (
-            <div className="mt-7 flex justify-center">
-              <PrimaryCreateButton onClick={() => setModalOpen(true)}>
-                Add new life area
-              </PrimaryCreateButton>
-            </div>
-          ) : null}
         </section>
       </section>
 
       {/* Values → onwards: alternating full-bleed marketing bands */}
       <div className="w-full">
-        <div className="w-full border-b-[0.5px] border-marketing-ink/15 bg-marketing-band-ideate">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className={`${BAND_CLASS} bg-marketing-band-ideate`}>
+          <section
+            className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-[52px] pt-12 sm:px-6"
+            aria-labelledby="manifesto-values-heading"
+          >
             {/* —— Values —— */}
-            <IdeateCollapsibleSection
-              variant="band"
-              eyebrow="Values"
-              summary={valuesSummary}
-              collapsed={collapsed.values}
-              onToggle={() => toggleSection("values")}
-            >
-          {values.length === 0 ? (
-            <p className="mb-5 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
-              Principles you want to live by — name a few that feel true.
-            </p>
-          ) : null}
-
-          {values.length === 0 && !addingValue ? null : (
-            <ul className="flex flex-col gap-4">
+            <ManifestoSectionHeader
+              id="manifesto-values-heading"
+              title="Values"
+              subline="What you want your choices to come from."
+              right={
+                values.length > 0 ? (
+                  <ManifestoEditPill
+                    label="values"
+                    active={manageValues}
+                    onClick={() => setManageValues((v) => !v)}
+                  />
+                ) : null
+              }
+            />
+            {values.length === 0 ? (
+              <p className="-mt-3 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
+                Principles you want to live by — name a few that feel true.
+              </p>
+            ) : null}
+            <ul className="grid grid-cols-1 gap-x-12 gap-y-3.5 md:grid-cols-2">
               {orderedValues.map((v, i) => (
-                <li key={v.id} className="group">
+                <li key={v.id} className="min-w-0">
                   {editingValueId === v.id ? (
                     <form
                       onSubmit={(e) => {
@@ -1525,39 +1774,40 @@ export function PlanHomeClient() {
                       </div>
                     </form>
                   ) : (
-                    <div className="flex items-start gap-4">
-                      <span className="mt-1.5 min-w-6 shrink-0 font-sans text-xs text-muted">
+                    <div className="flex items-baseline gap-4">
+                      <span className="w-[22px] shrink-0 text-[13px] font-semibold tabular-nums text-accent">
                         {formatIndex(i + 1)}
                       </span>
                       <button
                         type="button"
                         onClick={() => openEditValue(v)}
-                        className="min-w-0 flex-1 cursor-pointer text-left font-display text-[20px] font-normal leading-[1.25] text-foreground transition-opacity hover:opacity-80 sm:text-[26px] sm:leading-[1.2]"
+                        className="min-w-0 cursor-pointer text-left font-display text-[28px] font-normal leading-[1.2] text-foreground transition-opacity hover:opacity-80 md:text-[34px]"
                       >
                         {v.text}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveValue(v.id)}
-                        className="mt-1.5 shrink-0 cursor-pointer font-sans text-xs text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                        aria-label={`Remove ${v.text}`}
-                      >
-                        Remove
-                      </button>
+                      {manageValues ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveValue(v.id)}
+                          className="shrink-0 cursor-pointer font-sans text-xs text-muted transition-colors hover:text-foreground"
+                          aria-label={`Remove ${v.text}`}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </div>
                   )}
                 </li>
               ))}
-            </ul>
-          )}
-
-          {addingValue ? (
+              <li className="min-w-0">
+                {addingValue ? (
+                  <div className="pl-[38px]">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 handleAddValue();
               }}
-              className="mt-4 flex flex-col gap-2"
+              className="flex flex-col gap-2"
             >
               <label className="sr-only" htmlFor="ideate-value-new">
                 New value
@@ -1591,44 +1841,54 @@ export function PlanHomeClient() {
                 </button>
               </div>
             </form>
-          ) : (
-            <div className="mt-5 flex justify-center">
-              <PrimaryCreateButton
-                onClick={() => {
-                  setAddingValue(true);
-                  setEditingValueId(null);
-                  setEditValueDraft("");
-                }}
-              >
-                Add a value
-              </PrimaryCreateButton>
-            </div>
-          )}
-            </IdeateCollapsibleSection>
-          </div>
+                  </div>
+                ) : (
+                  <ManifestoAddItem
+                    empty={values.length === 0}
+                    indentClassName="pl-[38px]"
+                    onClick={() => {
+                      setAddingValue(true);
+                      setEditingValueId(null);
+                      setEditValueDraft("");
+                    }}
+                  >
+                    Add a value
+                  </ManifestoAddItem>
+                )}
+              </li>
+            </ul>
+          </section>
         </div>
 
-        <div className="w-full border-b-[0.5px] border-marketing-ink/15 bg-marketing-band-d">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            {/* —— Meaningful quotes —— */}
-            <IdeateCollapsibleSection
-              variant="band"
-              eyebrow="Meaningful quotes"
-              summary={quotesSummary}
-              collapsed={collapsed.quotes}
-              onToggle={() => toggleSection("quotes")}
-            >
-          {quotes.length === 0 ? (
-            <p className="mb-5 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
-              Lines that keep you oriented — from thinkers you admire, or your
-              own.
-            </p>
-          ) : null}
-
-          {quotes.length === 0 && !addingQuote ? null : (
-            <ul className="flex flex-col gap-6">
+        <div className={`${BAND_CLASS} bg-marketing-band-d`}>
+          <section
+            className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-[52px] pt-12 sm:px-6"
+            aria-labelledby="manifesto-quotes-heading"
+          >
+            {/* —— Quotes —— */}
+            <ManifestoSectionHeader
+              id="manifesto-quotes-heading"
+              title="Quotes"
+              subline="Words you want to keep close."
+              right={
+                quotes.length > 0 ? (
+                  <ManifestoEditPill
+                    label="quotes"
+                    active={manageQuotes}
+                    onClick={() => setManageQuotes((v) => !v)}
+                  />
+                ) : null
+              }
+            />
+            {quotes.length === 0 && !addingQuote ? (
+              <p className="-mt-3 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
+                Lines that keep you oriented — from thinkers you admire, or your
+                own.
+              </p>
+            ) : null}
+            <ul className="grid grid-cols-1 gap-x-14 gap-y-9 md:grid-cols-2">
               {orderedQuotes.map((q) => (
-                <li key={q.id} className="group relative">
+                <li key={q.id} className="min-w-0">
                   {editingQuoteId === q.id ? (
                     <form
                       onSubmit={(e) => {
@@ -1690,38 +1950,38 @@ export function PlanHomeClient() {
                       </div>
                     </form>
                   ) : (
-                    <div className="flex items-start gap-3 sm:items-baseline">
+                    <figure className="m-0 flex flex-col gap-2.5">
                       <button
                         type="button"
                         onClick={() => openEditQuote(q)}
-                        className="flex min-w-0 flex-1 cursor-pointer flex-col gap-1 text-left transition-opacity hover:opacity-80 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-4 sm:gap-y-1"
+                        className="w-full cursor-pointer text-left transition-opacity hover:opacity-80"
                       >
-                        <p className="w-full min-w-0 font-display text-[17px] font-normal italic leading-[1.4] text-foreground sm:flex-1 sm:text-[22px]">
+                        <span className="block font-display text-[21px] font-normal italic leading-[1.4] text-foreground md:text-[26px]">
                           &ldquo;{q.text}&rdquo;
-                        </p>
-                        {q.attribution?.trim() ? (
-                          <p className="w-full shrink-0 font-sans text-[13px] font-normal text-muted sm:w-auto">
-                            — {q.attribution.trim()}
-                          </p>
-                        ) : null}
+                        </span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveQuote(q.id)}
-                        className="shrink-0 cursor-pointer font-sans text-xs text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                        aria-label="Remove quote"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                      {q.attribution?.trim() ? (
+                        <figcaption className="text-sm font-semibold text-accent-link">
+                          — {q.attribution.trim()}
+                        </figcaption>
+                      ) : null}
+                      {manageQuotes ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveQuote(q.id)}
+                          className="w-fit cursor-pointer font-sans text-xs text-muted transition-colors hover:text-foreground"
+                          aria-label="Remove quote"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </figure>
                   )}
                 </li>
               ))}
-            </ul>
-          )}
-
-          {addingQuote ? (
-            <div className="mt-4 flex flex-col gap-3">
+              <li className={`min-w-0 ${addingQuote ? "md:col-span-2" : ""}`}>
+                {addingQuote ? (
+            <div className="flex flex-col gap-3">
               {quoteAddMode === "choose" ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
@@ -1930,143 +2190,122 @@ export function PlanHomeClient() {
                 </form>
               ) : null}
             </div>
-          ) : (
-            <div className="mt-5 flex justify-center">
-              <PrimaryCreateButton
-                onClick={() => {
-                  setAddingQuote(true);
-                  setQuoteAddMode("choose");
-                  setEditingQuoteId(null);
-                }}
-              >
-                Add a quote
-              </PrimaryCreateButton>
-            </div>
-          )}
-            </IdeateCollapsibleSection>
-          </div>
+                ) : (
+                  <ManifestoAddItem
+                    empty={quotes.length === 0}
+                    onClick={() => {
+                      setAddingQuote(true);
+                      setQuoteAddMode("choose");
+                      setEditingQuoteId(null);
+                    }}
+                  >
+                    Add a quote
+                  </ManifestoAddItem>
+                )}
+              </li>
+            </ul>
+          </section>
         </div>
 
-        <div className="w-full border-b-[0.5px] border-marketing-ink/15 bg-marketing-band-ideate">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className={`${BAND_CLASS} bg-marketing-band-ideate`}>
+          <section
+            className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-[52px] pt-12 sm:px-6"
+            aria-labelledby="manifesto-questions-heading"
+          >
             {/* —— Questions —— */}
-            <IdeateCollapsibleSection
-              variant="band"
-              eyebrow="Questions to yourself"
-              summary={questionsSummary}
-              collapsed={collapsed.questions}
-              onToggle={() => toggleSection("questions")}
-            >
-          {questions.length === 0 ? (
-            <p className="mb-5 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
-              Questions worth sitting with — add a few and answer when
-              you&apos;re ready.
-            </p>
-          ) : null}
-
-          <ul>
-            {questionCells.map((q, i) => {
-              const isPreview = "isPreview" in q && q.isPreview;
-              const answer = !isPreview ? q.answer.trim() : "";
-              const openOrAdd = () => {
-                if (isPreview && "presetId" in q && q.presetId) {
-                  handleAddPreset(q.presetId, true);
-                  return;
-                }
-                openQuestion(q as IdeateReflectionQuestion);
-              };
-              return (
-                <li
-                  key={q.id}
-                  className={`group border-l-2 border-gold pl-5 ${
-                    i === questionCells.length - 1 ? "mb-0" : "mb-5"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      {isPreview ? (
-                        <button
-                          type="button"
-                          onClick={openOrAdd}
-                          className="w-full cursor-pointer text-left"
-                        >
-                          <span className="block font-display text-[15px] font-normal leading-[1.4] text-foreground sm:text-[19px]">
-                            {q.text}
-                          </span>
-                          <span className="mt-2 block font-sans text-sm font-medium text-accent-link sm:text-base">
-                            Add this question →
-                          </span>
-                        </button>
-                      ) : (
-                        <>
-                          <p className="font-display text-[15px] font-normal leading-[1.4] text-foreground sm:text-[19px]">
-                            {q.text}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={openOrAdd}
-                            className="mt-2 w-full cursor-pointer text-left"
-                          >
-                            {answer ? (
-                              <span className="block whitespace-pre-wrap font-sans text-sm font-normal leading-[1.6] text-muted transition-opacity hover:opacity-80 sm:text-base">
-                                {answer}
-                              </span>
-                            ) : (
-                              <span className="block font-sans text-sm font-medium text-accent-link sm:text-base">
-                                Add your answer →
-                              </span>
-                            )}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    {!isPreview ? (
-                      <div className="mt-0.5 flex shrink-0 flex-col items-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={openOrAdd}
-                          className="cursor-pointer font-sans text-xs text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                        >
-                          Edit answer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRemoveQuestion(
-                              (q as IdeateReflectionQuestion).id,
-                            )
-                          }
-                          className="cursor-pointer font-sans text-xs text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                          aria-label="Remove question"
-                        >
-                          Remove
-                        </button>
-                      </div>
+            <ManifestoSectionHeader
+              id="manifesto-questions-heading"
+              title="Questions to yourself"
+              subline="Come back to these when things feel noisy."
+              right={
+                questions.length > 0 ? (
+                  <ManifestoEditPill
+                    label="questions"
+                    active={manageQuestions}
+                    onClick={() => setManageQuestions((v) => !v)}
+                  />
+                ) : null
+              }
+            />
+            {questions.length === 0 ? (
+              <p className="-mt-3 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
+                Questions worth sitting with — add a few and answer when
+                you&apos;re ready.
+              </p>
+            ) : null}
+            <ul className="grid grid-cols-1 gap-x-14 gap-y-7 md:grid-cols-2">
+              {questionCells.map((q) => {
+                const isPreview = "isPreview" in q && q.isPreview;
+                const answer = !isPreview ? q.answer.trim() : "";
+                const openOrAdd = () => {
+                  if (isPreview && "presetId" in q && q.presetId) {
+                    handleAddPreset(q.presetId, true);
+                    return;
+                  }
+                  openQuestion(q as IdeateReflectionQuestion);
+                };
+                return (
+                  <li
+                    key={q.id}
+                    className={`flex min-w-0 flex-col gap-2 border-l-[3px] py-1 pl-5 ${
+                      answer ? "border-accent" : LIGHT_ACCENT_BORDER
+                    }`}
+                  >
+                    <p className="font-display text-xl font-normal leading-[1.3] text-foreground md:text-2xl">
+                      {q.text}
+                    </p>
+                    {answer ? (
+                      <button
+                        type="button"
+                        onClick={openOrAdd}
+                        className="w-full cursor-pointer text-left"
+                      >
+                        <span className="block whitespace-pre-wrap font-sans text-base font-normal leading-[1.6] text-foreground/75 transition-opacity hover:opacity-80">
+                          {answer}
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={openOrAdd}
+                        className="inline-flex w-fit cursor-pointer items-center gap-0.5 text-sm font-semibold text-accent-link transition-opacity hover:opacity-80"
+                      >
+                        {isPreview ? "Add this question" : "Add your answer"}
+                        <ChevronRight aria-hidden className="size-4" strokeWidth={1.8} />
+                      </button>
+                    )}
+                    {!isPreview && manageQuestions ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleRemoveQuestion((q as IdeateReflectionQuestion).id)
+                        }
+                        className="w-fit cursor-pointer font-sans text-xs text-muted transition-colors hover:text-foreground"
+                        aria-label="Remove question"
+                      >
+                        Remove
+                      </button>
                     ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="mt-5 flex justify-center">
-            <div className="relative" ref={addPickerRef}>
-              <PrimaryCreateButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setAddQuestionOpen((o) => !o);
-                  setWritingCustom(false);
-                  setCustomDraft("");
-                }}
-              >
-                {questions.length === 0 ? "Add another" : "Add a question"}
-              </PrimaryCreateButton>
-
+                  </li>
+                );
+              })}
+              <li className="min-w-0">
+                <div className="relative w-fit" ref={addPickerRef}>
+                  <ManifestoAddItem
+                    empty={questions.length === 0}
+                    onClick={() => {
+                      setAddQuestionOpen((o) => !o);
+                      setWritingCustom(false);
+                      setCustomDraft("");
+                    }}
+                  >
+                    Add a question
+                  </ManifestoAddItem>
               {addQuestionOpen ? (
                 <div
                   role="dialog"
                   aria-label="Add a reflection question"
-                  className="absolute top-full left-1/2 z-30 mt-2 w-[min(100vw-2rem,22rem)] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+                  className="absolute left-0 top-full z-30 mt-2 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-xl border border-border bg-card shadow-lg"
                 >
                 <ul className="max-h-56 overflow-y-auto py-1">
                   {unusedPresets.length === 0 ? (
@@ -2162,10 +2401,10 @@ export function PlanHomeClient() {
                 </div>
                 </div>
               ) : null}
-            </div>
-          </div>
-            </IdeateCollapsibleSection>
-          </div>
+                </div>
+              </li>
+            </ul>
+          </section>
         </div>
 
         {/* —— Regrets — temporarily hidden —— */}
@@ -2176,8 +2415,8 @@ export function PlanHomeClient() {
                 variant="band"
                 eyebrow="Regret minimisation"
                 summary={regretsSummary}
-                collapsed={collapsed.regrets}
-                onToggle={() => toggleSection("regrets")}
+                collapsed={false}
+                onToggle={() => {}}
               >
           {regrets.length === 0 ? (
             <p className="mb-5 max-w-2xl font-sans text-[13px] font-normal italic leading-relaxed text-muted">
@@ -2282,12 +2521,90 @@ export function PlanHomeClient() {
         )}
       </div>
 
+      {/* —— This month —— */}
+      {hasMonthStats(monthStats) ? (
+        <section
+          aria-label="This month"
+          className="mx-auto mt-10 max-w-6xl px-4 sm:px-6"
+        >
+          <div
+            className={`flex flex-col rounded-2xl border bg-accent-soft px-6 py-5 md:flex-row md:items-center ${LIGHT_ACCENT_BORDER}`}
+          >
+            <div className="flex flex-col gap-1 pb-4 md:min-w-[200px] md:pb-0 md:pr-5">
+              <span className="text-xs font-semibold uppercase tracking-[1.6px] text-accent-link">
+                This month
+              </span>
+              <Link
+                to="/manifest/my/insights"
+                className="inline-flex items-center gap-0.5 text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
+              >
+                See insights
+                <ChevronRight
+                  aria-hidden
+                  className="size-4"
+                  strokeWidth={1.8}
+                />
+              </Link>
+            </div>
+            {(
+              [
+                ["Pace", monthStats.pace],
+                ["Done", monthStats.done],
+                ["Sentiment", monthStats.sentiment],
+              ] as const
+            ).flatMap(([label, stat]) =>
+              stat
+                ? [
+                    <div
+                      key={label}
+                      className="flex min-w-0 flex-1 flex-col gap-1 border-t border-border py-3 md:border-l md:border-t-0 md:px-5 md:py-0"
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
+                        {label}
+                      </span>
+                      <span className="font-display text-2xl text-foreground">
+                        {stat.value}
+                      </span>
+                      {stat.note ? (
+                        <span className="text-xs text-foreground/75">
+                          {stat.note}
+                        </span>
+                      ) : null}
+                    </div>,
+                  ]
+                : [],
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {/* —— Guides —— */}
+      {guidesForSection.length > 0 ? (
+        <section
+          className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-10 sm:px-6"
+          aria-labelledby="manifesto-guides-heading"
+        >
+          <ManifestoSectionHeader
+            id="manifesto-guides-heading"
+            title="Guides"
+            subline="Short reads on vision, goals and following through."
+            right={
+              <ManifestoHeaderLink to="/manifest/guides">
+                All guides
+              </ManifestoHeaderLink>
+            }
+          />
+          <MeditateGuidesGrid guides={guidesForSection} area="manifest" />
+        </section>
+      ) : null}
+
       {modalOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-overlay/45 p-4 backdrop-blur-[2px] sm:items-center"
           role="presentation"
           onClick={() => {
             setModalOpen(false);
+            pendingGoalDraftRef.current = null;
           }}
         >
           <div

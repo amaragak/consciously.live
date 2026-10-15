@@ -1,6 +1,7 @@
 /**
  * Meditation detail page helpers — URL building / resolving, script chunks
- * (Phase A: plain-text only, no timings) and "Made from" derivation.
+ * (timed when the API returns `scriptChunks`, else plain-text split) and
+ * "Made from" derivation.
  *
  * Route: `/meditate/library/:id` where `:id` is any single segment that is not
  * one of the Library tab segments (`creations`, `community`, `programs`).
@@ -25,7 +26,7 @@ export const LIBRARY_TAB_SEGMENTS: readonly LibraryDetailFrom[] = [
 ];
 
 export const LIBRARY_DETAIL_FROM_LABEL: Record<LibraryDetailFrom, string> = {
-  creations: "My creations",
+  creations: "My Creations",
   community: "Community",
   programs: "Programs",
 };
@@ -115,43 +116,105 @@ export function findLibraryItemByDetailId<T extends LibraryMeditationItem>(
 }
 
 /* ------------------------------------------------------------------ */
-/* Breadcrumb title (set by the detail page, read by the top bar)      */
+/* Breadcrumb context (set by the detail page, read by the top bar)    */
 /* ------------------------------------------------------------------ */
 
-let detailTitle: string | null = null;
-const detailTitleListeners = new Set<() => void>();
+/** Tab the user opened detail from — drives Meditate › {leaf} crumb. */
+let detailFromCrumb: { label: string; href: string } | null = null;
+const detailCrumbListeners = new Set<() => void>();
 
-export function setLibraryDetailTitle(title: string | null): void {
-  const next = title?.trim() || null;
-  if (next === detailTitle) return;
-  detailTitle = next;
-  for (const fn of detailTitleListeners) fn();
+function notifyDetailCrumbListeners() {
+  for (const fn of detailCrumbListeners) fn();
 }
 
-export function peekLibraryDetailTitle(): string | null {
-  return detailTitle;
+/** Leaf crumb for detail (e.g. My Creations → /meditate/library/creations). */
+export function setLibraryDetailFromCrumb(
+  crumb: { label: string; href: string } | null,
+): void {
+  const next = crumb
+    ? { label: crumb.label.trim(), href: crumb.href.trim() }
+    : null;
+  if (!next?.label || !next.href) {
+    if (detailFromCrumb == null) return;
+    detailFromCrumb = null;
+    notifyDetailCrumbListeners();
+    return;
+  }
+  if (
+    detailFromCrumb?.label === next.label &&
+    detailFromCrumb?.href === next.href
+  ) {
+    return;
+  }
+  detailFromCrumb = next;
+  notifyDetailCrumbListeners();
 }
 
+export function peekLibraryDetailFromCrumb(): {
+  label: string;
+  href: string;
+} | null {
+  return detailFromCrumb;
+}
+
+/** Subscribe to detail-from-crumb changes (top-bar breadcrumb rebuild). */
 export function subscribeLibraryDetailTitle(fn: () => void): () => void {
-  detailTitleListeners.add(fn);
+  detailCrumbListeners.add(fn);
   return () => {
-    detailTitleListeners.delete(fn);
+    detailCrumbListeners.delete(fn);
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Script chunks (Phase A — plain text, no timings)                    */
+/* Script chunks                                                       */
 /* ------------------------------------------------------------------ */
 
 export type ScriptChunk = {
   index: number;
   section?: string;
   text: string;
-  /** Present only once the backend records timings (Phase B). */
+  /** Present when the library row stores timed chunks. */
   startMs?: number;
   endMs?: number;
   pauseAfterMs?: number;
 };
+
+/** Prefer API `scriptChunks` when every entry is timed; else plain split. */
+export function scriptChunksFromLibraryItem(
+  item: Pick<LibraryMeditationItem, "scriptText" | "scriptChunks">,
+): ScriptChunk[] {
+  const raw = item.scriptChunks;
+  if (Array.isArray(raw) && raw.length > 0) {
+    const timed: ScriptChunk[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw[i];
+      if (!c || typeof c !== "object") break;
+      const text = typeof c.text === "string" ? c.text.trim() : "";
+      const startMs =
+        typeof c.startMs === "number" && Number.isFinite(c.startMs)
+          ? Math.max(0, Math.round(c.startMs))
+          : NaN;
+      const endMs =
+        typeof c.endMs === "number" && Number.isFinite(c.endMs)
+          ? Math.max(0, Math.round(c.endMs))
+          : NaN;
+      if (!text || !Number.isFinite(startMs) || !Number.isFinite(endMs)) break;
+      timed.push({
+        index: typeof c.index === "number" ? c.index : i,
+        text,
+        startMs,
+        endMs: Math.max(endMs, startMs),
+        ...(typeof c.pauseAfterMs === "number" && c.pauseAfterMs > 0
+          ? { pauseAfterMs: Math.round(c.pauseAfterMs) }
+          : {}),
+      });
+    }
+    if (timed.length === raw.length && scriptChunksHaveTimings(timed)) {
+      return timed;
+    }
+  }
+  return scriptChunksFromPlainText(item.scriptText);
+}
 
 const PAUSE_MARKER_RE = /\[\[PAUSE\s+[^\]]+\]\]/gi;
 const HEADING_RE = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/;

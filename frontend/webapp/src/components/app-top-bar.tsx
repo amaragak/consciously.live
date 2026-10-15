@@ -6,6 +6,7 @@ import { Link, usePathname } from "@/lib/spa-nav";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo-mark";
 import {
+  AppPrimaryTabsPhoneSlot,
   AppPrimaryTabsSlot,
   AppTopBarTrailingSlot,
 } from "@/components/app-primary-tabs";
@@ -34,7 +35,8 @@ import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import { subscribeGuides } from "@/content/guides";
 import {
-  peekLibraryDetailTitle,
+  libraryDetailIdFromPathname,
+  peekLibraryDetailFromCrumb,
   subscribeLibraryDetailTitle,
 } from "@/lib/library-meditation-detail";
 import {
@@ -344,7 +346,7 @@ export function AppTopBar({
             createProgramTitle: createProgramTitleFromSession(pathname),
             createRandomScript: Boolean(readCreateSession()?.randomScript),
             journalEntryTitle: journalEntryTitleFromPath(pathname),
-            meditationTitle: peekLibraryDetailTitle(),
+            meditationFromCrumb: peekLibraryDetailFromCrumb(),
             gratitudeEntryLabel: gratitudeEntryLabelFromPath(pathname),
             hash: typeof window !== "undefined" ? window.location.hash : "",
             search: typeof window !== "undefined" ? window.location.search : "",
@@ -414,12 +416,28 @@ export function AppTopBar({
   const trail = location.trail;
   /**
    * Compact (&lt; lg): mirror desktop’s post-divider crumbs.
-   * Below `md` (no italic verb, no hub tabs): Meditate › My creations.
+   * Below `md` (no italic verb, no hub tabs): Meditate › My Creations.
    * From `md` up: italic verb + hub trail (Library) — tabs show the child.
+   * Meditation detail: phone = Meditate › My Creations (clickable back);
+   * md+ = Library (child tab is in the header select; never the title).
    */
+  const isLibraryDetail = Boolean(libraryDetailIdFromPathname(pathname));
+  const detailFromCrumb = peekLibraryDetailFromCrumb();
+  const phoneDetailTrail: AppBreadcrumbCrumb[] | null = isLibraryDetail
+    ? [
+        { label: "Meditate", href: "/meditate" },
+        {
+          label: detailFromCrumb?.label || "My Creations",
+          href: detailFromCrumb?.href || "/meditate/library/creations",
+        },
+      ]
+    : null;
   const phoneHubLeaf = librarySoundsPhoneLeafLabel(pathname);
-  const phoneTrail: AppBreadcrumbCrumb[] =
-    location.verb && phoneHubLeaf
+  /** Manifesto page: Edit | Manifesto tabs sit in the compact header. */
+  const isManifestHome = pathname.replace(/\/+$/, "") === "/manifest/my";
+  const phoneTrail: AppBreadcrumbCrumb[] = phoneDetailTrail
+    ? phoneDetailTrail
+    : location.verb && phoneHubLeaf
       ? [
           { label: location.verb, href: location.href || null },
           { label: phoneHubLeaf, href: null },
@@ -437,10 +455,11 @@ export function AppTopBar({
             ? [{ label: location.verb, href: null }]
             : [];
   const phoneTrailUsesVerbPrefix =
-    phoneTrail.length > 0 &&
-    (trail.length === 0 ||
-      Boolean(phoneHubLeaf) ||
-      (Boolean(location.verb) && trail[0]?.label !== location.verb));
+    Boolean(phoneDetailTrail) ||
+    (phoneTrail.length > 0 &&
+      (trail.length === 0 ||
+        Boolean(phoneHubLeaf) ||
+        (Boolean(location.verb) && trail[0]?.label !== location.verb)));
 
   return (
     <header
@@ -514,10 +533,27 @@ export function AppTopBar({
                 className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center md:hidden"
                 aria-hidden
               />
-              <AppBreadcrumb
-                crumbs={phoneTrail}
-                className="min-w-0 flex-1 text-[13px] md:hidden"
-              />
+              {isManifestHome ? (
+                <>
+                  {/* Phone: Manifest › [Edit | Manifesto] — tabs replace the last crumb. */}
+                  <AppBreadcrumb
+                    crumbs={[{ label: "Manifest", href: "/manifest/my" }]}
+                    className="shrink-0 text-[13px] md:hidden"
+                  />
+                  <span
+                    className="app-header-crumb-sep mx-1.5 shrink-0 text-[13px] md:hidden"
+                    aria-hidden
+                  >
+                    ›
+                  </span>
+                  <AppPrimaryTabsPhoneSlot className="flex min-w-0 flex-1 items-center overflow-x-auto md:hidden" />
+                </>
+              ) : (
+                <AppBreadcrumb
+                  crumbs={phoneTrail}
+                  className="min-w-0 flex-1 text-[13px] md:hidden"
+                />
+              )}
               {/* md–lg: leaf only — italic verb is visible in BrandPhrase. */}
               {trail.length > 0 ? (
                 <>

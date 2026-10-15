@@ -122,8 +122,8 @@ export function buildSimulatedBaseline(params: {
   };
   return {
     usage,
-    sonnet: llmCostLine(usage, SCRIPT_LAB_SONNET_MODEL, "Sonnet 4.6"),
-    haiku: llmCostLine(usage, SCRIPT_LAB_HAIKU_MODEL, "Haiku 4.5"),
+    sonnet: llmCostLine(usage, SCRIPT_LAB_SONNET_MODEL, "Sonnet 5.5"),
+    haiku: llmCostLine(usage, SCRIPT_LAB_HAIKU_MODEL, "Haiku 5.5"),
     firstPassInputTokens: params.firstPassUsage.input_tokens,
     estimatedOutputTokens,
   };

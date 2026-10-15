@@ -967,6 +967,8 @@ export type IdeateCloudBundle = {
   quotes?: unknown;
   /** Optional — persisted manifesto sentence. */
   manifesto?: unknown;
+  /** Optional — Manifesto Story draft + versions. */
+  story?: unknown;
 };
 
 export type FamousQuotesKind = "author" | "work";
@@ -7132,10 +7134,12 @@ export async function deleteAdminBlogPost(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Guides (database-backed Meditate / Journal guides)
+// Guides (database-backed Meditate / Journal / Manifest guides)
 // ---------------------------------------------------------------------------
 
-export type GuideArea = "meditate" | "journal";
+export type GuideArea = "meditate" | "journal" | "manifest";
+/** Manifest guides only: what the practice card does. */
+export type GuidePracticeAction = "lifeArea" | "create";
 export type GuideStatus = "draft" | "published";
 
 export type AdminGuide = {
@@ -7148,6 +7152,8 @@ export type AdminGuide = {
   coverImageUrl: string | null;
   body: string;
   practiceBrief: string;
+  /** Only meaningful when `area` is manifest. */
+  practiceAction: GuidePracticeAction | null;
   status: GuideStatus;
   order: number;
   readMinutes: number;
@@ -7169,6 +7175,7 @@ export type AdminGuideInput = Partial<
     | "coverImageUrl"
     | "body"
     | "practiceBrief"
+    | "practiceAction"
     | "status"
     | "order"
   >
@@ -7189,6 +7196,7 @@ export type PublicGuideListItem = {
   category: string;
   coverImageUrl: string | null;
   practiceBrief: string;
+  practiceAction: GuidePracticeAction | null;
   readMinutes: number;
   order: number;
   updatedAt: string;
@@ -7218,7 +7226,9 @@ function normalizeGuideListItem(raw: unknown): PublicGuideListItem | null {
   const slug = guideStr(o.slug).trim();
   const title = guideStr(o.title).trim();
   if (!id || !slug || !title) return null;
-  if (o.area !== "meditate" && o.area !== "journal") return null;
+  if (o.area !== "meditate" && o.area !== "journal" && o.area !== "manifest") {
+    return null;
+  }
   const cover = guideStr(o.coverImageUrl).trim();
   return {
     id,
@@ -7229,6 +7239,12 @@ function normalizeGuideListItem(raw: unknown): PublicGuideListItem | null {
     category: guideStr(o.category),
     coverImageUrl: cover || null,
     practiceBrief: guideStr(o.practiceBrief),
+    practiceAction:
+      o.area !== "manifest"
+        ? null
+        : o.practiceAction === "create"
+          ? "create"
+          : "lifeArea",
     readMinutes: Math.max(1, guideInt(o.readMinutes)),
     order: guideInt(o.order),
     updatedAt: guideStr(o.updatedAt),
@@ -7263,6 +7279,7 @@ function normalizeAdminGuide(raw: unknown): AdminGuide | null {
     coverImageUrl: pub.coverImageUrl,
     body: pub.body,
     practiceBrief: pub.practiceBrief,
+    practiceAction: pub.practiceAction,
     status: o.status === "published" ? "published" : "draft",
     order: pub.order,
     readMinutes: pub.readMinutes,
@@ -7847,6 +7864,17 @@ export type LibraryMeditationItem = {
   durationSeconds: number | null;
   scriptText: string | null;
   scriptTruncated: boolean;
+  /**
+   * Timed body chunks for follow-along (absolute stem ms). Present on
+   * meditations generated after chunk timing was added.
+   */
+  scriptChunks?: Array<{
+    index: number;
+    text: string;
+    startMs: number;
+    endMs: number;
+    pauseAfterMs?: number;
+  }> | null;
   /** UTF-8 bytes actually sent to TTS (Fish billable input), when stored. */
   scriptUtf8Bytes?: number | null;
   /** Fish TTS model used at generate time (e.g. s2.1-pro-free, s1). */

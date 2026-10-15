@@ -47,7 +47,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
         children: [
           {
             id: "library-creations",
-            label: "My creations",
+            label: "My Creations",
             href: "/meditate/library/creations",
           },
           {
@@ -376,11 +376,11 @@ export type AppBreadcrumbCrumb = {
 
 /**
  * Phone-only (&lt; md) leaf for Library / Sounds hubs — tabs are hidden there, so
- * the crumb shows the active child (e.g. “My creations”) instead of the hub name.
+ * the crumb shows the active child (e.g. “My Creations”) instead of the hub name.
  * Returns null on other routes.
  */
 export function librarySoundsPhoneLeafLabel(pathname: string): string | null {
-  // Meditation detail shows the full trail (… › Library › title).
+  // Meditation detail: phone crumb is Meditate › Library (see app-top-bar).
   if (libraryDetailIdFromPathname(pathname)) return null;
   if (pathname.startsWith("/meditate/library")) {
     const library = APP_NAV_MAIN.find((s) => s.id === "meditate")?.children?.find(
@@ -414,8 +414,8 @@ export type AppBreadcrumbOpts = {
   createProgramTitle?: string | null;
   /** Title for `/journal/my/[entryId]` (mobile entry editor). */
   journalEntryTitle?: string | null;
-  /** Title for `/meditate/library/[id]` (meditation detail). */
-  meditationTitle?: string | null;
+  /** Tab leaf for meditation detail (My Creations / Community / Programs). */
+  meditationFromCrumb?: { label: string; href: string } | null;
   /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
   gratitudeEntryLabel?: string | null;
   hash?: string;
@@ -644,12 +644,16 @@ export function buildAppBreadcrumbs(
     return crumbs;
   }
   if (pathname.startsWith("/meditate/library")) {
-    // Meditation detail: Library becomes a link back to the list.
+    // Meditation detail (md+ trail after italic Meditate): Library only —
+    // never the meditation title. Child tab is in the header select.
+    // Phone uses Meditate › My Creations via top-bar.
     if (libraryDetailIdFromPathname(pathname)) {
+      const fromHref =
+        opts?.meditationFromCrumb?.href?.trim() ||
+        "/meditate/library/creations";
       return [
         { label: "Meditate", href: "/meditate" },
-        { label: "Library", href: "/meditate/library/creations" },
-        { label: opts?.meditationTitle?.trim() || "Meditation", href: null },
+        { label: "Library", href: fromHref },
       ];
     }
     // md+: hub name — centre tabs show the child. Phone trail swaps in the
@@ -773,10 +777,38 @@ export function buildAppBreadcrumbs(
     ];
   }
   if (pathname.startsWith("/manifest")) {
+    if (
+      pathname === "/manifest/guides" ||
+      pathname.startsWith("/manifest/guides/")
+    ) {
+      const slugMatch = /^\/manifest\/guides\/([^/]+)\/?$/.exec(pathname);
+      if (slugMatch?.[1]) {
+        const slug = decodeURIComponent(slugMatch[1]);
+        const title = peekGuideTitle(slug, "manifest");
+        return [
+          { label: "Manifest", href: "/manifest/my" },
+          { label: "Guides", href: "/manifest/guides" },
+          { label: title, href: null },
+        ];
+      }
+      return [
+        { label: "Manifest", href: "/manifest/my" },
+        { label: "Guides", href: null },
+      ];
+    }
     if (pathname.startsWith("/manifest/my/vision-board")) {
       return [
         { label: "Manifest", href: "/manifest/my" },
         { label: "Vision board", href: null },
+      ];
+    }
+    if (
+      pathname === "/manifest/my/insights" ||
+      pathname.startsWith("/manifest/my/insights/")
+    ) {
+      return [
+        { label: "Manifest", href: "/manifest/my" },
+        { label: "Insights", href: null },
       ];
     }
     if (pathname.startsWith("/manifest/my")) {

@@ -49,7 +49,10 @@ import {
   type MeditationLengthMinutes,
 } from "@/lib/create-one-flow-state";
 import { CREATE_MEDITATE_ROOT } from "@/lib/create-meditation-path";
-import { consumeGuidePracticeBrief } from "@/lib/guide-practice-handoff";
+import {
+  consumeGuidePracticeHandoff,
+  MANIFESTO_CONTEXT_ID,
+} from "@/lib/guide-practice-handoff";
 import {
   categoryImageUrlForTile,
   createContextCoverFallbacks,
@@ -328,8 +331,23 @@ export function CreateOneFlow({
   useEffect(() => {
     if (guideBriefConsumedRef.current) return;
     guideBriefConsumedRef.current = true;
-    const brief = consumeGuidePracticeBrief();
-    if (brief) setState((p) => ({ ...p, prompt: brief }));
+    const handoff = consumeGuidePracticeHandoff();
+    if (!handoff) return;
+    setState((p) => ({
+      ...p,
+      prompt: handoff.brief,
+      // Manifesto "Meditate on this": attach the manifesto as context.
+      journals: handoff.context
+        ? [
+            ...p.journals,
+            {
+              id: handoff.context.id,
+              title: handoff.context.title,
+              bodyPlain: handoff.context.bodyPlain,
+            },
+          ]
+        : p.journals,
+    }));
   }, []);
 
   // Fresh mount has no draft — don't keep a mid-flow ?step= from a prior visit.
@@ -1732,7 +1750,13 @@ export function CreateOneFlow({
         <ContextToken
           key={j.id}
           name={j.title}
-          kindLabel={opts?.kindLabels ? "Journal" : undefined}
+          kindLabel={
+            opts?.kindLabels
+              ? j.id === MANIFESTO_CONTEXT_ID
+                ? "Manifesto"
+                : "Journal"
+              : undefined
+          }
           onRemove={
             removable
               ? () => {

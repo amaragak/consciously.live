@@ -45,7 +45,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
         children: [
           {
             id: "library-creations",
-            label: "My creations",
+            label: "My Creations",
             href: "/meditate/library/creations",
           },
           {

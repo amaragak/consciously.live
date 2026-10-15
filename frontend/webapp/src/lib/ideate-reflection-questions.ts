@@ -22,6 +22,8 @@ export type IdeateReflectionQuestion = {
   source: "preset" | "custom";
   /** Present when source === "preset" */
   presetId: string | null;
+  /** Hide from the Manifesto print's "Words to keep" (default false). */
+  hiddenOnPrint?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -93,6 +95,7 @@ function normalizeQuestion(x: unknown): IdeateReflectionQuestion | null {
     answer: typeof o.answer === "string" ? o.answer : "",
     source,
     presetId: typeof o.presetId === "string" ? o.presetId : null,
+    ...(o.hiddenOnPrint === true ? { hiddenOnPrint: true } : {}),
     createdAt,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : createdAt,
   };
@@ -221,6 +224,25 @@ export function patchQuestionAnswer(
         ? { ...q, answer, updatedAt: safeIso() }
         : q,
     ),
+  };
+}
+
+/** Show or hide an answered question on the Manifesto print. */
+export function setQuestionHiddenOnPrint(
+  store: IdeateReflectionQuestionsStoreV1,
+  id: string,
+  hidden: boolean,
+): IdeateReflectionQuestionsStoreV1 {
+  return {
+    v: 1,
+    questions: store.questions.map((q) => {
+      if (q.id !== id) return q;
+      const { hiddenOnPrint: _drop, ...rest } = q;
+      void _drop;
+      return hidden
+        ? { ...rest, hiddenOnPrint: true, updatedAt: safeIso() }
+        : { ...rest, updatedAt: safeIso() };
+    }),
   };
 }
 

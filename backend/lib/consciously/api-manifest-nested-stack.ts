@@ -239,5 +239,42 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
         ideateFamousQuotes,
       ),
     });
+
+    const manifestStory = new lambda_nodejs.NodejsFunction(
+      this,
+      "ManifestStoryFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/manifest-story.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(90),
+        memorySize: 512,
+        role,
+        environment: {
+          CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
+        },
+      },
+    );
+
+    addNestHttpRoutes(this, httpApi, {
+      id: "ManifestStoryRaiseRoute",
+      path: "/manifest/story/raise",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "ManifestStoryRaiseIntegration",
+        manifestStory,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "ManifestStoryComposeRoute",
+      path: "/manifest/story/compose",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "ManifestStoryComposeIntegration",
+        manifestStory,
+      ),
+    });
   }
 }

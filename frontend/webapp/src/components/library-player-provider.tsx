@@ -21,6 +21,7 @@ import {
   recordLocalPlayProgress60,
   recordLocalPlayStarted,
 } from "@/lib/daily-habits";
+import { getLibraryVoicePlayer } from "@consciously/common";
 import {
   LibraryAudioStrip,
   liveMixTrack,
@@ -43,6 +44,7 @@ import {
   loadJournalStoreRaw,
   subscribeJournalStore,
 } from "@/lib/journal-storage";
+import { maybeCountManifestoStoryListen } from "@/lib/manifesto-story-listen";
 import { usePathname, useRouter } from "@/lib/spa-nav";
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
@@ -70,6 +72,8 @@ type LibraryPlayerContextValue = {
   playItem: (item: LibraryMeditationItem) => void;
   playTrack: (track: LibraryActiveTrack) => void;
   toggleCurrent: () => void;
+  /** Seek the current strip track (voice stem seconds). */
+  seekTo: (timeSeconds: number) => void;
   dismiss: () => void;
   patchNowPlaying: (
     updater: (prev: LibraryActiveTrack) => LibraryActiveTrack | null,
@@ -275,6 +279,16 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackToggleNonce((n) => n + 1);
   }, []);
 
+  const seekTo = useCallback((timeSeconds: number) => {
+    const t = Math.max(0, timeSeconds);
+    try {
+      getLibraryVoicePlayer().seek(t);
+    } catch {
+      /* */
+    }
+    setPlaybackTimeSeconds(t);
+  }, []);
+
   const patchNowPlaying = useCallback(
     (updater: (prev: LibraryActiveTrack) => LibraryActiveTrack | null) => {
       setNowPlaying((prev) => (prev ? updater(prev) : prev));
@@ -311,6 +325,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       playItem,
       playTrack,
       toggleCurrent,
+      seekTo,
       dismiss,
       patchNowPlaying,
       setPlaybackTimeListener,
@@ -326,6 +341,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       playItem,
       playTrack,
       toggleCurrent,
+      seekTo,
       dismiss,
       patchNowPlaying,
       setPlaybackTimeListener,
@@ -368,6 +384,11 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
         if (nowPlayingRef.current?.s3Key !== s3Key) return;
         setPlaybackTimeSeconds(timeSeconds);
         timeListenerRef.current?.(s3Key, timeSeconds);
+        maybeCountManifestoStoryListen({
+          s3Key,
+          timeSeconds,
+          durationSeconds: nowPlayingRef.current?.durationSeconds,
+        });
       }}
     />
   );

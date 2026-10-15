@@ -14,6 +14,9 @@ type PrimaryTabsContextValue = {
   setTarget: (el: HTMLElement | null) => void;
   trailingTarget: HTMLElement | null;
   setTrailingTarget: (el: HTMLElement | null) => void;
+  /** Compact (&lt; md) header slot — tabs that replace the breadcrumb's last item. */
+  phoneTarget: HTMLElement | null;
+  setPhoneTarget: (el: HTMLElement | null) => void;
 };
 
 const PrimaryTabsContext = createContext<PrimaryTabsContextValue | null>(null);
@@ -29,9 +32,27 @@ export function AppPrimaryTabsProvider({ children }: { children: ReactNode }) {
   const setTrailingTarget = useCallback((el: HTMLElement | null) => {
     setTrailingTargetState((prev) => (prev === el ? prev : el));
   }, []);
+  const [phoneTarget, setPhoneTargetState] = useState<HTMLElement | null>(null);
+  const setPhoneTarget = useCallback((el: HTMLElement | null) => {
+    setPhoneTargetState((prev) => (prev === el ? prev : el));
+  }, []);
   const value = useMemo(
-    () => ({ target, setTarget, trailingTarget, setTrailingTarget }),
-    [target, setTarget, trailingTarget, setTrailingTarget],
+    () => ({
+      target,
+      setTarget,
+      trailingTarget,
+      setTrailingTarget,
+      phoneTarget,
+      setPhoneTarget,
+    }),
+    [
+      target,
+      setTarget,
+      trailingTarget,
+      setTrailingTarget,
+      phoneTarget,
+      setPhoneTarget,
+    ],
   );
   return (
     <PrimaryTabsContext.Provider value={value}>
@@ -72,6 +93,23 @@ export function AppPrimaryTabsDesktop({ children }: { children: ReactNode }) {
   const ctx = usePrimaryTabsContext();
   if (!ctx?.target) return null;
   return createPortal(children, ctx.target);
+}
+
+/**
+ * Mount point in the compact (&lt; md) top bar, after the breadcrumb — for page
+ * tabs that take the place of the breadcrumb's last item.
+ */
+export function AppPrimaryTabsPhoneSlot({ className }: { className?: string }) {
+  const ctx = usePrimaryTabsContext();
+  if (!ctx) return null;
+  return <div ref={ctx.setPhoneTarget} className={className} />;
+}
+
+/** Renders into the compact (&lt; md) header slot. */
+export function AppPrimaryTabsPhone({ children }: { children: ReactNode }) {
+  const ctx = usePrimaryTabsContext();
+  if (!ctx?.phoneTarget) return null;
+  return createPortal(children, ctx.phoneTarget);
 }
 
 /** Mount point in the top bar trailing cluster (left of marketing CTA). */

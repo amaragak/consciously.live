@@ -20,6 +20,16 @@ import {
   type IdeateManifestoStoreV1,
 } from "@/lib/ideate-manifesto";
 import {
+  clearManifestoStoryDeviceData,
+  clearManifestoStoryMemoryOnly,
+  emptyManifestoStoryStore,
+  loadManifestoStoryStore,
+  normalizeManifestoStoryStore,
+  saveManifestoStoryStoreLocal,
+  stripStoryForCloud,
+  type ManifestoStoryStoreV1,
+} from "@/lib/manifesto-story";
+import {
   clearIdeateStoreDeviceData,
   clearIdeateStoreMemoryOnly,
   loadIdeateStoreRaw,
@@ -107,6 +117,7 @@ export function clearIdeateSignedInWorkingCopy(): void {
   clearIdeateRegretsMemoryOnly();
   clearIdeateQuotesMemoryOnly();
   clearIdeateManifestoMemoryOnly();
+  clearManifestoStoryMemoryOnly();
 }
 
 /** Explicit logout — clears device copies. Never reseeds demos. */
@@ -119,6 +130,7 @@ export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
   clearIdeateRegretsDeviceData();
   clearIdeateQuotesDeviceData();
   clearIdeateManifestoDeviceData();
+  clearManifestoStoryDeviceData();
   if (typeof window !== "undefined") {
     try {
       removeAccountLocalStorage("mm_ideate_demo_seed_v1");
@@ -136,6 +148,7 @@ export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
       removeAccountLocalStorage("mm_ideate_regrets_v1");
       removeAccountLocalStorage("mm_ideate_quotes_v1");
       removeAccountLocalStorage("mm_ideate_manifesto_v1");
+      removeAccountLocalStorage("mm_manifesto_story_v1");
     } catch {
       /* */
     }
@@ -298,6 +311,7 @@ export function buildIdeateCloudBundle(): IdeateCloudBundle {
     regrets: stripRegretsForCloud(loadIdeateRegretsStore()),
     quotes: stripQuotesForCloud(loadIdeateQuotesStore()),
     manifesto: stripManifestoForCloud(loadIdeateManifestoStore()),
+    story: stripStoryForCloud(loadManifestoStoryStore()),
   };
 }
 
@@ -312,6 +326,7 @@ function ideateBundleHasContent(bundle: IdeateCloudBundle): boolean {
   const regrets = bundle.regrets as IdeateRegretsStoreV1 | null | undefined;
   const quotes = bundle.quotes as IdeateQuotesStoreV1 | null | undefined;
   const manifesto = bundle.manifesto as IdeateManifestoStoreV1 | null | undefined;
+  const story = bundle.story as ManifestoStoryStoreV1 | null | undefined;
   if ((ideate?.dreams?.length ?? 0) > 0) return true;
   if ((vision?.items?.length ?? 0) > 0) return true;
   if (vision?.selfReference?.url || vision?.selfReference?.key) return true;
@@ -320,6 +335,8 @@ function ideateBundleHasContent(bundle: IdeateCloudBundle): boolean {
   if ((regrets?.regrets?.length ?? 0) > 0) return true;
   if ((quotes?.quotes?.length ?? 0) > 0) return true;
   if ((manifesto?.text?.trim().length ?? 0) > 0) return true;
+  if ((story?.draft?.trim().length ?? 0) > 0) return true;
+  if ((story?.versions?.length ?? 0) > 0) return true;
   return false;
 }
 
@@ -377,6 +394,9 @@ export function applyIdeateCloudBundle(bundle: IdeateCloudBundle): void {
         text: "",
         updatedAt: new Date().toISOString(),
       },
+    );
+    saveManifestoStoryStoreLocal(
+      normalizeManifestoStoryStore(bundle.story) ?? emptyManifestoStoryStore(),
     );
   });
   notifyIdeateCloud();
@@ -440,6 +460,7 @@ export async function pullIdeateStoreFromCloud(opts?: {
         regrets: { v: 1, regrets: [] },
         quotes: { v: 1, quotes: [] },
         manifesto: { v: 1, text: "", updatedAt: new Date().toISOString() },
+        story: emptyManifestoStoryStore(),
       });
       return { applied: true, empty: true };
     } catch (err) {

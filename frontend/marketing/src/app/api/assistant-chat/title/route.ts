@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-haiku-4-5";
+const DEFAULT_MODEL = "claude-haiku-5-5";
 
 async function titleFromAnthropic(
   apiKey: string,

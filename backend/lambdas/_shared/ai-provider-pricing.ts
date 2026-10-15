@@ -5,17 +5,18 @@
 
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
-  CLAUDE_HAIKU_45_DATED_MODEL_ID,
+  CLAUDE_HAIKU_55_MODEL_ID,
   CLAUDE_SONNET_45_MODEL_ID,
-  CLAUDE_SONNET_46_MODEL_ID,
+  CLAUDE_SONNET_55_MODEL_ID,
   CLAUDE_MODEL_RATES,
   claudeUsdFromTokens,
 } from "./anthropic-pricing";
 
 export {
   CLAUDE_HAIKU_45_MODEL_ID,
+  CLAUDE_HAIKU_55_MODEL_ID,
   CLAUDE_SONNET_45_MODEL_ID,
-  CLAUDE_SONNET_46_MODEL_ID,
+  CLAUDE_SONNET_55_MODEL_ID,
   claudeUsdFromTokens,
 };
 
@@ -69,14 +70,12 @@ export const AI_PROVIDER_CATALOG: AiProviderCatalogEntry[] = [
     id: "anthropic",
     label: "Anthropic (Claude)",
     uses: "Create scripts, chat coach, journal insights, Script Lab, metadata",
-    rateLines: [
-      CLAUDE_HAIKU_45_MODEL_ID,
-      CLAUDE_SONNET_45_MODEL_ID,
-      CLAUDE_SONNET_46_MODEL_ID,
-    ].map((id) => {
-      const r = CLAUDE_MODEL_RATES[id]!;
-      return `${r.label}: $${(r.usdPerInputToken * 1_000_000).toFixed(2)} / $${(r.usdPerOutputToken * 1_000_000).toFixed(2)} per 1M in/out tokens`;
-    }),
+    rateLines: [CLAUDE_HAIKU_55_MODEL_ID, CLAUDE_SONNET_55_MODEL_ID].map(
+      (id) => {
+        const r = CLAUDE_MODEL_RATES[id]!;
+        return `${r.label}: $${(r.usdPerInputToken * 1_000_000).toFixed(2)} / $${(r.usdPerOutputToken * 1_000_000).toFixed(2)} per 1M in/out tokens`;
+      },
+    ),
     creditSource: "manual",
     creditNote:
       "Pay-as-you-go. Remaining balance needs an Anthropic Admin API key (sk-ant-admin…) or a manual snapshot.",
@@ -136,10 +135,9 @@ export function claudeUsdFromStoredLibraryTokens(row: {
   const model =
     typeof row.claudeModel === "string" && row.claudeModel.trim()
       ? row.claudeModel.trim()
-      : CLAUDE_HAIKU_45_MODEL_ID;
-  // Dated haiku id prices the same.
-  const priced =
-    model === CLAUDE_HAIKU_45_DATED_MODEL_ID ? CLAUDE_HAIKU_45_MODEL_ID : model;
+      : CLAUDE_HAIKU_55_MODEL_ID;
+  // Price by the stored model id (legacy 4.x rows keep 4.x rates in the table).
+  const priced = model;
   const wi = Number(row.claudeHaiku45WorkerInputTokens) || 0;
   const wo = Number(row.claudeHaiku45WorkerOutputTokens) || 0;
   const ci = Number(row.claudeHaiku45ChatEstInputTokens) || 0;

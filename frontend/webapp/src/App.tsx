@@ -25,11 +25,14 @@ import { JournalPage } from "./pages/journal-page";
 import { LibraryPage } from "./pages/library-page";
 import { ManifestGoalPage } from "./pages/manifest-goal-page";
 import { ManifestHomePage } from "./pages/manifest-home-page";
+import { ManifestInsightsPage } from "./pages/manifest-insights-page";
 import { ManifestVisionBoardPage } from "./pages/manifest-vision-board-page";
 import { JournalOverviewPage } from "./pages/journal-overview-page";
 import {
   JournalGuideArticlePage,
   JournalGuidesIndexPage,
+  ManifestGuideArticlePage,
+  ManifestGuidesIndexPage,
   MeditateGuideArticlePage,
   MeditateGuidesIndexPage,
 } from "./pages/meditate-guides-page";
@@ -59,9 +62,18 @@ export function App() {
         <Route path="chat/my/*" element={<ChatPage />} />
         <Route path="manifest" element={<Navigate to="/manifest/my" replace />} />
         <Route path="manifest/my" element={<ManifestHomePage />} />
+        <Route path="manifest/guides" element={<ManifestGuidesIndexPage />} />
+        <Route
+          path="manifest/guides/:slug"
+          element={<ManifestGuideArticlePage />}
+        />
         <Route
           path="manifest/my/vision-board"
           element={<ManifestVisionBoardPage />}
+        />
+        <Route
+          path="manifest/my/insights"
+          element={<ManifestInsightsPage />}
         />
         <Route path="manifest/goal/:id" element={<ManifestGoalPage />} />
         <Route path="meditate">

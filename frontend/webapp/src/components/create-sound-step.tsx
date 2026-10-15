@@ -249,6 +249,8 @@ type CreateSoundStepProps = {
   /** When length >= 1 and a program is attached, per-session mode is available. */
   programSessionIds?: string[] | null;
   onSessionOverrideMetaChange?: (meta: CreateSoundSessionOverrideMeta) => void;
+  /** Initial Speechify pacing offset (−5…5). Manifesto Story defaults to slowest. */
+  initialPacingPercent?: number;
 };
 
 type FlowSoundLock = {
@@ -533,6 +535,7 @@ export const CreateSoundStep = forwardRef<
     programId = null,
     programSessionIds = null,
     onSessionOverrideMetaChange,
+    initialPacingPercent,
   },
   ref,
 ) {
@@ -547,7 +550,16 @@ export const CreateSoundStep = forwardRef<
     setCreateSoundStripBridge,
   } = useLibraryPlayer();
   /** Create Sound pacing: Speechify = admin rate ± integer (−5…+5); Fish unused for samples. */
-  const [pacingPercent, setPacingPercent] = useState(VOICE_PACING_RECOMMENDED);
+  const [pacingPercent, setPacingPercent] = useState(() => {
+    const n = initialPacingPercent;
+    if (typeof n !== "number" || !Number.isFinite(n)) {
+      return VOICE_PACING_RECOMMENDED;
+    }
+    return Math.max(
+      VOICE_PACING_MIN,
+      Math.min(VOICE_PACING_MAX, Math.round(n)),
+    );
+  });
   const speechSpeed = FIXED_SPEECH_PREVIEW_SPEED;
   const devUi = useDevUiSettings();
   const showCreateAudioDevControls = shouldRenderDevUi(
@@ -795,21 +807,21 @@ export const CreateSoundStep = forwardRef<
   }, []);
 
   function applyBackgroundAudioData(data: Awaited<ReturnType<typeof listBackgroundAudio>>) {
-    setBackgroundNature(data.nature);
-    setBackgroundMusic(data.music);
-    setCompositions(data.compositions);
-    setBackgroundDrums(data.drums);
-    setBackgroundNoise(data.noise);
-    setFactoryMixes(data.factoryMixes ?? []);
+        setBackgroundNature(data.nature);
+        setBackgroundMusic(data.music);
+        setCompositions(data.compositions);
+        setBackgroundDrums(data.drums);
+        setBackgroundNoise(data.noise);
+        setFactoryMixes(data.factoryMixes ?? []);
     setCompositionTagTypes(
       data.compositionTagTypes?.length
         ? data.compositionTagTypes
         : DEFAULT_COMPOSITION_TAG_TYPES,
     );
-    const fromApi = data.baseUrl?.trim();
+        const fromApi = data.baseUrl?.trim();
     const envMediaBase = getMedimadeMediaBaseUrl();
-    setMediaBaseUrl(fromApi || envMediaBase || null);
-    preloadBackgroundAudioCoverImages(data);
+        setMediaBaseUrl(fromApi || envMediaBase || null);
+        preloadBackgroundAudioCoverImages(data);
   }
 
   useEffect(() => {
@@ -1137,7 +1149,7 @@ export const CreateSoundStep = forwardRef<
         Boolean(lock.compositionKey) &&
         compositions.some((c) => c.key === lock.compositionKey);
       if (keepMixer) {
-        setCompositionKey(lock.compositionKey);
+      setCompositionKey(lock.compositionKey);
         setSoundMode("mixer");
         setChoseSilence(false);
       } else if (honorSilence) {
@@ -1247,10 +1259,10 @@ export const CreateSoundStep = forwardRef<
     factoryMixesLoading,
     speakers,
     compositions,
-    speakerModelId,
-    compositionKey,
+      speakerModelId,
+      compositionKey,
     choseSilence,
-    soundMode,
+      soundMode,
     meditationStyle,
     voicePrefs,
     programSpeakerModelId,
@@ -1796,10 +1808,10 @@ export const CreateSoundStep = forwardRef<
       await player.start(
         dry,
         speakerPreviewWetUrl(modelId),
-        voiceFxDial,
+            voiceFxDial,
         dry,
-      );
-    } catch {
+          );
+        } catch {
       await startVoicePreview(modelId);
     }
   }
@@ -1917,8 +1929,8 @@ export const CreateSoundStep = forwardRef<
         } else {
           toggleLibraryPlayback();
         }
-        return;
-      }
+      return;
+    }
       // Resume beds — drop soft-paused voice (only playing sources stay named).
       if (voiceOnStrip && !voicePreviewPlaying) {
         setVoiceOnStrip(false);
@@ -2067,89 +2079,89 @@ export const CreateSoundStep = forwardRef<
     cfg: CreateSoundSessionSettings,
   ): Promise<CreateSoundStepJobExtras> {
     let referenceId = cfg.speakerModelId.trim();
-    if (!referenceId) {
-      const list = await listFishSpeakers();
-      const pick = pickDefaultSpeechifySpeaker(
-        speechifySpeakersForPicker(list),
-      );
-      referenceId = pick?.modelId ?? "";
-    }
-    if (!referenceId) throw new Error("No voice available");
-    const speaker =
+        if (!referenceId) {
+          const list = await listFishSpeakers();
+          const pick = pickDefaultSpeechifySpeaker(
+            speechifySpeakersForPicker(list),
+          );
+          referenceId = pick?.modelId ?? "";
+        }
+        if (!referenceId) throw new Error("No voice available");
+        const speaker =
       speakers.find((sp) => sp.modelId === referenceId) ?? null;
     const cfgDrumsPreviewKey = isMelodicMusicKey(backgroundMusic, cfg.backgroundMusicKey)
       ? ""
       : cfg.backgroundDrumsKey;
-    const rateN = Number(speechifyRateInput.trim());
+        const rateN = Number(speechifyRateInput.trim());
     const pacedSpeechifyRate = effectiveSpeechifyRate(
       speaker?.speechifyRate,
       cfg.pacingPercent,
     );
-    return {
-      reference_id: referenceId,
+        return {
+          reference_id: referenceId,
       voiceFxDial: cfg.voiceFxDial,
-      voiceFxPreset: voiceFxOn ? VOICE_FX_PRESET_MEDITATION_MIXER : null,
+          voiceFxPreset: voiceFxOn ? VOICE_FX_PRESET_MEDITATION_MIXER : null,
       speed: speechSpeed,
       ...(cfg.longerBreaks ? { longerBreaks: true as const } : {}),
-      speakerName: speaker?.name ?? null,
+          speakerName: speaker?.name ?? null,
       speakerPortraitUrl: speaker?.portraitImageUrl?.trim() || null,
       leadInSeconds: cfg.leadInSeconds,
       fadeOut: cfg.fadeOut,
-      ...(showCreateAudioDevControls
-        ? {
-            claudeModel: claudeModelChoice,
-            fishPauseMode,
-            ...(skipVoiceFx ? { skipVoiceFx: true as const } : {}),
-            ...(skipSpeechifyLoudnorm
-              ? { skipSpeechifyLoudnorm: true as const }
-              : {}),
-            ...(speechifyEmotionVariants
-              ? { speechifyEmotionVariants: true as const }
-              : {}),
-            ...(Number.isFinite(rateN)
-              ? {
-                  speechifyRate: Math.max(
-                    -50,
-                    Math.min(50, Math.round(rateN)),
-                  ),
-                }
+          ...(showCreateAudioDevControls
+            ? {
+                claudeModel: claudeModelChoice,
+                fishPauseMode,
+                ...(skipVoiceFx ? { skipVoiceFx: true as const } : {}),
+                ...(skipSpeechifyLoudnorm
+                  ? { skipSpeechifyLoudnorm: true as const }
+                  : {}),
+                ...(speechifyEmotionVariants
+                  ? { speechifyEmotionVariants: true as const }
+                  : {}),
+                ...(Number.isFinite(rateN)
+                  ? {
+                      speechifyRate: Math.max(
+                        -50,
+                        Math.min(50, Math.round(rateN)),
+                      ),
+                    }
               : { speechifyRate: pacedSpeechifyRate }),
-          }
-        : {
-            claudeModel: CLAUDE_SONNET_45_MODEL_ID,
-            fishPauseMode: "segmented" as const,
+              }
+            : {
+                claudeModel: CLAUDE_SONNET_45_MODEL_ID,
+                fishPauseMode: "segmented" as const,
             ...(speaker?.brand === "speechify"
               ? { speechifyRate: pacedSpeechifyRate }
               : {}),
-          }),
-      ...buildCreateMeditationBedJobFields({
+              }),
+          ...buildCreateMeditationBedJobFields({
         soundMode: cfg.soundMode,
         compositionKey: cfg.compositionKey,
         backgroundNatureKey: cfg.backgroundNatureKey,
         backgroundMusicKey: cfg.backgroundMusicKey,
         backgroundDrumsKey: cfg.backgroundDrumsKey,
         backgroundNoiseKey: cfg.backgroundNoiseKey,
-        backgroundNatureGain: musicLevelToBedGain(
+            backgroundNatureGain: musicLevelToBedGain(
           cfg.musicLevel,
           cfg.backgroundNatureGain,
-        ),
-        backgroundMusicGain: musicLevelToBedGain(
+            ),
+            backgroundMusicGain: musicLevelToBedGain(
           cfg.musicLevel,
           cfg.soundMode === "soundscape"
             ? SOUNDSCAPE_GAIN
             : cfg.backgroundMusicGain,
-        ),
-        backgroundDrumsGain: musicLevelToBedGain(
+            ),
+            backgroundDrumsGain: musicLevelToBedGain(
           cfg.musicLevel,
           cfg.backgroundDrumsGain,
-        ),
-        backgroundNoiseGain: musicLevelToBedGain(
+            ),
+            backgroundNoiseGain: musicLevelToBedGain(
           cfg.musicLevel,
           cfg.backgroundNoiseGain,
-        ),
+            ),
         drumsPreviewKey: cfgDrumsPreviewKey,
-      }),
-    };
+          }),
+        };
   }
 
   /** Settings for a session: All, or { ...All, ...override }. */
@@ -2250,16 +2262,16 @@ export const CreateSoundStep = forwardRef<
     ? mixerSoundLabel
     : !picksReady
       ? "Choosing soundscape…"
-      : compositionKey
-        ? (selectedSound?.name ?? "Soundscape")
-        : "Silence";
+    : compositionKey
+      ? (selectedSound?.name ?? "Soundscape")
+      : "Silence";
   const soundDescription = usingMix
     ? "Your mix"
     : !picksReady
       ? "Our Picks"
-      : compositionKey
-        ? soundscapeCategoryLabel(selectedSound)
-        : "Voice only";
+    : compositionKey
+      ? soundscapeCategoryLabel(selectedSound)
+      : "Voice only";
 
   togglePreviewTransportRef.current = () => {
     if (!isCreateLibraryPreview) {
@@ -2807,31 +2819,31 @@ export const CreateSoundStep = forwardRef<
               {sessionFocused && !voiceDiffers ? (
                 <span className="text-[12px] text-muted">Same as All</span>
               ) : null}
-              <div
+            <div
                 className="inline-flex rounded-xl bg-background p-[3px]"
-                role="group"
-                aria-label="Meditation pacing"
-              >
-                {(["guided", "open"] as const).map((id) => {
-                  const on = id === "open" ? longerBreaks : !longerBreaks;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      disabled={soundControlsDisabled}
-                      onClick={() => setLongerBreaks(id === "open")}
-                      className={`cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
-                        on
-                          ? "border border-border bg-card font-semibold text-foreground"
-                          : "border border-transparent text-muted"
-                      }`}
-                    >
-                      {id === "guided" ? "Guided" : "Open sits"}
-                    </button>
-                  );
-                })}
-              </div>
+              role="group"
+              aria-label="Meditation pacing"
+            >
+              {(["guided", "open"] as const).map((id) => {
+                const on = id === "open" ? longerBreaks : !longerBreaks;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={soundControlsDisabled}
+                    onClick={() => setLongerBreaks(id === "open")}
+                    className={`cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
+                      on
+                        ? "border border-border bg-card font-semibold text-foreground"
+                        : "border border-transparent text-muted"
+                    }`}
+                  >
+                    {id === "guided" ? "Guided" : "Open sits"}
+                  </button>
+                );
+              })}
             </div>
+          </div>
           </div>
           {sessionFocused && voiceDiffers ? (
             <SessionDiffNote
@@ -2875,15 +2887,15 @@ export const CreateSoundStep = forwardRef<
                 </p>
               ) : null}
             </div>
-            <button
+                <button
               ref={changeVoiceBtnRef}
-              type="button"
-              disabled={soundControlsDisabled}
+                  type="button"
+                  disabled={soundControlsDisabled}
               onClick={openVoicePanel}
               className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
             >
               Change
-            </button>
+                </button>
           </div>
           <div className="flex items-center gap-3 rounded-xl bg-background px-3.5 py-3">
             <button
@@ -2901,9 +2913,9 @@ export const CreateSoundStep = forwardRef<
               <svg viewBox="0 0 24 24" className="h-[11px] w-[11px]" fill="currentColor">
                 {selectedVoicePlaying ? (
                   <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-                ) : (
+              ) : (
                   <path d="M8 5v14l11-7L8 5z" />
-                )}
+              )}
               </svg>
             </button>
             <p className="min-w-0 font-display text-[16px] italic leading-[1.45] text-muted">
@@ -2951,15 +2963,15 @@ export const CreateSoundStep = forwardRef<
             </span>
             <div className="min-w-0 flex-1">
               <div className="relative h-[18px]">
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
+            <input
+              type="range"
+              min={0}
+              max={100}
                   step={1}
                   aria-label="Echo"
-                  disabled={soundControlsDisabled}
-                  value={voiceFxDial}
-                  onChange={(e) => setVoiceFxDial(Number(e.target.value))}
+              disabled={soundControlsDisabled}
+              value={voiceFxDial}
+              onChange={(e) => setVoiceFxDial(Number(e.target.value))}
                   className="create-sound-axis-fader relative z-[1]"
                   style={
                     {
@@ -3064,17 +3076,17 @@ export const CreateSoundStep = forwardRef<
           {usingMix || !compositionKey ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+          <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                   Music
                 </p>
                 <div className="flex items-center gap-[10px]">
                   {sessionFocused && !soundDiffers ? (
                     <span className="text-[12px] text-muted">Same as All</span>
                   ) : null}
-                  <button
+              <button
                     ref={changeSoundBtnRef}
-                    type="button"
-                    disabled={soundControlsDisabled}
+                type="button"
+                disabled={soundControlsDisabled}
                     onClick={() => openSoundPanel()}
                     className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
                   >
@@ -3108,8 +3120,8 @@ export const CreateSoundStep = forwardRef<
                     ) : (
                       <path d="M8 5v14l11-7L8 5z" />
                     )}
-                  </svg>
-                </button>
+                </svg>
+              </button>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-[21px] leading-snug text-foreground">
                     {soundTitle}
@@ -3138,8 +3150,8 @@ export const CreateSoundStep = forwardRef<
                       </span>
                     ))
                   )}
-                  <button
-                    type="button"
+              <button
+                type="button"
                     disabled={soundControlsDisabled}
                     onClick={openMixerPanel}
                     className="ml-auto shrink-0 cursor-pointer text-[13px] font-semibold text-accent-link"
@@ -3209,19 +3221,19 @@ export const CreateSoundStep = forwardRef<
                       {selectedSoundPlaying ? (
                         <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
                       ) : (
-                        <path d="M8 5v14l11-7L8 5z" />
+                    <path d="M8 5v14l11-7L8 5z" />
                       )}
-                    </svg>
-                  </button>
+                  </svg>
+              </button>
                   <p className="font-display text-[22px] leading-snug text-white [text-shadow:0_1px_8px_rgb(0_0_0_/_0.3)]">
-                    {soundTitle}
-                  </p>
-                </div>
+                {soundTitle}
+              </p>
+            </div>
               </div>
               {sessionFocused && soundDiffers ? (
                 <SessionDiffNote
                   sessionNumber={focusSessionNumber}
-                  disabled={soundControlsDisabled}
+              disabled={soundControlsDisabled}
                   onReset={() => resetFocusedOverrideKeys(SOUND_SETTING_KEYS)}
                 />
               ) : null}
@@ -3244,7 +3256,7 @@ export const CreateSoundStep = forwardRef<
                     ✦ {soundReason}
                   </span>
                 ) : null}
-              </div>
+          </div>
             </>
           )}
           <div className="flex items-center gap-1.5 overflow-x-auto md:flex-wrap">
@@ -3297,15 +3309,15 @@ export const CreateSoundStep = forwardRef<
               </span>
               <div className="min-w-0 flex-1">
                 <div className="relative h-[18px]">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
+            <input
+              type="range"
+              min={0}
+              max={100}
                     step={1}
                     aria-label="Volume"
-                    disabled={soundControlsDisabled}
-                    value={musicLevel}
-                    onChange={(e) => setMusicLevel(Number(e.target.value))}
+              disabled={soundControlsDisabled}
+              value={musicLevel}
+              onChange={(e) => setMusicLevel(Number(e.target.value))}
                     className="create-sound-axis-fader relative z-[1]"
                     style={
                       {
@@ -3359,7 +3371,7 @@ export const CreateSoundStep = forwardRef<
                 <Switch.Thumb className="block h-3.5 w-3.5 translate-x-[2px] rounded-full bg-card shadow transition-transform will-change-transform data-[state=checked]:translate-x-[14px]" />
               </Switch.Root>
               20 s of sound before the voice
-            </label>
+          </label>
             <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-muted">
               <Switch.Root
                 checked={fadeOut}
@@ -3396,19 +3408,19 @@ export const CreateSoundStep = forwardRef<
           {voiceFilters.map((chip) => {
             const on = voiceFilterSet.has(chip);
             return (
-              <button
-                key={chip}
-                type="button"
+            <button
+              key={chip}
+              type="button"
                 aria-pressed={on}
                 onClick={() => toggleVoiceFilter(chip)}
-                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+              className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
                   on
-                    ? "border border-accent bg-accent-soft/50 font-semibold"
-                    : "border border-border bg-card"
-                }`}
-              >
-                {chip}
-              </button>
+                  ? "border border-accent bg-accent-soft/50 font-semibold"
+                  : "border border-border bg-card"
+              }`}
+            >
+              {chip}
+            </button>
             );
           })}
         </div>
@@ -3527,9 +3539,9 @@ export const CreateSoundStep = forwardRef<
         footSummary={
           soundPanelTab === "mixer"
             ? `${mixerPanelName} · ${mixLayerBits.length} layers`
-            : compositions.find((c) => c.key === stagedSoundId)?.name
-              ? `${compositions.find((c) => c.key === stagedSoundId)!.name} selected`
-              : undefined
+              : compositions.find((c) => c.key === stagedSoundId)?.name
+                ? `${compositions.find((c) => c.key === stagedSoundId)!.name} selected`
+                : undefined
         }
         confirmLabel={
           soundPanelTab === "mixer" ? "Use this mix" : "Use this sound"
@@ -3593,43 +3605,43 @@ export const CreateSoundStep = forwardRef<
                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSoundCategory("all")}
-                  className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
-                    soundCategory === "all"
-                      ? "border border-accent bg-accent-soft/50 font-semibold"
-                      : "border border-border bg-card"
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
+              <button
+                type="button"
+                onClick={() => setSoundCategory("all")}
+                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                  soundCategory === "all"
+                    ? "border border-accent bg-accent-soft/50 font-semibold"
+                    : "border border-border bg-card"
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
                   onClick={() => setSoundCategory("our-picks")}
-                  className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
                     soundCategory === "our-picks"
-                      ? "border border-accent bg-accent-soft/50 font-semibold"
-                      : "border border-border bg-card"
-                  }`}
-                >
+                    ? "border border-accent bg-accent-soft/50 font-semibold"
+                    : "border border-border bg-card"
+                }`}
+              >
                   Our Picks
-                </button>
+              </button>
                 {soundPacks.map((pack) => (
-                  <button
+                <button
                     key={pack}
-                    type="button"
+                  type="button"
                     onClick={() =>
                       setSoundCategory((c) => (c === pack ? "all" : pack))
                     }
-                    className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
+                  className={`h-8 shrink-0 rounded-full px-3 text-[13px] ${
                       soundCategory === pack
-                        ? "border border-accent bg-accent-soft/50 font-semibold"
-                        : "border border-border bg-card"
-                    }`}
-                  >
+                      ? "border border-accent bg-accent-soft/50 font-semibold"
+                      : "border border-border bg-card"
+                  }`}
+                >
                     {pack}
-                  </button>
+                </button>
                 ))}
               </div>
               {soundTagFilterTypes.length > 0 ? (
@@ -3641,8 +3653,8 @@ export const CreateSoundStep = forwardRef<
                       selected={soundTagFilters[type.id] ?? []}
                       onChange={(next) => setTypeTagFilter(type.id, next)}
                     />
-                  ))}
-                </div>
+              ))}
+            </div>
               ) : null}
             </>
           ) : null}
@@ -3707,8 +3719,8 @@ export const CreateSoundStep = forwardRef<
                       ) : null}
                       <span className="absolute inset-0 flex items-center justify-center">
                         <MistPlayBadge playing={playing} size="sm" />
-                      </span>
                     </span>
+                      </span>
                     <span className="min-w-0 flex-1 basis-0 overflow-hidden pr-8">
                       <SyncedMarqueeTitle
                         id={item.key}
@@ -3716,13 +3728,13 @@ export const CreateSoundStep = forwardRef<
                         className="w-full font-display text-[15px] leading-[1.25] text-foreground"
                       />
                       <SoundscapeCardMeta item={item} />
-                    </span>
+                      </span>
                     <span className="pointer-events-auto absolute inset-y-0 right-1.5 z-10 flex items-center">
-                      <FavoriteHeartButton
-                        pressed={favorites.compositionSet.has(item.key)}
-                        label={item.name}
-                        onToggle={() => favorites.toggleComposition(item.key)}
-                      />
+                    <FavoriteHeartButton
+                      pressed={favorites.compositionSet.has(item.key)}
+                      label={item.name}
+                      onToggle={() => favorites.toggleComposition(item.key)}
+                    />
                     </span>
                   </div>
                 );

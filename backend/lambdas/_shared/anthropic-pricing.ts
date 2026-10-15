@@ -3,24 +3,59 @@
  * and **output tokens** (completion). Rates are list prices for the model id we deploy.
  *
  * Verify current numbers: https://platform.claude.com/docs/en/about-claude/pricing
- * (Haiku 4.5 listed at $1 / MTok input, $5 / MTok output as of early 2026.)
+ * (Haiku 5.5 listed at $0.10 / $0.50 per MTok for prompts ≤100k as of Oct 2026;
+ *  Sonnet 5.5 at $2 / $10.)
  */
-export const CLAUDE_HAIKU_45_MODEL_ID = "claude-haiku-4-5";
-export const CLAUDE_SONNET_45_MODEL_ID = "claude-sonnet-4-5";
-/** Script Lab pipeline — Sonnet for creative/structural stages. */
+
+/** Current default Haiku for new requests. */
+export const CLAUDE_HAIKU_55_MODEL_ID = "claude-haiku-5-5";
+/** Current default Sonnet for new requests. */
+export const CLAUDE_SONNET_55_MODEL_ID = "claude-sonnet-5-5";
+
+/**
+ * @deprecated Prefer {@link CLAUDE_HAIKU_55_MODEL_ID}. Same id — kept so existing
+ * imports keep requesting the current default Haiku.
+ */
+export const CLAUDE_HAIKU_45_MODEL_ID = CLAUDE_HAIKU_55_MODEL_ID;
+/**
+ * @deprecated Prefer {@link CLAUDE_SONNET_55_MODEL_ID}. Same id — kept so existing
+ * imports keep requesting the current default Sonnet.
+ */
+export const CLAUDE_SONNET_45_MODEL_ID = CLAUDE_SONNET_55_MODEL_ID;
+
+/** Legacy Sonnet (still active) — kept for historical usage rows / Script Lab history. */
 export const CLAUDE_SONNET_46_MODEL_ID = "claude-sonnet-4-6";
-/** Script Lab pipeline — Haiku for classification/fill stages. */
+/** Legacy Haiku dated snapshot — historical usage / old Script Lab stages. */
 export const CLAUDE_HAIKU_45_DATED_MODEL_ID = "claude-haiku-4-5-20251001";
+/** Legacy Haiku alias string as stored on older usage rows. */
+export const CLAUDE_HAIKU_45_LEGACY_MODEL_ID = "claude-haiku-4-5";
+/** Legacy Sonnet 4.5 (deprecated upstream) — historical usage rows only. */
+export const CLAUDE_SONNET_45_LEGACY_MODEL_ID = "claude-sonnet-4-5";
 
-export const CLAUDE_HAIKU_45_USD_PER_INPUT_TOKEN = 1 / 1_000_000;
-export const CLAUDE_HAIKU_45_USD_PER_OUTPUT_TOKEN = 5 / 1_000_000;
+export const CLAUDE_HAIKU_55_USD_PER_INPUT_TOKEN = 0.1 / 1_000_000;
+export const CLAUDE_HAIKU_55_USD_PER_OUTPUT_TOKEN = 0.5 / 1_000_000;
+/** @deprecated Same as current Haiku 5.5 list rates. */
+export const CLAUDE_HAIKU_45_USD_PER_INPUT_TOKEN = CLAUDE_HAIKU_55_USD_PER_INPUT_TOKEN;
+/** @deprecated Same as current Haiku 5.5 list rates. */
+export const CLAUDE_HAIKU_45_USD_PER_OUTPUT_TOKEN = CLAUDE_HAIKU_55_USD_PER_OUTPUT_TOKEN;
 
-/** Models the create flow may request. Unknown ids fall back to Haiku. */
+/** Models the create flow may request. Unknown ids fall back to Haiku 5.5. */
 export const CLAUDE_MODEL_RATES: Record<
   string,
   { usdPerInputToken: number; usdPerOutputToken: number; label: string }
 > = {
-  [CLAUDE_HAIKU_45_MODEL_ID]: {
+  [CLAUDE_HAIKU_55_MODEL_ID]: {
+    usdPerInputToken: CLAUDE_HAIKU_55_USD_PER_INPUT_TOKEN,
+    usdPerOutputToken: CLAUDE_HAIKU_55_USD_PER_OUTPUT_TOKEN,
+    label: "Haiku 5.5",
+  },
+  [CLAUDE_SONNET_55_MODEL_ID]: {
+    usdPerInputToken: 2 / 1_000_000,
+    usdPerOutputToken: 10 / 1_000_000,
+    label: "Sonnet 5.5",
+  },
+  // Legacy — price historical rows correctly
+  [CLAUDE_HAIKU_45_LEGACY_MODEL_ID]: {
     usdPerInputToken: 1 / 1_000_000,
     usdPerOutputToken: 5 / 1_000_000,
     label: "Haiku 4.5",
@@ -30,7 +65,7 @@ export const CLAUDE_MODEL_RATES: Record<
     usdPerOutputToken: 5 / 1_000_000,
     label: "Haiku 4.5",
   },
-  [CLAUDE_SONNET_45_MODEL_ID]: {
+  [CLAUDE_SONNET_45_LEGACY_MODEL_ID]: {
     usdPerInputToken: 3 / 1_000_000,
     usdPerOutputToken: 15 / 1_000_000,
     label: "Sonnet 4.5",
@@ -48,7 +83,7 @@ export function isSupportedClaudeModel(model: unknown): model is string {
 
 /** Coerces a requested model id to one we price and support. */
 export function coerceClaudeModel(model: unknown): string {
-  return isSupportedClaudeModel(model) ? model : CLAUDE_HAIKU_45_MODEL_ID;
+  return isSupportedClaudeModel(model) ? model : CLAUDE_HAIKU_55_MODEL_ID;
 }
 
 export function claudeUsdFromTokens(
@@ -57,7 +92,8 @@ export function claudeUsdFromTokens(
   outputTokens: number,
 ): number {
   if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens)) return 0;
-  const rate = CLAUDE_MODEL_RATES[model] ?? CLAUDE_MODEL_RATES[CLAUDE_HAIKU_45_MODEL_ID];
+  const rate =
+    CLAUDE_MODEL_RATES[model] ?? CLAUDE_MODEL_RATES[CLAUDE_HAIKU_55_MODEL_ID];
   return (
     Math.max(0, inputTokens) * rate.usdPerInputToken +
     Math.max(0, outputTokens) * rate.usdPerOutputToken
@@ -68,7 +104,7 @@ export function claudeHaiku45UsdFromTokens(
   inputTokens: number,
   outputTokens: number,
 ): number {
-  return claudeUsdFromTokens(CLAUDE_HAIKU_45_MODEL_ID, inputTokens, outputTokens);
+  return claudeUsdFromTokens(CLAUDE_HAIKU_55_MODEL_ID, inputTokens, outputTokens);
 }
 
 /** Parse `usage` from a non-streaming `/v1/messages` JSON body. */

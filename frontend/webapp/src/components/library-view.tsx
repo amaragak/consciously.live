@@ -92,7 +92,7 @@ import {
   libraryDetailIdFromPathname,
   libraryMeditationDetailHref,
   meditationSoundscapeName,
-  setLibraryDetailTitle,
+  setLibraryDetailFromCrumb,
   type LibraryDetailFrom,
 } from "@/lib/library-meditation-detail";
 import {
@@ -2202,9 +2202,18 @@ export default function LibraryView({
   }, [detailFrom, detailProgramSlug, detailMatch, programs]);
 
   useEffect(() => {
-    setLibraryDetailTitle(detailMatch?.item.title ?? null);
-    return () => setLibraryDetailTitle(null);
-  }, [detailMatch?.item.title]);
+    if (detailId) {
+      setLibraryDetailFromCrumb({
+        label: LIBRARY_DETAIL_FROM_LABEL[detailFrom],
+        href: detailBackHref,
+      });
+    } else {
+      setLibraryDetailFromCrumb(null);
+    }
+    return () => {
+      setLibraryDetailFromCrumb(null);
+    };
+  }, [detailId, detailFrom, detailBackHref]);
 
   // Restore the list scroll when coming back; start detail at the top.
   useEffect(() => {
@@ -2306,8 +2315,6 @@ export default function LibraryView({
         item={item}
         source={source}
         isMobile={isMobileLayout}
-        backLabel={LIBRARY_DETAIL_FROM_LABEL[detailFrom]}
-        backHref={detailBackHref}
         soundscapeName={soundscapeName}
         onPlay={() => {
           if (nowPlaying?.s3Key === item.s3Key) toggleCurrent();
@@ -2802,9 +2809,17 @@ export default function LibraryView({
   return (
     <>
     <div
-      className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 [scrollbar-gutter:stable] max-md:px-0"
+      className={`mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 sm:px-6 sm:pb-10 md:pb-10 [scrollbar-gutter:stable] max-md:px-0 ${
+        detailId
+          ? "pt-0 sm:pt-4"
+          : "pt-3 sm:pt-4"
+      }`}
     >
-      <header className="w-full min-w-0 max-md:px-4 max-md:pb-1 max-md:pt-2.5">
+      <header
+        className={`w-full min-w-0 max-md:px-4 ${
+          detailId ? "max-md:p-0" : "max-md:pb-1 max-md:pt-2.5"
+        }`}
+      >
         <AppPrimaryTabsDesktop>
           <SegmentedPillTabs
             aria-label="Library section"
@@ -2841,6 +2856,7 @@ export default function LibraryView({
         )}
 
         {/* Mobile top block — section tabs in header from md+ (sidebar below). */}
+        {detailId ? null : (
         <div className="flex flex-col gap-3.5 md:hidden">
           {libraryTab === "programs" && exploringProgram ? (
             <>
@@ -2887,11 +2903,11 @@ export default function LibraryView({
               </div>
             </>
           ) : null}
-          {!detailId &&
-          (libraryTab === "meditations" || libraryTab === "community")
+          {(libraryTab === "meditations" || libraryTab === "community")
             ? mobileSearchBlock
             : null}
         </div>
+        )}
 
         {libraryTab === "programs" && exploringProgram ? (
           <div className="mt-5 hidden items-center justify-between gap-3 md:mt-2 md:flex">

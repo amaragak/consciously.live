@@ -7,15 +7,26 @@ import {
  * In-app notification inbox (top-bar bell). No browser Notification API.
  */
 
+export type AppNotificationKind =
+  | "meditation_ready"
+  | "meditation_failed"
+  | "story_reminder";
+
 export type AppNotification = {
   id: string;
-  kind: "meditation_ready" | "meditation_failed";
+  kind: AppNotificationKind;
   title: string;
   body?: string;
   href?: string;
   createdAt: string;
   read: boolean;
 };
+
+const NOTIFICATION_KINDS = new Set<AppNotificationKind>([
+  "meditation_ready",
+  "meditation_failed",
+  "story_reminder",
+]);
 
 export const APP_NOTIFICATIONS_LS_KEY = "mm_app_notifications_v1";
 export const APP_NOTIFICATIONS_CHANGED_EVENT = "mm-app-notifications-changed";
@@ -45,7 +56,8 @@ export function loadAppNotifications(): AppNotification[] {
           typeof o.title === "string" &&
           typeof o.createdAt === "string" &&
           typeof o.read === "boolean" &&
-          (o.kind === "meditation_ready" || o.kind === "meditation_failed")
+          typeof o.kind === "string" &&
+          NOTIFICATION_KINDS.has(o.kind as AppNotificationKind)
         );
       })
       .slice(0, 40);

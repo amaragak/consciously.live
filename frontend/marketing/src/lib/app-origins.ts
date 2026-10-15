@@ -56,7 +56,11 @@ export function isSpaAppPath(pathname: string): boolean {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
   if (pathMatches(path, "/focus") || path === "/focus/my") return true;
   if (pathMatches(path, "/journal/my")) return true;
-  if (pathMatches(path, "/manifest/my") || pathMatches(path, "/manifest/goal")) {
+  if (
+    pathMatches(path, "/manifest/my") ||
+    pathMatches(path, "/manifest/goal") ||
+    pathMatches(path, "/manifest/guides")
+  ) {
     return true;
   }
   // Legacy Manifest aliases

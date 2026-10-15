@@ -441,7 +441,7 @@ export function AdminAnalyticsPanel() {
             Billing is per <strong className="text-foreground/90">token</strong>: separate rates
             for model input (system + all messages on each HTTP request) and for model output
             (completion). This app uses{" "}
-            <code className="text-[11px] text-foreground/90">claude-haiku-4-5</code> for coach chat
+            <code className="text-[11px] text-foreground/90">claude-haiku-5-5</code> for coach chat
             (streamed) and for server-side script + metadata. List prices shown here:{" "}
             <span className="tabular-nums">
               ${(CLAUDE_HAIKU_45_USD_PER_INPUT_TOKEN * 1_000_000).toFixed(2)}

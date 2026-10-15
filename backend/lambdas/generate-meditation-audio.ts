@@ -69,6 +69,10 @@ import {
   synthesizeSpeechifyPcmFxOla,
   type SpeechifyDryPcmChunk,
 } from "./_shared/speechify-pcm-fx-ola";
+import {
+  buildLibraryScriptChunksFromScript,
+  type LibraryScriptChunk,
+} from "./_shared/library-script-chunks";
 import { VOICE_FX_PCM_SR } from "./_shared/voice-fx-ffmpeg-chain";
 import { getVoiceSpeaker, loadPauseBandSeconds } from "./_shared/voice-admin";
 import {
@@ -1081,6 +1085,8 @@ async function synthesizeScriptWithPauses(params: {
   audio: Buffer;
   utf8Bytes: number;
   voiceFxApplied: boolean;
+  /** Decoded duration of each non-empty speech segment (same order). */
+  speechDurationsMs: number[];
   timings: Pick<GenerationTimings, "sections"> & {
     phases: Pick<
       GenerationPhaseTimings,
@@ -1090,6 +1096,7 @@ async function synthesizeScriptWithPauses(params: {
 }> {
   const pauseScale = params.pauseScale ?? PAUSE_RENDER_SCALE;
   const segments = parseScriptIntoSegments(params.script, params.pauseBands);
+  const speechDurationsMs: number[] = [];
   const ttsOpts = {
     fishTtsModel: params.fishTtsModel,
     speechifyApiKey: params.speechifyApiKey,
@@ -1170,6 +1177,8 @@ async function synthesizeScriptWithPauses(params: {
       ttsMs: elapsedMs(ttsStarted),
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
     });
+    const durSec = await getAudioDurationSeconds(audio);
+    if (durSec != null) speechDurationsMs.push(Math.round(durSec * 1000));
     if (speechify) {
       // Keep Speechify AAC; remux ADTS → m4a for delivery when FX is skipped.
       audio = voiceFx
@@ -1182,6 +1191,7 @@ async function synthesizeScriptWithPauses(params: {
       audio,
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
       voiceFxApplied: Boolean(voiceFx),
+      speechDurationsMs,
       timings: { sections: sectionTimings, phases: { ...fxPhase } },
     };
   }
@@ -1215,6 +1225,10 @@ async function synthesizeScriptWithPauses(params: {
         utf8Bytes,
         pauseSec: seg.pauseSeconds > 0 ? seg.pauseSeconds * pauseScale : undefined,
       });
+      const segDurSec = await getAudioDurationSeconds(segBuf);
+      speechDurationsMs.push(
+        segDurSec != null ? Math.round(segDurSec * 1000) : 0,
+      );
       // Speechify returns AAC-LC ADTS; Fish/Orpheus paths still return MP3.
       const segExt = params.provider === "speechify" ? "aac" : "mp3";
       const segPath = `/tmp/seg-${id}-${i}.${segExt}`;
@@ -1293,6 +1307,8 @@ async function synthesizeScriptWithPauses(params: {
       ttsMs: elapsedMs(ttsStarted),
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
     });
+    const fallbackDur = await getAudioDurationSeconds(audio);
+    if (fallbackDur != null) speechDurationsMs.push(Math.round(fallbackDur * 1000));
     if (speechify) {
       audio = voiceFx
         ? await applyVoiceFx(audio, "aac")
@@ -1304,6 +1320,7 @@ async function synthesizeScriptWithPauses(params: {
       audio,
       utf8Bytes: Buffer.byteLength(clean, "utf8"),
       voiceFxApplied: Boolean(voiceFx),
+      speechDurationsMs,
       timings: { sections: sectionTimings, phases: { ...fxPhase } },
     };
   }
@@ -1321,6 +1338,7 @@ async function synthesizeScriptWithPauses(params: {
       audio: onlyBuf,
       utf8Bytes: totalBytes,
       voiceFxApplied: Boolean(voiceFx),
+      speechDurationsMs,
       timings: { sections: sectionTimings, phases: { ...fxPhase } },
     };
   }
@@ -1386,6 +1404,7 @@ async function synthesizeScriptWithPauses(params: {
     audio: outBuf,
     utf8Bytes: totalBytes,
     voiceFxApplied: Boolean(voiceFx),
+    speechDurationsMs,
     timings: {
       sections: sectionTimings,
       phases: { concatMs, ...fxPhase },
@@ -2068,6 +2087,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   /** Speechify PCM pipeline: dry chunks archived async (not served). */
   let dryPcmChunks: SpeechifyDryPcmChunk[] = [];
   let speechifyPcmPipeline = false;
+  /** Timed body chunks for Library follow-along (absolute stem ms). */
+  let scriptChunks: LibraryScriptChunk[] = [];
   try {
     // Spoken title after a short lead-in, then a beat before the script body.
     const ttsScript = withSpokenMeditationTitleIntro(
@@ -2120,9 +2141,20 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       if (skipVoiceFxEarly) {
         generationTimings.phases.fxSkipped = true;
       }
+      const speechDurationsMs = dryPcmChunks.map((c) =>
+        Math.round(((c.pcm.byteLength / 2) / VOICE_FX_PCM_SR) * 1000),
+      );
+      scriptChunks = buildLibraryScriptChunksFromScript({
+        ttsScript,
+        speechDurationsMs,
+        pauseScale: pauseRenderScale,
+        pauseBands,
+        meditationTitle: libraryTitle,
+      });
       console.log("TTS+FX PCM OLA success", {
         bytes: mp3Buf.byteLength,
         dryChunks: dryPcmChunks.length,
+        scriptChunks: scriptChunks.length,
         voiceFxApplied,
         ttsPipelineMs: generationTimings.phases.ttsPipelineMs,
         fxLoadMs: generationTimings.phases.fxLoadMs,
@@ -2148,6 +2180,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       let synthTimings: Awaited<
         ReturnType<typeof synthesizeScriptWithPauses>
       >["timings"];
+      let speechDurationsMs: number[] = [];
 
       if (useFishNative) {
         console.log("calling TTS with Fish-native pauses (single request)", {
@@ -2171,6 +2204,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         utf8Bytes = result.utf8Bytes;
         voiceFxApplied = false;
         synthTimings = result.timings;
+        // Native Fish has no per-chunk decode — leave scriptChunks empty.
       } else {
         console.log("calling TTS with pause-aware synthesis", {
           reference_id: referenceId,
@@ -2198,16 +2232,27 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         utf8Bytes = result.utf8Bytes;
         voiceFxApplied = false;
         synthTimings = result.timings;
+        speechDurationsMs = result.speechDurationsMs;
       }
 
       generationTimings.sections = synthTimings.sections;
       Object.assign(generationTimings.phases, synthTimings.phases);
       mp3Buf = audio;
       scriptUtf8Bytes = utf8Bytes;
+      if (speechDurationsMs.length > 0) {
+        scriptChunks = buildLibraryScriptChunksFromScript({
+          ttsScript,
+          speechDurationsMs,
+          pauseScale: pauseRenderScale,
+          pauseBands,
+          meditationTitle: libraryTitle,
+        });
+      }
       console.log("TTS success", {
         bytes: mp3Buf.byteLength,
         ttsProvider,
         voiceFxApplied,
+        scriptChunks: scriptChunks.length,
         path: useFishNative ? "fish-native-pauses" : "segmented-pauses",
       });
       if (!voiceFxApplied) {
@@ -2709,6 +2754,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           ...(creationProvenance ? { creationProvenance } : {}),
           scriptText: scriptForLibrary,
           scriptTruncated,
+          ...(scriptChunks.length > 0 ? { scriptChunks } : {}),
           rating: null,
           liveMix: true,
           ...(body.leadInSeconds === 0 || body.leadInSeconds === 20

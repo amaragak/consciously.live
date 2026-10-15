@@ -28,6 +28,50 @@ function stemPlaybackUrl(cfDomain: string, key: string | null): string | null {
   return `https://${cfDomain}/${playKey}`;
 }
 
+type ScriptChunkOut = {
+  index: number;
+  text: string;
+  startMs: number;
+  endMs: number;
+  pauseAfterMs?: number;
+};
+
+function normalizeScriptChunks(raw: unknown): ScriptChunkOut[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out: ScriptChunkOut[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const row = raw[i];
+    if (!row || typeof row !== "object") return null;
+    const o = row as Record<string, unknown>;
+    const text = typeof o.text === "string" ? o.text.trim() : "";
+    const startMs =
+      typeof o.startMs === "number" && Number.isFinite(o.startMs)
+        ? Math.max(0, Math.round(o.startMs))
+        : NaN;
+    const endMs =
+      typeof o.endMs === "number" && Number.isFinite(o.endMs)
+        ? Math.max(0, Math.round(o.endMs))
+        : NaN;
+    if (!text || !Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      return null;
+    }
+    const pauseAfterMs =
+      typeof o.pauseAfterMs === "number" &&
+      Number.isFinite(o.pauseAfterMs) &&
+      o.pauseAfterMs > 0
+        ? Math.round(o.pauseAfterMs)
+        : undefined;
+    out.push({
+      index: typeof o.index === "number" ? o.index : i,
+      text,
+      startMs,
+      endMs: Math.max(endMs, startMs),
+      ...(pauseAfterMs != null ? { pauseAfterMs } : {}),
+    });
+  }
+  return out;
+}
+
 function json(
   statusCode: number,
   payload: Record<string, unknown>,
@@ -61,6 +105,14 @@ type OutItem = {
   durationSeconds: number | null;
   scriptText: string | null;
   scriptTruncated: boolean;
+  /** Timed body chunks for follow-along (absolute stem ms). */
+  scriptChunks?: Array<{
+    index: number;
+    text: string;
+    startMs: number;
+    endMs: number;
+    pauseAfterMs?: number;
+  }> | null;
   scriptUtf8Bytes: number | null;
   fishTtsModel?: string | null;
   /** TTS engine used at generate time. */
@@ -557,6 +609,7 @@ function buildLibraryItems(params: {
     const scriptText =
       typeof row.scriptText === "string" ? row.scriptText : null;
     const scriptTruncated = row.scriptTruncated === true;
+    const scriptChunks = normalizeScriptChunks(row.scriptChunks);
     const scriptUtf8Bytes =
       typeof row.scriptUtf8Bytes === "number" &&
       Number.isFinite(row.scriptUtf8Bytes) &&
@@ -618,6 +671,7 @@ function buildLibraryItems(params: {
       durationSeconds,
       scriptText,
       scriptTruncated,
+      ...(scriptChunks ? { scriptChunks } : {}),
       scriptUtf8Bytes,
       fishTtsModel,
       ttsProvider,

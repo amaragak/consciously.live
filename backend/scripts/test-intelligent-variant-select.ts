@@ -131,7 +131,7 @@ async function testLiveCactusFill() {
     throw new Error("LIVE=1 requires ANTHROPIC_API_KEY or CLAUDE_API_KEY");
   }
   const model =
-    process.env.CLAUDE_MODEL?.trim() || "claude-sonnet-4-5-20250929";
+    process.env.CLAUDE_MODEL?.trim() || "claude-sonnet-5-5";
 
   const beats = cactusBeats();
   const variantsByTag = {

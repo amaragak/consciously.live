@@ -2,8 +2,13 @@
  * Per-stage model routing for Script Lab. The frontend model picker is display-only;
  * internal pipeline stages use these constants.
  */
-export const SCRIPT_LAB_SONNET_MODEL = "claude-sonnet-4-6";
-export const SCRIPT_LAB_HAIKU_MODEL = "claude-haiku-4-5-20251001";
+import {
+  CLAUDE_HAIKU_55_MODEL_ID,
+  CLAUDE_SONNET_55_MODEL_ID,
+} from "./anthropic-pricing";
+
+export const SCRIPT_LAB_SONNET_MODEL = CLAUDE_SONNET_55_MODEL_ID;
+export const SCRIPT_LAB_HAIKU_MODEL = CLAUDE_HAIKU_55_MODEL_ID;
 
 export type ScriptLabPipelineStage =
   | "v1_generation"

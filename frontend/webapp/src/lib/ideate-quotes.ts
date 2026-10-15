@@ -18,6 +18,8 @@ export type IdeateQuote = {
   id: string;
   text: string;
   attribution?: string;
+  /** Hide from the Manifesto print's "Words to keep" (default false). */
+  hiddenOnPrint?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -91,6 +93,7 @@ function normalizeQuote(x: unknown): IdeateQuote | null {
     id: o.id,
     text,
     ...(attributionRaw ? { attribution: attributionRaw } : {}),
+    ...(o.hiddenOnPrint === true ? { hiddenOnPrint: true } : {}),
     createdAt,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : createdAt,
   };
@@ -203,6 +206,25 @@ export function patchIdeateQuote(
         ...(attribution ? { attribution } : { attribution: undefined }),
         updatedAt: safeIso(),
       };
+    }),
+  };
+}
+
+/** Show or hide a quote on the Manifesto print. */
+export function setIdeateQuoteHiddenOnPrint(
+  store: IdeateQuotesStoreV1,
+  id: string,
+  hidden: boolean,
+): IdeateQuotesStoreV1 {
+  return {
+    v: 1,
+    quotes: store.quotes.map((q) => {
+      if (q.id !== id) return q;
+      const { hiddenOnPrint: _drop, ...rest } = q;
+      void _drop;
+      return hidden
+        ? { ...rest, hiddenOnPrint: true, updatedAt: safeIso() }
+        : { ...rest, updatedAt: safeIso() };
     }),
   };
 }

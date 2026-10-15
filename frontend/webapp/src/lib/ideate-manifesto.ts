@@ -252,7 +252,6 @@ export function saveIdeateManifestoManual(opts: {
   lifeAreaTitles: string[];
   text: string;
 }): string {
-  const values = opts.values.map((t) => t.trim()).filter(Boolean);
-  if (values.length === 0) return "";
+  // Works without values too: the empty Manifesto lets people write their own sentence.
   return persistText(opts.text);
 }

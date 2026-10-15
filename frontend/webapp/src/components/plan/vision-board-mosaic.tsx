@@ -52,6 +52,11 @@ type Props = {
   cellRadiusClassName?: string;
   /** Pulse cells instead of images/colors — same grid chrome. */
   loading?: boolean;
+  /**
+   * Empty manifesto: every slot is a dashed light-accent outline on a faint
+   * white fill instead of a colour swatch (grid layout).
+   */
+  dashedSlots?: boolean;
 };
 
 function MosaicCell({
@@ -61,6 +66,7 @@ function MosaicCell({
   objectPositionClassName = "object-center",
   objectPosition,
   loading = false,
+  dashed = false,
 }: {
   color: string;
   imageSrc?: string | null;
@@ -69,7 +75,15 @@ function MosaicCell({
   /** CSS object-position when class utilities aren't enough (e.g. center 20%). */
   objectPosition?: string;
   loading?: boolean;
+  dashed?: boolean;
 }) {
+  if (dashed && !imageSrc && !loading) {
+    return (
+      <div
+        className={`min-h-0 min-w-0 border-[1.5px] border-dashed border-gold/50 bg-white/40 ${className ?? ""}`}
+      />
+    );
+  }
   if (loading) {
     return (
       <div
@@ -105,6 +119,7 @@ export function VisionBoardMosaic({
   radiusClassName = "rounded-xl",
   cellRadiusClassName = "rounded-md",
   loading = false,
+  dashedSlots = false,
 }: Props) {
   const palette =
     colors.length > 0 ? colors : [...VISION_BOARD_EMPTY_COLORS];
@@ -130,6 +145,7 @@ export function VisionBoardMosaic({
             imageSrc={img(i)}
             objectPosition="center 20%"
             loading={loading}
+            dashed={dashedSlots}
           />
         ))}
       </div>
@@ -154,6 +170,7 @@ export function VisionBoardMosaic({
             imageSrc={img(i)}
             objectPosition="center 20%"
             loading={loading}
+            dashed={dashedSlots}
           />
         ))}
       </div>

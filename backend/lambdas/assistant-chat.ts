@@ -10,7 +10,7 @@ import { coerceClaudeModel } from "./_shared/anthropic-pricing";
 import { recordClaudeUsage } from "./_shared/ai-usage";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const TITLE_MODEL = "claude-haiku-4-5";
+const TITLE_MODEL = "claude-haiku-5-5";
 const TITLE_SYSTEM = ASSISTANT_CHAT_TITLE_SYSTEM;
 
 const secrets = new SecretsManagerClient({});

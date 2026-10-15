@@ -37,6 +37,7 @@ function toListItem(g: Guide) {
     category: g.category,
     coverImageUrl: g.coverImageUrl,
     practiceBrief: g.practiceBrief,
+    practiceAction: g.practiceAction,
     readMinutes: g.readMinutes,
     order: g.order,
     updatedAt: g.updatedAt,
@@ -103,10 +104,10 @@ export async function handler(
       });
     }
 
-    // GET /public/guides?area=meditate|journal
+    // GET /public/guides?area=meditate|journal|manifest
     const areaQuery = event.queryStringParameters?.area?.trim().toLowerCase();
     if (areaQuery && !isGuideArea(areaQuery)) {
-      return json(400, { error: "area must be 'meditate' or 'journal'" });
+      return json(400, { error: "area must be 'meditate', 'journal' or 'manifest'" });
     }
     const guides = await listPublishedGuides(
       areaQuery && isGuideArea(areaQuery) ? areaQuery : undefined,

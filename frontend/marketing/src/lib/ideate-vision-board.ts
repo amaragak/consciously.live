@@ -40,6 +40,8 @@ export type VisionBoardItem = {
   createdAt?: string;
   /** Prior versions, oldest → newest. Active image lives on the item itself. */
   versions?: VisionBoardVersion[];
+  /** Life area (dream) ids this image is tagged to. Empty / omitted = untagged. */
+  lifeAreaIds?: string[];
 };
 
 export type VisionSelfReference = {
@@ -165,6 +167,15 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
         .filter((v): v is VisionBoardVersion => Boolean(v))
         .slice(-24)
     : undefined;
+  const lifeAreaIds = Array.isArray(o.lifeAreaIds)
+    ? [
+        ...new Set(
+          o.lifeAreaIds.filter(
+            (x): x is string => typeof x === "string" && Boolean(x.trim()),
+          ),
+        ),
+      ]
+    : [];
   return {
     id: o.id,
     color: typeof o.color === "string" ? o.color : "#E5DFD0",
@@ -179,6 +190,7 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
       : {}),
     ...(typeof o.createdAt === "string" ? { createdAt: o.createdAt } : {}),
     ...(versions?.length ? { versions } : {}),
+    ...(lifeAreaIds.length ? { lifeAreaIds } : {}),
   };
 }
 

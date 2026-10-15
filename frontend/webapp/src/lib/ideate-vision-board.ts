@@ -40,6 +40,11 @@ export type VisionBoardItem = {
   createdAt?: string;
   /** Prior versions, oldest → newest. Active image lives on the item itself. */
   versions?: VisionBoardVersion[];
+  /**
+   * Life area (dream) ids this image is tagged to. Empty / omitted = untagged.
+   * An image may belong to several areas.
+   */
+  lifeAreaIds?: string[];
 };
 
 export type VisionSelfReference = {
@@ -165,6 +170,7 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
         .filter((v): v is VisionBoardVersion => Boolean(v))
         .slice(-24)
     : undefined;
+  const lifeAreaIds = normalizeLifeAreaIds(o.lifeAreaIds);
   return {
     id: o.id,
     color: typeof o.color === "string" ? o.color : "#E5DFD0",
@@ -179,7 +185,105 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
       : {}),
     ...(typeof o.createdAt === "string" ? { createdAt: o.createdAt } : {}),
     ...(versions?.length ? { versions } : {}),
+    ...(lifeAreaIds.length ? { lifeAreaIds } : {}),
   };
+}
+
+function normalizeLifeAreaIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const id = x.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/** Replace the life-area tags on one vision tile. Empty clears tags. */
+export function setVisionItemLifeAreaIds(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+  lifeAreaIds: string[],
+): IdeateVisionBoardStoreV1 {
+  const ids = normalizeLifeAreaIds(lifeAreaIds);
+  const i = store.items.findIndex((x) => x.id === itemId);
+  if (i < 0) return store;
+  const prev = store.items[i]!;
+  const next: VisionBoardItem = {
+    ...prev,
+    ...(ids.length ? { lifeAreaIds: ids } : {}),
+  };
+  if (!ids.length) delete next.lifeAreaIds;
+  return {
+    ...store,
+    v: 2,
+    items: store.items.map((x, j) => (j === i ? next : x)),
+  };
+}
+
+/**
+ * Make `itemId` the first image for a life area in board order (manifesto
+ * print uses that as the large / leading tile). No-op if already first or
+ * the item isn't tagged to the area.
+ */
+export function promoteVisionItemForLifeArea(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+  lifeAreaId: string,
+): IdeateVisionBoardStoreV1 {
+  const areaId = lifeAreaId.trim();
+  if (!areaId) return store;
+  const target = store.items.find((x) => x.id === itemId);
+  if (!target || !visionItemHasImage(target)) return store;
+  if (!(target.lifeAreaIds ?? []).includes(areaId)) return store;
+
+  const areaImageIds = store.items
+    .filter(
+      (x) =>
+        visionItemHasImage(x) && (x.lifeAreaIds ?? []).includes(areaId),
+    )
+    .map((x) => x.id);
+  if (areaImageIds[0] === itemId) return store;
+
+  const from = store.items.findIndex((x) => x.id === itemId);
+  const firstId = areaImageIds[0];
+  if (from < 0 || !firstId) return store;
+  const before = store.items.findIndex((x) => x.id === firstId);
+  if (before < 0) return store;
+
+  const next = store.items.slice();
+  const [moved] = next.splice(from, 1);
+  if (!moved) return store;
+  const insertAt = from < before ? before - 1 : before;
+  next.splice(insertAt, 0, moved);
+  return { ...store, v: 2, items: next };
+}
+
+/** Drop a deleted life area from every vision tile's tags. */
+export function removeLifeAreaIdFromVisionBoard(
+  store: IdeateVisionBoardStoreV1,
+  lifeAreaId: string,
+): IdeateVisionBoardStoreV1 {
+  const needle = lifeAreaId.trim();
+  if (!needle) return store;
+  let changed = false;
+  const items = store.items.map((item) => {
+    const ids = item.lifeAreaIds;
+    if (!ids?.length || !ids.includes(needle)) return item;
+    changed = true;
+    const nextIds = ids.filter((id) => id !== needle);
+    if (!nextIds.length) {
+      const { lifeAreaIds: _drop, ...rest } = item;
+      void _drop;
+      return rest;
+    }
+    return { ...item, lifeAreaIds: nextIds };
+  });
+  return changed ? { ...store, v: 2, items } : store;
 }
 
 function normalizeSelfRef(x: unknown): VisionSelfReference | null {

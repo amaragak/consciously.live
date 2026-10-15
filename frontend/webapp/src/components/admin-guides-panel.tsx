@@ -19,6 +19,7 @@ import {
   uploadAdminGuideCover,
   type AdminGuide,
   type GuideArea,
+  type GuidePracticeAction,
   type GuideStatus,
 } from "@/lib/medimade-api";
 import {
@@ -35,12 +36,23 @@ const FILTERS: { id: AreaFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "meditate", label: "Meditate" },
   { id: "journal", label: "Journal" },
+  { id: "manifest", label: "Manifest" },
 ];
 
 const AREA_LABEL: Record<GuideArea, string> = {
   meditate: "Meditate",
   journal: "Journal",
+  manifest: "Manifest",
 };
+
+const PRACTICE_ACTION_LABEL: Record<GuidePracticeAction, string> = {
+  lifeArea: "Add to a life area",
+  create: "Make a meditation",
+};
+
+function guideAreaFromValue(v: string): GuideArea {
+  return v === "journal" || v === "manifest" ? v : "meditate";
+}
 
 const INPUT_CLASS =
   "mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
@@ -105,6 +117,8 @@ type GuideDraft = {
   coverImageUrl: string | null;
   body: string;
   practiceBrief: string;
+  /** Manifest only (ignored for other areas). */
+  practiceAction: GuidePracticeAction;
   status: GuideStatus;
 };
 
@@ -118,6 +132,7 @@ function blankDraft(area: GuideArea = "meditate"): GuideDraft {
     coverImageUrl: null,
     body: "",
     practiceBrief: "",
+    practiceAction: "lifeArea",
     status: "draft",
   };
 }
@@ -133,6 +148,7 @@ function draftFromGuide(g: AdminGuide): GuideDraft {
     coverImageUrl: g.coverImageUrl,
     body: g.body,
     practiceBrief: g.practiceBrief,
+    practiceAction: g.practiceAction ?? "lifeArea",
     status: g.status,
   };
 }
@@ -188,6 +204,7 @@ function pasteGuideToSaveInput(
     category: g.category,
     body: composeGuideBodyFromPaste(g),
     practiceBrief: composePracticeBriefFromPaste(g),
+    ...(area === "manifest" ? { practiceAction: "lifeArea" as const } : {}),
     status: g.draft ? "draft" : "published",
     order: g.order,
     ...(g.image !== null ? { coverImageUrl: g.image } : {}),
@@ -257,7 +274,7 @@ export function AdminGuidesPanel() {
   }, [refresh]);
 
   useEffect(() => {
-    if (filter === "meditate" || filter === "journal") {
+    if (filter === "meditate" || filter === "journal" || filter === "manifest") {
       setBulkPasteArea(filter);
     }
   }, [filter]);
@@ -282,7 +299,9 @@ export function AdminGuidesPanel() {
   }, [guides]);
 
   function startNew() {
-    const next = blankDraft(filter === "journal" ? "journal" : "meditate");
+    const next = blankDraft(
+      filter === "journal" || filter === "manifest" ? filter : "meditate",
+    );
     setSelectedId("new");
     setDraft(next);
     liveBodyRef.current = next.body;
@@ -433,6 +452,7 @@ export function AdminGuidesPanel() {
         coverImageUrl: d.coverImageUrl,
         body: bodyToSave,
         practiceBrief: d.practiceBrief,
+        ...(d.area === "manifest" ? { practiceAction: d.practiceAction } : {}),
         status: d.status,
       });
       setGuides((prev) =>
@@ -688,9 +708,7 @@ export function AdminGuidesPanel() {
                 value={bulkPasteArea}
                 disabled={bulkPasteBusy}
                 onChange={(e) =>
-                  setBulkPasteArea(
-                    e.target.value === "journal" ? "journal" : "meditate",
-                  )
+                  setBulkPasteArea(guideAreaFromValue(e.target.value))
                 }
                 className={INPUT_CLASS}
               >
@@ -1041,7 +1059,7 @@ export function AdminGuidesPanel() {
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
-                      area: e.target.value === "journal" ? "journal" : "meditate",
+                      area: guideAreaFromValue(e.target.value),
                     }))
                   }
                   className={INPUT_CLASS}
@@ -1196,9 +1214,41 @@ export function AdminGuidesPanel() {
               />
               <p className="mt-1 text-[11px] text-muted">
                 Optional. Meditate: pre-fills Create’s brief. Journal: becomes
-                the entry prompt. First line is the card title.
+                the entry prompt. Manifest: see Practice action. First line is
+                the card title.
               </p>
             </div>
+
+            {draft.area === "manifest" ? (
+              <div>
+                <label className="block text-xs font-medium text-muted">
+                  Practice action
+                </label>
+                <select
+                  value={draft.practiceAction}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      practiceAction:
+                        e.target.value === "create" ? "create" : "lifeArea",
+                    }))
+                  }
+                  className={INPUT_CLASS}
+                >
+                  {(Object.keys(PRACTICE_ACTION_LABEL) as GuidePracticeAction[]).map(
+                    (a) => (
+                      <option key={a} value={a}>
+                        {PRACTICE_ACTION_LABEL[a]}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <p className="mt-1 text-[11px] text-muted">
+                  What the “Put it into practice” button does for this guide.
+                </p>
+              </div>
+            ) : null}
 
             <div>
               <label className="block text-xs font-medium text-muted">

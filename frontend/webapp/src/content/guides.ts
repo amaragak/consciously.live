@@ -1,5 +1,5 @@
 /**
- * Meditate / Journal guides: database-backed (public API) with a small
+ * Meditate / Journal / Manifest guides: database-backed (public API) with a small
  * in-memory cache + React hooks. The original static copy lives on as
  * `STATIC_GUIDE_SEED`, used only by the admin "Seed from static" action.
  */
@@ -10,6 +10,7 @@ import {
   fetchPublicGuides,
   type AdminGuideSeed,
   type GuideArea,
+  type GuidePracticeAction,
   type GuideStatus,
   type PublicGuide,
   type PublicGuideListItem,
@@ -30,6 +31,8 @@ export type Guide = {
   summary?: string;
   status?: GuideStatus;
   practiceBrief?: string;
+  /** Manifest guides only. */
+  practiceAction?: GuidePracticeAction;
   body?: string;
   updatedAt?: string;
   id?: string;
@@ -43,7 +46,9 @@ const HERO = "/patterns/hero";
 export const GUIDE_FALLBACK_IMAGE = `${HERO}/adobestock-2055049378.webp`;
 
 export function guidesBasePath(area: GuideArea): string {
-  return area === "journal" ? "/journal/guides" : "/meditate/guides";
+  if (area === "journal") return "/journal/guides";
+  if (area === "manifest") return "/manifest/guides";
+  return "/meditate/guides";
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +68,9 @@ export function toUiGuide(g: PublicGuideListItem | PublicGuide): Guide {
     area: g.area,
     summary: g.summary || undefined,
     practiceBrief: g.practiceBrief || undefined,
+    ...(g.area === "manifest" && g.practiceAction
+      ? { practiceAction: g.practiceAction }
+      : {}),
     updatedAt: g.updatedAt || undefined,
     ...(full.body !== undefined ? { body: full.body } : {}),
     ...(full.status ? { status: full.status } : {}),
@@ -280,6 +288,10 @@ type StaticGuide = {
   area: GuideArea;
   draft: true;
   body: string;
+  practiceBrief?: string;
+  practiceAction?: GuidePracticeAction;
+  /** Seed status; defaults to published (legacy guides). */
+  status?: GuideStatus;
 };
 
 const STATIC_GUIDES: StaticGuide[] = [
@@ -403,6 +415,82 @@ Read it slowly. Notice what lands, what feels off, and what you'd tell a friend 
 
 A fuller how-to will replace this placeholder.`,
   },
+  {
+    slug: "writing-a-vision",
+    title: "Writing a vision that pulls you forward",
+    category: "Vision",
+    readMinutes: 5,
+    image: `${HERO}/adobestock-2055049378.webp`,
+    order: 1,
+    area: "manifest",
+    draft: true,
+    status: "draft",
+    practiceAction: "lifeArea",
+    practiceBrief: `Draft your vision for one life area
+Pick the area that matters most right now and write a few lines about how you want it to feel a year from now.`,
+    body: `**Draft.** A vision that pulls you forward is specific enough to picture and personal enough to feel. Write it in the present tense, as if it were already true.
+
+Start with how you want a life area to feel, then add one or two concrete details you'd notice on an ordinary day.
+
+A fuller walkthrough with examples will replace this placeholder.`,
+  },
+  {
+    slug: "goals-youll-actually-keep",
+    title: "Goals you'll actually keep",
+    category: "Goals",
+    readMinutes: 6,
+    image: `${HERO}/adobestock-2089052451.webp`,
+    order: 2,
+    area: "manifest",
+    draft: true,
+    status: "draft",
+    practiceAction: "lifeArea",
+    practiceBrief: `Set one goal for a life area
+Choose a life area and turn its vision into a single goal with a first step small enough to do this week.`,
+    body: `**Draft.** Goals stick when they're small, specific and tied to something you care about. One goal at a time beats a long list you never open.
+
+Break it into steps you can finish in a sitting, and let the next step always be obvious.
+
+Examples and a simple template will replace this placeholder.`,
+  },
+  {
+    slug: "making-a-vision-board-that-works",
+    title: "Making a vision board that works",
+    category: "Vision board",
+    readMinutes: 4,
+    image: `${HERO}/adobestock-2156039259.webp`,
+    order: 3,
+    area: "manifest",
+    draft: true,
+    status: "draft",
+    practiceAction: "create",
+    practiceBrief: `Meditate on your vision board
+Spend a few minutes picturing the images on your board and how it feels to live inside them.`,
+    body: `**Draft.** A vision board works when every image means something to you, not when it looks perfect. Choose pictures that stir a feeling you want more of.
+
+Keep it small enough to take in at a glance, and revisit it often.
+
+Tips on choosing and arranging images will replace this placeholder.`,
+  },
+  {
+    slug: "when-a-life-area-goes-quiet",
+    title: "When a life area goes quiet",
+    category: "Practice",
+    readMinutes: 3,
+    image: `${HERO}/adobestock-1713569649.webp`,
+    order: 4,
+    area: "manifest",
+    draft: true,
+    status: "draft",
+    practiceAction: "lifeArea",
+    practiceBrief: `Restart a quiet life area
+Pick an area you haven't touched in a while and choose one tiny step to bring it back into view.`,
+    body: `**Draft.** Every life area has quiet stretches. A quiet area isn't a failure; it's a signal to look again at what you want from it.
+
+Ask whether the goal still fits, shrink the next step, and begin again gently.
+
+A fuller guide to restarting will replace this placeholder.`,
+  },
 ];
 
 /**
@@ -418,5 +506,7 @@ export const STATIC_GUIDE_SEED: AdminGuideSeed[] = STATIC_GUIDES.map((g) => ({
   coverImageUrl: g.image,
   body: g.body,
   order: g.order,
-  status: "published",
+  status: g.status ?? "published",
+  ...(g.practiceBrief ? { practiceBrief: g.practiceBrief } : {}),
+  ...(g.practiceAction ? { practiceAction: g.practiceAction } : {}),
 }));

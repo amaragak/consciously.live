@@ -9,6 +9,7 @@ import {
   removeVisionBoardItem,
   restoreVisionBoardVersion,
   saveIdeateVisionBoardStore,
+  setVisionItemLifeAreaIds,
   upsertVisionBoardItem,
   visionItemHasImage,
   visionLabelFromPrompt,
@@ -17,6 +18,9 @@ import {
   type VisionExtraReference,
   type VisionSelfReference,
 } from "@/lib/ideate-vision-board";
+import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { loadIdeateStore } from "@/lib/plan-ideate-store";
+import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
   blobToArrayBuffer,
   deleteVisionMedia,
@@ -44,7 +48,7 @@ const SECTION_LABEL =
 
 const VISION_TILE_DRAG_MIME = "application/x-ideate-vision-tile";
 
-type TileMenu = "actions" | "refine" | "versions";
+type TileMenu = "actions" | "refine" | "versions" | "lifeAreas";
 
 function newTileId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -98,6 +102,16 @@ export function IdeateVisionBoardClient() {
   const [refineDraft, setRefineDraft] = useState("");
   const [composeDragOver, setComposeDragOver] = useState<number | null>(null);
   const [draggingTileId, setDraggingTileId] = useState<string | null>(null);
+  const [lifeAreas, setLifeAreas] = useState<
+    { id: string; title: string }[]
+  >(() =>
+    loadIdeateStore()
+      .dreams.filter((d) => !isDemoIdeateDream(d))
+      .map((d) => ({
+        id: d.id,
+        title: d.title.trim() || "Untitled",
+      })),
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const extraFileInputRef = useRef<HTMLInputElement | null>(null);
   const boardFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -120,6 +134,22 @@ export function IdeateVisionBoardClient() {
     setMenuMode("actions");
     setRefineDraft("");
   }, []);
+
+  const refreshLifeAreas = useCallback(() => {
+    setLifeAreas(
+      loadIdeateStore()
+        .dreams.filter((d) => !isDemoIdeateDream(d))
+        .map((d) => ({
+          id: d.id,
+          title: d.title.trim() || "Untitled",
+        })),
+    );
+  }, []);
+
+  useEffect(() => {
+    refreshLifeAreas();
+    return subscribeIdeateCloud(refreshLifeAreas);
+  }, [refreshLifeAreas, revision]);
 
   const refresh = useCallback(async () => {
     const store = loadIdeateVisionBoardStore();
@@ -253,6 +283,24 @@ export function IdeateVisionBoardClient() {
       }
     },
     [signedIn],
+  );
+
+  const toggleTileLifeArea = useCallback(
+    async (item: VisionBoardItem, lifeAreaId: string) => {
+      const current = item.lifeAreaIds ?? [];
+      const next = current.includes(lifeAreaId)
+        ? current.filter((id) => id !== lifeAreaId)
+        : [...current, lifeAreaId];
+      await persistBoard(
+        setVisionItemLifeAreaIds(
+          loadIdeateVisionBoardStore(),
+          item.id,
+          next,
+        ),
+      );
+      await refresh();
+    },
+    [persistBoard, refresh],
   );
 
   const runGenerate = useCallback(
@@ -1131,8 +1179,8 @@ export function IdeateVisionBoardClient() {
                     <li
                       key={item.id}
                       className={`group relative aspect-square overflow-visible ${
-                        draggingTileId === item.id ? "opacity-50" : ""
-                      }`}
+                        open ? "z-50" : "z-0"
+                      } ${draggingTileId === item.id ? "opacity-50" : ""}`}
                       draggable={isImage}
                       onDragStart={(e) => {
                         if (!isImage) {
@@ -1196,11 +1244,32 @@ export function IdeateVisionBoardClient() {
                             Drag
                           </span>
                         </span>
-                        {onMosaic ? (
-                          <span className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-[#EDE4D4]/95 px-1.5 py-0.5 font-sans text-[11px] font-medium text-[#5C5346] dark:bg-[#2A3340] dark:text-[#E8E0D4]">
-                            On mosaic
-                          </span>
-                        ) : null}
+                        {(() => {
+                          const tags = (item.lifeAreaIds ?? [])
+                            .map((id) => lifeAreas.find((a) => a.id === id))
+                            .filter(
+                              (a): a is { id: string; title: string } =>
+                                Boolean(a),
+                            );
+                          if (!tags.length && !onMosaic) return null;
+                          return (
+                            <span className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
+                              {tags.map((a) => (
+                                <span
+                                  key={a.id}
+                                  className="ideate-frosted-overlay ideate-frosted-overlay--chip max-w-[7.5rem] truncate text-[10px] font-medium text-white"
+                                >
+                                  {a.title}
+                                </span>
+                              ))}
+                              {onMosaic ? (
+                                <span className="rounded-full bg-[#EDE4D4]/95 px-1.5 py-0.5 font-sans text-[11px] font-medium text-[#5C5346] dark:bg-[#2A3340] dark:text-[#E8E0D4]">
+                                  On mosaic
+                                </span>
+                              ) : null}
+                            </span>
+                          );
+                        })()}
                         {refiningId === item.id ? (
                           <span className="ideate-frosted-overlay absolute inset-1 flex items-center justify-center text-xs font-medium text-white">
                             Updating…
@@ -1216,7 +1285,7 @@ export function IdeateVisionBoardClient() {
                       {open ? (
                         <div
                           role="menu"
-                          className="absolute left-1/2 top-[calc(100%+0.4rem)] z-20 w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-[#E5DFD0] bg-[#FBFAF6] p-2 shadow-[0_12px_40px_rgba(30,37,48,0.18)] dark:border-border dark:bg-card"
+                          className="absolute left-0 top-[calc(100%+0.4rem)] z-50 w-max min-w-[10rem] max-w-[min(14rem,calc(100vw-2rem))] rounded-xl border border-[#E5DFD0] bg-[#FBFAF6] p-2 shadow-[0_12px_40px_rgba(30,37,48,0.18)] dark:border-border dark:bg-card"
                         >
                           {menuMode === "actions" ? (
                             <div className="flex flex-col gap-0.5">
@@ -1256,11 +1325,68 @@ export function IdeateVisionBoardClient() {
                               <button
                                 type="button"
                                 role="menuitem"
+                                className="cursor-pointer rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-[#EFEBE3] dark:hover:bg-accent-soft/30"
+                                onClick={() => setMenuMode("lifeAreas")}
+                              >
+                                Life areas…
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
                                 className="cursor-pointer rounded-lg px-3 py-2 text-left text-sm font-medium text-[#A65252] transition-colors hover:bg-[#F3E4E0]"
                                 onClick={() => void onRemoveTile(item)}
                               >
                                 Remove
                               </button>
+                            </div>
+                          ) : null}
+
+                          {menuMode === "lifeAreas" ? (
+                            <div className="flex flex-col gap-0.5 p-1">
+                              <div className="flex items-center justify-between gap-2 px-1 pb-1">
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                                  Life areas
+                                </p>
+                                <button
+                                  type="button"
+                                  className="cursor-pointer rounded-lg px-2 py-1 text-sm text-muted hover:text-foreground"
+                                  onClick={() => setMenuMode("actions")}
+                                >
+                                  Back
+                                </button>
+                              </div>
+                              {lifeAreas.length === 0 ? (
+                                <p className="px-2 py-2 text-sm text-muted">
+                                  Add a life area on Manifesto first.
+                                </p>
+                              ) : (
+                                lifeAreas.map((area) => {
+                                  const checked = (
+                                    item.lifeAreaIds ?? []
+                                  ).includes(area.id);
+                                  return (
+                                    <label
+                                      key={area.id}
+                                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-sm text-foreground transition-colors hover:bg-[#EFEBE3] dark:hover:bg-accent-soft/30"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() =>
+                                          void toggleTileLifeArea(
+                                            item,
+                                            area.id,
+                                          )
+                                        }
+                                        className="size-3.5 accent-[var(--accent)]"
+                                      />
+                                      <span className="min-w-0 truncate font-medium">
+                                        {area.title}
+                                      </span>
+                                    </label>
+                                  );
+                                })
+                              )}
                             </div>
                           ) : null}
 

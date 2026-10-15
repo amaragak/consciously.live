@@ -9,6 +9,7 @@ import {
 import { ChevronDown, ChevronLeft } from "lucide-react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { GuideBody, extractGuideHeadings } from "@/components/guide-body";
+import { ManifestPracticeButton } from "@/components/manifest-practice-button";
 import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import {
@@ -162,7 +163,7 @@ function usePracticeAction(guide: Guide, area: GuideArea) {
   const { title } = splitPracticeBrief(brief);
   return useCallback(() => {
     if (!brief) return;
-    if (area === "meditate") {
+    if (area === "meditate" || area === "manifest") {
       writeGuidePracticeBrief(brief);
       void navigate(createOneFlowHref("start"));
       return;
@@ -176,21 +177,26 @@ function usePracticeAction(guide: Guide, area: GuideArea) {
 // ---------------------------------------------------------------------------
 
 function PracticeButton({
+  guide,
   area,
   onClick,
   className,
 }: {
+  guide: Guide;
   area: GuideArea;
   onClick: () => void;
   className: string;
 }) {
+  if (area === "manifest") {
+    return <ManifestPracticeButton guide={guide} className={className} />;
+  }
   return (
     <PrimaryCreateButton
       leadingPlus={false}
       onClick={onClick}
       className={`${className} w-full rounded-full!`}
     >
-      {area === "meditate" ? "✦ Make this meditation" : "Write about this"}
+      {area === "journal" ? "Write about this" : "✦ Make this meditation"}
     </PrimaryCreateButton>
   );
 }
@@ -469,6 +475,7 @@ function GuideReader({
                     </span>
                   ) : null}
                   <PracticeButton
+                    guide={guide}
                     area={area}
                     onClick={startPractice}
                     className="h-11"
@@ -532,6 +539,7 @@ function GuideReader({
                   </span>
                 ) : null}
                 <PracticeButton
+                  guide={guide}
                   area={area}
                   onClick={startPractice}
                   className="h-10"
@@ -570,4 +578,12 @@ export function JournalGuidesIndexPage() {
 
 export function JournalGuideArticlePage() {
   return <AreaGuideArticlePage area="journal" />;
+}
+
+export function ManifestGuidesIndexPage() {
+  return <AreaGuidesIndexPage area="manifest" />;
+}
+
+export function ManifestGuideArticlePage() {
+  return <AreaGuideArticlePage area="manifest" />;
 }
