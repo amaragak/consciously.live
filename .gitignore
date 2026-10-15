@@ -19,6 +19,9 @@ __pycache__/
 # OS
 .DS_Store
 
+# Local Cursor agent rules / scratch
+.cursor/
+
 # Voice test clips (keep runner + script tracked; .venv is local only)
 audio/voice-test-audio/*
 !audio/voice-test-audio/pedalboard_local_fx.py
