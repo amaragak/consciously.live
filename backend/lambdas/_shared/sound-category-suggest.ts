@@ -2,7 +2,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./anthropic-pricing";
 import { normalizeBgAudioCategory, type BgAudioCategory } from "./background-audio-keys";
 import {
   binauralBandFromPath,
@@ -156,12 +156,12 @@ export async function suggestSoundCategories(
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 8192,
       system,
       messages: [{ role: "user", content: user }],
-    }),
+    })),
   });
   if (!res.ok) {
     const detail = await res.text();

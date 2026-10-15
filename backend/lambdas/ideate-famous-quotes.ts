@@ -21,7 +21,7 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
 
 const secrets = new SecretsManagerClient({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
@@ -217,13 +217,13 @@ async function resolveAuthorWithHaiku(
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 1800,
       temperature: 0.2,
       system,
       messages: [{ role: "user", content: user }],
-    }),
+    })),
   });
   const raw = await res.text();
   if (!res.ok) {
@@ -289,13 +289,13 @@ async function resolveWorkWithHaiku(workQuery: string): Promise<HaikuWorkResult>
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 1800,
       temperature: 0.2,
       system,
       messages: [{ role: "user", content: user }],
-    }),
+    })),
   });
   const raw = await res.text();
   if (!res.ok) {

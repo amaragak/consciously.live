@@ -5,7 +5,7 @@ import {
 } from "@aws-sdk/client-secrets-manager";
 import { buildClaudeCoachSystemPrompt } from "./_shared/claude-coach-system-prompt";
 import { buildMeditationScriptGenerationPrompt } from "./_shared/meditation-script-generate-prompt";
-import { coerceClaudeModel } from "./_shared/anthropic-pricing";
+import { coerceClaudeModel, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
 import { recordClaudeUsage } from "./_shared/ai-usage";
 import { coerceMeditationTargetMinutes } from "./_shared/meditation-target-minutes";
 import { buildCachedMessagesRequestBody } from "./_shared/anthropic-prompt-cache";
@@ -341,13 +341,13 @@ async function streamHandler(
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model,
       max_tokens: maxTokens,
       system,
       messages,
       stream: true,
-    }),
+    })),
   });
 
   if (!upstream.ok) {

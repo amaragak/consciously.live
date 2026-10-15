@@ -2,7 +2,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./anthropic-pricing";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const secrets = new SecretsManagerClient({});
@@ -77,13 +77,13 @@ export async function generateProgramDayDescription(params: {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 300,
       temperature: 0.4,
       system,
       messages: [{ role: "user", content: user }],
-    }),
+    })),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");

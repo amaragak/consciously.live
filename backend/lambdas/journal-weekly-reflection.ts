@@ -20,6 +20,7 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
   parseAnthropicMessageUsage,
+  withClaudeThinkingOff,
 } from "./_shared/anthropic-pricing";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
 import {
@@ -1676,14 +1677,16 @@ async function callClaudeForLetter(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
-      model: CLAUDE_HAIKU_45_MODEL_ID,
-      // Keep under API Gateway's 30s integration limit (letter + patterns).
-      max_tokens: 2048,
-      temperature: 0.5,
-      system: params.system,
-      messages: [{ role: "user", content: params.user }],
-    }),
+    body: JSON.stringify(
+      withClaudeThinkingOff({
+        model: CLAUDE_HAIKU_45_MODEL_ID,
+        // Keep under API Gateway's 30s integration limit (letter + patterns).
+        max_tokens: 2048,
+        temperature: 0.5,
+        system: params.system,
+        messages: [{ role: "user", content: params.user }],
+      }),
+    ),
   });
   const text = await res.text();
   if (!res.ok) {

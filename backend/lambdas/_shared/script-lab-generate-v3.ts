@@ -3,7 +3,7 @@
  * vector NN → substitute/promote review → assemble beats.
  * Standalone; does not modify V1/V2 or verification.
  */
-import { parseAnthropicMessageUsage } from "./anthropic-pricing";
+import { parseAnthropicMessageUsage, withClaudeThinkingOff } from "./anthropic-pricing";
 import { GENDER_NEUTRAL_SCRIPT_RULES } from "./meditation-script-generate-prompt";
 import {
   mergeUsageBreakdown,
@@ -175,7 +175,7 @@ async function callAnthropic(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(withClaudeThinkingOff(body)),
   });
   const responseText = await upstream.text();
   if (!upstream.ok) {

@@ -6,7 +6,7 @@ import {
 import { buildAssistantChatSystemPrompt } from "./_shared/assistant-chat-system-prompt";
 import { ASSISTANT_CHAT_TITLE_SYSTEM } from "./_shared/assistant-chat-title-system";
 import { buildCachedMessagesRequestBody } from "./_shared/anthropic-prompt-cache";
-import { coerceClaudeModel } from "./_shared/anthropic-pricing";
+import { coerceClaudeModel, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
 import { recordClaudeUsage } from "./_shared/ai-usage";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -80,13 +80,13 @@ async function generateTitle(
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: TITLE_MODEL,
       max_tokens: 40,
       temperature: 0.3,
       system: TITLE_SYSTEM,
       messages: [{ role: "user", content: message.slice(0, 2_000) }],
-    }),
+    })),
   });
   if (!upstream.ok) {
     const detail = await upstream.text();

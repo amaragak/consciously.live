@@ -1,5 +1,5 @@
 import { buildMeditationScriptGenerationPrompt } from "./meditation-script-generate-prompt";
-import { parseAnthropicMessageUsage } from "./anthropic-pricing";
+import { parseAnthropicMessageUsage, withClaudeThinkingOff } from "./anthropic-pricing";
 import { verifyScriptLabBeats } from "./script-lab-beat-verification";
 import {
   SCRIPT_LAB_SONNET_MODEL,
@@ -96,14 +96,14 @@ export async function generateScriptLabScript(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: SCRIPT_LAB_SONNET_MODEL,
       max_tokens: 8192,
       system,
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: userContent }],
-    }),
+    })),
   });
 
   const responseText = await upstream.text();

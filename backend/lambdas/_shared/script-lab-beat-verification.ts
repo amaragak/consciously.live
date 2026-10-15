@@ -1,5 +1,6 @@
 import {
   parseAnthropicMessageUsage,
+  withClaudeThinkingOff,
 } from "./anthropic-pricing";
 import {
   SCRIPT_LAB_HAIKU_MODEL,
@@ -1054,7 +1055,7 @@ async function fetchSentenceVerdicts(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: params.model,
       max_tokens: maxTokens,
       temperature: 0,
@@ -1062,7 +1063,7 @@ async function fetchSentenceVerdicts(params: {
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: params.userContent }],
-    }),
+    })),
     signal: AbortSignal.timeout(params.timeoutMs),
   });
 

@@ -12,7 +12,7 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./anthropic-pricing";
 import {
   recordClaudeUsageFromResponseText,
   recordGoogleImageUsage,
@@ -294,13 +294,13 @@ export async function refineCompositionCoverPromptWithChange(params: {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(withClaudeThinkingOff({
         model: CLAUDE_HAIKU_45_MODEL_ID,
         max_tokens: 700,
         temperature: 0.35,
         system,
         messages: [{ role: "user", content: user }],
-      }),
+      })),
     });
     const raw = await res.text();
     if (!res.ok) {

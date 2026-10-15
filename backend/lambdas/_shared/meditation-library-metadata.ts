@@ -2,7 +2,7 @@
  * Library card title / type / description via Claude (create + dev re-derive).
  */
 
-import { parseAnthropicMessageUsage } from "./anthropic-pricing";
+import { parseAnthropicMessageUsage, withClaudeThinkingOff } from "./anthropic-pricing";
 import { recordClaudeUsage } from "./ai-usage";
 import {
   type KnownMeditationType,
@@ -73,12 +73,12 @@ async function callAnthropicMetadataJson(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: params.model,
       max_tokens: 512,
       system: params.system,
       messages: [{ role: "user", content: params.user }],
-    }),
+    })),
   });
 
   const responseText = await upstream.text();

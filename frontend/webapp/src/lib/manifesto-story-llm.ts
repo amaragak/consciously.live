@@ -70,7 +70,22 @@ function resolveOffsets(
   draft: string,
   quote: string,
   hintStart?: number,
+  deletion = false,
 ): { start: number; end: number } | null {
+  // Prefer exact match so leading whitespace in deletion quotes is kept.
+  if (quote) {
+    if (
+      typeof hintStart === "number" &&
+      hintStart >= 0 &&
+      draft.slice(hintStart, hintStart + quote.length) === quote
+    ) {
+      return { start: hintStart, end: hintStart + quote.length };
+    }
+    const exact = draft.indexOf(quote);
+    if (exact >= 0) {
+      return { start: exact, end: exact + quote.length };
+    }
+  }
   const q = quote.trim();
   if (!q) return null;
   if (
@@ -78,11 +93,17 @@ function resolveOffsets(
     hintStart >= 0 &&
     draft.slice(hintStart, hintStart + q.length) === q
   ) {
-    return { start: hintStart, end: hintStart + q.length };
+    let start = hintStart;
+    const end = hintStart + q.length;
+    if (deletion && start > 0 && /\s/.test(draft[start - 1]!)) start -= 1;
+    return { start, end };
   }
   const idx = draft.indexOf(q);
   if (idx < 0) return null;
-  return { start: idx, end: idx + q.length };
+  let start = idx;
+  const end = idx + q.length;
+  if (deletion && start > 0 && /\s/.test(draft[start - 1]!)) start -= 1;
+  return { start, end };
 }
 
 async function postStoryJson(
@@ -125,17 +146,19 @@ function parseRaisePayload(
     if (findings.length >= 8) break;
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
-    const quote = typeof r.quote === "string" ? r.quote.trim() : "";
-    const suggestion =
-      typeof r.suggestion === "string" ? r.suggestion.trim() : "";
+    const quoteRaw = typeof r.quote === "string" ? r.quote : "";
+    if (!quoteRaw.trim()) continue;
+    if (typeof r.suggestion !== "string") continue;
+    const deletion = r.suggestion.trim() === "";
+    const quote = deletion ? quoteRaw : quoteRaw.trim();
+    const suggestion = deletion ? "" : r.suggestion.trim();
     const type = (
       typeof r.type === "string" && FINDING_TYPES.has(r.type as StoryFindingType)
         ? r.type
         : "hedging"
     ) as StoryFindingType;
-    if (!quote || !suggestion) continue;
     const hintStart = typeof r.start === "number" ? r.start : undefined;
-    const loc = resolveOffsets(text, quote, hintStart);
+    const loc = resolveOffsets(text, quote, hintStart, deletion);
     if (!loc) continue;
     if (findings.some((f) => !(loc.end <= f.start || loc.start >= f.end))) {
       continue;
@@ -164,30 +187,41 @@ export async function raiseStoryCeiling(
     return { ambition: 0, findings: [] };
   }
 
+  const local = heuristicRaise(text);
   const remote = await postStoryJson("/manifest/story/raise", { draft });
   if (remote) {
     const parsed = parseRaisePayload(remote, text);
-    if (parsed.findings.length > 0 || countApproxWords(text) >= 40) {
-      return parsed;
+    if (
+      parsed.findings.length > 0 ||
+      local.findings.length > 0 ||
+      countApproxWords(text) >= 40
+    ) {
+      return mergeRaiseFindings(parsed, local);
     }
-    const local = heuristicRaise(text);
-    if (local.findings.length > 0) return local;
     return parsed;
   }
 
-  // Don't fall through to the chat stream — Haiku 5.5 adaptive thinking can
-  // hang the UI for a long time. Prefer the local hedge pass, then a bounded ask.
-  const local = heuristicRaise(text);
+  // Don't fall through to the chat stream — that path can hang the UI.
+  // Prefer the local hedge pass, then a bounded ask via the raise endpoint.
   if (local.findings.length > 0) return local;
 
   const prompt =
-    `You review a first-person life vision written as if already true.\n` +
+    `You raise the ambition of a first-person life vision written as if already true.\n` +
     `Score ambition 0–1 (0 = sensible/safe, 1 = delightfully delusional). Short drafts can still be low ambition.\n` +
-    `Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of), ` +
+    `Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of, kinda, wanna), ` +
     `future tense (I will, I'm going to), small thinking (a few, local, small rooms, enough), ` +
-    `settling ("which is enough for me"), and doubt.\n` +
-    `Even a single cautious sentence should produce findings when it hedges or plays small.\n` +
-    `quote MUST be an exact substring of the draft. For each, suggest a bolder present-tense first-person replacement. ` +
+    `settling ("which is enough for me"), lukewarm affection or desire ` +
+    `(like → love, enjoy → adore, okay with → thrilled by), clumsy/unprofessional wording, and past-doubt leftovers ` +
+    `(again, finally, this time, still) — remove those with suggestion "".\n` +
+    `Steer away from past difficulty — the life is already true, with no comeback story.\n` +
+    `QUALITY: Mentally apply every suggestion. The draft must read as natural, grammatical, professional ` +
+    `present-tense prose. Include punctuation/capitalisation in suggestions when neighbouring clauses would smash together.\n` +
+    `Prefer the smallest quote that still leaves a polished sentence. If a tiny swap leaves awkward leftovers ` +
+    `(e.g. “kinda wanna be”→“am” leaving “I am big in life”), expand the quote to the whole weak phrase and rewrite it boldly.\n` +
+    `Bad: “kinda wanna be”→“am”. Good: “kinda wanna be big in life”→“live a big life” (or “I’m living a big life”).\n` +
+    `Also rewrite slangy residue (“ya know”, “big in life”, “its in gods hands”) into clear, confident wording.\n` +
+    `Example: “I think my mates like me again” → “I think”→“I know”, “like”→“love”, “ again”→"" ` +
+    `so the line becomes “I know my mates love me”.\n` +
     `Keep names, places, and voice. Never invent unrelated facts. At most 8 findings.\n` +
     `Reply with ONLY JSON: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt","suggestion":"..."}]}\n\n` +
     `DRAFT:\n${text.slice(0, 12000)}`;
@@ -199,10 +233,98 @@ export async function raiseStoryCeiling(
         window.setTimeout(() => reject(new Error("raise chat timeout")), 20_000),
       ),
     ]);
-    return parseRaisePayload(parsed as Record<string, unknown>, text);
+    return mergeRaiseFindings(
+      parseRaisePayload(parsed as Record<string, unknown>, text),
+      local,
+    );
   } catch {
     return local;
   }
+}
+
+const WORD_CHAR = /[\p{L}\p{N}']/u;
+
+/**
+ * When the model quotes a whole sentence but only changed a hedge
+ * (“I think … like me” → “I know … like me”), shrink the quote to the
+ * changed word so lukewarm words can still get their own finding.
+ * Never shrink a single-word respell to mid-letters (like→love, not ik→ov).
+ */
+function shrinkFindingToChangedSpan(f: StoryFinding): StoryFinding {
+  const quote = f.quote;
+  const suggestion = f.suggestion;
+  // Deletions stay as-is (often " again" → "").
+  if (!quote || quote === suggestion) return f;
+  if (suggestion === "") return f;
+  // Single-token swaps keep the whole word visible in the card + editor.
+  if (!/\s/.test(quote) && !/\s/.test(suggestion)) return f;
+
+  // Wholesale multi-word rewrites (hedge phrase → bold phrase) must stay whole
+  // so we never surface a stub like “kinda wanna be”→“am”.
+  const qWords = quote.trim().split(/\s+/).filter(Boolean).length;
+  const sWords = suggestion.trim().split(/\s+/).filter(Boolean).length;
+  if (qWords >= 3 && sWords <= 2 && sWords < qWords - 1) return f;
+
+  let pre = 0;
+  while (
+    pre < quote.length &&
+    pre < suggestion.length &&
+    quote[pre] === suggestion[pre]
+  ) {
+    pre += 1;
+  }
+  let suf = 0;
+  while (
+    suf < quote.length - pre &&
+    suf < suggestion.length - pre &&
+    quote[quote.length - 1 - suf] === suggestion[suggestion.length - 1 - suf]
+  ) {
+    suf += 1;
+  }
+  let midStart = pre;
+  let midEnd = quote.length - suf;
+  if (midStart >= midEnd) return f;
+
+  // Grow to word boundaries so we show “think”→“know”, not “hink”→“now”.
+  while (midStart > 0 && WORD_CHAR.test(quote[midStart - 1]!)) midStart -= 1;
+  while (midEnd < quote.length && WORD_CHAR.test(quote[midEnd]!)) midEnd += 1;
+
+  const qFull = quote.slice(midStart, midEnd);
+  const sFull =
+    quote.slice(midStart, pre) +
+    suggestion.slice(pre, suggestion.length - suf) +
+    quote.slice(quote.length - suf, midEnd);
+  if (!qFull.trim() || qFull === sFull) return f;
+
+  const start = f.start + midStart;
+  const end = start + qFull.length;
+  if (end > f.end) return f;
+  return {
+    ...f,
+    start,
+    end,
+    quote: qFull,
+    suggestion: sFull,
+  };
+}
+
+/** Fill gaps the model missed with obvious local hedges / lukewarm words. */
+function mergeRaiseFindings(
+  primary: StoryRaiseResult,
+  extra: StoryRaiseResult,
+): StoryRaiseResult {
+  const findings = primary.findings.map(shrinkFindingToChangedSpan);
+  for (const f of extra.findings) {
+    if (findings.length >= 8) break;
+    if (findings.some((e) => !(f.end <= e.start || f.start >= e.end))) continue;
+    findings.push(f);
+  }
+  findings.sort((a, b) => a.start - b.start);
+  const ambition =
+    findings.length === 0
+      ? primary.ambition
+      : Math.min(primary.ambition, extra.ambition);
+  return { ambition, findings };
 }
 
 /** Offline / short-draft fallback when the model misses obvious hedges. */
@@ -219,11 +341,22 @@ function heuristicRaise(text: string): StoryRaiseResult {
     { re: /\bsomeday\b/i, type: "future", suggestion: "now" },
     { re: /\bI will\b/i, type: "future", suggestion: "I" },
     { re: /\bI'm going to\b/i, type: "future", suggestion: "I" },
+    // Lukewarm affection — keep quotes small so they sit beside hedge findings.
+    { re: /\blike me\b/i, type: "small", suggestion: "love me" },
+    { re: /\blikes me\b/i, type: "small", suggestion: "loves me" },
+    { re: /\blike them\b/i, type: "small", suggestion: "love them" },
+    { re: /\blike him\b/i, type: "small", suggestion: "love him" },
+    { re: /\blike her\b/i, type: "small", suggestion: "love her" },
+    { re: /\bI like\b/i, type: "small", suggestion: "I love" },
+    // Past-doubt leftovers — delete (quote keeps leading space).
+    { re: /\s+again\b/i, type: "doubt", suggestion: "" },
+    { re: /\s+finally\b/i, type: "doubt", suggestion: "" },
+    { re: /\s+this time\b/i, type: "doubt", suggestion: "" },
   ];
 
   const findings: StoryFinding[] = [];
   for (const p of patterns) {
-    if (findings.length >= 4) break;
+    if (findings.length >= 6) break;
     const m = p.re.exec(text);
     if (!m || m.index == null) continue;
     const quote = m[0]!;
@@ -255,14 +388,20 @@ export async function regenerateStorySuggestion(opts: {
   type: StoryFindingType;
 }): Promise<string> {
   const prompt =
-    `Rewrite this cautious phrase from a first-person life vision into one bolder present-tense first-person line. ` +
+    `Rewrite this cautious phrase from a first-person life vision into one bolder present-tense replacement. ` +
+    `The suggestion must slot into the surrounding sentence so the whole line reads as natural, grammatical, ` +
+    `professional prose — not a tiny word swap that leaves awkward leftovers (never “kinda wanna be”→“am” ` +
+    `if that would yield “I am big in life”; rewrite the whole weak phrase instead). ` +
+    `Include punctuation/capitalisation if needed for flow with what comes before/after. ` +
     `Keep specifics and voice. Type of issue: ${opts.type}. Quote: "${opts.quote}". ` +
+    `If the quote only signals past doubt/struggle (e.g. "again", "finally", "this time"), reply with suggestion "". ` +
     `Nearby context:\n${draftPlainText(opts.draft).slice(0, 2000)}\n\n` +
     `Reply with ONLY JSON: {"suggestion":"..."}`;
   try {
     const parsed = (await askJson(prompt)) as Record<string, unknown>;
-    if (typeof parsed.suggestion === "string" && parsed.suggestion.trim()) {
-      return parsed.suggestion.trim();
+    if (typeof parsed.suggestion === "string") {
+      if (parsed.suggestion.trim() === "") return "";
+      if (parsed.suggestion.trim()) return parsed.suggestion.trim();
     }
   } catch {
     /* */
@@ -346,8 +485,13 @@ export function findingTypeLabel(type: StoryFindingType): string {
     case "settling":
       return "Settling";
     case "doubt":
-      return "Doubt";
+      return "Past doubt";
     default:
       return "Hedging";
   }
+}
+
+/** UI copy for a raise suggestion; empty string means delete the quote. */
+export function raiseSuggestionLabel(suggestion: string): string {
+  return suggestion === "" ? "remove" : suggestion;
 }

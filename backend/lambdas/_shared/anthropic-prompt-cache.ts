@@ -7,6 +7,7 @@
  *
  * @see https://platform.claude.com/docs/en/build-with-claude/prompt-caching
  */
+import { withClaudeThinkingOff } from "./anthropic-pricing";
 
 export type AnthropicCacheControl = {
   type: "ephemeral";
@@ -77,7 +78,7 @@ export function buildCachedMessagesRequestBody(params: {
     });
   }
 
-  return {
+  return withClaudeThinkingOff({
     model: params.model,
     max_tokens: params.maxTokens,
     stream: params.stream !== false,
@@ -85,5 +86,5 @@ export function buildCachedMessagesRequestBody(params: {
     cache_control: cache,
     system,
     messages: params.messages,
-  };
+  });
 }

@@ -29,7 +29,7 @@ import {
   GLOBAL_MEDITATION_USER_ID,
   meditationUserPk,
 } from "./_shared/meditation-user-pk";
-import { coerceClaudeModel, parseAnthropicMessageUsage } from "./_shared/anthropic-pricing";
+import { coerceClaudeModel, parseAnthropicMessageUsage, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
 import {
   recordClaudeUsage,
   recordFishTtsUsage,
@@ -887,12 +887,12 @@ async function generateScriptFromClaude(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: params.model,
       max_tokens: prompt.maxTokens,
       system: prompt.system,
       messages: [{ role: "user", content: prompt.userContent } satisfies ChatTurn],
-    }),
+    })),
   });
 
   const responseText = await upstream.text();

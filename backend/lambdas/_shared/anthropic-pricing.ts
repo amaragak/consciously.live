@@ -86,6 +86,58 @@ export function coerceClaudeModel(model: unknown): string {
   return isSupportedClaudeModel(model) ? model : CLAUDE_HAIKU_55_MODEL_ID;
 }
 
+function isClaudeSonnet55(model: string): boolean {
+  return model.trim().toLowerCase().includes("sonnet-5-5");
+}
+
+function isClaudeHaikuOrSonnet55(model: string): boolean {
+  const id = model.trim().toLowerCase();
+  return id.includes("haiku-5-5") || id.includes("sonnet-5-5");
+}
+
+/**
+ * Match Claude 4.5 / 4.6 defaults: no adaptive / up-front thinking.
+ * Haiku 5.5 and Sonnet 5.5 turn adaptive thinking on when `thinking` is omitted.
+ *
+ * - Haiku 5.5: `disabled`
+ * - Sonnet 5.5: rejects `disabled`; `between_tools` turns off up-front thinking
+ * - Older models: `disabled` keeps thinking off
+ */
+export function claudeThinkingOffForModel(model: string): {
+  thinking: { type: "disabled" } | { type: "between_tools" };
+} {
+  if (isClaudeSonnet55(model)) {
+    return { thinking: { type: "between_tools" } };
+  }
+  return { thinking: { type: "disabled" } };
+}
+
+/**
+ * Merge thinking-off (+ drop 5.5-rejected sampling params) into a Messages body.
+ * Preserves an explicit non-conflicting `thinking` field.
+ */
+export function withClaudeThinkingOff(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const model =
+    typeof body.model === "string" ? body.model : CLAUDE_HAIKU_55_MODEL_ID;
+  const next: Record<string, unknown> = { ...body };
+  const existing = next.thinking as { type?: string } | undefined;
+  if (existing == null) {
+    Object.assign(next, claudeThinkingOffForModel(model));
+  } else if (isClaudeSonnet55(model) && existing.type === "disabled") {
+    // Sonnet 5.5 rejects `disabled`.
+    next.thinking = { type: "between_tools" };
+  }
+  // Haiku/Sonnet 5.5 reject temperature / top_p / top_k on every request.
+  if (isClaudeHaikuOrSonnet55(model)) {
+    delete next.temperature;
+    delete next.top_p;
+    delete next.top_k;
+  }
+  return next;
+}
+
 export function claudeUsdFromTokens(
   model: string,
   inputTokens: number,

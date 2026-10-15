@@ -2,7 +2,7 @@
  * Script Lab V2 experimental generation path — structure then personalization.
  * Does not modify generateScriptLabScript (V1).
  */
-import { parseAnthropicMessageUsage } from "./anthropic-pricing";
+import { parseAnthropicMessageUsage, withClaudeThinkingOff } from "./anthropic-pricing";
 import { verifyScriptLabBeats } from "./script-lab-beat-verification";
 import {
   mergeUsageBreakdown,
@@ -708,14 +708,14 @@ async function callAnthropicTool(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: params.model,
       max_tokens: params.maxTokens ?? 8192,
       system: params.system,
       tools: [params.tool],
       tool_choice: { type: "tool", name: params.tool.name },
       messages: [{ role: "user", content: params.userContent }],
-    }),
+    })),
   });
   const responseText = await upstream.text();
   if (!upstream.ok) {

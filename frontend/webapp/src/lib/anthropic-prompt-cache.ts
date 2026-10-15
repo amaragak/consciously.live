@@ -3,6 +3,8 @@
  * Keep in sync — used when `/api/assistant-chat` calls Anthropic directly.
  */
 
+import { withClaudeThinkingOff } from "@/lib/claude-pricing";
+
 export type AnthropicCacheControl = {
   type: "ephemeral";
   ttl?: "5m" | "1h";
@@ -55,12 +57,12 @@ export function buildCachedMessagesRequestBody(params: {
     });
   }
 
-  return {
+  return withClaudeThinkingOff({
     model: params.model,
     max_tokens: params.maxTokens,
     stream: params.stream !== false,
     cache_control: cache,
     system,
     messages: params.messages,
-  };
+  });
 }

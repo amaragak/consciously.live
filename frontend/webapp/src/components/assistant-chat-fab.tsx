@@ -1,9 +1,10 @@
 "use client";
 
-import { Link, usePathname  } from "@/lib/spa-nav";
+import { Link, usePathname } from "@/lib/spa-nav";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
 import { ChatPanelPatternTile } from "@/components/chat-panel-shell";
+import { useMinWidth } from "@/hooks/use-min-width";
 import {
   clearAssistantChatRemoteSessionCache,
   markAssistantChatStorePulledThisSession,
@@ -122,6 +123,7 @@ function IconExpand({ className }: { className?: string }) {
  * Hidden only when full Chat (`/chat/my`) or Create’s chat pane is already on screen.
  */
 export function AssistantChatFab() {
+  const mdUp = useMinWidth(768);
   const pathname = usePathname() || "/";
   const [createChatVisible, setCreateChatVisible] = useState(
     isCreateMainChatVisible,
@@ -246,7 +248,8 @@ export function AssistantChatFab() {
     });
   }, []);
 
-  if (!enabled || hidden) return null;
+  // Phone: Chat is a bottom tab — keep the FAB for md+ only.
+  if (!mdUp || !enabled || hidden) return null;
 
   const fullHref = chat.activeId
     ? `/chat/my/${encodeURIComponent(chat.activeId)}`

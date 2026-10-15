@@ -198,23 +198,57 @@ export function clearManifestoStoryMemoryOnly(): void {
   memoryStore = null;
 }
 
-export function loadManifestoStoryStore(): ManifestoStoryStoreV1 {
-  if (typeof window === "undefined") return emptyManifestoStoryStore();
-  if (isSignedIn()) {
-    return memoryStore
-      ? structuredClone(memoryStore)
-      : emptyManifestoStoryStore();
-  }
+function readStoryFromLocalStorage(): ManifestoStoryStoreV1 | null {
   try {
     const raw = readAccountLocalStorage(LS_KEY);
-    if (!raw) return emptyManifestoStoryStore();
-    return (
-      normalizeManifestoStoryStore(JSON.parse(raw) as unknown) ??
-      emptyManifestoStoryStore()
-    );
+    if (!raw) return null;
+    return normalizeManifestoStoryStore(JSON.parse(raw) as unknown);
   } catch {
-    return emptyManifestoStoryStore();
+    return null;
   }
+}
+
+/**
+ * Prefer the store that actually has writing; tie-break by updatedAt.
+ * Used when rehydrating after HMR / cloud pull so an empty remote seed
+ * cannot wipe a draft that only exists in the device cache yet.
+ */
+export function preferManifestoStoryStore(
+  local: ManifestoStoryStoreV1 | null | undefined,
+  remote: ManifestoStoryStoreV1,
+): ManifestoStoryStoreV1 {
+  if (!local) return remote;
+  const localWords = countWords(draftPlainText(local.draft));
+  const remoteWords = countWords(draftPlainText(remote.draft));
+  const localVers = local.versions.length;
+  const remoteVers = remote.versions.length;
+  if (localWords === 0 && localVers === 0 && (remoteWords > 0 || remoteVers > 0)) {
+    return remote;
+  }
+  if (remoteWords === 0 && remoteVers === 0 && (localWords > 0 || localVers > 0)) {
+    return local;
+  }
+  const localTime = Date.parse(local.updatedAt) || 0;
+  const remoteTime = Date.parse(remote.updatedAt) || 0;
+  if (localTime !== remoteTime) {
+    return localTime >= remoteTime ? local : remote;
+  }
+  if (localWords !== remoteWords) {
+    return localWords >= remoteWords ? local : remote;
+  }
+  return localVers >= remoteVers ? local : remote;
+}
+
+export function loadManifestoStoryStore(): ManifestoStoryStoreV1 {
+  if (typeof window === "undefined") return emptyManifestoStoryStore();
+  if (memoryStore) return structuredClone(memoryStore);
+  const fromLs = readStoryFromLocalStorage();
+  if (fromLs) {
+    // Signed-in: warm memory from the durability cache until cloud applies.
+    if (isSignedIn()) memoryStore = structuredClone(fromLs);
+    return structuredClone(fromLs);
+  }
+  return emptyManifestoStoryStore();
 }
 
 export function saveManifestoStoryStoreLocal(store: ManifestoStoryStoreV1) {
@@ -223,14 +257,11 @@ export function saveManifestoStoryStoreLocal(store: ManifestoStoryStoreV1) {
     normalizeManifestoStoryStore(store) ?? emptyManifestoStoryStore();
   if (isSignedIn()) {
     memoryStore = structuredClone(normalized);
-    try {
-      removeAccountLocalStorage(LS_KEY);
-    } catch {
-      /* */
-    }
-    return;
+  } else {
+    memoryStore = null;
   }
-  memoryStore = null;
+  // Always write the account-scoped cache so HMR / reloads keep the draft
+  // even if a cloud PUT has not finished yet.
   try {
     writeAccountLocalStorage(LS_KEY, JSON.stringify(normalized));
   } catch {

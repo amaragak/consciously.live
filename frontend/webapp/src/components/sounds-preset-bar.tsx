@@ -489,7 +489,10 @@ export function SoundsMobileActionBar({
   const [open, setOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   return (
-    <div className="sticky bottom-0 z-20 mt-auto flex items-center gap-2 border-t border-border bg-background px-3.5 pb-[18px] pt-3 shadow-[0_-6px_18px_rgb(15_27_45_/_0.08)] md:hidden">
+    <div
+      className="sticky z-20 mt-auto flex items-center gap-2 border-t border-border bg-background px-3.5 pb-[18px] pt-3 shadow-[0_-6px_18px_rgb(15_27_45_/_0.08)] md:hidden"
+      style={{ bottom: "var(--app-mobile-tab-h, 0px)" }}
+    >
       <button
         type="button"
         onClick={onTogglePlayAll}

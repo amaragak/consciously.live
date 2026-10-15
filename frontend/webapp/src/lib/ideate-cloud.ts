@@ -25,6 +25,7 @@ import {
   emptyManifestoStoryStore,
   loadManifestoStoryStore,
   normalizeManifestoStoryStore,
+  preferManifestoStoryStore,
   saveManifestoStoryStoreLocal,
   stripStoryForCloud,
   type ManifestoStoryStoreV1,
@@ -395,8 +396,11 @@ export function applyIdeateCloudBundle(bundle: IdeateCloudBundle): void {
         updatedAt: new Date().toISOString(),
       },
     );
+    const remoteStory =
+      normalizeManifestoStoryStore(bundle.story) ?? emptyManifestoStoryStore();
+    // Keep a newer/richer local draft (e.g. typed before pull, or HMR cache).
     saveManifestoStoryStoreLocal(
-      normalizeManifestoStoryStore(bundle.story) ?? emptyManifestoStoryStore(),
+      preferManifestoStoryStore(loadManifestoStoryStore(), remoteStory),
     );
   });
   notifyIdeateCloud();

@@ -4,9 +4,9 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { usePathname } from "@/lib/spa-nav";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopBar } from "@/components/app-top-bar";
+import { AppMobileTabBar } from "@/components/app-mobile-tab-bar";
 import { AppPrimaryTabsProvider } from "@/components/app-primary-tabs";
-// FAB chat temporarily disabled
-// import { AssistantChatFab } from "@/components/assistant-chat-fab";
+import { AssistantChatFab } from "@/components/assistant-chat-fab";
 import { MainShell } from "@/components/main-shell";
 import {
   appSidebarWidthPx,
@@ -86,9 +86,8 @@ export function AppChrome({ children }: Props) {
           />
           <MainShell layout="app">{children}</MainShell>
         </div>
-        {/* FAB chat temporarily disabled
+        <AppMobileTabBar />
         <AssistantChatFab />
-        */}
       </div>
     </AppPrimaryTabsProvider>
   );

@@ -45,6 +45,7 @@ import {
   loadManifestoStoryStore,
   patchActiveVersionText,
   saveManifestoStoryStore,
+  saveManifestoStoryStoreLocal,
   type ManifestoStoryStoreV1,
 } from "@/lib/manifesto-story";
 import {
@@ -67,6 +68,7 @@ import {
   composeStoryThirdPerson,
   findingTypeLabel,
   raiseStoryCeiling,
+  raiseSuggestionLabel,
   regenerateStorySuggestion,
   type StoryFinding,
 } from "@/lib/manifesto-story-llm";
@@ -81,16 +83,20 @@ import {
   type StoryPromptTopicKey,
 } from "@/lib/manifesto-story-prompts";
 import { loadPlanDreamsStore } from "@/lib/plan-dreams";
+import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { ManifestoStoryNarrateRail } from "@/components/plan/manifesto-story-narrate-rail";
 import { ensureManifestoStoryReminderPoller } from "@/lib/manifesto-story-reminder";
+import {
+  APP_MOBILE_TAB_BAR_CHANGED,
+  APP_MOBILE_TAB_BAR_GAP_PX,
+  getAppMobileTabBarState,
+} from "@/lib/app-mobile-tab-bar";
 
 /* ------------------------------------------------------------- constants */
 
 const LIGHT = "color-mix(in srgb, var(--gold) 70%, white)";
 const SERIF_DISPLAY: CSSProperties = { fontVariationSettings: "'opsz' 144" };
 const SERIF_TEXT: CSSProperties = { fontVariationSettings: "'opsz' 24" };
-const SOFT_SHADOW = "0 12px 32px rgba(15,27,45,0.16)";
-
 const MIN_WORDS_TO_COMPOSE = 150;
 const AUTOSAVE_MS = 1000;
 
@@ -506,6 +512,21 @@ function FloatingEditorTools({
 }) {
   const [rightPx, setRightPx] = useState(24);
   const [bottomPx, setBottomPx] = useState(wide ? 24 : 16);
+  const [tabLift, setTabLift] = useState(0);
+
+  useEffect(() => {
+    if (wide) {
+      setTabLift(0);
+      return;
+    }
+    const sync = () => {
+      const s = getAppMobileTabBarState();
+      setTabLift(s.visible ? s.offsetPx + APP_MOBILE_TAB_BAR_GAP_PX : 0);
+    };
+    sync();
+    window.addEventListener(APP_MOBILE_TAB_BAR_CHANGED, sync);
+    return () => window.removeEventListener(APP_MOBILE_TAB_BAR_CHANGED, sync);
+  }, [wide]);
 
   useEffect(() => {
     if (!wide) return;
@@ -533,17 +554,18 @@ function FloatingEditorTools({
       setBottomPx(24);
       return;
     }
+    const base = 16 + tabLift;
     const vv = window.visualViewport;
     const sync = () => {
       if (!vv) {
-        setBottomPx(16);
+        setBottomPx(base);
         return;
       }
       const occluded = Math.max(
         0,
         window.innerHeight - (vv.height + vv.offsetTop),
       );
-      setBottomPx(occluded > 40 ? occluded + 8 : 16);
+      setBottomPx(occluded > 40 ? occluded + 8 : base);
     };
     sync();
     vv?.addEventListener("resize", sync);
@@ -567,10 +589,10 @@ function FloatingEditorTools({
         const Keyboard = (await load()).Keyboard;
         if (!Keyboard?.addListener) return;
         const show = await Keyboard.addListener("keyboardWillShow", (info) => {
-          setBottomPx(Math.max(16, (info.keyboardHeight ?? 0) + 8));
+          setBottomPx(Math.max(base, (info.keyboardHeight ?? 0) + 8));
         });
         const hide = await Keyboard.addListener("keyboardWillHide", () => {
-          setBottomPx(16);
+          setBottomPx(base);
         });
         disposeCap = () => {
           show.remove();
@@ -587,7 +609,7 @@ function FloatingEditorTools({
       window.removeEventListener("resize", sync);
       disposeCap?.();
     };
-  }, [wide]);
+  }, [wide, tabLift]);
 
   if (hidden || typeof document === "undefined") return null;
 
@@ -1374,13 +1396,15 @@ function RaiseCard({
                   }
                 >
                   <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
-                  <span className="text-[13px] text-muted">“{f.quote}”</span>
+                  <span className="text-[13px] text-muted">
+                    “{f.quote.trim()}”
+                  </span>
                   <span className="flex items-start gap-1.5 text-sm text-foreground">
                     <ArrowRight
                       className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
                       aria-hidden
                     />
-                    {f.suggestion}
+                    {raiseSuggestionLabel(f.suggestion)}
                   </span>
                 </button>
               </li>
@@ -1473,12 +1497,14 @@ function RaiseSheetBody({
                     }}
                   >
                     <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
-                    <span className="text-[13px] text-muted">“{f.quote}”</span>
+                    <span className="text-[13px] text-muted">
+                      “{f.quote.trim()}”
+                    </span>
                     <p
                       className="font-display text-base leading-[1.45] text-foreground"
                       style={SERIF_TEXT}
                     >
-                      {f.suggestion}
+                      {raiseSuggestionLabel(f.suggestion)}
                     </p>
                     <div className="flex items-center gap-2">
                       <button
@@ -1517,13 +1543,15 @@ function RaiseSheetBody({
                     className="flex w-full cursor-pointer flex-col gap-1 border-t border-border py-[10px] text-left"
                   >
                     <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
-                    <span className="text-[13px] text-muted">“{f.quote}”</span>
+                    <span className="text-[13px] text-muted">
+                      “{f.quote.trim()}”
+                    </span>
                     <span className="flex items-start gap-1.5 text-sm text-foreground">
                       <ArrowRight
                         className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
                         aria-hidden
                       />
-                      {f.suggestion}
+                      {raiseSuggestionLabel(f.suggestion)}
                     </span>
                   </button>
                 )}
@@ -1604,12 +1632,11 @@ function BottomSheet({
 
 type FocusRequest = { node: number; pos: number; n: number };
 
-type PopoverProps = {
-  finding: LiveFinding;
+type RaiseInlineActions = {
+  onUse: (f: LiveFinding) => void;
+  onAnother: (f: LiveFinding) => void;
+  onKeep: (f: LiveFinding) => void;
   busy: boolean;
-  onUse: () => void;
-  onAnother: () => void;
-  onKeep: () => void;
 };
 
 function PromptLabelRow({
@@ -1708,12 +1735,68 @@ function PromptLabelRow({
   );
 }
 
+/** Desktop quick actions after each Raise `ins` — ✓ / ✕ on every finding; Another only when active. */
+function RaiseInlineQuickActions({
+  busy,
+  showAnother,
+  onUse,
+  onAnother,
+  onKeep,
+}: {
+  busy: boolean;
+  showAnother: boolean;
+  onUse: () => void;
+  onAnother: () => void;
+  onKeep: () => void;
+}) {
+  return (
+    <span
+      role="group"
+      aria-label="Suggestion actions"
+      className="ml-1 inline-flex translate-y-px items-center gap-[3px] whitespace-nowrap align-middle font-ui"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={onUse}
+        disabled={busy}
+        aria-label="Use"
+        className={`${BTN_PRIMARY} h-5 w-5 shrink-0 !gap-0 !px-0`}
+      >
+        <Check className="h-[11px] w-[11px]" aria-hidden strokeWidth={2.4} />
+      </button>
+      <button
+        type="button"
+        onClick={onKeep}
+        aria-label="Keep mine"
+        className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted transition-colors hover:text-foreground"
+      >
+        <X className="h-[11px] w-[11px]" aria-hidden strokeWidth={2.2} />
+      </button>
+      {showAnother ? (
+        <button
+          type="button"
+          onClick={onAnother}
+          disabled={busy}
+          className={`${BTN_OUTLINE} h-5 gap-1 !px-2 text-[11px] font-semibold`}
+        >
+          <Sparkles
+            className={`h-2.5 w-2.5 ${busy ? "animate-pulse" : ""}`}
+            aria-hidden
+          />
+          Another
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 function StoryEditor({
   wide,
   nodes,
   findings,
   activeId,
-  popover,
+  raiseActions,
   focusRequest,
   freshPromptId,
   onChangeText,
@@ -1729,7 +1812,7 @@ function StoryEditor({
   nodes: StoryDraftNode[];
   findings: LiveFinding[];
   activeId: string | null;
-  popover: PopoverProps | null;
+  raiseActions: RaiseInlineActions;
   focusRequest: FocusRequest | null;
   freshPromptId: string | null;
   onChangeText: (node: number, value: string) => void;
@@ -1743,10 +1826,6 @@ function StoryEditor({
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const areaRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
-  const spanEls = useRef(new Map<string, HTMLElement>());
-  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(
-    null,
-  );
 
   const textStyle: CSSProperties = {
     ...SERIF_TEXT,
@@ -1762,23 +1841,6 @@ function StoryEditor({
     const p = Math.min(focusRequest.pos, ta.value.length);
     ta.setSelectionRange(p, p);
   }, [focusRequest]);
-
-  useLayoutEffect(() => {
-    if (!popover || !wrapRef.current) {
-      setPopPos(null);
-      return;
-    }
-    const el = spanEls.current.get(popover.finding.id);
-    if (!el) {
-      setPopPos(null);
-      return;
-    }
-    const wr = wrapRef.current.getBoundingClientRect();
-    const r = el.getBoundingClientRect();
-    const popW = Math.min(380, wr.width);
-    const left = Math.max(0, Math.min(r.left - wr.left, wr.width - popW));
-    setPopPos({ top: r.bottom - wr.top + 8, left });
-  }, [popover, nodes, wide]);
 
   const pickAtCaret = (node: number, ta: HTMLTextAreaElement) => {
     onCaret(node, ta.selectionStart);
@@ -1851,32 +1913,86 @@ function StoryEditor({
           placeholder = STORY_OPENER_PLACEHOLDER;
         }
 
-        const nodeFindings = findings.filter((f) => f.node === i);
-        const pieces: ReactNode[] = [];
-        let cursor = 0;
-        for (const f of nodeFindings) {
-          if (f.start > cursor) pieces.push(text.slice(cursor, f.start));
-          const active = f.id === activeId;
-          pieces.push(
-            <span
-              key={f.id}
-              ref={(el) => {
-                if (el) spanEls.current.set(f.id, el);
-                else spanEls.current.delete(f.id);
-                registerSpan(f.id, el);
-              }}
-              className="rounded-[3px]"
-              style={{
-                backgroundColor: `color-mix(in srgb, var(--accent) ${active ? 38 : 20}%, transparent)`,
-                boxShadow: "inset 0 -2px 0 var(--accent)",
-              }}
+        const nodeFindings = findings
+          .filter((f) => f.node === i)
+          .sort((a, b) => a.start - b.start);
+
+        // Raise mode: tracked-changes preview (del/ins). Draft stays original.
+        if (nodeFindings.length > 0) {
+          const pieces: ReactNode[] = [];
+          let cursor = 0;
+          for (const f of nodeFindings) {
+            if (f.start > cursor) {
+              pieces.push(
+                <span key={`t-${cursor}`}>{text.slice(cursor, f.start)}</span>,
+              );
+            }
+            const active = f.id === activeId;
+            const original = text.slice(f.start, f.end);
+            pieces.push(
+              <span
+                key={f.id}
+                ref={(el) => registerSpan(f.id, el)}
+                className="inline"
+              >
+                <button
+                  type="button"
+                  onClick={() => onPickFinding(f.id)}
+                  className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-inherit select-none"
+                  aria-current={active ? "true" : undefined}
+                  aria-label={`Suggestion: ${original.trim() || "phrase"}`}
+                >
+                  <del className="text-muted no-underline [text-decoration-line:line-through] [text-decoration-color:var(--muted)] [text-decoration-thickness:1px]">
+                    {original}
+                  </del>
+                  {f.suggestion !== "" ? (
+                    <>
+                      {" "}
+                      <ins
+                        className={`rounded-[3px] px-0.5 text-foreground no-underline ${
+                          raiseActions.busy && active ? "opacity-50" : ""
+                        }`}
+                        style={{
+                          backgroundColor:
+                            "color-mix(in srgb, var(--accent) 18%, transparent)",
+                          boxShadow: active
+                            ? "inset 0 -2px 0 var(--accent)"
+                            : "inset 0 -1.5px 0 color-mix(in srgb, var(--accent) 55%, transparent)",
+                        }}
+                      >
+                        {f.suggestion}
+                      </ins>
+                    </>
+                  ) : null}
+                </button>
+                {wide ? (
+                  <RaiseInlineQuickActions
+                    busy={raiseActions.busy}
+                    showAnother={active}
+                    onUse={() => raiseActions.onUse(f)}
+                    onAnother={() => raiseActions.onAnother(f)}
+                    onKeep={() => raiseActions.onKeep(f)}
+                  />
+                ) : null}
+              </span>,
+            );
+            cursor = f.end;
+          }
+          if (cursor < text.length) {
+            pieces.push(<span key={`t-${cursor}`}>{text.slice(cursor)}</span>);
+          }
+
+          return (
+            <div
+              key={`text-${i}`}
+              className="whitespace-pre-wrap font-display text-foreground [overflow-wrap:anywhere]"
+              style={textStyle}
+              aria-label={ariaLabel}
             >
-              {text.slice(f.start, f.end)}
-            </span>,
+              {pieces}
+            </div>
           );
-          cursor = f.end;
         }
-        pieces.push(text.slice(cursor));
 
         return (
           <div key={`text-${i}`} className="grid">
@@ -1885,7 +2001,7 @@ function StoryEditor({
               className="pointer-events-none col-start-1 row-start-1 whitespace-pre-wrap font-display text-transparent [overflow-wrap:anywhere]"
               style={textStyle}
             >
-              {pieces}
+              {text}
               {"\u200b"}
               {"\n"}
             </div>
@@ -1910,57 +2026,6 @@ function StoryEditor({
           </div>
         );
       })}
-
-      {popover && popPos ? (
-        <div
-          role="dialog"
-          aria-label="Suggestion"
-          className="absolute z-30 flex flex-col gap-[10px] rounded-[14px] border border-border bg-card px-4 py-[14px]"
-          style={{
-            top: popPos.top,
-            left: popPos.left,
-            width: Math.min(380, wrapRef.current?.clientWidth ?? 380),
-            boxShadow: SOFT_SHADOW,
-          }}
-        >
-          <span className={LABEL_CAPS}>{findingTypeLabel(popover.finding.type)}</span>
-          <p
-            className="font-display text-base leading-[1.5] text-foreground"
-            style={SERIF_TEXT}
-          >
-            {popover.finding.suggestion}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={popover.onUse}
-              disabled={popover.busy}
-              className={`${BTN_PRIMARY} h-[34px]`}
-            >
-              Use this
-            </button>
-            <button
-              type="button"
-              onClick={popover.onAnother}
-              disabled={popover.busy}
-              className={`${BTN_OUTLINE} h-[34px]`}
-            >
-              <Sparkles
-                className={`h-3.5 w-3.5 ${popover.busy ? "animate-pulse" : ""}`}
-                aria-hidden
-              />
-              Another
-            </button>
-            <button
-              type="button"
-              onClick={popover.onKeep}
-              className="ml-auto cursor-pointer text-[13px] text-muted transition-colors hover:text-foreground"
-            >
-              Keep mine
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -2005,6 +2070,7 @@ export function ManifestoStoryView() {
   const wide = useMinWidth(768);
   const firstName = useSessionFirstName();
   const dict = useWhisperDictation();
+  const { ready: cloudReady, revision } = useIdeateCloud();
 
   useEffect(() => {
     ensureManifestoStoryReminderPoller();
@@ -2017,16 +2083,23 @@ export function ManifestoStoryView() {
   storeRef.current = store;
   const dirtyRef = useRef(false);
 
-  useEffect(() => {
-    const reload = () => {
-      if (dirtyRef.current) return;
-      const next = loadManifestoStoryStore();
-      storeRef.current = next;
-      setStore(next);
-    };
-    window.addEventListener("focus", reload);
-    return () => window.removeEventListener("focus", reload);
+  const reloadStore = useCallback(() => {
+    if (dirtyRef.current) return;
+    const next = loadManifestoStoryStore();
+    storeRef.current = next;
+    setStore(next);
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("focus", reloadStore);
+    return () => window.removeEventListener("focus", reloadStore);
+  }, [reloadStore]);
+
+  // Re-read after cloud pull / other ideate writers (HMR loses in-memory only).
+  useEffect(() => {
+    if (!cloudReady) return;
+    reloadStore();
+  }, [cloudReady, revision, reloadStore]);
 
   const [areas] = useState(() =>
     loadPlanDreamsStore().dreams.map((d) => ({ id: d.id, title: d.title })),
@@ -2072,9 +2145,12 @@ export function ManifestoStoryView() {
         // Done prompts are derived from the labels in the draft.
         next = { ...next, promptsDone: promptsDoneFromDraft(next.draft) };
       }
+      next = { ...next, updatedAt: new Date().toISOString() };
       storeRef.current = next;
       dirtyRef.current = true;
       setStore(next);
+      // Survive HMR / reload immediately; cloud PUT stays debounced below.
+      saveManifestoStoryStoreLocal(next);
     },
     [],
   );
@@ -2084,6 +2160,7 @@ export function ManifestoStoryView() {
     const t = window.setTimeout(() => {
       if (!dirtyRef.current) return;
       dirtyRef.current = false;
+      // Touches cloud schedule (signed-in) / rewrites LS with final stamp.
       saveManifestoStoryStore(storeRef.current);
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(t);
@@ -2234,11 +2311,20 @@ export function ManifestoStoryView() {
       next[index] = { kind: "text", text: value };
       const draft = serializeStoryDraft(next);
       update((s) => ({ ...s, draft }));
-      setRaise((r) =>
-        r
-          ? { ...r, findings: adjustFindings(r.findings, index, old, value) }
-          : r,
-      );
+      setRaise((r) => {
+        if (!r) return r;
+        const findings = adjustFindings(r.findings, index, old, value);
+        if (findings.length === 0) {
+          setActiveId(null);
+          return null;
+        }
+        setActiveId((id) =>
+          id && findings.some((f) => f.id === id)
+            ? id
+            : (findings[0]?.id ?? null),
+        );
+        return { ...r, findings };
+      });
     },
     [currentNodes, update],
   );
@@ -2447,12 +2533,8 @@ export function ManifestoStoryView() {
       const res = await raiseStoryCeiling(bodyDraft(cur));
       const live = locateFindings(currentNodes(), res.findings);
       setRaise({ ambition: res.ambition, findings: live });
-      if (wide) {
-        setActiveId(null);
-      } else {
-        setActiveId(live[0]?.id ?? null);
-        setRaiseSheet(true);
-      }
+      setActiveId(live[0]?.id ?? null);
+      if (!wide) setRaiseSheet(true);
     } catch {
       setRaiseError("Couldn’t check your story. Try again.");
     } finally {
@@ -2479,18 +2561,29 @@ export function ManifestoStoryView() {
     return { old, updated };
   };
 
+  const nextFindingId = (id: string): string | null => {
+    const list = raise?.findings ?? [];
+    const i = list.findIndex((x) => x.id === id);
+    if (i < 0) return null;
+    return list[i + 1]?.id ?? list[i - 1]?.id ?? null;
+  };
+
   const useFinding = (f: LiveFinding) => {
     const res = applyReplacement(f, f.suggestion);
     if (!res) return;
-    setRaise((r) =>
-      r
-        ? {
-            ...r,
-            findings: adjustFindings(r.findings, f.node, res.old, res.updated),
-          }
-        : r,
-    );
-    setActiveId(null);
+    const nextId = nextFindingId(f.id);
+    setRaise((r) => {
+      if (!r) return r;
+      const findings = adjustFindings(
+        r.findings,
+        f.node,
+        res.old,
+        res.updated,
+      );
+      if (findings.length === 0) return null;
+      return { ...r, findings };
+    });
+    setActiveId(nextId);
   };
 
   const useAll = () => {
@@ -2512,10 +2605,14 @@ export function ManifestoStoryView() {
   };
 
   const keepMine = (id: string) => {
-    setRaise((r) =>
-      r ? { ...r, findings: r.findings.filter((f) => f.id !== id) } : r,
-    );
-    setActiveId(null);
+    const nextId = nextFindingId(id);
+    setRaise((r) => {
+      if (!r) return r;
+      const findings = r.findings.filter((f) => f.id !== id);
+      if (findings.length === 0) return null;
+      return { ...r, findings };
+    });
+    setActiveId(nextId);
   };
 
   const anotherSuggestion = async (f: LiveFinding) => {
@@ -2571,34 +2668,12 @@ export function ManifestoStoryView() {
     if (!wide && id) setRaiseSheet(true);
   };
 
-  const activeFinding =
-    raise?.findings.find((f) => f.id === activeId) ?? null;
-  const popover: PopoverProps | null =
-    wide && activeFinding
-      ? {
-          finding: activeFinding,
-          busy: anotherBusy,
-          onUse: () => useFinding(activeFinding),
-          onAnother: () => void anotherSuggestion(activeFinding),
-          onKeep: () => keepMine(activeFinding.id),
-        }
-      : null;
-
-  /** Mobile sheet actions: after acting, move on to the neighbouring finding. */
-  const neighbourId = (f: LiveFinding): string | null => {
-    const list = raise?.findings ?? [];
-    const i = list.findIndex((x) => x.id === f.id);
-    return list[i + 1]?.id ?? list[i - 1]?.id ?? null;
-  };
+  /** Mobile sheet / inline pill — Use & Keep already advance activeId. */
   const sheetUse = (f: LiveFinding) => {
-    const next = neighbourId(f);
     useFinding(f);
-    setActiveId(next);
   };
   const sheetKeep = (f: LiveFinding) => {
-    const next = neighbourId(f);
     keepMine(f.id);
-    setActiveId(next);
   };
 
   /* ----- prepare for narration */
@@ -2685,7 +2760,12 @@ export function ManifestoStoryView() {
       nodes={nodes}
       findings={raise?.findings ?? []}
       activeId={activeId}
-      popover={popover}
+      raiseActions={{
+        busy: anotherBusy,
+        onUse: useFinding,
+        onAnother: (f) => void anotherSuggestion(f),
+        onKeep: (f) => keepMine(f.id),
+      }}
       focusRequest={focusRequest}
       freshPromptId={freshPromptId}
       onChangeText={setNodeText}

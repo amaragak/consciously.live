@@ -12,7 +12,10 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
+import {
+  CLAUDE_HAIKU_45_MODEL_ID,
+  withClaudeThinkingOff,
+} from "./_shared/anthropic-pricing";
 import { requireUserJson } from "./_shared/consciously-auth-http";
 
 const secrets = new SecretsManagerClient({});
@@ -81,7 +84,7 @@ async function haikuJson(system: string, user: string): Promise<unknown> {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 4096,
       temperature: 0.4,
@@ -89,7 +92,7 @@ async function haikuJson(system: string, user: string): Promise<unknown> {
       output_config: { effort: "low" },
       system,
       messages: [{ role: "user", content: user }],
-    }),
+    })),
   });
   const data = (await res.json()) as {
     content?: Array<{ type?: string; text?: string }>;
@@ -121,12 +124,24 @@ function plainDraft(raw: string): string {
 function resolveOffsets(
   draft: string,
   quote: string,
+  deletion = false,
 ): { start: number; end: number } | null {
+  // Prefer exact match so leading whitespace in deletion quotes is kept.
+  if (quote && draft.includes(quote)) {
+    const idx = draft.indexOf(quote);
+    return { start: idx, end: idx + quote.length };
+  }
   const q = quote.trim();
   if (!q) return null;
   const idx = draft.indexOf(q);
   if (idx < 0) return null;
-  return { start: idx, end: idx + q.length };
+  let start = idx;
+  const end = idx + q.length;
+  // Removals: eat the preceding space so "love me again" → "love me".
+  if (deletion && start > 0 && /\s/.test(draft[start - 1]!)) {
+    start -= 1;
+  }
+  return { start, end };
 }
 
 const FINDING_TYPES = new Set([
@@ -142,16 +157,33 @@ async function handleRaise(draftRaw: string) {
   if (!draft) return json(400, { error: "draft is required" });
 
   const system =
-    "You review first-person life visions written as already true. Return ONLY valid JSON.";
+    "You raise the ambition of first-person life visions written as already true. Return ONLY valid JSON.";
   const user = [
     "Score ambition 0–1 (0 = sensible/safe, 1 = delightfully delusional). Short drafts can still be low ambition.",
-    "Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of),",
+    "Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of, kinda, wanna),",
     "future tense (I will, I'm going to), small thinking (a few, local, small rooms, enough),",
-    'settling ("which is enough for me"), and doubt.',
-    "Even a single cautious sentence should produce findings when it hedges or plays small.",
-    "quote MUST be an exact substring of the draft.",
-    "For each, suggest a bolder present-tense first-person replacement.",
-    "Keep names, places, and voice. Never invent unrelated facts. At most 8 findings.",
+    'settling ("which is enough for me"), lukewarm affection or desire',
+    "(like → love, enjoy → adore, okay with → thrilled by, fine → wonderful),",
+    "clumsy or unprofessional wording, and past-doubt leftovers that imply prior struggle",
+    '(again, finally, this time, still) — remove those with suggestion ""',
+    "(include the leading space in quote when deleting a trailing word).",
+    "Steer away from past difficulty — the life is already true, with no comeback story.",
+    "",
+    "QUALITY (required):",
+    "- Mentally apply every suggestion into the draft. The result must read as natural, grammatical,",
+    "  professional present-tense prose. Fix punctuation/capitalisation in the suggestion when needed",
+    "  so neighbouring clauses do not smash together.",
+    "- Prefer the smallest quote that still leaves a polished sentence after replacement.",
+    "  If a tiny swap would leave awkward leftovers (e.g. “kinda wanna be”→“am” leaving “I am big in life”),",
+    "  expand the quote to the whole weak phrase and rewrite it boldly.",
+    "- Bad: “kinda wanna be”→“am”. Good: “kinda wanna be big in life”→“live a big life”",
+    '  (or “I’m living a big life”).',
+    "- Bad: leaving slangy residue (“ya know”, “big in life”, “its in gods hands”) beside a bold insert.",
+    "  Quote those weak stretches too and replace with clear, confident wording.",
+    "- Keep names, places, and the writer’s voice. Never invent unrelated facts. At most 8 findings.",
+    "",
+    "Example: “I think my mates like me again” → “I think”→“I know”, “like”→“love”, “ again”→\"\"",
+    'so the line becomes “I know my mates love me”.',
     'JSON shape: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt","suggestion":"..."}]}',
     "",
     "DRAFT:",
@@ -168,15 +200,17 @@ async function handleRaise(draftRaw: string) {
     if (findings.length >= 8) break;
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
-    const quote = typeof r.quote === "string" ? r.quote.trim() : "";
-    const suggestion =
-      typeof r.suggestion === "string" ? r.suggestion.trim() : "";
+    const quoteRaw = typeof r.quote === "string" ? r.quote : "";
+    if (!quoteRaw.trim()) continue;
+    if (typeof r.suggestion !== "string") continue;
+    const deletion = r.suggestion.trim() === "";
+    const quote = deletion ? quoteRaw : quoteRaw.trim();
+    const suggestion = deletion ? "" : r.suggestion.trim();
     const type =
       typeof r.type === "string" && FINDING_TYPES.has(r.type)
         ? r.type
         : "hedging";
-    if (!quote || !suggestion) continue;
-    const loc = resolveOffsets(draft, quote);
+    const loc = resolveOffsets(draft, quote, deletion);
     if (!loc) continue;
     if (findings.some((f) => {
       const s = f.start as number;

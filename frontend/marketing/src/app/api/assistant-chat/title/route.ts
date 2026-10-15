@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withClaudeThinkingOff } from "@/lib/claude-pricing";
+
 import {
   ASSISTANT_CHAT_TITLE_SYSTEM,
   sanitizeAssistantChatTitle,
@@ -21,7 +23,7 @@ async function titleFromAnthropic(
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: DEFAULT_MODEL,
       max_tokens: 40,
       temperature: 0.3,
@@ -32,7 +34,7 @@ async function titleFromAnthropic(
           content: message.slice(0, 2_000),
         },
       ],
-    }),
+    })),
     cache: "no-store",
   });
 

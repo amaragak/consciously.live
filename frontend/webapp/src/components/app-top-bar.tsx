@@ -11,6 +11,7 @@ import {
   AppTopBarTrailingSlot,
 } from "@/components/app-primary-tabs";
 import { AppGlobalSearch } from "@/components/app-global-search";
+import { AppMobileAccountMenu } from "@/components/app-mobile-account-menu";
 import { AppNotificationsBell } from "@/components/app-notifications-bell";
 import { AlphaChromeButton } from "@/components/dev-chrome-button";
 import {
@@ -650,13 +651,18 @@ export function AppTopBar({
           <span className="relative translate-x-[5px] lg:translate-x-0">
             <AppNotificationsBell />
           </span>
+          {/* Phone: avatar menu. md–lg: hamburger drawer. lg+: desktop account. */}
+          <AppMobileAccountMenu
+            accountLabel={accountLabel}
+            showAdmin={showAdmin}
+          />
           {onToggleSidebar ? (
             <button
               type="button"
               aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileSidebarOpen}
               onClick={onToggleSidebar}
-              className={`app-top-bar-menu-btn inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground lg:hidden${
+              className={`app-top-bar-menu-btn hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground md:inline-flex lg:hidden${
                 mobileSidebarOpen ? " is-open" : ""
               }`}
             >

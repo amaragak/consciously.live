@@ -66,6 +66,48 @@ export function claudeModelLabel(model: string | null | undefined): string {
   return CLAUDE_MODEL_RATES[model]?.label ?? model;
 }
 
+function isClaudeSonnet55(model: string): boolean {
+  return model.trim().toLowerCase().includes("sonnet-5-5");
+}
+
+function isClaudeHaikuOrSonnet55(model: string): boolean {
+  const id = model.trim().toLowerCase();
+  return id.includes("haiku-5-5") || id.includes("sonnet-5-5");
+}
+
+/**
+ * Match Claude 4.5 / 4.6 defaults: no adaptive / up-front thinking.
+ * Keep in sync with `backend/lambdas/_shared/anthropic-pricing.ts`.
+ */
+export function claudeThinkingOffForModel(model: string): {
+  thinking: { type: "disabled" } | { type: "between_tools" };
+} {
+  if (isClaudeSonnet55(model)) {
+    return { thinking: { type: "between_tools" } };
+  }
+  return { thinking: { type: "disabled" } };
+}
+
+export function withClaudeThinkingOff(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const model =
+    typeof body.model === "string" ? body.model : CLAUDE_HAIKU_55_MODEL_ID;
+  const next: Record<string, unknown> = { ...body };
+  const existing = next.thinking as { type?: string } | undefined;
+  if (existing == null) {
+    Object.assign(next, claudeThinkingOffForModel(model));
+  } else if (isClaudeSonnet55(model) && existing.type === "disabled") {
+    next.thinking = { type: "between_tools" };
+  }
+  if (isClaudeHaikuOrSonnet55(model)) {
+    delete next.temperature;
+    delete next.top_p;
+    delete next.top_k;
+  }
+  return next;
+}
+
 /** Per-million rates for display, e.g. "$0.10 / $0.50 per MTok". */
 export function claudeRatesPerMillion(model: string | null | undefined): {
   input: number;

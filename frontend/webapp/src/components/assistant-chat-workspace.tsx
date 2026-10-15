@@ -13,6 +13,7 @@ import {
   scheduleAssistantChatCloudPush,
   wasAssistantChatStorePulledThisSession,
 } from "@/lib/assistant-chat-cloud";
+import { consumeAssistantChatPendingLaunch } from "@/lib/assistant-chat-launch";
 import {
   ASSISTANT_CHAT_STORE_CHANGED,
   clearLegacyAssistantChatKeys,
@@ -95,6 +96,15 @@ export function AssistantChatWorkspace() {
   const refreshSidebar = useCallback(() => {
     setStoreThreads(loadAssistantChatStore().threads);
   }, []);
+
+  useEffect(() => {
+    if (!chat.hydrated) return;
+    const pending = consumeAssistantChatPendingLaunch();
+    if (!pending) return;
+    if (pending.kind === "life_area_ideate") {
+      void chat.startLifeAreaIdeate(pending.lifeAreaId);
+    }
+  }, [chat.hydrated, chat.startLifeAreaIdeate]);
 
   useEffect(() => {
     clearLegacyAssistantChatKeys();

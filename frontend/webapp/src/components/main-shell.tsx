@@ -98,7 +98,12 @@ export function MainShell({
 
   return (
     <main
-      className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-background"
+      className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-background md:pb-0"
+      style={
+        layout === "app"
+          ? { paddingBottom: "var(--app-mobile-tab-h, 0px)" }
+          : undefined
+      }
       data-page-kind={isHeroPage ? "hero" : "standard"}
       data-app-layout={
         layout === "app" ? (isFocusApp ? "focus" : "signed-in") : undefined

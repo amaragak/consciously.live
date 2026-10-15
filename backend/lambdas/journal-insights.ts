@@ -16,6 +16,7 @@ import {
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
   parseAnthropicMessageUsage,
+  withClaudeThinkingOff,
 } from "./_shared/anthropic-pricing";
 import { recordClaudeUsage } from "./_shared/ai-usage";
 import { requireUserJson } from "./_shared/consciously-auth-http";
@@ -598,13 +599,13 @@ async function callClaudeForInsights(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 1800,
       temperature: 0.2,
       system: params.system,
       messages: [{ role: "user", content: params.user }],
-    }),
+    })),
   });
   const text = await res.text();
   if (!res.ok) {

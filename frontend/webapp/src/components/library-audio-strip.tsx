@@ -50,6 +50,8 @@ export function LibraryAudioStrip(
     onHeightChange?: (heightPx: number) => void;
     autoplay?: boolean;
     placement?: "fixed" | "inline";
+    /** Lift fixed strip above the phone tab bar (0 when bar hidden). */
+    bottomOffsetPx?: number;
     externalPlaying?: boolean | null;
     onExternalTransportToggle?: (() => void) | null;
     onReflect?: (() => void) | null;

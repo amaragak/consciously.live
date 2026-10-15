@@ -6,7 +6,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { coerceClaudeModel } from "./anthropic-pricing";
+import { coerceClaudeModel, withClaudeThinkingOff } from "./anthropic-pricing";
 import { recordClaudeUsage } from "./ai-usage";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -96,7 +96,7 @@ export async function callAnthropicMessages(
 ): Promise<CallAnthropicMessagesResult> {
   const model = coerceClaudeModel(params.model);
   const apiKey = params.apiKey ?? (await getClaudeApiKey());
-  const body: Record<string, unknown> = {
+  const body = withClaudeThinkingOff({
     model,
     max_tokens: params.maxTokens,
     messages: params.messages,
@@ -105,7 +105,7 @@ export async function callAnthropicMessages(
       ? { temperature: params.temperature }
       : {}),
     ...(params.extra ?? {}),
-  };
+  });
 
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",

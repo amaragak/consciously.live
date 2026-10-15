@@ -18,7 +18,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
 
 const secrets = new SecretsManagerClient({});
 const s3 = new S3Client({});
@@ -190,13 +190,13 @@ async function polishVisionPromptWithHaiku(
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 500,
       temperature: 0.4,
       system,
       messages: [{ role: "user", content: userParts.join("\n") }],
-    }),
+    })),
   });
   const raw = await res.text();
   if (!res.ok) {

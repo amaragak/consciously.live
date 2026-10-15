@@ -6,7 +6,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { CLAUDE_HAIKU_45_MODEL_ID } from "./_shared/anthropic-pricing";
+import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -157,13 +157,13 @@ export async function handler(
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 8000,
       temperature: 0,
       system,
       messages: [{ role: "user", content: user }],
-    }),
+    })),
   });
 
   if (!upstream.ok) {

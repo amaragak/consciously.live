@@ -1,4 +1,4 @@
-import { parseAnthropicMessageUsage } from "./anthropic-pricing";
+import { parseAnthropicMessageUsage, withClaudeThinkingOff } from "./anthropic-pricing";
 import { SCRIPT_LAB_HAIKU_MODEL } from "./script-lab-models";
 import { normalizePauseBand } from "./script-pause-bands";
 import type { ScriptLabBeat } from "./script-lab-beats";
@@ -244,7 +244,7 @@ export async function selectSegmentVariantsIntelligently(params: {
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(withClaudeThinkingOff({
         model: SCRIPT_LAB_HAIKU_MODEL,
         max_tokens: 4096,
         temperature: 0.4,
@@ -258,7 +258,7 @@ export async function selectSegmentVariantsIntelligently(params: {
         ],
         tool_choice: { type: "tool", name: tool.name },
         messages: [{ role: "user", content: userContent }],
-      }),
+      })),
     });
 
     const responseText = await upstream.text();

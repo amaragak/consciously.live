@@ -45,6 +45,11 @@ import {
   subscribeJournalStore,
 } from "@/lib/journal-storage";
 import { maybeCountManifestoStoryListen } from "@/lib/manifesto-story-listen";
+import {
+  APP_MOBILE_TAB_BAR_CHANGED,
+  APP_MOBILE_TAB_BAR_GAP_PX,
+  getAppMobileTabBarState,
+} from "@/lib/app-mobile-tab-bar";
 import { usePathname, useRouter } from "@/lib/spa-nav";
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
@@ -356,6 +361,17 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
 
   const showReflect = isLibraryMeditationTrack(nowPlaying);
 
+  const [tabBarLiftPx, setTabBarLiftPx] = useState(0);
+  useEffect(() => {
+    const sync = () => {
+      const s = getAppMobileTabBarState();
+      setTabBarLiftPx(s.visible ? s.offsetPx + APP_MOBILE_TAB_BAR_GAP_PX : 0);
+    };
+    sync();
+    window.addEventListener(APP_MOBILE_TAB_BAR_CHANGED, sync);
+    return () => window.removeEventListener(APP_MOBILE_TAB_BAR_CHANGED, sync);
+  }, []);
+
   const strip = (
     <LibraryAudioStrip
       key={nowPlaying?.s3Key ?? "none"}
@@ -368,6 +384,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       onHeightChange={setPlayerStripHeightPx}
       autoplay={autoplay}
       placement={stripDockHost ? "inline" : "fixed"}
+      bottomOffsetPx={stripDockHost ? 0 : tabBarLiftPx}
       externalPlaying={
         createBridgeActive ? createSoundStripBridge?.playing ?? null : null
       }
