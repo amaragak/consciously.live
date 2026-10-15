@@ -3619,8 +3619,8 @@ export async function createMeditationAudioJob(params: {
   /** If set, applies voice FX (Pedalboard) after loudness normalization. */
   voiceFxPreset?: string | null;
   voiceFxDial?: number;
-  /** Bed-only seconds before voice (0 or 20). */
-  leadInSeconds?: 0 | 20;
+  /** Bed-only seconds before voice (e.g. 0, 2, or 20). */
+  leadInSeconds?: number;
   /** Fade beds after voice ends (default true). */
   fadeOut?: boolean;
   /** @deprecated use layered background keys + gains */
@@ -3698,7 +3698,9 @@ export async function createMeditationAudioJob(params: {
       : {}),
     ...(params.voiceFxPreset ? { voiceFxPreset: params.voiceFxPreset } : {}),
     ...(typeof params.voiceFxDial === "number" ? { voiceFxDial: params.voiceFxDial } : {}),
-    ...(params.leadInSeconds === 0 || params.leadInSeconds === 20
+    ...(typeof params.leadInSeconds === "number" &&
+    Number.isFinite(params.leadInSeconds) &&
+    params.leadInSeconds >= 0
       ? { leadInSeconds: params.leadInSeconds }
       : {}),
     ...(typeof params.fadeOut === "boolean" ? { fadeOut: params.fadeOut } : {}),

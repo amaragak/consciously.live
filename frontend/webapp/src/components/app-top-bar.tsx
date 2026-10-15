@@ -4,6 +4,7 @@ import { ColorSchemePicker } from "@consciously/common";
 import { Settings, Shield } from "lucide-react";
 import { Link, usePathname } from "@/lib/spa-nav";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LogoMark } from "@/components/logo-mark";
 import {
   AppPrimaryTabsPhoneSlot,
@@ -68,13 +69,43 @@ function accountLabelFromSession(): string {
 
 function AccountMenu({ accountLabel }: { accountLabel: string }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
+    null,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const initial = (accountLabel.trim()[0] || "G").toUpperCase();
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const el = buttonRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setMenuPos({
+        top: r.bottom + 8,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -90,6 +121,7 @@ function AccountMenu({ accountLabel }: { accountLabel: string }) {
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -100,30 +132,40 @@ function AccountMenu({ accountLabel }: { accountLabel: string }) {
       >
         {initial}
       </button>
-      {open ? (
-        <div
-          role="menu"
-          aria-label="Account"
-          className="absolute right-0 top-full z-[140] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card py-1.5 text-foreground shadow-[0_8px_24px_color-mix(in_srgb,var(--overlay)_16%,transparent)]"
-        >
-          <p className="truncate px-4 py-2.5 text-sm text-muted">
-            Signed in as{" "}
-            <span className="font-medium text-foreground">{accountLabel}</span>
-          </p>
-          <div className="my-1 border-t border-border-subtle" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              clearMedimadeSession();
-            }}
-            className="block w-full cursor-pointer px-4 py-2 text-left text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-          >
-            Sign out
-          </button>
-        </div>
-      ) : null}
+      {open && menuPos && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label="Account"
+              style={{ top: menuPos.top, right: menuPos.right }}
+              className="fixed z-[145] w-56 overflow-hidden rounded-xl border border-border bg-card py-1.5 text-foreground shadow-[0_8px_24px_color-mix(in_srgb,var(--overlay)_16%,transparent)]"
+            >
+              <p className="truncate px-4 py-2.5 text-sm text-muted">
+                Signed in as{" "}
+                <span className="font-medium text-foreground">
+                  {accountLabel}
+                </span>
+              </p>
+              <div
+                className="my-1 border-t border-border-subtle"
+                role="separator"
+              />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  clearMedimadeSession();
+                }}
+                className="block w-full cursor-pointer px-4 py-2 text-left text-sm text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

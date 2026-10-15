@@ -276,5 +276,14 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
         manifestStory,
       ),
     });
+    addNestHttpRoutes(this, httpApi, {
+      id: "ManifestStorySummarizeRoute",
+      path: "/manifest/story/summarize",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "ManifestStorySummarizeIntegration",
+        manifestStory,
+      ),
+    });
   }
 }

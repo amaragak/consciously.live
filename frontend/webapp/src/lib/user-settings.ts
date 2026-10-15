@@ -3,6 +3,9 @@
  * Mirrors backend/lambdas/_shared/user-settings.ts — keep in sync.
  */
 
+import type { AccountPronouns } from "@/lib/story-pronouns";
+import { isAccountPronouns } from "@/lib/story-pronouns";
+
 export const USER_SETTINGS_VERSION = 1 as const;
 
 export type ChatActionMode = "suggest" | "ask" | "act";
@@ -13,6 +16,7 @@ export type TextSize = "default" | "large";
 export type ReducedMotionPref = "system" | "reduce" | "no-preference";
 export type DailyReminderKind = "meditation" | "journal";
 export type MeditateType = "guided" | "breathing" | "body-scan" | "sleep";
+export type { AccountPronouns };
 
 export type NotificationChannelPrefs = {
   push: boolean;
@@ -22,6 +26,10 @@ export type NotificationChannelPrefs = {
 
 export type UserSettingsV1 = {
   version: typeof USER_SETTINGS_VERSION;
+  account: {
+    /** Drives she/he/they in Prepare for narration. */
+    pronouns: AccountPronouns;
+  };
   ai: {
     personaliseWithJournal: boolean;
     insightsFromJournal: boolean;
@@ -87,6 +95,9 @@ export type UserSettingsV1 = {
 export function defaultUserSettings(): UserSettingsV1 {
   return {
     version: USER_SETTINGS_VERSION,
+    account: {
+      pronouns: "they_them",
+    },
     ai: {
       personaliseWithJournal: false,
       insightsFromJournal: false,
@@ -227,6 +238,7 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
   const d = defaultUserSettings();
   if (!isObject(raw)) return d;
 
+  const account = isObject(raw.account) ? raw.account : {};
   const ai = isObject(raw.ai) ? raw.ai : {};
   const privacy = isObject(raw.privacy) ? raw.privacy : {};
   const notifications = isObject(raw.notifications) ? raw.notifications : {};
@@ -241,8 +253,13 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
     ? notifications.quietHours
     : {};
 
+  const pronouns = isAccountPronouns(account.pronouns)
+    ? account.pronouns
+    : d.account.pronouns;
+
   return {
     version: USER_SETTINGS_VERSION,
+    account: { pronouns },
     ai: {
       personaliseWithJournal: asBool(
         ai.personaliseWithJournal,

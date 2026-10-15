@@ -35,13 +35,19 @@ import { journalLockIsSet } from "@/lib/journal-prefs";
 import { getSessionPrivileges } from "@/lib/session-privileges";
 import { shouldShowSettingsRow } from "@/lib/settings-status";
 import { COLOR_SCHEME_OPTIONS, setColorScheme } from "@/lib/color-scheme";
-import type {
-  ChatActionMode,
-  MeditationVisibility,
-  MeditateType,
-  NudgeStyle,
-  ThemePreference,
-  UserSettingsV1,
+import {
+  ACCOUNT_PRONOUNS,
+  pronounsLabel,
+  type AccountPronouns,
+} from "@/lib/story-pronouns";
+import {
+  defaultUserSettings,
+  type ChatActionMode,
+  type MeditationVisibility,
+  type MeditateType,
+  type NudgeStyle,
+  type ThemePreference,
+  type UserSettingsV1,
 } from "@/lib/user-settings";
 
 export type SettingsSectionId =
@@ -144,8 +150,7 @@ function useDebouncedCommit(
   }, [value, delayMs]);
 }
 
-function AccountSection(_props: SectionProps) {
-  void _props;
+function AccountSection({ settings, onPatch }: SectionProps) {
   const email = getMedimadeSessionEmail()?.trim() ?? "";
   const [cognito, setCognito] = useState<CognitoAuthConfig | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
@@ -215,6 +220,7 @@ function AccountSection(_props: SectionProps) {
 
   const passwordEnabled = Boolean(cognito?.enabled && cognito.methods.password);
   const cognitoEnabled = Boolean(cognito?.enabled);
+  const account = settings.account ?? defaultUserSettings().account;
 
   const rows: ReactNode[] = [];
 
@@ -246,6 +252,30 @@ function AccountSection(_props: SectionProps) {
             }}
             onBlur={() => void commitName(nameDraft)}
             className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+          />
+        }
+      />,
+    );
+  }
+
+  if (shouldShowSettingsRow("account.pronouns")) {
+    rows.push(
+      <SettingsRow
+        key="pronouns"
+        settingsKey="account.pronouns"
+        title="Pronouns"
+        helper="Used when we turn your story into third person for narration."
+        control={
+          <SettingsSegmented
+            aria-label="Pronouns"
+            value={account.pronouns}
+            options={ACCOUNT_PRONOUNS.map((p) => ({
+              value: p,
+              label: pronounsLabel(p),
+            }))}
+            onChange={(pronouns: AccountPronouns) =>
+              onPatch({ account: { pronouns } })
+            }
           />
         }
       />,

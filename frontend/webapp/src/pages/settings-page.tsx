@@ -5,8 +5,10 @@ import { clearMedimadeSession } from "@/lib/auth-session";
 import { getStoredColorScheme, setColorScheme } from "@/lib/color-scheme";
 import { fetchUserSettings, patchUserSettings } from "@/lib/settings-api";
 import {
+  mergeAccountPronouns,
   readFocusDefaults,
   readMeditateDefaults,
+  syncAccountPronounsFromSettings,
   syncFocusDefaultsFromSettings,
   syncMeditateDefaultsFromSettings,
 } from "@/lib/settings-local-defaults";
@@ -45,15 +47,15 @@ export function SettingsPage() {
       .then(({ settings: s, persisted }) => {
         if (cancelled) return;
         const localTheme = getStoredColorScheme();
-        let next = s;
+        let next = mergeAccountPronouns(s);
         if (!persisted && s.general.theme !== localTheme) {
           next = {
-            ...s,
-            general: { ...s.general, theme: localTheme },
+            ...next,
+            general: { ...next.general, theme: localTheme },
           };
           void patchUserSettings({ general: { theme: localTheme } });
         } else {
-          setColorScheme(s.general.theme);
+          setColorScheme(next.general.theme);
         }
         setSettings(next);
         syncMeditateDefaultsFromSettings(next);
@@ -61,7 +63,7 @@ export function SettingsPage() {
       })
       .catch((e) => {
         if (cancelled) return;
-        const fallback = defaultUserSettings();
+        const fallback = mergeAccountPronouns(defaultUserSettings());
         // Keep the device theme / local defaults — don't clobber them when the
         // API is unreachable (e.g. before the settings route is deployed).
         setSettings({
@@ -128,12 +130,21 @@ export function SettingsPage() {
       }
       syncMeditateDefaultsFromSettings(next);
       syncFocusDefaultsFromSettings(next);
+      if (patch.account) {
+        // Persist pronouns on-device — API may strip `account` until settings lambda is deployed.
+        syncAccountPronounsFromSettings(next);
+      }
 
       void patchUserSettings(patch)
         .then((saved) => {
-          setSettings(saved);
-          syncMeditateDefaultsFromSettings(saved);
-          syncFocusDefaultsFromSettings(saved);
+          // Re-apply the patch so stripped `account` from an older API doesn't revert UI.
+          const kept = mergeAccountPronouns(
+            applyUserSettingsPatch(saved, patch),
+          );
+          setSettings(kept);
+          syncMeditateDefaultsFromSettings(kept);
+          syncFocusDefaultsFromSettings(kept);
+          if (patch.account) syncAccountPronounsFromSettings(kept);
           flashSaved();
         })
         .catch((e) => {
@@ -141,6 +152,7 @@ export function SettingsPage() {
           setColorScheme(prev.general.theme);
           syncMeditateDefaultsFromSettings(prev);
           syncFocusDefaultsFromSettings(prev);
+          if (patch.account) syncAccountPronounsFromSettings(prev);
           setSaveError(
             e instanceof Error ? e.message : "Could not save settings",
           );

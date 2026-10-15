@@ -121,6 +121,161 @@ export function storyDraftPlainText(draft: string): string {
     .join("\n\n");
 }
 
+/** First-person slices for Prepare for narration — one per prompt label (+ opening). */
+export type DraftComposeSection = {
+  promptId: string | null;
+  promptText: string;
+  text: string;
+};
+
+/** Life-area dream meta for Raise — keep suggestions inside that area. */
+export type RaiseLifeAreaMeta = {
+  id: string;
+  title: string;
+  /** The dream / first thought. */
+  dream: string;
+  /** Vision — what it looks like when true. */
+  vision: string;
+};
+
+/** `area-achieved:dream_…` → dream id. */
+export function areaRefIdFromPromptId(
+  promptId: string | null | undefined,
+): string | null {
+  if (!promptId || !promptId.startsWith("area-")) return null;
+  const i = promptId.lastIndexOf(":");
+  if (i < 0) return null;
+  const id = promptId.slice(i + 1).trim();
+  return id || null;
+}
+
+/** `value-look:value_…` → value id. */
+export function valueRefIdFromPromptId(
+  promptId: string | null | undefined,
+): string | null {
+  if (!promptId || !promptId.startsWith("value-")) return null;
+  const i = promptId.lastIndexOf(":");
+  if (i < 0) return null;
+  const id = promptId.slice(i + 1).trim();
+  return id || null;
+}
+
+function clipRaiseMeta(s: string, max: number): string {
+  const t = s.trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** Soft values preamble for Raise — influence, don’t dominate. */
+export function formatRaiseValuesBlock(
+  values: readonly string[] | undefined,
+): string {
+  const list = (values ?? [])
+    .map((v) => clipRaiseMeta(v, 80))
+    .filter(Boolean)
+    .slice(0, 20);
+  if (list.length === 0) return "";
+  return (
+    "Writer's values (soft influence — colour tone and larger rewrites; " +
+    "do NOT centre every suggestion on these or force-mention them):\n" +
+    list.map((v) => `- ${v}`).join("\n") +
+    "\n\n"
+  );
+}
+
+/**
+ * Draft for Raise the ceiling: each answer under its prompt so the model
+ * keeps morning/morning, known-for/known-for, etc. Life-area prompts also
+ * get dream + vision meta. Optional values list soft-guides rewrites.
+ */
+export function annotateDraftWithPrompts(
+  draft: string,
+  opts?: {
+    lifeAreas?: readonly RaiseLifeAreaMeta[];
+    /** Ideate value labels (text only). */
+    values?: readonly string[];
+    /** id → text for value-bucket prompts. */
+    valuesById?: ReadonlyMap<string, string> | Record<string, string>;
+  },
+): string {
+  const byId = new Map(
+    (opts?.lifeAreas ?? []).map((a) => [a.id, a] as const),
+  );
+  const valuesById = (() => {
+    if (!opts?.valuesById) return new Map<string, string>();
+    if (opts.valuesById instanceof Map) return opts.valuesById;
+    return new Map(Object.entries(opts.valuesById));
+  })();
+  const sections = draftSectionsForCompose(draft);
+  const body =
+    sections.length === 0
+      ? parseStoryDraft(draft)
+          .filter((n): n is StoryDraftText => n.kind === "text")
+          .map((n) => n.text.trim())
+          .filter(Boolean)
+          .join("\n\n")
+      : sections
+          .map((s) => {
+            const answer = s.text.trim();
+            if (!answer) return "";
+            const cue = s.promptText.trim()
+              ? `[Prompt: ${s.promptText.trim()}]\n`
+              : "";
+            const area = (() => {
+              const refId = areaRefIdFromPromptId(s.promptId);
+              return refId ? byId.get(refId) : undefined;
+            })();
+            let meta = "";
+            if (area) {
+              meta += `[Life area: ${area.title.trim() || "Untitled"}]\n`;
+              const dream = clipRaiseMeta(area.dream, 360);
+              const vision = clipRaiseMeta(area.vision, 360);
+              if (dream) meta += `Dream: ${dream}\n`;
+              if (vision) meta += `What it looks like: ${vision}\n`;
+            }
+            const valueRef = valueRefIdFromPromptId(s.promptId);
+            const valueText = valueRef ? valuesById.get(valueRef) : undefined;
+            if (valueText?.trim()) {
+              meta += `[Value: ${clipRaiseMeta(valueText, 80)}]\n`;
+            }
+            return `${cue}${meta}${answer}`;
+          })
+          .filter(Boolean)
+          .join("\n\n");
+  return `${formatRaiseValuesBlock(opts?.values)}${body}`;
+}
+
+export function draftSectionsForCompose(draft: string): DraftComposeSection[] {
+  const nodes = parseStoryDraft(draft);
+  const out: DraftComposeSection[] = [];
+  let cur: DraftComposeSection = {
+    promptId: null,
+    promptText: "",
+    text: "",
+  };
+  const flush = () => {
+    const text = cur.text.replace(/\n{3,}/g, "\n\n").trim();
+    if (!text) return;
+    out.push({ ...cur, text });
+  };
+  for (const n of nodes) {
+    if (n.kind === "label") {
+      flush();
+      cur = { promptId: n.promptId, promptText: n.text, text: "" };
+      continue;
+    }
+    if (n.kind === "break") {
+      if (cur.text.trim()) cur.text += "\n\n";
+      continue;
+    }
+    if (!n.text) continue;
+    cur.text = cur.text ? `${cur.text}\n\n${n.text}` : n.text;
+  }
+  flush();
+  return out;
+}
+
 export function promptsDoneFromDraft(draft: string): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();

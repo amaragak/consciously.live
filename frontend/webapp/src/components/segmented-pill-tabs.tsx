@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 export type SegmentedPillTabOption<T extends string = string> = {
   id: T;
   label: ReactNode;
+  /** Per-tab disable (e.g. narration before a first version exists). */
+  disabled?: boolean;
 };
 
 type SegmentedPillTabsProps<T extends string> = {
@@ -52,6 +54,7 @@ export function SegmentedPillTabs<T extends string>({
     >
       {options.map((opt) => {
         const selected = opt.id === value;
+        const tabDisabled = disabled || Boolean(opt.disabled);
         const activeClass = selected ? selectedClassName : idleClassName;
         const tabPad = /\bpy-/.test(activeClass) ? "" : "py-1.5";
         const tabPx = /\bpx-/.test(activeClass)
@@ -68,9 +71,9 @@ export function SegmentedPillTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={selected}
-            disabled={disabled}
+            disabled={tabDisabled}
             onClick={() => {
-              if (disabled || opt.id === value) return;
+              if (tabDisabled || opt.id === value) return;
               onChange(opt.id);
             }}
             className={`cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${tabWeight} ${tabText} ${tabRadius} ${tabPad} ${tabPx} ${

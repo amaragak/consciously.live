@@ -22,6 +22,11 @@ import {
   type PrintNote,
   type PrintTile,
 } from "@/lib/manifesto-print";
+import {
+  PrintStoryChapter,
+  type PrintStoryCompose,
+  type PrintStoryData,
+} from "@/components/plan/manifesto-print-story";
 
 /* ------------------------------------------------------------------ types */
 
@@ -43,6 +48,8 @@ export type PrintData = {
   values: PrintValue[];
   areas: PrintArea[];
   notes: PrintNote[];
+  /** Latest prepared story for the print chapter (null = empty slot in compose). */
+  story: PrintStoryData | null;
 };
 
 /**
@@ -63,6 +70,7 @@ export type PrintCompose = {
   onAddNote: (el: HTMLElement) => void;
   /** Pencil on a note: Edit / Remove from print. */
   onNoteMenu: (el: HTMLElement, note: PrintNote) => void;
+  storyCompose: PrintStoryCompose | null;
 };
 
 /* ----------------------------------------------------------------- tokens */
@@ -1099,6 +1107,15 @@ export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
           </>
         ) : null}
 
+        {/* 5b · Story chapter */}
+        {data.story ? (
+          <PrintStoryChapter
+            data={data.story}
+            compose={compose?.storyCompose ?? null}
+            mobile={false}
+          />
+        ) : null}
+
         {/* 6 · Words to keep */}
         {showNotes ? (
           <div
@@ -1494,6 +1511,14 @@ export const MobilePoster = forwardRef<HTMLDivElement, MobilePosterProps>(
               Add a life area
             </button>
           </div>
+        ) : null}
+
+        {data.story ? (
+          <PrintStoryChapter
+            data={data.story}
+            compose={compose?.storyCompose ?? null}
+            mobile
+          />
         ) : null}
 
         {showNotes ? (

@@ -1,10 +1,9 @@
 /**
- * State B rail: Narrate (Create Sound pickers), Every night reminder, Versions.
+ * State B rail: Narrate (Create Sound pickers) + Every night reminder.
  */
 
 import * as Switch from "@radix-ui/react-switch";
 import {
-  Check,
   ChevronRight,
   Mic,
   Moon,
@@ -16,14 +15,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   CreateSoundStep,
   type CreateSoundStepHandle,
 } from "@/components/create-sound-step";
-import { useMinWidth } from "@/hooks/use-min-width";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
-import { VOICE_PACING_MIN } from "@/lib/create-sound-picks";
 import { onMeditationGenerationReady } from "@/lib/library-generation-surface";
 import {
   createMeditationAudioJob,
@@ -34,14 +30,15 @@ import {
   listeningMinutes,
   markVersionNarrated,
   markVersionNarrationPending,
-  restoreStoryVersion,
   versionChangedSinceNarrated,
   type ManifestoStoryStoreV1,
   type StoryVersion,
 } from "@/lib/manifesto-story";
-import { buildStoryNarrationScript } from "@/lib/manifesto-story-settle-in";
 import { appendPendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
+
+/** Bed-only seconds before voice starts (story is not a meditation settle-in). */
+const STORY_LEAD_IN_SECONDS = 2;
 
 const LABEL =
   "text-[10px] font-semibold uppercase tracking-[1.4px] text-muted";
@@ -49,8 +46,6 @@ const CARD =
   "rounded-2xl border border-border bg-card shadow-[0_2px_10px_rgba(15,27,45,0.04)]";
 const BTN_PRIMARY =
   "accent-fill-gradient inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40";
-const BTN_OUTLINE =
-  "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:bg-accent-soft/30 disabled:cursor-not-allowed disabled:opacity-40";
 const SWITCH =
   "relative h-5 w-[34px] shrink-0 cursor-pointer rounded-full border border-border bg-muted transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent";
 
@@ -60,27 +55,6 @@ function coerceTargetMinutes(words: number): MeditationTargetMinutes {
   if (mins <= 7) return 5;
   if (mins <= 15) return 10;
   return 20;
-}
-
-function formatVersionDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    const today = new Date();
-    if (
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate()
-    ) {
-      return "Today";
-    }
-    return d.toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "short",
-    });
-  } catch {
-    return "";
-  }
 }
 
 function RowButton({
@@ -112,6 +86,8 @@ export function ManifestoStoryNarrateRail({
   version,
   firstName,
   onStoreChange,
+  changedCount = 0,
+  onUpdateFirst,
 }: {
   store: ManifestoStoryStoreV1;
   version: StoryVersion;
@@ -119,32 +95,23 @@ export function ManifestoStoryNarrateRail({
   onStoreChange: (
     fn: (s: ManifestoStoryStoreV1) => ManifestoStoryStoreV1,
   ) => void;
+  /** Draft sections out of date vs this version — triggers Narrate confirm. */
+  changedCount?: number;
+  /** Runs the same update-narration flow, then caller may re-open Narrate. */
+  onUpdateFirst?: () => void | Promise<void>;
 }) {
-  const wide = useMinWidth(768);
   const soundRef = useRef<CreateSoundStepHandle>(null);
-  const [soundOpen, setSoundOpen] = useState(false);
-  const [soundFocus, setSoundFocus] = useState<"voice" | "sound" | "pace">(
-    "voice",
-  );
   const [voiceLabel, setVoiceLabel] = useState("Choose voice");
   const [soundLabel, setSoundLabel] = useState("Choose sound");
   const [narrating, setNarrating] = useState(false);
   const [narrateError, setNarrateError] = useState<string | null>(null);
-  const [browseId, setBrowseId] = useState<string | null>(null);
   const [editingTime, setEditingTime] = useState(false);
 
   const words = version.wordCount || countWords(version.thirdPersonText);
-  const aboutMin = listeningMinutes(words) || 1;
-  const settleExtra = store.settleInFirst ? 2 : 0;
-  const narrateMin = aboutMin + settleExtra;
+  const narrateMin = listeningMinutes(words) || 1;
   const changed = versionChangedSinceNarrated(version);
   const hasNarrated = Boolean(version.narratedAt && version.audioId);
   const pending = Boolean(version.pendingJobId) || narrating;
-
-  const browseVersion =
-    browseId != null
-      ? (store.versions.find((v) => v.id === browseId) ?? null)
-      : null;
 
   useEffect(() => {
     return onMeditationGenerationReady((detail) => {
@@ -162,20 +129,20 @@ export function ManifestoStoryNarrateRail({
     });
   }, [onStoreChange]);
 
-  useEffect(() => {
-    if (soundOpen) return;
-    void (async () => {
-      try {
-        const extras = await soundRef.current?.getJobExtras();
-        if (extras?.speakerName) setVoiceLabel(extras.speakerName);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, [soundOpen]);
-
   async function onNarrate() {
     if (pending) return;
+    if (changedCount > 0) {
+      const n = changedCount;
+      // OK → Update first; Cancel → Narrate anyway.
+      const updateFirst = window.confirm(
+        `${n} section${n === 1 ? "" : "s"} changed in your draft since you last prepared it.\n\n` +
+          `OK = Update first\nCancel = Narrate anyway`,
+      );
+      if (updateFirst) {
+        await onUpdateFirst?.();
+        return;
+      }
+    }
     setNarrateError(null);
     setNarrating(true);
     try {
@@ -183,11 +150,8 @@ export function ManifestoStoryNarrateRail({
       const extras = await soundRef.current?.getJobExtras();
       if (!extras?.reference_id) throw new Error("Choose a voice first");
 
-      const script = buildStoryNarrationScript({
-        thirdPersonText: version.thirdPersonText,
-        settleInFirst: store.settleInFirst,
-      });
-      if (!script.trim()) throw new Error("Nothing to narrate yet");
+      const script = version.thirdPersonText.trim();
+      if (!script) throw new Error("Nothing to narrate yet");
 
       const title = firstName.trim()
         ? `${firstName.trim()}'s life vision`
@@ -212,8 +176,8 @@ export function ManifestoStoryNarrateRail({
         creationProvenance: provenance,
         voiceFxPreset: extras.voiceFxPreset,
         voiceFxDial: extras.voiceFxDial,
-        leadInSeconds: extras.leadInSeconds,
-        fadeOut: store.fadeOutAtEnd,
+        leadInSeconds: STORY_LEAD_IN_SECONDS,
+        fadeOut: true,
         speed: extras.speed,
         ...(typeof extras.speechifyRate === "number"
           ? { speechifyRate: extras.speechifyRate }
@@ -266,71 +230,19 @@ export function ManifestoStoryNarrateRail({
     }
   }
 
-  const soundHost =
-    typeof document !== "undefined"
-      ? createPortal(
-          <div
-            className={
-              soundOpen
-                ? "fixed inset-0 z-[80] flex items-end justify-center md:items-center"
-                : "pointer-events-none fixed left-[-9999px] top-0 h-px w-px overflow-hidden opacity-0"
-            }
-            aria-hidden={!soundOpen}
-          >
-            {soundOpen ? (
-              <button
-                type="button"
-                aria-label="Close"
-                className="absolute inset-0 bg-overlay/60"
-                onClick={() => setSoundOpen(false)}
-              />
-            ) : null}
-            <div
-              className={
-                soundOpen
-                  ? `relative z-[1] flex max-h-[90vh] w-full flex-col overflow-hidden bg-background shadow-xl md:max-w-2xl md:rounded-2xl ${
-                      wide ? "rounded-2xl" : "rounded-t-2xl"
-                    }`
-                  : "h-auto w-[720px]"
-              }
-            >
-              {soundOpen ? (
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <span className="text-sm font-semibold text-foreground">
-                    {soundFocus === "voice"
-                      ? "Voice"
-                      : soundFocus === "sound"
-                        ? "Sound"
-                        : "Pace"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSoundOpen(false)}
-                    className={`${BTN_OUTLINE} h-9 px-3`}
-                  >
-                    <Check className="h-4 w-4" aria-hidden />
-                    Done
-                  </button>
-                </div>
-              ) : null}
-              <div
-                className={
-                  soundOpen
-                    ? "min-h-0 flex-1 overflow-y-auto px-3 py-3"
-                    : "p-2"
-                }
-              >
-                <CreateSoundStep
-                  ref={soundRef}
-                  meditationStyle="Story"
-                  initialPacingPercent={VOICE_PACING_MIN}
-                />
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )
-      : null;
+  const soundHost = (
+    <CreateSoundStep
+      ref={soundRef}
+      meditationStyle="Story"
+      pickerHost="viewport"
+      hideMainUi
+      freshOurPickSound
+      onPickLabelsChange={({ voice, sound }) => {
+        setVoiceLabel(voice);
+        setSoundLabel(sound);
+      }}
+    />
+  );
 
   const narrateCard = (
     <div className={`${CARD} flex flex-col gap-1 p-[18px]`}>
@@ -338,60 +250,15 @@ export function ManifestoStoryNarrateRail({
       <RowButton
         label="Voice"
         value={voiceLabel}
-        onClick={() => {
-          setSoundFocus("voice");
-          setSoundOpen(true);
-        }}
+        onClick={() => soundRef.current?.openVoicePicker()}
       />
       <RowButton
         label="Sound"
         value={soundLabel}
-        onClick={() => {
-          setSoundFocus("sound");
-          setSoundOpen(true);
-        }}
+        onClick={() => soundRef.current?.openSoundPicker()}
       />
-      <RowButton
-        label="Pace"
-        value="Slow"
-        onClick={() => {
-          setSoundFocus("pace");
-          setSoundOpen(true);
-        }}
-      />
-      <div className="flex items-center gap-2.5 border-t border-border py-2.5">
-        <span className="flex flex-1 flex-col gap-0.5">
-          <span className="text-sm text-foreground">Settle in first</span>
-          <span className="text-xs text-muted">
-            2 min of breath before the story
-          </span>
-        </span>
-        <Switch.Root
-          checked={store.settleInFirst}
-          onCheckedChange={(v) =>
-            onStoreChange((s) => ({ ...s, settleInFirst: Boolean(v) }))
-          }
-          className={SWITCH}
-          aria-label="Settle in first"
-        >
-          <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform data-[state=checked]:translate-x-[16px]" />
-        </Switch.Root>
-      </div>
-      <div className="flex items-center gap-2.5 border-t border-border py-2.5 pb-3.5">
-        <span className="flex-1 text-sm text-foreground">Fade out at the end</span>
-        <Switch.Root
-          checked={store.fadeOutAtEnd}
-          onCheckedChange={(v) =>
-            onStoreChange((s) => ({ ...s, fadeOutAtEnd: Boolean(v) }))
-          }
-          className={SWITCH}
-          aria-label="Fade out at the end"
-        >
-          <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform data-[state=checked]:translate-x-[16px]" />
-        </Switch.Root>
-      </div>
       {changed ? (
-        <p className="pb-1 text-xs font-medium text-accent-link">
+        <p className="border-t border-border pb-1 pt-2.5 text-xs font-medium text-accent-link">
           Changed since narrated
         </p>
       ) : null}
@@ -399,7 +266,7 @@ export function ManifestoStoryNarrateRail({
         type="button"
         disabled={pending || words < 20}
         onClick={() => void onNarrate()}
-        className={BTN_PRIMARY}
+        className={`${BTN_PRIMARY} mt-2.5`}
       >
         {pending ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -471,94 +338,12 @@ export function ManifestoStoryNarrateRail({
     </div>
   );
 
-  const versionsCard = (
-    <div className={`${CARD} flex flex-col gap-1 p-4 px-[18px]`}>
-      <span className={`${LABEL} pb-1.5`}>Versions</span>
-      {store.versions.map((v) => {
-        const current = v.id === store.activeVersionId;
-        const label = v.audioId
-          ? `v${v.number} · narrated`
-          : `v${v.number} · draft`;
-        return (
-          <button
-            key={v.id}
-            type="button"
-            onClick={() => setBrowseId(v.id)}
-            className="flex w-full cursor-pointer items-center justify-between border-t border-border py-[7px] text-left text-[13px] transition-colors hover:text-accent-link"
-          >
-            <span
-              className={
-                current ? "font-semibold text-foreground" : "text-foreground"
-              }
-            >
-              {label}
-            </span>
-            <span className="text-muted">{formatVersionDate(v.createdAt)}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  const browseSheet =
-    browseVersion && typeof document !== "undefined"
-      ? createPortal(
-          <div className="fixed inset-0 z-[80] flex items-end justify-center md:items-center">
-            <button
-              type="button"
-              aria-label="Close"
-              className="absolute inset-0 bg-overlay/60"
-              onClick={() => setBrowseId(null)}
-            />
-            <div className="relative z-[1] flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-card shadow-xl md:rounded-2xl">
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <span className="text-sm font-semibold">
-                  v{browseVersion.number}
-                  {browseVersion.audioId ? " · narrated" : " · draft"}
-                </span>
-                <button
-                  type="button"
-                  className="text-sm text-muted"
-                  onClick={() => setBrowseId(null)}
-                >
-                  Close
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-                <p className="whitespace-pre-wrap font-display text-[16px] leading-[1.7] text-foreground">
-                  {browseVersion.thirdPersonText}
-                </p>
-              </div>
-              {browseVersion.id !== store.activeVersionId ? (
-                <div className="border-t border-border p-3">
-                  <button
-                    type="button"
-                    className={BTN_PRIMARY}
-                    onClick={() => {
-                      onStoreChange((s) =>
-                        restoreStoryVersion(s, browseVersion.id),
-                      );
-                      setBrowseId(null);
-                    }}
-                  >
-                    Restore
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
       {soundHost}
-      {browseSheet}
       <aside className="flex w-full flex-col gap-[14px] md:w-[320px] md:shrink-0">
         {narrateCard}
         {nightCard}
-        {versionsCard}
       </aside>
     </>
   );

@@ -156,6 +156,19 @@ export function withAuthColorSchemeQuery(
   return `${pathname}?${params.toString()}${hash}`;
 }
 
+/** Keep iOS Safari / PWA status-bar tint in sync with the painted header. */
+function syncThemeColorMeta(scheme: ColorScheme): void {
+  // Must match `--nav` in theme-colors (SPA navy `#1E232E` vs hybrid cream).
+  const content = scheme === "hybrid" ? "#FAF6F0" : "#1E232E";
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", content);
+}
+
 export function applyColorScheme(scheme: ColorScheme): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
@@ -166,6 +179,7 @@ export function applyColorScheme(scheme: ColorScheme): void {
   root.classList.toggle("v2", scheme === "v2");
   root.dataset.colorScheme = scheme;
   root.style.colorScheme = scheme === "dark" ? "dark" : "light";
+  syncThemeColorMeta(scheme);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       root.classList.remove("theme-switching");
@@ -206,7 +220,7 @@ function buildBootScript(opts: {
   const readLs = opts.readLocalStorage
     ? `else{var s=localStorage.getItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)});if(s==="dark"||s==="light"||s==="hybrid"||s==="v2")scheme=s;else{try{localStorage.removeItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)})}catch(e2){}}}`
     : `else{try{localStorage.removeItem(${JSON.stringify(COLOR_SCHEME_STORAGE_KEY)})}catch(e2){}}`;
-  return `(function(){var scheme=${initial};try{var auth=location.pathname==="/login";var q=null;if(auth){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;${readLs}if(auth&&scheme==="hybrid")scheme="light"}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.dataset.colorScheme=scheme;root.style.colorScheme=scheme==="dark"?"dark":"light";var auth=location.pathname==="/login";var active=auth?(scheme==="dark"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(scheme==="hybrid"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:scheme==="dark"?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
+  return `(function(){var scheme=${initial};try{var auth=location.pathname==="/login";var q=null;if(auth){q=new URLSearchParams(location.search).get(${JSON.stringify(COLOR_SCHEME_QUERY_PARAM)})}var parsed=q==="dark"||q==="light"||q==="hybrid"||q==="v2"?q:null;if(parsed)scheme=parsed;${readLs}if(auth&&scheme==="hybrid")scheme="light"}catch(e){}var root=document.documentElement;root.classList.toggle("dark",scheme==="dark");root.classList.toggle("hybrid",scheme==="hybrid");root.classList.toggle("v2",scheme==="v2");root.dataset.colorScheme=scheme;root.style.colorScheme=scheme==="dark"?"dark":"light";var tc=scheme==="hybrid"?"#FAF6F0":"#1E232E";var meta=document.querySelector('meta[name="theme-color"]');if(!meta){meta=document.createElement("meta");meta.setAttribute("name","theme-color");document.head.appendChild(meta)}meta.setAttribute("content",tc);var auth=location.pathname==="/login";var active=auth?(scheme==="dark"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:${JSON.stringify(AUTH_HERO_PATTERN_LIGHT)}):(scheme==="hybrid"?${JSON.stringify(AUTH_HERO_PATTERN_DARK)}:scheme==="dark"?${JSON.stringify(HOME_HERO_PATTERN_DARK)}:${JSON.stringify(HOME_HERO_PATTERN_LIGHT)});var img=new Image();img.fetchPriority="high";img.src=active})();`;
 }
 
 /**

@@ -355,6 +355,11 @@ export function computeSoundPicks(opts: {
   voicePrefs?: VoicePreferredTraits | null;
   programSpeakerId?: string | null;
   favoriteVoiceIds?: ReadonlySet<string>;
+  /**
+   * Skip last-used-by-style; pick a random admin Our Pick
+   * (Manifesto Story Narrate).
+   */
+  randomOurPick?: boolean;
 }): SoundPicks {
   const { speakers, soundscapes, style } = opts;
   const styleKey = style?.trim() || "_general";
@@ -433,6 +438,7 @@ export function computeSoundPicks(opts: {
 
   if (opts.lockedSoundId == null || !soundExists) {
     if (
+      !opts.randomOurPick &&
       lastSound &&
       lastSound !== SILENCE_SOUND_ID &&
       soundscapes.some((s) => s.key === lastSound)

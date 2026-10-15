@@ -251,7 +251,9 @@ export async function handler(
           typeof body.voiceFxDial === "number" && Number.isFinite(body.voiceFxDial)
             ? Math.min(100, Math.max(0, Math.round(body.voiceFxDial)))
             : 100,
-        ...(body.leadInSeconds === 0 || body.leadInSeconds === 20
+        ...(typeof body.leadInSeconds === "number" &&
+        Number.isFinite(body.leadInSeconds) &&
+        body.leadInSeconds >= 0
           ? { leadInSeconds: body.leadInSeconds }
           : {}),
         ...(typeof body.fadeOut === "boolean" ? { fadeOut: body.fadeOut } : {}),

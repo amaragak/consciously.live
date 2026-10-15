@@ -79,10 +79,32 @@ import { lifeAreaHref } from "@/lib/life-area-summary";
 import {
   PRINT_DESIGN_WIDTH,
   firstNameFromAccount,
+  manifestoViewHref,
   pickPrintNotes,
   visionItemsForLifeArea,
   type PrintNote,
 } from "@/lib/manifesto-print";
+import {
+  loadManifestoStoryStore,
+  patchStoryOnPrint,
+  patchVersionSummaries,
+  saveManifestoStoryStore,
+  storySectionKey,
+  versionSections,
+  type ManifestoStoryStoreV1,
+  type StoryOnPrintSettings,
+} from "@/lib/manifesto-story";
+import { summarizeStoryForPrint } from "@/lib/manifesto-story-llm";
+import { fetchUserSettings } from "@/lib/settings-api";
+import {
+  mergeAccountPronouns,
+  readAccountPronounsLocal,
+} from "@/lib/settings-local-defaults";
+import {
+  printStoryFromStore,
+  storyNeedsSummaries,
+  type PrintStoryCompose,
+} from "@/components/plan/manifesto-print-story";
 import {
   PRINT_ROOT_ID,
   exportDesktopPng,
@@ -214,6 +236,10 @@ export function ManifestoPrintView() {
   const [quotes, setQuotes] = useState<IdeateQuote[]>([]);
   const [questions, setQuestions] = useState<IdeateReflectionQuestion[]>([]);
   const [statement, setStatement] = useState("");
+  const [storyStore, setStoryStore] = useState<ManifestoStoryStoreV1>(() =>
+    loadManifestoStoryStore(),
+  );
+  const [storyRegenBusy, setStoryRegenBusy] = useState(false);
 
   const [preview, setPreview] = useState(false);
   const [popover, setPopover] = useState<PopoverState | null>(null);
@@ -233,6 +259,7 @@ export function ManifestoPrintView() {
     setQuotes(loadIdeateQuotesStore().quotes);
     setQuestions(loadIdeateReflectionQuestionsStore().questions);
     setStatement(loadStoredManifesto() ?? "");
+    setStoryStore(loadManifestoStoryStore());
   }, []);
 
   useEffect(() => setHydrated(true), []);
@@ -302,6 +329,7 @@ export function ManifestoPrintView() {
         .map((v) => ({ id: v.id, text: v.text.trim() })),
       areas,
       notes: pickPrintNotes(quotes, questions),
+      story: printStoryFromStore(storyStore, firstName),
     };
   }, [
     firstName,
@@ -312,9 +340,80 @@ export function ManifestoPrintView() {
     tileUrls,
     quotes,
     questions,
+    storyStore,
   ]);
 
-  const hasContent = Boolean(statement.trim()) || data.areas.length > 0;
+  const hasContent =
+    Boolean(statement.trim()) ||
+    data.areas.length > 0 ||
+    Boolean(data.story?.version);
+
+  const persistStory = useCallback((next: ManifestoStoryStoreV1) => {
+    saveManifestoStoryStore(next);
+    setStoryStore(next);
+  }, []);
+
+  const ensureStorySummaries = useCallback(
+    async (kind: "whole" | "sections") => {
+      const version = storyStore.versions[0];
+      if (!version || storyRegenBusy) return;
+      setStoryRegenBusy(true);
+      try {
+        const sections = versionSections(version).map((s) => ({
+          id: storySectionKey(s),
+          heading: s.heading,
+          text: s.text,
+        }));
+        let pronouns: "she_her" | "he_him" | "they_them" = "they_them";
+        const local = readAccountPronounsLocal();
+        try {
+          const { settings } = await fetchUserSettings();
+          pronouns = mergeAccountPronouns(settings, local).account.pronouns;
+        } catch {
+          pronouns = local ?? "they_them";
+        }
+        const result = await summarizeStoryForPrint({
+          firstName,
+          pronouns,
+          sections,
+        });
+        persistStory(
+          patchVersionSummaries(storyStore, version.id, {
+            summary:
+              kind === "sections" && version.summary
+                ? version.summary
+                : result.summary,
+            sectionSummaries:
+              kind === "whole" && version.sectionSummaries
+                ? version.sectionSummaries
+                : result.sectionSummaries,
+          }),
+        );
+      } catch {
+        /* keep prior text */
+      } finally {
+        setStoryRegenBusy(false);
+      }
+    },
+    [firstName, persistStory, storyRegenBusy, storyStore],
+  );
+
+  // Auto-generate summaries when Summary / Choose·Summarised needs them.
+  useEffect(() => {
+    if (!hydrated || !cloudReady) return;
+    const need = storyNeedsSummaries(
+      storyStore.versions[0] ?? null,
+      data.story?.settings ?? storyStore.storyOnPrint,
+    );
+    if (!need || storyRegenBusy) return;
+    void ensureStorySummaries(need === "whole" ? "whole" : "sections");
+  }, [
+    hydrated,
+    cloudReady,
+    storyStore,
+    storyRegenBusy,
+    ensureStorySummaries,
+  ]);
 
   useEffect(() => {
     if (!hasContent) setPreview(false);
@@ -406,6 +505,43 @@ export function ManifestoPrintView() {
 
   const closePopover = useCallback(() => setPopover(null), []);
 
+  const storyCompose: PrintStoryCompose | null = useMemo(() => {
+    if (preview) return null;
+    return {
+      settings: storyStore.storyOnPrint,
+      onPatchSettings: (patch: Partial<StoryOnPrintSettings>) => {
+        persistStory(patchStoryOnPrint(storyStore, patch));
+      },
+      onEditSummary: (text) => {
+        const version = storyStore.versions[0];
+        if (!version) return;
+        persistStory(
+          patchVersionSummaries(storyStore, version.id, { summary: text }),
+        );
+      },
+      onEditSectionSummary: (key, text) => {
+        const version = storyStore.versions[0];
+        if (!version) return;
+        persistStory(
+          patchVersionSummaries(storyStore, version.id, {
+            sectionSummaries: { [key]: text },
+          }),
+        );
+      },
+      onRegenerateSummary: () => void ensureStorySummaries("whole"),
+      onRegenerateSectionSummaries: () =>
+        void ensureStorySummaries("sections"),
+      regenerating: storyRegenBusy,
+      storyHref: manifestoViewHref("story"),
+    };
+  }, [
+    preview,
+    storyStore,
+    persistStory,
+    ensureStorySummaries,
+    storyRegenBusy,
+  ]);
+
   const compose: PrintCompose | null = useMemo(() => {
     if (preview) return null;
     return {
@@ -424,8 +560,9 @@ export function ManifestoPrintView() {
       onAddArea: (el) => setPopover({ kind: "addArea", el }),
       onAddNote: (el) => setPopover({ kind: "note", el, editing: null }),
       onNoteMenu: (el, note) => setPopover({ kind: "noteMenu", el, note }),
+      storyCompose,
     };
-  }, [preview]);
+  }, [preview, storyCompose]);
 
   /* ---- export ------------------------------------------------------------- */
 
@@ -855,9 +992,11 @@ export function ManifestoPrintView() {
       <h1 className="sr-only">Manifesto</h1>
       <div ref={rowRef} className="flex items-start" style={{ gap: ROW_GAP_PX }}>
         <div
-          className="shrink-0"
+          className="shrink-0 overflow-visible"
           style={{
-            width: PRINT_DESIGN_WIDTH * scale,
+            // Room for the Story-on-print panel that hangs off the right edge.
+            width:
+              (PRINT_DESIGN_WIDTH + (compose?.storyCompose ? 290 : 0)) * scale,
             height: Math.max(1, posterHeight) * scale,
           }}
         >
@@ -866,6 +1005,7 @@ export function ManifestoPrintView() {
               width: PRINT_DESIGN_WIDTH,
               transform: `scale(${scale})`,
               transformOrigin: "top left",
+              overflow: "visible",
             }}
           >
             <DesktopPoster

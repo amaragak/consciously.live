@@ -235,6 +235,10 @@ export type CreateSoundStepHandle = {
   /** Pause/resume whichever preview is active (strip transport). */
   togglePreviewTransport: () => void;
   previewMixPlaying: boolean;
+  /** Open the right-sidebar voice picker (same as Change · Voice). */
+  openVoicePicker: () => void;
+  /** Open the right-sidebar soundscape picker (same as Change · Sound). */
+  openSoundPicker: () => void;
 };
 
 type CreateSoundStepProps = {
@@ -251,6 +255,23 @@ type CreateSoundStepProps = {
   onSessionOverrideMetaChange?: (meta: CreateSoundSessionOverrideMeta) => void;
   /** Initial Speechify pacing offset (−5…5). Manifesto Story defaults to slowest. */
   initialPacingPercent?: number;
+  /**
+   * Where voice/sound pickers attach.
+   * `viewport` = fixed over the app content column (Story Narrate card).
+   */
+  pickerHost?: "parent" | "viewport";
+  /** Hide the main Voice/Sound/Pace card; keep pickers + state (Story Narrate). */
+  hideMainUi?: boolean;
+  /**
+   * Ignore create-flow sound lock + last-used; start on a random Our Pick
+   * (Manifesto Story Narrate).
+   */
+  freshOurPickSound?: boolean;
+  /** Fired when voice or soundscape selection labels change. */
+  onPickLabelsChange?: (labels: {
+    voice: string;
+    sound: string;
+  }) => void;
 };
 
 type FlowSoundLock = {
@@ -536,6 +557,10 @@ export const CreateSoundStep = forwardRef<
     programSessionIds = null,
     onSessionOverrideMetaChange,
     initialPacingPercent,
+    pickerHost = "parent",
+    hideMainUi = false,
+    freshOurPickSound = false,
+    onPickLabelsChange,
   },
   ref,
 ) {
@@ -1121,7 +1146,8 @@ export const CreateSoundStep = forwardRef<
     if (factoryMixesLoading) return;
     // Catalog still empty after load → keep waiting; never lock silence as default.
     if (compositions.length === 0) return;
-    const lock = flowSoundLock;
+    // Story Narrate: always a fresh random Our Pick — don't inherit Create lock.
+    const lock = freshOurPickSound ? null : flowSoundLock;
     // Silence without a voice was almost always a pre-catalog race — don't honor it.
     const honorSilence =
       Boolean(lock?.choseSilence) && Boolean(lock?.speakerModelId?.trim());
@@ -1139,6 +1165,7 @@ export const CreateSoundStep = forwardRef<
       voicePrefs,
       programSpeakerId: programSpeakerModelId,
       favoriteVoiceIds: favorites.voiceSet,
+      randomOurPick: freshOurPickSound,
     });
     if (lock) {
       setSpeakerModelId(lock.speakerModelId || picks.voiceId);
@@ -1209,6 +1236,7 @@ export const CreateSoundStep = forwardRef<
     voicePrefs,
     programSpeakerModelId,
     favorites.voiceSet,
+    freshOurPickSound,
   ]);
 
   // Recover if picks settled without a voice/soundscape (catalog race / remount).
@@ -1239,6 +1267,7 @@ export const CreateSoundStep = forwardRef<
       voicePrefs,
       programSpeakerId: programSpeakerModelId,
       favoriteVoiceIds: favorites.voiceSet,
+      randomOurPick: freshOurPickSound && !soundOk,
     });
     if (!voiceOk && picks.voiceId) {
       setSpeakerModelId(picks.voiceId);
@@ -1259,18 +1288,21 @@ export const CreateSoundStep = forwardRef<
     factoryMixesLoading,
     speakers,
     compositions,
-      speakerModelId,
-      compositionKey,
+    speakerModelId,
+    compositionKey,
     choseSilence,
-      soundMode,
+    soundMode,
     meditationStyle,
     voicePrefs,
     programSpeakerModelId,
     favorites.voiceSet,
+    freshOurPickSound,
   ]);
 
   useEffect(() => {
     if (!picksReady) return;
+    // Story Narrate must not overwrite Create’s remembered sound lock.
+    if (freshOurPickSound) return;
     // While a session is focused the card shows its resolved values — the lock
     // always remembers the program-wide (All) ones.
     const base =
@@ -1306,6 +1338,7 @@ export const CreateSoundStep = forwardRef<
     };
   }, [
     picksReady,
+    freshOurPickSound,
     speakerModelId,
     compositionKey,
     soundMode,
@@ -2219,6 +2252,8 @@ export const CreateSoundStep = forwardRef<
         sessionApiRef.current.resetVoiceOverrideForFocus(),
       resetSoundOverrideForFocus: () =>
         sessionApiRef.current.resetSoundOverrideForFocus(),
+      openVoicePicker: () => openVoicePanel(),
+      openSoundPicker: () => openSoundPanel(),
     }),
     [stopAllAudioPreview, previewMixPlaying],
   );
@@ -2272,6 +2307,22 @@ export const CreateSoundStep = forwardRef<
     : compositionKey
       ? soundscapeCategoryLabel(selectedSound)
       : "Voice only";
+
+  useEffect(() => {
+    if (!onPickLabelsChange) return;
+    onPickLabelsChange({
+      voice: selectedVoice?.name?.trim() || "Choose voice",
+      sound:
+        !picksReady || soundTitle === "Choosing soundscape…"
+          ? "Choose sound"
+          : soundTitle,
+    });
+  }, [
+    onPickLabelsChange,
+    picksReady,
+    selectedVoice?.name,
+    soundTitle,
+  ]);
 
   togglePreviewTransportRef.current = () => {
     if (!isCreateLibraryPreview) {
@@ -2638,6 +2689,8 @@ export const CreateSoundStep = forwardRef<
       <audio ref={previewDrumsRef} preload="none" className="hidden" />
       <audio ref={previewNoiseRef} preload="none" className="hidden" />
 
+      {!hideMainUi ? (
+      <>
       {showCreateAudioDevControls ? (
         <AppTopBarTrailingPortal>
           <div className="flex shrink-0 items-center gap-2">
@@ -3387,12 +3440,15 @@ export const CreateSoundStep = forwardRef<
           </div>
         </section>
       </div>
+      </>
+      ) : null}
 
       <CreateOneFlowPickerShell
         open={changeKind === "voice"}
         eyebrow="Change · Voice"
         title="Choose a voice"
         panelWidth="voice"
+        host={pickerHost}
         footSummary={
           speakers.find((s) => s.modelId === stagedVoiceId)?.name
             ? `${speakers.find((s) => s.modelId === stagedVoiceId)!.name} selected`
@@ -3536,6 +3592,7 @@ export const CreateSoundStep = forwardRef<
         eyebrow="Change · Sound"
         title="Choose a soundscape"
         panelWidth="sound"
+        host={pickerHost}
         footSummary={
           soundPanelTab === "mixer"
             ? `${mixerPanelName} · ${mixLayerBits.length} layers`

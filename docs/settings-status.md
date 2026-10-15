@@ -59,6 +59,7 @@ Legend: **wired** · **not_implemented** · **not_available**
 | --- | --- | --- |
 | Email address | wired | Read-only from session |
 | Name (display name) | wired | `POST /auth/profile/display-name` |
+| Pronouns | wired | User settings `account.pronouns` (+ on-device cache); Prepare / Update narration |
 | Change email | not_available | Re-verify flow |
 | Password | wired | In-app change (current → new) or email reset code; no Hosted UI |
 | Active sessions | not_available | Device list API |

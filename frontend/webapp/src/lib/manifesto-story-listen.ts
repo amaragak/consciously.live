@@ -28,8 +28,8 @@ export function maybeCountManifestoStoryListen(opts: {
       ? opts.durationSeconds
       : 0;
   if (dur <= 0) {
-    // Fallback until the strip reports duration: ~140 wpm + settle-in buffer.
-    dur = Math.max(60, (match.wordCount / 140) * 60 + 120);
+    // Fallback until the strip reports duration: ~140 wpm + short bed outro.
+    dur = Math.max(60, (match.wordCount / 140) * 60 + 25);
   }
   if (opts.timeSeconds / dur < 0.8) return;
 

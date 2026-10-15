@@ -7,10 +7,15 @@ import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
+import {
+  isAccountPronouns,
+  type AccountPronouns,
+} from "@/lib/story-pronouns";
 import type { MeditateType, UserSettingsV1 } from "@/lib/user-settings";
 
 const MEDITATE_KEY = "mm_meditate_defaults_v1";
 const FOCUS_KEY = "mm_focus_defaults_v1";
+const PRONOUNS_KEY = "mm_account_pronouns_v1";
 
 export type MeditateDefaults = {
   defaultVoiceId: string | null;
@@ -111,4 +116,40 @@ export function syncFocusDefaultsFromSettings(s: UserSettingsV1): void {
     defaultSessionMinutes: s.focus.defaultSessionMinutes,
     breakMinutes: s.focus.breakMinutes,
   });
+}
+
+/** Durable on-device pronouns — survives until settings API stores `account`. */
+export function readAccountPronounsLocal(): AccountPronouns | null {
+  try {
+    const raw = readAccountLocalStorage(PRONOUNS_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as { pronouns?: unknown };
+    return isAccountPronouns(o.pronouns) ? o.pronouns : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeAccountPronounsLocal(pronouns: AccountPronouns): void {
+  try {
+    writeAccountLocalStorage(PRONOUNS_KEY, JSON.stringify({ pronouns }));
+  } catch {
+    /* */
+  }
+}
+
+export function syncAccountPronounsFromSettings(s: UserSettingsV1): void {
+  writeAccountPronounsLocal(s.account.pronouns);
+}
+
+/** Overlay on-device pronouns (settings API may strip `account` until deployed). */
+export function mergeAccountPronouns(
+  settings: UserSettingsV1,
+  local: AccountPronouns | null = readAccountPronounsLocal(),
+): UserSettingsV1 {
+  if (!local || local === settings.account.pronouns) return settings;
+  return {
+    ...settings,
+    account: { ...settings.account, pronouns: local },
+  };
 }

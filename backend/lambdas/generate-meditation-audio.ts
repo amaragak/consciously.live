@@ -719,7 +719,7 @@ async function mixSpeechWithBackgrounds(params: {
     // Desired structure:
     // - background-only intro (leadInSeconds; default 1.5s for older jobs)
     // - speech starts after intro
-    // - optional 8s tail after speech ends, with background fading out
+    // - after speech: 10s beds at full level, then 10s fade to silence
     const introSeconds =
       typeof params.leadInSeconds === "number" &&
       Number.isFinite(params.leadInSeconds) &&
@@ -727,17 +727,20 @@ async function mixSpeechWithBackgrounds(params: {
         ? params.leadInSeconds
         : 1.5;
     const wantFadeOut = params.fadeOut !== false;
-    const tailSeconds = wantFadeOut ? 8 : 0;
+    const holdAfterSpeechSeconds = wantFadeOut ? 10 : 0;
+    const fadeAfterHoldSeconds = wantFadeOut ? 10 : 0;
+    const tailSeconds = holdAfterSpeechSeconds + fadeAfterHoldSeconds;
     const totalDurSeconds =
       dur !== undefined ? dur + introSeconds + tailSeconds : undefined;
     const bedFadeOut =
       wantFadeOut &&
       totalDurSeconds !== undefined &&
-      totalDurSeconds > tailSeconds + 0.06
+      fadeAfterHoldSeconds > 0 &&
+      totalDurSeconds > fadeAfterHoldSeconds + 0.06
         ? `,afade=t=out:st=${Math.max(
             0,
-            totalDurSeconds - tailSeconds,
-          ).toFixed(2)}:d=${tailSeconds.toFixed(2)}`
+            totalDurSeconds - fadeAfterHoldSeconds,
+          ).toFixed(2)}:d=${fadeAfterHoldSeconds.toFixed(2)}`
         : "";
 
     const vols = layers.map((l) => (clampGain(l.gain) / 100) * BED_GAIN_PEAK_VOLUME);
@@ -2757,7 +2760,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           ...(scriptChunks.length > 0 ? { scriptChunks } : {}),
           rating: null,
           liveMix: true,
-          ...(body.leadInSeconds === 0 || body.leadInSeconds === 20
+          ...(typeof body.leadInSeconds === "number" &&
+          Number.isFinite(body.leadInSeconds) &&
+          body.leadInSeconds >= 0
             ? { leadInSeconds: body.leadInSeconds }
             : {}),
           ...(typeof body.fadeOut === "boolean"

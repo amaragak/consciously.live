@@ -4,8 +4,9 @@ import {
   BookOpen,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
+  Clock,
+  Loader2,
   Mic,
   Plus,
   Sparkles,
@@ -26,6 +27,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import { appendSpokenText, useWhisperDictation } from "@/hooks/use-whisper-dictation";
 import { useMinWidth } from "@/hooks/use-min-width";
 import {
@@ -37,22 +39,31 @@ import { firstNameFromAccount, romanNumeral } from "@/lib/manifesto-print";
 import {
   STORY_LISTEN_GOAL_MIN,
   addStoryVersion,
+  addUpdatedStoryVersion,
+  composeSectionsForUpdate,
   countWords,
   draftIsEmpty,
   draftPlainText,
   listeningFillPercent,
   listeningMinutes,
   loadManifestoStoryStore,
-  patchActiveVersionText,
+  patchVersionSectionText,
   saveManifestoStoryStore,
   saveManifestoStoryStoreLocal,
+  storyNarrationDrift,
+  storySectionKey,
+  versionSections,
   type ManifestoStoryStoreV1,
+  type StoryVersionSection,
 } from "@/lib/manifesto-story";
+import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
   STORY_ANSWER_PLACEHOLDER,
   STORY_OPENER_PLACEHOLDER,
   STORY_OPENER_PROMPT_ID,
+  areaRefIdFromPromptId,
   draftHasPromptLabel,
+  draftSectionsForCompose,
   insertPromptLabel,
   isTextHiddenByCollapse,
   parseStoryDraft,
@@ -61,17 +72,29 @@ import {
   serializeStoryDraft,
   toggleLabelCollapsed,
   wordsOwnedByLabel,
+  type RaiseLifeAreaMeta,
   type StoryDraftNode,
 } from "@/lib/manifesto-story-draft";
 import {
   ambitionLabel,
   composeStoryThirdPerson,
   findingTypeLabel,
+  lockedSentenceRanges,
+  pruneRaiseLocks,
+  raiseLockFromAcceptedSpan,
+  raiseLocksForPassedSentences,
   raiseStoryCeiling,
   raiseSuggestionLabel,
   regenerateStorySuggestion,
+  stripOvertlyNegativeRaiseLocks,
   type StoryFinding,
 } from "@/lib/manifesto-story-llm";
+import { fetchUserSettings } from "@/lib/settings-api";
+import {
+  mergeAccountPronouns,
+  readAccountPronounsLocal,
+} from "@/lib/settings-local-defaults";
+import type { AccountPronouns } from "@/lib/story-pronouns";
 import {
   STORY_OPENER_PROMPT,
   STORY_PROMPT_TOPICS,
@@ -85,6 +108,10 @@ import {
 import { loadPlanDreamsStore } from "@/lib/plan-dreams";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { ManifestoStoryNarrateRail } from "@/components/plan/manifesto-story-narrate-rail";
+import {
+  ManifestoStoryPrepareCheck,
+  type PrepareCheckDecision,
+} from "@/components/plan/manifesto-story-prepare-check";
 import { ensureManifestoStoryReminderPoller } from "@/lib/manifesto-story-reminder";
 import {
   APP_MOBILE_TAB_BAR_CHANGED,
@@ -195,6 +222,31 @@ type LiveFinding = {
 };
 
 type RawFinding = Pick<StoryFinding, "id" | "quote" | "type" | "suggestion">;
+
+/** promptId or `"opening"` for the text node’s owning section. */
+function sectionKeyForDraftNode(
+  nodes: readonly StoryDraftNode[],
+  nodeIndex: number,
+): string {
+  let key = "opening";
+  for (let i = 0; i <= nodeIndex; i++) {
+    const n = nodes[i];
+    if (n?.kind === "label") key = n.promptId;
+  }
+  return key;
+}
+
+function filterFindingsToSectionKeys(
+  findings: readonly LiveFinding[],
+  nodes: readonly StoryDraftNode[],
+  keys: readonly string[] | null,
+): LiveFinding[] {
+  if (!keys || keys.length === 0) return [...findings];
+  const set = new Set(keys);
+  return findings.filter((f) =>
+    set.has(sectionKeyForDraftNode(nodes, f.node)),
+  );
+}
 
 /** Find each quote inside the text nodes (the model works on plain text). */
 function locateFindings(
@@ -348,6 +400,7 @@ function PageHeader({
   wide,
   toolbar,
   mobileTitleRight,
+  mobileTabs,
   mobileFooter,
   showSubline = true,
   /** Writing A/D uses the hold-back line; guidelines / B keep the vision subline. */
@@ -357,6 +410,8 @@ function PageHeader({
   wide: boolean;
   toolbar?: ReactNode;
   mobileTitleRight?: ReactNode;
+  /** Full-width draft/narration toggle between title and meter. */
+  mobileTabs?: ReactNode;
   /** When set (mobile writing), the card is title row + meter + footer. */
   mobileFooter?: ReactNode;
   showSubline?: boolean;
@@ -378,7 +433,7 @@ function PageHeader({
   );
 
   if (!wide) {
-    if (mobileFooter) {
+    if (mobileFooter || mobileTabs) {
       return (
         <div className={`${CARD} flex flex-col gap-3 px-4 py-3.5`}>
           <div className="flex items-center justify-between gap-3">
@@ -390,6 +445,7 @@ function PageHeader({
             </h2>
             {mobileTitleRight}
           </div>
+          {mobileTabs}
           {showSubline ? subline : null}
           <ListeningMeter words={words} compact />
           {mobileFooter}
@@ -709,10 +765,15 @@ function Paper({
       {hideHeader ? null : bare ? (
         right ? <div className="relative flex items-center">{right}</div> : null
       ) : (
-        <div className="relative flex items-center gap-3">
-          <span className={LABEL_CAPS}>{title}</span>
-          <Rule />
-          {right}
+        <div className="relative flex items-center justify-between gap-3">
+          <span
+            className={`min-w-0 font-display font-normal leading-tight text-accent-link ${
+              wide ? "text-xl" : "text-lg"
+            }`}
+          >
+            {title}
+          </span>
+          {right ? <span className="shrink-0">{right}</span> : null}
         </div>
       )}
       {children}
@@ -1791,10 +1852,106 @@ function RaiseInlineQuickActions({
   );
 }
 
+/** Faint mist underline on a sentence that has already been raised. */
+const RAISED_UNDERLINE: CSSProperties = {
+  textDecorationLine: "underline",
+  textDecorationColor: "color-mix(in srgb, var(--accent-button) 55%, transparent)",
+  textDecorationThickness: "2.5px",
+  textUnderlineOffset: "0.18em",
+};
+
+/** Mirror layer: transparent glyphs, mist underline on locked sentences. */
+function RaisedTextMirror({
+  text,
+  raiseLocks,
+}: {
+  text: string;
+  raiseLocks: readonly string[];
+}) {
+  const locks = lockedSentenceRanges(text, raiseLocks);
+  if (locks.length === 0) {
+    return (
+      <>
+        {text}
+        {"\u200b"}
+        {"\n"}
+      </>
+    );
+  }
+  const pieces: ReactNode[] = [];
+  let cursor = 0;
+  for (const r of locks) {
+    if (r.start > cursor) {
+      pieces.push(
+        <span key={`p-${cursor}`}>{text.slice(cursor, r.start)}</span>,
+      );
+    }
+    pieces.push(
+      <span key={`r-${r.start}`} style={RAISED_UNDERLINE}>
+        {text.slice(r.start, r.end)}
+      </span>,
+    );
+    cursor = r.end;
+  }
+  if (cursor < text.length) {
+    pieces.push(<span key={`p-${cursor}`}>{text.slice(cursor)}</span>);
+  }
+  return (
+    <>
+      {pieces}
+      {"\u200b"}
+      {"\n"}
+    </>
+  );
+}
+
+/** Plain draft chunks with optional raised underlines (raise-mode leftovers). */
+function textWithRaiseUnderlines(
+  text: string,
+  from: number,
+  to: number,
+  raiseLocks: readonly string[],
+  keyPrefix: string,
+): ReactNode[] {
+  const slice = text.slice(from, to);
+  if (!slice) return [];
+  const locks = lockedSentenceRanges(slice, raiseLocks);
+  if (locks.length === 0) {
+    return [<span key={`${keyPrefix}-${from}`}>{slice}</span>];
+  }
+  const pieces: ReactNode[] = [];
+  let cursor = 0;
+  for (const r of locks) {
+    if (r.start > cursor) {
+      pieces.push(
+        <span key={`${keyPrefix}-p-${from + cursor}`}>
+          {slice.slice(cursor, r.start)}
+        </span>,
+      );
+    }
+    pieces.push(
+      <span
+        key={`${keyPrefix}-r-${from + r.start}`}
+        style={RAISED_UNDERLINE}
+      >
+        {slice.slice(r.start, r.end)}
+      </span>,
+    );
+    cursor = r.end;
+  }
+  if (cursor < slice.length) {
+    pieces.push(
+      <span key={`${keyPrefix}-p-${from + cursor}`}>{slice.slice(cursor)}</span>,
+    );
+  }
+  return pieces;
+}
+
 function StoryEditor({
   wide,
   nodes,
   findings,
+  raiseLocks,
   activeId,
   raiseActions,
   focusRequest,
@@ -1811,6 +1968,7 @@ function StoryEditor({
   wide: boolean;
   nodes: StoryDraftNode[];
   findings: LiveFinding[];
+  raiseLocks: readonly string[];
   activeId: string | null;
   raiseActions: RaiseInlineActions;
   focusRequest: FocusRequest | null;
@@ -1924,7 +2082,13 @@ function StoryEditor({
           for (const f of nodeFindings) {
             if (f.start > cursor) {
               pieces.push(
-                <span key={`t-${cursor}`}>{text.slice(cursor, f.start)}</span>,
+                ...textWithRaiseUnderlines(
+                  text,
+                  cursor,
+                  f.start,
+                  raiseLocks,
+                  `t-${i}`,
+                ),
               );
             }
             const active = f.id === activeId;
@@ -1979,7 +2143,15 @@ function StoryEditor({
             cursor = f.end;
           }
           if (cursor < text.length) {
-            pieces.push(<span key={`t-${cursor}`}>{text.slice(cursor)}</span>);
+            pieces.push(
+              ...textWithRaiseUnderlines(
+                text,
+                cursor,
+                text.length,
+                raiseLocks,
+                `t-${i}`,
+              ),
+            );
           }
 
           return (
@@ -2001,9 +2173,7 @@ function StoryEditor({
               className="pointer-events-none col-start-1 row-start-1 whitespace-pre-wrap font-display text-transparent [overflow-wrap:anywhere]"
               style={textStyle}
             >
-              {text}
-              {"\u200b"}
-              {"\n"}
+              <RaisedTextMirror text={text} raiseLocks={raiseLocks} />
             </div>
             <textarea
               ref={(el) => {
@@ -2030,16 +2200,18 @@ function StoryEditor({
   );
 }
 
-/* --------------------------------------------- third-person textarea (B) */
+/* --------------------------------------------- third-person sections (B) */
 
 function GrowTextarea({
   value,
   onChange,
   wide,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
   wide: boolean;
+  ariaLabel?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => {
@@ -2053,7 +2225,7 @@ function GrowTextarea({
       ref={ref}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      aria-label="Your story, in the third person"
+      aria-label={ariaLabel ?? "Your story, in the third person"}
       className="w-full resize-none overflow-hidden whitespace-pre-wrap border-0 bg-transparent p-0 font-display text-foreground outline-none [overflow-wrap:anywhere]"
       style={{
         ...SERIF_TEXT,
@@ -2064,6 +2236,169 @@ function GrowTextarea({
   );
 }
 
+function formatPreparedAt(iso: string | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  } catch {
+    return "";
+  }
+}
+
+function NarrationOutOfDateBanner({
+  changedCount,
+  busyLabel,
+  onUpdate,
+  wide,
+}: {
+  changedCount: number;
+  /** Null when idle; "Checking…" / "Preparing…" while busy. */
+  busyLabel: string | null;
+  onUpdate: () => void;
+  wide: boolean;
+}) {
+  const n = changedCount;
+  const label = `Update ${n} section${n === 1 ? "" : "s"}`;
+  const busy = Boolean(busyLabel);
+  return (
+    <div
+      className={`flex gap-3 rounded-xl border border-accent/25 bg-accent-soft/40 px-3.5 py-3 ${
+        wide ? "items-center" : "flex-col"
+      }`}
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <Clock
+          className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
+          aria-hidden
+        />
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <p className="text-sm font-semibold text-foreground">
+            Your draft has changed since this was prepared
+          </p>
+          <p className="text-[13px] text-foreground/80">
+            Update just those sections, or keep this version as it is.
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onUpdate}
+        disabled={busy}
+        className={`${BTN_PRIMARY} h-[34px] shrink-0 px-4 text-[13px] ${
+          wide ? "" : "w-full"
+        }`}
+      >
+        {busy ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Wand2 className="h-3.5 w-3.5" aria-hidden />
+        )}
+        {busy ? busyLabel : label}
+      </button>
+    </div>
+  );
+}
+
+function NarrationSectionEditor({
+  section,
+  promptLabel,
+  outOfDate,
+  highlighted,
+  wide,
+  composing,
+  onChange,
+  onUpdateSection,
+  sectionRef,
+}: {
+  section: StoryVersionSection;
+  /** Draft prompt question (or short heading fallback) shown above the text. */
+  promptLabel: string;
+  outOfDate: boolean;
+  highlighted: boolean;
+  wide: boolean;
+  composing: boolean;
+  onChange: (text: string) => void;
+  onUpdateSection: () => void;
+  sectionRef?: (el: HTMLDivElement | null) => void;
+}) {
+  const label = promptLabel.trim();
+  return (
+    <div
+      ref={sectionRef}
+      className={`flex flex-col gap-1.5 rounded-md transition-[background-color] duration-[1200ms] ${
+        outOfDate ? "pl-4" : ""
+      } ${highlighted ? "bg-accent-soft/50" : "bg-transparent"}`}
+      style={
+        outOfDate
+          ? { boxShadow: "inset 2px 0 0 var(--accent)" }
+          : undefined
+      }
+    >
+      {label ? (
+        wide ? (
+          <div
+            className="flex items-center gap-1.5"
+            style={{ margin: "0 0 -2px" }}
+          >
+            <span
+              className="min-w-0 truncate font-ui text-xs font-semibold tracking-[0.2px] text-accent-link"
+              title={label}
+            >
+              {label}
+            </span>
+            <span
+              aria-hidden
+              className="block h-px min-w-[16px] flex-1 bg-border"
+            />
+          </div>
+        ) : (
+          <span className="font-ui text-xs font-semibold leading-[1.4] tracking-[0.2px] text-accent-link">
+            {label}
+          </span>
+        )
+      ) : null}
+      {outOfDate ? (
+        <div className="flex items-center gap-2.5 font-ui">
+          <span className="text-[10px] font-semibold uppercase tracking-[1.3px] text-accent-link">
+            {wide ? "Changed in your draft" : "Changed"}
+          </span>
+          <button
+            type="button"
+            disabled={composing}
+            onClick={onUpdateSection}
+            className="cursor-pointer text-xs font-semibold text-accent-link underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {wide ? "Update this section" : "Update"}
+          </button>
+        </div>
+      ) : null}
+      <GrowTextarea
+        wide={wide}
+        value={section.text}
+        onChange={onChange}
+        ariaLabel={
+          label
+            ? `Narration section: ${label}`
+            : section.heading
+              ? `Narration section: ${section.heading}`
+              : "Narration section"
+        }
+      />
+    </div>
+  );
+}
+
+type StoryViewTab = "draft" | "narration";
+
+const STORY_TAB_TRACK =
+  "border-0 bg-border p-[3px] rounded-full";
+const STORY_TAB_SELECTED =
+  "bg-card text-foreground shadow-[0_1px_3px_rgba(15,27,45,0.14)] py-[7px] px-3.5 text-[12px] font-semibold sm:text-[13px]";
+const STORY_TAB_IDLE =
+  "text-foreground/80 py-[7px] px-3.5 text-[12px] font-semibold sm:text-[13px] hover:text-foreground";
+
 /* ------------------------------------------------------------ main view */
 
 export function ManifestoStoryView() {
@@ -2071,6 +2406,7 @@ export function ManifestoStoryView() {
   const firstName = useSessionFirstName();
   const dict = useWhisperDictation();
   const { ready: cloudReady, revision } = useIdeateCloud();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     ensureManifestoStoryReminderPoller();
@@ -2108,6 +2444,25 @@ export function ManifestoStoryView() {
     loadIdeateValuesStore().values.map((v) => ({ id: v.id, text: v.text })),
   );
 
+  /** Fresh dream/vision meta for Raise (life-area prompts). */
+  const raiseLifeAreas = (): RaiseLifeAreaMeta[] =>
+    loadPlanDreamsStore().dreams.map((d) => ({
+      id: d.id,
+      title: d.title,
+      dream: (d.dreamText || d.firstThought || "").trim(),
+      vision: (d.visionText || "").trim(),
+    }));
+
+  const raiseValuesContext = () => {
+    const list = loadIdeateValuesStore().values;
+    const values = list.map((v) => v.text.trim()).filter(Boolean);
+    const valuesById: Record<string, string> = {};
+    for (const v of list) {
+      if (v.text.trim()) valuesById[v.id] = v.text.trim();
+    }
+    return { values, valuesById };
+  };
+
   const [started, setStarted] = useState(false);
   const [showGuides, setShowGuides] = useState(false);
   const [promptsSheet, setPromptsSheet] = useState(false);
@@ -2132,8 +2487,30 @@ export function ManifestoStoryView() {
   const spanRefs = useRef(new Map<string, HTMLElement>());
   const writingCardRef = useRef<HTMLDivElement | null>(null);
 
-  const [composing, setComposing] = useState(false);
+  const [composePhase, setComposePhase] = useState<
+    "idle" | "checking" | "preparing"
+  >("idle");
+  const composing = composePhase !== "idle";
+  const composeBusyLabel =
+    composePhase === "checking"
+      ? "Checking…"
+      : composePhase === "preparing"
+        ? "Preparing…"
+        : null;
+  const [prepareGate, setPrepareGate] = useState<{
+    ambition: number;
+    findings: LiveFinding[];
+    onlyKeys: string[] | null;
+  } | null>(null);
+  const [prepareDecisions, setPrepareDecisions] = useState<
+    Record<string, PrepareCheckDecision>
+  >({});
+  const [prepareAnotherBusyId, setPrepareAnotherBusyId] = useState<
+    string | null
+  >(null);
   const [composeError, setComposeError] = useState<string | null>(null);
+  const [highlightKeys, setHighlightKeys] = useState<string[]>([]);
+  const sectionEls = useRef(new Map<string, HTMLElement>());
 
   /* ----- store + autosave */
 
@@ -2198,13 +2575,41 @@ export function ManifestoStoryView() {
   /* ----- derived */
 
   const activeVersion =
-    store.versions.find((v) => v.id === store.activeVersionId) ?? null;
+    store.versions.find((v) => v.id === store.activeVersionId) ??
+    store.versions[0] ??
+    null;
+  const hasVersions = store.versions.length > 0;
+  const urlTab = searchParams.get("tab");
+  const storyTab: StoryViewTab =
+    urlTab === "narration" && hasVersions ? "narration" : "draft";
+  const setStoryTab = useCallback(
+    (tab: StoryViewTab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (!next.get("view")) next.set("view", "story");
+          if (tab === "narration") next.set("tab", "narration");
+          else next.delete("tab");
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const nodes = useMemo(() => nodesFromDraft(store.draft), [store.draft]);
   const doneIds = useMemo(() => promptsDoneFromDraft(store.draft), [store.draft]);
   const draftWords = countWords(draftPlainText(store.draft));
-  const meterWords = activeVersion ? activeVersion.wordCount : draftWords;
+  const drift = useMemo(
+    () => storyNarrationDrift(store.draft, activeVersion),
+    [store.draft, activeVersion],
+  );
+  const meterWords =
+    storyTab === "narration" && activeVersion
+      ? activeVersion.wordCount
+      : draftWords;
   const empty = draftIsEmpty(store.draft);
-  const showGuidelines = !activeVersion && empty && !started;
+  const showGuidelines = empty && !started && !hasVersions;
 
   const promptLibrary = useMemo(
     () =>
@@ -2269,6 +2674,21 @@ export function ManifestoStoryView() {
       };
     });
   }, [promptLibrary, doneIds, recentUsed, nodes]);
+
+  /** Prompt questions for For narration section headers (draft labels win). */
+  const narrationPromptLabels = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of promptLibrary) {
+      const t = p.text.trim();
+      if (t) map.set(p.id, t);
+    }
+    for (const n of nodes) {
+      if (n.kind !== "label") continue;
+      const t = n.text.trim();
+      if (t) map.set(n.promptId, t);
+    }
+    return map;
+  }, [nodes, promptLibrary]);
 
   /** Mobile card: first unused in balanced order, advanced by Skip. */
   const mobilePrompt =
@@ -2523,17 +2943,86 @@ export function ManifestoStoryView() {
 
   /* ----- raise the ceiling */
 
+  const rememberRaiseLock = (
+    nodeText: string,
+    start: number,
+    end: number,
+    accepted: boolean,
+  ) => {
+    const lock = raiseLockFromAcceptedSpan(nodeText, start, end);
+    if (!lock) return;
+    update((s) => {
+      const raiseLocks = pruneRaiseLocks(s.draft, [...s.raiseLocks, lock]);
+      const raiseAccepted = accepted
+        ? pruneRaiseLocks(s.draft, [...s.raiseAccepted, lock])
+        : pruneRaiseLocks(s.draft, s.raiseAccepted);
+      return { ...s, raiseLocks, raiseAccepted };
+    });
+  };
+
+  const performRaiseCheck = async (): Promise<{
+    ambition: number;
+    findings: LiveFinding[];
+  } | null> => {
+    const cur = currentNodes();
+    // Keep prompt labels so Raise can honour morning vs night, etc.
+    const draft = serializeStoryDraft(cur);
+    const body = bodyDraft(cur);
+    // Drop locks on overtly negative sentences (including an earlier Keep).
+    const locks = stripOvertlyNegativeRaiseLocks(
+      draft,
+      storeRef.current.raiseLocks,
+    );
+    const accepted = stripOvertlyNegativeRaiseLocks(
+      draft,
+      storeRef.current.raiseAccepted,
+    );
+    if (
+      locks.length !== storeRef.current.raiseLocks.length ||
+      accepted.length !== storeRef.current.raiseAccepted.length
+    ) {
+      update((s) => ({ ...s, raiseLocks: locks, raiseAccepted: accepted }));
+    }
+    const { values, valuesById } = raiseValuesContext();
+    const res = await raiseStoryCeiling(draft, locks, {
+      lifeAreas: raiseLifeAreas(),
+      values,
+      valuesById,
+    });
+    const live = locateFindings(currentNodes(), res.findings);
+    // History only — unchecked sentences stay open until the user Use/Keep.
+    const passedLocks = raiseLocksForPassedSentences(body, res.findings);
+    update((s) => ({
+      ...s,
+      raiseLocks: pruneRaiseLocks(s.draft, s.raiseLocks),
+      raiseAccepted: pruneRaiseLocks(s.draft, s.raiseAccepted),
+      raiseHistory: [
+        ...s.raiseHistory,
+        {
+          at: new Date().toISOString(),
+          ambition: res.ambition,
+          findings: res.findings.map((f) => ({
+            quote: f.quote,
+            suggestion: f.suggestion,
+            type: f.type,
+          })),
+          passed: passedLocks,
+        },
+      ].slice(-12),
+    }));
+    return { ambition: res.ambition, findings: live };
+  };
+
   const runRaise = async () => {
     if (raising || empty) return;
     setRaising(true);
     setRaiseError(null);
     setPromptsSheet(false);
     try {
-      const cur = currentNodes();
-      const res = await raiseStoryCeiling(bodyDraft(cur));
-      const live = locateFindings(currentNodes(), res.findings);
-      setRaise({ ambition: res.ambition, findings: live });
-      setActiveId(live[0]?.id ?? null);
+      const res = await performRaiseCheck();
+      if (!res) return;
+      setRaise({ ambition: res.ambition, findings: res.findings });
+      setActiveId(res.findings[0]?.id ?? null);
       if (!wide) setRaiseSheet(true);
     } catch {
       setRaiseError("Couldn’t check your story. Try again.");
@@ -2543,6 +3032,28 @@ export function ManifestoStoryView() {
   };
 
   const clearRaise = () => {
+    const open = raise?.findings ?? [];
+    if (open.length > 0) {
+      const cur = currentNodes();
+      const dismissLocks: string[] = [];
+      for (const f of open) {
+        // Negatives must re-flag next Raise / prepare — never lock on dismiss.
+        if (f.type === "negative") continue;
+        const n = cur[f.node];
+        if (!n || n.kind !== "text") continue;
+        const lock = raiseLockFromAcceptedSpan(n.text, f.start, f.end);
+        if (lock) dismissLocks.push(lock);
+      }
+      if (dismissLocks.length) {
+        update((s) => ({
+          ...s,
+          raiseLocks: pruneRaiseLocks(s.draft, [
+            ...s.raiseLocks,
+            ...dismissLocks,
+          ]),
+        }));
+      }
+    }
     setRaise(null);
     setActiveId(null);
     setRaiseSheet(false);
@@ -2571,6 +3082,8 @@ export function ManifestoStoryView() {
   const useFinding = (f: LiveFinding) => {
     const res = applyReplacement(f, f.suggestion);
     if (!res) return;
+    const lockEnd = f.start + f.suggestion.length;
+    rememberRaiseLock(res.updated, f.start, lockEnd, true);
     const nextId = nextFindingId(f.id);
     setRaise((r) => {
       if (!r) return r;
@@ -2592,23 +3105,46 @@ export function ManifestoStoryView() {
     const ordered = raise.findings
       .slice()
       .sort((a, b) => b.node - a.node || b.start - a.start);
+    const newLocks: string[] = [];
     for (const f of ordered) {
       const n = next[f.node];
       if (!n || n.kind !== "text") continue;
-      next[f.node] = {
-        kind: "text",
-        text: n.text.slice(0, f.start) + f.suggestion + n.text.slice(f.end),
-      };
+      const updated =
+        n.text.slice(0, f.start) + f.suggestion + n.text.slice(f.end);
+      next[f.node] = { kind: "text", text: updated };
+      const lock = raiseLockFromAcceptedSpan(
+        updated,
+        f.start,
+        f.start + f.suggestion.length,
+      );
+      if (lock) newLocks.push(lock);
     }
-    commitNodes(next);
-    clearRaise();
+    const norm = normalizeNodes(next);
+    const draft = serializeStoryDraft(norm);
+    update((s) => ({
+      ...s,
+      draft,
+      raiseLocks: pruneRaiseLocks(draft, [...s.raiseLocks, ...newLocks]),
+      raiseAccepted: pruneRaiseLocks(draft, [...s.raiseAccepted, ...newLocks]),
+    }));
+    setRaise(null);
+    setActiveId(null);
+    setRaiseSheet(false);
   };
 
   const keepMine = (id: string) => {
+    const f = raise?.findings.find((x) => x.id === id);
+    // Keep on non-negative = don't re-flag; Keep on negative must still re-flag.
+    if (f && f.type !== "negative") {
+      const n = currentNodes()[f.node];
+      if (n?.kind === "text") {
+        rememberRaiseLock(n.text, f.start, f.end, false);
+      }
+    }
     const nextId = nextFindingId(id);
     setRaise((r) => {
       if (!r) return r;
-      const findings = r.findings.filter((f) => f.id !== id);
+      const findings = r.findings.filter((x) => x.id !== id);
       if (findings.length === 0) return null;
       return { ...r, findings };
     });
@@ -2619,10 +3155,26 @@ export function ManifestoStoryView() {
     if (anotherBusy) return;
     setAnotherBusy(true);
     try {
+      const cur = currentNodes();
+      const li = owningLabelIndex(cur, f.node);
+      const label = li >= 0 ? cur[li] : undefined;
+      const lifeAreas = raiseLifeAreas();
+      const { values, valuesById } = raiseValuesContext();
+      const refId =
+        label?.kind === "label"
+          ? areaRefIdFromPromptId(label.promptId)
+          : null;
       const suggestion = await regenerateStorySuggestion({
-        draft: bodyDraft(currentNodes()),
+        draft: serializeStoryDraft(cur),
         quote: f.quote,
         type: f.type,
+        promptText: label?.kind === "label" ? label.text : undefined,
+        lifeAreas,
+        lifeArea: refId
+          ? lifeAreas.find((a) => a.id === refId) ?? null
+          : null,
+        values,
+        valuesById,
       });
       setRaise((r) =>
         r
@@ -2676,29 +3228,242 @@ export function ManifestoStoryView() {
     keepMine(f.id);
   };
 
-  /* ----- prepare for narration */
+  /* ----- prepare / update narration */
 
-  const canCompose = draftWords >= MIN_WORDS_TO_COMPOSE && !composing;
+  const wordsOk = draftWords >= MIN_WORDS_TO_COMPOSE;
+  const wordsToCompose = Math.max(0, MIN_WORDS_TO_COMPOSE - draftWords);
+  const changedCount = activeVersion ? drift.changedCount : 0;
 
-  const prepareForNarration = async () => {
-    if (!canCompose) return;
-    setComposing(true);
-    setComposeError(null);
+  const afterPrepareSuccess = (updatedKeys: string[]) => {
+    setStoryTab("narration");
+    setHighlightKeys(updatedKeys);
+    window.setTimeout(() => {
+      const first = updatedKeys[0];
+      if (first) {
+        sectionEls.current
+          .get(first)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }, 80);
+    // Keep accent tint briefly, then clear so it can fade out.
+    window.setTimeout(() => setHighlightKeys([]), 1200);
+  };
+
+  const confirmOverwriteEdited = (keys: readonly string[]): boolean => {
+    if (!activeVersion) return true;
+    const byKey = new Map(
+      versionSections(activeVersion).map(
+        (s) => [storySectionKey(s), s] as const,
+      ),
+    );
+    const edited = keys.filter((k) => byKey.get(k)?.editedByUser).length;
+    if (edited === 0) return true;
+    return window.confirm(
+      `You've edited ${edited} section${edited === 1 ? "" : "s"} in the narration text. Updating will replace those edits.`,
+    );
+  };
+
+  const resolveStoryPronouns = async (): Promise<AccountPronouns> => {
+    const local = readAccountPronounsLocal();
     try {
-      const text = await composeStoryThirdPerson({
-        draft: bodyDraft(currentNodes()),
-        firstName,
-      });
-      update((s) => addStoryVersion(s, text));
-      clearRaise();
+      const { settings } = await fetchUserSettings();
+      return mergeAccountPronouns(settings, local).account.pronouns;
     } catch {
-      setComposeError("Couldn’t prepare your story just now. Try again.");
-    } finally {
-      setComposing(false);
+      return local ?? "they_them";
     }
   };
 
-  const keepWriting = () => update((s) => ({ ...s, activeVersionId: null }));
+  const executePrepareOrUpdate = async (onlyKeys: string[] | null) => {
+    const draftSerialized = serializeStoryDraft(currentNodes());
+    const draftBody = bodyDraft(currentNodes());
+    const isUpdate = Boolean(activeVersion) && hasVersions && onlyKeys != null;
+    const keys = onlyKeys ?? [];
+    const pronouns = await resolveStoryPronouns();
+
+    if (!isUpdate) {
+      const composed = await composeStoryThirdPerson({
+        draft: draftBody,
+        firstName,
+        pronouns,
+        sections: draftSectionsForCompose(draftSerialized),
+      });
+      update((s) =>
+        addStoryVersion(s, composed.text, composed.sections, {
+          draft: draftSerialized,
+        }),
+      );
+      afterPrepareSuccess(
+        composed.sections.map((s) => s.promptId ?? "opening"),
+      );
+    } else {
+      const baseId = activeVersion!.id;
+      const sectionsIn = composeSectionsForUpdate(drift.draftSections, keys);
+      const rewriteTargets = sectionsIn.filter((s) => s.role === "rewrite");
+      if (rewriteTargets.length === 0) {
+        update((s) =>
+          addUpdatedStoryVersion(s, {
+            draft: draftSerialized,
+            updatedSections: [],
+            baseVersionId: baseId,
+          }),
+        );
+        afterPrepareSuccess(keys);
+      } else {
+        const composed = await composeStoryThirdPerson({
+          draft: draftBody,
+          firstName,
+          pronouns,
+          sections: sectionsIn,
+          rewriteOnly: true,
+        });
+        const updatedSections = composed.sections.map((s) => ({
+          promptId: s.promptId,
+          heading: s.heading,
+          text: s.text,
+        }));
+        update((s) =>
+          addUpdatedStoryVersion(s, {
+            draft: draftSerialized,
+            updatedSections,
+            baseVersionId: baseId,
+          }),
+        );
+        afterPrepareSuccess(
+          updatedSections.map((s) => s.promptId ?? "opening"),
+        );
+      }
+    }
+    setRaise(null);
+    setActiveId(null);
+    setRaiseSheet(false);
+  };
+
+  const finishPrepareGate = async (mode: "leave" | "apply") => {
+    if (!prepareGate) return;
+    const gate = prepareGate;
+    const decisions = prepareDecisions;
+    setPrepareGate(null);
+    setPrepareDecisions({});
+    setComposePhase("preparing");
+    setComposeError(null);
+    const resolve = (id: string): "used" | "kept" => {
+      const d = decisions[id];
+      if (d === "used" || d === "kept") return d;
+      // Apply suggestions → use undecided; Leave it as is → keep undecided.
+      return mode === "apply" ? "used" : "kept";
+    };
+    try {
+      const cur = currentNodes();
+      for (const f of gate.findings) {
+        if (resolve(f.id) !== "kept") continue;
+        // Kept negatives stay unlocked so Raise / prepare re-flag them.
+        if (f.type === "negative") continue;
+        const n = cur[f.node];
+        if (n?.kind === "text") {
+          rememberRaiseLock(n.text, f.start, f.end, false);
+        }
+      }
+      const next = currentNodes().map((n) =>
+        n.kind === "text" ? { ...n } : n,
+      );
+      const ordered = gate.findings
+        .filter((f) => resolve(f.id) === "used")
+        .sort((a, b) => b.node - a.node || b.start - a.start);
+      const newLocks: string[] = [];
+      for (const f of ordered) {
+        const n = next[f.node];
+        if (!n || n.kind !== "text") continue;
+        let start = f.start;
+        let end = f.end;
+        if (n.text.slice(start, end) !== f.quote) {
+          const idx = n.text.indexOf(f.quote);
+          if (idx < 0) continue;
+          start = idx;
+          end = idx + f.quote.length;
+        }
+        const updated =
+          n.text.slice(0, start) + f.suggestion + n.text.slice(end);
+        next[f.node] = { kind: "text", text: updated };
+        const lock = raiseLockFromAcceptedSpan(
+          updated,
+          start,
+          start + f.suggestion.length,
+        );
+        if (lock) newLocks.push(lock);
+      }
+      if (ordered.length > 0) {
+        const norm = normalizeNodes(next);
+        const draft = serializeStoryDraft(norm);
+        update((s) => ({
+          ...s,
+          draft,
+          raiseLocks: pruneRaiseLocks(draft, [...s.raiseLocks, ...newLocks]),
+          raiseAccepted: pruneRaiseLocks(draft, [
+            ...s.raiseAccepted,
+            ...newLocks,
+          ]),
+        }));
+      }
+      await executePrepareOrUpdate(gate.onlyKeys);
+    } catch {
+      setComposeError("Couldn’t prepare your story just now. Try again.");
+    } finally {
+      setComposePhase("idle");
+    }
+  };
+
+  const runPrepareOrUpdate = async (onlyKeys?: readonly string[]) => {
+    if (composing || prepareGate) return;
+    const isUpdate = Boolean(activeVersion) && hasVersions;
+    // No drift → still allow a full re-check (e.g. kept negatives must re-flag).
+    const allKeys = drift.draftSections.map((s) => s.promptId ?? "opening");
+    const keys =
+      onlyKeys && onlyKeys.length > 0
+        ? [...onlyKeys]
+        : isUpdate
+          ? drift.changedKeys.length > 0
+            ? [...drift.changedKeys]
+            : allKeys
+          : [];
+
+    if (isUpdate) {
+      if (keys.length === 0) return;
+      if (!confirmOverwriteEdited(keys)) return;
+    } else if (!wordsOk) {
+      return;
+    }
+
+    setComposePhase("checking");
+    setComposeError(null);
+    try {
+      const check = await performRaiseCheck();
+      const nodes = currentNodes();
+      const scoped = filterFindingsToSectionKeys(
+        check?.findings ?? [],
+        nodes,
+        isUpdate ? keys : null,
+      );
+      if (scoped.length > 0) {
+        setPrepareGate({
+          ambition: check?.ambition ?? 0.4,
+          findings: scoped,
+          onlyKeys: isUpdate ? keys : null,
+        });
+        setPrepareDecisions({});
+        setComposePhase("idle");
+        return;
+      }
+      setComposePhase("preparing");
+      await executePrepareOrUpdate(isUpdate ? keys : null);
+    } catch {
+      setComposeError("Couldn’t prepare your story just now. Try again.");
+      setComposePhase("idle");
+    } finally {
+      setComposePhase((p) =>
+        p === "checking" || p === "preparing" ? "idle" : p,
+      );
+    }
+  };
 
   /* ----- shared bits */
 
@@ -2740,25 +3505,27 @@ export function ManifestoStoryView() {
 
   const talkOnClick = () => void toggleDictation(false);
 
-  const floatingTools = (
-    <FloatingEditorTools
-      wide={wide}
-      anchorRef={writingCardRef}
-      hidden={!wide && (promptsSheet || raiseSheet)}
-      raising={raising}
-      raiseDisabled={raising || empty}
-      onRaise={() => void runRaise()}
-      recording={dict.recording}
-      busy={dict.busy}
-      onTalk={talkOnClick}
-    />
-  );
+  const floatingTools =
+    storyTab === "draft" ? (
+      <FloatingEditorTools
+        wide={wide}
+        anchorRef={writingCardRef}
+        hidden={!wide && (promptsSheet || raiseSheet)}
+        raising={raising}
+        raiseDisabled={raising || empty}
+        onRaise={() => void runRaise()}
+        recording={dict.recording}
+        busy={dict.busy}
+        onTalk={talkOnClick}
+      />
+    ) : null;
 
   const editor = (
     <StoryEditor
       wide={wide}
       nodes={nodes}
       findings={raise?.findings ?? []}
+      raiseLocks={store.raiseAccepted}
       activeId={activeId}
       raiseActions={{
         busy: anotherBusy,
@@ -2797,22 +3564,129 @@ export function ManifestoStoryView() {
     </button>
   );
 
-  const prepareButton = (height: string, className = "") => (
-    <button
-      type="button"
-      onClick={() => void prepareForNarration()}
-      disabled={!canCompose}
-      title={
-        draftWords < MIN_WORDS_TO_COMPOSE
-          ? `Write ${MIN_WORDS_TO_COMPOSE - draftWords} more words to continue`
-          : undefined
-      }
-      className={`${BTN_PRIMARY} ${height} ${className}`}
-    >
-      <Wand2 className={`h-4 w-4 ${composing ? "animate-pulse" : ""}`} aria-hidden />
-      {composing ? "Preparing…" : "Prepare for narration"}
-    </button>
+  const storyTabControl = (equalWidth: boolean) => (
+    <SegmentedPillTabs<StoryViewTab>
+      aria-label="Story view"
+      value={storyTab}
+      onChange={setStoryTab}
+      equalWidth={equalWidth}
+      className={`${STORY_TAB_TRACK} ${equalWidth ? "w-full" : ""}`}
+      selectedClassName={STORY_TAB_SELECTED}
+      idleClassName={STORY_TAB_IDLE}
+      options={[
+        { id: "draft", label: "My draft" },
+        {
+          id: "narration",
+          disabled: !hasVersions,
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              For narration
+              {changedCount > 0 ? (
+                <span
+                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                  title="Your draft has changes the narration doesn't have yet"
+                  aria-label="Your draft has changes the narration doesn't have yet"
+                />
+              ) : null}
+            </span>
+          ),
+        },
+      ]}
+    />
   );
+
+  const prepareHint =
+    !hasVersions && wordsToCompose > 0
+      ? `Prepare for narration unlocks at ${MIN_WORDS_TO_COMPOSE} words · ${wordsToCompose} to go`
+      : !hasVersions
+        ? "Third person, tidied, ready to record"
+        : changedCount > 0
+          ? `${changedCount} section${changedCount === 1 ? "" : "s"} changed`
+          : null;
+
+  const prepareToolbarRight = (() => {
+    if (storyTab === "narration" && activeVersion) {
+      const when =
+        formatPreparedAt(activeVersion.preparedAt ?? activeVersion.createdAt) ||
+        "recently";
+      return (
+        <span className="text-[13px] text-muted">
+          Prepared {when} · edits here don’t change your draft
+        </span>
+      );
+    }
+    const label =
+      composeBusyLabel ??
+      (!hasVersions ? "Prepare for narration" : "Update narration text");
+    return (
+      <div className="flex flex-wrap items-center gap-[10px]">
+        {prepareHint ? (
+          <span id="story-prepare-hint" className="text-[13px] text-muted">
+            {prepareHint}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void runPrepareOrUpdate()}
+          disabled={
+            composing ||
+            Boolean(prepareGate) ||
+            (!hasVersions && !wordsOk)
+          }
+          aria-describedby={prepareHint ? "story-prepare-hint" : undefined}
+          className={`${BTN_PRIMARY} h-11`}
+        >
+          {composing ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Wand2 className="h-4 w-4" aria-hidden />
+          )}
+          {label}
+        </button>
+      </div>
+    );
+  })();
+
+  const prepareMobileFooter =
+    storyTab === "draft" ? (
+      <div className="flex flex-col gap-2">
+        {prepareHint ? (
+          <span
+            id="story-prepare-hint"
+            className="text-center text-[12px] text-muted"
+          >
+            {prepareHint}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void runPrepareOrUpdate()}
+          disabled={
+            composing ||
+            Boolean(prepareGate) ||
+            (!hasVersions && !wordsOk)
+          }
+          className={`${BTN_PRIMARY} h-11 w-full`}
+        >
+          {composing ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Wand2 className="h-4 w-4" aria-hidden />
+          )}
+          {composeBusyLabel ??
+            (!hasVersions
+              ? "Prepare for narration"
+              : "Update narration text")}
+        </button>
+      </div>
+    ) : activeVersion ? (
+      <span className="text-center text-[12px] text-muted">
+        Prepared{" "}
+        {formatPreparedAt(activeVersion.preparedAt ?? activeVersion.createdAt) ||
+          "recently"}{" "}
+        · edits here don’t change your draft
+      </span>
+    ) : null;
 
   const howToButton = (cls: string, icon: string) => (
     <button
@@ -2913,285 +3787,382 @@ export function ManifestoStoryView() {
     );
   }
 
-  /* ----- state B: third-person version + narrate rail */
+  /* ----- draft + narration (same page, tabbed) */
 
-  if (activeVersion) {
-    const paper = (
-      <Paper
-        wide={wide}
-        variant="version"
-        title="My life vision"
-        headerRight={
-          wide ? (
-            `Third person · ${activeVersion.wordCount.toLocaleString()} words · v${activeVersion.number}`
-          ) : (
-            <span className="text-xs text-muted">v{activeVersion.number}</span>
-          )
-        }
-      >
-        <div className="relative">
-          <GrowTextarea
-            wide={wide}
-            value={activeVersion.thirdPersonText}
-            onChange={(v) => update((s) => patchActiveVersionText(s, v))}
-          />
-        </div>
-      </Paper>
-    );
-    const rail = (
-      <ManifestoStoryNarrateRail
-        store={store}
-        version={activeVersion}
-        firstName={firstName}
-        onStoreChange={update}
-      />
-    );
-
-    if (!wide) {
+  const narrationSections = activeVersion
+    ? versionSections(activeVersion)
+    : [];
+  const changedKeySet = new Set(drift.changedKeys);
+  const promptLabelForSection = (section: StoryVersionSection): string => {
+    if (section.promptId) {
       return (
-        <div className={PAGE_MOBILE}>
-          <div className={`${CARD} flex flex-col gap-1 px-4 py-3`}>
-            <button
-              type="button"
-              onClick={keepWriting}
-              className="inline-flex w-fit cursor-pointer items-center gap-1 whitespace-nowrap text-sm font-semibold text-accent-link transition-opacity hover:opacity-80"
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden />
-              Keep writing
-            </button>
-            <p className="text-xs text-muted">
-              Third person and grammar tidied; your words and details kept. Edit
-              freely, or run it again after more writing.
-            </p>
-          </div>
-          {paper}
-          <div className="flex flex-col gap-3">{rail}</div>
-        </div>
+        narrationPromptLabels.get(section.promptId) ||
+        section.heading.trim() ||
+        ""
       );
     }
+    return section.heading.trim() || "Opening";
+  };
 
-    return (
-      <div className={PAGE}>
-        <PageHeader words={meterWords} wide={wide} />
-        <div
-          className={`${CARD} flex flex-wrap items-center gap-x-3.5 gap-y-1 px-6 py-3.5`}
-        >
-          <button
-            type="button"
-            onClick={keepWriting}
-            className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-sm font-semibold text-accent-link transition-opacity hover:opacity-80"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-            Keep writing
-          </button>
-          <p className="text-[13px] text-muted">
-            Third person and grammar tidied; your words and details kept. Edit
-            freely, or run it again after more writing.
-          </p>
-        </div>
-        <div className="flex items-start gap-5">
-          {paper}
-          {rail}
-        </div>
-      </div>
-    );
-  }
-
-  /* ----- state A / D: writing */
-
-  const paperA = (
+  const paperDraft = (
     <Paper wide={wide} title="My life vision" hideHeader cardRef={writingCardRef}>
       <div className="relative">{editor}</div>
       {sectionBreakButton}
     </Paper>
   );
 
-  if (wide) {
-    const writingToolbar = (
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-        {howToButton("text-[13px]", "h-4 w-4")}
-        <div className="flex flex-wrap items-center gap-[10px]">
-          <span className="text-[13px] text-muted">
-            Third person, tidied, ready to record
-          </span>
-          {prepareButton("h-11")}
-        </div>
+  const paperNarration =
+    activeVersion ? (
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {!wide && changedCount > 0 ? (
+          <NarrationOutOfDateBanner
+            changedCount={changedCount}
+            busyLabel={composeBusyLabel}
+            onUpdate={() => void runPrepareOrUpdate()}
+            wide={false}
+          />
+        ) : null}
+        <Paper
+          wide={wide}
+          variant="version"
+          title="My Life Vision"
+          headerRight={
+            wide
+              ? `Third person · ${activeVersion.wordCount.toLocaleString()} words`
+              : (
+                  <span className="text-xs text-muted">
+                    Third person · {activeVersion.wordCount.toLocaleString()}{" "}
+                    words
+                  </span>
+                )
+          }
+        >
+          <div className="relative flex flex-col gap-5">
+            {wide && changedCount > 0 ? (
+              <NarrationOutOfDateBanner
+                changedCount={changedCount}
+                busyLabel={composeBusyLabel}
+                onUpdate={() => void runPrepareOrUpdate()}
+                wide
+              />
+            ) : null}
+            {narrationSections.map((section) => {
+              const key = storySectionKey(section);
+              return (
+                <NarrationSectionEditor
+                  key={key}
+                  section={section}
+                  promptLabel={promptLabelForSection(section)}
+                  outOfDate={changedKeySet.has(key)}
+                  highlighted={highlightKeys.includes(key)}
+                  wide={wide}
+                  composing={composing}
+                  onChange={(v) =>
+                    update((s) =>
+                      patchVersionSectionText(
+                        s,
+                        activeVersion.id,
+                        section.promptId,
+                        v,
+                      ),
+                    )
+                  }
+                  onUpdateSection={() => void runPrepareOrUpdate([key])}
+                  sectionRef={(el) => {
+                    if (el) sectionEls.current.set(key, el);
+                    else sectionEls.current.delete(key);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </Paper>
       </div>
+    ) : null;
+
+  const sideColumn =
+    storyTab === "narration" && activeVersion ? (
+      <ManifestoStoryNarrateRail
+        store={store}
+        version={activeVersion}
+        firstName={firstName}
+        onStoreChange={update}
+        changedCount={changedCount}
+        onUpdateFirst={() => runPrepareOrUpdate()}
+      />
+    ) : (
+      <aside className="flex w-full flex-col gap-[14px] md:w-[320px] md:shrink-0">
+        {raiseCard ?? promptsCardFor(false)}
+      </aside>
     );
 
+  const writingToolbar = (
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {storyTabControl(false)}
+        {storyTab === "draft" ? howToButton("text-[13px]", "h-4 w-4") : null}
+      </div>
+      {prepareToolbarRight}
+    </div>
+  );
+
+  const onPrepareGateAnother = async (id: string) => {
+    const f = prepareGate?.findings.find((x) => x.id === id);
+    if (!f || prepareAnotherBusyId) return;
+    setPrepareAnotherBusyId(id);
+    try {
+      const cur = currentNodes();
+      const li = owningLabelIndex(cur, f.node);
+      const label = li >= 0 ? cur[li] : undefined;
+      const lifeAreas = raiseLifeAreas();
+      const { values, valuesById } = raiseValuesContext();
+      const refId =
+        label?.kind === "label"
+          ? areaRefIdFromPromptId(label.promptId)
+          : null;
+      const suggestion = await regenerateStorySuggestion({
+        draft: serializeStoryDraft(cur),
+        quote: f.quote,
+        type: f.type,
+        promptText: label?.kind === "label" ? label.text : undefined,
+        lifeAreas,
+        lifeArea: refId
+          ? (lifeAreas.find((a) => a.id === refId) ?? null)
+          : null,
+        values,
+        valuesById,
+      });
+      setPrepareGate((g) =>
+        g
+          ? {
+              ...g,
+              findings: g.findings.map((x) =>
+                x.id === id ? { ...x, suggestion } : x,
+              ),
+            }
+          : g,
+      );
+    } catch {
+      /* keep prior suggestion */
+    } finally {
+      setPrepareAnotherBusyId(null);
+    }
+  };
+
+  const prepareCheckDialog = (
+    <ManifestoStoryPrepareCheck
+      open={Boolean(prepareGate)}
+      wide={wide}
+      ambition={prepareGate?.ambition ?? 0.4}
+      findings={prepareGate?.findings ?? []}
+      decisions={prepareDecisions}
+      anotherBusyId={prepareAnotherBusyId}
+      onClose={() => {
+        setPrepareGate(null);
+        setPrepareDecisions({});
+      }}
+      onDecide={(id, d) =>
+        setPrepareDecisions((prev) => ({ ...prev, [id]: d }))
+      }
+      onAnother={(id) => void onPrepareGateAnother(id)}
+      onPrepareAsIs={() => void finishPrepareGate("leave")}
+      onPrepareWithChanges={() => void finishPrepareGate("apply")}
+    />
+  );
+
+  if (wide) {
     return (
       <div className={PAGE.replace("pb-10", "pb-[72px]")}>
         <PageHeader
           words={meterWords}
           wide
-          holdBackSubline
+          holdBackSubline={storyTab === "draft"}
           toolbar={writingToolbar}
         />
         {inlineErrors}
         <div className="flex items-start gap-5">
-          {paperA}
-          <aside className="flex w-[320px] shrink-0 flex-col gap-[14px]">
-            {raiseCard ?? promptsCardFor(false)}
-          </aside>
+          {storyTab === "narration" ? paperNarration : paperDraft}
+          {sideColumn}
         </div>
         {floatingTools}
         {guidelinesModal}
+        {prepareCheckDialog}
       </div>
     );
   }
 
-  /* ----- mobile A / D */
+  /* ----- mobile */
 
   return (
     <div className={PAGE_MOBILE.replace("pb-10", "pb-[72px]")}>
       <PageHeader
         words={meterWords}
         wide={false}
-        holdBackSubline
-        mobileTitleRight={howToButton("text-xs", "h-3.5 w-3.5")}
-        mobileFooter={prepareButton("h-11", "w-full")}
+        holdBackSubline={storyTab === "draft"}
+        mobileTitleRight={
+          storyTab === "draft" ? howToButton("text-xs", "h-3.5 w-3.5") : null
+        }
+        mobileTabs={storyTabControl(true)}
+        mobileFooter={prepareMobileFooter}
       />
 
-      <div className={`${CARD} flex flex-col gap-2 px-4 py-3`}>
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-ui text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
-            Prompt
-          </span>
-          <button
-            type="button"
-            onClick={() => setPromptsSheet(true)}
-            className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-accent-link transition-opacity hover:opacity-80"
-          >
-            <Sparkles className="h-3.5 w-3.5" aria-hidden />
-            All prompts
-          </button>
-        </div>
-        {mobilePrompt ? (
-          <>
-            <div
-              className={`flex items-start justify-between gap-3 transition-opacity duration-200 ${
-                mobileFade ? "opacity-0" : "opacity-100"
-              }`}
-            >
-              <span
-                className="min-w-0 flex-1 font-display text-base leading-[1.4] text-foreground"
-                style={SERIF_TEXT}
-              >
-                <PromptText
-                  prompt={mobilePrompt}
-                  onTagClick={
-                    mobilePrompt.refId
-                      ? () => {
-                          setFilterSafe(
-                            mobilePrompt.bucket === "area"
-                              ? { kind: "area", refId: mobilePrompt.refId! }
-                              : { kind: "value", refId: mobilePrompt.refId! },
-                          );
-                          setPromptsSheet(true);
-                        }
-                      : undefined
-                  }
-                />
+      {storyTab === "draft" ? (
+        <>
+          <div className={`${CARD} flex flex-col gap-2 px-4 py-3`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-ui text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
+                Prompt
               </span>
               <button
                 type="button"
-                onClick={() => insertPrompt(mobilePrompt)}
-                className="inline-flex h-[30px] shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full border px-3 text-xs font-semibold text-foreground transition-opacity hover:opacity-90"
-                style={{
-                  borderColor: LIGHT,
-                  backgroundColor: "var(--accent-soft)",
-                }}
+                onClick={() => setPromptsSheet(true)}
+                className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-accent-link transition-opacity hover:opacity-80"
               >
-                + Answer
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                All prompts
               </button>
             </div>
+            {mobilePrompt ? (
+              <>
+                <div
+                  className={`flex items-start justify-between gap-3 transition-opacity duration-200 ${
+                    mobileFade ? "opacity-0" : "opacity-100"
+                  }`}
+                >
+                  <span
+                    className="min-w-0 flex-1 font-display text-base leading-[1.4] text-foreground"
+                    style={SERIF_TEXT}
+                  >
+                    <PromptText
+                      prompt={mobilePrompt}
+                      onTagClick={
+                        mobilePrompt.refId
+                          ? () => {
+                              setFilterSafe(
+                                mobilePrompt.bucket === "area"
+                                  ? {
+                                      kind: "area",
+                                      refId: mobilePrompt.refId!,
+                                    }
+                                  : {
+                                      kind: "value",
+                                      refId: mobilePrompt.refId!,
+                                    },
+                              );
+                              setPromptsSheet(true);
+                            }
+                          : undefined
+                      }
+                    />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => insertPrompt(mobilePrompt)}
+                    className="inline-flex h-[30px] shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full border px-3 text-xs font-semibold text-foreground transition-opacity hover:opacity-90"
+                    style={{
+                      borderColor: LIGHT,
+                      backgroundColor: "var(--accent-soft)",
+                    }}
+                  >
+                    + Answer
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (unusedPrompts.length <= 1) return;
+                    if (prefersReducedMotion()) {
+                      setMobileSkip((n) => n + 1);
+                      return;
+                    }
+                    setMobileFade(true);
+                    window.setTimeout(() => {
+                      setMobileSkip((n) => n + 1);
+                      setMobileFade(false);
+                    }, 160);
+                  }}
+                  className="w-fit cursor-pointer text-xs font-semibold text-accent-link transition-opacity hover:opacity-80"
+                >
+                  Skip
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-muted">Every prompt is in your story.</p>
+            )}
+          </div>
+
+          {paperDraft}
+          {inlineErrors}
+          {raise && !raiseSheet ? (
             <button
               type="button"
-              onClick={() => {
-                if (unusedPrompts.length <= 1) return;
-                if (prefersReducedMotion()) {
-                  setMobileSkip((n) => n + 1);
-                  return;
-                }
-                setMobileFade(true);
-                window.setTimeout(() => {
-                  setMobileSkip((n) => n + 1);
-                  setMobileFade(false);
-                }, 160);
-              }}
-              className="w-fit cursor-pointer text-xs font-semibold text-accent-link transition-opacity hover:opacity-80"
+              onClick={() => setRaiseSheet(true)}
+              className={`${BTN_OUTLINE} h-10 w-full`}
             >
-              Skip
+              <Sparkles className="h-4 w-4" aria-hidden />
+              Review {raise.findings.length} suggestions
             </button>
-          </>
-        ) : (
-          <p className="text-sm text-muted">Every prompt is in your story.</p>
-        )}
-      </div>
+          ) : null}
 
-      {paperA}
-      {inlineErrors}
-      {raise && !raiseSheet ? (
-        <button
-          type="button"
-          onClick={() => setRaiseSheet(true)}
-          className={`${BTN_OUTLINE} h-10 w-full`}
-        >
-          <Sparkles className="h-4 w-4" aria-hidden />
-          Review {raise.findings.length} suggestions
-        </button>
-      ) : null}
-
-      <BottomSheet
-        open={promptsSheet}
-        onClose={() => setPromptsSheet(false)}
-        title="Prompts"
-        top={150}
-      >
-        {promptsCardFor(true)}
-      </BottomSheet>
-      <BottomSheet
-        open={raiseSheet && Boolean(raise)}
-        onClose={() => setRaiseSheet(false)}
-        title="Raise the ceiling"
-        top={400}
-        footer={
-          raise ? (
-            <>
-              <button
-                type="button"
-                onClick={useAll}
-                disabled={raise.findings.length === 0}
-                className={`${BTN_PRIMARY} h-[42px] flex-1`}
-              >
-                Use all {raise.findings.length}
-              </button>
-              <button
-                type="button"
-                onClick={clearRaise}
-                className={`${BTN_OUTLINE} h-[42px]`}
-              >
-                Done
-              </button>
-            </>
-          ) : null
-        }
-      >
-        {raise ? (
-          <RaiseSheetBody
-            ambition={raise.ambition}
-            findings={raise.findings}
-            activeId={activeId}
-            busy={anotherBusy}
-            onSelect={selectFromList}
-            onUse={sheetUse}
-            onAnother={(f) => void anotherSuggestion(f)}
-            onKeep={sheetKeep}
-          />
-        ) : null}
-      </BottomSheet>
-      {floatingTools}
+          <BottomSheet
+            open={promptsSheet}
+            onClose={() => setPromptsSheet(false)}
+            title="Prompts"
+            top={150}
+          >
+            {promptsCardFor(true)}
+          </BottomSheet>
+          <BottomSheet
+            open={raiseSheet && Boolean(raise)}
+            onClose={() => setRaiseSheet(false)}
+            title="Raise the ceiling"
+            top={400}
+            footer={
+              raise ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={useAll}
+                    disabled={raise.findings.length === 0}
+                    className={`${BTN_PRIMARY} h-[42px] flex-1`}
+                  >
+                    Use all {raise.findings.length}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearRaise}
+                    className={`${BTN_OUTLINE} h-[42px]`}
+                  >
+                    Done
+                  </button>
+                </>
+              ) : null
+            }
+          >
+            {raise ? (
+              <RaiseSheetBody
+                ambition={raise.ambition}
+                findings={raise.findings}
+                activeId={activeId}
+                busy={anotherBusy}
+                onSelect={selectFromList}
+                onUse={sheetUse}
+                onAnother={(f) => void anotherSuggestion(f)}
+                onKeep={sheetKeep}
+              />
+            ) : null}
+          </BottomSheet>
+          {floatingTools}
+        </>
+      ) : (
+        <>
+          {inlineErrors}
+          {paperNarration}
+          <div className="flex flex-col gap-3">{sideColumn}</div>
+        </>
+      )}
       {guidelinesModal}
+      {prepareCheckDialog}
     </div>
   );
 }

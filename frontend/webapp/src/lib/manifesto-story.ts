@@ -9,11 +9,28 @@ import {
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
+import {
+  draftSectionsForCompose,
+  type DraftComposeSection,
+} from "@/lib/manifesto-story-draft";
 
 const LS_KEY = "mm_manifesto_story_v1";
 const SECTION_BREAK = "§BREAK§";
 const WORDS_PER_MINUTE = 140;
 const LISTEN_GOAL_MIN = 10;
+
+/** One chapter block on a prepared (third-person) version — mirrors draft prompts. */
+export type StoryVersionSection = {
+  /** null = text before the first prompt label. */
+  promptId: string | null;
+  /** Short print heading (1–4 words), never the prompt question. */
+  heading: string;
+  text: string;
+  /** Hash of the draft section text when this narration was prepared. */
+  sourceHash?: string;
+  /** True once the user edits this section in the For narration view. */
+  editedByUser?: boolean;
+};
 
 export type StoryVersion = {
   id: string;
@@ -21,6 +38,14 @@ export type StoryVersion = {
   thirdPersonText: string;
   wordCount: number;
   createdAt: string;
+  /** When this version was last prepared / updated from the draft. */
+  preparedAt?: string;
+  /** Structured rewrite; absent on older versions → treat as one Opening section. */
+  sections?: StoryVersionSection[];
+  /** Whole-story AI summary (~150 words), editable. */
+  summary?: string;
+  /** Per-section summaries keyed by {@link storySectionKey}. */
+  sectionSummaries?: Record<string, string>;
   /** Library meditation s3Key once narrated. */
   audioId?: string;
   /** In-flight audio job id. */
@@ -28,6 +53,30 @@ export type StoryVersion = {
   /** Text fingerprint at last successful narration (detect “changed since”). */
   narratedTextHash?: string;
   narratedAt?: string;
+};
+
+export type StoryOnPrintMode = "full" | "summary" | "choose" | "off";
+export type StoryOnPrintChooseStyle = "written" | "summarised";
+
+export type StoryOnPrintSettings = {
+  mode: StoryOnPrintMode;
+  /** Full mode only. */
+  showHeadings: boolean;
+  /** Section keys: promptId or `"opening"`. */
+  chosen: string[];
+  chooseStyle: StoryOnPrintChooseStyle;
+};
+
+/** One Raise the ceiling pass — what was suggested vs left alone. */
+export type StoryRaiseRunV1 = {
+  at: string;
+  ambition: number;
+  findings: Array<{
+    quote: string;
+    suggestion: string;
+    type: string;
+  }>;
+  passed: string[];
 };
 
 export type ManifestoStoryStoreV1 = {
@@ -39,6 +88,21 @@ export type ManifestoStoryStoreV1 = {
   versions: StoryVersion[];
   /** Latest composed version id shown in state B; null = writing. */
   activeVersionId: string | null;
+  /** How the story chapter appears on the Manifesto print. */
+  storyOnPrint: StoryOnPrintSettings;
+  /**
+   * Sentences resolved via Raise (used, or kept non-negative). Re-raise / prepare-check
+   * skips optimise findings on them; type=negative always re-flags. Light edits keep
+   * the lock; a rewrite can unlock. Kept negatives are not added here.
+   */
+  raiseLocks: string[];
+  /**
+   * Subset of raiseLocks from **used** suggestions — mist underline in the editor.
+   * Locks not in raiseAccepted were **kept** non-negative lines (no underline).
+   */
+  raiseAccepted: string[];
+  /** Recent Raise runs (findings + sentences left alone), newest last. */
+  raiseHistory: StoryRaiseRunV1[];
   /** Prefs for state B Narrate card. */
   settleInFirst: boolean;
   fadeOutAtEnd: boolean;
@@ -50,6 +114,37 @@ export type ManifestoStoryStoreV1 = {
   listenCount: number;
   updatedAt: string;
 };
+
+export const DEFAULT_STORY_ON_PRINT: StoryOnPrintSettings = {
+  mode: "off",
+  showHeadings: true,
+  chosen: [],
+  chooseStyle: "written",
+};
+
+/** `promptId` or `"opening"` for null. */
+export function storySectionKey(
+  section: Pick<StoryVersionSection, "promptId">,
+): string {
+  return section.promptId ?? "opening";
+}
+
+/** Sections for print/narration; legacy versions become a single Opening. */
+export function versionSections(v: StoryVersion): StoryVersionSection[] {
+  if (v.sections && v.sections.length > 0) return v.sections;
+  const text = v.thirdPersonText.trim();
+  if (!text) return [];
+  return [{ promptId: null, heading: "Opening", text }];
+}
+
+/** Effective print prefs — Off until a prepared version exists. */
+export function resolveStoryOnPrint(
+  store: ManifestoStoryStoreV1,
+): StoryOnPrintSettings {
+  const base = store.storyOnPrint ?? DEFAULT_STORY_ON_PRINT;
+  if (store.versions.length === 0) return { ...base, mode: "off" };
+  return base;
+}
 
 let memoryStore: ManifestoStoryStoreV1 | null = null;
 
@@ -76,6 +171,50 @@ function newId(prefix: string): string {
 const SEEDED_OPENER_DRAFT =
   "§L§start-here§0§Everything%20worked%20out%2C%20and%20then%20some.%20What%20does%20your%20life%20look%20like%20now%3F§\n";
 
+function normalizeRaiseLocks(raw: unknown, max = 120): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (typeof row !== "string") continue;
+    const n = row.trim().toLowerCase().replace(/\s+/g, " ");
+    if (n.length < 4 || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeRaiseHistory(raw: unknown): StoryRaiseRunV1[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StoryRaiseRunV1[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const o = row as Record<string, unknown>;
+    if (typeof o.at !== "string" || typeof o.ambition !== "number") continue;
+    const findings = Array.isArray(o.findings)
+      ? o.findings
+          .filter((f): f is Record<string, unknown> => Boolean(f && typeof f === "object"))
+          .map((f) => ({
+            quote: typeof f.quote === "string" ? f.quote : "",
+            suggestion: typeof f.suggestion === "string" ? f.suggestion : "",
+            type: typeof f.type === "string" ? f.type : "hedging",
+          }))
+          .filter((f) => f.quote.trim())
+          .slice(0, 8)
+      : [];
+    out.push({
+      at: o.at,
+      ambition: Math.min(1, Math.max(0, o.ambition)),
+      findings,
+      passed: normalizeRaiseLocks(o.passed, 80),
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 export function emptyManifestoStoryStore(): ManifestoStoryStoreV1 {
   return {
     v: 1,
@@ -85,6 +224,10 @@ export function emptyManifestoStoryStore(): ManifestoStoryStoreV1 {
     promptsDone: ["start-here"],
     versions: [],
     activeVersionId: null,
+    storyOnPrint: { ...DEFAULT_STORY_ON_PRINT },
+    raiseLocks: [],
+    raiseAccepted: [],
+    raiseHistory: [],
     settleInFirst: true,
     fadeOutAtEnd: true,
     reminderEnabled: false,
@@ -106,6 +249,62 @@ function asTimeHHMM(raw: unknown, fallback: string): string {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
+function normalizeSection(x: unknown): StoryVersionSection | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  if (typeof o.text !== "string" || !o.text.trim()) return null;
+  if (typeof o.heading !== "string" || !o.heading.trim()) return null;
+  const promptId =
+    o.promptId === null || o.promptId === undefined
+      ? null
+      : typeof o.promptId === "string"
+        ? o.promptId
+        : null;
+  return {
+    promptId,
+    heading: o.heading.trim().slice(0, 48),
+    text: o.text.trim(),
+    ...(typeof o.sourceHash === "string" && o.sourceHash.trim()
+      ? { sourceHash: o.sourceHash.trim().slice(0, 64) }
+      : {}),
+    ...(o.editedByUser === true ? { editedByUser: true } : {}),
+  };
+}
+
+/** Stable short hash of draft section plain text (labels ignored). */
+export function hashStorySectionText(text: string): string {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  let h = 2166136261;
+  for (let i = 0; i < normalized.length; i++) {
+    h ^= normalized.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+function normalizeStoryOnPrint(x: unknown): StoryOnPrintSettings {
+  if (!x || typeof x !== "object") return { ...DEFAULT_STORY_ON_PRINT };
+  const o = x as Record<string, unknown>;
+  const mode =
+    o.mode === "full" ||
+    o.mode === "summary" ||
+    o.mode === "choose" ||
+    o.mode === "off"
+      ? o.mode
+      : "off";
+  const chosen = Array.isArray(o.chosen)
+    ? o.chosen
+        .filter((k): k is string => typeof k === "string")
+        .slice(0, 80)
+    : [];
+  return {
+    mode,
+    showHeadings: o.showHeadings !== false,
+    chosen,
+    chooseStyle: o.chooseStyle === "summarised" ? "summarised" : "written",
+  };
+}
+
 function normalizeVersion(x: unknown): StoryVersion | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
@@ -114,6 +313,22 @@ function normalizeVersion(x: unknown): StoryVersion | null {
   }
   const number = typeof o.number === "number" ? o.number : 1;
   const text = o.thirdPersonText;
+  const sections = Array.isArray(o.sections)
+    ? o.sections
+        .map(normalizeSection)
+        .filter((s): s is StoryVersionSection => Boolean(s))
+        .slice(0, 40)
+    : undefined;
+  const sectionSummaries: Record<string, string> = {};
+  if (o.sectionSummaries && typeof o.sectionSummaries === "object") {
+    for (const [k, v] of Object.entries(
+      o.sectionSummaries as Record<string, unknown>,
+    )) {
+      if (typeof v === "string" && v.trim()) {
+        sectionSummaries[k] = v.trim().slice(0, 2000);
+      }
+    }
+  }
   return {
     id: o.id,
     number,
@@ -121,6 +336,14 @@ function normalizeVersion(x: unknown): StoryVersion | null {
     wordCount:
       typeof o.wordCount === "number" ? o.wordCount : countWords(text),
     createdAt: typeof o.createdAt === "string" ? o.createdAt : safeIso(),
+    ...(typeof o.preparedAt === "string" ? { preparedAt: o.preparedAt } : {}),
+    ...(sections && sections.length ? { sections } : {}),
+    ...(typeof o.summary === "string" && o.summary.trim()
+      ? { summary: o.summary.trim().slice(0, 4000) }
+      : {}),
+    ...(Object.keys(sectionSummaries).length
+      ? { sectionSummaries }
+      : {}),
     ...(typeof o.audioId === "string" ? { audioId: o.audioId } : {}),
     ...(typeof o.pendingJobId === "string"
       ? { pendingJobId: o.pendingJobId }
@@ -130,6 +353,73 @@ function normalizeVersion(x: unknown): StoryVersion | null {
       : {}),
     ...(typeof o.narratedAt === "string" ? { narratedAt: o.narratedAt } : {}),
   };
+}
+
+/** Draft section keys that no longer match the prepared version’s sourceHash. */
+export function storyNarrationDrift(
+  draft: string,
+  version: StoryVersion | null | undefined,
+): {
+  draftSections: DraftComposeSection[];
+  changedKeys: string[];
+  changedCount: number;
+} {
+  const draftSections = draftSectionsForCompose(draft);
+  if (!version) {
+    return {
+      draftSections,
+      changedKeys: draftSections.map((s) => s.promptId ?? "opening"),
+      changedCount: draftSections.length,
+    };
+  }
+  const prepared = versionSections(version);
+  const byKey = new Map(
+    prepared.map((s) => [storySectionKey(s), s] as const),
+  );
+  const changedKeys: string[] = [];
+  const draftKeys = new Set<string>();
+  for (const d of draftSections) {
+    const key = d.promptId ?? "opening";
+    draftKeys.add(key);
+    const hash = hashStorySectionText(d.text);
+    const prev = byKey.get(key);
+    if (!prev || !prev.sourceHash || prev.sourceHash !== hash) {
+      changedKeys.push(key);
+    }
+  }
+  for (const s of prepared) {
+    const key = storySectionKey(s);
+    if (!draftKeys.has(key)) changedKeys.push(key);
+  }
+  return {
+    draftSections,
+    changedKeys: [...new Set(changedKeys)],
+    changedCount: new Set(changedKeys).size,
+  };
+}
+
+/** Sections to send for a partial update: each changed + neighbours as context. */
+export function composeSectionsForUpdate(
+  draftSections: readonly DraftComposeSection[],
+  changedKeys: readonly string[],
+): Array<DraftComposeSection & { role: "rewrite" | "context" }> {
+  const keys = new Set(changedKeys);
+  const include = new Set<number>();
+  draftSections.forEach((s, i) => {
+    if (!keys.has(s.promptId ?? "opening")) return;
+    include.add(i);
+    if (i > 0) include.add(i - 1);
+    if (i < draftSections.length - 1) include.add(i + 1);
+  });
+  const out: Array<DraftComposeSection & { role: "rewrite" | "context" }> = [];
+  draftSections.forEach((s, i) => {
+    if (!include.has(i)) return;
+    out.push({
+      ...s,
+      role: keys.has(s.promptId ?? "opening") ? "rewrite" : "context",
+    });
+  });
+  return out;
 }
 
 export function normalizeManifestoStoryStore(
@@ -168,6 +458,13 @@ export function normalizeManifestoStoryStore(
     versions,
     activeVersionId:
       typeof o.activeVersionId === "string" ? o.activeVersionId : null,
+    storyOnPrint: normalizeStoryOnPrint(o.storyOnPrint),
+    raiseLocks: normalizeRaiseLocks(o.raiseLocks),
+    // Older stores only tracked accepts in raiseLocks — keep underlines there.
+    raiseAccepted: normalizeRaiseLocks(
+      o.raiseAccepted !== undefined ? o.raiseAccepted : o.raiseLocks,
+    ),
+    raiseHistory: normalizeRaiseHistory(o.raiseHistory),
     settleInFirst: o.settleInFirst !== false,
     fadeOutAtEnd: o.fadeOutAtEnd !== false,
     reminderEnabled: o.reminderEnabled === true,
@@ -346,21 +643,186 @@ export function appendSpokenToDraft(draft: string, spoken: string): string {
 export function addStoryVersion(
   store: ManifestoStoryStoreV1,
   thirdPersonText: string,
+  sections?: StoryVersionSection[],
+  opts?: { draft?: string },
 ): ManifestoStoryStoreV1 {
   const text = thirdPersonText.trim();
   const number =
     store.versions.reduce((m, v) => Math.max(m, v.number), 0) + 1;
+  const draftHashes = new Map<string, string>();
+  if (opts?.draft) {
+    for (const d of draftSectionsForCompose(opts.draft)) {
+      draftHashes.set(d.promptId ?? "opening", hashStorySectionText(d.text));
+    }
+  }
+  const now = safeIso();
+  const cleanSections = (sections ?? [])
+    .map((s) => {
+      const key = s.promptId ?? "opening";
+      const sourceHash =
+        s.sourceHash?.trim() || draftHashes.get(key) || undefined;
+      return {
+        promptId: s.promptId,
+        heading: s.heading.trim().slice(0, 48) || "Opening",
+        text: s.text.trim(),
+        ...(sourceHash ? { sourceHash } : {}),
+        ...(s.editedByUser === true ? { editedByUser: true } : {}),
+      };
+    })
+    .filter((s) => s.text.length > 0)
+    .slice(0, 40);
   const version: StoryVersion = {
     id: newId("storyv"),
     number,
     thirdPersonText: text,
     wordCount: countWords(text),
-    createdAt: safeIso(),
+    createdAt: now,
+    preparedAt: now,
+    ...(cleanSections.length ? { sections: cleanSections } : {}),
   };
+  const firstPrepare = store.versions.length === 0;
+  const storyOnPrint =
+    firstPrepare && store.storyOnPrint.mode === "off"
+      ? {
+          ...store.storyOnPrint,
+          mode: "full" as const,
+          chosen: cleanSections.map(storySectionKey),
+        }
+      : store.storyOnPrint;
   return {
     ...store,
     versions: [version, ...store.versions].slice(0, 40),
     activeVersionId: version.id,
+    storyOnPrint,
+    updatedAt: now,
+  };
+}
+
+/**
+ * Save a new version after updating out-of-date sections: copy unchanged
+ * sections (keeping editedByUser), replace updated ones with fresh hashes.
+ */
+export function addUpdatedStoryVersion(
+  store: ManifestoStoryStoreV1,
+  opts: {
+    draft: string;
+    updatedSections: StoryVersionSection[];
+    baseVersionId: string;
+  },
+): ManifestoStoryStoreV1 {
+  const base =
+    store.versions.find((v) => v.id === opts.baseVersionId) ??
+    store.versions[0];
+  if (!base) {
+    const text = opts.updatedSections.map((s) => s.text).join("\n\n");
+    return addStoryVersion(store, text, opts.updatedSections, {
+      draft: opts.draft,
+    });
+  }
+  const draftSecs = draftSectionsForCompose(opts.draft);
+  const draftHashes = new Map(
+    draftSecs.map((d) => [
+      d.promptId ?? "opening",
+      hashStorySectionText(d.text),
+    ] as const),
+  );
+  const prevByKey = new Map(
+    versionSections(base).map((s) => [storySectionKey(s), s] as const),
+  );
+  const updatedByKey = new Map(
+    opts.updatedSections.map((s) => [storySectionKey(s), s] as const),
+  );
+  const merged: StoryVersionSection[] = [];
+  for (const d of draftSecs) {
+    const key = d.promptId ?? "opening";
+    const upd = updatedByKey.get(key);
+    if (upd) {
+      merged.push({
+        promptId: upd.promptId,
+        heading: upd.heading.trim().slice(0, 48) || "Opening",
+        text: upd.text.trim(),
+        sourceHash: draftHashes.get(key),
+        editedByUser: false,
+      });
+      continue;
+    }
+    const prev = prevByKey.get(key);
+    if (prev) {
+      merged.push({
+        ...prev,
+        sourceHash: prev.sourceHash ?? draftHashes.get(key),
+      });
+    }
+  }
+  const text = merged.map((s) => s.text).join("\n\n").trim();
+  return addStoryVersion(store, text, merged, { draft: opts.draft });
+}
+
+/** Patch one narration section’s text; marks editedByUser. */
+export function patchVersionSectionText(
+  store: ManifestoStoryStoreV1,
+  versionId: string,
+  promptId: string | null,
+  text: string,
+): ManifestoStoryStoreV1 {
+  return {
+    ...store,
+    versions: store.versions.map((v) => {
+      if (v.id !== versionId) return v;
+      const sections = versionSections(v).map((s) => {
+        if ((s.promptId ?? null) !== (promptId ?? null)) return s;
+        return { ...s, text: text.trim(), editedByUser: true };
+      });
+      const thirdPersonText = sections.map((s) => s.text).join("\n\n").trim();
+      return {
+        ...v,
+        sections,
+        thirdPersonText,
+        wordCount: countWords(thirdPersonText),
+      };
+    }),
+    updatedAt: safeIso(),
+  };
+}
+
+export function patchStoryOnPrint(
+  store: ManifestoStoryStoreV1,
+  patch: Partial<StoryOnPrintSettings>,
+): ManifestoStoryStoreV1 {
+  return {
+    ...store,
+    storyOnPrint: { ...store.storyOnPrint, ...patch },
+    updatedAt: safeIso(),
+  };
+}
+
+export function patchVersionSummaries(
+  store: ManifestoStoryStoreV1,
+  versionId: string,
+  patch: {
+    summary?: string;
+    sectionSummaries?: Record<string, string>;
+  },
+): ManifestoStoryStoreV1 {
+  return {
+    ...store,
+    versions: store.versions.map((v) => {
+      if (v.id !== versionId) return v;
+      return {
+        ...v,
+        ...(typeof patch.summary === "string"
+          ? { summary: patch.summary }
+          : {}),
+        ...(patch.sectionSummaries
+          ? {
+              sectionSummaries: {
+                ...(v.sectionSummaries ?? {}),
+                ...patch.sectionSummaries,
+              },
+            }
+          : {}),
+      };
+    }),
     updatedAt: safeIso(),
   };
 }

@@ -11,13 +11,24 @@ import {
   streamMedimadeChat,
 } from "@/lib/medimade-api";
 import { draftPlainText } from "@/lib/manifesto-story";
+import {
+  annotateDraftWithPrompts,
+  type RaiseLifeAreaMeta,
+} from "@/lib/manifesto-story-draft";
+import {
+  storyPronounComposeCue,
+  type AccountPronouns,
+} from "@/lib/story-pronouns";
+
+export type { RaiseLifeAreaMeta };
 
 export type StoryFindingType =
   | "hedging"
   | "future"
   | "small"
   | "settling"
-  | "doubt";
+  | "doubt"
+  | "negative";
 
 export type StoryFinding = {
   id: string;
@@ -39,7 +50,243 @@ const FINDING_TYPES = new Set<StoryFindingType>([
   "small",
   "settling",
   "doubt",
+  "negative",
 ]);
+
+/** Normalize a sentence for raise-lock storage / compare. */
+export function normalizeRaiseLock(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Sentence (or line) containing [start, end) in plain draft text. */
+export function sentenceContaining(
+  text: string,
+  start: number,
+  end: number,
+): string {
+  const n = text.length;
+  let s = Math.max(0, Math.min(start, n));
+  let e = Math.max(s, Math.min(end, n));
+  while (s > 0 && !/[.!?…\n]/.test(text[s - 1]!)) s -= 1;
+  while (s < n && /\s/.test(text[s]!)) s += 1;
+  while (e < n && !/[.!?…\n]/.test(text[e]!)) e += 1;
+  if (e < n && /[.!?…]/.test(text[e]!)) e += 1;
+  return text.slice(s, e).trim();
+}
+
+function significantWords(s: string): string[] {
+  return normalizeRaiseLock(s)
+    .split(" ")
+    .filter((w) => w.length > 2);
+}
+
+/** True when a lock still matches this sentence (exact, containment, or word overlap). */
+export function raiseLockMatchesSentence(
+  sentence: string,
+  lock: string,
+): boolean {
+  const n = normalizeRaiseLock(sentence);
+  const l = normalizeRaiseLock(lock);
+  if (!n || !l) return false;
+  if (n === l || n.includes(l) || l.includes(n)) return true;
+  const aw = significantWords(l);
+  if (aw.length === 0) return false;
+  const bw = new Set(significantWords(n));
+  let hit = 0;
+  for (const w of aw) if (bw.has(w)) hit += 1;
+  return hit / aw.length >= 0.55;
+}
+
+export function isRaiseLockedSentence(
+  sentence: string,
+  locks: readonly string[],
+): boolean {
+  return locks.some((lock) => raiseLockMatchesSentence(sentence, lock));
+}
+
+/** Drop locks that no longer resemble any sentence in the draft. */
+export function pruneRaiseLocks(
+  draft: string,
+  locks: readonly string[],
+): string[] {
+  if (locks.length === 0) return [];
+  const text = draftPlainText(draft);
+  const sentences = text
+    .split(/(?<=[.!?…])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sentences.length === 0) return [];
+  const out: string[] = [];
+  for (const lock of locks) {
+    if (sentences.some((s) => raiseLockMatchesSentence(s, lock))) {
+      out.push(normalizeRaiseLock(lock));
+    }
+  }
+  return out;
+}
+
+/**
+ * Keep findings whose quote sits outside already-checked sentences.
+ * type=negative always passes — overtly negative lines must re-flag every Raise /
+ * prepare pass even if the user previously chose Keep.
+ */
+export function filterFindingsAgainstRaiseLocks(
+  draft: string,
+  findings: readonly StoryFinding[],
+  locks: readonly string[],
+): StoryFinding[] {
+  if (locks.length === 0) return [...findings];
+  const text = draftPlainText(draft);
+  return findings.filter((f) => {
+    if (f.type === "negative") return true;
+    const sentence = sentenceContaining(text, f.start, f.end);
+    return !isRaiseLockedSentence(sentence, locks);
+  });
+}
+
+/** Strong self-insult / degrading markers — always re-flag; never lock. */
+const OVERT_NEGATIVE_RE =
+  /\b(cunt|prick|asshole|arsehole|bastard|dickhead|shithead|wanker|twat|tosser|scumbag|piece of (shit|crap)|worthless|pathetic|hate myself|nobody likes me|hate me)\b/i;
+
+const OVERT_NEGATIVE_SOFT_RE =
+  /\b((i'?m|i am|people (say|think)|friends?\s+(would\s+)?(say|describe|call|think))\b.{0,48}\b(awful|terrible|horrible|worst|toxic|nasty|idiot|stupid|ugly|failure|loser|monster)\b)/i;
+
+/** True when a sentence is overtly negative / self-degrading (not merely small). */
+export function isOvertlyNegativeSentence(sentence: string): boolean {
+  const n = sentence.trim();
+  if (n.length < 3) return false;
+  return OVERT_NEGATIVE_RE.test(n) || OVERT_NEGATIVE_SOFT_RE.test(n);
+}
+
+/**
+ * Drop raise locks that still match overtly negative sentences so they are never
+ * sent as ALREADY CHECKED (including locks from an earlier Keep).
+ */
+export function stripOvertlyNegativeRaiseLocks(
+  draft: string,
+  locks: readonly string[],
+): string[] {
+  const pruned = pruneRaiseLocks(draft, locks);
+  if (pruned.length === 0) return [];
+  const text = draftPlainText(draft);
+  const neg = sentenceRanges(text).filter((r) =>
+    isOvertlyNegativeSentence(text.slice(r.start, r.end)),
+  );
+  if (neg.length === 0) return pruned;
+  return pruned.filter(
+    (lock) =>
+      !neg.some((r) =>
+        raiseLockMatchesSentence(text.slice(r.start, r.end), lock),
+      ),
+  );
+}
+
+function heuristicNegativeSuggestion(quote: string): string {
+  const q = quote.trim();
+  if (/friends?/i.test(q) && /describe|say|call|think/i.test(q)) {
+    return "Friends would describe me as warm, loyal, and someone they feel lucky to know.";
+  }
+  if (/^i\b/i.test(q)) {
+    return "I am warm, generous, and deeply loved by the people around me.";
+  }
+  // Fragments / bare insults under a “how others see you” answer — full sentence.
+  return "Friends would describe me as warm, loyal, and someone they feel lucky to know.";
+}
+
+/** Local pass: always surface overtly negative sentences (locks cannot suppress). */
+function heuristicNegativeFindings(text: string): StoryFinding[] {
+  const hits: Array<{ start: number; end: number; quote: string }> = [];
+  for (const r of sentenceRanges(text)) {
+    const quote = text.slice(r.start, r.end);
+    if (!isOvertlyNegativeSentence(quote)) continue;
+    const last = hits[hits.length - 1];
+    // Merge adjacent insults into one finding (e.g. two short swear sentences).
+    if (last && r.start <= last.end + 2) {
+      last.end = r.end;
+      last.quote = text.slice(last.start, last.end);
+    } else {
+      hits.push({ start: r.start, end: r.end, quote });
+    }
+  }
+  return hits.map((h, i) => ({
+    id: `hn_${h.start}_${i}`,
+    start: h.start,
+    end: h.end,
+    quote: h.quote,
+    type: "negative" as const,
+    suggestion: heuristicNegativeSuggestion(h.quote),
+  }));
+}
+
+export function raiseLockFromAcceptedSpan(
+  nodeText: string,
+  start: number,
+  end: number,
+): string | null {
+  const sentence = sentenceContaining(nodeText, start, end);
+  const n = normalizeRaiseLock(sentence);
+  return n.length >= 4 ? n : null;
+}
+
+/** All sentence ranges in plain text (trimmed bounds). */
+export function sentenceRanges(
+  text: string,
+): Array<{ start: number; end: number; lock: string }> {
+  const ranges: Array<{ start: number; end: number; lock: string }> = [];
+  if (!text) return ranges;
+  let i = 0;
+  while (i < text.length) {
+    while (i < text.length && /\s/.test(text[i]!)) i += 1;
+    if (i >= text.length) break;
+    let j = i;
+    while (j < text.length && !/[.!?…\n]/.test(text[j]!)) j += 1;
+    if (j < text.length && /[.!?…]/.test(text[j]!)) j += 1;
+    let a = i;
+    while (a < j && /\s/.test(text[a]!)) a += 1;
+    let b = j;
+    while (b > a && /\s/.test(text[b - 1]!)) b -= 1;
+    if (a < b) {
+      const lock = normalizeRaiseLock(text.slice(a, b));
+      if (lock.length >= 4) ranges.push({ start: a, end: b, lock });
+    }
+    i = Math.max(j, i + 1);
+  }
+  return ranges;
+}
+
+/** Character ranges in `text` whose sentences still match a raise lock. */
+export function lockedSentenceRanges(
+  text: string,
+  locks: readonly string[],
+): Array<{ start: number; end: number }> {
+  if (!text || locks.length === 0) return [];
+  return sentenceRanges(text)
+    .filter((r) => isRaiseLockedSentence(text.slice(r.start, r.end), locks))
+    .map(({ start, end }) => ({ start, end }));
+}
+
+/**
+ * Sentences present in the draft that no finding touched — treated as
+ * “already reviewed, leave alone” on later Raise passes.
+ */
+export function raiseLocksForPassedSentences(
+  draft: string,
+  findings: readonly { start: number; end: number }[],
+): string[] {
+  const text = draftPlainText(draft);
+  const ranges = sentenceRanges(text);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of ranges) {
+    const hit = findings.some(
+      (f) => !(f.end <= r.start || f.start >= r.end),
+    );
+    if (hit || seen.has(r.lock)) continue;
+    seen.add(r.lock);
+    out.push(r.lock);
+  }
+  return out;
+}
 
 function extractJsonObject(raw: string): unknown {
   const t = raw.trim();
@@ -107,7 +354,10 @@ function resolveOffsets(
 }
 
 async function postStoryJson(
-  path: "/manifest/story/raise" | "/manifest/story/compose",
+  path:
+    | "/manifest/story/raise"
+    | "/manifest/story/compose"
+    | "/manifest/story/summarize",
   body: Record<string, unknown>,
   timeoutMs = 28_000,
 ): Promise<Record<string, unknown> | null> {
@@ -132,6 +382,158 @@ async function postStoryJson(
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+/** Common glue words — phrases made only of these are not "specific". */
+const RAISE_PHRASE_STOP = new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "but",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "for",
+  "with",
+  "from",
+  "by",
+  "as",
+  "is",
+  "am",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "i",
+  "my",
+  "me",
+  "mine",
+  "we",
+  "our",
+  "you",
+  "your",
+  "he",
+  "she",
+  "they",
+  "his",
+  "her",
+  "their",
+  "this",
+  "that",
+  "these",
+  "those",
+  "it",
+  "its",
+  "every",
+  "each",
+  "all",
+  "into",
+  "onto",
+  "over",
+  "under",
+  "about",
+  "after",
+  "before",
+  "when",
+  "while",
+  "where",
+  "who",
+  "whom",
+  "which",
+  "what",
+  "how",
+  "so",
+  "too",
+  "very",
+  "just",
+  "also",
+  "than",
+  "then",
+  "there",
+  "here",
+  "not",
+  "no",
+  "yes",
+  "do",
+  "does",
+  "did",
+  "have",
+  "has",
+  "had",
+  "will",
+  "would",
+  "can",
+  "could",
+  "should",
+  "may",
+  "might",
+  "must",
+]);
+
+/** Multi-word flourishes newly introduced by a suggestion (not already in quote). */
+export function raiseIntroducedSpecificPhrases(
+  quote: string,
+  suggestion: string,
+): string[] {
+  const sug = suggestion.trim();
+  if (!sug) return [];
+  const qNorm = normalizeRaiseLock(quote);
+  const words = normalizeRaiseLock(sug).split(" ").filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let n = 4; n >= 3; n -= 1) {
+    for (let i = 0; i + n <= words.length; i += 1) {
+      const slice = words.slice(i, i + n);
+      const content = slice.filter(
+        (w) => w.length > 2 && !RAISE_PHRASE_STOP.has(w),
+      );
+      if (content.length < 2) continue;
+      const gram = slice.join(" ");
+      if (qNorm.includes(gram) || seen.has(gram)) continue;
+      seen.add(gram);
+      out.push(gram);
+    }
+  }
+  return out;
+}
+
+/**
+ * Drop findings that would re-paste a distinctive multi-word flourish already
+ * in the draft elsewhere, or already claimed by an earlier finding.
+ */
+export function filterRaiseDuplicateSpecifics(
+  text: string,
+  findings: readonly StoryFinding[],
+): StoryFinding[] {
+  if (findings.length === 0) return [];
+  const ordered = [...findings].sort((a, b) => a.start - b.start);
+  const claimed = new Set<string>();
+  const kept: StoryFinding[] = [];
+  for (const f of ordered) {
+    if (!f.suggestion.trim()) {
+      kept.push(f);
+      continue;
+    }
+    const phrases = raiseIntroducedSpecificPhrases(f.quote, f.suggestion);
+    if (phrases.length === 0) {
+      kept.push(f);
+      continue;
+    }
+    const elsewhere = normalizeRaiseLock(
+      `${text.slice(0, f.start)} ${text.slice(f.end)}`,
+    );
+    const dup = phrases.some((p) => claimed.has(p) || elsewhere.includes(p));
+    if (dup) continue;
+    for (const p of phrases) claimed.add(p);
+    kept.push(f);
+  }
+  return kept.sort((a, b) => a.start - b.start);
 }
 
 function parseRaisePayload(
@@ -176,34 +578,79 @@ function parseRaisePayload(
     });
   }
   findings.sort((a, b) => a.start - b.start);
-  return { ambition, findings };
+  return {
+    ambition,
+    findings: filterRaiseDuplicateSpecifics(text, findings),
+  };
+}
+
+function applyRaiseLocks(
+  draft: string,
+  result: StoryRaiseResult,
+  locks: readonly string[],
+): StoryRaiseResult {
+  const plain = draftPlainText(draft);
+  const unlocked =
+    locks.length === 0
+      ? result.findings
+      : filterFindingsAgainstRaiseLocks(draft, result.findings, locks);
+  return {
+    ...result,
+    findings: filterRaiseDuplicateSpecifics(plain, unlocked),
+  };
 }
 
 export async function raiseStoryCeiling(
   draft: string,
+  raiseLocks: readonly string[] = [],
+  opts?: {
+    lifeAreas?: readonly RaiseLifeAreaMeta[];
+    values?: readonly string[];
+    valuesById?: ReadonlyMap<string, string> | Record<string, string>;
+  },
 ): Promise<StoryRaiseResult> {
   const text = draftPlainText(draft);
   if (!text.trim()) {
     return { ambition: 0, findings: [] };
   }
+  const forModel =
+    annotateDraftWithPrompts(draft, {
+      lifeAreas: opts?.lifeAreas,
+      values: opts?.values,
+      valuesById: opts?.valuesById,
+    }) || text;
+  // Never treat overtly negative lines as ALREADY CHECKED (old Keep locks too).
+  const locks = stripOvertlyNegativeRaiseLocks(draft, raiseLocks);
 
-  const local = heuristicRaise(text);
-  const remote = await postStoryJson("/manifest/story/raise", { draft });
+  const local = applyRaiseLocks(draft, heuristicRaise(text), locks);
+  const remote = await postStoryJson("/manifest/story/raise", {
+    draft,
+    raiseContext: forModel,
+    raiseLocks: locks,
+    raiseValues: (opts?.values ?? []).filter((v) => v.trim()).slice(0, 20),
+  });
   if (remote) {
-    const parsed = parseRaisePayload(remote, text);
-    if (
-      parsed.findings.length > 0 ||
-      local.findings.length > 0 ||
-      countApproxWords(text) >= 40
-    ) {
-      return mergeRaiseFindings(parsed, local);
-    }
-    return parsed;
+    const parsed = applyRaiseLocks(
+      draft,
+      parseRaisePayload(remote, text),
+      locks,
+    );
+    // Always merge local so heuristic negatives survive an empty/soft remote.
+    return applyRaiseLocks(draft, mergeRaiseFindings(parsed, local), locks);
   }
 
   // Don't fall through to the chat stream — that path can hang the UI.
   // Prefer the local hedge pass, then a bounded ask via the raise endpoint.
   if (local.findings.length > 0) return local;
+
+  const lockBlock =
+    locks.length > 0
+      ? `ALREADY CHECKED — skip optimise types (hedging|future|small|settling|doubt) inside these sentences ` +
+        `(or close rewrites). ALWAYS still flag type=negative if the text is overtly negative / ` +
+        `self-degrading — locks do not suppress negative:\n` +
+        locks.map((l) => `- ${l}`).join("\n") +
+        `\n\n`
+      : "";
 
   const prompt =
     `You raise the ambition of a first-person life vision written as if already true.\n` +
@@ -211,20 +658,47 @@ export async function raiseStoryCeiling(
     `Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of, kinda, wanna), ` +
     `future tense (I will, I'm going to), small thinking (a few, local, small rooms, enough), ` +
     `settling ("which is enough for me"), lukewarm affection or desire ` +
-    `(like → love, enjoy → adore, okay with → thrilled by), clumsy/unprofessional wording, and past-doubt leftovers ` +
-    `(again, finally, this time, still) — remove those with suggestion "".\n` +
+    `(like → love, enjoy → adore, okay with → thrilled by), clumsy/unprofessional wording, past-doubt leftovers ` +
+    `(again, finally, this time, still) — remove those with suggestion "", ` +
+    `and wholly negative / self-degrading passages that are the opposite of a life vision.\n` +
     `Steer away from past difficulty — the life is already true, with no comeback story.\n` +
-    `QUALITY: Mentally apply every suggestion. The draft must read as natural, grammatical, professional ` +
-    `present-tense prose. Include punctuation/capitalisation in suggestions when neighbouring clauses would smash together.\n` +
-    `Prefer the smallest quote that still leaves a polished sentence. If a tiny swap leaves awkward leftovers ` +
-    `(e.g. “kinda wanna be”→“am” leaving “I am big in life”), expand the quote to the whole weak phrase and rewrite it boldly.\n` +
-    `Bad: “kinda wanna be”→“am”. Good: “kinda wanna be big in life”→“live a big life” (or “I’m living a big life”).\n` +
+    `PROMPT AWARENESS: Answers sit under [Prompt: …] lines. Honour that prompt’s subject and timeframe. ` +
+    `Bad: morning prompt → “every night”. Good: morning prompt → raised morning rituals. ` +
+    `When [Life area: …], Dream:, and What it looks like: appear, stay inside that life area’s dream/vision — ` +
+    `don’t drift into unrelated domains. ` +
+    `When “Writer's values” appear, let them softly colour tone and larger rewrites — do not centre every ` +
+    `suggestion on them or force-mention them. quote/suggestion are answer text only — never meta lines.\n` +
+    `SUGGESTION FIELD: suggestion must be ONLY the rewritten first-person text that replaces quote — nothing else. ` +
+    `Bad: “Replace the whole passage with: I wake…”. Good: “I wake each morning in a sun-filled loft…”.\n` +
+    `NEGATIVE (type negative): flag self-put-downs, harsh self-judgement, or others thinking badly of them ` +
+    `(e.g. “my friends would describe me as a massive prick”). suggestion = the positive opposite, same subject ` +
+    `and specifics, same person as the text. Never flag grammar. Fair/sensible but small → other types; keep theme, raise the ceiling.\n` +
+    `AMBITION LEAP (required): For each finding, jump straight to the delightfully delusional option — one bold leap, ` +
+    `not a timid half-step. Bad: “local rooms”→“packed houses” (still small). ` +
+    `Good: “play music in local rooms”→“play sold-out arenas across the country”.\n` +
+    `QUALITY: Mentally apply every suggestion and read the FULL sentence. It must be natural, grammatical, ` +
+    `professional present-tense English — correct prepositions, articles, and verb forms. Include punctuation ` +
+    `when neighbouring clauses would smash together.\n` +
+    `Prefer the smallest quote that still leaves a polished sentence. If a tiny swap leaves awkward leftovers, ` +
+    `expand the quote and rewrite the whole phrase.\n` +
+    `Bad: “kinda wanna be”→“am” (→“I am big in life”). Good: “kinda wanna be big in life”→“live a big life”.\n` +
+    `Bad: “local rooms”→“packed houses” yielding “I play music packed houses…”. ` +
+    `Good: “play music in local rooms”→“play sold-out arenas across the country”.\n` +
+    `Never drop a preposition the surrounding words still need (in, to, for, with, at, of).\n` +
     `Also rewrite slangy residue (“ya know”, “big in life”, “its in gods hands”) into clear, confident wording.\n` +
     `Example: “I think my mates like me again” → “I think”→“I know”, “like”→“love”, “ again”→"" ` +
     `so the line becomes “I know my mates love me”.\n` +
-    `Keep names, places, and voice. Never invent unrelated facts. At most 8 findings.\n` +
-    `Reply with ONLY JSON: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt","suggestion":"..."}]}\n\n` +
-    `DRAFT:\n${text.slice(0, 12000)}`;
+    `Keep names, places, and voice when optimising. Preserve positive figures the writer names ` +
+    `(Jesus, God, Mary, a partner, a guru) — never swap “Jesus” for “God” or generalise a beloved name; ` +
+    `only rewrite degrading/negative parts around them. Never invent unrelated facts. At most 8 findings.\n` +
+    `NO DUPLICATE SPECIFICS: Mentally apply ALL suggestions together. A distinctive invented flourish ` +
+    `(brand/status name, signature luxury image) may appear at most once in the whole draft — never paste ` +
+    `the same specific image into two answers. Bad: two findings both add “Michelin-starred feasts every night”. ` +
+    `Good: one dining raise uses Michelin; another uses a different vivid detail. If the draft already has ` +
+    `such a flourish, do not invent the same one again elsewhere.\n` +
+    `Reply with ONLY JSON: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestion":"..."}]}\n\n` +
+    lockBlock +
+    `DRAFT (prompt-tagged; quote must match answer text only):\n${forModel.slice(0, 12000)}`;
 
   try {
     const parsed = await Promise.race([
@@ -233,9 +707,13 @@ export async function raiseStoryCeiling(
         window.setTimeout(() => reject(new Error("raise chat timeout")), 20_000),
       ),
     ]);
-    return mergeRaiseFindings(
-      parseRaisePayload(parsed as Record<string, unknown>, text),
-      local,
+    return applyRaiseLocks(
+      draft,
+      mergeRaiseFindings(
+        parseRaisePayload(parsed as Record<string, unknown>, text),
+        local,
+      ),
+      locks,
     );
   } catch {
     return local;
@@ -329,6 +807,8 @@ function mergeRaiseFindings(
 
 /** Offline / short-draft fallback when the model misses obvious hedges. */
 function heuristicRaise(text: string): StoryRaiseResult {
+  const findings: StoryFinding[] = [...heuristicNegativeFindings(text)];
+
   const patterns: Array<{
     re: RegExp;
     type: StoryFindingType;
@@ -354,9 +834,8 @@ function heuristicRaise(text: string): StoryRaiseResult {
     { re: /\s+this time\b/i, type: "doubt", suggestion: "" },
   ];
 
-  const findings: StoryFinding[] = [];
   for (const p of patterns) {
-    if (findings.length >= 6) break;
+    if (findings.length >= 8) break;
     const m = p.re.exec(text);
     if (!m || m.index == null) continue;
     const quote = m[0]!;
@@ -374,11 +853,16 @@ function heuristicRaise(text: string): StoryRaiseResult {
   }
 
   const ambition =
-    findings.length === 0
-      ? countApproxWords(text) < 12
-        ? 0.15
-        : 0.45
-      : Math.max(0.08, 0.28 - findings.length * 0.04);
+    findings.some((f) => f.type === "negative")
+      ? Math.min(
+          0.12,
+          Math.max(0.05, 0.2 - findings.length * 0.02),
+        )
+      : findings.length === 0
+        ? countApproxWords(text) < 12
+          ? 0.15
+          : 0.45
+        : Math.max(0.08, 0.28 - findings.length * 0.04);
   return { ambition, findings };
 }
 
@@ -386,16 +870,62 @@ export async function regenerateStorySuggestion(opts: {
   draft: string;
   quote: string;
   type: StoryFindingType;
+  /** Owning story prompt, e.g. “What does your morning look like?” */
+  promptText?: string;
+  lifeAreas?: readonly RaiseLifeAreaMeta[];
+  /** When set, focus regenerate on this life area’s dream/vision. */
+  lifeArea?: RaiseLifeAreaMeta | null;
+  values?: readonly string[];
+  valuesById?: ReadonlyMap<string, string> | Record<string, string>;
 }): Promise<string> {
+  const promptCue = opts.promptText?.trim()
+    ? `This answer is under the prompt “${opts.promptText.trim()}”. ` +
+      `Keep the suggestion true to that prompt’s subject and timeframe ` +
+      `(e.g. morning stays morning — never “every night”). `
+    : "";
+  const area = opts.lifeArea;
+  const areaCue = area
+    ? `Life area “${area.title.trim() || "Untitled"}”. ` +
+      (area.dream.trim()
+        ? `Dream: ${area.dream.trim().slice(0, 360)}. `
+        : "") +
+      (area.vision.trim()
+        ? `What it looks like: ${area.vision.trim().slice(0, 360)}. `
+        : "") +
+      `Stay inside this life area — don’t invent a different domain. `
+    : "";
+  const valuesList = (opts.values ?? [])
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  const valuesCue = valuesList.length
+    ? `Writer's values (soft influence only — colour tone/larger rewrites; do not force-mention): ${valuesList.join("; ")}. `
+    : "";
   const prompt =
-    `Rewrite this cautious phrase from a first-person life vision into one bolder present-tense replacement. ` +
-    `The suggestion must slot into the surrounding sentence so the whole line reads as natural, grammatical, ` +
-    `professional prose — not a tiny word swap that leaves awkward leftovers (never “kinda wanna be”→“am” ` +
-    `if that would yield “I am big in life”; rewrite the whole weak phrase instead). ` +
+    `Rewrite this phrase from a first-person life vision into one bolder present-tense replacement. ` +
+    promptCue +
+    areaCue +
+    valuesCue +
+    `The JSON "suggestion" value must be ONLY that rewritten text — nothing else. ` +
+    `Bad: “Replace the whole passage with: I wake…”. Good: “I wake each morning in a sun-filled loft…”. ` +
+    `If type is negative (self-put-down / others thinking badly): suggestion = the positive opposite, same subject and person. ` +
+    `If the quote is wholly negative/degrading/absurd misery: suggestion = a complete sincere rewrite. ` +
+    `If it is fair/sensible but small: keep the same theme and details; only raise the ceiling. ` +
+    `Never rewrite for grammar alone. ` +
+    `Jump straight to the delightfully delusional option — one bold leap, not a timid half-step ` +
+    `(bad: “local rooms”→“packed houses”; good: “local rooms”→“sold-out arenas”). ` +
+    `After substituting into the surrounding sentence, the FULL line must be natural, grammatical English ` +
+    `(correct prepositions/articles — never “music packed houses”; use “music in packed houses” or expand ` +
+    `the quote). Not a tiny swap that leaves awkward leftovers (never “kinda wanna be”→“am”). ` +
     `Include punctuation/capitalisation if needed for flow with what comes before/after. ` +
-    `Keep specifics and voice. Type of issue: ${opts.type}. Quote: "${opts.quote}". ` +
+    `Keep specifics and voice when optimising. Preserve positive figures the writer names ` +
+    `(e.g. Jesus — never replace with “God” if they said Jesus). Type of issue: ${opts.type}. Quote: "${opts.quote}". ` +
     `If the quote only signals past doubt/struggle (e.g. "again", "finally", "this time"), reply with suggestion "". ` +
-    `Nearby context:\n${draftPlainText(opts.draft).slice(0, 2000)}\n\n` +
+    `Nearby context:\n${annotateDraftWithPrompts(opts.draft, {
+      lifeAreas: opts.lifeAreas,
+      values: opts.values,
+      valuesById: opts.valuesById,
+    }).slice(0, 2000)}\n\n` +
     `Reply with ONLY JSON: {"suggestion":"..."}`;
   try {
     const parsed = (await askJson(prompt)) as Record<string, unknown>;
@@ -409,31 +939,197 @@ export async function regenerateStorySuggestion(opts: {
   return opts.quote;
 }
 
+export type ComposeStoryResult = {
+  text: string;
+  sections: Array<{
+    promptId: string | null;
+    heading: string;
+    text: string;
+  }>;
+};
+
+function parseComposeSectionsOut(
+  raw: unknown,
+  fallbackText: string,
+): ComposeStoryResult["sections"] {
+  if (!Array.isArray(raw)) {
+    const t = fallbackText.trim();
+    return t ? [{ promptId: null, heading: "Opening", text: t }] : [];
+  }
+  const out: ComposeStoryResult["sections"] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const o = row as Record<string, unknown>;
+    if (typeof o.text !== "string" || !o.text.trim()) continue;
+    out.push({
+      promptId:
+        o.promptId === null || o.promptId === undefined
+          ? null
+          : typeof o.promptId === "string"
+            ? o.promptId
+            : null,
+      heading:
+        typeof o.heading === "string" && o.heading.trim()
+          ? o.heading.trim()
+          : "Opening",
+      text: o.text.trim(),
+    });
+  }
+  if (out.length === 0 && fallbackText.trim()) {
+    return [{ promptId: null, heading: "Opening", text: fallbackText.trim() }];
+  }
+  return out;
+}
+
 export async function composeStoryThirdPerson(opts: {
   draft: string;
   firstName: string;
-}): Promise<string> {
+  /** Account pronouns — never guess from the name. */
+  pronouns?: AccountPronouns | null;
+  sections: Array<{
+    promptId: string | null;
+    promptText: string;
+    text: string;
+    role?: "rewrite" | "context";
+  }>;
+  /**
+   * When true (or any section has role=rewrite), only rewrite those sections;
+   * context sections are for flow. Returned `sections` are the rewritten ones
+   * only — merge via addUpdatedStoryVersion.
+   */
+  rewriteOnly?: boolean;
+}): Promise<ComposeStoryResult> {
   const name = opts.firstName.trim() || "They";
+  const pronounCue = storyPronounComposeCue(name, opts.pronouns);
   const text = draftPlainText(opts.draft);
+  const rewriteOnly =
+    opts.rewriteOnly === true ||
+    opts.sections.some((s) => s.role === "rewrite");
   const remote = await postStoryJson("/manifest/story/compose", {
     draft: opts.draft,
     firstName: name,
+    pronouns: opts.pronouns ?? "they_them",
+    sections: opts.sections,
   });
   if (remote && typeof remote.text === "string" && remote.text.trim()) {
-    return remote.text.trim();
+    return {
+      text: remote.text.trim(),
+      sections: parseComposeSectionsOut(remote.sections, remote.text),
+    };
   }
-  const prompt =
-    `Rewrite the following first-person life vision into the third person by first name ("${name} is…"), present tense. ` +
-    `Fix grammar and smooth flow. Keep their words, details and ambition. Don't add facts or tone it down. ` +
-    `Keep section breaks as a blank line between sections.\n` +
-    `Reply with ONLY JSON: {"text":"..."}\n\n` +
-    `DRAFT:\n${text.slice(0, 14000)}`;
+  const listed = opts.sections
+    .map((s, i) => {
+      const id = s.promptId ?? "opening";
+      const cue = s.promptText.trim()
+        ? ` (prompt was: ${s.promptText.trim().slice(0, 120)})`
+        : "";
+      const roleTag =
+        s.role === "rewrite"
+          ? " [REWRITE]"
+          : s.role === "context"
+            ? " [CONTEXT — do not rewrite]"
+            : "";
+      return `### section ${i + 1} [id=${id}]${roleTag}${cue}\n${s.text}`;
+    })
+    .join("\n\n");
+  const quality =
+    `Fix grammar and smooth flow into complete present-tense sentences. ` +
+    `Keep their ambition and specifics. Don't invent unrelated facts. ` +
+    `If a section is overtly self-insulting, degrading, or full of slurs, rewrite it into a sincere ` +
+    `positive life-vision equivalent on the same subject — never leave self-put-downs in the narration. ` +
+    `Do not copy a distinctive detail from one section into another. If the same highly specific flourish ` +
+    `(brand, signature luxury image) already appears twice in the source, keep it once where it fits best ` +
+    `and vary or drop the echo in the other section. `;
+  const prompt = rewriteOnly
+    ? `Rewrite ONLY the sections marked [REWRITE] into the third person by first name ("${name} is…"), present tense. ` +
+      `Sections marked [CONTEXT] are for narrative flow only — do not rewrite them and do not include them in the reply. ` +
+      `${pronounCue} ` +
+      quality +
+      `For each rewritten section, invent a short print heading of 1–4 plain words (never the prompt question). ` +
+      `Opening (id=opening) heading must be "Opening". Return only the rewritten ids.\n` +
+      `Reply with ONLY JSON: {"sections":[{"id":"opening|promptId","heading":"…","text":"…"}]}\n\n` +
+      `SECTIONS:\n${(listed || text).slice(0, 14000)}`
+    : `Rewrite each first-person section into the third person by first name ("${name} is…"), present tense. ` +
+      `${pronounCue} ` +
+      quality +
+      `For each section, invent a short print heading of 1–4 plain words (never the prompt question). ` +
+      `Opening (id=opening) heading must be "Opening". Return the same ids in order.\n` +
+      `Reply with ONLY JSON: {"sections":[{"id":"opening|promptId","heading":"…","text":"…"}]}\n\n` +
+      `SECTIONS:\n${(listed || text).slice(0, 14000)}`;
 
   const parsed = (await askJson(prompt)) as Record<string, unknown>;
-  if (typeof parsed.text === "string" && parsed.text.trim()) {
-    return parsed.text.trim();
+  const sections = parseComposeSectionsOut(
+    Array.isArray(parsed.sections)
+      ? (parsed.sections as unknown[]).map((row) => {
+          if (!row || typeof row !== "object") return row;
+          const o = row as Record<string, unknown>;
+          const id = typeof o.id === "string" ? o.id : null;
+          return {
+            promptId: id === "opening" || !id ? null : id,
+            heading: o.heading,
+            text: o.text,
+          };
+        })
+      : parsed.sections,
+    typeof parsed.text === "string" ? parsed.text : text,
+  );
+  const joined = sections.map((s) => s.text).join("\n\n").trim();
+  if (!joined) throw new Error("Could not compose your story");
+  return { text: joined, sections };
+}
+
+export async function summarizeStoryForPrint(opts: {
+  firstName: string;
+  pronouns?: AccountPronouns | null;
+  sections: Array<{ id: string; heading: string; text: string }>;
+}): Promise<{ summary: string; sectionSummaries: Record<string, string> }> {
+  const name = opts.firstName.trim() || "They";
+  const pronounCue = storyPronounComposeCue(name, opts.pronouns);
+  const remote = await postStoryJson("/manifest/story/summarize", {
+    firstName: name,
+    pronouns: opts.pronouns ?? "they_them",
+    sections: opts.sections,
+  });
+  if (remote && typeof remote.summary === "string" && remote.summary.trim()) {
+    const sectionSummaries: Record<string, string> = {};
+    if (
+      remote.sectionSummaries &&
+      typeof remote.sectionSummaries === "object"
+    ) {
+      for (const [k, v] of Object.entries(
+        remote.sectionSummaries as Record<string, unknown>,
+      )) {
+        if (typeof v === "string" && v.trim()) sectionSummaries[k] = v.trim();
+      }
+    }
+    return { summary: remote.summary.trim(), sectionSummaries };
   }
-  throw new Error("Could not compose your story");
+  const listed = opts.sections
+    .map((s) => `### ${s.id} (${s.heading})\n${s.text}`)
+    .join("\n\n");
+  const prompt =
+    `Write in the third person by first name ("${name}"), present tense, plain language. ` +
+    `${pronounCue} ` +
+    `Keep the most specific details and the ambition. Don't add facts. ` +
+    `summary: 130–170 words. sectionSummaries: 1–3 sentences per section id.\n` +
+    `Reply with ONLY JSON: {"summary":"…","sectionSummaries":{"opening":"…"}}\n\n` +
+    `SECTIONS:\n${listed.slice(0, 12000)}`;
+  const parsed = (await askJson(prompt)) as Record<string, unknown>;
+  const summary =
+    typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+  if (!summary) throw new Error("Could not summarise your story");
+  const sectionSummaries: Record<string, string> = {};
+  if (
+    parsed.sectionSummaries &&
+    typeof parsed.sectionSummaries === "object"
+  ) {
+    for (const [k, v] of Object.entries(
+      parsed.sectionSummaries as Record<string, unknown>,
+    )) {
+      if (typeof v === "string" && v.trim()) sectionSummaries[k] = v.trim();
+    }
+  }
+  return { summary, sectionSummaries };
 }
 
 export async function goBiggerQuestion(recentText: string): Promise<string> {
@@ -486,6 +1182,8 @@ export function findingTypeLabel(type: StoryFindingType): string {
       return "Settling";
     case "doubt":
       return "Past doubt";
+    case "negative":
+      return "Negative";
     default:
       return "Hedging";
   }

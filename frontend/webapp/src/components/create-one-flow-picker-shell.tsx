@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 
 type Props = {
@@ -95,12 +96,14 @@ export function CreateOneFlowPickerShell({
         ? "w-full max-w-[640px]"
         : "w-full max-w-[520px]";
 
+  // Above chat FAB (z-60). Viewport host portals to body so page stacking
+  // contexts can't leave the FAB on top of the panel.
   const rootClass =
     host === "viewport"
-      ? "fixed inset-x-0 bottom-0 top-14 z-[80] lg:left-[var(--app-sidebar-w,200px)]"
-      : "fixed inset-x-0 bottom-0 top-14 z-[60] md:absolute md:inset-0";
+      ? "fixed inset-x-0 bottom-0 top-14 z-[100] lg:left-[var(--app-sidebar-w,200px)]"
+      : "fixed inset-x-0 bottom-0 top-14 z-[100] md:absolute md:inset-0 md:z-[60]";
 
-  return (
+  const tree = (
     <div className={rootClass}>
       <button
         type="button"
@@ -190,4 +193,9 @@ export function CreateOneFlowPickerShell({
       </div>
     </div>
   );
+
+  if (host === "viewport" && typeof document !== "undefined") {
+    return createPortal(tree, document.body);
+  }
+  return tree;
 }
