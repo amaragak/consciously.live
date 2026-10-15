@@ -72,6 +72,8 @@ function extractJsonObject(text: string): unknown {
 
 async function haikuJson(system: string, user: string): Promise<unknown> {
   const apiKey = await getClaudeApiKey();
+  // Haiku 5.5 defaults to adaptive thinking (slow + can exhaust max_tokens
+  // before any text). Disable thinking for these short JSON transforms.
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: {
@@ -83,6 +85,8 @@ async function haikuJson(system: string, user: string): Promise<unknown> {
       model: CLAUDE_HAIKU_45_MODEL_ID,
       max_tokens: 4096,
       temperature: 0.4,
+      thinking: { type: "disabled" },
+      output_config: { effort: "low" },
       system,
       messages: [{ role: "user", content: user }],
     }),
@@ -98,6 +102,9 @@ async function haikuJson(system: string, user: string): Promise<unknown> {
     .filter((c) => c.type === "text" && typeof c.text === "string")
     .map((c) => c.text!)
     .join("\n");
+  if (!text.trim()) {
+    throw new Error("Claude returned no text (thinking-only response)");
+  }
   return extractJsonObject(text);
 }
 
@@ -105,6 +112,8 @@ function plainDraft(raw: string): string {
   return raw
     .replace(/\u00a7BREAK\u00a7/g, "\n\n")
     .replace(/§BREAK§/g, "\n\n")
+    // Editor-only prompt labels — never send to the model.
+    .replace(/§L§[^§\n]*§[01]§[^§\n]*§\n?/g, "")
     .trim()
     .slice(0, MAX_DRAFT);
 }

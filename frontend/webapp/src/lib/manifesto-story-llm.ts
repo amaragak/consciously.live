@@ -88,9 +88,12 @@ function resolveOffsets(
 async function postStoryJson(
   path: "/manifest/story/raise" | "/manifest/story/compose",
   body: Record<string, unknown>,
+  timeoutMs = 28_000,
 ): Promise<Record<string, unknown> | null> {
   const base = getMedimadeApiBase();
   if (!base) return null;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await medimadeFetch(`${base}${path}`, {
       method: "POST",
@@ -99,11 +102,14 @@ async function postStoryJson(
         ...medimadeApiAuthHeaders(),
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
     if (!res.ok) return null;
     return (await res.json()) as Record<string, unknown>;
   } catch {
     return null;
+  } finally {
+    window.clearTimeout(timer);
   }
 }
 
@@ -159,7 +165,20 @@ export async function raiseStoryCeiling(
   }
 
   const remote = await postStoryJson("/manifest/story/raise", { draft });
-  if (remote) return parseRaisePayload(remote, text);
+  if (remote) {
+    const parsed = parseRaisePayload(remote, text);
+    if (parsed.findings.length > 0 || countApproxWords(text) >= 40) {
+      return parsed;
+    }
+    const local = heuristicRaise(text);
+    if (local.findings.length > 0) return local;
+    return parsed;
+  }
+
+  // Don't fall through to the chat stream — Haiku 5.5 adaptive thinking can
+  // hang the UI for a long time. Prefer the local hedge pass, then a bounded ask.
+  const local = heuristicRaise(text);
+  if (local.findings.length > 0) return local;
 
   const prompt =
     `You review a first-person life vision written as if already true.\n` +
@@ -173,19 +192,17 @@ export async function raiseStoryCeiling(
     `Reply with ONLY JSON: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt","suggestion":"..."}]}\n\n` +
     `DRAFT:\n${text.slice(0, 12000)}`;
 
-  let parsed: unknown;
   try {
-    parsed = await askJson(prompt);
+    const parsed = await Promise.race([
+      askJson(prompt),
+      new Promise<never>((_, reject) =>
+        window.setTimeout(() => reject(new Error("raise chat timeout")), 20_000),
+      ),
+    ]);
+    return parseRaisePayload(parsed as Record<string, unknown>, text);
   } catch {
-    return heuristicRaise(text);
+    return local;
   }
-
-  const result = parseRaisePayload(parsed as Record<string, unknown>, text);
-  if (result.findings.length === 0 && countApproxWords(text) < 40) {
-    const local = heuristicRaise(text);
-    if (local.findings.length > 0) return local;
-  }
-  return result;
 }
 
 /** Offline / short-draft fallback when the model misses obvious hedges. */
