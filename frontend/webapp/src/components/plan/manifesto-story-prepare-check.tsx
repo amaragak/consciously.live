@@ -13,12 +13,20 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ambitionLabel,
+  ambitionShownForRaise,
   findingTypeLabel,
   raiseSuggestionLabel,
+  suggestionAt,
+  type RaiseLevel,
+  type RaiseSuggestions,
   type StoryFindingType,
 } from "@/lib/manifesto-story-llm";
+import {
+  AmbitionAimBar,
+  RaiseLevelDial,
+  RaiseLineDial,
+} from "@/components/plan/raise-level-dial";
 
-const LIGHT = "color-mix(in srgb, var(--gold) 70%, white)";
 const SERIF_DISPLAY = { fontVariationSettings: "'opsz' 144" } as const;
 const SERIF_TEXT = { fontVariationSettings: "'opsz' 24" } as const;
 
@@ -33,41 +41,11 @@ export type PrepareCheckFinding = {
   id: string;
   quote: string;
   suggestion: string;
+  suggestions: RaiseSuggestions;
   type: StoryFindingType;
+  level: RaiseLevel;
+  pastSuggestions: string[];
 };
-
-function AmbitionRead({ ambition }: { ambition: number }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
-        <span
-          className="font-display text-xl text-foreground"
-          style={SERIF_DISPLAY}
-        >
-          {ambitionLabel(ambition)}
-        </span>
-        <span className="text-xs text-muted">Ambition</span>
-      </div>
-      <div
-        className="relative h-[6px] rounded-[3px]"
-        style={{
-          backgroundImage: `linear-gradient(90deg, var(--border), ${LIGHT}, var(--accent))`,
-        }}
-      >
-        <span
-          aria-hidden
-          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent-link bg-card"
-          style={{ left: `${Math.round(ambition * 100)}%` }}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
-        <span>Sensible</span>
-        <span>Bold</span>
-        <span className="text-accent-link">Delusional</span>
-      </div>
-    </div>
-  );
-}
 
 function FindingRow({
   finding,
@@ -75,6 +53,7 @@ function FindingRow({
   wide,
   anotherBusy,
   onDecide,
+  onLevel,
   onAnother,
 }: {
   finding: PrepareCheckFinding;
@@ -82,14 +61,18 @@ function FindingRow({
   wide: boolean;
   anotherBusy: boolean;
   onDecide: (d: PrepareCheckDecision) => void;
+  onLevel: (level: RaiseLevel) => void;
   onAnother: () => void;
 }) {
   const used = decision === "used";
   const kept = decision === "kept";
-  const sug = raiseSuggestionLabel(finding.suggestion);
+  const open = !decision;
+  const sug = raiseSuggestionLabel(suggestionAt(finding, finding.level));
   return (
     <div
       className={`flex gap-3 rounded-[14px] border px-3.5 py-3 transition-opacity ${
+        anotherBusy ? "opacity-50" : ""
+      } ${
         used
           ? "border-accent/35 bg-accent-soft/50"
           : kept
@@ -98,9 +81,20 @@ function FindingRow({
       }`}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-[1.3px] text-accent-link">
-          {findingTypeLabel(finding.type)}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[1.3px] text-accent-link">
+            {findingTypeLabel(finding.type)}
+          </span>
+          {open ? (
+            <span className="ml-auto">
+              <RaiseLineDial
+                level={finding.level}
+                mobile={!wide}
+                onChange={onLevel}
+              />
+            </span>
+          ) : null}
+        </div>
         <p
           className={`text-[13px] leading-snug text-muted ${
             kept ? "" : "line-through"
@@ -174,24 +168,30 @@ function FindingRow({
 export function ManifestoStoryPrepareCheck({
   open,
   wide,
+  level,
+  onLevel,
   ambition,
   findings,
   decisions,
   anotherBusyId,
   onClose,
   onDecide,
+  onLineLevel,
   onAnother,
   onPrepareAsIs,
   onPrepareWithChanges,
 }: {
   open: boolean;
   wide: boolean;
+  level: RaiseLevel;
+  onLevel: (level: RaiseLevel) => void;
   ambition: number;
   findings: PrepareCheckFinding[];
   decisions: Record<string, PrepareCheckDecision>;
   anotherBusyId: string | null;
   onClose: () => void;
   onDecide: (id: string, d: PrepareCheckDecision) => void;
+  onLineLevel: (id: string, level: RaiseLevel) => void;
   onAnother: (id: string) => void;
   onPrepareAsIs: () => void;
   onPrepareWithChanges: () => void;
@@ -254,7 +254,21 @@ export function ManifestoStoryPrepareCheck({
         </button>
       </div>
 
-      {wide ? <AmbitionRead ambition={ambition} /> : null}
+      <RaiseLevelDial
+        level={level}
+        onChange={onLevel}
+        sunSize={wide ? 36 : 26}
+      />
+
+      {wide ? (
+        <AmbitionAimBar
+          ambition={ambitionShownForRaise(ambition, findings.length)}
+          level={level}
+          title={ambitionLabel(
+            ambitionShownForRaise(ambition, findings.length),
+          )}
+        />
+      ) : null}
 
       <div className="flex max-h-[min(48vh,420px)] flex-col gap-2.5 overflow-y-auto">
         {findings.map((f) => (
@@ -265,6 +279,7 @@ export function ManifestoStoryPrepareCheck({
             wide={wide}
             anotherBusy={anotherBusyId === f.id}
             onDecide={(d) => onDecide(f.id, d)}
+            onLevel={(level) => onLineLevel(f.id, level)}
             onAnother={() => onAnother(f.id)}
           />
         ))}

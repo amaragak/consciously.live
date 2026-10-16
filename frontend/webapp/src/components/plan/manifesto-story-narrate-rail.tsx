@@ -39,13 +39,14 @@ import {
 import {
   clearVersionNarrationPending,
   countWords,
+  diffStoryNarrationSettings,
   listeningMinutes,
+  listeningSeconds,
   markVersionNarrated,
+  STORY_LISTEN_FADE_OUT_SECONDS,
   markVersionNarrationPending,
-  storyNarrationSettingsChangeNote,
-  storyNarrationSettingsChanged,
   storyPaceLabel,
-  versionChangedSinceNarrated,
+  storyTextHash,
   type ManifestoStoryStoreV1,
   type StoryNarrationSettings,
   type StoryVersion,
@@ -190,9 +191,26 @@ export function ManifestoStoryNarrateRail({
   );
 
   const words = version.wordCount || countWords(version.thirdPersonText);
-  const narrateMin = listeningMinutes(words) || 1;
-  const textChanged = versionChangedSinceNarrated(version);
-  const hasNarrated = Boolean(version.narratedAt && version.audioId);
+  const spokenWords =
+    countWords(
+      buildStoryNarrationScript({
+        thirdPersonText: version.thirdPersonText,
+        settleInFirst: store.settleInFirst,
+      }),
+    ) || words;
+  const narrateMin =
+    listeningMinutes(spokenWords, { fadeOut: store.fadeOutAtEnd }) || 1;
+  // A fresh prepare is a new version with no audio. The recording still lives
+  // on the version that was narrated.
+  const recording =
+    version.narratedAt && version.audioId
+      ? version
+      : (store.versions.find((v) => v.narratedAt && v.audioId) ?? null);
+  const hasNarrated = Boolean(recording);
+  const textChanged = recording
+    ? storyTextHash(version.thirdPersonText) !==
+      (recording.narratedTextHash || storyTextHash(recording.thirdPersonText))
+    : false;
   const pending = Boolean(version.pendingJobId) || narrating;
 
   const currentSettings: StoryNarrationSettings = useMemo(
@@ -218,16 +236,22 @@ export function ManifestoStoryNarrateRail({
     ],
   );
 
-  const settingsChanged =
-    hasNarrated &&
-    storyNarrationSettingsChanged(
-      version.narrationSettings,
-      currentSettings,
-    );
-  const settingsNote = storyNarrationSettingsChangeNote(
-    version.narrationSettings,
+  const settingsDiff = diffStoryNarrationSettings(
+    recording?.narrationSettings,
     currentSettings,
   );
+  const settingsChanged =
+    hasNarrated && (settingsDiff.voice || settingsDiff.sound);
+  const settingsNames = [
+    settingsDiff.voice ? "Voice" : null,
+    settingsDiff.sound ? "Sound" : null,
+  ].filter((name): name is string => Boolean(name));
+  const settingsNote =
+    settingsNames.length === 0
+      ? null
+      : settingsNames.length === 1
+        ? `${settingsNames[0]} changed since this narration`
+        : "Settings changed since this narration";
 
   const cardState: NarrationCardState = !hasNarrated
     ? 1
@@ -251,7 +275,7 @@ export function ManifestoStoryNarrateRail({
   }`;
 
   useEffect(() => {
-    const audioId = version.audioId?.trim();
+    const audioId = recording?.audioId?.trim();
     if (!audioId) {
       setLibraryItem(null);
       return;
@@ -270,7 +294,7 @@ export function ManifestoStoryNarrateRail({
     return () => {
       cancelled = true;
     };
-  }, [version.audioId]);
+  }, [recording?.audioId]);
 
   function applyNarrated(
     prev: ManifestoStoryStoreV1,
@@ -284,7 +308,7 @@ export function ManifestoStoryNarrateRail({
       typeof libraryItem?.durationSeconds === "number" &&
       libraryItem.durationSeconds > 0
         ? libraryItem.durationSeconds
-        : Math.max(60, (countWords(text) / 140) * 60);
+        : listeningSeconds(countWords(text), { fadeOut: false });
     return markVersionNarrated(prev, versionId, {
       audioId: audioKey,
       text,
@@ -491,7 +515,7 @@ export function ManifestoStoryNarrateRail({
       playItem(libraryItem);
       return;
     }
-    const key = version.audioId?.trim();
+    const key = recording?.audioId?.trim();
     if (!key) return;
     // Fallback until library row resolves — strip still needs a URL.
     void listLibraryMeditations().then((items) => {
@@ -545,48 +569,10 @@ export function ManifestoStoryNarrateRail({
         value={soundLabel}
         onClick={() => soundRef.current?.openSoundPicker()}
       />
-      <RowButton
-        label="Pace"
-        value={paceLabel}
-        onClick={() => soundRef.current?.openPacePicker()}
-      />
-      <div className="flex items-center gap-2.5 border-t border-border py-2.5">
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-sm text-foreground">Settle in first</span>
-          <span className="text-xs text-muted">
-            2 min of breath before the story
-          </span>
-        </span>
-        <Switch.Root
-          checked={store.settleInFirst}
-          onCheckedChange={(v) =>
-            onStoreChange((s) => ({ ...s, settleInFirst: Boolean(v) }))
-          }
-          className={SWITCH}
-          aria-label="Settle in first"
-        >
-          <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform data-[state=checked]:translate-x-[16px]" />
-        </Switch.Root>
-      </div>
-      <div className="flex items-center gap-2.5 border-t border-border py-2.5 pb-3.5">
-        <span className="flex-1 text-sm text-foreground">
-          Fade out at the end
-        </span>
-        <Switch.Root
-          checked={store.fadeOutAtEnd}
-          onCheckedChange={(v) =>
-            onStoreChange((s) => ({ ...s, fadeOutAtEnd: Boolean(v) }))
-          }
-          className={SWITCH}
-          aria-label="Fade out at the end"
-        >
-          <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform data-[state=checked]:translate-x-[16px]" />
-        </Switch.Root>
-      </div>
     </>
   );
 
-  const recorded = version.narrationSettings;
+  const recorded = recording?.narrationSettings;
   const collapsedVoice = recorded?.voiceName || voiceLabel;
   const collapsedLine = [
     collapsedVoice === "Choose voice" ? null : collapsedVoice,
@@ -597,12 +583,23 @@ export function ManifestoStoryNarrateRail({
     .filter(Boolean)
     .join(" · ");
 
-  const durationMin =
-    version.narrationDurationSec && version.narrationDurationSec > 0
-      ? Math.max(1, Math.round(version.narrationDurationSec / 60))
+  const fadeOn =
+    (recording?.narrationSettings?.fadeOut ?? store.fadeOutAtEnd) !== false;
+  const voiceSec =
+    recording?.narrationDurationSec && recording.narrationDurationSec > 0
+      ? recording.narrationDurationSec
       : libraryItem?.durationSeconds && libraryItem.durationSeconds > 0
-        ? Math.max(1, Math.round(libraryItem.durationSeconds / 60))
-        : narrateMin;
+        ? libraryItem.durationSeconds
+        : 0;
+  const durationMin =
+    voiceSec > 0
+      ? Math.max(
+          1,
+          Math.round(
+            (voiceSec + (fadeOn ? STORY_LISTEN_FADE_OUT_SECONDS : 0)) / 60,
+          ),
+        )
+      : narrateMin;
 
   const recordingBlock =
     hasNarrated ? (
@@ -636,8 +633,8 @@ export function ManifestoStoryNarrateRail({
           </span>
           <span className="text-xs text-muted">
             {cardState === 4
-              ? `Narrated ${formatNarratedDate(version.narratedAt)} · before your latest edits`
-              : `Narrated ${formatNarratedDate(version.narratedAt)} · ${durationMin} min`}
+              ? `Narrated ${formatNarratedDate(recording?.narratedAt)} · before your latest edits`
+              : `Narrated ${formatNarratedDate(recording?.narratedAt)} · ${durationMin} min`}
           </span>
           <StaticWaveform />
         </div>

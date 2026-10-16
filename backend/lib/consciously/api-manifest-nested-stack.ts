@@ -268,6 +268,15 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
       ),
     });
     addNestHttpRoutes(this, httpApi, {
+      id: "ManifestStoryRaiseAnotherRoute",
+      path: "/manifest/story/raise-another",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "ManifestStoryRaiseAnotherIntegration",
+        manifestStory,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
       id: "ManifestStoryComposeRoute",
       path: "/manifest/story/compose",
       methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],

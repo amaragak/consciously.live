@@ -6,6 +6,7 @@
 import { recordLocalStoryListen } from "@/lib/daily-habits";
 import {
   incrementStoryListenCount,
+  listeningSeconds,
   loadManifestoStoryStore,
   saveManifestoStoryStore,
   storyListenNightKey,
@@ -31,8 +32,8 @@ export function maybeCountManifestoStoryListen(opts: {
       ? opts.durationSeconds
       : 0;
   if (dur <= 0) {
-    // Fallback until the strip reports duration: ~140 wpm + short bed outro.
-    dur = Math.max(60, (match.wordCount / 140) * 60 + 25);
+    // Fallback until the strip reports duration: calibrated speech plus title and fade.
+    dur = listeningSeconds(match.wordCount, { fadeOut: store.fadeOutAtEnd });
   }
   if (opts.timeSeconds / dur < 0.9) return;
 

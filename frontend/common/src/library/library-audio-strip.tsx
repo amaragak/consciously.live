@@ -401,6 +401,10 @@ export function LibraryAudioStrip({
   const [playing, setPlaying] = useState(() => Boolean(track?.ambientOnly));
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(() => track?.durationSeconds ?? 0);
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
+  /** Seconds into the post-voice hold+fade when paused there. */
+  const outroParkedOffsetRef = useRef<number | null>(null);
   const lastToggleNonceRef = useRef(playbackToggleNonce);
   const autoplayRef = useRef(autoplay);
   autoplayRef.current = autoplay;
@@ -410,9 +414,10 @@ export function LibraryAudioStrip({
   const bedOutroGainRef = useRef(1);
   const bedOutroRef = useRef<{
     active: boolean;
-    holdTimer: number | null;
-    fadeRaf: number | null;
-  }>({ active: false, holdTimer: null, fadeRaf: null });
+    /** performance.now() when outro offset 0 started. */
+    originMs: number;
+    raf: number | null;
+  }>({ active: false, originMs: 0, raf: null });
   const liveBedGainsRef = useRef({
     nature: track?.natureGain ?? 0,
     music: track?.musicGain ?? 0,
@@ -529,28 +534,86 @@ export function LibraryAudioStrip({
 
   function clearBedOutro() {
     const o = bedOutroRef.current;
-    if (o.holdTimer != null) {
-      window.clearTimeout(o.holdTimer);
-      o.holdTimer = null;
-    }
-    if (o.fadeRaf != null) {
-      window.cancelAnimationFrame(o.fadeRaf);
-      o.fadeRaf = null;
+    if (o.raf != null) {
+      window.cancelAnimationFrame(o.raf);
+      o.raf = null;
     }
     o.active = false;
-    bedOutroGainRef.current = 1;
+  }
+
+  function voiceLenSeconds(): number {
+    const d = durationRef.current;
+    if (d > 0) return d;
+    if (useDual) {
+      const dd = dualRef.current?.duration ?? 0;
+      if (Number.isFinite(dd) && dd > 0) return dd;
+    }
+    const ed = audioRef.current?.duration;
+    if (typeof ed === "number" && Number.isFinite(ed) && ed > 0) return ed;
+    return 0;
+  }
+
+  /** Post-voice bed tail: 10s hold + 10s fade. Zero when there is nothing to fade. */
+  function outroPadSeconds(): number {
+    if (!track || ambientMix || ambientSoundscape) return 0;
+    if (track.fadeOut === false) return 0;
+    if (!trackHasLiveBeds()) return 0;
+    return BED_OUTRO_HOLD_SECONDS + BED_OUTRO_FADE_SECONDS;
+  }
+
+  function fadeGainAtOutroOffset(intoOutro: number): number {
+    if (intoOutro <= BED_OUTRO_HOLD_SECONDS) return 1;
+    const t = Math.min(
+      1,
+      Math.max(
+        0,
+        (intoOutro - BED_OUTRO_HOLD_SECONDS) / BED_OUTRO_FADE_SECONDS,
+      ),
+    );
+    // Equal-power-ish ease: stay fuller early, settle quietly at the end.
+    return Math.cos((t * Math.PI) / 2);
+  }
+
+  /**
+   * Soundscapes lock to the voice clock, including the tail.
+   * Looping custom mixes are not seeked — only their fade follows the scrub.
+   */
+  function applyOutroAudible(
+    intoOutro: number,
+    voiceLen: number,
+    seekSoundscape: boolean,
+  ) {
+    bedOutroGainRef.current = fadeGainAtOutroOffset(intoOutro);
+    applyLiveBedVolumes();
+    if (seekSoundscape && soundscapeActiveRef.current) {
+      seekGaplessBed(musicRef.current, voiceLen + intoOutro);
+    }
+  }
+
+  function parkVoiceAtEnd() {
+    if (useDual) {
+      dualRef.current?.pause();
+      return;
+    }
+    audioRef.current?.pause();
   }
 
   /** Hold beds, then fade out after the voice stem ends. */
-  function beginBedOutro() {
+  function beginBedOutro(
+    fromOffset = 0,
+    opts?: { seekSoundscape?: boolean },
+  ) {
     if (!track) return;
     if (!trackHasLiveBeds()) {
+      bedOutroGainRef.current = 1;
+      clearBedOutro();
       setPlaying(false);
       onPlayingChange?.(track.s3Key, false);
       if (!ambientSoundscape) onDismiss();
       return;
     }
     if (track.fadeOut === false) {
+      bedOutroGainRef.current = 1;
       clearBedOutro();
       clearVoiceIntro();
       setPlaying(false);
@@ -558,40 +621,120 @@ export function LibraryAudioStrip({
       if (!ambientSoundscape) onDismiss();
       return;
     }
+    const pad = BED_OUTRO_HOLD_SECONDS + BED_OUTRO_FADE_SECONDS;
+    const voiceLen = voiceLenSeconds();
+    const offset = Math.min(pad, Math.max(0, fromOffset));
+    const seekSoundscape = opts?.seekSoundscape !== false;
     clearBedOutro();
     clearVoiceIntro();
+    outroParkedOffsetRef.current = null;
     bedOutroRef.current.active = true;
-    bedOutroGainRef.current = 1;
-    // Keep beds running; voice has already stopped in DualStemPlayer / <audio>.
+    bedOutroRef.current.originMs = performance.now() - offset * 1000;
+    parkVoiceAtEnd();
+    applyOutroAudible(offset, voiceLen, seekSoundscape);
     setPlaying(true);
     onPlayingChange?.(track.s3Key, true);
-    applyLiveBedVolumes();
+    const timeline = voiceLen + offset;
+    setCurrent(timeline);
+    reportTime(timeline);
 
     const s3Key = track.s3Key;
-    bedOutroRef.current.holdTimer = window.setTimeout(() => {
-      bedOutroRef.current.holdTimer = null;
+    const tick = (now: number) => {
       if (!bedOutroRef.current.active) return;
-      const started = performance.now();
-      const fadeMs = BED_OUTRO_FADE_SECONDS * 1000;
-      const tick = (now: number) => {
-        if (!bedOutroRef.current.active) return;
-        const t = Math.min(1, (now - started) / fadeMs);
-        // Equal-power-ish ease: stay fuller early, settle quietly at the end.
-        bedOutroGainRef.current = Math.cos((t * Math.PI) / 2);
+      const into = (now - bedOutroRef.current.originMs) / 1000;
+      if (into >= pad - 0.02) {
+        setCurrent(voiceLen + pad);
+        reportTime(voiceLen + pad);
+        bedOutroGainRef.current = 0;
         applyLiveBedVolumes();
-        if (t < 1) {
-          bedOutroRef.current.fadeRaf = window.requestAnimationFrame(tick);
-          return;
-        }
         bedOutroRef.current.active = false;
-        bedOutroRef.current.fadeRaf = null;
+        bedOutroRef.current.raf = null;
         bedOutroGainRef.current = 1;
         setPlaying(false);
         onPlayingChange?.(s3Key, false);
-        if (!ambientSoundscape) onDismiss();
-      };
-      bedOutroRef.current.fadeRaf = window.requestAnimationFrame(tick);
-    }, BED_OUTRO_HOLD_SECONDS * 1000);
+        if (!ambientSoundscapeRef.current) onDismiss();
+        return;
+      }
+      bedOutroGainRef.current = fadeGainAtOutroOffset(into);
+      applyLiveBedVolumes();
+      const t = voiceLen + into;
+      setCurrent(t);
+      reportTime(t);
+      bedOutroRef.current.raf = window.requestAnimationFrame(tick);
+    };
+    bedOutroRef.current.raf = window.requestAnimationFrame(tick);
+  }
+
+  function seekTransport(v: number) {
+    if (!track || ambientMix) return;
+    const voiceLen = voiceLenSeconds();
+    const pad = outroPadSeconds();
+    const end = voiceLen + pad;
+    const t = Math.min(end > 0 ? end : Math.max(0, v), Math.max(0, v));
+    const keepPlaying =
+      playing ||
+      bedOutroRef.current.active ||
+      voiceIntroTimerRef.current != null;
+
+    if (pad > 0 && voiceLen > 0 && t >= voiceLen - 0.03) {
+      const into = Math.min(pad, Math.max(0, t - voiceLen));
+      if (keepPlaying) {
+        beginBedOutro(into);
+        return;
+      }
+      clearBedOutro();
+      outroParkedOffsetRef.current = into;
+      parkVoiceAtEnd();
+      applyOutroAudible(into, voiceLen, true);
+      setCurrent(voiceLen + into);
+      reportTime(voiceLen + into);
+      return;
+    }
+
+    outroParkedOffsetRef.current = null;
+    clearBedOutro();
+    bedOutroGainRef.current = 1;
+    applyLiveBedVolumes();
+
+    if (useDual) {
+      const dual = dualRef.current;
+      if (!dual) return;
+      if (!keepPlaying) dual.pause();
+      dual.seek(t);
+      syncSoundscapeToVoice(t);
+      setCurrent(t);
+      reportTime(t);
+      if (!keepPlaying) return;
+      clearVoiceIntro();
+      if (shouldDelayVoice(t)) {
+        dual.pause();
+        startOrResumePlayback();
+      } else if (!dual.isPlaying) {
+        void dual.play().catch(() => {});
+      }
+      return;
+    }
+
+    const el = audioRef.current;
+    if (!el) return;
+    const voiceEnd =
+      Number.isFinite(el.duration) && el.duration > 0 ? el.duration : t;
+    try {
+      el.currentTime = Math.min(t, voiceEnd);
+    } catch {
+      /* ignore seek before metadata */
+    }
+    syncSoundscapeToVoice(t);
+    setCurrent(t);
+    reportTime(t);
+    if (!keepPlaying) return;
+    clearVoiceIntro();
+    if (shouldDelayVoice(t)) {
+      el.pause();
+      startOrResumePlayback();
+    } else if (el.paused) {
+      void el.play().catch(() => {});
+    }
   }
 
   function voiceIntroSeconds(): number {
@@ -606,6 +749,14 @@ export function LibraryAudioStrip({
 
   function startOrResumePlayback() {
     if (!track) return;
+    const parked = outroParkedOffsetRef.current;
+    if (parked != null && outroPadSeconds() > 0) {
+      outroParkedOffsetRef.current = null;
+      beginBedOutro(parked);
+      return;
+    }
+    outroParkedOffsetRef.current = null;
+    bedOutroGainRef.current = 1;
     clearBedOutro();
     applyLiveBedVolumes();
     if (ambientMix) {
@@ -670,6 +821,11 @@ export function LibraryAudioStrip({
   }
 
   function pausePlayback() {
+    if (bedOutroRef.current.active) {
+      const into =
+        (performance.now() - bedOutroRef.current.originMs) / 1000;
+      outroParkedOffsetRef.current = Math.max(0, into);
+    }
     clearVoiceIntro();
     clearBedOutro();
     applyLiveBedVolumes();
@@ -773,6 +929,8 @@ export function LibraryAudioStrip({
       dualRef.current?.stop();
       return;
     }
+    bedOutroGainRef.current = 1;
+    outroParkedOffsetRef.current = null;
     clearBedOutro();
     seekingRef.current = false;
     lastReportedTimeRef.current = -Infinity;
@@ -794,7 +952,7 @@ export function LibraryAudioStrip({
       const dual = dualRef.current;
       dual.onEnded = () => {
         if (cancelled) return;
-        beginBedOutro();
+        beginBedOutro(0, { seekSoundscape: false });
       };
       if (track.durationSeconds) setDuration(track.durationSeconds);
       if (dual.isPlaying) {
@@ -987,11 +1145,16 @@ export function LibraryAudioStrip({
     if (!el || !track || ambientMix) return;
 
     const onTime = () => {
-      if (!seekingRef.current) {
-        const t = el.currentTime;
-        setCurrent(t);
-        reportTime(t);
+      if (
+        seekingRef.current ||
+        bedOutroRef.current.active ||
+        outroParkedOffsetRef.current != null
+      ) {
+        return;
       }
+      const t = el.currentTime;
+      setCurrent(t);
+      reportTime(t);
     };
     const syncDuration = () => {
       const d = el.duration;
@@ -1002,12 +1165,16 @@ export function LibraryAudioStrip({
       onPlayingChange?.(track.s3Key, true);
     };
     const onPause = () => {
+      // Voice pause at the end of narration is the start of the bed tail.
+      if (bedOutroRef.current.active || outroParkedOffsetRef.current != null) {
+        return;
+      }
       setPlaying(false);
       onPlayingChange?.(track.s3Key, false);
     };
     const onEnded = () => {
       // Live beds: hold then fade. Focus soundscapes / no beds: dismiss (or keep strip).
-      beginBedOutro();
+      beginBedOutro(0, { seekSoundscape: false });
     };
 
     el.addEventListener("timeupdate", onTime);
@@ -1040,7 +1207,12 @@ export function LibraryAudioStrip({
     let raf = 0;
     const tick = () => {
       const dual = dualRef.current;
-      if (dual && !seekingRef.current) {
+      if (
+        dual &&
+        !seekingRef.current &&
+        !bedOutroRef.current.active &&
+        outroParkedOffsetRef.current == null
+      ) {
         const t = dual.currentTime;
         setCurrent(t);
         reportTime(t);
@@ -1071,56 +1243,22 @@ export function LibraryAudioStrip({
 
   if (!track) return null;
 
-  const max = Math.max(duration, 0.0001);
+  const outroPad =
+    !ambientMix &&
+    !ambientSoundscape &&
+    track.fadeOut !== false &&
+    trackHasLiveBeds() &&
+    duration > 0
+      ? BED_OUTRO_HOLD_SECONDS + BED_OUTRO_FADE_SECONDS
+      : 0;
+  const timelineDuration = duration + outroPad;
+  const max = Math.max(timelineDuration, 0.0001);
   /** Looping ambient mixes have no timeline; meditations and soundscapes scrub. */
   const canSeekTransport = !ambientMix;
 
   function skipSeconds(delta: number) {
     if (!canSeekTransport) return;
-    if (useDual) {
-      const dual = dualRef.current;
-      if (!dual) return;
-      const end =
-        Number.isFinite(dual.duration) && dual.duration > 0
-          ? dual.duration
-          : Number.isFinite(duration) && duration > 0
-            ? duration
-            : max;
-      const next = Math.min(end, Math.max(0, dual.currentTime + delta));
-      dual.seek(next);
-      syncSoundscapeToVoice(next);
-      setCurrent(next);
-      reportTime(next);
-      if (!playing && voiceIntroTimerRef.current == null) return;
-      clearVoiceIntro();
-      if (shouldDelayVoice(next)) {
-        dual.pause();
-        startOrResumePlayback();
-      } else if (!dual.isPlaying) {
-        void dual.play().catch(() => {});
-      }
-      return;
-    }
-    const el = audioRef.current;
-    if (!el) return;
-    const end =
-      Number.isFinite(el.duration) && el.duration > 0
-        ? el.duration
-        : Number.isFinite(duration) && duration > 0
-          ? duration
-          : max;
-    const next = Math.min(end, Math.max(0, el.currentTime + delta));
-    el.currentTime = next;
-    syncSoundscapeToVoice(next);
-    setCurrent(next);
-    if (!playing && voiceIntroTimerRef.current == null) return;
-    clearVoiceIntro();
-    if (shouldDelayVoice(next)) {
-      el.pause();
-      startOrResumePlayback();
-    } else if (el.paused) {
-      void el.play().catch(() => {});
-    }
+    seekTransport(current + delta);
   }
 
   const coverUrl =
@@ -1447,37 +1585,7 @@ export function LibraryAudioStrip({
                 if (!canSeekTransport) return;
                 const v = Number(e.target.value);
                 if (!Number.isFinite(v)) return;
-                if (useDual) {
-                  const dual = dualRef.current;
-                  if (!dual) return;
-                  dual.seek(v);
-                  syncSoundscapeToVoice(v);
-                  setCurrent(v);
-                  reportTime(v);
-                  if (!playing && voiceIntroTimerRef.current == null) return;
-                  clearVoiceIntro();
-                  if (shouldDelayVoice(v)) {
-                    dual.pause();
-                    startOrResumePlayback();
-                  } else if (!dual.isPlaying) {
-                    void dual.play().catch(() => {});
-                  }
-                  return;
-                }
-                const el = audioRef.current;
-                if (!el) return;
-                el.currentTime = v;
-                syncSoundscapeToVoice(v);
-                setCurrent(v);
-                reportTime(v);
-                if (!playing && voiceIntroTimerRef.current == null) return;
-                clearVoiceIntro();
-                if (shouldDelayVoice(v)) {
-                  el.pause();
-                  startOrResumePlayback();
-                } else if (el.paused) {
-                  void el.play().catch(() => {});
-                }
+                seekTransport(v);
               }}
             />
             <span
@@ -1488,7 +1596,7 @@ export function LibraryAudioStrip({
                 textAlign: "right",
               }}
             >
-              {canSeekTransport ? formatAudioClock(duration) : ""}
+              {canSeekTransport ? formatAudioClock(timelineDuration) : ""}
             </span>
           </div>
         </div>

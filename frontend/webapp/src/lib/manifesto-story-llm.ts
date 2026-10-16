@@ -30,13 +30,113 @@ export type StoryFindingType =
   | "doubt"
   | "negative";
 
+export type RaiseLevel = "ambitious" | "audacious" | "delusional";
+
+export const RAISE_LEVELS: readonly RaiseLevel[] = [
+  "ambitious",
+  "audacious",
+  "delusional",
+];
+
+/** Aim marker position on the ambition bar, as a percent. */
+export const RAISE_LEVEL_AIM: Record<RaiseLevel, number> = {
+  ambitious: 55,
+  audacious: 75,
+  delusional: 93,
+};
+
+export type RaiseSuggestions = Record<RaiseLevel, string>;
+
+export function isRaiseLevel(v: unknown): v is RaiseLevel {
+  return v === "ambitious" || v === "audacious" || v === "delusional";
+}
+
+export function sameRaiseSuggestions(text: string): RaiseSuggestions {
+  return { ambitious: text, audacious: text, delusional: text };
+}
+
+/** Three rewrites, or a legacy single `suggestion` copied to every level. */
+export function parseRaiseSuggestions(
+  raw: unknown,
+  legacy?: unknown,
+): RaiseSuggestions | null {
+  if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const pick = (key: RaiseLevel): string | null =>
+      typeof o[key] === "string" ? o[key].trim() : null;
+    const ambitious = pick("ambitious");
+    const audacious = pick("audacious");
+    const delusional = pick("delusional");
+    if (ambitious != null || audacious != null || delusional != null) {
+      const base = ambitious ?? audacious ?? delusional ?? "";
+      return {
+        ambitious: ambitious ?? base,
+        audacious: audacious ?? base,
+        delusional: delusional ?? base,
+      };
+    }
+  }
+  if (typeof legacy === "string") {
+    return sameRaiseSuggestions(legacy.trim());
+  }
+  return null;
+}
+
+export function suggestionAt(
+  f: { suggestion: string; suggestions?: RaiseSuggestions },
+  level: RaiseLevel,
+): string {
+  const s = f.suggestions?.[level];
+  return typeof s === "string" ? s : f.suggestion;
+}
+
+export const RAISE_LEVEL_NAME: Record<RaiseLevel, string> = {
+  ambitious: "Ambitious",
+  audacious: "Audacious",
+  delusional: "Delusional",
+};
+
+export function nextRaiseLevel(level: RaiseLevel): RaiseLevel {
+  const i = RAISE_LEVELS.indexOf(level);
+  return RAISE_LEVELS[(i + 1) % RAISE_LEVELS.length] ?? "audacious";
+}
+
+/** The sentence that holds the span, plus one sentence either side. */
+export function surroundingSentences(
+  text: string,
+  start: number,
+  end: number,
+): string {
+  const spans: { start: number; end: number; text: string }[] = [];
+  const re = /[^.!?\n]+[.!?]?/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text))) {
+    const raw = match[0];
+    if (!raw.trim()) continue;
+    spans.push({
+      start: match.index,
+      end: match.index + raw.length,
+      text: raw.trim(),
+    });
+  }
+  if (spans.length === 0) return text.trim();
+  let idx = spans.findIndex((s) => start < s.end && end > s.start);
+  if (idx < 0) idx = 0;
+  return spans
+    .slice(Math.max(0, idx - 1), idx + 2)
+    .map((s) => s.text)
+    .join(" ");
+}
+
 export type StoryFinding = {
   id: string;
   start: number;
   end: number;
   quote: string;
   type: StoryFindingType;
+  /** Ambitious rewrite — kept so older call sites still have one string. */
   suggestion: string;
+  suggestions: RaiseSuggestions;
 };
 
 export type StoryRaiseResult = {
@@ -215,6 +315,7 @@ function heuristicNegativeFindings(text: string): StoryFinding[] {
     quote: h.quote,
     type: "negative" as const,
     suggestion: heuristicNegativeSuggestion(h.quote),
+    suggestions: sameRaiseSuggestions(heuristicNegativeSuggestion(h.quote)),
   }));
 }
 
@@ -356,6 +457,7 @@ function resolveOffsets(
 async function postStoryJson(
   path:
     | "/manifest/story/raise"
+    | "/manifest/story/raise-another"
     | "/manifest/story/compose"
     | "/manifest/story/summarize",
   body: Record<string, unknown>,
@@ -540,7 +642,9 @@ function parseRaisePayload(
   o: Record<string, unknown>,
   text: string,
 ): StoryRaiseResult {
-  const ambition = clamp01(typeof o.ambition === "number" ? o.ambition : 0.4);
+  const ambition = normalizeAmbitionScore(
+    typeof o.ambition === "number" ? o.ambition : 0.4,
+  );
   const rawFindings = Array.isArray(o.findings) ? o.findings : [];
   const findings: StoryFinding[] = [];
   let i = 0;
@@ -550,10 +654,11 @@ function parseRaisePayload(
     const r = row as Record<string, unknown>;
     const quoteRaw = typeof r.quote === "string" ? r.quote : "";
     if (!quoteRaw.trim()) continue;
-    if (typeof r.suggestion !== "string") continue;
-    const deletion = r.suggestion.trim() === "";
+    const suggestions = parseRaiseSuggestions(r.suggestions, r.suggestion);
+    if (!suggestions) continue;
+    const suggestion = suggestions.ambitious;
+    const deletion = suggestion.trim() === "";
     const quote = deletion ? quoteRaw : quoteRaw.trim();
-    const suggestion = deletion ? "" : r.suggestion.trim();
     const type = (
       typeof r.type === "string" && FINDING_TYPES.has(r.type as StoryFindingType)
         ? r.type
@@ -575,6 +680,7 @@ function parseRaisePayload(
       quote,
       type,
       suggestion,
+      suggestions,
     });
   }
   findings.sort((a, b) => a.start - b.start);
@@ -654,7 +760,16 @@ export async function raiseStoryCeiling(
 
   const prompt =
     `You raise the ambition of a first-person life vision written as if already true.\n` +
-    `Score ambition 0–1 (0 = sensible/safe, 1 = delightfully delusional). Short drafts can still be low ambition.\n` +
+    `Score ambition 0–100 against an ordinary life in that field, not against how bold the wording sounds. ` +
+    `0–24 Sensible: an average or below-average experience. Typical pay, a typical home, a local or ordinary version of the activity, “good enough”, or hedged with effort or hope. Nothing unremarkable is Ambitious. ` +
+    `25–44 Modest: a decent, ordinary good outcome that plenty of people already have. ` +
+    `45–64 Ambitious: a really great result that is still reasonable, clearly better than what most people in that situation have. About a top-10% life in that field. This tier starts only there. ` +
+    `65–84 Audacious: technically possible, a handful of people do it, far past reasonable. ` +
+    `85–100 Delusional: world-leading. ` +
+    `If a line describes an average or below-average experience, score it Sensible. Never score that line Ambitious or higher. ` +
+    `Hedges (hopefully, one day, if I work hard, I'd like to) keep a line in Sensible. ` +
+    `Flag a line only when its claim is under Ambitious. Never flag a line already at Ambitious or higher, ` +
+    `except type=negative, which you still flag.\n` +
     `Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of, kinda, wanna), ` +
     `future tense (I will, I'm going to), small thinking (a few, local, small rooms, enough), ` +
     `settling ("which is enough for me"), lukewarm affection or desire ` +
@@ -673,9 +788,14 @@ export async function raiseStoryCeiling(
     `NEGATIVE (type negative): flag self-put-downs, harsh self-judgement, or others thinking badly of them ` +
     `(e.g. “my friends would describe me as a massive prick”). suggestion = the positive opposite, same subject ` +
     `and specifics, same person as the text. Never flag grammar. Fair/sensible but small → other types; keep theme, raise the ceiling.\n` +
-    `AMBITION LEAP (required): For each finding, jump straight to the delightfully delusional option — one bold leap, ` +
-    `not a timid half-step. Bad: “local rooms”→“packed houses” (still small). ` +
-    `Good: “play music in local rooms”→“play sold-out arenas across the country”.\n` +
+    `CALIBRATION (required): judge each rewrite by how society sees that outcome, not as a multiple of the user's number. ` +
+    `Each level is a different tier of life. Keep the user's subject, specifics, units, currency, and person. ` +
+    `Present tense, already true, and concrete: a number, a place, a name, or a scene. ` +
+    `Never just multiply their figure. Pick a figure that fits the tier. ` +
+    `ambitious is the really-great-but-reasonable tier, not a small step up from an ordinary life. ` +
+    `audacious is the handful-of-people tier. delusional is world-leading. ` +
+    `Write original wording for this person's life. Do not recycle phrases from these instructions. ` +
+    `Which lines you flag does not depend on level — always return all three texts.\n` +
     `QUALITY: Mentally apply every suggestion and read the FULL sentence. It must be natural, grammatical, ` +
     `professional present-tense English — correct prepositions, articles, and verb forms. Include punctuation ` +
     `when neighbouring clauses would smash together.\n` +
@@ -696,7 +816,7 @@ export async function raiseStoryCeiling(
     `the same specific image into two answers. Bad: two findings both add “Michelin-starred feasts every night”. ` +
     `Good: one dining raise uses Michelin; another uses a different vivid detail. If the draft already has ` +
     `such a flourish, do not invent the same one again elsewhere.\n` +
-    `Reply with ONLY JSON: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestion":"..."}]}\n\n` +
+    `Reply with ONLY JSON: {"ambition":0-100,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}\n\n` +
     lockBlock +
     `DRAFT (prompt-tagged; quote must match answer text only):\n${forModel.slice(0, 12000)}`;
 
@@ -708,12 +828,12 @@ export async function raiseStoryCeiling(
       ),
     ]);
     return applyRaiseLocks(
-      draft,
-      mergeRaiseFindings(
-        parseRaisePayload(parsed as Record<string, unknown>, text),
-        local,
-      ),
-      locks,
+        draft,
+        mergeRaiseFindings(
+          parseRaisePayload(parsed as Record<string, unknown>, text),
+          local,
+        ),
+        locks,
     );
   } catch {
     return local;
@@ -730,59 +850,74 @@ const WORD_CHAR = /[\p{L}\p{N}']/u;
  */
 function shrinkFindingToChangedSpan(f: StoryFinding): StoryFinding {
   const quote = f.quote;
-  const suggestion = f.suggestion;
-  // Deletions stay as-is (often " again" → "").
-  if (!quote || quote === suggestion) return f;
-  if (suggestion === "") return f;
-  // Single-token swaps keep the whole word visible in the card + editor.
-  if (!/\s/.test(quote) && !/\s/.test(suggestion)) return f;
+  const suggestions = f.suggestions ?? sameRaiseSuggestions(f.suggestion);
+  const levels: RaiseLevel[] = ["ambitious", "audacious", "delusional"];
+  const texts = levels.map((level) => suggestions[level]);
+  if (!quote || texts.some((s) => !s || s === quote)) return { ...f, suggestions };
+  if (texts.some((s) => !/\s/.test(quote) && !/\s/.test(s))) return { ...f, suggestions };
 
-  // Wholesale multi-word rewrites (hedge phrase → bold phrase) must stay whole
-  // so we never surface a stub like “kinda wanna be”→“am”.
   const qWords = quote.trim().split(/\s+/).filter(Boolean).length;
-  const sWords = suggestion.trim().split(/\s+/).filter(Boolean).length;
-  if (qWords >= 3 && sWords <= 2 && sWords < qWords - 1) return f;
-
-  let pre = 0;
-  while (
-    pre < quote.length &&
-    pre < suggestion.length &&
-    quote[pre] === suggestion[pre]
+  if (
+    texts.some((s) => {
+      const sWords = s.trim().split(/\s+/).filter(Boolean).length;
+      return qWords >= 3 && sWords <= 2 && sWords < qWords - 1;
+    })
   ) {
-    pre += 1;
+    return { ...f, suggestions };
   }
-  let suf = 0;
-  while (
-    suf < quote.length - pre &&
-    suf < suggestion.length - pre &&
-    quote[quote.length - 1 - suf] === suggestion[suggestion.length - 1 - suf]
-  ) {
-    suf += 1;
+
+  let pre = quote.length;
+  let suf = quote.length;
+  for (const suggestion of texts) {
+    let p = 0;
+    while (
+      p < quote.length &&
+      p < suggestion.length &&
+      quote[p] === suggestion[p]
+    ) {
+      p += 1;
+    }
+    let u = 0;
+    while (
+      u < quote.length - p &&
+      u < suggestion.length - p &&
+      quote[quote.length - 1 - u] === suggestion[suggestion.length - 1 - u]
+    ) {
+      u += 1;
+    }
+    pre = Math.min(pre, p);
+    suf = Math.min(suf, u);
   }
   let midStart = pre;
   let midEnd = quote.length - suf;
-  if (midStart >= midEnd) return f;
+  if (midStart >= midEnd) return { ...f, suggestions };
 
-  // Grow to word boundaries so we show “think”→“know”, not “hink”→“now”.
   while (midStart > 0 && WORD_CHAR.test(quote[midStart - 1]!)) midStart -= 1;
   while (midEnd < quote.length && WORD_CHAR.test(quote[midEnd]!)) midEnd += 1;
 
   const qFull = quote.slice(midStart, midEnd);
-  const sFull =
-    quote.slice(midStart, pre) +
-    suggestion.slice(pre, suggestion.length - suf) +
-    quote.slice(quote.length - suf, midEnd);
-  if (!qFull.trim() || qFull === sFull) return f;
-
+  if (!qFull.trim()) return { ...f, suggestions };
+  const next: RaiseSuggestions = { ambitious: "", audacious: "", delusional: "" };
+  for (const level of levels) {
+    const suggestion = suggestions[level];
+    next[level] =
+      quote.slice(midStart, pre) +
+      suggestion.slice(pre, suggestion.length - suf) +
+      quote.slice(quote.length - suf, midEnd);
+  }
+  if (levels.some((level) => !next[level].trim() || qFull === next[level])) {
+    return { ...f, suggestions };
+  }
   const start = f.start + midStart;
   const end = start + qFull.length;
-  if (end > f.end) return f;
+  if (end > f.end) return { ...f, suggestions };
   return {
     ...f,
     start,
     end,
     quote: qFull,
-    suggestion: sFull,
+    suggestion: next.ambitious,
+    suggestions: next,
   };
 }
 
@@ -849,6 +984,7 @@ function heuristicRaise(text: string): StoryRaiseResult {
       quote,
       type: p.type,
       suggestion: p.suggestion,
+      suggestions: sameRaiseSuggestions(p.suggestion),
     });
   }
 
@@ -866,10 +1002,33 @@ function heuristicRaise(text: string): StoryRaiseResult {
   return { ambition, findings };
 }
 
+/** One finding, one level. Does not send the rest of the draft. */
+export async function regenerateFindingLine(opts: {
+  quote: string;
+  level: RaiseLevel;
+  prompt?: string;
+  surrounding: string;
+  pastSuggestions: readonly string[];
+  person: "first" | "third";
+}): Promise<string | null> {
+  const data = await postStoryJson("/manifest/story/raise-another", {
+    quote: opts.quote,
+    level: opts.level,
+    prompt: opts.prompt ?? "",
+    surrounding: opts.surrounding,
+    pastSuggestions: opts.pastSuggestions.slice(0, 12),
+    person: opts.person,
+  });
+  if (!data || typeof data.suggestion !== "string") return null;
+  return data.suggestion.trim();
+}
+
 export async function regenerateStorySuggestion(opts: {
   draft: string;
   quote: string;
   type: StoryFindingType;
+  /** Which dial step to rewrite. Only this level’s text is replaced. */
+  level?: RaiseLevel;
   /** Owning story prompt, e.g. “What does your morning look like?” */
   promptText?: string;
   lifeAreas?: readonly RaiseLifeAreaMeta[];
@@ -901,8 +1060,16 @@ export async function regenerateStorySuggestion(opts: {
   const valuesCue = valuesList.length
     ? `Writer's values (soft influence only — colour tone/larger rewrites; do not force-mention): ${valuesList.join("; ")}. `
     : "";
+  const level = opts.level ?? "ambitious";
+  const levelCue =
+    level === "ambitious"
+      ? "LEVEL ambitious: a really great result that is still reasonable — about a top-10% outcome in that field. Same subject, units and currency. Do not multiply their number. "
+      : level === "audacious"
+        ? "LEVEL audacious: technically possible, a handful of people do it, far past reasonable — about top 0.1% in that field. Same subject, units and currency. A different tier from ambitious, not a bigger multiple. "
+        : "LEVEL delusional: world-leading. The best or most famous in the world at it, or history-making. Same subject. Not a multiple of their number. ";
   const prompt =
     `Rewrite this phrase from a first-person life vision into one bolder present-tense replacement. ` +
+    levelCue +
     promptCue +
     areaCue +
     valuesCue +
@@ -912,8 +1079,7 @@ export async function regenerateStorySuggestion(opts: {
     `If the quote is wholly negative/degrading/absurd misery: suggestion = a complete sincere rewrite. ` +
     `If it is fair/sensible but small: keep the same theme and details; only raise the ceiling. ` +
     `Never rewrite for grammar alone. ` +
-    `Jump straight to the delightfully delusional option — one bold leap, not a timid half-step ` +
-    `(bad: “local rooms”→“packed houses”; good: “local rooms”→“sold-out arenas”). ` +
+    `Stay at the requested level — do not jump past it. ` +
     `After substituting into the surrounding sentence, the FULL line must be natural, grammatical English ` +
     `(correct prepositions/articles — never “music packed houses”; use “music in packed houses” or expand ` +
     `the quote). Not a tiny swap that leaves awkward leftovers (never “kinda wanna be”→“am”). ` +
@@ -1157,6 +1323,13 @@ function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
 }
 
+/** Model may return 0–1 or 0–100. Store 0–1. */
+export function normalizeAmbitionScore(n: unknown): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return 0.4;
+  const unit = n > 1 ? n / 100 : n;
+  return clamp01(unit);
+}
+
 function countApproxWords(text: string): number {
   const t = text.trim();
   if (!t) return 0;
@@ -1164,10 +1337,21 @@ function countApproxWords(text: string): number {
 }
 
 export function ambitionLabel(ambition: number): string {
-  if (ambition < 0.25) return "Sensible";
-  if (ambition < 0.45) return "Mostly sensible";
-  if (ambition < 0.7) return "Bold";
+  const score = ambition > 1 ? ambition : ambition * 100;
+  if (score < 25) return "Sensible";
+  if (score < 45) return "Modest";
+  if (score < 65) return "Ambitious";
+  if (score < 85) return "Audacious";
   return "Delusional";
+}
+
+/** A flagged draft is not ambitious. Raise only opens on lines below that tier. */
+export function ambitionShownForRaise(
+  ambition: number,
+  findingCount: number,
+): number {
+  if (findingCount <= 0) return ambition;
+  return Math.min(ambition, 0.12);
 }
 
 export function findingTypeLabel(type: StoryFindingType): string {

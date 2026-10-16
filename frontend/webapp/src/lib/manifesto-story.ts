@@ -16,7 +16,21 @@ import {
 
 const LS_KEY = "mm_manifesto_story_v1";
 const SECTION_BREAK = "§BREAK§";
-const WORDS_PER_MINUTE = 140;
+/**
+ * Effective pace of a Manifesto Story narration, including the pauses TTS
+ * inserts. Calibrated on Alex's narrated story (15 Oct 2026): 178 script
+ * words spoken from 12.7s to 103.1s at the default 0.9 pace → 118 wpm.
+ */
+const WORDS_PER_MINUTE = 118;
+/** Spoken title before the script. */
+const LISTEN_TITLE_SECONDS = 10;
+/**
+ * Lead-in before the title and a short tail after the last word.
+ * On that narration the non-script audio was ~15s, and ~10s of it is the title.
+ */
+const LISTEN_EDGE_SECONDS = 5;
+/** Bed hold plus fade after the voice ends. */
+const LISTEN_FADE_OUT_SECONDS = 20;
 const LISTEN_GOAL_MIN = 10;
 
 /** One chapter block on a prepared (third-person) version — mirrors draft prompts. */
@@ -789,18 +803,52 @@ export function countWords(text: string): number {
   return t.split(/\s+/).filter(Boolean).length;
 }
 
-export function listeningMinutes(wordCount: number): number {
+function listenFixedSeconds(fadeOut: boolean): number {
+  return (
+    LISTEN_TITLE_SECONDS +
+    LISTEN_EDGE_SECONDS +
+    (fadeOut ? LISTEN_FADE_OUT_SECONDS : 0)
+  );
+}
+
+/** Voice plus title, and the closing fade unless `fadeOut` is false. */
+export function listeningSeconds(
+  wordCount: number,
+  opts?: { fadeOut?: boolean },
+): number {
   if (wordCount <= 0) return 0;
-  return Math.max(0, Math.round(wordCount / WORDS_PER_MINUTE));
+  const speech = (wordCount / WORDS_PER_MINUTE) * 60;
+  return speech + listenFixedSeconds(opts?.fadeOut !== false);
+}
+
+export function listeningMinutes(
+  wordCount: number,
+  opts?: { fadeOut?: boolean },
+): number {
+  if (wordCount <= 0) return 0;
+  return Math.max(1, Math.round(listeningSeconds(wordCount, opts) / 60));
 }
 
 export function listeningFillPercent(wordCount: number): number {
-  const mins = wordCount / WORDS_PER_MINUTE;
-  return Math.min(100, (mins / LISTEN_GOAL_MIN) * 100);
+  if (wordCount <= 0) return 0;
+  const goalSec = LISTEN_GOAL_MIN * 60;
+  return Math.min(100, (listeningSeconds(wordCount) / goalSec) * 100);
 }
 
 export const STORY_SECTION_BREAK = SECTION_BREAK;
 export const STORY_LISTEN_GOAL_MIN = LISTEN_GOAL_MIN;
+export const STORY_LISTEN_FADE_OUT_SECONDS = LISTEN_FADE_OUT_SECONDS;
+/** Story words that land on the ten-minute goal once title and fade are included. */
+export const STORY_LISTEN_GOAL_WORDS =
+  Math.round(
+    (((LISTEN_GOAL_MIN * 60 -
+      LISTEN_TITLE_SECONDS -
+      LISTEN_EDGE_SECONDS -
+      LISTEN_FADE_OUT_SECONDS) /
+      60) *
+      WORDS_PER_MINUTE) /
+      100,
+  ) * 100;
 
 export function draftIsEmpty(draft: string): boolean {
   return countWords(draftPlainText(draft)) === 0;

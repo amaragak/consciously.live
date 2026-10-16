@@ -1,6 +1,6 @@
 /**
  * Fixed ~2 min breathing intro prepended when “Settle in first” is on.
- * ~280 words at ~140 wpm.
+ * ~280 words at ~118 wpm.
  */
 
 export const STORY_SETTLE_IN_SCRIPT = [

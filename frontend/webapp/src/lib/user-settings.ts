@@ -6,6 +6,12 @@
 import type { AccountPronouns } from "@/lib/story-pronouns";
 import { isAccountPronouns } from "@/lib/story-pronouns";
 
+export type RaiseLevel = "ambitious" | "audacious" | "delusional";
+
+function isRaiseLevel(v: unknown): v is RaiseLevel {
+  return v === "ambitious" || v === "audacious" || v === "delusional";
+}
+
 export const USER_SETTINGS_VERSION = 1 as const;
 
 export type ChatActionMode = "suggest" | "ask" | "act";
@@ -29,6 +35,8 @@ export type UserSettingsV1 = {
   account: {
     /** Drives she/he/they in Prepare for narration. */
     pronouns: AccountPronouns;
+    /** How far Raise the ceiling pushes. Saved per user, not per draft. */
+    raiseLevel: RaiseLevel;
   };
   ai: {
     personaliseWithJournal: boolean;
@@ -97,6 +105,7 @@ export function defaultUserSettings(): UserSettingsV1 {
     version: USER_SETTINGS_VERSION,
     account: {
       pronouns: "they_them",
+      raiseLevel: "audacious",
     },
     ai: {
       personaliseWithJournal: false,
@@ -256,10 +265,13 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
   const pronouns = isAccountPronouns(account.pronouns)
     ? account.pronouns
     : d.account.pronouns;
+  const raiseLevel = isRaiseLevel(account.raiseLevel)
+    ? account.raiseLevel
+    : d.account.raiseLevel;
 
   return {
     version: USER_SETTINGS_VERSION,
-    account: { pronouns },
+    account: { pronouns, raiseLevel },
     ai: {
       personaliseWithJournal: asBool(
         ai.personaliseWithJournal,

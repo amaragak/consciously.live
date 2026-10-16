@@ -73,7 +73,19 @@ function extractJsonObject(text: string): unknown {
   return JSON.parse(body.slice(start, end + 1)) as unknown;
 }
 
-async function haikuJson(system: string, user: string): Promise<unknown> {
+type ClaudeSystem =
+  | string
+  | Array<{
+      type: "text";
+      text: string;
+      cache_control?: { type: "ephemeral" };
+    }>;
+
+async function haikuJson(
+  system: ClaudeSystem,
+  user: string,
+  maxTokens = 4096,
+): Promise<unknown> {
   const apiKey = await getClaudeApiKey();
   // Haiku 5.5 defaults to adaptive thinking (slow + can exhaust max_tokens
   // before any text). Disable thinking for these short JSON transforms.
@@ -86,7 +98,7 @@ async function haikuJson(system: string, user: string): Promise<unknown> {
     },
     body: JSON.stringify(withClaudeThinkingOff({
       model: CLAUDE_HAIKU_45_MODEL_ID,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       temperature: 0.4,
       thinking: { type: "disabled" },
       output_config: { effort: "low" },
@@ -237,7 +249,16 @@ async function handleRaise(
   const system =
     "You raise the ambition of first-person life visions written as already true. Return ONLY valid JSON.";
   const user = [
-    "Score ambition 0–1 (0 = sensible/safe, 1 = delightfully delusional). Short drafts can still be low ambition.",
+    "Score ambition 0–100 for the whole draft against an ordinary life in that field, not against how bold the wording sounds.",
+    "0–24 Sensible: an average or below-average experience. Typical pay, a typical home, a local or ordinary version of the activity, “good enough”, or hedged with effort or hope. Nothing unremarkable is Ambitious.",
+    "25–44 Modest: a decent, ordinary good outcome that plenty of people already have.",
+    "45–64 Ambitious: a really great result that is still reasonable, clearly better than what most people in that situation have. About a top-10% life in that field. This tier starts only there.",
+    "65–84 Audacious: technically possible, a handful of people do it, far past reasonable.",
+    "85–100 Delusional: world-leading. The best or most famous in the world at it, or history-making.",
+    "If a line describes an average or below-average experience, score it Sensible. Never score that line Ambitious or higher.",
+    "Hedges (hopefully, one day, if I work hard, I'd like to) keep a line in Sensible.",
+    "Flag a line only when its claim is under Ambitious. Never flag a line already at Ambitious or higher,",
+    "except type=negative, which you still flag.",
     "Find where the writer played it safe: hedges (hopefully, try to, maybe, someday, I think, kind of, kinda, wanna),",
     "future tense (I will, I'm going to), small thinking (a few, local, small rooms, enough),",
     'settling ("which is enough for me"), lukewarm affection or desire',
@@ -276,11 +297,17 @@ async function handleRaise(
     "  keep the same theme and details; only raise the ceiling (same topic, bolder).",
     "- Never flag grammar. Grammar is for Prepare for narration, not Raise.",
     "",
-    "AMBITION LEAP (required):",
-    "- For each finding, jump straight to the delightfully delusional option — one bold leap,",
-    "  not a timid half-step that will need raising again.",
-    '- Bad: “local rooms”→“packed houses” (still small; invites a second pass).',
-    '  Good: “play music in local rooms”→“play sold-out arenas across the country”.',
+    "CALIBRATION (required): judge each rewrite by how society sees that outcome, not as a multiple",
+    "of the user's number. Each level is a different tier of life.",
+    "- For each finding, write three rewrites of the SAME quote. Same subject, same specifics,",
+    "  same units, same currency, same person (first or third) as the text.",
+    "- Present tense, already true, and concrete: a number, a place, a name, or a scene.",
+    "- Never just multiply their figure. Pick a figure that fits the tier.",
+    "- Each level must be a clearly different tier from the one below it.",
+    "- ambitious is the really-great-but-reasonable tier above, not a small step up from an ordinary life.",
+    "- audacious is the handful-of-people tier. delusional is world-leading.",
+    "- Write original wording for this person's life. Do not recycle phrases from these instructions.",
+    "- Which lines you flag does not depend on the level. Always return all three texts.",
     "",
     "QUALITY (required):",
     "- Mentally apply every suggestion into the draft. Read the FULL sentence after the swap.",
@@ -314,7 +341,7 @@ async function handleRaise(
     "",
     "Example: “I think my mates like me again” → “I think”→“I know”, “like”→“love”, “ again”→\"\"",
     'so the line becomes “I know my mates love me”.',
-    'JSON shape: {"ambition":0-1,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestion":"..."}]}',
+    'JSON shape: {"ambition":0-100,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}',
     "",
     ...(raiseLocks.length
       ? [
@@ -330,8 +357,9 @@ async function handleRaise(
   ].join("\n");
 
   const parsed = (await haikuJson(system, user)) as Record<string, unknown>;
-  const ambitionRaw = typeof parsed.ambition === "number" ? parsed.ambition : 0.4;
-  const ambition = Math.min(1, Math.max(0, ambitionRaw));
+  const ambitionRaw = typeof parsed.ambition === "number" ? parsed.ambition : 40;
+  const ambitionUnit = ambitionRaw > 1 ? ambitionRaw / 100 : ambitionRaw;
+  let ambition = Math.min(1, Math.max(0, ambitionUnit));
   const rawFindings = Array.isArray(parsed.findings) ? parsed.findings : [];
   const findings: Array<Record<string, unknown>> = [];
   let i = 0;
@@ -341,10 +369,32 @@ async function handleRaise(
     const r = row as Record<string, unknown>;
     const quoteRaw = typeof r.quote === "string" ? r.quote : "";
     if (!quoteRaw.trim()) continue;
-    if (typeof r.suggestion !== "string") continue;
-    const deletion = r.suggestion.trim() === "";
+    const bag =
+      r.suggestions && typeof r.suggestions === "object"
+        ? (r.suggestions as Record<string, unknown>)
+        : null;
+    const pick = (key: string): string | null =>
+      bag && typeof bag[key] === "string" ? bag[key].trim() : null;
+    const ambitious = pick("ambitious");
+    const audacious = pick("audacious");
+    const delusional = pick("delusional");
+    let suggestions: { ambitious: string; audacious: string; delusional: string } | null =
+      null;
+    if (ambitious != null || audacious != null || delusional != null) {
+      const base = ambitious ?? audacious ?? delusional ?? "";
+      suggestions = {
+        ambitious: ambitious ?? base,
+        audacious: audacious ?? base,
+        delusional: delusional ?? base,
+      };
+    } else if (typeof r.suggestion === "string") {
+      const one = r.suggestion.trim();
+      suggestions = { ambitious: one, audacious: one, delusional: one };
+    }
+    if (!suggestions) continue;
+    const suggestion = suggestions.ambitious;
+    const deletion = suggestion.trim() === "";
     const quote = deletion ? quoteRaw : quoteRaw.trim();
-    const suggestion = deletion ? "" : r.suggestion.trim();
     const type =
       typeof r.type === "string" && FINDING_TYPES.has(r.type)
         ? r.type
@@ -365,9 +415,11 @@ async function handleRaise(
       quote,
       type,
       suggestion,
+      suggestions,
     });
   }
   findings.sort((a, b) => (a.start as number) - (b.start as number));
+  if (findings.length > 0) ambition = Math.min(ambition, 0.12);
   return json(200, { ambition, findings });
 }
 
@@ -616,6 +668,70 @@ async function handleSummarize(
   return json(200, { summary, sectionSummaries });
 }
 
+const ANOTHER_SYSTEM = [
+  "You rewrite one span of a life vision written as already true. Return ONLY JSON {\"suggestion\":\"...\"}.",
+  "The suggestion replaces only the original span and must read as grammatical English inside the surrounding sentence.",
+  "Same person (first or third) as the text. Same topic, same units, same currency. Present tense, already true, concrete.",
+  "Levels are social outcomes, not multiples of the original figure:",
+  "- ambitious: a really great result that is still reasonable, clearly better than most people in that situation, about the top 10%.",
+  "- audacious: technically possible and reached by a handful of people, far past what is reasonable for almost everyone.",
+  "- delusional: world-leading. The best or most famous in the world at it, or history-making.",
+  "Write original wording. Do not recycle phrases from these instructions or from the past suggestions.",
+  "Empty string only when the span should be removed.",
+].join("\n");
+
+async function handleRaiseAnother(body: Record<string, unknown>) {
+  const quote = typeof body.quote === "string" ? body.quote.trim() : "";
+  const level =
+    body.level === "ambitious" ||
+    body.level === "audacious" ||
+    body.level === "delusional"
+      ? body.level
+      : "";
+  if (!quote || !level) return json(400, { error: "quote and level are required" });
+  const surrounding =
+    typeof body.surrounding === "string" && body.surrounding.trim()
+      ? body.surrounding.trim().slice(0, 1200)
+      : quote;
+  const prompt =
+    typeof body.prompt === "string" ? body.prompt.trim().slice(0, 240) : "";
+  const person = body.person === "third" ? "third" : "first";
+  const past = Array.isArray(body.pastSuggestions)
+    ? body.pastSuggestions
+        .filter((row): row is string => typeof row === "string")
+        .map((row) => row.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+    : [];
+  const user = [
+    `Level: ${level}`,
+    `Person: ${person}`,
+    prompt ? `Section prompt: ${prompt}` : "",
+    `Original span: ${quote}`,
+    `Surrounding: ${surrounding}`,
+    past.length
+      ? `Do not repeat:\n${past.map((row) => `- ${row}`).join("\n")}`
+      : "",
+    'Reply ONLY JSON {"suggestion":"..."}',
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const parsed = (await haikuJson(
+    [
+      {
+        type: "text",
+        text: ANOTHER_SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    user,
+    400,
+  )) as Record<string, unknown>;
+  const suggestion =
+    typeof parsed.suggestion === "string" ? parsed.suggestion.trim() : "";
+  return json(200, { suggestion });
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -651,6 +767,9 @@ export async function handler(
         body.raiseContext,
         body.raiseValues,
       );
+    }
+    if (path.endsWith("/manifest/story/raise-another")) {
+      return await handleRaiseAnother(body);
     }
     if (path.endsWith("/manifest/story/compose")) {
       const draft = typeof body.draft === "string" ? body.draft : "";

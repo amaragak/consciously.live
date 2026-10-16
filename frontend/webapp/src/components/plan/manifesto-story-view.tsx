@@ -10,8 +10,6 @@ import {
   Mic,
   Plus,
   Sparkles,
-  ThumbsDown,
-  ThumbsUp,
   Wand2,
   X,
 } from "lucide-react";
@@ -38,6 +36,7 @@ import { loadIdeateValuesStore } from "@/lib/ideate-values";
 import { firstNameFromAccount, romanNumeral } from "@/lib/manifesto-print";
 import {
   STORY_LISTEN_GOAL_MIN,
+  STORY_LISTEN_GOAL_WORDS,
   addStoryVersion,
   addUpdatedStoryVersion,
   composeSectionsForUpdate,
@@ -77,19 +76,27 @@ import {
 } from "@/lib/manifesto-story-draft";
 import {
   ambitionLabel,
+  ambitionShownForRaise,
   composeStoryThirdPerson,
   findingTypeLabel,
   lockedSentenceRanges,
   pruneRaiseLocks,
   raiseLockFromAcceptedSpan,
   raiseLocksForPassedSentences,
+  nextRaiseLevel,
+  RAISE_LEVEL_NAME,
   raiseStoryCeiling,
   raiseSuggestionLabel,
+  regenerateFindingLine,
   regenerateStorySuggestion,
+  surroundingSentences,
   stripOvertlyNegativeRaiseLocks,
+  suggestionAt,
+  type RaiseLevel,
+  type RaiseSuggestions,
   type StoryFinding,
 } from "@/lib/manifesto-story-llm";
-import { fetchUserSettings } from "@/lib/settings-api";
+import { fetchUserSettings, patchUserSettings } from "@/lib/settings-api";
 import {
   mergeAccountPronouns,
   readAccountPronounsLocal,
@@ -111,6 +118,12 @@ import {
   ManifestoStoryNarrateRail,
   type NarrationCardState,
 } from "@/components/plan/manifesto-story-narrate-rail";
+import {
+  AmbitionAimBar,
+  RaiseLevelDial,
+  RaiseLineDial,
+  SunFace,
+} from "@/components/plan/raise-level-dial";
 import {
   ManifestoStoryPrepareCheck,
   type PrepareCheckDecision,
@@ -213,6 +226,8 @@ function owningLabelIndex(
   return -1;
 }
 
+type FindingLineStatus = "open" | "used" | "kept";
+
 type LiveFinding = {
   id: string;
   /** Index of the text node in the draft nodes. */
@@ -222,9 +237,49 @@ type LiveFinding = {
   quote: string;
   type: StoryFinding["type"];
   suggestion: string;
+  suggestions: RaiseSuggestions;
+  /** Which rewrite this line is showing. Independent of the big dial. */
+  level: RaiseLevel;
+  status: FindingLineStatus;
+  pastSuggestions: string[];
 };
 
-type RawFinding = Pick<StoryFinding, "id" | "quote" | "type" | "suggestion">;
+type RawFinding = Pick<
+  StoryFinding,
+  "id" | "quote" | "type" | "suggestion" | "suggestions"
+> & {
+  level?: RaiseLevel;
+  status?: FindingLineStatus;
+  pastSuggestions?: string[];
+};
+
+function withAnother(
+  f: LiveFinding,
+  suggestion: string,
+): LiveFinding {
+  const past =
+    !suggestion || f.pastSuggestions.includes(suggestion)
+      ? f.pastSuggestions
+      : [...f.pastSuggestions, suggestion];
+  return {
+    ...f,
+    pastSuggestions: past,
+    suggestions: { ...f.suggestions, [f.level]: suggestion },
+    suggestion: f.level === "ambitious" ? suggestion : f.suggestion,
+  };
+}
+
+function pastFromSuggestions(suggestions: RaiseSuggestions): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const level of ["ambitious", "audacious", "delusional"] as const) {
+    const text = suggestions[level].trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
 
 /** promptId or `"opening"` for the text node’s owning section. */
 function sectionKeyForDraftNode(
@@ -255,6 +310,7 @@ function filterFindingsToSectionKeys(
 function locateFindings(
   nodes: readonly StoryDraftNode[],
   raw: readonly RawFinding[],
+  fallbackLevel: RaiseLevel = "audacious",
 ): LiveFinding[] {
   const out: LiveFinding[] = [];
   for (const f of raw) {
@@ -280,6 +336,12 @@ function locateFindings(
             quote: f.quote,
             type: f.type,
             suggestion: f.suggestion,
+            suggestions: f.suggestions,
+            level: f.level ?? fallbackLevel,
+            status: f.status ?? "open",
+            pastSuggestions: f.pastSuggestions?.length
+              ? f.pastSuggestions
+              : pastFromSuggestions(f.suggestions),
           });
           placed = true;
           break;
@@ -806,7 +868,7 @@ const GUIDE_ITEMS: readonly { title: string; body: string }[] = [
   },
   {
     title: "Write long.",
-    body: "About 1,400 words makes ten minutes of listening. Use the mic if typing slows you down.",
+    body: `About ${STORY_LISTEN_GOAL_WORDS.toLocaleString()} words makes ten minutes of listening. Use the mic if typing slows you down.`,
   },
   {
     title: "First person is fine.",
@@ -1351,64 +1413,51 @@ function PromptsCard({
   );
 }
 
-function AmbitionBlock({ ambition }: { ambition: number }) {
+function AmbitionBlock({
+  ambition,
+  level,
+  findings,
+}: {
+  ambition: number;
+  level: RaiseLevel;
+  findings: number;
+}) {
+  const shown = ambitionShownForRaise(ambition, findings);
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
-        <span
-          className="font-display text-xl text-foreground"
-          style={SERIF_DISPLAY}
-        >
-          {ambitionLabel(ambition)}
-        </span>
-        <span className="text-xs text-muted">Ambition</span>
-      </div>
-      <div
-        className="relative h-[6px] rounded-[3px]"
-        style={{
-          backgroundImage: `linear-gradient(90deg, var(--border), ${LIGHT}, var(--accent))`,
-        }}
-      >
-        <span
-          aria-hidden
-          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent-link bg-card"
-          style={{ left: `${Math.round(ambition * 100)}%` }}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
-        <span className="inline-flex items-center gap-1">
-          <ThumbsDown className="h-3 w-3 shrink-0" aria-hidden />
-          Sensible
-        </span>
-        <span>Bold</span>
-        <span className="inline-flex items-center gap-0.5 text-accent-link">
-          Delusional
-          <ThumbsUp className="h-3 w-3 shrink-0" aria-hidden />
-          <ThumbsUp className="h-3 w-3 shrink-0" aria-hidden />
-        </span>
-      </div>
-    </div>
+    <AmbitionAimBar
+      ambition={shown}
+      level={level}
+      title={ambitionLabel(shown)}
+    />
   );
 }
 
 function raiseEmptyCopy(ambition: number): string {
-  if (ambition >= 0.7) return "Nothing to raise. That’s already bold.";
   if (ambition <= 0) return "Write a little first — then we can push it further.";
-  return "Still in the sensible zone. Keep going, or say the version you’d almost not admit.";
+  if (ambition >= 0.45) return "Nothing to raise. That’s already ambitious.";
+  return "Still sensible. Keep going, or say the version you’d almost not admit.";
 }
 
 function RaiseCard({
   ambition,
+  level,
+  onLevel,
   findings,
   activeId,
+  anotherBusyId,
   onSelect,
+  onLineLevel,
   onUseAll,
   onDone,
 }: {
   ambition: number;
+  level: RaiseLevel;
+  onLevel: (level: RaiseLevel) => void;
   findings: LiveFinding[];
   activeId: string | null;
+  anotherBusyId: string | null;
   onSelect: (id: string) => void;
+  onLineLevel: (id: string, level: RaiseLevel) => void;
   onUseAll: () => void;
   onDone: () => void;
 }) {
@@ -1428,7 +1477,9 @@ function RaiseCard({
         </button>
       </div>
 
-      <AmbitionBlock ambition={ambition} />
+      <RaiseLevelDial level={level} onChange={onLevel} sunSize={36} />
+
+      <AmbitionBlock ambition={ambition} level={level} findings={n} />
 
       <p
         className="font-display text-[22px] leading-tight text-foreground"
@@ -1443,10 +1494,10 @@ function RaiseCard({
             const active = f.id === activeId;
             return (
               <li key={f.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(f.id)}
-                  className={`flex w-full cursor-pointer flex-col gap-1 text-left ${
+                <div
+                  className={`flex flex-col gap-1 ${
+                    anotherBusyId === f.id ? "opacity-50" : ""
+                  } ${
                     active
                       ? "rounded-[10px] border p-[10px]"
                       : "border-t border-border py-[10px]"
@@ -1460,18 +1511,40 @@ function RaiseCard({
                       : undefined
                   }
                 >
-                  <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
-                  <span className="text-[13px] text-muted">
-                    “{f.quote.trim()}”
-                  </span>
-                  <span className="flex items-start gap-1.5 text-sm text-foreground">
-                    <ArrowRight
-                      className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
-                      aria-hidden
-                    />
-                    {raiseSuggestionLabel(f.suggestion)}
-                  </span>
-                </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(f.id)}
+                      className={`${LABEL_CAPS} cursor-pointer text-left`}
+                    >
+                      {findingTypeLabel(f.type)}
+                    </button>
+                    {f.status === "open" ? (
+                      <span className="ml-auto">
+                        <RaiseLineDial
+                          level={f.level}
+                          onChange={(next) => onLineLevel(f.id, next)}
+                        />
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(f.id)}
+                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                  >
+                    <span className="text-[13px] text-muted">
+                      “{f.quote.trim()}”
+                    </span>
+                    <span className="flex items-start gap-1.5 text-sm text-foreground">
+                      <ArrowRight
+                        className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
+                        aria-hidden
+                      />
+                      {raiseSuggestionLabel(suggestionAt(f, f.level))}
+                    </span>
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -1504,19 +1577,25 @@ function RaiseCard({
 /** Mobile "Raise the ceiling" sheet body: active finding expanded in place. */
 function RaiseSheetBody({
   ambition,
+  level,
+  onLevel,
   findings,
   activeId,
-  busy,
+  busyId,
   onSelect,
+  onLineLevel,
   onUse,
   onAnother,
   onKeep,
 }: {
   ambition: number;
+  level: RaiseLevel;
+  onLevel: (level: RaiseLevel) => void;
   findings: LiveFinding[];
   activeId: string | null;
-  busy: boolean;
+  busyId: string | null;
   onSelect: (id: string) => void;
+  onLineLevel: (id: string, level: RaiseLevel) => void;
   onUse: (f: LiveFinding) => void;
   onAnother: (f: LiveFinding) => void;
   onKeep: (f: LiveFinding) => void;
@@ -1533,7 +1612,8 @@ function RaiseSheetBody({
 
   return (
     <div className="flex flex-col gap-3 px-[18px] pb-4">
-      <AmbitionBlock ambition={ambition} />
+      <RaiseLevelDial level={level} onChange={onLevel} sunSize={26} />
+      <AmbitionBlock ambition={ambition} level={level} findings={n} />
       <p
         className="font-display text-[19px] leading-tight text-foreground"
         style={SERIF_DISPLAY}
@@ -1555,13 +1635,26 @@ function RaiseSheetBody({
               >
                 {active ? (
                   <div
-                    className="flex flex-col gap-2 rounded-xl border p-3"
+                    className={`flex flex-col gap-2 rounded-xl border p-3 ${
+                      busyId === f.id ? "opacity-50" : ""
+                    }`}
                     style={{
                       borderColor: LIGHT,
                       backgroundColor: "var(--accent-soft)",
                     }}
                   >
-                    <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
+                      {f.status === "open" ? (
+                        <span className="ml-auto">
+                          <RaiseLineDial
+                            level={f.level}
+                            mobile
+                            onChange={(next) => onLineLevel(f.id, next)}
+                          />
+                        </span>
+                      ) : null}
+                    </div>
                     <span className="text-[13px] text-muted">
                       “{f.quote.trim()}”
                     </span>
@@ -1569,13 +1662,13 @@ function RaiseSheetBody({
                       className="font-display text-base leading-[1.45] text-foreground"
                       style={SERIF_TEXT}
                     >
-                      {raiseSuggestionLabel(f.suggestion)}
+                      {raiseSuggestionLabel(suggestionAt(f, f.level))}
                     </p>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => onUse(f)}
-                        disabled={busy}
+                        disabled={busyId === f.id}
                         className={`${BTN_PRIMARY} h-[34px]`}
                       >
                         Use this
@@ -1583,11 +1676,11 @@ function RaiseSheetBody({
                       <button
                         type="button"
                         onClick={() => onAnother(f)}
-                        disabled={busy}
+                        disabled={busyId === f.id}
                         className={`${BTN_OUTLINE} h-[34px]`}
                       >
                         <Sparkles
-                          className={`h-3.5 w-3.5 ${busy ? "animate-pulse" : ""}`}
+                          className={`h-3.5 w-3.5 ${busyId === f.id ? "animate-pulse" : ""}`}
                           aria-hidden
                         />
                         Another
@@ -1602,23 +1695,46 @@ function RaiseSheetBody({
                     </div>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => onSelect(f.id)}
-                    className="flex w-full cursor-pointer flex-col gap-1 border-t border-border py-[10px] text-left"
+                  <div
+                    className={`flex flex-col gap-1 border-t border-border py-[10px] ${
+                      busyId === f.id ? "opacity-50" : ""
+                    }`}
                   >
-                    <span className={LABEL_CAPS}>{findingTypeLabel(f.type)}</span>
-                    <span className="text-[13px] text-muted">
-                      “{f.quote.trim()}”
-                    </span>
-                    <span className="flex items-start gap-1.5 text-sm text-foreground">
-                      <ArrowRight
-                        className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
-                        aria-hidden
-                      />
-                      {raiseSuggestionLabel(f.suggestion)}
-                    </span>
-                  </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onSelect(f.id)}
+                        className={`${LABEL_CAPS} cursor-pointer text-left`}
+                      >
+                        {findingTypeLabel(f.type)}
+                      </button>
+                      {f.status === "open" ? (
+                        <span className="ml-auto">
+                          <RaiseLineDial
+                            level={f.level}
+                            mobile
+                            onChange={(next) => onLineLevel(f.id, next)}
+                          />
+                        </span>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(f.id)}
+                      className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                    >
+                      <span className="text-[13px] text-muted">
+                        “{f.quote.trim()}”
+                      </span>
+                      <span className="flex items-start gap-1.5 text-sm text-foreground">
+                        <ArrowRight
+                          className="mt-0.5 h-4 w-4 shrink-0 text-accent-link"
+                          aria-hidden
+                        />
+                        {raiseSuggestionLabel(suggestionAt(f, f.level))}
+                      </span>
+                    </button>
+                  </div>
                 )}
               </li>
             );
@@ -1701,7 +1817,8 @@ type RaiseInlineActions = {
   onUse: (f: LiveFinding) => void;
   onAnother: (f: LiveFinding) => void;
   onKeep: (f: LiveFinding) => void;
-  busy: boolean;
+  onLineLevel: (id: string, level: RaiseLevel) => void;
+  busyId: string | null;
 };
 
 function PromptLabelRow({
@@ -1803,14 +1920,18 @@ function PromptLabelRow({
 /** Desktop quick actions after each Raise `ins` — ✓ / ✕ on every finding; Another only when active. */
 function RaiseInlineQuickActions({
   busy,
+  level,
   showAnother,
   onUse,
+  onCycleLevel,
   onAnother,
   onKeep,
 }: {
   busy: boolean;
+  level: RaiseLevel;
   showAnother: boolean;
   onUse: () => void;
+  onCycleLevel: () => void;
   onAnother: () => void;
   onKeep: () => void;
 }) {
@@ -1837,6 +1958,17 @@ function RaiseInlineQuickActions({
         className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted transition-colors hover:text-foreground"
       >
         <X className="h-[11px] w-[11px]" aria-hidden strokeWidth={2.2} />
+      </button>
+      <button
+        type="button"
+        onClick={onCycleLevel}
+        aria-label={`Level: ${RAISE_LEVEL_NAME[level]}. Change level`}
+        className="inline-flex h-5 shrink-0 cursor-pointer items-center gap-0.5 rounded-full border border-border bg-card pl-px pr-1.5"
+      >
+        <SunFace level={level} size={16} />
+        <span className="text-[11px] font-semibold leading-none text-foreground">
+          {RAISE_LEVEL_NAME[level]}
+        </span>
       </button>
       {showAnother ? (
         <button
@@ -2113,12 +2245,12 @@ function StoryEditor({
                   <del className="text-muted no-underline [text-decoration-line:line-through] [text-decoration-color:var(--muted)] [text-decoration-thickness:1px]">
                     {original}
                   </del>
-                  {f.suggestion !== "" ? (
+                  {suggestionAt(f, f.level) !== "" ? (
                     <>
                       {" "}
                       <ins
                         className={`rounded-[3px] px-0.5 text-foreground no-underline ${
-                          raiseActions.busy && active ? "opacity-50" : ""
+                          raiseActions.busyId === f.id ? "opacity-50" : ""
                         }`}
                         style={{
                           backgroundColor:
@@ -2128,16 +2260,20 @@ function StoryEditor({
                             : "inset 0 -1.5px 0 color-mix(in srgb, var(--accent) 55%, transparent)",
                         }}
                       >
-                        {f.suggestion}
+                        {suggestionAt(f, f.level)}
                       </ins>
                     </>
                   ) : null}
                 </button>
                 {wide ? (
                   <RaiseInlineQuickActions
-                    busy={raiseActions.busy}
+                    busy={raiseActions.busyId === f.id}
+                    level={f.level}
                     showAnother={active}
                     onUse={() => raiseActions.onUse(f)}
+                    onCycleLevel={() =>
+                      raiseActions.onLineLevel(f.id, nextRaiseLevel(f.level))
+                    }
                     onAnother={() => raiseActions.onAnother(f)}
                     onKeep={() => raiseActions.onKeep(f)}
                   />
@@ -2483,11 +2619,69 @@ export function ManifestoStoryView() {
     ambition: number;
     findings: LiveFinding[];
   } | null>(null);
+  const [raiseLevel, setRaiseLevel] = useState<RaiseLevel>("audacious");
+  useEffect(() => {
+    let cancelled = false;
+    void fetchUserSettings()
+      .then(({ settings }) => {
+        if (!cancelled) setRaiseLevel(settings.account.raiseLevel);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const changeRaiseLevel = (level: RaiseLevel) => {
+    setRaiseLevel(level);
+    setRaise((r) =>
+      r
+        ? {
+            ...r,
+            findings: r.findings.map((f) =>
+              f.status === "open" ? { ...f, level } : f,
+            ),
+          }
+        : r,
+    );
+    setPrepareGate((g) =>
+      g
+        ? {
+            ...g,
+            findings: g.findings.map((f) =>
+              prepareDecisions[f.id] ? f : { ...f, level },
+            ),
+          }
+        : g,
+    );
+    void patchUserSettings({ account: { raiseLevel: level } }).catch(() => {});
+  };
+  const setFindingLevel = (id: string, level: RaiseLevel) => {
+    setRaise((r) =>
+      r
+        ? {
+            ...r,
+            findings: r.findings.map((f) =>
+              f.id === id && f.status === "open" ? { ...f, level } : f,
+            ),
+          }
+        : r,
+    );
+    setPrepareGate((g) =>
+      g
+        ? {
+            ...g,
+            findings: g.findings.map((f) =>
+              f.id === id && !prepareDecisions[f.id] ? { ...f, level } : f,
+            ),
+          }
+        : g,
+    );
+  };
   const [raising, setRaising] = useState(false);
   const [raiseError, setRaiseError] = useState<string | null>(null);
   const [raiseSheet, setRaiseSheet] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [anotherBusy, setAnotherBusy] = useState(false);
+  const [anotherBusyId, setAnotherBusyId] = useState<string | null>(null);
   const spanRefs = useRef(new Map<string, HTMLElement>());
   const writingCardRef = useRef<HTMLDivElement | null>(null);
 
@@ -2995,7 +3189,7 @@ export function ManifestoStoryView() {
       values,
       valuesById,
     });
-    const live = locateFindings(currentNodes(), res.findings);
+    const live = locateFindings(currentNodes(), res.findings, raiseLevel);
     // History only — unchecked sentences stay open until the user Use/Keep.
     const passedLocks = raiseLocksForPassedSentences(body, res.findings);
     update((s) => ({
@@ -3086,9 +3280,10 @@ export function ManifestoStoryView() {
   };
 
   const useFinding = (f: LiveFinding) => {
-    const res = applyReplacement(f, f.suggestion);
+    const replacement = suggestionAt(f, f.level);
+    const res = applyReplacement(f, replacement);
     if (!res) return;
-    const lockEnd = f.start + f.suggestion.length;
+    const lockEnd = f.start + replacement.length;
     rememberRaiseLock(res.updated, f.start, lockEnd, true);
     const nextId = nextFindingId(f.id);
     setRaise((r) => {
@@ -3115,13 +3310,14 @@ export function ManifestoStoryView() {
     for (const f of ordered) {
       const n = next[f.node];
       if (!n || n.kind !== "text") continue;
+      const replacement = suggestionAt(f, f.level);
       const updated =
-        n.text.slice(0, f.start) + f.suggestion + n.text.slice(f.end);
+        n.text.slice(0, f.start) + replacement + n.text.slice(f.end);
       next[f.node] = { kind: "text", text: updated };
       const lock = raiseLockFromAcceptedSpan(
         updated,
         f.start,
-        f.start + f.suggestion.length,
+        f.start + replacement.length,
       );
       if (lock) newLocks.push(lock);
     }
@@ -3157,43 +3353,57 @@ export function ManifestoStoryView() {
     setActiveId(nextId);
   };
 
+  const requestLineAnother = async (f: LiveFinding): Promise<string | null> => {
+    const cur = currentNodes();
+    const node = cur[f.node];
+    const text = node?.kind === "text" ? node.text : f.quote;
+    const li = owningLabelIndex(cur, f.node);
+    const label = li >= 0 ? cur[li] : undefined;
+    const prompt = label?.kind === "label" ? label.text : undefined;
+    const small = await regenerateFindingLine({
+      quote: f.quote,
+      level: f.level,
+      prompt,
+      surrounding: surroundingSentences(text, f.start, f.end),
+      pastSuggestions: f.pastSuggestions,
+      person: "first",
+    });
+    if (small != null) return small;
+    const lifeAreas = raiseLifeAreas();
+    const { values, valuesById } = raiseValuesContext();
+    const refId =
+      label?.kind === "label" ? areaRefIdFromPromptId(label.promptId) : null;
+    return regenerateStorySuggestion({
+      draft: serializeStoryDraft(cur),
+      quote: f.quote,
+      type: f.type,
+      level: f.level,
+      promptText: prompt,
+      lifeAreas,
+      lifeArea: refId ? (lifeAreas.find((a) => a.id === refId) ?? null) : null,
+      values,
+      valuesById,
+    });
+  };
+
   const anotherSuggestion = async (f: LiveFinding) => {
-    if (anotherBusy) return;
-    setAnotherBusy(true);
+    if (anotherBusyId) return;
+    setAnotherBusyId(f.id);
     try {
-      const cur = currentNodes();
-      const li = owningLabelIndex(cur, f.node);
-      const label = li >= 0 ? cur[li] : undefined;
-      const lifeAreas = raiseLifeAreas();
-      const { values, valuesById } = raiseValuesContext();
-      const refId =
-        label?.kind === "label"
-          ? areaRefIdFromPromptId(label.promptId)
-          : null;
-      const suggestion = await regenerateStorySuggestion({
-        draft: serializeStoryDraft(cur),
-        quote: f.quote,
-        type: f.type,
-        promptText: label?.kind === "label" ? label.text : undefined,
-        lifeAreas,
-        lifeArea: refId
-          ? lifeAreas.find((a) => a.id === refId) ?? null
-          : null,
-        values,
-        valuesById,
-      });
+      const suggestion = await requestLineAnother(f);
+      if (suggestion == null) return;
       setRaise((r) =>
         r
           ? {
               ...r,
               findings: r.findings.map((x) =>
-                x.id === f.id ? { ...x, suggestion } : x,
+                x.id === f.id ? withAnother({ ...x, level: f.level }, suggestion) : x,
               ),
             }
           : r,
       );
     } finally {
-      setAnotherBusy(false);
+      setAnotherBusyId(null);
     }
   };
 
@@ -3387,13 +3597,14 @@ export function ManifestoStoryView() {
           start = idx;
           end = idx + f.quote.length;
         }
+        const replacement = suggestionAt(f, f.level);
         const updated =
-          n.text.slice(0, start) + f.suggestion + n.text.slice(end);
+          n.text.slice(0, start) + replacement + n.text.slice(end);
         next[f.node] = { kind: "text", text: updated };
         const lock = raiseLockFromAcceptedSpan(
           updated,
           start,
-          start + f.suggestion.length,
+          start + replacement.length,
         );
         if (lock) newLocks.push(lock);
       }
@@ -3501,9 +3712,13 @@ export function ManifestoStoryView() {
   const raiseCard = raise ? (
     <RaiseCard
       ambition={raise.ambition}
+      level={raiseLevel}
+      onLevel={changeRaiseLevel}
       findings={raise.findings}
       activeId={activeId}
+      anotherBusyId={anotherBusyId}
       onSelect={selectFromList}
+      onLineLevel={setFindingLevel}
       onUseAll={useAll}
       onDone={clearRaise}
     />
@@ -3534,10 +3749,11 @@ export function ManifestoStoryView() {
       raiseLocks={store.raiseAccepted}
       activeId={activeId}
       raiseActions={{
-        busy: anotherBusy,
+        busyId: anotherBusyId,
         onUse: useFinding,
         onAnother: (f) => void anotherSuggestion(f),
         onKeep: (f) => keepMine(f.id),
+        onLineLevel: setFindingLevel,
       }}
       focusRequest={focusRequest}
       freshPromptId={freshPromptId}
@@ -3943,33 +4159,14 @@ export function ManifestoStoryView() {
     if (!f || prepareAnotherBusyId) return;
     setPrepareAnotherBusyId(id);
     try {
-      const cur = currentNodes();
-      const li = owningLabelIndex(cur, f.node);
-      const label = li >= 0 ? cur[li] : undefined;
-      const lifeAreas = raiseLifeAreas();
-      const { values, valuesById } = raiseValuesContext();
-      const refId =
-        label?.kind === "label"
-          ? areaRefIdFromPromptId(label.promptId)
-          : null;
-      const suggestion = await regenerateStorySuggestion({
-        draft: serializeStoryDraft(cur),
-        quote: f.quote,
-        type: f.type,
-        promptText: label?.kind === "label" ? label.text : undefined,
-        lifeAreas,
-        lifeArea: refId
-          ? (lifeAreas.find((a) => a.id === refId) ?? null)
-          : null,
-        values,
-        valuesById,
-      });
+      const suggestion = await requestLineAnother(f);
+      if (suggestion == null) return;
       setPrepareGate((g) =>
         g
           ? {
               ...g,
               findings: g.findings.map((x) =>
-                x.id === id ? { ...x, suggestion } : x,
+                x.id === id ? withAnother({ ...x, level: f.level }, suggestion) : x,
               ),
             }
           : g,
@@ -3985,6 +4182,8 @@ export function ManifestoStoryView() {
     <ManifestoStoryPrepareCheck
       open={Boolean(prepareGate)}
       wide={wide}
+      level={raiseLevel}
+      onLevel={changeRaiseLevel}
       ambition={prepareGate?.ambition ?? 0.4}
       findings={prepareGate?.findings ?? []}
       decisions={prepareDecisions}
@@ -3996,6 +4195,7 @@ export function ManifestoStoryView() {
       onDecide={(id, d) =>
         setPrepareDecisions((prev) => ({ ...prev, [id]: d }))
       }
+      onLineLevel={setFindingLevel}
       onAnother={(id) => void onPrepareGateAnother(id)}
       onPrepareAsIs={() => void finishPrepareGate("leave")}
       onPrepareWithChanges={() => void finishPrepareGate("apply")}
@@ -4174,10 +4374,13 @@ export function ManifestoStoryView() {
             {raise ? (
               <RaiseSheetBody
                 ambition={raise.ambition}
+                level={raiseLevel}
+                onLevel={changeRaiseLevel}
                 findings={raise.findings}
                 activeId={activeId}
-                busy={anotherBusy}
+                busyId={anotherBusyId}
                 onSelect={selectFromList}
+                onLineLevel={setFindingLevel}
                 onUse={sheetUse}
                 onAnother={(f) => void anotherSuggestion(f)}
                 onKeep={sheetKeep}

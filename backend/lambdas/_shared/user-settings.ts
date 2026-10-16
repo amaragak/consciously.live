@@ -14,6 +14,12 @@ export type ReducedMotionPref = "system" | "reduce" | "no-preference";
 export type DailyReminderKind = "meditation" | "journal";
 export type MeditateType = "guided" | "breathing" | "body-scan" | "sleep";
 export type AccountPronouns = "she_her" | "he_him" | "they_them";
+export type RaiseLevel = "ambitious" | "audacious" | "delusional";
+const RAISE_LEVELS = new Set<RaiseLevel>([
+  "ambitious",
+  "audacious",
+  "delusional",
+]);
 
 export type NotificationChannelPrefs = {
   push: boolean;
@@ -25,6 +31,8 @@ export type UserSettingsV1 = {
   version: typeof USER_SETTINGS_VERSION;
   account: {
     pronouns: AccountPronouns;
+    /** How far Raise the ceiling pushes. Per user, not per draft. */
+    raiseLevel: RaiseLevel;
   };
   ai: {
     personaliseWithJournal: boolean;
@@ -93,6 +101,7 @@ export function defaultUserSettings(): UserSettingsV1 {
     version: USER_SETTINGS_VERSION,
     account: {
       pronouns: "they_them",
+      raiseLevel: "audacious",
     },
     ai: {
       personaliseWithJournal: false,
@@ -259,10 +268,15 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
     ACCOUNT_PRONOUNS.has(account.pronouns as AccountPronouns)
       ? (account.pronouns as AccountPronouns)
       : d.account.pronouns;
+  const raiseLevel =
+    typeof account.raiseLevel === "string" &&
+    RAISE_LEVELS.has(account.raiseLevel as RaiseLevel)
+      ? (account.raiseLevel as RaiseLevel)
+      : d.account.raiseLevel;
 
   return {
     version: USER_SETTINGS_VERSION,
-    account: { pronouns },
+    account: { pronouns, raiseLevel },
     ai: {
       personaliseWithJournal: asBool(
         ai.personaliseWithJournal,
