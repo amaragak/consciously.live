@@ -1067,6 +1067,11 @@ export function PlanHomeClient() {
           isPreview: true as const,
         }));
 
+  const storyPlacement = useMemo(
+    () => resolveNarratedStoryPlacement(libraryItems),
+    [libraryItems],
+  );
+
   if (!hydrated || !cloudReady) {
     return (
       <ManifestOverviewSkeleton
@@ -1125,10 +1130,6 @@ export function PlanHomeClient() {
   const hasImages = visionItems.some(visionItemHasImage);
   /** No statement and no images: the hero becomes the empty-manifesto prompt. */
   const emptyManifesto = !statement && !hasImages && !manifestoLoading;
-  const storyPlacement = useMemo(
-    () => resolveNarratedStoryPlacement(libraryItems),
-    [libraryItems],
-  );
   const storyFirstName =
     firstNameFromAccount(
       getMedimadeSessionDisplayName(),

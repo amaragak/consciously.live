@@ -11,12 +11,18 @@ import { useNavigate } from "react-router-dom";
 import { ChevronDown, Download, Eye } from "lucide-react";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import {
-  DesktopPoster,
+  ManifestoSheet,
   MobilePoster,
   type PrintArea,
   type PrintCompose,
   type PrintData,
 } from "@/components/plan/manifesto-print-poster";
+import {
+  ManifestoPageViewer,
+  PageSetupCard,
+  PageSetupControls,
+  PageZoomButton,
+} from "@/components/plan/manifesto-page-setup";
 import {
   AddAreaPopover,
   AddImageSheet,
@@ -78,10 +84,14 @@ import { addVisionBoardImageFromFile } from "@/lib/ideate-vision-upload";
 import { lifeAreaHref } from "@/lib/life-area-summary";
 import {
   PRINT_DESIGN_WIDTH,
+  MANIFESTO_PAGE_SPEC,
   firstNameFromAccount,
   manifestoViewHref,
   pickPrintNotes,
+  resolveManifestoPageSize,
   visionItemsForLifeArea,
+  type ManifestoPageMode,
+  type ManifestoPageSettings,
   type PrintNote,
 } from "@/lib/manifesto-print";
 import {
@@ -95,7 +105,7 @@ import {
   type StoryOnPrintSettings,
 } from "@/lib/manifesto-story";
 import { summarizeStoryForPrint } from "@/lib/manifesto-story-llm";
-import { fetchUserSettings } from "@/lib/settings-api";
+import { fetchUserSettings, patchUserSettings } from "@/lib/settings-api";
 import {
   mergeAccountPronouns,
   readAccountPronounsLocal,
@@ -107,8 +117,7 @@ import {
 } from "@/components/plan/manifesto-print-story";
 import {
   PRINT_ROOT_ID,
-  exportDesktopPng,
-  exportMobilePng,
+  exportSheetPng,
   printPoster,
   waitForPosterReady,
 } from "@/lib/manifesto-print-export";
@@ -135,7 +144,7 @@ type PopoverState =
 type ExportJob = { kind: "png" } | { kind: "print" } | { kind: "mobile-png" };
 
 const MOBILE_EXPORT_WIDTH = 360;
-const ACTIONS_COLUMN_PX = 124;
+const ACTIONS_COLUMN_PX = 232;
 const ROW_GAP_PX = 20;
 
 const BTN_PRIMARY =
@@ -249,6 +258,54 @@ export function ManifestoPrintView() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [job, setJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [pageSettings, setPageSettings] = useState<ManifestoPageSettings>({
+    modeWide: "paged",
+    modeNarrow: "pageless",
+    size: null,
+  });
+  const [doesntFit, setDoesntFit] = useState(false);
+  const [stackHeight, setStackHeight] = useState(0);
+  const onStackHeight = useCallback((height: number) => {
+    setStackHeight((prev) => (prev === height ? prev : height));
+  }, []);
+  const [pageSheetOpen, setPageSheetOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const onOverflow = useCallback((overflows: boolean) => {
+    setDoesntFit(overflows);
+  }, []);
+
+  const pageTouched = useRef(false);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let cancelled = false;
+    void fetchUserSettings()
+      .then(({ settings }) => {
+        if (!cancelled && !pageTouched.current) setPageSettings(settings.manifestoPage);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const pageLocale = typeof navigator === "undefined" ? "en" : navigator.language;
+  const pageSize = resolveManifestoPageSize(pageSettings.size, pageLocale);
+  const pageMode: ManifestoPageMode = wide
+    ? pageSettings.modeWide
+    : pageSettings.modeNarrow;
+  const pageSpec = MANIFESTO_PAGE_SPEC[pageSize];
+  const pageLogicalW =
+    pageMode === "pageless" ? (wide ? PRINT_DESIGN_WIDTH : MOBILE_EXPORT_WIDTH) : pageSpec.logicalW;
+  const pageLogicalH = pageMode === "paged" ? pageSpec.logicalH : 0;
+
+  function savePage(next: ManifestoPageSettings) {
+    pageTouched.current = true;
+    setPageSettings(next);
+    setDoesntFit(false);
+    if (!signedIn) return;
+    void patchUserSettings({ manifestoPage: next }).catch(() => {});
+  }
 
   const tileUrls = useVisionTileUrls(visionItems);
 
@@ -577,17 +634,30 @@ export function ManifestoPrintView() {
         const node = stageRef.current;
         if (!node) throw new Error("Nothing to export yet.");
         await waitForPosterReady(node);
-        const stamp = (firstName || "my").toLowerCase().replace(/\s+/g, "-");
+        const stamp = (firstName || "My").replace(/\s+/g, "-");
+        const suffix =
+          pageMode === "pageless"
+            ? "pageless"
+            : pageSize === "phone"
+              ? "wallpaper"
+              : pageSize;
+        const filename = `${stamp}-manifesto-${suffix}.png`;
         if (job.kind === "print") {
           await printPoster();
-        } else if (job.kind === "png") {
-          await exportDesktopPng(node, `${stamp}-manifesto.png`);
         } else {
-          await exportMobilePng(
-            node,
-            MOBILE_EXPORT_WIDTH,
-            `${stamp}-manifesto.png`,
-          );
+          const width = pageLogicalW;
+          const pixelRatio =
+            pageMode === "pageless" ? 2 : pageSpec.exportW / pageSpec.logicalW;
+          await exportSheetPng(node, {
+            filename,
+            width,
+            height:
+              pageMode === "paged" && pageSize === "phone"
+                ? pageSpec.logicalH
+                : undefined,
+            pixelRatio,
+            share: pageSize === "phone" && pageMode === "paged",
+          });
         }
       } catch (e) {
         setExportError(
@@ -598,7 +668,7 @@ export function ManifestoPrintView() {
         setJob(null);
       }
     })();
-  }, [job, firstName]);
+  }, [job, firstName, pageMode, pageSize, pageLogicalW, pageSpec]);
 
   function startExport(next: ExportJob) {
     if (!hasContent || job) return;
@@ -631,10 +701,13 @@ export function ManifestoPrintView() {
   const posterMeasureRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState(0);
   const [posterHeight, setPosterHeight] = useState(0);
+  const [mobileBox, setMobileBox] = useState(360);
+  const mobileBoxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = rowRef.current;
     if (!el) return;
-    const measure = () => setRowWidth(el.clientWidth);
+    const measure = () =>
+      setRowWidth((prev) => (prev === el.clientWidth ? prev : el.clientWidth));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -643,17 +716,32 @@ export function ManifestoPrintView() {
   useEffect(() => {
     const el = posterMeasureRef.current;
     if (!el) return;
-    const measure = () => setPosterHeight(el.offsetHeight);
+    const measure = () =>
+      setPosterHeight((prev) =>
+        prev === el.offsetHeight ? prev : el.offsetHeight,
+      );
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [wide, hydrated, cloudReady, data, preview]);
+  }, [wide, hydrated, cloudReady, data, preview, pageMode, pageSize]);
+  useEffect(() => {
+    const el = mobileBoxRef.current;
+    if (!el) return;
+    const measure = () => {
+      const next = el.clientWidth || 360;
+      setMobileBox((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [wide, hydrated, cloudReady, pageMode]);
   const scale = Math.max(
     0.3,
     Math.min(
       1,
-      (rowWidth - ROW_GAP_PX - ACTIONS_COLUMN_PX) / PRINT_DESIGN_WIDTH,
+      (rowWidth - ROW_GAP_PX - ACTIONS_COLUMN_PX) / pageLogicalW,
     ),
   );
 
@@ -915,16 +1003,19 @@ export function ManifestoPrintView() {
               pointerEvents: "none",
             }}
           >
-            {job.kind === "mobile-png" ? (
-              <MobilePoster
+            {job ? (
+              <ManifestoSheet
                 ref={stageRef}
                 data={data}
                 compose={null}
-                width={MOBILE_EXPORT_WIDTH}
+                mode={pageMode}
+                size={pageSize}
+                narrow={!wide}
+                sheetWidth={
+                  !wide && pageMode === "pageless" ? MOBILE_EXPORT_WIDTH : undefined
+                }
               />
-            ) : (
-              <DesktopPoster ref={stageRef} data={data} compose={null} />
-            )}
+            ) : null}
           </div>,
           document.body,
         )
@@ -938,8 +1029,44 @@ export function ManifestoPrintView() {
     return (
       <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-[96px] pt-3">
         <h1 className="sr-only">Manifesto</h1>
-        <div className="mx-auto w-full max-w-[520px]">
-          <MobilePoster data={data} compose={compose} />
+        <div ref={mobileBoxRef} className="relative mx-auto w-full max-w-[520px]">
+          {pageMode === "pageless" ? (
+            <MobilePoster data={data} compose={compose} />
+          ) : (
+            <div
+              className="relative mx-auto overflow-visible"
+              style={{
+                width: pageLogicalW * Math.min(1, mobileBox / pageLogicalW),
+                height:
+                  Math.max(pageLogicalH, stackHeight || pageLogicalH) *
+                  Math.min(1, mobileBox / pageLogicalW),
+              }}
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest("button, a, input, textarea")) return;
+                setViewerOpen(true);
+              }}
+            >
+              <div
+                style={{
+                  width: pageLogicalW,
+                  transform: `scale(${Math.min(1, mobileBox / pageLogicalW)})`,
+                  transformOrigin: "top left",
+                }}
+              >
+                <ManifestoSheet
+                  data={data}
+                  compose={compose}
+                  mode={pageMode}
+                  size={pageSize}
+                  narrow={false}
+                  onOverflow={onOverflow}
+                  onContentHeight={onStackHeight}
+                />
+              </div>
+              <PageZoomButton onClick={() => setViewerOpen(true)} />
+            </div>
+          )}
         </div>
 
         {exportError ? (
@@ -966,6 +1093,17 @@ export function ManifestoPrintView() {
             </button>
             <button
               type="button"
+              aria-label="Page"
+              aria-expanded={pageSheetOpen}
+              onClick={() => setPageSheetOpen((v) => !v)}
+              className={`inline-flex h-[46px] shrink-0 cursor-pointer items-center justify-center rounded-full border px-3.5 text-[13px] font-semibold text-foreground shadow-[0_8px_20px_rgba(15,27,45,0.12)] ${
+                pageSheetOpen ? BTN_OUTLINE_ACTIVE : BTN_OUTLINE_IDLE
+              }`}
+            >
+              Page
+            </button>
+            <button
+              type="button"
               aria-label="Preview"
               aria-pressed={preview}
               disabled={!hasContent}
@@ -979,6 +1117,41 @@ export function ManifestoPrintView() {
           </div>
         </div>
 
+        {pageSheetOpen ? (
+          <div className="fixed inset-0 z-40 flex items-end bg-marketing-ink/40" onClick={() => setPageSheetOpen(false)}>
+            <div
+              className="max-h-[80vh] w-full overflow-auto rounded-t-2xl bg-card p-4 pb-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PageSetupControls
+                mode={pageMode}
+                size={pageSize}
+                locale={pageLocale}
+                doesntFit={pageMode === "paged" && doesntFit}
+                onMode={(mode) =>
+                  savePage({ ...pageSettings, modeNarrow: mode })
+                }
+                onSize={(size) => savePage({ ...pageSettings, size })}
+              />
+            </div>
+          </div>
+        ) : null}
+        {viewerOpen && pageMode === "paged" ? (
+          <ManifestoPageViewer
+            logicalW={pageLogicalW}
+            logicalH={Math.max(pageLogicalH, stackHeight || pageLogicalH)}
+            onClose={() => setViewerOpen(false)}
+          >
+            <ManifestoSheet
+              data={data}
+              compose={null}
+              mode={pageMode}
+              size={pageSize}
+              narrow={false}
+            />
+          </ManifestoPageViewer>
+        ) : null}
+
         {popovers}
         {stage}
       </div>
@@ -990,34 +1163,40 @@ export function ManifestoPrintView() {
   return (
     <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-10 pt-4 sm:px-6">
       <h1 className="sr-only">Manifesto</h1>
-      <div ref={rowRef} className="flex items-start" style={{ gap: ROW_GAP_PX }}>
+      <div ref={rowRef} className="flex min-w-0 items-start" style={{ gap: ROW_GAP_PX }}>
         <div
-          className="shrink-0 overflow-visible"
+          className="min-w-0 shrink-0 overflow-visible"
           style={{
-            // Room for the Story-on-print panel that hangs off the right edge.
-            width:
-              (PRINT_DESIGN_WIDTH + (compose?.storyCompose ? 290 : 0)) * scale,
-            height: Math.max(1, posterHeight) * scale,
+            width: pageLogicalW * scale,
+            height:
+              (pageMode === "paged"
+                ? Math.max(pageLogicalH, stackHeight || pageLogicalH)
+                : Math.max(1, posterHeight)) * scale,
           }}
         >
           <div
             style={{
-              width: PRINT_DESIGN_WIDTH,
+              width: pageLogicalW,
               transform: `scale(${scale})`,
               transformOrigin: "top left",
               overflow: "visible",
             }}
           >
-            <DesktopPoster
+            <ManifestoSheet
               ref={posterMeasureRef}
               data={data}
               compose={compose}
+              mode={pageMode}
+              size={pageSize}
+              narrow={false}
+              onOverflow={onOverflow}
+              onContentHeight={onStackHeight}
             />
           </div>
         </div>
 
         <div
-          className="sticky top-6 flex shrink-0 flex-col gap-[10px]"
+          className="sticky top-6 z-30 flex shrink-0 flex-col gap-[10px]"
           style={{ width: ACTIONS_COLUMN_PX }}
         >
           <div className="relative" data-export-menu-root>
@@ -1070,6 +1249,14 @@ export function ManifestoPrintView() {
             <Eye aria-hidden className="size-[15px]" strokeWidth={1.8} />
             Preview
           </button>
+          <PageSetupCard
+            mode={pageMode}
+            size={pageSize}
+            locale={pageLocale}
+            doesntFit={pageMode === "paged" && doesntFit}
+            onMode={(mode) => savePage({ ...pageSettings, modeWide: mode })}
+            onSize={(size) => savePage({ ...pageSettings, size })}
+          />
           {!hasContent ? (
             <p className="text-xs leading-[1.45] text-muted">{EMPTY_HINT}</p>
           ) : null}

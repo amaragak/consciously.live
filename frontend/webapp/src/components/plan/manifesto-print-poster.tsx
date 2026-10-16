@@ -3,6 +3,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -17,8 +18,15 @@ import {
   PRINT_BIG,
   PRINT_DESIGN_WIDTH,
   desktopTileLayout,
+  MANIFESTO_PAGE_GAP,
+  manifestoEyebrow,
   mobileTileSizes,
+  packManifestoPages,
+  posterFrameFor,
   romanNumeral,
+  type ManifestoPageMode,
+  type ManifestoPageSize,
+  type PosterFrame,
   type PrintNote,
   type PrintTile,
 } from "@/lib/manifesto-print";
@@ -474,14 +482,16 @@ function GhostNote({
 function PosterFooter({
   mobile,
   className = "",
+  style,
 }: {
   mobile: boolean;
   className?: string;
+  style?: CSSProperties;
 }) {
   return (
     <div
       className={`flex items-center text-marketing-eyebrow ${className}`}
-      style={{ gap: mobile ? 10 : 14 }}
+      style={{ gap: mobile ? 10 : 14, ...style }}
     >
       <Rule />
       <span
@@ -764,89 +774,186 @@ function GhostRow({
 export type DesktopPosterProps = {
   data: PrintData;
   compose: PrintCompose | null;
+  frame?: PosterFrame;
+  onOverflow?: (overflows: boolean) => void;
+  onContentHeight?: (height: number) => void;
 };
 
+const DESKTOP_FRAME: PosterFrame = {
+  width: PRINT_DESIGN_WIDTH,
+  padding: "58px 76px 44px",
+  chapterTop: 26,
+  chapterGap: 18,
+  wordsTop: 30,
+  statementMax: 720,
+  pinFooter: false,
+  footerGap: 22,
+};
+
+function paddingEdges(padding: string) {
+  const n = padding
+    .trim()
+    .split(/\s+/)
+    .map((part) => parseFloat(part) || 0);
+  if (n.length <= 1) {
+    const v = n[0] ?? 0;
+    return { top: v, right: v, bottom: v, left: v };
+  }
+  if (n.length === 2) return { top: n[0]!, right: n[1]!, bottom: n[0]!, left: n[1]! };
+  if (n.length === 3) return { top: n[0]!, right: n[1]!, bottom: n[2]!, left: n[1]! };
+  return { top: n[0]!, right: n[1]!, bottom: n[2]!, left: n[3]! };
+}
+
+function PaperSheet({
+  frame,
+  height,
+  children,
+}: {
+  frame: PosterFrame;
+  height?: number;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-manifesto-page=""
+      className="font-ui relative flex shrink-0 flex-col text-marketing-ink"
+      style={{
+        ...PAPER_STYLE,
+        width: frame.width,
+        height: height ?? "auto",
+        boxSizing: "border-box",
+        padding: frame.padding,
+        overflow: "visible",
+        boxShadow: `0 2px 4px ${INK_06}, 0 24px 60px -20px ${INK_35}`,
+      }}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute"
+        style={{ inset: 18, border: `1px solid ${LIGHT}` }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute"
+        style={{
+          inset: 23,
+          border: `1px solid color-mix(in srgb, ${LIGHT} 45%, transparent)`,
+        }}
+      />
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+    </div>
+  );
+}
+
+type PageSlice = { keys: Set<string> | null; first: string | null };
+
 export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
-  function DesktopPoster({ data, compose }, ref) {
+  function DesktopPoster(
+    { data, compose, frame = DESKTOP_FRAME, onOverflow, onContentHeight },
+    ref,
+  ) {
     const rootRef = useRef<HTMLDivElement>(null);
+    const measureRef = useRef<HTMLDivElement>(null);
     useImperativeHandle(ref, () => rootRef.current as HTMLDivElement);
+    const [pagePlan, setPagePlan] = useState<{ sig: string; pages: string[][] } | null>(
+      null,
+    );
+
+    useLayoutEffect(() => {
+      if (!frame.height) {
+        setPagePlan(null);
+        onOverflow?.(false);
+        const h = rootRef.current?.offsetHeight ?? 0;
+        if (h > 0) onContentHeight?.(h);
+        return;
+      }
+      const flow = measureRef.current;
+      if (!flow) return;
+      let frames = 0;
+      let cancelled = false;
+      const pack = () => {
+        if (cancelled) return;
+        const blocks = [
+          ...flow.querySelectorAll(":scope > [data-page-block]"),
+        ].filter((node): node is HTMLElement => node instanceof HTMLElement);
+        const measured = blocks.some((el) => el.offsetHeight > 2);
+        if (blocks.length > 0 && !measured && frames < 8) {
+          frames += 1;
+          requestAnimationFrame(pack);
+          return;
+        }
+        const pad = paddingEdges(frame.padding);
+        const footer = flow.querySelector("[data-page-footer]");
+        const footerH = footer instanceof HTMLElement ? footer.offsetHeight : 28;
+        const available = frame.height! - pad.top - pad.bottom - footerH - 10;
+        const packed = packManifestoPages(flow, Math.max(120, available));
+        const usable = packed.pages.filter((page) => page.length > 0);
+        if (usable.length === 0) return;
+        const sig = usable.map((page) => page.join("|")).join("§");
+        setPagePlan((prev) =>
+          prev?.sig === sig ? prev : { sig, pages: usable },
+        );
+        onOverflow?.(packed.overflows);
+        const n = usable.length;
+        onContentHeight?.(
+          n * frame.height! + Math.max(0, n - 1) * MANIFESTO_PAGE_GAP,
+        );
+      };
+      pack();
+      return () => {
+        cancelled = true;
+      };
+    }, [frame, data, compose, onOverflow, onContentHeight]);
 
     const { firstName, statement, values, areas, notes } = data;
     const hasStatement = Boolean(statement.trim());
     const showValues = values.length > 0 || Boolean(compose);
     const showNotes = notes.length > 0 || Boolean(compose);
-    const emptyAreas = areas.length === 0;
     const big = PRINT_BIG;
+    const paged = Boolean(frame.height);
 
-    return (
-      <div
-        ref={rootRef}
-        data-manifesto-poster="desktop"
-        className="font-ui relative flex shrink-0 flex-col text-marketing-ink"
-        style={{
-          ...PAPER_STYLE,
-          width: PRINT_DESIGN_WIDTH,
-          height: "auto",
-          boxSizing: "border-box",
-          padding: "58px 76px 44px",
-          boxShadow: `0 2px 4px ${INK_06}, 0 24px 60px -20px ${INK_35}`,
-        }}
-      >
-        {/* Double inner frame */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{ inset: 18, border: `1px solid ${LIGHT}` }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{
-            inset: 23,
-            border: `1px solid color-mix(in srgb, ${LIGHT} 45%, transparent)`,
-          }}
-        />
-
+    const renderFlow = (slice: PageSlice) => {
+      const show = (key: string) => slice.keys === null || slice.keys.has(key);
+      const dropLead = (key: string) => slice.first === key;
+      const storyKeys =
+        slice.keys === null
+          ? null
+          : slice.keys.has("story")
+            ? null
+            : new Set([...slice.keys].filter((key) => key.startsWith("story-")));
+      const showStory =
+        Boolean(data.story) &&
+        (slice.keys === null ||
+          slice.keys.has("story") ||
+          (storyKeys != null && storyKeys.size > 0));
+      return (
+        <>
         {/* Header block (label → values) — keep together when printing */}
-        <div data-print-break>
+        {show("header") ? (
+        <div data-print-break data-page-block="header">
         {/* 1 · Label row */}
         <div
           className="flex items-center text-accent-link"
           style={{ ...caps(10, 3), gap: 16 }}
         >
           <Rule />
-          <span>My manifesto</span>
+          <span>{manifestoEyebrow(firstName)}</span>
           <Rule />
         </div>
 
-        {/* 2 · Name */}
-        <div
-          className="font-display text-center italic text-marketing-ink"
-          style={{
-            ...SERIF_DISPLAY,
-            marginTop: 18,
-            fontWeight: 300,
-            fontSize: 40,
-            lineHeight: 1,
-            letterSpacing: -0.4,
-          }}
-        >
-          {firstName || "\u00a0"}
-        </div>
-
-        {/* 3 · Statement */}
+        {/* 2 · Statement */}
         {hasStatement ? (
           <Editable
             onEdit={compose ? compose.onEditStatement : null}
             className="flex flex-col items-center"
-            style={{ marginTop: 14 }}
+            style={{ marginTop: 22 }}
             pencilClassName="-right-[50px] top-1"
           >
             <span
               className="font-display text-center italic text-marketing-ink"
               style={{
                 ...SERIF_TEXT,
-                maxWidth: 720,
+                maxWidth: frame.statementMax,
                 fontSize: 25,
                 lineHeight: 1.42,
               }}
@@ -942,13 +1049,11 @@ export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
           </>
         ) : null}
         </div>
+        ) : null}
 
         {/* 5 · Life areas */}
         {areas.length > 0 ? (
-          <div
-            className="relative flex flex-col"
-            style={{ marginTop: 26, gap: 18 }}
-          >
+          <>
             {areas.map((area, i) => {
               const imageLeft = i % 2 === 0;
               const hasImages = area.images.length > 0;
@@ -995,9 +1100,20 @@ export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
               const text = (
                 <AreaText area={area} index={i} compose={compose} />
               );
+              const areaKey = `area:${area.id}`;
+              if (!show(areaKey)) return null;
               return (
-                <Fragment key={area.id}>
-                  {i > 0 ? <Ornament /> : null}
+                <div key={area.id} data-page-block={areaKey}>
+                  {dropLead(areaKey) ? null : (
+                    <div
+                      data-page-lead
+                      style={{
+                        paddingTop: i === 0 ? frame.chapterTop : frame.chapterGap,
+                      }}
+                    >
+                      {i > 0 ? <Ornament /> : null}
+                    </div>
+                  )}
                   <div
                     data-print-break
                     className="relative flex items-center gap-9"
@@ -1014,15 +1130,15 @@ export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
                       />
                     ) : null}
                   </div>
-                </Fragment>
+                  {compose && i === areas.length - 1 ? (
+                    <AddAreaPill onClick={compose.onAddArea} height={30} bottom={-30} />
+                  ) : null}
+                </div>
               );
             })}
-            {compose ? (
-              <AddAreaPill onClick={compose.onAddArea} height={30} bottom={-30} />
-            ) : null}
-          </div>
-        ) : compose ? (
-          <>
+          </>
+        ) : compose && show("areas-empty") ? (
+          <div data-page-block="areas-empty">
             {/* Fresh user: ghost first life area + fading rows II–IV */}
             <div
               className="flex items-center gap-9"
@@ -1104,24 +1220,19 @@ export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
               </div>
               <GhostRow numeral="IV" imageLeft={false} opacity={0.18} tilt={1.1} />
             </div>
-          </>
+          </div>
         ) : null}
 
-        {/* 5b · Story chapter */}
-        {data.story ? (
-          <PrintStoryChapter
-            data={data.story}
-            compose={compose?.storyCompose ?? null}
-            mobile={false}
-          />
-        ) : null}
-
-        {/* 6 · Words to keep */}
-        {showNotes ? (
+        {/* 5b · Words to keep */}
+        {showNotes && show("words") ? (
           <div
+            data-page-block="words"
             className="relative flex flex-col"
-            style={{ paddingTop: 30, gap: 18 }}
+            style={{ gap: frame.chapterGap }}
           >
+            {dropLead("words") ? null : (
+              <div data-page-lead style={{ height: frame.wordsTop }} />
+            )}
             <WordsLabel mobile={false} />
             <div className="relative">
               <div
@@ -1162,8 +1273,82 @@ export const DesktopPoster = forwardRef<HTMLDivElement, DesktopPosterProps>(
           </div>
         ) : null}
 
-        {/* 7 · Footer */}
-        <PosterFooter mobile={false} className="mt-[22px]" />
+        {/* 6 · Story chapter */}
+        {showStory && data.story ? (
+          <PrintStoryChapter
+            data={data.story}
+            compose={compose?.storyCompose ?? null}
+            mobile={false}
+            parts={storyKeys}
+            dropLead={
+              slice.first === "story" ||
+              slice.first === "story-head" ||
+              (slice.first?.startsWith("story-") ?? false)
+            }
+          />
+        ) : null}
+        </>
+      );
+    };
+
+    const footer = (
+      <PosterFooter
+        mobile={false}
+        style={{ marginTop: paged ? "auto" : frame.footerGap }}
+      />
+    );
+
+    if (!paged) {
+      return (
+        <div ref={rootRef} data-manifesto-poster="desktop">
+          <PaperSheet frame={frame}>
+            {renderFlow({ keys: null, first: null })}
+            {footer}
+          </PaperSheet>
+        </div>
+      );
+    }
+
+    const pages = pagePlan?.pages ?? [null];
+    const pad = paddingEdges(frame.padding);
+    const innerWidth = frame.width - pad.left - pad.right;
+
+    return (
+      <div
+        ref={rootRef}
+        data-manifesto-poster="desktop"
+        className="relative flex flex-col"
+        style={{ width: frame.width, gap: MANIFESTO_PAGE_GAP }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: innerWidth,
+            height: 0,
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          <div ref={measureRef} data-page-measure="" style={{ width: innerWidth }}>
+            {renderFlow({ keys: null, first: null })}
+            <div data-page-footer="">
+              <PosterFooter mobile={false} />
+            </div>
+          </div>
+        </div>
+        {pages.map((keys, index) => (
+          <PaperSheet key={index} frame={frame} height={frame.height}>
+            {renderFlow(
+              keys
+                ? { keys: new Set(keys), first: keys[0] ?? null }
+                : { keys: null, first: null },
+            )}
+            {footer}
+          </PaperSheet>
+        ))}
       </div>
     );
   },
@@ -1227,28 +1412,15 @@ export const MobilePoster = forwardRef<HTMLDivElement, MobilePosterProps>(
           style={{ ...caps(9, 2.4), gap: 10 }}
         >
           <Rule />
-          <span>My manifesto</span>
+          <span>{manifestoEyebrow(firstName)}</span>
           <Rule />
-        </div>
-        <div
-          className="font-display text-center italic text-marketing-ink"
-          style={{
-            ...SERIF_DISPLAY,
-            marginTop: 18,
-            fontWeight: 300,
-            fontSize: 34,
-            lineHeight: 1,
-            letterSpacing: -0.3,
-          }}
-        >
-          {firstName || "\u00a0"}
         </div>
 
         {hasStatement ? (
           <Editable
             onEdit={compose ? compose.onEditStatement : null}
             className="flex flex-col items-center"
-            style={{ marginTop: 14 }}
+            style={{ marginTop: 18 }}
             pencilClassName="-right-2 -top-3"
           >
             <span
@@ -1513,14 +1685,6 @@ export const MobilePoster = forwardRef<HTMLDivElement, MobilePosterProps>(
           </div>
         ) : null}
 
-        {data.story ? (
-          <PrintStoryChapter
-            data={data.story}
-            compose={compose?.storyCompose ?? null}
-            mobile
-          />
-        ) : null}
-
         {showNotes ? (
           <div
             className="flex flex-col"
@@ -1559,8 +1723,171 @@ export const MobilePoster = forwardRef<HTMLDivElement, MobilePosterProps>(
           </div>
         ) : null}
 
+        {data.story ? (
+          <PrintStoryChapter
+            data={data.story}
+            compose={compose?.storyCompose ?? null}
+            mobile
+          />
+        ) : null}
+
         <PosterFooter mobile className="mt-[18px]" />
       </div>
     );
   },
 );
+
+export const PhoneWallpaperPoster = forwardRef<
+  HTMLDivElement,
+  { data: PrintData }
+>(function PhoneWallpaperPoster({ data }, ref) {
+  const areas = data.areas.slice(0, 9);
+  const cols = areas.length > 4 ? 3 : 2;
+  const print = cols === 3 ? 132 : 176;
+  return (
+    <div
+      ref={ref}
+      data-manifesto-poster="wallpaper"
+      className="font-ui relative flex shrink-0 flex-col text-marketing-ink"
+      style={{
+        ...PAPER_STYLE,
+        width: 540,
+        height: 1170,
+        boxSizing: "border-box",
+        padding: "380px 46px 40px",
+      }}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute"
+        style={{
+          inset: 14,
+          border: `1px solid color-mix(in srgb, ${LIGHT} 55%, transparent)`,
+        }}
+      />
+      <div className="flex flex-1 flex-col items-center">
+        <div
+          className="flex w-full items-center text-accent-link"
+          style={{ ...caps(9, 2.4), gap: 10 }}
+        >
+          <Rule />
+          <span>My manifesto</span>
+          <Rule />
+        </div>
+        <div
+          className="font-display mt-3 text-center italic text-marketing-ink"
+          style={{ ...SERIF_TEXT, fontSize: 34, lineHeight: 1.05 }}
+        >
+          {data.firstName.trim() || "My manifesto"}
+        </div>
+        {data.statement.trim() ? (
+          <p
+            className="font-display mt-3 text-center italic text-marketing-ink"
+            style={{ ...SERIF_TEXT, fontSize: 16, lineHeight: 1.4 }}
+          >
+            “{data.statement.trim()}”
+          </p>
+        ) : null}
+        {data.values.length > 0 ? (
+          <>
+            <DoubleRule className="mt-4" />
+            <p
+              className="font-ui py-2 text-center text-marketing-ink"
+              style={caps(9, 1.6)}
+            >
+              {data.values
+                .map((v) => v.text.trim())
+                .filter(Boolean)
+                .join("  ·  ")}
+            </p>
+            <DoubleRule />
+          </>
+        ) : null}
+        <div
+          className="mt-5 grid w-full"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            gap: "20px 24px",
+          }}
+        >
+          {areas.map((area, i) => {
+            const src = area.images[0]?.src;
+            return (
+              <div key={area.id} className="flex flex-col items-center">
+                {src ? (
+                  <PrintMount
+                    tile={{
+                      size: print,
+                      tilt: i % 2 === 0 ? -2.2 : 2.4,
+                    }}
+                    src={src}
+                    pad={6}
+                  />
+                ) : (
+                  <div style={{ width: print, height: print }} />
+                )}
+                <span
+                  className="font-display mt-2 italic text-accent"
+                  style={{ ...SERIF_TEXT, fontSize: 13 }}
+                >
+                  {romanNumeral(i + 1)}
+                </span>
+                <span
+                  className="font-display text-center text-marketing-ink"
+                  style={{
+                    ...SERIF_TEXT,
+                    fontSize: cols === 3 ? 16 : 22,
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {area.title}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <PosterFooter mobile style={{ marginTop: "auto" }} />
+    </div>
+  );
+});
+
+/** One sheet for the screen and the export, in the chosen page setup. */
+export const ManifestoSheet = forwardRef<
+  HTMLDivElement,
+  {
+    data: PrintData;
+    compose: PrintCompose | null;
+    mode: ManifestoPageMode;
+    size: ManifestoPageSize;
+    narrow: boolean;
+    /** Fixed width for the pageless phone sheet during export. */
+    sheetWidth?: number;
+    onOverflow?: (overflows: boolean) => void;
+    onContentHeight?: (height: number) => void;
+  }
+>(function ManifestoSheet(
+  { data, compose, mode, size, narrow, sheetWidth, onOverflow, onContentHeight },
+  ref,
+) {
+  const frame = useMemo(() => posterFrameFor(mode, size), [mode, size]);
+  if (mode === "paged" && size === "phone") {
+    return <PhoneWallpaperPoster ref={ref} data={data} />;
+  }
+  if (narrow && mode === "pageless") {
+    return (
+      <MobilePoster ref={ref} data={data} compose={compose} width={sheetWidth} />
+    );
+  }
+  return (
+    <DesktopPoster
+      ref={ref}
+      data={data}
+      compose={compose}
+      frame={frame}
+      onOverflow={mode === "paged" ? onOverflow : undefined}
+      onContentHeight={onContentHeight}
+    />
+  );
+});
+

@@ -19,7 +19,6 @@ import {
 } from "@/lib/manifesto-story";
 
 const LIGHT = "color-mix(in srgb, var(--gold) 70%, white)";
-const SERIF_DISPLAY: CSSProperties = { fontVariationSettings: "'opsz' 144" };
 const SERIF_TEXT: CSSProperties = { fontVariationSettings: "'opsz' 24" };
 
 function Rule() {
@@ -48,93 +47,71 @@ function paragraphs(text: string): string[] {
     .filter(Boolean);
 }
 
-function DropCapPassage({
-  text,
-  indentLater,
-}: {
-  text: string;
-  indentLater: boolean;
-}) {
-  const paras = paragraphs(text);
-  if (paras.length === 0) return null;
-  return (
-    <>
-      {paras.map((p, i) => {
-        if (i === 0) {
-          const first = p.charAt(0);
-          const rest = p.slice(1);
-          return (
-            <p key={i} className="m-0" data-print-break>
-              <span
-                className="font-display float-left text-marketing-ink"
-                style={{
-                  ...SERIF_DISPLAY,
-                  fontWeight: 300,
-                  fontSize: 76,
-                  lineHeight: 0.8,
-                  padding: "8px 12px 0 0",
-                }}
-              >
-                {first}
-              </span>
-              {rest}
-            </p>
-          );
-        }
-        return (
-          <p
-            key={i}
-            className="m-0"
-            style={{ textIndent: indentLater ? 28 : 0 }}
-          >
-            {p}
-          </p>
-        );
-      })}
-    </>
-  );
-}
-
 function SectionBlock({
+  blockKey,
   heading,
   text,
   showHeading,
-  dropCap,
   gapAfter,
+  parts,
+  fontSize,
 }: {
+  blockKey: string;
   heading: string;
   text: string;
   showHeading: boolean;
-  dropCap: boolean;
   gapAfter: number;
+  /** Null keeps every paragraph. A set keeps only the listed page-block keys. */
+  parts: ReadonlySet<string> | null;
+  fontSize: number;
 }) {
   const paras = paragraphs(text);
+  const sectionKey = `story-sec:${blockKey}`;
+  const whole = !parts || parts.has("story") || parts.has(sectionKey);
+  const paraOn = (i: number) =>
+    whole || Boolean(parts?.has(`${sectionKey}:p:${i}`));
+  const shown = paras.map((_, i) => paraOn(i));
+  if (!shown.some(Boolean)) return null;
+  const firstShown = shown.findIndex(Boolean);
   return (
-    <div className="flex flex-col" style={{ gap: showHeading ? 6 : 0 }}>
-      {showHeading ? (
+    <div
+      data-page-block={sectionKey}
+      className="flex flex-col font-display text-marketing-ink"
+      style={{
+        ...SERIF_TEXT,
+        gap: showHeading ? 6 : 0,
+        fontSize,
+        lineHeight: 1.75,
+        textAlign: "justify",
+      }}
+    >
+      {showHeading && firstShown === 0 ? (
         <div
           className="font-ui text-accent-link"
           style={{ ...caps(10.5, 2.2), marginBottom: 2 }}
           data-print-break
+          data-page-block={`${sectionKey}:h`}
+          data-keep-with-next=""
         >
           {heading}
         </div>
       ) : null}
-      {dropCap ? (
-        <DropCapPassage text={text} indentLater />
-      ) : (
-        paras.map((p, i) => (
+      {paras.map((p, i) =>
+        shown[i] ? (
           <p
             key={i}
             className="m-0"
             style={{ textIndent: i === 0 ? 0 : 28 }}
             data-print-break={i === 0 ? true : undefined}
+            data-page-block={`${sectionKey}:p:${i}`}
           >
             {p}
           </p>
-        ))
+        ) : null,
       )}
-      <div aria-hidden style={{ height: gapAfter }} />
+      {shown[paras.length - 1] ? (
+        <div aria-hidden style={{ height: gapAfter }} />
+      ) : null}
     </div>
   );
 }
@@ -218,10 +195,16 @@ export function PrintStoryChapter({
   data,
   compose,
   mobile,
+  parts = null,
+  dropLead = false,
 }: {
   data: PrintStoryData;
   compose: PrintStoryCompose | null;
   mobile: boolean;
+  /** Null renders the whole chapter. A set renders only those page-block keys. */
+  parts?: ReadonlySet<string> | null;
+  /** Omit the gap above the chapter when it starts a new page. */
+  dropLead?: boolean;
 }) {
   const { firstName, version, settings } = data;
   const mode = settings.mode;
@@ -231,9 +214,10 @@ export function PrintStoryChapter({
     return (
       <div
         className="relative flex flex-col"
-        style={{ marginTop: 56 }}
+        data-page-block="story"
         data-compose-chrome
       >
+        {dropLead ? null : <div data-page-lead style={{ height: 56 }} />}
         <ChapterHeader firstName={firstName} mobile={mobile} />
         <Link
           href={compose.storyHref}
@@ -254,10 +238,22 @@ export function PrintStoryChapter({
     chosenKeys.has(storySectionKey(s)),
   );
 
+  const showHead = !parts || parts.has("story-head");
   return (
-    <div className="relative flex flex-col" style={{ marginTop: 56 }}>
-      <ChapterHeader firstName={firstName} mobile={mobile} />
-      {compose && !mobile ? (
+    <div
+      data-page-block="story"
+      className="relative flex flex-col text-marketing-ink"
+    >
+      {dropLead ? null : (
+        <div data-page-lead style={{ height: 56 }} />
+      )}
+      {showHead ? (
+        <div data-page-block="story-head" data-keep-with-next="">
+          <ChapterHeader firstName={firstName} mobile={mobile} />
+          <div aria-hidden style={{ height: 18 }} />
+        </div>
+      ) : null}
+      {compose && !mobile && showHead ? (
         <div
           data-compose-chrome
           className="absolute z-20"
@@ -270,7 +266,7 @@ export function PrintStoryChapter({
           />
         </div>
       ) : null}
-      {compose && mobile ? (
+      {compose && mobile && showHead ? (
         <MobileStorySheet
           version={version}
           sections={sections}
@@ -278,28 +274,32 @@ export function PrintStoryChapter({
         />
       ) : null}
 
-      <div
-        className="mx-auto flex w-full max-w-[640px] flex-col font-display text-marketing-ink"
-        style={{
-          ...SERIF_TEXT,
-          fontSize: mobile ? 16 : 17,
-          lineHeight: 1.75,
-          marginTop: 18,
-        }}
-      >
-        {mode === "full"
-          ? sections.map((s, i) => (
-              <SectionBlock
-                key={storySectionKey(s)}
-                heading={s.heading}
-                text={s.text}
-                showHeading={settings.showHeadings}
-                dropCap={i === 0}
-                gapAfter={i < sections.length - 1 ? 28 : 0}
-              />
-            ))
-          : null}
-        {mode === "summary" ? (
+      {mode === "full"
+        ? sections.map((s, i) => (
+            <SectionBlock
+              key={storySectionKey(s)}
+              blockKey={storySectionKey(s)}
+              heading={s.heading}
+              text={s.text}
+              showHeading={settings.showHeadings}
+              gapAfter={i < sections.length - 1 ? 28 : 0}
+              parts={parts}
+              fontSize={mobile ? 16 : 17}
+            />
+          ))
+        : null}
+      {mode === "summary" &&
+      (!parts || parts.has("story-body") || parts.has("story")) ? (
+        <div
+          data-page-block="story-body"
+          className="font-display text-marketing-ink"
+          style={{
+            ...SERIF_TEXT,
+            fontSize: mobile ? 16 : 17,
+            lineHeight: 1.75,
+            textAlign: "justify",
+          }}
+        >
           <EditableSummary
             text={
               version.summary?.trim() ||
@@ -308,51 +308,61 @@ export function PrintStoryChapter({
             compose={Boolean(compose)}
             onSave={(t) => compose?.onEditSummary(t)}
           />
-        ) : null}
-        {mode === "choose"
-          ? (chosenSections.length ? chosenSections : []).map((s, i) => {
-              const key = storySectionKey(s);
-              const summarised = settings.chooseStyle === "summarised";
-              const body = summarised
-                ? version.sectionSummaries?.[key]?.trim() || s.text
-                : s.text;
-              if (summarised) {
-                return (
-                  <div
-                    key={key}
-                    className="flex flex-col gap-[6px]"
-                    style={{
-                      marginBottom: i < chosenSections.length - 1 ? 26 : 0,
-                    }}
-                  >
-                    <div
-                      className="font-ui text-accent-link"
-                      style={caps(10.5, 2.2)}
-                      data-print-break
-                    >
-                      {s.heading}
-                    </div>
-                    <EditableSummary
-                      text={body}
-                      compose={Boolean(compose)}
-                      onSave={(t) => compose?.onEditSectionSummary(key, t)}
-                    />
-                  </div>
-                );
+        </div>
+      ) : null}
+      {mode === "choose"
+        ? (chosenSections.length ? chosenSections : []).map((s, i) => {
+            const key = storySectionKey(s);
+            const summarised = settings.chooseStyle === "summarised";
+            const body = summarised
+              ? version.sectionSummaries?.[key]?.trim() || s.text
+              : s.text;
+            if (summarised) {
+              if (parts && !parts.has(`story-sec:${key}`) && !parts.has("story")) {
+                return null;
               }
               return (
-                <SectionBlock
+                <div
                   key={key}
-                  heading={s.heading}
-                  text={body}
-                  showHeading
-                  dropCap={false}
-                  gapAfter={i < chosenSections.length - 1 ? 26 : 0}
-                />
+                  data-page-block={`story-sec:${key}`}
+                  className="flex flex-col gap-[6px] font-display text-marketing-ink"
+                  style={{
+                    ...SERIF_TEXT,
+                    fontSize: mobile ? 16 : 17,
+                    lineHeight: 1.75,
+                    textAlign: "justify",
+                    marginBottom: i < chosenSections.length - 1 ? 26 : 0,
+                  }}
+                >
+                  <div
+                    className="font-ui text-accent-link"
+                    style={caps(10.5, 2.2)}
+                    data-print-break
+                  >
+                    {s.heading}
+                  </div>
+                  <EditableSummary
+                    text={body}
+                    compose={Boolean(compose)}
+                    onSave={(t) => compose?.onEditSectionSummary(key, t)}
+                  />
+                </div>
               );
-            })
-          : null}
-      </div>
+            }
+            return (
+              <SectionBlock
+                key={key}
+                blockKey={key}
+                heading={s.heading}
+                text={body}
+                showHeading
+                gapAfter={i < chosenSections.length - 1 ? 26 : 0}
+                parts={parts}
+                fontSize={mobile ? 16 : 17}
+              />
+            );
+          })
+        : null}
     </div>
   );
 }

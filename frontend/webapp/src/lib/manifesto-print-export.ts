@@ -49,12 +49,15 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   a.remove();
 }
 
-/** Capture the (unscaled, preview-state) poster at its full length × pixelRatio. */
+/** Capture the (unscaled, preview-state) poster. Pass height for a fixed page. */
 export async function capturePosterPng(
   node: HTMLElement,
-  opts: { pixelRatio: number; width: number },
+  opts: { pixelRatio: number; width: number; height?: number },
 ): Promise<string> {
-  const height = Math.max(1, Math.ceil(node.scrollHeight || node.offsetHeight));
+  const height = Math.max(
+    1,
+    Math.ceil(opts.height ?? (node.scrollHeight || node.offsetHeight)),
+  );
   return toPng(node, {
     pixelRatio: opts.pixelRatio,
     width: opts.width,
@@ -69,7 +72,32 @@ export async function capturePosterPng(
   });
 }
 
-/** Desktop: whole print at 1000px design width, 2×. */
+/** Capture the sheet and download it. Phone wallpapers offer the share sheet when the browser can. */
+export async function exportSheetPng(
+  node: HTMLElement,
+  opts: {
+    filename: string;
+    width: number;
+    height?: number;
+    pixelRatio: number;
+    share?: boolean;
+  },
+): Promise<void> {
+  const url = await capturePosterPng(node, opts);
+  if (opts.share && typeof navigator.share === "function") {
+    try {
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], opts.filename, { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+    }
+  }
+  downloadDataUrl(url, opts.filename);
+}
 export async function exportDesktopPng(
   node: HTMLElement,
   filename: string,
@@ -127,6 +155,15 @@ export function printPoster(): Promise<void> {
     height: auto !important;
     box-shadow: none !important;
     transform: none !important;
+  }
+  #${PRINT_ROOT_ID} [data-manifesto-page] {
+    break-after: page;
+    page-break-after: always;
+    box-shadow: none !important;
+  }
+  #${PRINT_ROOT_ID} [data-manifesto-page]:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
   #${PRINT_ROOT_ID} [data-print-break] {
     break-inside: avoid;

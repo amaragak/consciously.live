@@ -15,6 +15,8 @@ export type DailyReminderKind = "meditation" | "journal";
 export type MeditateType = "guided" | "breathing" | "body-scan" | "sleep";
 export type AccountPronouns = "she_her" | "he_him" | "they_them";
 export type RaiseLevel = "ambitious" | "audacious" | "delusional";
+export type ManifestoPageMode = "paged" | "pageless";
+export type ManifestoPageSize = "a" | "letter" | "tabloid" | "phone";
 const RAISE_LEVELS = new Set<RaiseLevel>([
   "ambitious",
   "audacious",
@@ -33,6 +35,11 @@ export type UserSettingsV1 = {
     pronouns: AccountPronouns;
     /** How far Raise the ceiling pushes. Per user, not per draft. */
     raiseLevel: RaiseLevel;
+  };
+  manifestoPage: {
+    modeWide: ManifestoPageMode;
+    modeNarrow: ManifestoPageMode;
+    size: ManifestoPageSize | null;
   };
   ai: {
     personaliseWithJournal: boolean;
@@ -102,6 +109,11 @@ export function defaultUserSettings(): UserSettingsV1 {
     account: {
       pronouns: "they_them",
       raiseLevel: "audacious",
+    },
+    manifestoPage: {
+      modeWide: "paged",
+      modeNarrow: "pageless",
+      size: null,
     },
     ai: {
       personaliseWithJournal: false,
@@ -273,10 +285,20 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
     RAISE_LEVELS.has(account.raiseLevel as RaiseLevel)
       ? (account.raiseLevel as RaiseLevel)
       : d.account.raiseLevel;
+  const page = isObject(raw.manifestoPage) ? raw.manifestoPage : {};
+  const pageMode = (v: unknown, fallback: ManifestoPageMode): ManifestoPageMode =>
+    v === "paged" || v === "pageless" ? v : fallback;
+  const pageSize = (v: unknown): ManifestoPageSize | null =>
+    v === "a" || v === "letter" || v === "tabloid" || v === "phone" ? v : null;
 
   return {
     version: USER_SETTINGS_VERSION,
     account: { pronouns, raiseLevel },
+    manifestoPage: {
+      modeWide: pageMode(page.modeWide, d.manifestoPage.modeWide),
+      modeNarrow: pageMode(page.modeNarrow, d.manifestoPage.modeNarrow),
+      size: pageSize(page.size),
+    },
     ai: {
       personaliseWithJournal: asBool(
         ai.personaliseWithJournal,

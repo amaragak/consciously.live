@@ -30,6 +30,274 @@ export function writeManifestoViewPref(view: ManifestoView): void {
   writeAccountLocalStorage(VIEW_LS_KEY, view);
 }
 
+/**
+ * Singular possessive. A person’s name takes ’s even when it already ends in s:
+ * Alex → Alex’s, Davis → Davis’s. Davis’ would read as a plural family.
+ */
+export function namePossessive(name: string): string {
+  const n = name.trim();
+  if (!n) return "";
+  return `${n}’s`;
+}
+
+/** Print eyebrow. Alex → “Alex’s manifesto”; no name → “My manifesto”. */
+export function manifestoEyebrow(firstName: string): string {
+  const n = firstName.trim();
+  if (!n) return "My manifesto";
+  return `${namePossessive(n)} manifesto`;
+}
+
+export type ManifestoPageMode = "paged" | "pageless";
+export type ManifestoPageSize = "a" | "letter" | "tabloid" | "phone";
+
+export type ManifestoPageSettings = {
+  /** Larger than phone-width. */
+  modeWide: ManifestoPageMode;
+  /** Below `sm`. */
+  modeNarrow: ManifestoPageMode;
+  /** `null` until the user picks one; then the locale default applies. */
+  size: ManifestoPageSize | null;
+};
+
+export const MANIFESTO_PAGE_SIZES: readonly ManifestoPageSize[] = [
+  "a",
+  "letter",
+  "tabloid",
+  "phone",
+];
+
+export function isUsOrCaLocale(locale?: string): boolean {
+  const tag = (locale ?? (typeof navigator !== "undefined" ? navigator.language : "") ?? "")
+    .toUpperCase();
+  return tag.endsWith("-US") || tag.endsWith("-CA") || tag === "US" || tag === "CA";
+}
+
+/** Letter in the US and Canada; A4 / A3 everywhere else. */
+export function defaultManifestoPageSize(locale?: string): ManifestoPageSize {
+  return isUsOrCaLocale(locale) ? "letter" : "a";
+}
+
+export function resolveManifestoPageSize(
+  size: ManifestoPageSize | null | undefined,
+  locale?: string,
+): ManifestoPageSize {
+  return size ?? defaultManifestoPageSize(locale);
+}
+
+export type ManifestoPageSpec = {
+  key: ManifestoPageSize;
+  label: string;
+  sub: string;
+  logicalW: number;
+  logicalH: number;
+  exportW: number;
+  exportH: number;
+};
+
+export const MANIFESTO_PAGE_SPEC: Record<ManifestoPageSize, ManifestoPageSpec> = {
+  a: {
+    key: "a",
+    label: "A4 / A3",
+    sub: "Standard",
+    logicalW: 1000,
+    logicalH: 1414,
+    exportW: 3508,
+    exportH: 4961,
+  },
+  letter: {
+    key: "letter",
+    label: "Letter",
+    sub: "8.5 × 11",
+    logicalW: 1000,
+    logicalH: 1294,
+    exportW: 2550,
+    exportH: 3300,
+  },
+  tabloid: {
+    key: "tabloid",
+    label: "Tabloid",
+    sub: "11 × 17",
+    logicalW: 1000,
+    logicalH: 1545,
+    exportW: 3300,
+    exportH: 5100,
+  },
+  phone: {
+    key: "phone",
+    label: "Phone",
+    sub: "Wallpaper",
+    logicalW: 540,
+    logicalH: 1170,
+    exportW: 1290,
+    exportH: 2796,
+  },
+};
+
+/** Tiles shown before “More sizes”. */
+export function primaryPageSizes(locale?: string): ManifestoPageSize[] {
+  return isUsOrCaLocale(locale) ? ["letter", "tabloid", "phone"] : ["a", "phone"];
+}
+
+export type PosterFrame = {
+  width: number;
+  /** Set for a fixed page. Omit for a sheet that grows with its content. */
+  height?: number;
+  padding: string;
+  chapterTop: number;
+  chapterGap: number;
+  wordsTop: number;
+  statementMax: number;
+  pinFooter: boolean;
+  footerGap: number;
+};
+
+export const POSTER_FRAME_A: PosterFrame = {
+  width: 1000,
+  height: 1414,
+  padding: "58px 76px 44px",
+  chapterTop: 26,
+  chapterGap: 18,
+  wordsTop: 30,
+  statementMax: 720,
+  pinFooter: true,
+  footerGap: 22,
+};
+
+export function posterFrameFor(
+  mode: ManifestoPageMode,
+  size: ManifestoPageSize,
+): PosterFrame {
+  if (mode === "pageless") {
+    return {
+      width: 1000,
+      padding: "58px 76px 44px",
+      chapterTop: 26,
+      chapterGap: 18,
+      wordsTop: 30,
+      statementMax: 820,
+      pinFooter: false,
+      footerGap: 40,
+    };
+  }
+  if (size === "letter") {
+    return {
+      width: 1000,
+      height: 1294,
+      padding: "50px 76px 38px",
+      chapterTop: 18,
+      chapterGap: 10,
+      wordsTop: 18,
+      statementMax: 720,
+      pinFooter: true,
+      footerGap: 22,
+    };
+  }
+  if (size === "tabloid") {
+    return {
+      width: 1000,
+      height: 1545,
+      padding: "70px 76px 54px",
+      chapterTop: 40,
+      chapterGap: 34,
+      wordsTop: 30,
+      statementMax: 720,
+      pinFooter: true,
+      footerGap: 22,
+    };
+  }
+  return POSTER_FRAME_A;
+}
+
+/** Gap between sheets when a paged manifesto runs onto another page. */
+export const MANIFESTO_PAGE_GAP = 32;
+
+/**
+ * Pack `[data-page-block]` children into pages of `available` px.
+ * A block that fits on a fresh page moves there whole. A block taller than
+ * a page splits into its own `[data-page-block]` children.
+ */
+export function packManifestoPages(
+  flow: HTMLElement,
+  available: number,
+): { pages: string[][]; overflows: boolean } {
+  const pages: string[][] = [];
+  let cur: string[] = [];
+  let used = 0;
+  let overflows = false;
+  const room = Math.max(0, available);
+
+  const leadHeight = (el: HTMLElement) => {
+    const lead = el.querySelector(":scope > [data-page-lead]");
+    return lead instanceof HTMLElement ? lead.offsetHeight : 0;
+  };
+  const fullHeight = (el: HTMLElement) => {
+    const style = getComputedStyle(el);
+    return (
+      el.offsetHeight +
+      (parseFloat(style.marginTop) || 0) +
+      (parseFloat(style.marginBottom) || 0)
+    );
+  };
+  const heightAt = (el: HTMLElement, atTop: boolean) => {
+    const full = fullHeight(el);
+    return atTop ? Math.max(0, full - leadHeight(el)) : full;
+  };
+  const kids = (el: HTMLElement) =>
+    [...el.querySelectorAll(":scope > [data-page-block]")].filter(
+      (node): node is HTMLElement => node instanceof HTMLElement,
+    );
+
+  function commit() {
+    if (cur.length) pages.push(cur);
+    cur = [];
+    used = 0;
+  }
+
+  function place(el: HTMLElement) {
+    const key = el.dataset.pageBlock ?? "";
+    if (!key) return;
+    const atTop = cur.length === 0;
+    const h = heightAt(el, atTop);
+    const subs = kids(el);
+    if (h <= room - used + 1) {
+      cur.push(key);
+      used += h;
+      return;
+    }
+    if (!atTop && heightAt(el, true) <= room + 1) {
+      commit();
+      cur.push(key);
+      used += heightAt(el, true);
+      return;
+    }
+    if (subs.length) {
+      placeList(subs);
+      return;
+    }
+    overflows = true;
+    if (!atTop) commit();
+    cur.push(key);
+    used += heightAt(el, true);
+  }
+
+  function placeList(els: HTMLElement[]) {
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i]!;
+      const next = el.dataset.keepWithNext != null ? els[i + 1] : undefined;
+      if (next && cur.length > 0) {
+        const headH = heightAt(el, false);
+        const follow = Math.min(fullHeight(next), 120);
+        if (used + headH + follow > room + 1) commit();
+      }
+      place(el);
+    }
+  }
+
+  placeList(kids(flow));
+  commit();
+  return { pages: pages.length ? pages : [[]], overflows };
+}
+
 /** `/manifest/my` (Edit), `?view=manifesto`, or `?view=story`. */
 export function manifestoViewHref(view: ManifestoView): string {
   if (view === "manifesto") return "/manifest/my?view=manifesto";
