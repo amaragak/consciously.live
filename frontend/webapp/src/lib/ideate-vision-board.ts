@@ -45,6 +45,8 @@ export type VisionBoardItem = {
    * An image may belong to several areas.
    */
   lifeAreaIds?: string[];
+  /** Leads Manifesto, story, and poster picks. Omitted when false. */
+  favourite?: boolean;
 };
 
 export type VisionSelfReference = {
@@ -186,6 +188,7 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
     ...(typeof o.createdAt === "string" ? { createdAt: o.createdAt } : {}),
     ...(versions?.length ? { versions } : {}),
     ...(lifeAreaIds.length ? { lifeAreaIds } : {}),
+    ...(o.favourite === true ? { favourite: true } : {}),
   };
 }
 
@@ -435,6 +438,112 @@ export function visionItemHasImage(item: VisionBoardItem): boolean {
 
 export const VISION_COMPOSE_SLOT_COUNT = 8;
 
+/** Image-bearing items that occupy the board, in board order. */
+export function boardVisionItems(items: readonly VisionBoardItem[]): VisionBoardItem[] {
+  return items.filter(visionItemHasImage).slice(0, VISION_COMPOSE_SLOT_COUNT);
+}
+
+/**
+ * Automatic picks: favourites in board order, then the other board images
+ * in board order, then library images newest first.
+ */
+export function visionPickOrder(items: readonly VisionBoardItem[]): VisionBoardItem[] {
+  const board = boardVisionItems(items);
+  const boardIds = new Set(board.map((i) => i.id));
+  const library = items
+    .filter((i) => visionItemHasImage(i) && !boardIds.has(i.id))
+    .slice()
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  return [
+    ...board.filter((i) => i.favourite),
+    ...board.filter((i) => !i.favourite),
+    ...library,
+  ];
+}
+
+export function setVisionItemFavourite(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+  favourite: boolean,
+): IdeateVisionBoardStoreV1 {
+  return {
+    ...store,
+    v: 2,
+    items: store.items.map((item) => {
+      if (item.id !== itemId) return item;
+      if (!favourite) {
+        const { favourite: _drop, ...rest } = item;
+        return rest;
+      }
+      return { ...item, favourite: true };
+    }),
+  };
+}
+
+/** New uploads and generations land in the library, after the current board. */
+export function insertVisionItemInLibrary(
+  store: IdeateVisionBoardStoreV1,
+  item: VisionBoardItem,
+): IdeateVisionBoardStoreV1 {
+  const images = store.items.filter(visionItemHasImage);
+  const board = images.slice(0, VISION_COMPOSE_SLOT_COUNT);
+  const rest = images.slice(VISION_COMPOSE_SLOT_COUNT);
+  const nonImage = store.items.filter((x) => !visionItemHasImage(x));
+  return {
+    ...store,
+    v: 2,
+    items: [...board, item, ...rest, ...nonImage].slice(0, 48),
+  };
+}
+
+/** Move an on-board image to the front of the library. */
+export function removeVisionItemFromBoard(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+): IdeateVisionBoardStoreV1 {
+  const images = store.items.filter(visionItemHasImage);
+  const board = images.slice(0, VISION_COMPOSE_SLOT_COUNT);
+  const target = board.find((i) => i.id === itemId);
+  if (!target) return store;
+  const keptBoard = board.filter((i) => i.id !== itemId);
+  const keptIds = new Set(keptBoard.map((i) => i.id));
+  const rest = images.filter((i) => i.id !== itemId && !keptIds.has(i.id));
+  const nonImage = store.items.filter((x) => !visionItemHasImage(x));
+  return {
+    ...store,
+    v: 2,
+    items: [...keptBoard, target, ...rest, ...nonImage].slice(0, 48),
+  };
+}
+
+/** Append a generated take as a version. The active image stays put. */
+export function stashVisionBoardTake(
+  item: VisionBoardItem,
+  next: {
+    prompt: string;
+    imageUrl?: string;
+    mediaId?: string;
+    mediaKey?: string;
+  },
+): { item: VisionBoardItem; versionId: string } {
+  const versionId = newVersionId();
+  const version: VisionBoardVersion = {
+    id: versionId,
+    prompt: next.prompt,
+    ...(next.imageUrl ? { imageUrl: next.imageUrl } : {}),
+    ...(next.mediaId ? { mediaId: next.mediaId } : {}),
+    ...(next.mediaKey ? { mediaKey: next.mediaKey } : {}),
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    versionId,
+    item: {
+      ...item,
+      versions: [...(item.versions ?? []), version].slice(-24),
+    },
+  };
+}
+
 /**
  * First eight image-bearing item ids in store order — same rule as the Ideate
  * home hero mosaic. Empty slots are `null`.
@@ -522,8 +631,7 @@ export function applyVisionBoardRefinement(
     });
   }
   return {
-    id: item.id,
-    color: item.color,
+    ...item,
     label: visionLabelFromPrompt(next.prompt),
     kind: "image",
     prompt: next.prompt,

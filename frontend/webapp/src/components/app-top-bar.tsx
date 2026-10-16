@@ -7,7 +7,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LogoMark } from "@/components/logo-mark";
 import {
-  AppPrimaryTabsPhoneSlot,
   AppPrimaryTabsSlot,
   AppTopBarTrailingSlot,
 } from "@/components/app-primary-tabs";
@@ -476,8 +475,6 @@ export function AppTopBar({
       ]
     : null;
   const phoneHubLeaf = librarySoundsPhoneLeafLabel(pathname);
-  /** Manifesto page: Edit | Manifesto tabs sit in the compact header. */
-  const isManifestHome = pathname.replace(/\/+$/, "") === "/manifest/my";
   const phoneTrail: AppBreadcrumbCrumb[] = phoneDetailTrail
     ? phoneDetailTrail
     : location.verb && phoneHubLeaf
@@ -576,27 +573,10 @@ export function AppTopBar({
                 className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center md:hidden"
                 aria-hidden
               />
-              {isManifestHome ? (
-                <>
-                  {/* Phone: Manifest › [Edit | Manifesto] — tabs replace the last crumb. */}
-                  <AppBreadcrumb
-                    crumbs={[{ label: "Manifest", href: "/manifest/my" }]}
-                    className="shrink-0 text-[13px] md:hidden"
-                  />
-                  <span
-                    className="app-header-crumb-sep mx-1.5 shrink-0 text-[13px] md:hidden"
-                    aria-hidden
-                  >
-                    ›
-                  </span>
-                  <AppPrimaryTabsPhoneSlot className="flex min-w-0 flex-1 items-center overflow-x-auto md:hidden" />
-                </>
-              ) : (
-                <AppBreadcrumb
-                  crumbs={phoneTrail}
-                  className="min-w-0 flex-1 text-[13px] md:hidden"
-                />
-              )}
+              <AppBreadcrumb
+                crumbs={phoneTrail}
+                className="min-w-0 flex-1 text-[13px] md:hidden"
+              />
               {/* md–lg: leaf only — italic verb is visible in BrandPhrase. */}
               {trail.length > 0 ? (
                 <>

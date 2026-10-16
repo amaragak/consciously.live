@@ -2787,7 +2787,7 @@ export function ManifestoStoryView() {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (!next.get("view")) next.set("view", "story");
+          next.delete("view");
           if (tab === "narration") next.set("tab", "narration");
           else next.delete("tab");
           return next;

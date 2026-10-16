@@ -20,6 +20,8 @@ export type IdeateQuote = {
   attribution?: string;
   /** Hide from the Manifesto print's "Words to keep" (default false). */
   hiddenOnPrint?: boolean;
+  /** Lead the daily rotation and sort first on Words to keep (default false). */
+  pinned?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -94,6 +96,7 @@ function normalizeQuote(x: unknown): IdeateQuote | null {
     text,
     ...(attributionRaw ? { attribution: attributionRaw } : {}),
     ...(o.hiddenOnPrint === true ? { hiddenOnPrint: true } : {}),
+    ...(o.pinned === true ? { pinned: true } : {}),
     createdAt,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : createdAt,
   };
@@ -206,6 +209,25 @@ export function patchIdeateQuote(
         ...(attribution ? { attribution } : { attribution: undefined }),
         updatedAt: safeIso(),
       };
+    }),
+  };
+}
+
+/** Pin or unpin a quote. Pinned quotes lead the daily rotation. */
+export function setIdeateQuotePinned(
+  store: IdeateQuotesStoreV1,
+  id: string,
+  pinned: boolean,
+): IdeateQuotesStoreV1 {
+  return {
+    v: 1,
+    quotes: store.quotes.map((q) => {
+      if (q.id !== id) return q;
+      const { pinned: _drop, ...rest } = q;
+      void _drop;
+      return pinned
+        ? { ...rest, pinned: true, updatedAt: safeIso() }
+        : { ...rest, updatedAt: safeIso() };
     }),
   };
 }

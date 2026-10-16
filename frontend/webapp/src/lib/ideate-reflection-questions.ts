@@ -212,6 +212,21 @@ export function addCustomQuestion(
   return { v: 1, questions: [...store.questions, next] };
 }
 
+export function patchQuestionText(
+  store: IdeateReflectionQuestionsStoreV1,
+  id: string,
+  text: string,
+): IdeateReflectionQuestionsStoreV1 {
+  const trimmed = text.trim();
+  if (!trimmed) return store;
+  return {
+    v: 1,
+    questions: store.questions.map((q) =>
+      q.id === id ? { ...q, text: trimmed, updatedAt: safeIso() } : q,
+    ),
+  };
+}
+
 export function patchQuestionAnswer(
   store: IdeateReflectionQuestionsStoreV1,
   id: string,

@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Plus, SquarePen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, SquarePen } from "lucide-react";
 
 /** Light accent from the gold accent token (rules, dashed outlines, hero eyebrow). */
 export const LIGHT_ACCENT_BORDER =
@@ -63,6 +63,33 @@ export function ManifestoHeaderLink({
       {children}
       <ChevronRight aria-hidden className="size-4" strokeWidth={1.8} />
     </Link>
+  );
+}
+
+/** Inner Manifesto page: back link, serif title, subline, optional action. */
+export function ManifestoSubpageHeader({
+  title,
+  subline,
+  action,
+}: {
+  title: string;
+  subline: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex min-w-0 flex-col gap-2">
+        <Link to="/manifest/my" className={LINK_ROW_CLASS}>
+          <ChevronLeft aria-hidden className="size-4" strokeWidth={1.8} />
+          Manifesto
+        </Link>
+        <h1 className="font-display text-[30px] font-normal leading-[1.15] text-foreground">
+          {title}
+        </h1>
+        <p className="text-[15px] text-foreground/75">{subline}</p>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
   );
 }
 

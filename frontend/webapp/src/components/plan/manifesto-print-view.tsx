@@ -1027,8 +1027,8 @@ export function ManifestoPrintView() {
 
   if (!wide) {
     return (
-      <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-[96px] pt-3">
-        <h1 className="sr-only">Manifesto</h1>
+      <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-[96px] pt-4">
+        <h1 className="sr-only">Poster</h1>
         <div ref={mobileBoxRef} className="relative mx-auto w-full max-w-[520px]">
           {pageMode === "pageless" ? (
             <MobilePoster data={data} compose={compose} />
@@ -1161,8 +1161,8 @@ export function ManifestoPrintView() {
   /* ---- desktop ------------------------------------------------------------ */
 
   return (
-    <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-10 pt-4 sm:px-6">
-      <h1 className="sr-only">Manifesto</h1>
+    <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-10 pt-5 sm:px-6">
+      <h1 className="sr-only">Poster</h1>
       <div ref={rowRef} className="flex min-w-0 items-start" style={{ gap: ROW_GAP_PX }}>
         <div
           className="min-w-0 shrink-0 overflow-visible"

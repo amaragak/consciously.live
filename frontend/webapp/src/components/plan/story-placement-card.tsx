@@ -3,8 +3,8 @@
  */
 
 import type { MouseEvent, ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
 import { Link, useRouter } from "@/lib/spa-nav";
+import { CREATE_FLOW_NAV_PILL_CLASS } from "@/components/create-flow-nav-pill";
 import { LogoMark } from "@/components/logo-mark";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { useLibraryPlayer } from "@/components/library-player-provider";
@@ -227,6 +227,15 @@ export function StoryPlacementCard({
     </div>
   );
 
+  const artwork = (
+    <div className="relative shrink-0" style={{ width: artSize, height: artSize }}>
+      <StoryArtwork urls={placement.visionImageUrls} sizePx={artSize} />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <PlayCircle size={playSize} label={`Play ${title}`} onClick={play} />
+      </div>
+    </div>
+  );
+
   if (compact) {
     return (
       <button
@@ -235,9 +244,8 @@ export function StoryPlacementCard({
         className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]"
         aria-label={title}
       >
-        <StoryArtwork urls={placement.visionImageUrls} sizePx={artSize} />
+        {artwork}
         {textCol}
-        <PlayCircle size={playSize} label={`Play ${title}`} onClick={play} />
       </button>
     );
   }
@@ -256,17 +264,15 @@ export function StoryPlacementCard({
       className="flex w-full cursor-pointer items-center gap-[18px] rounded-2xl border border-border bg-card py-4 pl-4 pr-5 text-left shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]"
       aria-label={title}
     >
-      <StoryArtwork urls={placement.visionImageUrls} sizePx={artSize} />
+      {artwork}
       {textCol}
       <Link
         href={linkHref}
         onClick={(e) => e.stopPropagation()}
-        className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap text-[13px] font-semibold text-accent-link"
+        className={`${CREATE_FLOW_NAV_PILL_CLASS} whitespace-nowrap`}
       >
-        {linkLabel}
-        <ChevronRight className="size-[15px]" strokeWidth={1.8} aria-hidden />
+        {linkLabel} →
       </Link>
-      <PlayCircle size={playSize} label={`Play ${title}`} onClick={play} />
     </div>
   );
 }

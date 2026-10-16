@@ -1,13 +1,8 @@
 /**
- * Manifesto print view — pure helpers (view preference, Roman numerals, print
- * sizing rules, "Words to keep" selection). No React, no storage side effects
- * beyond the remembered view choice.
+ * Manifesto print view — pure helpers (Roman numerals, print sizing rules,
+ * "Words to keep" selection). No React.
  */
 
-import {
-  readAccountLocalStorage,
-  writeAccountLocalStorage,
-} from "@/lib/account-scoped-storage";
 import type { IdeateQuote } from "@/lib/ideate-quotes";
 import type { IdeateReflectionQuestion } from "@/lib/ideate-reflection-questions";
 import { visionItemHasImage, type VisionBoardItem } from "@/lib/ideate-vision-board";
@@ -15,20 +10,6 @@ import { visionItemHasImage, type VisionBoardItem } from "@/lib/ideate-vision-bo
 /* ---------------------------------------------------------------- view */
 
 export type ManifestoView = "edit" | "manifesto" | "story";
-
-const VIEW_LS_KEY = "mm_manifesto_view_v1";
-
-/** Remembered tab; Manifesto until the user picks Edit or Story. */
-export function readManifestoViewPref(): ManifestoView {
-  const raw = readAccountLocalStorage(VIEW_LS_KEY);
-  if (raw === "edit") return "edit";
-  if (raw === "story") return "story";
-  return "manifesto";
-}
-
-export function writeManifestoViewPref(view: ManifestoView): void {
-  writeAccountLocalStorage(VIEW_LS_KEY, view);
-}
 
 /**
  * Singular possessive. A person’s name takes ’s even when it already ends in s:
@@ -298,10 +279,10 @@ export function packManifestoPages(
   return { pages: pages.length ? pages : [[]], overflows };
 }
 
-/** `/manifest/my` (Edit), `?view=manifesto`, or `?view=story`. */
+/** Manifesto page, Poster, or Story. */
 export function manifestoViewHref(view: ManifestoView): string {
-  if (view === "manifesto") return "/manifest/my?view=manifesto";
-  if (view === "story") return "/manifest/my?view=story";
+  if (view === "manifesto") return "/manifest/poster";
+  if (view === "story") return "/manifest/story";
   return "/manifest/my";
 }
 
@@ -482,14 +463,33 @@ export function pickPrintNotes(
 
 /* -------------------------------------------------------- area images */
 
-/** Image-bearing vision items tagged to a life area, in board order. */
+/**
+ * Image-bearing items tagged to a life area: that area's favourites first
+ * (board order, then the library), then the other board images, then the rest.
+ */
 export function visionItemsForLifeArea(
   items: readonly VisionBoardItem[],
   lifeAreaId: string,
 ): VisionBoardItem[] {
-  return items.filter(
-    (i) => visionItemHasImage(i) && (i.lifeAreaIds ?? []).includes(lifeAreaId),
-  );
+  const boardIds = items
+    .filter(visionItemHasImage)
+    .slice(0, 8)
+    .map((i) => i.id);
+  const rank = new Map(boardIds.map((id, index) => [id, index]));
+  return items
+    .filter(
+      (i) => visionItemHasImage(i) && (i.lifeAreaIds ?? []).includes(lifeAreaId),
+    )
+    .slice()
+    .sort((a, b) => {
+      const af = a.favourite ? 0 : 1;
+      const bf = b.favourite ? 0 : 1;
+      if (af !== bf) return af - bf;
+      const ar = rank.has(a.id) ? rank.get(a.id)! : 100;
+      const br = rank.has(b.id) ? rank.get(b.id)! : 100;
+      if (ar !== br) return ar - br;
+      return items.indexOf(a) - items.indexOf(b);
+    });
 }
 
 /* ------------------------------------------------------------- paper */

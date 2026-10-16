@@ -32,7 +32,14 @@ export function shouldUseDocumentScroll(
     if (path.startsWith("/chat/my")) return false;
     if (path.startsWith("/journal/my")) return false;
     if (path.startsWith("/meditate/sounds")) return false;
-    if (path.startsWith("/manifest/my") || path.startsWith("/manifest/goal")) {
+    if (
+      path.startsWith("/manifest/my") ||
+      path.startsWith("/manifest/story") ||
+      path.startsWith("/manifest/poster") ||
+      path.startsWith("/manifest/goal") ||
+      path.startsWith("/manifest/words") ||
+      path.startsWith("/manifest/questions")
+    ) {
       return false;
     }
     if (

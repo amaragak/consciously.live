@@ -5,7 +5,7 @@
 import { hasLibraryMeditationBeenPlayed } from "@/lib/daily-habits";
 import {
   loadIdeateVisionBoardStore,
-  visionItemHasImage,
+  visionPickOrder,
   type VisionBoardItem,
 } from "@/lib/ideate-vision-board";
 import {
@@ -17,8 +17,8 @@ import {
 } from "@/lib/manifesto-story";
 import type { LibraryMeditationItem } from "@/lib/medimade-api";
 
-export const STORY_NARRATION_HREF = "/manifest/my?view=story&tab=narration";
-export const STORY_DRAFT_HREF = "/manifest/my?view=story";
+export const STORY_NARRATION_HREF = "/manifest/story?tab=narration";
+export const STORY_DRAFT_HREF = "/manifest/story";
 
 export type NarratedStoryPlacement = {
   store: ManifestoStoryStoreV1;
@@ -82,9 +82,8 @@ export function visionBoardPreviewUrls(
   max = 4,
 ): string[] {
   const urls: string[] = [];
-  for (const item of items) {
+  for (const item of visionPickOrder(items)) {
     if (urls.length >= max) break;
-    if (!visionItemHasImage(item)) continue;
     const src = item.imageUrl?.trim();
     if (src) urls.push(src);
   }

@@ -48,7 +48,7 @@ export function maybeFireManifestoStoryReminder(
     kind: "story_reminder",
     title: "Time for your story",
     body: "Settle in and listen to your life vision.",
-    href: "/manifest/my?view=story",
+    href: "/manifest/story",
   });
 
   saveManifestoStoryStore({

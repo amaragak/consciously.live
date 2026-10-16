@@ -281,7 +281,7 @@ export function DailyHabitTracker({
                 onPlayStory();
                 return;
               }
-              router.push("/manifest/my?view=story&tab=narration");
+              router.push("/manifest/story?tab=narration");
             },
           },
         ]

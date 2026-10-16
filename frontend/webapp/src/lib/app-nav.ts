@@ -108,6 +108,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
     href: "/manifest/my",
     children: [
       { id: "manifesto", label: "Manifesto", href: "/manifest/my" },
+      { id: "story", label: "Story", href: "/manifest/story" },
       { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
@@ -347,14 +348,11 @@ export function isSubItemActive(
     );
   }
   if (sectionId === "ideate" && sub.id === "manifesto") {
-    // Exact manifesto home only — vision-board and goals are sibling routes.
-    if (
-      pathname.startsWith("/manifest/my/vision-board") ||
-      pathname.startsWith("/manifest/goal/")
-    ) {
-      return false;
-    }
-    return pathname === "/manifest/my";
+    // Poster is part of Manifesto. Story, the vision board and life areas are siblings.
+    return pathname === "/manifest/my" || pathname === "/manifest/poster";
+  }
+  if (sectionId === "ideate" && sub.id === "story") {
+    return pathname === "/manifest/story" || pathname.startsWith("/manifest/story/");
   }
   if (sectionId === "ideate" && sub.id.startsWith("life-area:")) {
     const dreamId = sub.id.slice("life-area:".length);
@@ -802,6 +800,18 @@ export function buildAppBreadcrumbs(
         { label: "Vision board", href: null },
       ];
     }
+    if (pathname === "/manifest/story" || pathname.startsWith("/manifest/story/")) {
+      return [
+        { label: "Manifest", href: "/manifest/my" },
+        { label: "Story", href: null },
+      ];
+    }
+    if (pathname === "/manifest/poster" || pathname.startsWith("/manifest/poster/")) {
+      return [
+        { label: "Manifest", href: "/manifest/my" },
+        { label: "Poster", href: null },
+      ];
+    }
     if (
       pathname === "/manifest/my/insights" ||
       pathname.startsWith("/manifest/my/insights/")
@@ -812,7 +822,6 @@ export function buildAppBreadcrumbs(
       ];
     }
     if (pathname.startsWith("/manifest/my")) {
-      // Section home: verb alone in the brand phrase (no "| Manifesto" trail).
       return [{ label: "Manifest", href: "/manifest/my" }];
     }
     return [{ label: "Manifest", href: null }];
