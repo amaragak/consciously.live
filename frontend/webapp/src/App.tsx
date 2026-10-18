@@ -20,6 +20,13 @@ import { AdminLayout } from "./pages/admin-layout";
 import { ChatPage } from "./pages/chat-page";
 import { CreatePage } from "./pages/create-page";
 import { FocusPage } from "./pages/focus-page";
+import {
+  HealHomePage,
+  HealItemPage,
+  HealLetterPage,
+  HealRestedPage,
+  HealSupportPage,
+} from "./pages/heal-page";
 import { HomePage } from "./pages/home-page";
 import { JournalPage } from "./pages/journal-page";
 import { LibraryPage } from "./pages/library-page";
@@ -56,6 +63,12 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
+        <Route path="heal" element={<HealHomePage />} />
+        <Route path="heal/rested" element={<HealRestedPage />} />
+        <Route path="heal/support" element={<HealSupportPage />} />
+        <Route path="heal/:itemId/letter" element={<HealLetterPage />} />
+        <Route path="heal/:itemId/letter/:entryId" element={<HealLetterPage />} />
+        <Route path="heal/:itemId" element={<HealItemPage />} />
         <Route path="focus" element={<FocusPage />} />
         <Route path="focus/my" element={<Navigate to="/focus" replace />} />
         <Route path="journal">

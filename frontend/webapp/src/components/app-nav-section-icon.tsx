@@ -1,4 +1,4 @@
-import { BookOpen, Focus, MessageSquare, Sparkles } from "lucide-react";
+import { BookOpen, Focus, Heart, MessageSquare, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** Same section icons as the sidebar — size/stroke configurable for tab bar. */
@@ -54,6 +54,17 @@ export function AppNavSectionIcon({
   if (sectionId === "ideate") {
     return (
       <Sparkles
+        aria-hidden
+        className={cls}
+        width={size}
+        height={size}
+        strokeWidth={strokeWidth}
+      />
+    );
+  }
+  if (sectionId === "heal") {
+    return (
+      <Heart
         aria-hidden
         className={cls}
         width={size}

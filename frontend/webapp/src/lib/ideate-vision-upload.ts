@@ -1,15 +1,15 @@
 /**
- * Add one uploaded image to the vision board (same storage rules as the
- * Vision board page's "Upload image": CloudFront upload when signed in,
- * IndexedDB for guests). Resolves with the new tile id. Used by the Manifesto
- * hero's "Add image" tile and the print view's add-image sheet.
+ * Add one uploaded image to the vision library (same storage rules as the
+ * Vision board page's Upload: CloudFront when signed in, IndexedDB for guests).
+ * It does not join the board. Resolves with the new tile id. Used by the
+ * Manifesto hero's "Add image" tile and the print view's add-image sheet.
  */
 
 import {
+  insertVisionItemInLibrary,
   loadIdeateVisionBoardStore,
   pickVisionSwatchColor,
   saveIdeateVisionBoardStore,
-  upsertVisionBoardItem,
   type VisionBoardItem,
 } from "@/lib/ideate-vision-board";
 import {
@@ -88,7 +88,7 @@ export async function addVisionBoardImageFromFile(
   }
 
   saveIdeateVisionBoardStore(
-    upsertVisionBoardItem(loadIdeateVisionBoardStore(), item),
+    insertVisionItemInLibrary(loadIdeateVisionBoardStore(), item),
   );
   if (signedIn) await flushIdeateCloudNow();
   return id;

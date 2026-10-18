@@ -41,6 +41,10 @@
   --app-sidebar-w: 200px;
   --content-max-width: 72rem;
   --gold: #C8A46A;
+  /* Heal — mist-blue family of the primary button. Text token is AA on card. */
+  --heal-accent: #3d5a80;
+  --heal-tint: #eef3f9;
+  --heal-border: #d5e2f0;
   color-scheme: light;
 }
 
@@ -460,6 +464,9 @@ body {
   --color-marketing-band-c: var(--marketing-band-c);
   --color-marketing-band-d: var(--marketing-band-d);
   --color-marketing-band-ideate: var(--marketing-band-ideate);
+  --color-heal-accent: var(--heal-accent);
+  --color-heal-tint: var(--heal-tint);
+  --color-heal-border: var(--heal-border);
 }
 
 @utility accent-fill-gradient {
@@ -1034,6 +1041,9 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
 
 :root.dark {
   --chat-panel-bg: var(--background);
+  --heal-accent: #d5e2f2;
+  --heal-tint: #243044;
+  --heal-border: #3a4d66;
 }
 
 .chat-bubble-shell {

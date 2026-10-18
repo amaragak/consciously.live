@@ -294,5 +294,35 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
         manifestStory,
       ),
     });
+
+    const healAi = new lambda_nodejs.NodejsFunction(this, "HealAiFunction", {
+      entry: path.join(__dirname, "../../lambdas/heal-ai.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      role,
+      environment: {
+        CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
+      },
+    });
+    const healAiIntegration = new integrations.HttpLambdaIntegration(
+      "HealAiIntegration",
+      healAi,
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "HealAiRoute",
+      path: "/heal/ai",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: healAiIntegration,
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "HealScreenRoute",
+      path: "/heal/screen",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: healAiIntegration,
+    });
   }
 }

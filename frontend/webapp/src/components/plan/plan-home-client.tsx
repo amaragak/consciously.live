@@ -63,6 +63,7 @@ import {
 } from "@/lib/auth-session";
 import { firstNameFromAccount } from "@/lib/manifesto-print";
 import { resolveNarratedStoryPlacement } from "@/lib/manifesto-story-placement";
+import { ManifestoFocusCard } from "@/components/plan/manifesto-focus-card";
 import { StoryPlacementCard } from "@/components/plan/story-placement-card";
 import {
   goalSummaryForLifeArea,
@@ -491,9 +492,12 @@ export function PlanHomeClient() {
       />
       </div>
 
-      {storyPlacement ? (
-        <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
-          <div className="md:hidden">
+      <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+        <div className="md:hidden">
+          <ManifestoFocusCard compact />
+        </div>
+        {storyPlacement ? (
+          <div className="mt-3.5 md:hidden">
             <StoryPlacementCard
               placement={storyPlacement}
               firstName={storyFirstName}
@@ -501,15 +505,23 @@ export function PlanHomeClient() {
               compact
             />
           </div>
-          <div className="hidden md:block">
-            <StoryPlacementCard
-              placement={storyPlacement}
-              firstName={storyFirstName}
-              variant="manifest"
-            />
+        ) : null}
+        <div className="hidden items-stretch gap-3.5 md:flex">
+          {storyPlacement ? (
+            <div className="flex min-w-0 flex-1">
+              <StoryPlacementCard
+                placement={storyPlacement}
+                firstName={storyFirstName}
+                variant="manifest"
+                className="h-full"
+              />
+            </div>
+          ) : null}
+          <div className={storyPlacement ? "w-[380px] shrink-0" : "min-w-0 flex-1"}>
+            <ManifestoFocusCard />
           </div>
-        </section>
-      ) : null}
+        </div>
+      </section>
 
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
         {resistanceThreads[0] ? (

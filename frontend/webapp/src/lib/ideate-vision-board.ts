@@ -47,6 +47,37 @@ export type VisionBoardItem = {
   lifeAreaIds?: string[];
   /** Leads Manifesto, story, and poster picks. Omitted when false. */
   favourite?: boolean;
+  /** Natural pixel size. Backfilled when the image loads. */
+  width?: number;
+  height?: number;
+  /**
+   * Position on the board. Omitted on library images.
+   * Absent on every item means the legacy rule: the first 8 images are the board.
+   */
+  boardOrder?: number;
+  /** Library image after the board switched to explicit membership. */
+  offBoard?: boolean;
+  /** At most one image on the board. Omitted when false. */
+  featured?: boolean;
+  /** Non-destructive crop. Null / omitted is the full image. */
+  crop?: VisionCrop | null;
+};
+
+export type VisionCropPreset =
+  | "1:1"
+  | "4:5"
+  | "3:2"
+  | "16:9"
+  | "9:16"
+  | "free";
+
+/** Normalised 0–1 rectangle inside the image. */
+export type VisionCrop = {
+  preset: VisionCropPreset;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 };
 
 export type VisionSelfReference = {
@@ -189,7 +220,55 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
     ...(versions?.length ? { versions } : {}),
     ...(lifeAreaIds.length ? { lifeAreaIds } : {}),
     ...(o.favourite === true ? { favourite: true } : {}),
+    ...(typeof o.width === "number" && o.width > 0 ? { width: o.width } : {}),
+    ...(typeof o.height === "number" && o.height > 0 ? { height: o.height } : {}),
+    ...(typeof o.boardOrder === "number" && Number.isFinite(o.boardOrder)
+      ? { boardOrder: o.boardOrder }
+      : {}),
+    ...(o.offBoard === true ? { offBoard: true } : {}),
+    ...(o.featured === true ? { featured: true } : {}),
+    ...(normalizeCrop(o.crop) ? { crop: normalizeCrop(o.crop) } : {}),
   };
+}
+
+function normalizeCrop(raw: unknown): VisionCrop | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const preset = o.preset;
+  if (
+    preset !== "1:1" &&
+    preset !== "4:5" &&
+    preset !== "3:2" &&
+    preset !== "16:9" &&
+    preset !== "9:16" &&
+    preset !== "free"
+  ) {
+    return null;
+  }
+  const x = typeof o.x === "number" ? o.x : NaN;
+  const y = typeof o.y === "number" ? o.y : NaN;
+  const w = typeof o.w === "number" ? o.w : NaN;
+  const h = typeof o.h === "number" ? o.h : NaN;
+  if (![x, y, w, h].every((n) => Number.isFinite(n) && n >= 0 && n <= 1)) return null;
+  if (w < 0.02 || h < 0.02) return null;
+  return {
+    preset,
+    x: Math.min(x, 1 - w),
+    y: Math.min(y, 1 - h),
+    w,
+    h,
+  };
+}
+
+/** Tile ratio after crop. Falls back to square until the natural size is known. */
+export function visionItemAspect(item: VisionBoardItem): number {
+  const width = item.width && item.width > 0 ? item.width : 1;
+  const height = item.height && item.height > 0 ? item.height : 1;
+  const crop = item.crop;
+  if (crop && crop.w > 0 && crop.h > 0) {
+    return (crop.w * width) / (crop.h * height);
+  }
+  return width / height;
 }
 
 function normalizeLifeAreaIds(raw: unknown): string[] {
@@ -436,11 +515,59 @@ export function visionItemHasImage(item: VisionBoardItem): boolean {
   );
 }
 
-export const VISION_COMPOSE_SLOT_COUNT = 8;
+export const VISION_COMPOSE_SLOT_COUNT = 16;
+/** Boards saved before explicit membership: the first 8 images are on the board. */
+const LEGACY_BOARD_COUNT = 8;
+
+function boardMembershipExplicit(items: readonly VisionBoardItem[]): boolean {
+  return items.some(
+    (item) => typeof item.boardOrder === "number" || item.offBoard === true,
+  );
+}
 
 /** Image-bearing items that occupy the board, in board order. */
 export function boardVisionItems(items: readonly VisionBoardItem[]): VisionBoardItem[] {
-  return items.filter(visionItemHasImage).slice(0, VISION_COMPOSE_SLOT_COUNT);
+  const images = items.filter(visionItemHasImage);
+  if (!boardMembershipExplicit(images)) {
+    return images.slice(0, LEGACY_BOARD_COUNT);
+  }
+  return images
+    .filter((item) => typeof item.boardOrder === "number")
+    .sort((a, b) => (a.boardOrder ?? 0) - (b.boardOrder ?? 0))
+    .slice(0, VISION_COMPOSE_SLOT_COUNT);
+}
+
+function withoutBoardFields(item: VisionBoardItem): VisionBoardItem {
+  const { boardOrder: _order, featured: _featured, ...rest } = item;
+  return { ...rest, offBoard: true };
+}
+
+/** Persist board membership. Library images lose `boardOrder`. */
+function writeBoard(
+  store: IdeateVisionBoardStoreV1,
+  board: VisionBoardItem[],
+): IdeateVisionBoardStoreV1 {
+  const limited = board.slice(0, VISION_COMPOSE_SLOT_COUNT);
+  const featuredId = limited.find((item) => item.featured)?.id;
+  const ids = new Set(limited.map((item) => item.id));
+  const byId = new Map(store.items.map((item) => [item.id, item]));
+  const ordered = limited.map((item, order) => {
+    const source = byId.get(item.id) ?? item;
+    const next: VisionBoardItem = { ...source, ...item, boardOrder: order };
+    delete next.offBoard;
+    if (next.id === featuredId) next.featured = true;
+    else delete next.featured;
+    return next;
+  });
+  const library = store.items
+    .filter((item) => visionItemHasImage(item) && !ids.has(item.id))
+    .map(withoutBoardFields);
+  const nonImage = store.items.filter((item) => !visionItemHasImage(item));
+  return {
+    ...store,
+    v: 2,
+    items: [...ordered, ...library, ...nonImage].slice(0, 48),
+  };
 }
 
 /**
@@ -480,40 +607,30 @@ export function setVisionItemFavourite(
   };
 }
 
-/** New uploads and generations land in the library, after the current board. */
+/** New uploads and generations land in the library, never on the board. */
 export function insertVisionItemInLibrary(
   store: IdeateVisionBoardStoreV1,
   item: VisionBoardItem,
 ): IdeateVisionBoardStoreV1 {
-  const images = store.items.filter(visionItemHasImage);
-  const board = images.slice(0, VISION_COMPOSE_SLOT_COUNT);
-  const rest = images.slice(VISION_COMPOSE_SLOT_COUNT);
-  const nonImage = store.items.filter((x) => !visionItemHasImage(x));
-  return {
-    ...store,
-    v: 2,
-    items: [...board, item, ...rest, ...nonImage].slice(0, 48),
-  };
+  const board = boardVisionItems(store.items).filter((entry) => entry.id !== item.id);
+  const stamped = writeBoard(store, board);
+  const fresh = withoutBoardFields(item);
+  const without = stamped.items.filter((entry) => entry.id !== item.id);
+  without.splice(board.length, 0, fresh);
+  return { ...stamped, items: without.slice(0, 48) };
 }
 
-/** Move an on-board image to the front of the library. */
+/** Move an on-board image into the library. */
 export function removeVisionItemFromBoard(
   store: IdeateVisionBoardStoreV1,
   itemId: string,
 ): IdeateVisionBoardStoreV1 {
-  const images = store.items.filter(visionItemHasImage);
-  const board = images.slice(0, VISION_COMPOSE_SLOT_COUNT);
-  const target = board.find((i) => i.id === itemId);
-  if (!target) return store;
-  const keptBoard = board.filter((i) => i.id !== itemId);
-  const keptIds = new Set(keptBoard.map((i) => i.id));
-  const rest = images.filter((i) => i.id !== itemId && !keptIds.has(i.id));
-  const nonImage = store.items.filter((x) => !visionItemHasImage(x));
-  return {
-    ...store,
-    v: 2,
-    items: [...keptBoard, target, ...rest, ...nonImage].slice(0, 48),
-  };
+  const board = boardVisionItems(store.items);
+  if (!board.some((item) => item.id === itemId)) return store;
+  return writeBoard(
+    store,
+    board.filter((item) => item.id !== itemId),
+  );
 }
 
 /** Append a generated take as a version. The active image stays put. */
@@ -544,14 +661,11 @@ export function stashVisionBoardTake(
   };
 }
 
-/**
- * First eight image-bearing item ids in store order — same rule as the Ideate
- * home hero mosaic. Empty slots are `null`.
- */
+/** Board image ids, padded with empty slots up to the board limit. */
 export function getComposeSlotIds(
   items: VisionBoardItem[],
 ): (string | null)[] {
-  const ids = items.filter(visionItemHasImage).map((i) => i.id);
+  const ids = boardVisionItems(items).map((item) => item.id);
   return Array.from(
     { length: VISION_COMPOSE_SLOT_COUNT },
     (_, i) => ids[i] ?? null,
@@ -559,50 +673,95 @@ export function getComposeSlotIds(
 }
 
 /**
- * Place (or swap) an image tile into a compose mosaic slot (0–7).
- * Slot order becomes the leading image items in the store — driving the hero.
+ * Insert or move an image to a board index. Adding past the limit leaves the
+ * store unchanged so the caller can show the full-board message.
  */
 export function placeVisionItemInComposeSlot(
   store: IdeateVisionBoardStoreV1,
   itemId: string,
   slotIndex: number,
 ): IdeateVisionBoardStoreV1 {
-  if (slotIndex < 0 || slotIndex >= VISION_COMPOSE_SLOT_COUNT) return store;
-  const target = store.items.find((x) => x.id === itemId);
+  const target = store.items.find((item) => item.id === itemId);
   if (!target || !visionItemHasImage(target)) return store;
+  const board = boardVisionItems(store.items);
+  const from = board.findIndex((item) => item.id === itemId);
+  if (from < 0 && board.length >= VISION_COMPOSE_SLOT_COUNT) return store;
+  if (target.featured && from >= 0) return store;
+  const rest = board.filter((item) => item.id !== itemId);
+  const index = Math.max(0, Math.min(slotIndex, rest.length));
+  rest.splice(index, 0, from >= 0 ? board[from]! : target);
+  return writeBoard(store, rest);
+}
 
-  const slots = getComposeSlotIds(store.items);
-  const fromIdx = slots.indexOf(itemId);
-  if (fromIdx === slotIndex) return store;
-
-  if (fromIdx >= 0) {
-    const swap = slots[slotIndex] ?? null;
-    slots[fromIdx] = swap;
-    slots[slotIndex] = itemId;
-  } else {
-    slots[slotIndex] = itemId;
+export function setVisionItemFeatured(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+): IdeateVisionBoardStoreV1 {
+  const target = store.items.find((item) => item.id === itemId);
+  if (!target || !visionItemHasImage(target)) return store;
+  let board = boardVisionItems(store.items);
+  if (!board.some((item) => item.id === itemId)) {
+    if (board.length >= VISION_COMPOSE_SLOT_COUNT) return store;
+    board = [...board, target];
   }
-
-  const used = new Set(
-    slots.filter((id): id is string => typeof id === "string" && Boolean(id)),
+  return writeBoard(
+    store,
+    board.map((item) =>
+      item.id === itemId ? { ...item, featured: true } : { ...item, featured: undefined },
+    ),
   );
-  const imageRest = store.items.filter(
-    (x) => visionItemHasImage(x) && !used.has(x.id),
-  );
-  const nonImage = store.items.filter((x) => !visionItemHasImage(x));
-  const byId = new Map(store.items.map((x) => [x.id, x]));
-  const orderedImages = [
-    ...slots
-      .filter((id): id is string => typeof id === "string" && Boolean(id))
-      .map((id) => byId.get(id)!)
-      .filter(Boolean),
-    ...imageRest,
-  ];
+}
 
+export function setVisionItemCrop(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+  crop: VisionCrop | null,
+  featured: boolean,
+): IdeateVisionBoardStoreV1 {
+  const target = store.items.find((item) => item.id === itemId);
+  if (!target) return store;
+  let board = boardVisionItems(store.items);
+  const onBoard = board.some((item) => item.id === itemId);
+  if (featured && !onBoard) {
+    if (board.length >= VISION_COMPOSE_SLOT_COUNT) return store;
+    board = [...board, target];
+  }
+  const patched = store.items.map((item) => {
+    if (item.id !== itemId) {
+      return featured && item.featured ? { ...item, featured: undefined } : item;
+    }
+    const next: VisionBoardItem = { ...item };
+    if (crop) next.crop = crop;
+    else delete next.crop;
+    if (featured) next.featured = true;
+    else delete next.featured;
+    return next;
+  });
+  const nextStore = { ...store, items: patched };
+  if (!featured && !onBoard) return nextStore;
+  const byId = new Map(nextStore.items.map((item) => [item.id, item]));
+  const members = featured && !onBoard ? board : boardVisionItems(nextStore.items);
+  return writeBoard(
+    nextStore,
+    members.map((item) => byId.get(item.id) ?? item),
+  );
+}
+
+export function setVisionItemDimensions(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+  width: number,
+  height: number,
+): IdeateVisionBoardStoreV1 {
+  if (!(width > 0) || !(height > 0)) return store;
+  const item = store.items.find((entry) => entry.id === itemId);
+  if (!item || (item.width === width && item.height === height)) return store;
   return {
     ...store,
     v: 2,
-    items: [...orderedImages, ...nonImage].slice(0, 48),
+    items: store.items.map((entry) =>
+      entry.id === itemId ? { ...entry, width, height } : entry,
+    ),
   };
 }
 

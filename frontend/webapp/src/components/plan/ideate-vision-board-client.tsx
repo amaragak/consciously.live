@@ -11,14 +11,17 @@ import {
   removeVisionItemFromBoard,
   restoreVisionBoardVersion,
   saveIdeateVisionBoardStore,
+  setVisionItemCrop,
+  setVisionItemDimensions,
   setVisionItemFavourite,
+  setVisionItemFeatured,
   setVisionItemLifeAreaIds,
   stashVisionBoardTake,
   upsertVisionBoardItem,
   visionItemHasImage,
   visionLabelFromPrompt,
-  VISION_COMPOSE_SLOT_COUNT,
   type VisionBoardItem,
+  type VisionCrop,
   type VisionExtraReference,
   type VisionSelfReference,
 } from "@/lib/ideate-vision-board";
@@ -1090,10 +1093,53 @@ export function IdeateVisionBoardClient() {
       const slots = getComposeSlotIds(store.items);
       const empty = slots.findIndex((id) => !id);
       if (empty < 0) {
-        setError("Your board is full. Remove one image first.");
+        setError("Your board is full. Remove one to add another.");
         return;
       }
       const next = placeVisionItemInComposeSlot(store, item.id, empty);
+      await persistBoard(next);
+      setItems(next.items);
+    },
+    [persistBoard],
+  );
+
+  const onFeature = useCallback(
+    async (item: VisionBoardItem) => {
+      const store = loadIdeateVisionBoardStore();
+      const slots = getComposeSlotIds(store.items);
+      const onBoard = slots.includes(item.id);
+      if (!onBoard && slots.every(Boolean)) {
+        setError("Your board is full. Remove one to add another.");
+        return;
+      }
+      const next = setVisionItemFeatured(store, item.id);
+      await persistBoard(next);
+      setItems(next.items);
+    },
+    [persistBoard],
+  );
+
+  const onApplyCrop = useCallback(
+    async (item: VisionBoardItem, crop: VisionCrop | null, featured: boolean) => {
+      const store = loadIdeateVisionBoardStore();
+      const slots = getComposeSlotIds(store.items);
+      const onBoard = slots.includes(item.id);
+      if (featured && !onBoard && slots.every(Boolean)) {
+        setError("Your board is full. Remove one to add another.");
+        return;
+      }
+      const next = setVisionItemCrop(store, item.id, crop, featured);
+      await persistBoard(next);
+      setItems(next.items);
+    },
+    [persistBoard],
+  );
+
+  const onMeasure = useCallback(
+    async (item: VisionBoardItem, width: number, height: number) => {
+      const store = loadIdeateVisionBoardStore();
+      const next = setVisionItemDimensions(store, item.id, width, height);
+      if (next === store) return;
       await persistBoard(next);
       setItems(next.items);
     },
@@ -1221,6 +1267,9 @@ export function IdeateVisionBoardClient() {
         onPlace={(itemId, slot) => void onPlaceInCompose(itemId, slot)}
         onRemoveFromBoard={(item) => void onRemoveFromBoard(item)}
         onAddToBoard={(item) => void onAddToBoard(item)}
+        onFeature={(item) => void onFeature(item)}
+        onApplyCrop={(item, crop, featured) => void onApplyCrop(item, crop, featured)}
+        onMeasure={(item, width, height) => void onMeasure(item, width, height)}
         onNewTake={onNewTake}
         onUseVersion={(item, versionId) => void onUseVersion(item, versionId)}
         freshId={freshId}

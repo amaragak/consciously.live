@@ -149,6 +149,7 @@ type Props = {
   variant: StoryPlacementCardVariant;
   /** Force compact (mobile) layout; when omitted, uses responsive classes. */
   compact?: boolean;
+  className?: string;
 };
 
 function Eyebrow({
@@ -174,6 +175,7 @@ export function StoryPlacementCard({
   firstName,
   variant,
   compact = false,
+  className = "",
 }: Props) {
   const router = useRouter();
   const { playItem } = useLibraryPlayer();
@@ -241,7 +243,7 @@ export function StoryPlacementCard({
       <button
         type="button"
         onClick={openBody}
-        className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]"
+        className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] ${className}`}
         aria-label={title}
       >
         {artwork}
@@ -261,7 +263,7 @@ export function StoryPlacementCard({
           openBody();
         }
       }}
-      className="flex w-full cursor-pointer items-center gap-[18px] rounded-2xl border border-border bg-card py-4 pl-4 pr-5 text-left shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]"
+      className={`flex h-full w-full cursor-pointer items-center gap-[18px] rounded-2xl border border-border bg-card py-4 pl-4 pr-5 text-left shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] ${className}`}
       aria-label={title}
     >
       {artwork}

@@ -42,6 +42,8 @@ export type PlanCreateHandoffV2 = {
   returnToFocus?: boolean;
   /** Extra context for a pre-focus manifestation (task + checklist). */
   focusTaskContext?: string;
+  /** Heal meditation: replaces the manifestation framing. */
+  healBrief?: string;
   project: {
     dreamText: string;
     resistanceText: string;
@@ -53,6 +55,15 @@ export type PlanCreateHandoffV2 = {
 export type PlanCreateHandoff = PlanCreateHandoffV1 | PlanCreateHandoffV2;
 
 export function buildPlanCreateHandoffApiContent(h: PlanCreateHandoff): string {
+  if (h.v === 2 && h.healBrief?.trim()) {
+    return [
+      h.healBrief.trim(),
+      "",
+      "Use only the writing below. Do not invent memories, events, or feelings.",
+      "",
+      h.visionText.trim() || "(not written yet)",
+    ].join("\n");
+  }
   const preFocus =
     h.v === 2 && (h.returnToFocus || h.meditationTargetMinutes === 2);
   const lines: string[] = [
@@ -148,6 +159,7 @@ export function readPlanCreateHandoff(): PlanCreateHandoff | null {
           typeof o.focusTaskContext === "string"
             ? o.focusTaskContext
             : undefined,
+        healBrief: typeof o.healBrief === "string" ? o.healBrief : undefined,
         project: {
           dreamText: typeof p.dreamText === "string" ? p.dreamText : "",
           resistanceText:

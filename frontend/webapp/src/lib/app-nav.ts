@@ -6,6 +6,7 @@ import {
 import { loadAssistantChatStore } from "@/lib/assistant-chat-storage";
 import { peekGuideTitle } from "@/content/guides";
 import { libraryDetailIdFromPathname } from "@/lib/library-meditation-detail";
+import { healItemById, loadHealStore } from "@/lib/heal-store";
 
 /**
  * Logged-in sidebar navigation tree + breadcrumb helpers.
@@ -110,13 +111,18 @@ export const APP_NAV_MAIN: AppNavSection[] = [
       { id: "manifesto", label: "Manifesto", href: "/manifest/my" },
       { id: "story", label: "Story", href: "/manifest/story" },
       { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
+      { id: "focus", label: "Focus", href: "/focus" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
   },
   {
-    id: "focus",
-    label: "Focus",
-    href: "/focus/my", // Next redirects → frontend/webapp /focus
+    id: "heal",
+    label: "Heal",
+    href: "/heal",
+    children: [
+      { id: "heal-home", label: "What you're carrying", href: "/heal" },
+      { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
+    ],
   },
   {
     id: "chat",
@@ -309,9 +315,8 @@ export function activeNavSectionId(pathname: string): string | null {
   ) {
     return "ideate";
   }
-  if (pathname.startsWith("/focus") || pathname.startsWith("/extension")) {
-    return "focus";
-  }
+  if (pathname.startsWith("/heal")) return "heal";
+  if (pathname.startsWith("/focus")) return "ideate";
   if (pathname.startsWith("/admin")) return "admin";
   return null;
 }
@@ -353,6 +358,24 @@ export function isSubItemActive(
   }
   if (sectionId === "ideate" && sub.id === "story") {
     return pathname === "/manifest/story" || pathname.startsWith("/manifest/story/");
+  }
+  if (sectionId === "ideate" && sub.id === "focus") {
+    return (
+      pathname === "/focus" ||
+      pathname.startsWith("/focus/") ||
+      pathname === "/focus/my" ||
+      pathname.startsWith("/focus/my/")
+    );
+  }
+  if (sectionId === "heal" && sub.id === "heal-home") {
+    return pathname === "/heal";
+  }
+  if (sectionId === "heal" && sub.id === "heal-rested") {
+    return pathname === "/heal/rested" || pathname.startsWith("/heal/rested/");
+  }
+  if (sectionId === "heal" && sub.id.startsWith("heal-item:")) {
+    const id = sub.id.slice("heal-item:".length);
+    return pathname === `/heal/${id}` || pathname.startsWith(`/heal/${id}/`);
   }
   if (sectionId === "ideate" && sub.id.startsWith("life-area:")) {
     const dreamId = sub.id.slice("life-area:".length);
@@ -828,7 +851,13 @@ export function buildAppBreadcrumbs(
   }
 
   if (pathname.startsWith("/focus")) {
-    return [{ label: "Focus", href: null }];
+    return [
+      { label: "Manifest", href: "/manifest/my" },
+      { label: "Focus", href: null },
+    ];
+  }
+  if (pathname.startsWith("/heal")) {
+    return healBreadcrumbs(pathname);
   }
   if (pathname.startsWith("/admin")) {
     return [{ label: "Admin", href: null }];
@@ -869,6 +898,34 @@ export function buildAppBreadcrumbs(
     return [{ label: "Home", href: null }];
   }
   return [];
+}
+
+function healBreadcrumbs(pathname: string): AppBreadcrumbCrumb[] {
+  const home: AppBreadcrumbCrumb = { label: "Heal", href: "/heal" };
+  if (pathname === "/heal" || pathname === "/heal/") {
+    return [{ label: "Heal", href: null }];
+  }
+  if (pathname.startsWith("/heal/support")) {
+    return [home, { label: "Support", href: null }];
+  }
+  if (pathname.startsWith("/heal/rested")) {
+    return [home, { label: "Laid to rest", href: null }];
+  }
+  const parts = pathname.split("/").filter(Boolean);
+  const itemId = parts[1] ?? "";
+  let title = "Heal";
+  if (typeof window !== "undefined" && itemId) {
+    const item = healItemById(loadHealStore(), itemId);
+    if (item?.title.trim()) title = item.title.trim();
+  }
+  if (parts[2] === "letter") {
+    return [
+      home,
+      { label: title, href: itemId ? `/heal/${itemId}` : "/heal" },
+      { label: "Letter", href: null },
+    ];
+  }
+  return [home, { label: title, href: null }];
 }
 
 export function loadSidebarExpandState(): Record<string, boolean> {

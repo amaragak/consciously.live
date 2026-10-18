@@ -24,6 +24,7 @@ import {
   type AppNavSection,
   type AppNavSubItem,
 } from "@/lib/app-nav";
+import { activeHealItems, loadHealStore, subscribeHealStore } from "@/lib/heal-store";
 import { Link, usePathname, useRouter } from "@/lib/spa-nav";
 
 const LONG_PRESS_MS = 400;
@@ -302,6 +303,26 @@ export function AppMobileTabBar() {
   const search =
     typeof window !== "undefined" ? window.location.search : "";
   const hash = typeof window !== "undefined" ? window.location.hash : "";
+  const [healChildren, setHealChildren] = useState<AppNavSubItem[]>(() =>
+    APP_NAV_MAIN.find((section) => section.id === "heal")?.children ?? [],
+  );
+
+  useEffect(() => {
+    const sync = () => {
+      const items = activeHealItems(loadHealStore());
+      setHealChildren([
+        { id: "heal-home", label: "What you're carrying", href: "/heal" },
+        ...items.map((item) => ({
+          id: `heal-item:${item.id}`,
+          label: item.title.trim() || "Untitled",
+          href: `/heal/${encodeURIComponent(item.id)}`,
+        })),
+        { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
+      ]);
+    };
+    sync();
+    return subscribeHealStore(sync);
+  }, []);
 
   const clearSheetCloseTimer = useCallback(() => {
     if (sheetCloseTimerRef.current != null) {
@@ -389,10 +410,13 @@ export function AppMobileTabBar() {
 
   if (mdUp) return null;
 
-  const sheetSection =
-    sheetSectionId != null
-      ? (APP_NAV_MAIN.find((s) => s.id === sheetSectionId) ?? null)
-      : null;
+  const sheetSection = (() => {
+    if (sheetSectionId == null) return null;
+    const found = APP_NAV_MAIN.find((s) => s.id === sheetSectionId) ?? null;
+    if (!found) return null;
+    if (found.id !== "heal") return found;
+    return { ...found, children: healChildren };
+  })();
 
   const bar = (
     <nav

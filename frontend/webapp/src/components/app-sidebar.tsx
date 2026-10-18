@@ -4,6 +4,7 @@ import { Link, usePathname } from "@/lib/spa-nav";
 import {
   BookOpen,
   Focus,
+  Heart,
   MessageSquare,
   Settings,
   Shield,
@@ -31,6 +32,7 @@ import {
   getMedimadeSessionEmail,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
+import { activeHealItems, loadHealStore, subscribeHealStore } from "@/lib/heal-store";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import {
   pullIdeateStoreFromCloud,
@@ -88,6 +90,7 @@ const SECTION_ICONS: Record<string, ReactNode> = {
   journal: <BookOpen aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   ideate: <Sparkles aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
   focus: <Focus aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
+  heal: <Heart aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
 };
 
 function NavSectionBlock({
@@ -330,6 +333,9 @@ export function AppSidebar({
   const [lifeAreas, setLifeAreas] = useState<
     { id: string; title: string }[]
   >([]);
+  const [healItems, setHealItems] = useState<{ id: string; title: string }[]>(
+    [],
+  );
   const [accountLabel, setAccountLabel] = useState(accountLabelFromSession);
   const [showAdmin, setShowAdmin] = useState(() =>
     isOwnerAdminAccount(getMedimadeSessionEmail()),
@@ -412,8 +418,19 @@ export function AppSidebar({
     }
     window.addEventListener("medimade-session-changed", syncLifeAreas);
     window.addEventListener("medimade-session-changed", syncAccount);
+    const syncHeal = () => {
+      setHealItems(
+        activeHealItems(loadHealStore()).map((item) => ({
+          id: item.id,
+          title: item.title.trim() || "Untitled",
+        })),
+      );
+    };
+    syncHeal();
+    const unsubHeal = subscribeHealStore(syncHeal);
     return () => {
       unsub();
+      unsubHeal();
       window.removeEventListener("medimade-session-changed", syncLifeAreas);
       window.removeEventListener("medimade-session-changed", syncAccount);
     };
@@ -480,6 +497,18 @@ export function AppSidebar({
       APP_NAV_MAIN.find((s) => s.id === "ideate")?.children?.slice() ?? [];
     return base;
   }, []);
+
+  const healChildren = useMemo((): AppNavSubItem[] => {
+    return [
+      { id: "heal-home", label: "What you're carrying", href: "/heal" },
+      ...healItems.map((item) => ({
+        id: `heal-item:${item.id}`,
+        label: item.title,
+        href: `/heal/${encodeURIComponent(item.id)}`,
+      })),
+      { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
+    ];
+  }, [healItems]);
 
   const ideateLifeAreaItems = useMemo((): AppNavSubItem[] => {
     return lifeAreas.map((d) => ({
@@ -570,7 +599,11 @@ export function AppSidebar({
               key={section.id}
               section={section}
               items={
-                section.id === "ideate" ? ideateChildren : section.children
+                section.id === "ideate"
+                  ? ideateChildren
+                  : section.id === "heal"
+                    ? healChildren
+                    : section.children
               }
               lifeAreaItems={
                 section.id === "ideate" ? ideateLifeAreaItems : undefined

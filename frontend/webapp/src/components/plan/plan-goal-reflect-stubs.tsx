@@ -5,6 +5,11 @@
 
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
+import {
+  healItemsForLifeArea,
+  loadHealStore,
+  subscribeHealStore,
+} from "@/lib/heal-store";
 import type { PlanDream } from "@/lib/plan-dreams";
 import {
   fetchLinkedMeditationsForLifeArea,
@@ -175,16 +180,35 @@ export function lifeAreaActivityRows(
 /** Single-line muted meta for the life-area header — no card chrome. */
 export function PlanLifeAreaHeaderSummary({ dream }: Props) {
   const s = lifeAreaActivityStats(dream);
+  const [forLines, setForLines] = useState<string[]>([]);
+  useEffect(() => {
+    const sync = () => {
+      setForLines(
+        healItemsForLifeArea(loadHealStore(), dream.id).map(
+          (item) => `For ${item.title.trim()}: ${item.valuesAction?.trim() ?? ""}`,
+        ),
+      );
+    };
+    sync();
+    return subscribeHealStore(sync);
+  }, [dream.id]);
   return (
-    <p className="whitespace-nowrap text-[12px] leading-snug text-muted sm:text-[13px]">
-      Last check-in {s.lastCheckIn}
-      <span aria-hidden="true"> · </span>
-      {s.thoughtsThisMonth} thoughts
-      <span aria-hidden="true"> · </span>
-      {s.meditationCount} meditations
-      <span aria-hidden="true"> · </span>
-      {s.daysAgoLabel}
-    </p>
+    <div className="flex flex-col gap-1">
+      <p className="whitespace-nowrap text-[12px] leading-snug text-muted sm:text-[13px]">
+        Last check-in {s.lastCheckIn}
+        <span aria-hidden="true"> · </span>
+        {s.thoughtsThisMonth} thoughts
+        <span aria-hidden="true"> · </span>
+        {s.meditationCount} meditations
+        <span aria-hidden="true"> · </span>
+        {s.daysAgoLabel}
+      </p>
+      {forLines.map((line) => (
+        <p key={line} className="text-[12px] text-muted sm:text-[13px]">
+          {line}
+        </p>
+      ))}
+    </div>
   );
 }
 
