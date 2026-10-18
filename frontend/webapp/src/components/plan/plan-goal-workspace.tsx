@@ -1,19 +1,6 @@
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { MessageSquare } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useState } from "react";
-import {
-  PlanLifeAreaThoughtsLog,
-  PlanLifeAreaVisionSections,
-} from "@/components/plan/plan-life-area-reflect-sections";
-import { PlanLifeAreaWhiteboard } from "@/components/plan/plan-life-area-whiteboard";
-import { PlanLifeAreaMeditationsPanel } from "@/components/plan/plan-life-area-meditations-panel";
-import {
-  PlanLifeAreaHeaderSummary,
-  PlanReflectSidebarJournal,
-  PlanReflectSidebarMeditations,
-} from "@/components/plan/plan-goal-reflect-stubs";
-import { PlanInsightsPanel } from "@/components/plan/plan-insights-panel";
-import { PlanSubtasksPanel } from "@/components/plan/plan-subtasks-panel";
+import { LifeAreaShell } from "@/components/plan/life-area/shell";
 import { activeResistanceThemesForProject } from "@/lib/plan-resistance-threads";
 import {
   writePlanCreateHandoff,
@@ -23,22 +10,12 @@ import { type PlanDream } from "@/lib/plan-dreams";
 import {
   loadIdeateStore,
   saveIdeateStore,
-  subtasksForProject,
   upsertDream,
 } from "@/lib/plan-ideate-store";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
-import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import { Skeleton } from "@/components/ui/skeleton";
-
-type ProjectTab =
-  | "vision"
-  | "thoughts"
-  | "insights"
-  | "whiteboard"
-  | "steps"
-  | "meditations";
 
 function PlanGoalWorkspaceSkeleton() {
   return (
@@ -69,18 +46,6 @@ function PlanGoalWorkspaceSkeleton() {
   );
 }
 
-function tabFromSearchParams(sp: URLSearchParams): ProjectTab {
-  const t = sp.get("tab");
-  if (t === "steps") return "steps";
-  if (t === "thoughts") return "thoughts";
-  if (t === "insights") return "insights";
-  if (t === "whiteboard") return "whiteboard";
-  if (t === "meditations") return "meditations";
-  // Legacy Reflect URL → Vision
-  if (t === "reflect") return "vision";
-  return "vision";
-}
-
 function persistDream(next: PlanDream) {
   let store = loadIdeateStore();
   store = upsertDream(store, next);
@@ -91,17 +56,10 @@ type Props = { dreamId: string };
 
 export function PlanGoalWorkspace({ dreamId }: Props) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const urlTab = tabFromSearchParams(searchParams);
-  const [tab, setTabLocal] = useState<ProjectTab>(urlTab);
   const [dream, setDream] = useState<PlanDream | null>(null);
   const [missing, setMissing] = useState(false);
   const [storeTick, setStoreTick] = useState(0);
   const { ready: cloudReady, revision } = useIdeateCloud();
-
-  useEffect(() => {
-    setTabLocal(urlTab);
-  }, [urlTab]);
 
   const load = useCallback(() => {
     const d = loadIdeateStore().dreams.find((x) => x.id === dreamId);
@@ -133,32 +91,16 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
   }, [load]);
 
   const patch = useCallback((partial: Partial<PlanDream>) => {
-    setDream((prev) => {
-      if (!prev) return prev;
-      const next = {
-        ...prev,
-        ...partial,
-        updatedAt: new Date().toISOString(),
-      };
-      persistDream(next);
-      return next;
-    });
-  }, []);
-
-  function setTab(next: ProjectTab) {
-    setTabLocal(next);
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === "vision") params.delete("tab");
-    else params.set("tab", next);
-    const q = params.toString();
-    // Stay on /manifest/goal — legacy /ideate|/dream|/plan paths redirect.
-    navigate(
-      q
-        ? `/manifest/goal/${encodeURIComponent(dreamId)}?${q}`
-        : `/manifest/goal/${encodeURIComponent(dreamId)}`,
-      { replace: true, preventScrollReset: true },
-    );
-  }
+    const current = loadIdeateStore().dreams.find((d) => d.id === dreamId);
+    if (!current) return;
+    const next = {
+      ...current,
+      ...partial,
+      updatedAt: new Date().toISOString(),
+    };
+    persistDream(next);
+    setDream(next);
+  }, [dreamId]);
 
   function generateMeditation() {
     if (!dream) return;
@@ -210,146 +152,15 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
   }
 
   void storeTick;
-  const stepCount = subtasksForProject(loadIdeateStore(), dream.id).length;
   const canGenerate = Boolean(dream.visionText.trim());
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)]">
-      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
-        <div className="flex flex-col gap-3 border-b border-border/70 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <nav
-            className="order-2 flex w-full min-w-0 flex-nowrap gap-x-5 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] sm:order-1 sm:w-auto sm:flex-wrap sm:gap-x-6 sm:overflow-visible"
-            role="tablist"
-            aria-label="Project views"
-          >
-            {(
-              [
-                { id: "vision" as const, label: "Vision" },
-                { id: "steps" as const, label: "Goals", count: stepCount },
-                { id: "thoughts" as const, label: "Thoughts" },
-                { id: "insights" as const, label: "Insights" },
-                { id: "meditations" as const, label: "Meditations" },
-                { id: "whiteboard" as const, label: "Whiteboard" },
-              ] as const
-            ).map((item) => {
-              const active = tab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setTab(item.id)}
-                  className={`-mb-px shrink-0 cursor-pointer whitespace-nowrap border-b-2 pb-2.5 text-sm transition-colors ${
-                    active
-                      ? "border-selected font-semibold text-foreground"
-                      : "border-transparent text-muted hover:border-border hover:text-foreground"
-                  }`}
-                >
-                  {item.label}
-                  {"count" in item && item.count > 0 ? (
-                    <span className="ml-1 font-normal text-muted">
-                      · {item.count}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </nav>
-          <div className="order-1 flex shrink-0 items-center gap-2 sm:order-2 sm:mb-1.5">
-            <button
-              type="button"
-              onClick={() =>
-                openAssistantChatFab({
-                  kind: "life_area_ideate",
-                  lifeAreaId: dream.id,
-                })
-              }
-              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-accent-soft/30"
-            >
-              <MessageSquare
-                aria-hidden
-                className="size-4 shrink-0"
-                strokeWidth={1.75}
-              />
-              Plan next steps
-            </button>
-            <button
-              type="button"
-              disabled={!canGenerate}
-              onClick={() => generateMeditation()}
-              title={
-                canGenerate
-                  ? undefined
-                  : "Add a few lines to your vision first"
-              }
-              className="pro-header-cta shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Generate meditation
-            </button>
-          </div>
-        </div>
-        {tab !== "vision" ? (
-          <div className="mt-3">
-            <PlanLifeAreaHeaderSummary dream={dream} />
-          </div>
-        ) : null}
-      </div>
-
-      {tab === "vision" ? (
-        /* Truly full-bleed: outside max-w container */
-        <div className="mt-4 w-full pb-10">
-          <PlanLifeAreaVisionSections
-            dreamText={dream.dreamText}
-            obstacleText={dream.obstacleText}
-            visionText={dream.visionText}
-            onPatch={(p) => patch(p)}
-          />
-          <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-            <PlanLifeAreaHeaderSummary dream={dream} />
-          </div>
-        </div>
-      ) : tab === "steps" ? (
-        <div className="mt-4 w-full pb-10">
-          <PlanSubtasksPanel
-            project={dream}
-            onRefresh={load}
-            storeTick={storeTick}
-            embedded
-          />
-        </div>
-      ) : (
-        <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-14">
-          {tab === "thoughts" ? (
-            <PlanLifeAreaThoughtsLog
-              dreamEntries={dream.dreamEntries ?? []}
-              obstacleEntries={dream.obstacleEntries ?? []}
-              visionEntries={dream.visionEntries ?? []}
-              onPatch={(p) => patch(p)}
-            />
-          ) : tab === "insights" ? (
-            <div className="mt-4 space-y-6">
-              <div className="max-w-2xl">
-                <PlanInsightsPanel
-                  key={dream.id}
-                  dream={dream}
-                  storeTick={storeTick}
-                  variant="page"
-                  onPatch={(p) => patch(p)}
-                />
-              </div>
-              <div className="grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
-                <PlanReflectSidebarJournal dream={dream} />
-                <PlanReflectSidebarMeditations dream={dream} />
-              </div>
-            </div>
-          ) : tab === "meditations" ? (
-            <PlanLifeAreaMeditationsPanel lifeAreaId={dream.id} />
-          ) : (
-            <PlanLifeAreaWhiteboard dreamId={dream.id} />
-          )}
-        </div>
-      )}
-    </div>
+    <LifeAreaShell
+      dream={dream}
+      onPatch={patch}
+      onRefresh={load}
+      onGenerate={generateMeditation}
+      canGenerate={canGenerate}
+    />
   );
 }

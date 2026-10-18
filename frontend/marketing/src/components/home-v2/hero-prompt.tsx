@@ -144,17 +144,17 @@ export function HomeV2AuthActions({
 
   if (signedIn) {
     return (
-      <div className="flex items-center gap-3">
+      <div className="relative z-10 flex items-center gap-3">
         <button
           type="button"
           disabled={dashboardBusy}
           onClick={() => {
             setDashboardBusy(true);
-            void import("@/lib/spa-handoff").then(({ navigateToSpa }) =>
-              navigateToSpa("/").finally(() => setDashboardBusy(false)),
-            );
+            void import("@/lib/spa-handoff")
+              .then(({ navigateToSpaOrThrow }) => navigateToSpaOrThrow("/"))
+              .catch(() => setDashboardBusy(false));
           }}
-          className={`home-v2-header-cta accent-fill-gradient rounded-full font-semibold transition-opacity hover:opacity-90 disabled:opacity-50${
+          className={`home-v2-header-cta accent-fill-gradient cursor-pointer rounded-full font-semibold transition-opacity hover:opacity-90 disabled:opacity-50${
             compact ? " is-compact" : ""
           }`}
         >
@@ -215,7 +215,7 @@ function HomeV2AccountMenu() {
   };
 
   return (
-    <details ref={detailsRef} className="relative">
+    <details ref={detailsRef} className="relative z-50">
       <summary
         aria-label="Account menu"
         className="inline-flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-[var(--hv2-hero-divider)] text-[var(--hv2-hero-fg)] [&::-webkit-details-marker]:hidden"

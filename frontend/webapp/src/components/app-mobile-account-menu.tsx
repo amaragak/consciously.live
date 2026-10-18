@@ -44,7 +44,7 @@ export function AppMobileAccountMenu({
   }, [open]);
 
   return (
-    <div ref={rootRef} className="relative md:hidden">
+    <div ref={rootRef} className="relative ml-0.5 md:hidden">
       <button
         type="button"
         aria-haspopup="menu"

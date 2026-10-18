@@ -761,6 +761,13 @@ export async function handler(
   try {
     if (path.endsWith("/manifest/story/raise")) {
       const draft = typeof body.draft === "string" ? body.draft : "";
+      const raisedFrom =
+        typeof body.raisedFrom === "string" ? body.raisedFrom.trim() : "";
+      const textHash =
+        typeof body.textHash === "string" ? body.textHash.trim() : "";
+      if (raisedFrom && textHash && raisedFrom === textHash) {
+        return json(409, { error: "This text has already been raised." });
+      }
       return await handleRaise(
         draft,
         body.raiseLocks,

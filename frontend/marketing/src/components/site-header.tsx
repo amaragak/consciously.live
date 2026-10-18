@@ -21,7 +21,7 @@ import {
   isMarketingPreviewMode,
 } from "@/lib/marketing-preview";
 import { markSpaClientNavigation } from "@/lib/spa-client-nav";
-import { navigateToSpa, SpaHandoffError, spaHrefWithHandoff } from "@/lib/spa-handoff";
+import { navigateToSpa } from "@/lib/spa-handoff";
 import {
   loadProfilePrefs,
   profileGreetingName,
@@ -146,7 +146,6 @@ export function SiteHeader() {
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [dashboardBusy, setDashboardBusy] = useState(false);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   useEffect(() => {
     if (prevPathnameRef.current !== pathname) {
@@ -200,19 +199,10 @@ export function SiteHeader() {
 
   async function goToDashboard() {
     setDashboardBusy(true);
-    setDashboardError(null);
     try {
       exitMarketingPreviewMode();
-      const href = await spaHrefWithHandoff("/");
-      window.location.replace(href);
-    } catch (err) {
-      setDashboardError(
-        err instanceof SpaHandoffError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Couldn’t open the app",
-      );
+      await navigateToSpa("/");
+    } catch {
       setDashboardBusy(false);
     }
   }
@@ -293,14 +283,6 @@ export function SiteHeader() {
                 Sign in
               </Link>
             )}
-            {dashboardError ? (
-              <p
-                className="ml-2 max-w-[12rem] text-xs text-danger"
-                role="alert"
-              >
-                {dashboardError}
-              </p>
-            ) : null}
           </nav>
           <div className="flex items-center gap-2 sm:hidden">
             {!showSignedInChrome ? (
@@ -420,11 +402,7 @@ export function SiteHeader() {
                     Sign in
                   </Link>
                 )}
-                {dashboardError ? (
-                  <p className="px-4 py-2 text-xs text-danger" role="alert">
-                    {dashboardError}
-                  </p>
-                ) : null}              </div>
+              </div>
             </details>
           </div>
         </div>

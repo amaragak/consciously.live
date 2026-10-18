@@ -80,6 +80,7 @@ import {
 import { hasMonthStats, manifestMonthStats } from "@/lib/manifest-month-stats";
 import { addVisionBoardImageFromFile } from "@/lib/ideate-vision-upload";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
+import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
   ensureIdeateManifesto,
   loadStoredManifesto,
@@ -253,16 +254,17 @@ export function PlanHomeClient() {
 
   useEffect(() => {
     if (!cloudReady) return;
-    const id = requestAnimationFrame(() => refresh());
+    refresh();
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
     window.addEventListener("storage", onFocus);
+    const unsub = subscribeIdeateCloud(refresh);
     return () => {
-      cancelAnimationFrame(id);
+      unsub();
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onFocus);
     };
-  }, [refresh, cloudReady, revision, signedIn]);
+  }, [refresh, cloudReady, signedIn]);
 
   useEffect(() => {
     void resolveVisionTiles(visionItems);

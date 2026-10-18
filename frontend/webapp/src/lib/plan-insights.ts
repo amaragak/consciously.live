@@ -491,13 +491,13 @@ function buildSynthesisPrompt(
     "Write a structured Insight using EXACTLY these markdown headings (include a heading even if brief; skip a section only if there is truly nothing to say):",
     "",
     "## Summary",
-    "2–3 sentences: the through-line of this life area right now.",
+    "At most 25 words: the through-line of this life area right now.",
     "",
     "## What's working",
-    "Concrete wins, progress, useful habits, completed steps — grounded in the data.",
+    "At most 12 words. Concrete wins, progress, useful habits, completed steps — grounded in the data.",
     "",
     "## What's not",
-    "Friction, stalls, resistance themes, incomplete steps — name them plainly.",
+    "At most 12 words. Friction, stalls, resistance themes, incomplete steps — name them plainly.",
     "",
     "## Patterns",
     "Recurring loops (e.g. prep instead of action, all-or-nothing, mood swings).",
@@ -530,5 +530,21 @@ export async function streamLifeAreaInsight(
     [{ role: "user", content: buildSynthesisPrompt(dream, store) }],
     onDelta,
   );
-  return parseLifeAreaInsightMarkdown(raw.trim() || snap.emptyHint);
+  const parsed = parseLifeAreaInsightMarkdown(raw.trim() || snap.emptyHint);
+  return {
+    ...parsed,
+    sections: parsed.sections.map((section) => {
+      if (section.id === "summary") return { ...section, body: capWords(section.body, 25) };
+      if (section.id === "working" || section.id === "not_working") {
+        return { ...section, body: capWords(section.body, 12) };
+      }
+      return section;
+    }),
+  };
+}
+
+function capWords(text: string, max: number): string {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length <= max) return words.join(" ");
+  return `${words.slice(0, max).join(" ")}…`;
 }

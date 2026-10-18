@@ -28,18 +28,25 @@ export function CreateOneFlowStepper({
     >
       <nav
         aria-label="Steps"
-        className={`flex items-center ${compact ? "gap-1.5 sm:gap-2" : "gap-3 md:gap-4"}`}
+        className={`flex min-w-0 items-center ${
+          compact ? "gap-1.5 sm:gap-2" : "w-full gap-2 md:w-auto md:gap-4"
+        }`}
       >
         {STEPS.map((s, i) => {
           const done = i < current;
           const active = i === current;
           const clickable = Boolean(onStepClick) && i <= current;
           const lit = active || done;
+          const hasLine = i < STEPS.length - 1;
           return (
             <div
               key={s.id}
-              className={`flex shrink-0 items-center ${
-                compact ? "gap-1.5 sm:gap-2" : "gap-3 md:gap-4"
+              className={`flex min-w-0 items-center ${
+                compact
+                  ? "shrink-0 gap-1.5 sm:gap-2"
+                  : hasLine
+                    ? "flex-1 gap-2 md:flex-none md:gap-4"
+                    : "shrink-0 gap-2 md:gap-4"
               }`}
             >
               <button
@@ -123,11 +130,13 @@ export function CreateOneFlowStepper({
                   </span>
                 )}
               </button>
-              {i < STEPS.length - 1 ? (
+              {hasLine ? (
                 <span
                   aria-hidden
-                  className={`h-px shrink-0 rounded-full ${
-                    compact ? "w-3 sm:w-5" : "w-10 md:w-14"
+                  className={`h-px rounded-full ${
+                    compact
+                      ? "w-3 shrink-0 sm:w-5"
+                      : "min-w-2 flex-1 max-w-6 md:w-14 md:max-w-none md:flex-none"
                   } ${
                     done
                       ? "header-gold-sunlit-fill"

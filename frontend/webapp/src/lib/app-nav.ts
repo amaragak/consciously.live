@@ -111,7 +111,6 @@ export const APP_NAV_MAIN: AppNavSection[] = [
       { id: "manifesto", label: "Manifesto", href: "/manifest/my" },
       { id: "story", label: "Story", href: "/manifest/story" },
       { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
-      { id: "focus", label: "Focus", href: "/focus" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
   },
@@ -123,6 +122,11 @@ export const APP_NAV_MAIN: AppNavSection[] = [
       { id: "heal-home", label: "What you're carrying", href: "/heal" },
       { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
     ],
+  },
+  {
+    id: "focus",
+    label: "Focus",
+    href: "/focus",
   },
   {
     id: "chat",
@@ -316,7 +320,7 @@ export function activeNavSectionId(pathname: string): string | null {
     return "ideate";
   }
   if (pathname.startsWith("/heal")) return "heal";
-  if (pathname.startsWith("/focus")) return "ideate";
+  if (pathname.startsWith("/focus")) return "focus";
   if (pathname.startsWith("/admin")) return "admin";
   return null;
 }
@@ -358,14 +362,6 @@ export function isSubItemActive(
   }
   if (sectionId === "ideate" && sub.id === "story") {
     return pathname === "/manifest/story" || pathname.startsWith("/manifest/story/");
-  }
-  if (sectionId === "ideate" && sub.id === "focus") {
-    return (
-      pathname === "/focus" ||
-      pathname.startsWith("/focus/") ||
-      pathname === "/focus/my" ||
-      pathname.startsWith("/focus/my/")
-    );
   }
   if (sectionId === "heal" && sub.id === "heal-home") {
     return pathname === "/heal";
@@ -851,10 +847,7 @@ export function buildAppBreadcrumbs(
   }
 
   if (pathname.startsWith("/focus")) {
-    return [
-      { label: "Manifest", href: "/manifest/my" },
-      { label: "Focus", href: null },
-    ];
+    return [{ label: "Focus", href: null }];
   }
   if (pathname.startsWith("/heal")) {
     return healBreadcrumbs(pathname);

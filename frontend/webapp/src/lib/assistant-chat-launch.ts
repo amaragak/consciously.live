@@ -1,15 +1,22 @@
 /**
- * Open the floating mini-chat from elsewhere in the app (life-area ideate, etc.).
- * Below `md`, Chat is a bottom tab — navigate to the full Chat page instead.
+ * Open the header chat panel from elsewhere in the app (life-area ideate, etc.).
+ * The panel is a right drawer from `md` up and a full-screen sheet on phones.
  */
 
 export const ASSISTANT_CHAT_OPEN_EVENT = "mm-assistant-chat-open";
+export const ASSISTANT_CHAT_TOGGLE_EVENT = "mm-assistant-chat-toggle";
+export const ASSISTANT_CHAT_OPEN_CHANGED_EVENT = "mm-assistant-chat-open-changed";
+
+export function toggleAssistantChatPanel(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(ASSISTANT_CHAT_TOGGLE_EVENT));
+}
 
 const PENDING_LAUNCH_KEY = "mm-assistant-chat-pending-launch";
 
 export type AssistantChatOpenDetail =
   | { kind: "default" }
-  | { kind: "life_area_ideate"; lifeAreaId: string };
+  | { kind: "life_area_ideate"; lifeAreaId: string; seed?: string };
 
 export function stashAssistantChatPendingLaunch(
   detail: AssistantChatOpenDetail,
@@ -38,13 +45,6 @@ export function consumeAssistantChatPendingLaunch(): AssistantChatOpenDetail | n
 
 export function openAssistantChatFab(detail: AssistantChatOpenDetail): void {
   if (typeof window === "undefined") return;
-  const phone = !window.matchMedia("(min-width: 768px)").matches;
-  if (phone) {
-    stashAssistantChatPendingLaunch(detail);
-    window.history.pushState({}, "", "/chat/my");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-    return;
-  }
   window.dispatchEvent(
     new CustomEvent(ASSISTANT_CHAT_OPEN_EVENT, { detail }),
   );

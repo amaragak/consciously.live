@@ -282,14 +282,13 @@ export function HomeV2MobileMenu({
                   type="button"
                   tabIndex={open ? undefined : -1}
                   disabled={dashboardBusy}
-                  className="accent-fill-gradient inline-flex h-[52px] w-full items-center justify-center rounded-full text-[16px] font-semibold text-[var(--hv2-navy)] disabled:opacity-50"
+                  className="accent-fill-gradient inline-flex h-[52px] w-full cursor-pointer items-center justify-center rounded-full text-[16px] font-semibold text-[var(--hv2-navy)] disabled:opacity-50"
                   onClick={() => {
                     setDashboardBusy(true);
-                    closeWithNav(() => {
-                      void import("@/lib/spa-handoff")
-                        .then(({ navigateToSpa }) => navigateToSpa("/"))
-                        .finally(() => setDashboardBusy(false));
-                    });
+                    void import("@/lib/spa-handoff")
+                      .then(({ navigateToSpaOrThrow }) => navigateToSpaOrThrow("/"))
+                      .then(() => closeWithNav())
+                      .catch(() => setDashboardBusy(false));
                   }}
                 >
                   {dashboardBusy ? "Opening…" : "Dashboard →"}

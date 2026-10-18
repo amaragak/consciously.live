@@ -350,9 +350,11 @@ export function AppGlobalSearch({
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [fieldWidth, setFieldWidth] = useState<number | null>(null);
   const [panelPos, setPanelPos] = useState<{
     top: number;
     right: number;
+    width: number;
   } | null>(null);
   const catalogLoaded = useRef(false);
   const panelId = useId();
@@ -384,9 +386,28 @@ export function AppGlobalSearch({
     const update = () => {
       const r = rootRef.current?.getBoundingClientRect();
       if (!r) return;
+      const leftInset = 12;
+      const iconGap = 4;
+      const room = Math.max(0, r.left - iconGap - leftInset);
+      const phone = window.innerWidth < 768;
+      setFieldWidth(phone ? room : Math.min(18 * 16, room));
+
+      // Phone: the icon sits left of chat, the bell, and the avatar, so a
+      // menu pinned to the icon hangs off the left. Inset it to the header.
+      if (phone) {
+        setPanelPos({
+          top: r.bottom + 7,
+          right: leftInset,
+          width: window.innerWidth - leftInset * 2,
+        });
+        return;
+      }
+      const margin = 12;
+      const right = Math.max(margin, window.innerWidth - r.right);
       setPanelPos({
         top: r.bottom + 7,
-        right: Math.max(8, window.innerWidth - r.right),
+        right,
+        width: Math.min(24 * 16, window.innerWidth - right - margin),
       });
     };
     update();
@@ -720,16 +741,17 @@ export function AppGlobalSearch({
     meditationHits.length > 2 ? meditationHits.length : 0;
 
   return (
-    // Root width is always the icon button — the field expands left out of
-    // flow so search↔bell spacing stays identical to bell↔hamburger.
+    // Root width is always the icon button. The field grows left from it,
+    // sized so its left edge stays inside the header.
     <div ref={rootRef} className="relative flex shrink-0 items-center">
       <form
         onSubmit={onSubmit}
         className={`absolute right-full top-1/2 mr-1 flex -translate-y-1/2 items-center overflow-hidden transition-[width,opacity] duration-200 ease-out ${
-          open
-            ? "w-[calc(100vw-8.75rem)] opacity-100 md:w-[18rem]"
-            : "pointer-events-none w-0 opacity-0"
+          open ? "opacity-100" : "pointer-events-none w-0 opacity-0"
         }`}
+        style={
+          open && fieldWidth != null ? { width: fieldWidth } : undefined
+        }
         aria-hidden={!open}
       >
         <input
@@ -778,7 +800,7 @@ export function AppGlobalSearch({
 
       <button
         type="button"
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground"
+        className="inline-flex h-9 w-9 max-md:h-8 max-md:w-8 shrink-0 items-center justify-center rounded-full text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground"
         aria-label={open ? "Close search" : "Search"}
         aria-expanded={open}
         aria-controls={panelId}
@@ -802,8 +824,9 @@ export function AppGlobalSearch({
                 position: "fixed",
                 top: panelPos.top,
                 right: panelPos.right,
+                width: panelPos.width,
               }}
-              className="z-[300] w-[min(calc(100vw-1.25rem),24rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+              className="z-[300] overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
             >
           <div className="max-h-[min(70vh,28rem)] overflow-y-auto px-1.5 pb-1.5 pt-1">
             {!typing ? (

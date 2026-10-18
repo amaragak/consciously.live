@@ -10,6 +10,7 @@ import {
   AppPrimaryTabsSlot,
   AppTopBarTrailingSlot,
 } from "@/components/app-primary-tabs";
+import { AssistantChatHeaderButton } from "@/components/assistant-chat-fab";
 import { AppGlobalSearch } from "@/components/app-global-search";
 import { AppMobileAccountMenu } from "@/components/app-mobile-account-menu";
 import { AppNotificationsBell } from "@/components/app-notifications-bell";
@@ -568,14 +569,10 @@ export function AppTopBar({
           </div>
           {phoneTrailUsesVerbPrefix ? (
             <>
-              {/* Phone: section › leaf (italic verb hidden with wordmark). */}
-              <span
-                className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center md:hidden"
-                aria-hidden
-              />
+              {/* Phone: no hairline. First crumb is the section, in gold italic. */}
               <AppBreadcrumb
                 crumbs={phoneTrail}
-                className="min-w-0 flex-1 text-[13px] md:hidden"
+                className="app-header-phone-feature ml-1.5 min-w-0 flex-1 text-[13px] md:hidden"
               />
               {/* md–lg: leaf only — italic verb is visible in BrandPhrase. */}
               {trail.length > 0 ? (
@@ -594,12 +591,12 @@ export function AppTopBar({
           ) : phoneTrail.length > 0 ? (
             <>
               <span
-                className="app-header-crumb-divider mx-2 inline-block h-[16px] w-px shrink-0 self-center"
+                className="app-header-crumb-divider mx-2 hidden h-[16px] w-px shrink-0 self-center md:inline-block"
                 aria-hidden
               />
               <AppBreadcrumb
                 crumbs={phoneTrail}
-                className="min-w-0 flex-1 text-[13px] md:flex-none md:shrink-0"
+                className="app-header-phone-feature max-md:ml-1.5 min-w-0 flex-1 text-[13px] md:flex-none md:shrink-0"
               />
             </>
           ) : null}
@@ -632,11 +629,9 @@ export function AppTopBar({
             </AlphaChromeButton>
           ) : null}
         </div>
-        <div className="flex items-center gap-0.5 lg:gap-2">
-          {/* +10px matches bell’s +5px nudge so search↔bell == bell↔hamburger on compact. */}
-          <span className="relative translate-x-[10px] lg:translate-x-0">
-            <AppGlobalSearch onOpenChange={setMobileSearchOpen} />
-          </span>
+        <div className="flex items-center max-md:gap-0 gap-0.5 lg:gap-2">
+          <AppGlobalSearch onOpenChange={setMobileSearchOpen} />
+          <AssistantChatHeaderButton />
           <div className="hidden lg:contents">
             <ColorSchemePicker variant="header" />
           </div>
@@ -670,9 +665,7 @@ export function AppTopBar({
               <Shield aria-hidden className="size-[18px]" strokeWidth={1.75} />
             </Link>
           ) : null}
-          <span className="relative translate-x-[5px] lg:translate-x-0">
-            <AppNotificationsBell />
-          </span>
+          <AppNotificationsBell />
           {/* Phone: avatar menu. md–lg: hamburger drawer. lg+: desktop account. */}
           <AppMobileAccountMenu
             accountLabel={accountLabel}

@@ -102,6 +102,63 @@
   -webkit-text-fill-color: transparent;
 }
 
+/** Phone header only: first breadcrumb is the section name. */
+@media (max-width: 767px) {
+  .app-header-phone-feature > ol:last-of-type > li:first-child > :is(a, span) {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 17px;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    background-image: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--header-gold, #d9b87c) 62%, white),
+      var(--header-gold, #d9b87c) 72%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-decoration: none;
+  }
+  .app-header-phone-feature
+    > ol:last-of-type
+    > li:first-child
+    > :is(a, span):hover {
+    text-decoration: none;
+  }
+  .app-header-phone-feature
+    > ol:last-of-type
+    > li:nth-child(n + 2)
+    > :not(.app-header-crumb-sep) {
+    position: relative;
+    top: 1px;
+  }
+  /* Hairline between the section name and the next crumb. Later chevrons stay. */
+  .app-header-phone-feature > ol:last-of-type > li:nth-child(2) > .app-header-crumb-sep {
+    display: inline-block;
+    width: 1px;
+    height: 16px;
+    margin-inline: 10px;
+    overflow: hidden;
+    font-size: 0;
+    line-height: 0;
+    color: transparent;
+    background-color: rgb(255 255 255 / 0.42);
+    align-self: center;
+  }
+}
+@media (max-width: 767px) {
+  :root.hybrid
+    .app-header-phone-feature
+    > ol:last-of-type
+    > li:nth-child(2)
+    > .app-header-crumb-sep {
+    background-color: var(--border);
+  }
+}
+
 /**
  * Same sunlit gold wash as a fill (active header tabs, profile chip, badges),
  * slightly subtler than the text verb gradient so solid chips don’t read loud.

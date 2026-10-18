@@ -274,6 +274,8 @@ type VisionProps = {
   dreamText: string;
   obstacleText: string;
   visionText: string;
+  obstacleLabels?: string[];
+  onLabelsChange?: (labels: string[]) => void;
   onPatch: (partial: {
     dreamText?: string;
     obstacleText?: string;
@@ -285,6 +287,8 @@ export function PlanLifeAreaVisionSections({
   dreamText,
   obstacleText,
   visionText,
+  obstacleLabels = [],
+  onLabelsChange,
   onPatch,
 }: VisionProps) {
   return (
@@ -299,6 +303,41 @@ export function PlanLifeAreaVisionSections({
         mainAnswer={obstacleText}
         onMainChange={(obstacleText) => onPatch({ obstacleText })}
       />
+      {onLabelsChange && obstacleText.trim() ? (
+        <div className="px-4 pb-2 sm:px-6">
+          <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-accent-link">
+            Short labels
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {obstacleLabels.map((label, index) => (
+              <input
+                key={index}
+                value={label}
+                maxLength={32}
+                onChange={(e) => {
+                  const next = [...obstacleLabels];
+                  next[index] = e.target.value;
+                  onLabelsChange(
+                    next
+                      .map((row) => row.split(/\s+/).slice(0, 3).join(" "))
+                      .slice(0, 4),
+                  );
+                }}
+                className="h-8 w-36 rounded-full border border-border bg-card px-3 text-xs text-foreground outline-none"
+              />
+            ))}
+            {obstacleLabels.length < 4 ? (
+              <button
+                type="button"
+                className="h-8 rounded-full border border-border px-3 text-xs font-semibold text-foreground"
+                onClick={() => onLabelsChange([...obstacleLabels, ""].slice(0, 4))}
+              >
+                Add label
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <VisionBandSection
         kind="vision"
         mainAnswer={visionText}

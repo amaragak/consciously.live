@@ -81,6 +81,7 @@ export type DrvTimelineEntry = {
   sentiment?: ThoughtSentiment;
   /** Optional type tag (Win, Resistance, …). */
   kind?: ThoughtKind;
+  pinned?: boolean;
 };
 
 /** Outer-world progress notes on a life area (feedback loop). */
@@ -88,7 +89,61 @@ export type LifeAreaCheckIn = {
   id: string;
   note: string;
   createdAt: string;
+  transcript?: string;
+  /** Ids this check-in changed, so the whole check-in can be undone. */
+  undo?: {
+    todoWasChecked?: { id: string; isChecked: boolean; checkedAt: string | null }[];
+    addedTodoIds?: string[];
+    addedSubtaskIds?: string[];
+    addedThoughtIds?: string[];
+  };
 };
+
+export type LifeAreaIfThenPlan = {
+  id: string;
+  obstacle: string;
+  plan: string;
+  kept: boolean;
+};
+
+export type LifeAreaWbNode = {
+  id: string;
+  kind:
+    | "dream"
+    | "obstacle"
+    | "goal"
+    | "step"
+    | "thought"
+    | "image"
+    | "sticky"
+    | "text";
+  refId: string | null;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text?: string;
+  colour?: string;
+};
+
+export type LifeAreaWbEdge = {
+  id: string;
+  from: string;
+  to: string;
+  label: string | null;
+  style: "solid" | "dashed";
+};
+
+export type LifeAreaWhiteboardDoc = {
+  areaId: string;
+  title: string;
+  viewport: { x: number; y: number; zoom: number };
+  nodes: LifeAreaWbNode[];
+  edges: LifeAreaWbEdge[];
+  updatedAt: string;
+};
+
+export type InsightScope = "4w" | "3m" | "all";
 
 /** Saved Insights tab synthesis — lives on the dream in ideate cloud. */
 export type LifeAreaInsightSectionId =
@@ -113,6 +168,7 @@ export type LifeAreaInsightEntry = {
   fingerprint: string;
   /** Structured breakdown when available. */
   sections?: LifeAreaInsightSection[];
+  scope?: InsightScope;
 };
 
 export const MAX_LIFE_AREA_INSIGHTS = 40;
@@ -156,6 +212,36 @@ export type PlanDream = {
   meditationsGenerated: number;
   /** Set when user manually marks project complete */
   completedAt: string | null;
+  /** Text before the last accepted Raise the ceiling. */
+  dreamOriginal?: string | null;
+  outcomeOriginal?: string | null;
+  /** Hash of the text that raise was applied to. A matching raise is refused. */
+  dreamRaisedFrom?: string | null;
+  outcomeRaisedFrom?: string | null;
+  /** Goal pinned to Overview. */
+  overviewGoalId?: string | null;
+  /** Subtask ids in custom Goals-tab order. */
+  goalOrder?: string[];
+  /** Journal lines in the Thoughts feed. On unless set false. */
+  journalQuotesOn?: boolean;
+  /** Journal entry ids hidden from this area's Thoughts feed. */
+  hiddenJournalIds?: string[];
+  ifThenPlans?: LifeAreaIfThenPlan[];
+  whiteboard?: LifeAreaWhiteboardDoc | null;
+  /** Voice check-in suggestion. Never written into the vision automatically. */
+  visionSuggestion?: string | null;
+  /**
+   * Vision-board image shown on the dream poster.
+   * `undefined` uses the area default. `null` means the user removed it.
+   */
+  visionImageId?: string | null;
+  /** Short noun phrases for the poster. Never a split of the raw obstacles text. */
+  obstacleLabels?: string[];
+  themesCache?: {
+    at: string;
+    read: string;
+    chips: { label: string; count: number }[];
+  } | null;
 };
 
 export type PlanDreamsStoreV1 = {
@@ -338,6 +424,9 @@ function normalizeInsight(x: unknown): LifeAreaInsightEntry | null {
     text,
     createdAt: typeof o.createdAt === "string" ? o.createdAt : safeIso(),
     fingerprint: typeof o.fingerprint === "string" ? o.fingerprint : "",
+    ...(o.scope === "4w" || o.scope === "3m" || o.scope === "all"
+      ? { scope: o.scope }
+      : {}),
     ...(sections && sections.length ? { sections } : {}),
   };
 }
@@ -360,6 +449,7 @@ export function prependLifeAreaInsight(
     text: string;
     fingerprint: string;
     sections?: LifeAreaInsightSection[];
+    scope?: InsightScope;
   },
 ): PlanDream {
   const trimmed = input.text.trim().slice(0, MAX_INSIGHT_TEXT_CHARS);
@@ -373,6 +463,7 @@ export function prependLifeAreaInsight(
     text: trimmed,
     createdAt: safeIso(),
     fingerprint: input.fingerprint,
+    ...(input.scope ? { scope: input.scope } : {}),
     ...(sections.length ? { sections } : {}),
   };
   return {
@@ -422,6 +513,20 @@ function normalizeDreams(raw: unknown[]): PlanDream[] {
           ? Math.max(0, Math.floor(d.meditationsGenerated))
           : 0,
       completedAt: typeof d.completedAt === "string" ? d.completedAt : null,
+      ...(d.visionImageId === null
+        ? { visionImageId: null }
+        : typeof d.visionImageId === "string" && d.visionImageId.trim()
+          ? { visionImageId: d.visionImageId.trim() }
+          : {}),
+      ...(Array.isArray(d.obstacleLabels)
+        ? {
+            obstacleLabels: d.obstacleLabels
+              .filter((x): x is string => typeof x === "string")
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .slice(0, 4),
+          }
+        : {}),
       ...(d.demo === true ? { demo: true as const } : {}),
     });
   }

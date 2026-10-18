@@ -433,7 +433,7 @@ export function AppMobileTabBar() {
         className="grid grid-cols-5"
         style={{ height: APP_MOBILE_TAB_BAR_H_PX }}
       >
-        {APP_NAV_MAIN.map((section) => {
+        {APP_NAV_MAIN.filter((section) => section.id !== "chat").map((section) => {
           const active = activeId === section.id;
           const hasChildren = (section.children?.length ?? 0) > 0;
           return (

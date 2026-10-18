@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
   ChevronRight,
@@ -112,6 +113,8 @@ export function VisionBoardLayout({
   const [createArea, setCreateArea] = useState<string | null>(null);
   const [drafted, setDrafted] = useState(false);
   const [draftAreaName, setDraftAreaName] = useState("");
+  const [search, setSearch] = useSearchParams();
+  const launchedCreate = useRef(false);
   const [take, setTake] = useState<{
     itemId: string;
     phase: "making" | "ready";
@@ -134,6 +137,18 @@ export function VisionBoardLayout({
     }
     setCreateOpen(true);
   };
+
+  useEffect(() => {
+    if (launchedCreate.current || !hydrated) return;
+    const id = search.get("createArea");
+    if (!id) return;
+    launchedCreate.current = true;
+    const area = lifeAreas.find((row) => row.id === id) ?? null;
+    openCreate(area, Boolean(area));
+    const next = new URLSearchParams(search);
+    next.delete("createArea");
+    setSearch(next, { replace: true });
+  }, [hydrated, lifeAreas, search, setSearch]);
 
   const startTake = async (item: VisionBoardItem) => {
     setTake({

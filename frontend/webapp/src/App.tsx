@@ -97,6 +97,8 @@ export function App() {
           element={<ManifestInsightsPage />}
         />
         <Route path="manifest/goal/:id" element={<ManifestGoalPage />} />
+        <Route path="manifest/goal/:id/goals/:goalId" element={<ManifestGoalPage />} />
+        <Route path="manifest/goal/:id/:tab" element={<ManifestGoalPage />} />
         <Route path="manifest/words" element={<ManifestWordsPage />} />
         <Route path="manifest/questions" element={<ManifestQuestionsPage />} />
         <Route path="meditate">

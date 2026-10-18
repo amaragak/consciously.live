@@ -39,11 +39,7 @@ export function setAppMobileTabBarState(next: AppMobileTabBarState): void {
 }
 
 /** Routes where the tab bar hides (own bottom chrome / immersive). */
-export function shouldHideMobileTabBar(pathname: string): boolean {
-  const p = pathname || "/";
-  if (p.startsWith("/meditate/create") || p.startsWith("/create")) return true;
-  // Full-screen library detail player chrome on phone can keep the bar;
-  // Create owns its footer — that's the main opt-out.
+export function shouldHideMobileTabBar(_pathname: string): boolean {
   return false;
 }
 

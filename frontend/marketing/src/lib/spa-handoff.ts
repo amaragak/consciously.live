@@ -33,27 +33,46 @@ export async function spaHrefWithHandoff(path: string): Promise<string> {
       err instanceof Error && err.message.trim()
         ? err.message.trim()
         : "Could not create handoff";
-    // Stale JWT after API stack cutover is the usual cause.
-    if (/invalid or expired session|authorization bearer|unauthorized|401/i.test(detail)) {
-      throw new SpaHandoffError(
-        "Your session is out of date after the backend switch. Sign in again, then open the app.",
-      );
-    }
     throw new SpaHandoffError(detail);
   }
 }
 
 /**
  * Hard-navigate to the SPA, minting a handoff when crossing origins.
- * @returns false when cross-origin handoff failed (no navigation).
+ * If the handoff cannot be minted, open the app anyway. No error is shown.
  */
 export async function navigateToSpa(path: string): Promise<boolean> {
+  window.location.assign(await spaHrefOrDirect(path));
+  return true;
+}
+
+/** Hard-navigate to the SPA. Never surfaces a handoff failure to the page. */
+export async function navigateToSpaOrThrow(path: string): Promise<void> {
+  window.location.assign(await spaHrefOrDirect(path));
+}
+
+/** Handoff when we can. Otherwise open the app directly, with no error copy. */
+async function spaHrefOrDirect(path: string): Promise<string> {
   try {
-    const href = await spaHrefWithHandoff(path);
-    window.location.replace(href);
-    return true;
+    return await spaHrefAfterRefresh(path);
   } catch {
-    return false;
+    return appHref(path);
+  }
+}
+
+async function spaHrefAfterRefresh(path: string): Promise<string> {
+  try {
+    return await spaHrefWithHandoff(path);
+  } catch (first) {
+    let refreshed = false;
+    try {
+      const { ensureMedimadeSession } = await import("@/lib/auth-session");
+      refreshed = await ensureMedimadeSession({ force: true });
+    } catch {
+      refreshed = false;
+    }
+    if (!refreshed) throw first;
+    return await spaHrefWithHandoff(path);
   }
 }
 

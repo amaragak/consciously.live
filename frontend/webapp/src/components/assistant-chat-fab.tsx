@@ -1,9 +1,12 @@
 "use client";
 
+import { MessageSquare, X } from "lucide-react";
 import { Link, usePathname } from "@/lib/spa-nav";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AssistantChatConversation } from "@/components/assistant-chat-conversation";
 import { ChatPanelPatternTile } from "@/components/chat-panel-shell";
+import { SelectChevron } from "@/components/select-chevron";
 import { useMinWidth } from "@/hooks/use-min-width";
 import {
   clearAssistantChatRemoteSessionCache,
@@ -12,7 +15,10 @@ import {
   wasAssistantChatStorePulledThisSession,
 } from "@/lib/assistant-chat-cloud";
 import {
+  ASSISTANT_CHAT_OPEN_CHANGED_EVENT,
   ASSISTANT_CHAT_OPEN_EVENT,
+  ASSISTANT_CHAT_TOGGLE_EVENT,
+  toggleAssistantChatPanel,
   type AssistantChatOpenDetail,
 } from "@/lib/assistant-chat-launch";
 import { clearLegacyAssistantChatKeys, assistantChatThreadActivityMs, loadAssistantChatStore, pickAssistantChatFabResumeThread } from "@/lib/assistant-chat-storage";
@@ -22,15 +28,10 @@ import {
   subscribeCreateMainChatVisible,
 } from "@/lib/assistant-chat-fab-visibility";
 import {
-  getChatFabFooterInset,
-  subscribeChatFabFooterInset,
-} from "@/lib/assistant-chat-fab-footer-inset";
-import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
-import { useLibraryPlayer } from "@/components/library-player-provider";
 
 /** Hide only when main content already hosts a chat UI. */
 function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
@@ -44,77 +45,28 @@ function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
   return false;
 }
 
-/** Matches Tailwind `bottom-5` / `sm:bottom-6`. */
-function useFabBottomPaddingPx(): number {
-  const [pad, setPad] = useState(20);
+/** Header control. Opens the same panel as the life-area chat launch. */
+export function AssistantChatHeaderButton() {
+  const [open, setOpen] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 640px)");
-    const sync = () => setPad(mq.matches ? 24 : 20);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
+    const onChange = (event: Event) => {
+      setOpen(Boolean((event as CustomEvent<boolean>).detail));
+    };
+    window.addEventListener(ASSISTANT_CHAT_OPEN_CHANGED_EVENT, onChange);
+    return () =>
+      window.removeEventListener(ASSISTANT_CHAT_OPEN_CHANGED_EVENT, onChange);
   }, []);
-  return pad;
-}
-
-function IconChat({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
+    <button
+      type="button"
+      aria-label="Chat"
+      title="Chat"
+      aria-expanded={open}
+      onClick={() => toggleAssistantChatPanel()}
+      className="relative inline-flex h-9 w-9 max-md:h-8 max-md:w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground"
     >
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function IconClose({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-function IconExpand({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <polyline points="15 3 21 3 21 9" />
-      <polyline points="9 21 3 21 3 15" />
-      <line x1="21" y1="3" x2="14" y2="10" />
-      <line x1="3" y1="21" x2="10" y2="14" />
-    </svg>
+      <MessageSquare aria-hidden className="size-[18px]" strokeWidth={1.75} />
+    </button>
   );
 }
 
@@ -128,14 +80,6 @@ export function AssistantChatFab() {
   const [createChatVisible, setCreateChatVisible] = useState(
     isCreateMainChatVisible,
   );
-  const [footerInset, setFooterInset] = useState(getChatFabFooterInset);
-  const bottomPad = useFabBottomPaddingPx();
-  const { nowPlaying, playerStripHeightPx } = useLibraryPlayer();
-  const stripLift =
-    footerInset > 0 && nowPlaying && playerStripHeightPx > 0
-      ? playerStripHeightPx
-      : 0;
-  const fabBottom = footerInset + bottomPad + stripLift;
   const hidden = hideFabOnPath(pathname, createChatVisible);
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -146,14 +90,6 @@ export function AssistantChatFab() {
   useEffect(() => subscribeCreateMainChatVisible(() => {
     setCreateChatVisible(isCreateMainChatVisible());
   }), []);
-
-  useEffect(
-    () =>
-      subscribeChatFabFooterInset(() => {
-        setFooterInset(getChatFabFooterInset());
-      }),
-    [],
-  );
 
   useEffect(() => {
     clearLegacyAssistantChatKeys();
@@ -189,6 +125,21 @@ export function AssistantChatFab() {
   }, [hidden]);
 
   useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(ASSISTANT_CHAT_OPEN_CHANGED_EVENT, { detail: open }),
+    );
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  useEffect(() => {
     const onOpen = (ev: Event) => {
       const detail = (ev as CustomEvent<AssistantChatOpenDetail>).detail;
       pendingLaunchRef.current = detail ?? { kind: "default" };
@@ -210,7 +161,10 @@ export function AssistantChatFab() {
     const pending = pendingLaunchRef.current;
     pendingLaunchRef.current = null;
     if (pending?.kind === "life_area_ideate") {
-      void chat.startLifeAreaIdeate(pending.lifeAreaId);
+      const seed = pending.seed;
+      void chat.startLifeAreaIdeate(pending.lifeAreaId).then(() => {
+        if (seed) chat.setInput(seed);
+      });
       return;
     }
     const createChatShownAt = consumeCreateChatShownAtMs();
@@ -248,80 +202,86 @@ export function AssistantChatFab() {
     });
   }, []);
 
-  // Phone: Chat is a bottom tab — keep the FAB for md+ only.
-  if (!mdUp || !enabled || hidden) return null;
+  useEffect(() => {
+    const onToggle = () => toggleOpen();
+    window.addEventListener(ASSISTANT_CHAT_TOGGLE_EVENT, onToggle);
+    return () => window.removeEventListener(ASSISTANT_CHAT_TOGGLE_EVENT, onToggle);
+  }, [toggleOpen]);
+
+  if (!enabled || hidden || !open || typeof document === "undefined") return null;
 
   const fullHref = chat.activeId
     ? `/chat/my/${encodeURIComponent(chat.activeId)}`
     : "/chat/my";
 
-  return (
+  return createPortal(
     <>
-      {open ? (
-        <div
-          className="pointer-events-auto fixed left-1 right-1 z-[60] flex h-[min(560px,70vh)] flex-col overflow-hidden rounded-2xl border border-border bg-[color:var(--chat-panel-bg)] shadow-lg sm:left-auto sm:right-6 sm:w-[min(calc(100vw-3rem),380px)]"
-          style={{
-            // Sit above the FAB (3.5rem) with a 0.75rem gap, plus any nav footer.
-            bottom: fabBottom + 56 + 12,
-          }}
-          role="dialog"
-          aria-label="Chat"
-        >
-          <ChatPanelPatternTile classic />
-          <div className="relative z-[1] flex shrink-0 items-center justify-end gap-1 border-b border-border/60 bg-[color:var(--chat-panel-bg)]/90 px-2 py-1.5 backdrop-blur-[2px]">
-            <Link
-              href={fullHref}
-              aria-label="Open full screen chat"
-              title="Full screen"
-              className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-background hover:text-foreground"
-              onClick={() => setOpen(false)}
-            >
-              <IconExpand />
-            </Link>
-            <button
-              type="button"
-              aria-label="Close chat"
-              onClick={() => setOpen(false)}
-              className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-background hover:text-foreground"
-            >
-              <IconClose />
-            </button>
-          </div>
-          <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <AssistantChatConversation
-              messages={chat.messages}
-              input={chat.input}
-              setInput={chat.setInput}
-              inputDraftRef={chat.inputDraftRef}
-              chatInputRef={chat.chatInputRef}
-              scrollRef={chat.scrollRef}
-              messagesEndRef={chat.messagesEndRef}
-              isAtBottomRef={chat.isAtBottomRef}
-              busy={chat.busy}
-              opening={chat.opening}
-              error={chat.error}
-              setError={chat.setError}
-              onSend={() => void chat.send()}
-              compact
-            />
-          </div>
-        </div>
-      ) : null}
-
-      <div
-        className="pointer-events-none fixed right-5 z-[60] sm:right-6"
-        style={{ bottom: fabBottom }}
-      >
+      {mdUp ? (
         <button
           type="button"
-          aria-label={open ? "Close chat" : "Open chat"}
-          aria-expanded={open}
-          onClick={toggleOpen}
-          className="pointer-events-auto flex h-14 w-14 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent shadow-md transition-opacity hover:opacity-95"
-        >
-          {open ? <IconClose /> : <IconChat />}
-        </button>
+          aria-label="Close chat"
+          className="fixed inset-x-0 bottom-0 top-14 z-[125] cursor-pointer bg-black/40"
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
+      <div
+        role="dialog"
+        aria-label="Chat"
+        className={
+          mdUp
+            ? "fixed bottom-0 right-0 top-14 z-[126] flex w-[420px] max-w-full flex-col border-l border-border bg-[color:var(--chat-panel-bg)] shadow-lg"
+            : "fixed inset-0 z-[140] flex flex-col bg-[color:var(--chat-panel-bg)]"
+        }
+      >
+        <ChatPanelPatternTile classic />
+        <div className="relative z-[1] flex shrink-0 items-center gap-2 border-b border-border/60 bg-[color:var(--chat-panel-bg)]/90 px-3 py-2 backdrop-blur-[2px]">
+          {mdUp ? null : (
+            <button
+              type="button"
+              aria-label="Back"
+              onClick={() => setOpen(false)}
+              className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-foreground"
+            >
+              <SelectChevron className="rotate-90 text-foreground" />
+            </button>
+          )}
+          <h2 className="font-display text-lg text-foreground">Chat</h2>
+          <Link
+            href={fullHref}
+            className="ml-auto text-[13px] font-semibold text-accent-link"
+            onClick={() => setOpen(false)}
+          >
+            Open full chat
+          </Link>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setOpen(false)}
+            className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-foreground"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <AssistantChatConversation
+            messages={chat.messages}
+            input={chat.input}
+            setInput={chat.setInput}
+            inputDraftRef={chat.inputDraftRef}
+            chatInputRef={chat.chatInputRef}
+            scrollRef={chat.scrollRef}
+            messagesEndRef={chat.messagesEndRef}
+            isAtBottomRef={chat.isAtBottomRef}
+            busy={chat.busy}
+            opening={chat.opening}
+            error={chat.error}
+            setError={chat.setError}
+            onSend={() => void chat.send()}
+            compact
+          />
+        </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

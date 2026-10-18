@@ -713,10 +713,20 @@ export async function raiseStoryCeiling(
     lifeAreas?: readonly RaiseLifeAreaMeta[];
     values?: readonly string[];
     valuesById?: ReadonlyMap<string, string> | Record<string, string>;
+    /** When these match, the server refuses the raise. */
+    raisedFrom?: string;
+    textHash?: string;
   },
 ): Promise<StoryRaiseResult> {
   const text = draftPlainText(draft);
   if (!text.trim()) {
+    return { ambition: 0, findings: [] };
+  }
+  if (
+    opts?.raisedFrom &&
+    opts.textHash &&
+    opts.raisedFrom === opts.textHash
+  ) {
     return { ambition: 0, findings: [] };
   }
   const forModel =
@@ -734,6 +744,8 @@ export async function raiseStoryCeiling(
     raiseContext: forModel,
     raiseLocks: locks,
     raiseValues: (opts?.values ?? []).filter((v) => v.trim()).slice(0, 20),
+    ...(opts?.raisedFrom ? { raisedFrom: opts.raisedFrom } : {}),
+    ...(opts?.textHash ? { textHash: opts.textHash } : {}),
   });
   if (remote) {
     const parsed = applyRaiseLocks(
