@@ -158,7 +158,7 @@ function NewEntryTileDesktop() {
   return (
     <Link
       href="/journal/my?new=1"
-      className="flex min-h-[150px] flex-col items-center justify-center gap-2.5 rounded-[14px] border-[1.5px] border-dashed border-accent/45 bg-accent-soft/40 px-4 py-4 text-center transition-opacity hover:opacity-90"
+      className="relative flex min-h-[150px] items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-accent/45 bg-accent-soft/40 px-4 py-4 text-center transition-opacity hover:opacity-90"
     >
       <span
         className="flex h-12 w-12 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
@@ -167,8 +167,9 @@ function NewEntryTileDesktop() {
       >
         <Plus className="size-5" strokeWidth={2.25} />
       </span>
-      <span className="font-display text-lg text-foreground">New entry</span>
-      <span className="text-xs text-muted">Write or speak</span>
+      <span className="absolute top-[calc(50%+36px)] font-display text-lg text-foreground">
+        New entry
+      </span>
     </Link>
   );
 }
@@ -187,7 +188,6 @@ function NewEntryRowMobile() {
         <Plus className="size-4" strokeWidth={2.25} />
       </span>
       <span className="font-display text-base text-foreground">New entry</span>
-      <span className="ml-auto text-xs text-muted">Write or speak</span>
     </Link>
   );
 }

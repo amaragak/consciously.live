@@ -421,7 +421,7 @@ export function AppMobileTabBar() {
   const bar = (
     <nav
       aria-label="Primary"
-      className={`fixed inset-x-0 bottom-0 border-t border-border bg-card md:hidden ${
+      className={`app-mobile-tab-bar fixed inset-x-0 bottom-0 border-t border-border bg-card md:hidden ${
         sheetSectionId != null ? "z-[130]" : "z-[120]"
       } ${visible ? "" : "pointer-events-none translate-y-full opacity-0"}`}
       style={{

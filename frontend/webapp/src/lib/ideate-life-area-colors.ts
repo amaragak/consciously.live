@@ -2,25 +2,24 @@
  * Fixed card backgrounds for Ideate life areas —
  * assigned in creation order (cycles after 5).
  *
- * Light: soft golds mixed from tab / `--gold` (`#C8A46A`) into cream.
- * Dark: slate navy tones aligned with marketing band / panel cards.
+ * Variations of the SPA header navy (`#1E232E`).
  */
 
 export const LIFE_AREA_CARD_PALETTE_LIGHT = [
-  "#E1CDAD",
-  "#ECDFCA",
-  "#DBC39D",
-  "#DFC9A6",
-  "#E6D5BA",
+  "#1E232E",
+  "#262C3A",
+  "#2E3646",
+  "#242A36",
+  "#343C4E",
 ] as const;
 
-/** Dark counterparts — soft navy panels like marketing-card / band surfaces. */
+/** Slightly lifted so the same navy family still separates from a dark page. */
 export const LIFE_AREA_CARD_PALETTE_DARK = [
-  "#2A3544",
-  "#323E4F",
-  "#243447",
-  "#2F3C4D",
-  "#283443",
+  "#2A3140",
+  "#323A4C",
+  "#242A38",
+  "#303848",
+  "#3A4456",
 ] as const;
 
 export const LIFE_AREA_CARD_PALETTE = LIFE_AREA_CARD_PALETTE_LIGHT;

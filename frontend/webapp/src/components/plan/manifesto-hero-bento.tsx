@@ -416,7 +416,9 @@ export function ManifestoHeroBento({
           editing ? "xl:min-h-[300px]" : "xl:h-[300px]"
         }`}
       >
-        <div className="relative flex flex-col justify-center gap-4 rounded-2xl bg-[var(--deep)] px-5 py-[22px] text-white md:px-8 md:py-[30px]">
+        <div className="relative overflow-hidden rounded-2xl bg-[var(--deep)] text-white">
+          <div className="navy-paisley-plate" aria-hidden />
+          <div className="relative z-[1] flex flex-col justify-center gap-4 px-5 py-[22px] md:px-8 md:py-[30px]">
           {hasStatement ? (
             <button
               type="button"
@@ -474,7 +476,10 @@ export function ManifestoHeroBento({
             </form>
           ) : hasStatement ? (
             <p className="line-clamp-6 pr-8 font-display text-[20px] font-normal italic leading-[1.38] text-white md:line-clamp-5 md:text-[24px]">
-              {statement}
+              <span className="mr-1 font-display text-[1.35em] not-italic leading-none text-[var(--header-gold,#d9b87c)]">
+                “
+              </span>
+              {statement.trim().replace(/^[“"]\s*/, "")}
             </p>
           ) : (
             <p className="font-display text-[20px] font-normal italic leading-[1.38] text-white/60 md:text-[24px]">
@@ -518,6 +523,7 @@ export function ManifestoHeroBento({
               </Link>
             </div>
           ) : null}
+          </div>
         </div>
 
         <BentoSlots

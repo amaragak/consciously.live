@@ -30,11 +30,14 @@ import { suggestObstacleLabels } from "@/lib/obstacle-labels";
 import type { PlanDream } from "@/lib/plan-dreams";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 
-const PANEL = "var(--deep)";
 const GLASS =
   "inline-flex items-center justify-center rounded-full border border-white/30 bg-[color-mix(in_srgb,var(--deep)_40%,transparent)] text-xs font-semibold text-white";
-const WIDE_FADE =
-  "linear-gradient(to top, color-mix(in srgb, var(--deep) 94%, transparent) 0%, color-mix(in srgb, var(--deep) 70%, transparent) 50%, color-mix(in srgb, var(--deep) 5%, transparent) 100%)";
+/** Photo fades out so the paisley panel shows through, same weights as the old navy wash. */
+const WIDE_PHOTO_MASK =
+  "linear-gradient(to top, rgb(0 0 0 / 0.06) 0%, rgb(0 0 0 / 0.3) 50%, rgb(0 0 0 / 0.95) 100%)";
+/** Same soften as the Manifest overview vision-board tiles. */
+const HERO_PHOTO_FILTER =
+  "grayscale(16%) sepia(11%) contrast(0.94) brightness(0.91) saturate(0.85)";
 
 type Props = {
   dream: PlanDream;
@@ -200,7 +203,7 @@ export function DreamPoster({ dream, onPatch }: Props) {
   return (
     <>
       <section
-        className={`relative overflow-hidden rounded-[20px] bg-[var(--deep)] text-white shadow-[0_18px_40px_-20px_color-mix(in_srgb,var(--deep)_50%,transparent)] ${
+        className={`relative overflow-hidden rounded-[20px] bg-[#1a1820] text-white shadow-[0_18px_40px_-20px_color-mix(in_srgb,var(--deep)_50%,transparent)] ${
           empty
             ? "md:h-[350px]"
             : !image
@@ -212,6 +215,10 @@ export function DreamPoster({ dream, onPatch }: Props) {
                   : ""
         }`}
       >
+        <div
+          aria-hidden
+          className="navy-paisley-plate"
+        />
         {!image ? (
           <div
             className="pointer-events-none absolute -right-6 -top-10 size-[220px] opacity-10 md:-right-10 md:-top-16 md:size-[360px]"
@@ -226,7 +233,12 @@ export function DreamPoster({ dream, onPatch }: Props) {
               src={src}
               alt=""
               className="absolute inset-0 size-full object-cover"
-              style={{ objectPosition: cropPosition(image) }}
+              style={{
+                objectPosition: cropPosition(image),
+                filter: HERO_PHOTO_FILTER,
+                WebkitMaskImage: WIDE_PHOTO_MASK,
+                maskImage: WIDE_PHOTO_MASK,
+              }}
               onLoad={(e) => {
                 const img = e.currentTarget;
                 if (img.naturalWidth > 0) {
@@ -234,7 +246,6 @@ export function DreamPoster({ dream, onPatch }: Props) {
                 }
               }}
             />
-            <div className="absolute inset-0" style={{ background: WIDE_FADE }} />
           </>
         ) : null}
         {!empty && image && !wide && md && src ? (
@@ -243,7 +254,12 @@ export function DreamPoster({ dream, onPatch }: Props) {
               src={src}
               alt=""
               className="size-full object-cover"
-              style={{ objectPosition: cropPosition(image) }}
+              style={{
+                objectPosition: cropPosition(image),
+                filter: HERO_PHOTO_FILTER,
+                WebkitMaskImage: "linear-gradient(to right, transparent, #000 90px)",
+                maskImage: "linear-gradient(to right, transparent, #000 90px)",
+              }}
               onLoad={(e) => {
                 const img = e.currentTarget;
                 if (img.naturalWidth > 0) {
@@ -257,12 +273,6 @@ export function DreamPoster({ dream, onPatch }: Props) {
               onImage={() => setPicker(true)}
               onEdit={openEditor}
             />
-            <div
-              className="absolute inset-y-0 left-0 w-[90px]"
-              style={{
-                background: `linear-gradient(to right, ${PANEL}, transparent)`,
-              }}
-            />
           </div>
         ) : null}
         {!empty && image && !wide && !md && src ? (
@@ -271,18 +281,19 @@ export function DreamPoster({ dream, onPatch }: Props) {
               src={src}
               alt=""
               className="size-full object-cover"
-              style={{ objectPosition: cropPosition(image) }}
+              style={{
+                objectPosition: cropPosition(image),
+                filter: HERO_PHOTO_FILTER,
+                WebkitMaskImage:
+                  "linear-gradient(to bottom, #000 calc(100% - 70px), transparent)",
+                maskImage:
+                  "linear-gradient(to bottom, #000 calc(100% - 70px), transparent)",
+              }}
               onLoad={(e) => {
                 const img = e.currentTarget;
                 if (img.naturalWidth > 0) {
                   setNatural(img.naturalWidth / img.naturalHeight);
                 }
-              }}
-            />
-            <div
-              className="absolute inset-x-0 bottom-0 h-[70px]"
-              style={{
-                background: `linear-gradient(to bottom, transparent, ${PANEL})`,
               }}
             />
             {!empty ? (

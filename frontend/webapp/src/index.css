@@ -475,10 +475,18 @@ body {
 }
 
 .life-area-card {
-  background-color: var(--life-area-bg);
+  color: #f4f0e8;
 }
-.dark .life-area-card {
-  background-color: var(--life-area-bg-dark);
+
+/** Navy duotone paisley — life-area hero and the My manifesto card. */
+.navy-paisley-plate {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image: url("/patterns/paisley-dark-duotone.webp");
+  background-repeat: repeat;
+  background-size: 640px 640px;
+  opacity: 0.52;
 }
 
 
@@ -1207,6 +1215,15 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   }
 }
 
+/* Phone tab bar sits above the page, so the shadow falls upward. */
+.app-mobile-tab-bar {
+  box-shadow: 0 -10px 28px -8px rgb(30 37 48 / 0.14);
+}
+
+:root.dark .app-mobile-tab-bar {
+  box-shadow: 0 -10px 28px -6px rgb(0 0 0 / 0.34);
+}
+
 /* SPA mobile sidebar drawer — slide + scrim fade like marketing. */
 .app-sidebar-drawer {
   position: fixed;
@@ -1281,6 +1298,13 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
     pointer-events: auto;
     will-change: width;
     transition: width 200ms ease-out;
+    /* Let the right-edge shadow paint over the page. Inner scroll still clips rows. */
+    overflow-x: visible;
+    box-shadow: 10px 0 28px -8px rgb(30 37 48 / 0.13);
+  }
+
+  :root.dark .app-sidebar-drawer {
+    box-shadow: 10px 0 28px -6px rgb(0 0 0 / 0.32);
   }
 
   .app-sidebar-drawer.is-open {

@@ -231,7 +231,7 @@ function NewMeditationTile() {
   return (
     <Link
       href={CREATE_MEDITATE_ROOT}
-      className="flex min-h-0 flex-col items-center justify-center gap-2.5 rounded-[14px] border-[1.5px] border-dashed border-accent/45 bg-accent-soft/40 px-4 py-4 text-center transition-opacity hover:opacity-90 max-md:min-h-[160px] max-md:gap-2 max-md:rounded-xl"
+      className="relative flex min-h-0 items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-accent/45 bg-accent-soft/40 px-4 py-4 text-center transition-opacity hover:opacity-90 max-md:min-h-[160px] max-md:rounded-xl"
     >
       <span
         className="flex h-[52px] w-[52px] items-center justify-center rounded-full accent-fill-gradient text-on-accent max-md:h-11 max-md:w-11"
@@ -240,10 +240,9 @@ function NewMeditationTile() {
       >
         <Plus className="size-6 max-md:size-5" strokeWidth={2.25} />
       </span>
-      <span className="font-display text-lg text-foreground max-md:text-base">
+      <span className="absolute top-[calc(50%+38px)] font-display text-lg text-foreground max-md:top-[calc(50%+32px)] max-md:text-base">
         New meditation
       </span>
-      <span className="text-xs text-muted max-md:hidden">Opens Create</span>
     </Link>
   );
 }

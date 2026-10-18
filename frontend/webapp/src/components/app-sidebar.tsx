@@ -93,6 +93,33 @@ const SECTION_ICONS: Record<string, ReactNode> = {
   heal: <Heart aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />,
 };
 
+function subtreeHasActive(
+  items: AppNavSubItem[],
+  pathname: string,
+  hash: string,
+  search: string,
+  sectionId: string,
+): boolean {
+  return items.some(
+    (sub) =>
+      isSubItemActive(pathname, hash, search, sub, sectionId) ||
+      subtreeHasActive(sub.children ?? [], pathname, hash, search, sectionId),
+  );
+}
+
+function SelectedAccentBar() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute bottom-[7px] left-0 top-[7px] w-[3px] rounded-r-[3px] bg-accent"
+    />
+  );
+}
+
+const NAV_HOVER = "rounded-[10px] transition-colors hover:bg-background";
+const NAV_SELECTED =
+  "rounded-[10px] bg-card/70 font-semibold text-foreground hover:bg-card/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60";
+
 function NavSectionBlock({
   section,
   items,
@@ -132,6 +159,10 @@ function NavSectionBlock({
   const hasChildren =
     subs.length > 0 || lifeAreas.length > 0 || Boolean(emptyAction);
   const sectionActive = activeNavSectionId(pathname) === section.id;
+  const sectionSelf =
+    sectionActive &&
+    !subtreeHasActive(subs, pathname, hash, search, section.id) &&
+    !subtreeHasActive(lifeAreas, pathname, hash, search, section.id);
   const icon = SECTION_ICONS[section.id];
 
   function renderSubLink(sub: AppNavSubItem) {
@@ -148,18 +179,13 @@ function NavSectionBlock({
           href={sub.href}
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
-          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
-            active
-              ? "font-bold text-accent-link"
-              : "text-muted"
+          className={`relative flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm font-normal text-foreground ${
+            active ? NAV_SELECTED : NAV_HOVER
           }`}
         >
+          {active ? <SelectedAccentBar /> : null}
           <span
-            className={`size-1 shrink-0 rounded-full ${
-              active
-                ? "bg-accent-link"
-                : "bg-muted/50"
-            }`}
+            className="size-1 shrink-0 rounded-full bg-foreground/80"
             aria-hidden
           />
           <span className="min-w-0 truncate">{sub.label}</span>
@@ -170,7 +196,7 @@ function NavSectionBlock({
             onClick={onNavigate}
             aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
             title={sub.actionAriaLabel ?? `New ${sub.label}`}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base font-medium leading-none text-muted transition-colors hover:bg-background hover:text-accent-link"
+            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center text-base font-medium leading-none text-foreground/80 ${NAV_HOVER}`}
           >
             +
           </Link>
@@ -183,9 +209,6 @@ function NavSectionBlock({
     const nested = sub.children ?? [];
     if (nested.length === 0) return renderSubLink(sub);
     const open = Boolean(nestedExpanded[sub.id]);
-    const hubActive = nested.some((child) =>
-      isSubItemActive(pathname, hash, search, child, section.id),
-    );
     return (
       <li key={sub.id}>
         <div className="flex min-w-0 items-center gap-0.5">
@@ -193,16 +216,10 @@ function NavSectionBlock({
             href={sub.href}
             onClick={onNavigate}
             title={sub.label}
-            className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-background ${
-              hubActive
-                ? "font-bold text-accent-link"
-                : "text-muted"
-            }`}
+            className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm font-normal text-foreground ${NAV_HOVER}`}
           >
             <span
-              className={`size-1 shrink-0 rounded-full ${
-                hubActive ? "bg-accent-link" : "bg-muted/50"
-              }`}
+              className="size-1 shrink-0 rounded-full bg-foreground/80"
               aria-hidden
             />
             <span className="min-w-0 truncate">{sub.label}</span>
@@ -212,11 +229,7 @@ function NavSectionBlock({
             aria-label={open ? `Collapse ${sub.label}` : `Expand ${sub.label}`}
             aria-expanded={open}
             onClick={() => onToggleNested(sub.id)}
-            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-background ${
-              hubActive
-                ? "text-accent-link"
-                : "text-muted hover:text-foreground"
-            }`}
+            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center text-foreground/80 ${NAV_HOVER}`}
           >
             <SelectChevron open={open} />
           </button>
@@ -237,13 +250,18 @@ function NavSectionBlock({
           href={section.href}
           onClick={onNavigate}
           title={section.label}
-          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-[15px] transition-colors hover:bg-background ${
-            sectionActive
-              ? "font-bold text-foreground"
-              : "text-muted hover:text-foreground"
+          className={`relative flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-[15px] text-foreground ${
+            sectionSelf
+              ? NAV_SELECTED
+              : sectionActive
+                ? `font-semibold ${NAV_HOVER}`
+                : `font-medium ${NAV_HOVER}`
           }`}
         >
-          {icon ?? null}
+          {sectionSelf ? <SelectedAccentBar /> : null}
+          <span className={sectionActive ? "text-foreground" : "text-foreground/80"}>
+            {icon ?? null}
+          </span>
           <span className="min-w-0 truncate whitespace-nowrap">
             {section.label}
           </span>
@@ -258,11 +276,9 @@ function NavSectionBlock({
             }
             aria-expanded={expanded}
             onClick={onToggle}
-            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-background ${
-              sectionActive
-                ? "text-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
+            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center ${
+              sectionActive ? "text-foreground" : "text-foreground/80"
+            } ${NAV_HOVER}`}
           >
             <SelectChevron open={expanded} />
           </button>
@@ -285,10 +301,10 @@ function NavSectionBlock({
                 <Link
                   href={emptyAction.href}
                   onClick={onNavigate}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-foreground"
+                  className={`flex items-center gap-2 px-2 py-1.5 text-sm font-normal text-foreground ${NAV_HOVER}`}
                 >
                   <span
-                    className="size-1 shrink-0 rounded-full bg-muted/50"
+                    className="size-1 shrink-0 rounded-full bg-foreground/80"
                     aria-hidden
                   />
                   <span className="min-w-0 truncate">{emptyAction.label}</span>
