@@ -97,7 +97,11 @@ export function withoutDemoIdeateStore(store: IdeateStoreV2): IdeateStoreV2 {
     todos,
     resistanceEntries,
     ...(store.trackerItems
-      ? { trackerItems: store.trackerItems.filter((item) => keepProject.has(item.lifeAreaId)) }
+      ? {
+          trackerItems: store.trackerItems.filter(
+            (item) => !item.lifeAreaId || keepProject.has(item.lifeAreaId),
+          ),
+        }
       : {}),
   };
 }

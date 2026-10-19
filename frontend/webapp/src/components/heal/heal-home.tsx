@@ -275,7 +275,7 @@ function DescribeDialog({
           />
         )}
         <h2 className="mt-3 font-display text-[26px] leading-tight text-foreground">
-          What happened, and what do you keep thinking about it?
+          What happened, and what's still on your mind?
         </h2>
         <p className="mt-1 text-[13px] text-muted">Type or speak. A few sentences is enough.</p>
         <div className="relative mt-3">
