@@ -47,7 +47,7 @@ const AREA_LABEL: Record<GuideArea, string> = {
 
 const PRACTICE_ACTION_LABEL: Record<GuidePracticeAction, string> = {
   lifeArea: "Add to a life area",
-  create: "Make a meditation",
+  create: "Create meditation",
 };
 
 function guideAreaFromValue(v: string): GuideArea {

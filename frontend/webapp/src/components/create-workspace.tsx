@@ -6684,7 +6684,7 @@ export function CreateWorkspace({
                 ) : (
                   <>
                     <span className="sm:hidden">Generate</span>
-                    <span className="hidden sm:inline">Generate meditation</span>
+                    <span className="hidden sm:inline">Create meditation</span>
                   </>
                 )}
               </button>

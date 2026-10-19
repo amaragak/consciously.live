@@ -24,13 +24,25 @@ const secrets = new SecretsManagerClient({});
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
 const RULES = [
-  "Use the user's own words and facts. Never invent memories, events, or feelings.",
+  "Aim: acceptance and self-forgiveness, not positivity and not fixing. Help separate \"I did this\" from \"I am this\". No silver linings for a death.",
+  "Use only the user's facts. Never invent events, memories, or feelings.",
+  "Questions and lenses are about the user's own experience. Never ask about another person's motives or feelings. No advice about another person.",
+  "Questions: no advice and no leading questions. Each question is 25 words or fewer, in plain words.",
   "Tone: plain, warm, short. No clinical terms, no diagnoses, no stages of grief.",
-  "Never make light of the loss: no 'at least', no silver linings for a death, no 'everything happens for a reason'.",
   "No relationship advice. Never advise on contact, reconciling, or confronting anyone. Forgiveness means letting go for the user's own sake, not excusing what happened.",
   "Write in the same person the user used (I / we).",
   "Never include crisis numbers, helplines, or support language.",
 ].join(" ");
+
+function canDoRule(canDo: string): string {
+  if (canDo === "yes") {
+    return " About half the questions are on acceptance or forgiveness, and the rest are a first small step or what is in their control.";
+  }
+  if (canDo === "no") {
+    return " Questions are acceptance and self-forgiveness only. Never ask what they will do differently or how they will fix it.";
+  }
+  return " Include exactly one question that helps them decide what is still in their control, for example: What part of this is still in your control, and what isn't?";
+}
 
 let cachedClaudeKey: string | undefined;
 
@@ -243,6 +255,93 @@ export async function handler(
         300,
       )) as { question?: unknown };
       return json(200, { question: str(parsed.question, 400) });
+    }
+
+    if (action === "setup") {
+      const name = title;
+      const update = str(body.update, 8000);
+      const parsed = (await haikuJson(
+        [
+          system,
+          "Read the name and the first update. Return JSON only.",
+          "type is one of grief, heartbreak, regret, resentment, pattern, recurring_thought, belief, fear, shame, other.",
+          "badDayText is one or two sentences copied verbatim from the update: the strongest self-judgement or belief. goodDayText is a sentence copied verbatim that is kinder or more hopeful, or null.",
+          "canDo is yes, no, or not_sure.",
+          "exercises is 10 ranked questions. At least one quotes or refers to something specific they wrote.",
+          canDoRule("not_sure"),
+          '{"type":"other","badDayText":"","goodDayText":null,"canDo":"not_sure","exercises":[""]}',
+        ].join(" "),
+        `Name: ${name}\n\nWhat happened:\n${update}`,
+        1400,
+      )) as { badDayText?: unknown; goodDayText?: unknown; exercises?: unknown };
+      const bad = str(parsed.badDayText, 500);
+      const good = str(parsed.goodDayText, 500);
+      const ok = (value: string) => !value || update.includes(value);
+      return json(200, {
+        ...parsed,
+        badDayText: ok(bad) ? bad : "",
+        goodDayText: good && ok(good) ? good : null,
+        exercises: Array.isArray(parsed.exercises) ? parsed.exercises : [],
+      });
+    }
+
+    if (action === "suggest-more") {
+      const canDo = str(body.canDo, 20) || "not_sure";
+      const parsed = (await haikuJson(
+        [
+          system,
+          canDoRule(canDo),
+          "Return 3 new questions. None may repeat a question already asked.",
+          '{"questions":["","",""]}',
+        ].join(" "),
+        str(body.context, 8000),
+        500,
+      )) as { questions?: unknown };
+      return json(200, { questions: Array.isArray(parsed.questions) ? parsed.questions : [] });
+    }
+
+    if (action === "after-update") {
+      const canDo = str(body.canDo, 20) || "not_sure";
+      const parsed = (await haikuJson(
+        [
+          system,
+          canDoRule(canDo),
+          "Compare the new update with the previous one and the unanswered exercises.",
+          "retire is the ids of unanswered exercises that rely on facts the update changed, or that no longer fit canDo.",
+          "add is up to 3 new questions.",
+          "goodDayConflict is true only when the good-day view states something the update contradicts.",
+          "topic is 2 to 4 words naming that contradiction, or an empty string.",
+          '{"retire":[],"add":[],"goodDayConflict":false,"topic":""}',
+        ].join(" "),
+        str(body.context, 8000),
+        700,
+      )) as { retire?: unknown; add?: unknown };
+      return json(200, {
+        retire: Array.isArray(parsed.retire) ? parsed.retire : [],
+        add: Array.isArray(parsed.add) ? parsed.add : [],
+        goodDayConflict: (parsed as { goodDayConflict?: unknown }).goodDayConflict === true,
+        topic: str((parsed as { topic?: unknown }).topic, 40),
+      });
+    }
+
+    if (action === "lenses") {
+      const lens = str(body.lens, 20);
+      const parsed = (await haikuJson(
+        [
+          system,
+          "Write in the user's voice, as I. Each lens is 2 or 3 sentences.",
+          "Be kind to myself: what they would say to someone they care about.",
+          "Forgive: separate what they did from who they are.",
+          "Accept: what was and was not in their control.",
+          "The long view: how this might look in a few years. No silver linings for a death.",
+          lens
+            ? `Rewrite only the ${lens} lens. JSON {"text":""}.`
+            : 'JSON {"kind":"","forgive":"","accept":"","long":""}.',
+        ].join(" "),
+        str(body.context, 8000),
+        900,
+      )) as Record<string, unknown>;
+      return json(200, parsed);
     }
 
     if (action === "friend-swap") {

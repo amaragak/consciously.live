@@ -1,172 +1,126 @@
-import { ArrowRight, Heart, Leaf, PenLine, Plus, Sparkles } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import { Link } from "@/lib/spa-nav";
-import { HEAL_TYPES, healTypeLabel } from "@/lib/heal-copy";
+import { Heart, Leaf, Mic } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useRouter, useSearchParams } from "@/lib/spa-nav";
+import { DictationMicButton } from "@/components/dictation-mic-button";
+import { appendSpokenText } from "@/hooks/use-whisper-dictation";
+import { healTypeLabel } from "@/lib/heal-copy";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   activeHealItems,
+  addHealUpdate,
   createHealItem,
-  loadHealStore,
+  currentView,
   formatHealDate,
   formatHealMonth,
-  healTrend,
-  healTrendLabel,
+  healRelative,
   lastHealActivityIso,
-  latestCheckin,
+  loadHealStore,
+  patchHealItem,
   restedHealItems,
+  saveHealStore,
   setHealItemStatus,
-  weeklyScores,
   type HealItem,
   type HealStoreV1,
-  type HealType,
 } from "@/lib/heal-store";
 import {
-  CheckInDialog,
   HEAL_OUTLINE,
   HEAL_PAGE,
   HEAL_PRIMARY,
   HealAvatar,
   HealOverlay,
-  HealSparkline,
-  readHealPhotoFile,
   useHealStore,
 } from "@/components/heal/heal-bits";
 
-function ActivityLine({ store, item }: { store: HealStoreV1; item: HealItem }) {
-  const iso = lastHealActivityIso(store, item.id);
-  if (!iso) return null;
-  return (
-    <span className="text-[12px] text-muted">
-      Last activity {formatHealDate(iso)}
-    </span>
-  );
-}
-
 export function HealHome() {
   const [store, setStore] = useHealStore();
+  const params = useSearchParams();
+  const router = useRouter();
   const active = activeHealItems(store);
   const rested = restedHealItems(store);
-  const [checkInItems, setCheckInItems] = useState<HealItem[] | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [addType, setAddType] = useState<HealType | null>(null);
   const isEmpty = active.length === 0 && rested.length === 0;
-  const openAdd = (type: HealType | null) => {
-    setAddType(type);
-    setAdding(true);
-  };
+  const [describe, setDescribe] = useState<{
+    name: string;
+    areaId: string | null;
+    obstacleId: string | null;
+    nameLocked: boolean;
+  } | null>(null);
+  const [name, setName] = useState("");
+  const openedDescribe = useRef(false);
+
+  useEffect(() => {
+    if (openedDescribe.current || params.get("describe") !== "1") return;
+    openedDescribe.current = true;
+    setDescribe({
+      name: params.get("name") ?? "",
+      areaId: params.get("area"),
+      obstacleId: params.get("obstacle"),
+      nameLocked: Boolean(params.get("name")),
+    });
+    router.replace("/heal");
+  }, [params, router]);
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-[calc(58px+env(safe-area-inset-bottom,0px)+16px)] pt-6 sm:px-6 sm:pb-10">
-      {isEmpty ? <HealEmptyHome onAdd={openAdd} /> : null}
-
-      {!isEmpty && active.length > 0 ? (
-        <section className="flex flex-col gap-2.5 rounded-2xl border border-heal-border bg-heal-tint px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3 sm:px-5 sm:py-4">
-          <span className="hidden size-11 shrink-0 items-center justify-center rounded-full bg-card text-heal-accent sm:inline-flex">
-            <Heart className="size-5" strokeWidth={1.7} aria-hidden />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-[18px] leading-tight text-foreground sm:text-[20px]">
-              A few minutes for what you&apos;re carrying
-            </h2>
-            <p className="mt-0.5 hidden text-sm text-muted sm:block">
-              Check in on how heavy things feel today. It takes under a minute.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCheckInItems(active)}
-            className="accent-fill-gradient inline-flex h-10 w-full cursor-pointer items-center justify-center rounded-full px-4 text-sm font-semibold sm:h-9 sm:w-auto"
+      {isEmpty ? (
+        <section className="rounded-2xl border border-border bg-card p-4 md:p-8">
+          <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[30px]">
+            What&apos;s hurting or holding you back?
+          </h2>
+          <p className="mt-2 max-w-xl text-[15px] leading-[1.55] text-foreground">
+            A breakup, a loss, a regret, a thought you can&apos;t shake. Write it how you&apos;d say
+            it, negative included. It&apos;s private.
+          </p>
+          <form
+            className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!name.trim()) return;
+              setDescribe({ name: name.trim(), areaId: null, obstacleId: null, nameLocked: true });
+            }}
           >
-            Start a check-in
-          </button>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. A recent breakup"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 font-display text-[17px] italic text-foreground outline-none placeholder:text-muted"
+            />
+            <button type="submit" className={`${HEAL_PRIMARY} h-11 w-full sm:w-auto`}>
+              Start
+            </button>
+          </form>
+          <p className="mt-3 text-[13px] text-muted">
+            Next you&apos;ll describe what happened. Day-to-day thoughts belong in{" "}
+            <Link href="/journal" className="font-semibold text-foreground">
+              Journal
+            </Link>
+            .
+          </p>
         </section>
-      ) : null}
-
-      {!isEmpty ? (
-      <section className="mt-[18px] sm:mt-8">
-        <HealSectionLabel
-          title="What you're carrying"
-          onAdd={() => openAdd(null)}
-        />
-        {active.length === 0 ? (
-          <HealEmptyState onAdd={openAdd} />
-        ) : (
-          <ul className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 md:grid-cols-2 xl:grid-cols-3">
-            {active.map((item) => {
-              const latest = latestCheckin(store, item.id);
-              const trend = healTrend(store, item.id);
-              return (
-                <li
-                  key={item.id}
-                  className="flex h-full flex-col rounded-2xl border border-border bg-card p-4"
-                >
-                  <Link
-                    href={`/heal/${encodeURIComponent(item.id)}`}
-                    className="flex flex-1 flex-col"
-                  >
-                    <span className="flex items-center gap-3">
-                      <HealAvatar item={item} store={store} size={52} />
-                      <span className="min-w-0">
-                        <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-heal-accent">
-                          {healTypeLabel(item.type)}
-                        </span>
-                        <span className="block truncate font-display text-[24px] leading-tight text-foreground">
-                          {item.title}
-                        </span>
-                        {item.since ? (
-                          <span className="text-[12px] text-muted">
-                            Since {formatHealDate(item.since, true)}
-                          </span>
-                        ) : null}
-                      </span>
-                    </span>
-                    <span className="mt-3 hidden items-end justify-between gap-3 sm:flex">
-                      <span>
-                        <span className="block text-[12px] text-muted">How heavy</span>
-                        <span className="font-display text-[22px] text-foreground">
-                          {latest ? latest.score : "–"}
-                          <span className="text-[14px] text-muted"> / 10</span>
-                        </span>
-                      </span>
-                      <HealSparkline scores={weeklyScores(store, item.id)} />
-                    </span>
-                    <span className="mt-3 flex items-center justify-between gap-3 sm:hidden">
-                      <span className="text-[13px] text-muted">
-                        {trend ? healTrendLabel(trend) : "No check-in yet"}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className="font-display text-[18px] text-foreground">
-                          {latest ? latest.score : "–"}
-                        </span>
-                        <HealSparkline scores={weeklyScores(store, item.id)} />
-                      </span>
-                    </span>
-                    {trend ? (
-                      <span className="mt-1 hidden text-[13px] text-muted sm:block">
-                        {healTrendLabel(trend)}
-                      </span>
-                    ) : null}
-                  </Link>
-                  <span className="mt-auto flex items-center justify-between gap-2 pt-3">
-                    <ActivityLine store={store} item={item} />
-                    <button
-                      type="button"
-                      className={HEAL_OUTLINE}
-                      onClick={() => setCheckInItems([item])}
-                    >
-                      Check in
-                    </button>
-                  </span>
-                </li>
-              );
-            })}
+      ) : (
+        <section>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">
+              What you&apos;re carrying
+            </h2>
+            <button
+              type="button"
+              className="cursor-pointer text-[13px] font-semibold text-heal-accent"
+              onClick={() => setDescribe({ name: "", areaId: null, obstacleId: null, nameLocked: false })}
+            >
+              + Add something
+            </button>
+          </div>
+          <ul className="mt-3 flex flex-col gap-2">
+            {active.map((item) => (
+              <CarryCard key={item.id} item={item} store={store} />
+            ))}
           </ul>
-        )}
-      </section>
-      ) : null}
+        </section>
+      )}
 
       {rested.length > 0 && !isEmpty ? (
         <section className="mt-[18px] sm:mt-8">
-          <HealSectionLabel title="Laid to rest" />
+          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Laid to rest</h2>
           <ul className="mt-3 flex flex-col gap-2 opacity-[0.85]">
             {rested.map((item) => (
               <li key={item.id}>
@@ -179,12 +133,9 @@ export function HealHome() {
                     <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-heal-accent">
                       {healTypeLabel(item.type)}
                     </span>
-                    <span className="block truncate font-display text-[18px] text-foreground">
-                      {item.title}
-                    </span>
+                    <span className="block truncate font-display text-[18px] text-foreground">{item.title}</span>
                     <span className="text-[12px] text-muted">
-                      {item.status === "at_peace" ? "At peace" : "Lighter"} since{" "}
-                      {formatHealMonth(item.restedAt)}
+                      {item.status === "at_peace" ? "At peace" : "Lighter"} since {formatHealMonth(item.restedAt)}
                     </span>
                   </span>
                   <Leaf className="size-4 text-heal-accent" aria-hidden />
@@ -198,32 +149,165 @@ export function HealHome() {
       <section className="mt-3 flex items-start gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-[13px] text-muted sm:mt-8">
         <Heart className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p>
-          Heal is support, not therapy. If you&apos;re struggling, talk to someone:
-          Samaritans 116 123, free, any time.{" "}
+          Heal is support, not therapy. If you&apos;re struggling, talk to someone: Samaritans 116 123,
+          free, any time.{" "}
           <Link href="/heal/support" className="font-semibold text-accent-link">
             More support
           </Link>
         </p>
       </section>
 
-      {checkInItems && checkInItems.length > 0 ? (
-        <CheckInDialog
-          items={checkInItems}
-          onClose={() => setCheckInItems(null)}
-          onSaved={setStore}
-        />
-      ) : null}
-      {adding ? (
-        <AddSomething
-          initialType={addType}
-          onClose={() => setAdding(false)}
-          onCreate={(next) => {
-            setStore(next);
-            setAdding(false);
+      {describe ? (
+        <DescribeDialog
+          initialName={describe.name}
+          nameLocked={describe.nameLocked}
+          areaId={describe.areaId}
+          obstacleId={describe.obstacleId}
+          onClose={() => setDescribe(null)}
+          onSaved={(id) => {
+            setStore(loadHealStore());
+            setDescribe(null);
+            router.push(`/heal/${encodeURIComponent(id)}`);
           }}
         />
       ) : null}
     </div>
+  );
+}
+
+function CarryCard({ item, store }: { item: HealItem; store: HealStoreV1 }) {
+  const good = currentView(store, item.id, "good");
+  const updated = lastHealActivityIso(store, item.id);
+  return (
+    <li>
+      <Link
+        href={`/heal/${encodeURIComponent(item.id)}`}
+        className="block rounded-2xl border border-border bg-card px-3 py-3 sm:px-4"
+      >
+        <span className="flex items-center gap-3">
+          <HealAvatar item={item} store={store} size={42} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-heal-accent">
+              {healTypeLabel(item.type)}
+            </span>
+            <span className="block truncate font-display text-[20px] leading-tight text-foreground">{item.title}</span>
+            {item.since ? (
+              <span className="hidden text-[12px] text-muted sm:block">Since {formatHealDate(item.since)}</span>
+            ) : null}
+          </span>
+          <SelectChevron direction="right" />
+        </span>
+        <span className="mt-3 block">
+          {good ? (
+            <>
+              <span className="block text-[11px] font-semibold text-muted">
+                {good.source === "setup" ? "On a good day · suggested" : "On a good day"}
+              </span>
+              <span className="mt-1 line-clamp-2 font-display text-[17px] leading-snug text-foreground sm:line-clamp-3">
+                {good.text}
+              </span>
+            </>
+          ) : (
+            <span className="text-[13px] text-muted">No good-day view yet. Answer an exercise to start.</span>
+          )}
+        </span>
+        <span className="mt-3 block text-[12px] text-muted">
+          {updated ? `Updated ${healRelative(updated)}` : "Updated today"}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function DescribeDialog({
+  initialName,
+  nameLocked,
+  areaId,
+  obstacleId,
+  onClose,
+  onSaved,
+}: {
+  initialName: string;
+  nameLocked: boolean;
+  areaId: string | null;
+  obstacleId: string | null;
+  onClose: () => void;
+  onSaved: (id: string) => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [text, setText] = useState("");
+  const [ai, setAi] = useState(true);
+
+  function save() {
+    const title = (nameLocked ? initialName : name).trim();
+    if (!title || !text.trim()) return;
+    let next = createHealItem(loadHealStore(), {
+      type: "other",
+      title,
+      since: null,
+      aboutText: "",
+      lifeAreaId: areaId,
+      photoDataUrl: null,
+    });
+    const item = next.items[0];
+    if (!item) return;
+    next = patchHealItem(next, item.id, {
+      aiEnabled: ai,
+      sourceObstacleId: obstacleId,
+      linkedLifeAreaIds: areaId ? [areaId] : item.linkedLifeAreaIds,
+    });
+    next = addHealUpdate(next, item.id, text);
+    saveHealStore(next);
+    onSaved(item.id);
+  }
+
+  return (
+    <HealOverlay title="Describe it" onClose={onClose} wide>
+      <div className="flex min-h-[70dvh] flex-col overflow-y-auto px-5 py-5 sm:min-h-0">
+        {nameLocked ? (
+          <p className="text-[13px] font-semibold text-muted">{initialName}</p>
+        ) : (
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. A recent breakup"
+            className="h-11 rounded-xl border border-border bg-background px-3 font-display text-[17px] italic outline-none placeholder:text-muted"
+          />
+        )}
+        <h2 className="mt-3 font-display text-[26px] leading-tight text-foreground">
+          What happened, and what do you keep thinking about it?
+        </h2>
+        <p className="mt-1 text-[13px] text-muted">Type or speak. A few sentences is enough.</p>
+        <div className="relative mt-3">
+          <textarea
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            rows={8}
+            className="w-full resize-none rounded-xl border border-border bg-background px-3 py-3 pr-14 font-display text-[17px] leading-relaxed outline-none"
+          />
+          <span className="absolute bottom-2 right-2">
+            <DictationMicButton
+              variant="inset"
+              onTranscript={(spoken) => setText((current) => appendSpokenText(current, spoken))}
+            />
+          </span>
+        </div>
+        <label className="mt-3 flex items-start gap-2 text-[13px] text-foreground">
+          <input type="checkbox" checked={ai} onChange={(event) => setAi(event.target.checked)} className="mt-0.5" />
+          <span>Let AI read this to suggest exercises. Only this item&apos;s writing is used.</span>
+        </label>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button type="button" className={HEAL_PRIMARY} disabled={!text.trim() || !(nameLocked ? initialName : name).trim()} onClick={save}>
+            Save
+          </button>
+          <button type="button" className={HEAL_OUTLINE} onClick={onClose}>
+            Back
+          </button>
+          <p className="hidden text-[12px] text-muted sm:ml-auto sm:block">Opens with your exercises ready</p>
+        </div>
+        <Mic className="sr-only" aria-hidden />
+      </div>
+    </HealOverlay>
   );
 }
 
@@ -260,287 +344,5 @@ export function HealRested() {
         </ul>
       )}
     </div>
-  );
-}
-
-const EMPTY_EXAMPLES: { type: HealType; label: string }[] = [
-  { type: "grief", label: "Someone I've lost" },
-  { type: "heartbreak", label: "A relationship that ended" },
-  { type: "regret", label: "Something I regret" },
-  { type: "resentment", label: "A falling-out" },
-  { type: "recurring_thought", label: "A thought that keeps coming back" },
-  { type: "belief", label: "A belief that holds me back" },
-  { type: "pattern", label: "A pattern I keep repeating" },
-];
-
-const HOW_IT_WORKS: { icon: ReactNode; title: string; body: string }[] = [
-  {
-    icon: <PenLine className="size-[15px]" strokeWidth={1.8} aria-hidden />,
-    title: "Say it as it is",
-    body: "How you've been seeing it, negative included. It stays private.",
-  },
-  {
-    icon: <ArrowRight className="size-[15px]" strokeWidth={1.8} aria-hidden />,
-    title: "Work on it",
-    body: "Short tools and writing prompts. Each one asks if it changes how you see it.",
-  },
-  {
-    icon: <Sparkles className="size-[15px]" strokeWidth={1.8} aria-hidden />,
-    title: "Take the new view into Manifest",
-    body: "When it feels true, add it to your vision. Then lay this to rest.",
-  },
-];
-
-function HowItWorksRows() {
-  return (
-    <>
-      {HOW_IT_WORKS.map((row) => (
-        <div key={row.title} className="flex items-start gap-3">
-          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-heal-tint text-heal-accent">
-            {row.icon}
-          </span>
-          <span className="flex flex-col gap-[3px]">
-            <span className="text-sm font-semibold text-foreground">{row.title}</span>
-            <span className="text-[13px] leading-[1.45] text-foreground">{row.body}</span>
-          </span>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function HealEmptyHome({ onAdd }: { onAdd: (type: HealType | null) => void }) {
-  return (
-    <>
-      <section className="rounded-2xl border border-border bg-card p-4 md:p-8">
-        <div className="flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:items-center md:gap-8">
-          <div className="flex flex-col gap-4">
-            <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[30px] md:leading-[1.15]">
-              For the things you can&apos;t seem to put down
-            </h2>
-            <p className="text-[15px] leading-[1.55] text-foreground">
-              Say what&apos;s actually in the way, negative included, and work towards seeing it
-              differently.
-            </p>
-            <p className="pt-1.5 text-[13px] font-semibold text-foreground">What are you carrying?</p>
-            <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
-              {EMPTY_EXAMPLES.map((example) => (
-                <button
-                  key={example.type}
-                  type="button"
-                  onClick={() => onAdd(example.type)}
-                  className="inline-flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-full border border-heal-border bg-heal-tint px-4 text-[13px] font-semibold text-foreground md:w-auto md:justify-start md:pl-4 md:pr-3.5 md:text-sm"
-                >
-                  {example.label}
-                  <Plus className="size-3.5 text-heal-accent" strokeWidth={1.8} aria-hidden />
-                </button>
-              ))}
-            </div>
-            <p className="text-[13px] text-muted">
-              Or{" "}
-              <button
-                type="button"
-                onClick={() => onAdd(null)}
-                className="cursor-pointer font-semibold text-heal-accent"
-              >
-                add something else
-              </button>
-              . Day-to-day thoughts belong in{" "}
-              <Link href="/journal" className="font-semibold text-heal-accent">
-                Journal
-              </Link>
-              .
-            </p>
-          </div>
-          <div className="hidden flex-col gap-5 border-l border-heal-border pl-8 md:flex">
-            <HowItWorksRows />
-          </div>
-        </div>
-      </section>
-      <section className="mt-3 flex flex-col gap-3.5 rounded-2xl border border-border bg-card p-4 md:hidden">
-        <HowItWorksRows />
-      </section>
-    </>
-  );
-}
-
-function HealSectionLabel({
-  title,
-  onAdd,
-}: {
-  title: string;
-  onAdd?: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">
-        {title}
-      </h2>
-      {onAdd ? (
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-[13px] font-semibold text-heal-accent"
-        >
-          <Plus className="size-3.5" aria-hidden />
-          <span className="sm:hidden">Add</span>
-          <span className="hidden sm:inline">Add something</span>
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function HealEmptyState({
-  onAdd,
-}: {
-  onAdd: (type: HealType | null) => void;
-}) {
-  return (
-    <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5">
-      <span className="inline-flex size-10 items-center justify-center rounded-full bg-heal-tint text-heal-accent">
-        <Heart className="size-5" strokeWidth={1.7} aria-hidden />
-      </span>
-      <h3 className="font-display text-[18px] leading-tight text-foreground sm:text-[20px]">
-        Start with one thing
-      </h3>
-      <p className="text-[13px] leading-relaxed text-foreground sm:text-sm">
-        Something you keep coming back to: someone you&apos;ve lost, something you
-        regret, a relationship that ended. You can add more later.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {EMPTY_EXAMPLES.map((example) => (
-          <button
-            key={example.type}
-            type="button"
-            onClick={() => onAdd(example.type)}
-            className="inline-flex cursor-pointer items-center rounded-full border border-border bg-card px-3 py-1.5 text-[13px] font-semibold text-foreground"
-          >
-            {example.label}
-          </button>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => onAdd(null)}
-        className={`${HEAL_PRIMARY} w-full sm:w-auto`}
-      >
-        Add something you&apos;re carrying
-      </button>
-    </div>
-  );
-}
-
-function AddSomething({
-  initialType,
-  onClose,
-  onCreate,
-}: {
-  initialType: HealType | null;
-  onClose: () => void;
-  onCreate: (next: HealStoreV1) => void;
-}) {
-  const [type, setType] = useState<HealType | null>(initialType);
-  const [title, setTitle] = useState("");
-  const [since, setSince] = useState("");
-  const [seeing, setSeeing] = useState("");
-  const [about, setAbout] = useState("");
-  const [photo, setPhoto] = useState<string | null>(null);
-
-  return (
-    <HealOverlay title="Add something" onClose={onClose}>
-      <form
-        className="overflow-y-auto px-5 py-5 sm:px-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!type || !title.trim()) return;
-          onCreate(
-            createHealItem(loadHealStore(), {
-              type,
-              title,
-              since: since || null,
-              aboutText: about,
-              seeingText: seeing,
-              photoDataUrl: photo,
-            }),
-          );
-        }}
-      >
-        <h2 className="font-display text-[22px] text-foreground">Add something</h2>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {HEAL_TYPES.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={() => setType(row.id)}
-              className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${
-                type === row.id
-                  ? "border-foreground bg-foreground text-white"
-                  : "border-heal-border bg-heal-tint text-foreground"
-              }`}
-            >
-              {row.label}
-            </button>
-          ))}
-        </div>
-        <label className="mt-4 block text-sm">
-          What to call it
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            placeholder={type === "pattern" ? "e.g. Saying yes to everything" : undefined}
-            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
-          />
-        </label>
-        <label className="mt-3 block text-sm">
-          How have you been seeing it? (optional)
-          <textarea
-            value={seeing}
-            onChange={(e) => setSeeing(e.target.value)}
-            rows={3}
-            className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
-          />
-        </label>
-        <label className="mt-3 block text-sm">
-          Since (optional)
-          <input
-            type="date"
-            value={since}
-            onChange={(e) => setSince(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
-          />
-        </label>
-        <label className="mt-3 block text-sm">
-          Photo (optional)
-          <input
-            type="file"
-            accept="image/*"
-            className="mt-1 block w-full text-sm"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              void readHealPhotoFile(file).then(setPhoto);
-            }}
-          />
-        </label>
-        <label className="mt-3 block text-sm">
-          What happened (optional)
-          <textarea
-            value={about}
-            onChange={(e) => setAbout(e.target.value)}
-            rows={4}
-            className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 font-display text-[18px] leading-relaxed outline-none"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={!type || !title.trim()}
-          className={`${HEAL_PRIMARY} mt-4 w-full`}
-        >
-          Add
-        </button>
-      </form>
-    </HealOverlay>
   );
 }

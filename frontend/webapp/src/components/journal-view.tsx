@@ -20,7 +20,8 @@ import {
 } from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
-import { Calendar, Folder, SquarePen } from "lucide-react";
+import { Calendar, Folder, Play, SquarePen } from "lucide-react";
+import { journalMeditationForEntry } from "@/lib/heal-meditation-links";
 import { JournalReflectMeditationCard } from "@/components/journal-reflect-meditation-card";
 import {
   consumeReflectMeditationHandoff,
@@ -1295,7 +1296,7 @@ export function JournalView() {
     } catch {
       /* ignore */
     }
-    navigate("/meditate/create?fromJournal=1");
+    navigate("/meditate/create?step=shape&fromJournal=1");
   }, [activeEntry, flushSaveSync, navigate]);
 
   const openLifeAreaFromActive = useCallback(() => {
@@ -2350,7 +2351,26 @@ export function JournalView() {
                   </div>
                 }
                 belowHeader={
-                  activeEntry.meditationId ? (
+                  <>
+                  {(() => {
+                    const made = journalMeditationForEntry(activeEntry.id);
+                    if (!made) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(
+                            `/meditate/library/creations?focus=pending:${encodeURIComponent(made.jobId)}&play=1`,
+                          )
+                        }
+                        className="mb-2 inline-flex cursor-pointer items-center gap-2 text-[13px] font-semibold"
+                      >
+                        <Play className="size-3.5" aria-hidden />
+                        Meditation · {made.title}
+                      </button>
+                    );
+                  })()}
+                  {activeEntry.meditationId ? (
                     <JournalReflectMeditationCard
                       meditationId={activeEntry.meditationId}
                       snapshot={activeEntry.meditationSnapshot}
@@ -2367,7 +2387,8 @@ export function JournalView() {
                         });
                       }}
                     />
-                  ) : null
+                  ) : null}
+                  </>
                 }
               >
                 <JournalEntryMeta

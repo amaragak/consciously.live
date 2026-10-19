@@ -1,7 +1,7 @@
-import { ArrowDown, ArrowRight, Check, Heart, Leaf, PenLine, Sparkles } from "lucide-react";
+import { ArrowDown, ArrowRight, Check, ChevronRight, Heart, Leaf, PenLine, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SelectChevron } from "@/components/select-chevron";
-import { HEAL_OUTLINE, HEAL_PRIMARY, HealOverlay } from "@/components/heal/heal-bits";
+import { HEAL_OUTLINE, HEAL_PRIMARY, HealOverlay, useHealStore } from "@/components/heal/heal-bits";
 import { friendQuestion, typePracticePrompt } from "@/lib/heal-copy";
 import { healAskAngle } from "@/lib/heal-ai";
 import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
@@ -10,7 +10,9 @@ import {
   createHealItem,
   currentReframe,
   formatHealDate,
+  healItemForObstacle,
   healRelative,
+  lastHealActivityIso,
   loadHealStore,
   patchHealItem,
   reframesForItem,
@@ -651,56 +653,41 @@ export function syncLinkedReframe(itemId: string, text: string) {
 export function HealObstacleNote({
   dreamId,
   label,
-  text,
-  healItemId,
 }: {
   dreamId: string;
   label: string;
   text?: string | null;
   healItemId?: string | null;
 }) {
-  if (text && healItemId) {
+  const [store] = useHealStore();
+  const item = healItemForObstacle(store, dreamId, label);
+  if (item) {
+    const updated = lastHealActivityIso(store, item.id);
     return (
       <a
-        href={`/manifest/goal/${encodeURIComponent(dreamId)}`}
-        className="mt-1 block rounded-xl border border-heal-border bg-heal-tint px-3 py-2"
-        onClick={(event) => {
-          event.preventDefault();
-          window.location.assign(`/heal/${encodeURIComponent(healItemId)}`);
-        }}
+        href={`/heal/${encodeURIComponent(item.id)}`}
+        className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-[13px]"
       >
-        <span className="flex items-center gap-1 text-[12px] font-semibold text-heal-accent">
-          <Heart className="size-3.5" aria-hidden />
-          How I see it now · from Heal
-        </span>
-        <span className="mt-1 block font-display text-[16px] leading-snug text-foreground">{text}</span>
+        <Heart className="size-3.5 text-heal-accent" aria-hidden />
+        <span className="font-semibold">Working on it in Heal</span>
+        {updated ? <span className="text-muted">· updated {healRelative(updated)}</span> : null}
+        <ChevronRight className="ml-auto size-3.5 text-muted" aria-hidden />
       </a>
     );
   }
   return (
     <button
       type="button"
-      className="mt-1 cursor-pointer text-[13px] font-semibold text-accent-link"
+      className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[13px] font-semibold"
       onClick={() => {
-        const next = addHealItemForObstacle(dreamId, label);
-        if (next) window.location.assign(`/heal/${encodeURIComponent(next)}`);
+        const name = encodeURIComponent(label);
+        const area = encodeURIComponent(dreamId);
+        const obstacle = encodeURIComponent(`${dreamId}::${label}`);
+        window.location.assign(`/heal?describe=1&name=${name}&area=${area}&obstacle=${obstacle}`);
       }}
     >
+      <Heart className="size-3.5 text-heal-accent" aria-hidden />
       Work through this in Heal
     </button>
   );
-}
-
-function addHealItemForObstacle(dreamId: string, label: string): string | null {
-  const store = createHealItem(loadHealStore(), {
-    type: "belief",
-    title: label,
-    since: null,
-    aboutText: "",
-    seeingText: label,
-    lifeAreaId: dreamId,
-    photoDataUrl: null,
-  });
-  saveHealStore(store);
-  return store.items[0]?.id ?? null;
 }

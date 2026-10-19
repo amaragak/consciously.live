@@ -477,7 +477,7 @@ function RecurringThoughtCard({
           }}
           className="h-11 w-fit px-4"
         >
-          Make a meditation for this thought
+          Create meditation
         </PrimaryCreateButton>
       ) : null}
     </div>

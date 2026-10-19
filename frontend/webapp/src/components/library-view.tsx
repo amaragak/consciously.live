@@ -1,5 +1,9 @@
 
 import {
+  isHealLinkedJob,
+  loadHealMeditationLinks,
+} from "@/lib/heal-meditation-links";
+import {
   liveMixTrack,
   useLibraryPlayer,
 } from "@/components/library-player-provider";
@@ -845,7 +849,10 @@ export default function LibraryView({
   const [mixFactoryLoading, setMixFactoryLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>(() =>
+    searchParams.get("source") === "heal" ? "heal" : "all",
+  );
+  const healItemQuery = searchParams.get("healItem")?.trim() || "";
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isMobileLayout, setIsMobileLayout] = useState(() =>
     typeof window !== "undefined"
@@ -1233,12 +1240,25 @@ export default function LibraryView({
         !(pinnedAudioId && x.s3Key === pinnedAudioId),
     );
     const afterFav = favouritesOnly ? base.filter((x) => x.favourite) : base;
+    const healJobIds =
+      categoryFilter === "heal" || healItemQuery
+        ? new Set(
+            loadHealMeditationLinks()
+              .filter((row) => !healItemQuery || row.healItemId === healItemQuery)
+              .filter((row) => row.healItemId)
+              .map((row) => row.jobId),
+          )
+        : null;
+    const matchesHeal = (jobId: string | null | undefined) =>
+      !healJobIds || Boolean(jobId && healJobIds.has(jobId));
     const afterCat =
-      categoryFilter === "all"
-        ? afterFav
-        : afterFav.filter(
-            (x) => libraryMeditationCategoryLabel(x) === categoryFilter,
-          );
+      healJobIds
+        ? afterFav.filter((x) => matchesHeal(x.jobId))
+        : categoryFilter === "all"
+          ? afterFav
+          : afterFav.filter(
+              (x) => libraryMeditationCategoryLabel(x) === categoryFilter,
+            );
     const catalogued = afterCat.filter((x) => {
       if (!tokens.length) return true;
       if (algoliaMeditationIds) {
@@ -1247,6 +1267,7 @@ export default function LibraryView({
       return libraryRowMatchesSearch(x, tokens);
     });
     const pendingMatched = pendingRows.filter((x) => {
+      if (healJobIds && !matchesHeal(x.jobId)) return false;
       if (!libraryRowMatchesSearch(x, tokens)) return false;
       const src = pending.find((p) => p.jobId === x.jobId);
       return !src || !pendingHasCataloguedItem(catalogued, src);
@@ -1269,6 +1290,7 @@ export default function LibraryView({
     algoliaMeditationIds,
     algoliaMeditationOrderedIds,
     storyPlacement,
+    healItemQuery,
   ]);
 
   useEffect(() => {
@@ -1278,7 +1300,7 @@ export default function LibraryView({
   }, [sortBy, favouritesOnly, categoryFilter, libraryTab, searchQuery]);
 
   useEffect(() => {
-    setCategoryFilter("all");
+    setCategoryFilter(searchParams.get("source") === "heal" ? "heal" : "all");
     setFavouritesOnly(false);
     setExploringProgramId(null);
     if (libraryTab === "programs") setViewMode("list");
@@ -1355,6 +1377,7 @@ export default function LibraryView({
         value: cat,
         label: cat,
       })),
+      { value: "heal", label: "Heal" },
     ];
   }, [categoryOptions]);
 
@@ -2332,6 +2355,7 @@ export default function LibraryView({
     const allowShare =
       source !== "program" &&
       !item.isDraft &&
+      !isHealLinkedJob(item.jobId) &&
       (isCommunity ? Boolean(shareId) : Boolean(item.sk) && own);
     const reflectSource: JournalMeditationSource = isCommunity
       ? "community"
@@ -2450,6 +2474,7 @@ export default function LibraryView({
         allowShare={
           !isProgramShelf &&
           !m.isDraft &&
+          !isHealLinkedJob(m.jobId) &&
           (isCommunity
             ? Boolean(shareId)
             : Boolean(m.sk) && !hideOwnerActions)
@@ -2496,7 +2521,11 @@ export default function LibraryView({
           if (!m.sk) return;
           setArchiveConfirm({ sk: m.sk, title: m.title });
         }}
-        onPublicChange={(isPublic) => void setPublic(m, isPublic)}
+        onPublicChange={
+          isHealLinkedJob(m.jobId)
+            ? undefined
+            : (isPublic) => void setPublic(m, isPublic)
+        }
         onOpenMix={(anchorEl) => {
           setMixAnchorEl(anchorEl);
           openMixEditor(m);

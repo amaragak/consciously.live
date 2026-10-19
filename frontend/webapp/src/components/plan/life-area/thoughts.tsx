@@ -459,7 +459,7 @@ function Feed({
                           if (href) navigate(href);
                         }}
                       >
-                        ✦ Make a meditation
+                        ✦ Create meditation
                       </button>
                       <button
                         type="button"

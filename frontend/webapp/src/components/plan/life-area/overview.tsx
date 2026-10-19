@@ -414,7 +414,7 @@ function MeditationsCard({
       </div>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm italic text-muted">
-          None yet. Use Generate meditation when you have a vision written, or
+          None yet. Use Create meditation when you have a vision written, or
           pick this life area in Create.
         </p>
       ) : (

@@ -108,7 +108,7 @@ export function ManifestPracticeButton({
         onClick={make}
         className={`${className} w-full rounded-full!`}
       >
-        ✦ Make a meditation for this
+        ✦ Create meditation
       </PrimaryCreateButton>
     );
   }

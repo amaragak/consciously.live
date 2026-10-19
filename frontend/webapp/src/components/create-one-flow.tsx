@@ -43,12 +43,21 @@ import {
   type CreateFlowGoalAttachment,
   type CreateFlowJournalAttachment,
   type CreateFlowChatTurn,
+  type CreateFlowHealAttachment,
   type CreateFlowProgramAttachment,
   type CreateOneFlowState,
   type CreateOneFlowStep,
   type MeditationLengthMinutes,
 } from "@/lib/create-one-flow-state";
 import { CREATE_MEDITATE_ROOT } from "@/lib/create-meditation-path";
+import { HealAvatar, useHealStore } from "@/components/heal/heal-bits";
+import { healTypeLabel } from "@/lib/heal-copy";
+import {
+  healCreateAttachment,
+  healShapeOpeningLine,
+  rememberHealMeditationLink,
+} from "@/lib/heal-meditation-links";
+import { currentView, loadHealStore } from "@/lib/heal-store";
 import {
   consumeGuidePracticeHandoff,
   MANIFESTO_CONTEXT_ID,
@@ -93,8 +102,10 @@ import {
 } from "@/lib/medimade-api";
 import { fetchUserSettings, patchUserSettings } from "@/lib/settings-api";
 import {
+  JOURNAL_MEDITATION_PAYLOAD_KEY,
   journalEntryPlainForHandoff,
   loadJournalStore,
+  parseJournalMeditationPayload,
   loadJournalStoreRaw,
   type JournalEntry,
   type JournalFolder,
@@ -139,7 +150,15 @@ const EMPTY_SESSION_OVERRIDE_META: CreateSoundSessionOverrideMeta = {
   soundDiffers: false,
 };
 
-type PickerKind = "style" | "program" | "journal" | "goal" | null;
+type PickerKind = "style" | "program" | "journal" | "goal" | "heal" | null;
+
+function healFocusFromReply(text: string): CreateFlowHealAttachment["focus"] {
+  const t = text.trim().toLowerCase();
+  if (t === "sit with it") return "sit_with_it";
+  if (t.startsWith("move towards")) return "move_towards";
+  if (t === "both") return "both";
+  return null;
+}
 
 function isStyleLabel(s: string): s is MeditationStyleLabel {
   return (MEDITATION_STYLE_LABELS as readonly string[]).includes(s);
@@ -389,7 +408,10 @@ export function CreateOneFlow({
   }, []);
 
   // Fresh mount has no draft — don't keep a mid-flow ?step= from a prior visit.
+  // Heal and journal handoffs open on Shape with the token already attached.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("fromHeal") || params.get("fromJournal") === "1") return;
     if (step === "start") return;
     navigate(createOneFlowHref("start"), { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount
@@ -415,6 +437,8 @@ export function CreateOneFlow({
   const [draftJournalId, setDraftJournalId] = useState<string | null>(null);
   const [draftLifeAreaId, setDraftLifeAreaId] = useState<string | null>(null);
   const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
+  const [draftHealId, setDraftHealId] = useState<string | null>(null);
+  const [healStore] = useHealStore();
 
   const [programs, setPrograms] = useState<LibraryProgram[]>([]);
   const [programsReady, setProgramsReady] = useState(false);
@@ -556,7 +580,62 @@ export function CreateOneFlow({
       next.delete("seed");
       setSearchParams(next, { replace: true });
     } else if (seedJournalContext) {
-      setPicker("journal");
+      const raw = sessionStorage.getItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
+      const payload = parseJournalMeditationPayload(raw);
+      const segment = payload?.segments[0];
+      if (segment) {
+        const title = segment.title.trim();
+        const firstLine =
+          segment.bodyPlain
+            .split("\n")
+            .map((line) => line.trim())
+            .find(Boolean) || "Journal entry";
+        const line = title && title !== "Untitled" ? title : firstLine;
+        const next: CreateOneFlowState = {
+          ...stateRef.current,
+          prompt: line,
+          journals: [
+            {
+              id: segment.entryId,
+              title: title || firstLine,
+              bodyPlain: segment.bodyPlain,
+            },
+          ],
+        };
+        stateRef.current = next;
+        setState(next);
+        if (step === "shape") {
+          window.setTimeout(() => onEnterShapeStepRef.current?.(), 0);
+        } else {
+          goStep("shape");
+        }
+      } else {
+        setPicker("journal");
+      }
+      const clearJournalHandoff = window.setTimeout(() => {
+        sessionStorage.removeItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
+      }, 50);
+      return () => window.clearTimeout(clearJournalHandoff);
+    } else if (new URLSearchParams(window.location.search).get("fromHeal")) {
+      const healId = new URLSearchParams(window.location.search).get("fromHeal") || "";
+      const store = loadHealStore();
+      const item = store.items.find((row) => row.id === healId && row.status !== "at_peace");
+      if (item) {
+        const attachment = healCreateAttachment(item, store);
+        const next: CreateOneFlowState = {
+          ...stateRef.current,
+          prompt: attachment.title,
+          heal: attachment,
+          chat: [{ role: "assistant", text: healShapeOpeningLine(attachment.title) }],
+        };
+        stateRef.current = next;
+        setState(next);
+        if (step === "shape") {
+          window.setTimeout(() => onEnterShapeStepRef.current?.(), 0);
+        } else {
+          goStep("shape");
+        }
+      }
     } else if (seedPlanContext && !planHandoffAppliedRef.current) {
       setPicker("goal");
     }
@@ -1036,6 +1115,14 @@ export function CreateOneFlow({
   function openShapeCoach(s: CreateOneFlowState) {
     const hasAssistant = s.chat.some((m) => m.role === "assistant");
     if (hasAssistant) return;
+    if (s.heal) {
+      const text = healShapeOpeningLine(s.heal.title);
+      setState((prev) => ({
+        ...prev,
+        chat: [...prev.chat, { role: "assistant", text }],
+      }));
+      return;
+    }
     // Always stream the first Shape turn — never seed a hardcoded assistant line.
     const lean = Boolean(shapeCachedContextRef.current);
     const content = buildShapeOpenUserContent({
@@ -1299,6 +1386,7 @@ export function CreateOneFlow({
       setDraftLifeAreaId(state.goal?.lifeAreaId ?? null);
       setDraftGoalId(state.goal?.goalId ?? null);
     }
+    if (kind === "heal") setDraftHealId(state.heal?.itemId ?? null);
     setPicker(kind);
   }
 
@@ -1377,6 +1465,25 @@ export function CreateOneFlow({
       contextNote = att.goalTitle
         ? `Life area "${att.lifeAreaTitle}" (goal: "${att.goalTitle}") was just attached. Acknowledge this goal by name and say how you will use it in the meditation. It does NOT complete your last question unless it clearly covers that question — if it does, mark that item done. If a required Ask-item/AIM is still unanswered, ask ONE question that still serves it and ties it to this goal. If everything required is covered, confirm-only + [[READY]].`
         : `Life area "${att.lifeAreaTitle}" was just attached. Acknowledge this life area by name and say how you will use it in the meditation. It does NOT complete your last question unless it clearly covers that question — if it does, mark that item done. If a required Ask-item/AIM is still unanswered, ask ONE question that still serves it and ties it to this life area. If everything required is covered, confirm-only + [[READY]].`;
+    } else if (picker === "heal") {
+      const item = healStore.items.find((row) => row.id === draftHealId && row.status !== "at_peace");
+      if (!item) return;
+      const att: CreateFlowHealAttachment = healCreateAttachment(item, healStore);
+      const alreadyTalking = state.chat.some((turn) => turn.role === "assistant");
+      setState((prev) => ({
+        ...prev,
+        heal: att,
+        chat:
+          alreadyTalking || step !== "shape"
+            ? prev.chat
+            : [...prev.chat, { role: "assistant", text: healShapeOpeningLine(att.title) }],
+      }));
+      if (alreadyTalking) {
+        contextKind = "heal";
+        contextLabel = att.title;
+        contextDetail = null;
+        contextNote = `Heal item "${att.title}" was just attached. Do not quote their private writing. If you have not already asked, ask whether they want to sit with the feeling, move towards their good-day view, or both.`;
+      }
     }
     setPicker(null);
     if (contextNote && contextLabel && contextKind) {
@@ -1473,7 +1580,15 @@ export function CreateOneFlow({
     scrollShapeThreadToBottom();
     const prev = stateRef.current;
     const chat = [...prev.chat, { role: "user" as const, text: trimmed }];
-    const nextState = { ...prev, chat };
+    const focusFromReply = healFocusFromReply(trimmed);
+    const nextState = {
+      ...prev,
+      chat,
+      heal:
+        prev.heal && !prev.heal.focus && focusFromReply
+          ? { ...prev.heal, focus: focusFromReply }
+          : prev.heal,
+    };
     setState(nextState);
     const messages = buildShapeTurnApiMessages({
       chat,
@@ -1531,6 +1646,36 @@ export function CreateOneFlow({
         );
       }
     }
+    if (state.heal) {
+      const h = state.heal;
+      const focusLine =
+        h.focus === "sit_with_it"
+          ? "Stay with the feeling. Offer kindness. Do not push them to change it."
+          : h.focus === "move_towards"
+            ? "Start near the bad-day line and close in the good-day view, using their words."
+            : h.focus === "both"
+              ? "Open by sitting with the feeling, then close in the good-day view in their words."
+              : "They have not chosen a focus.";
+      const canDoLine =
+        h.canDo === "no"
+          ? "They cannot do anything about this. Acceptance only. No action line."
+          : h.canDo === "yes"
+            ? "They can do something. At most one gentle line about the next small step."
+            : "Do not add an action line.";
+      lines.push(
+        [
+          `Heal context (source: heal, healItemId: ${h.itemId}).`,
+          `Kind: ${h.kind}. canDo: ${h.canDo ?? "unknown"}.`,
+          `Good day (main material): ${h.goodDay || "(none yet)"}`,
+          `Bad day (starting point only, never an affirmation): ${h.badDay || "(none yet)"}`,
+          `What's going on and recent answers:\n${h.context || "(none)"}`,
+          `Focus: ${h.focus ?? "unset"}. ${focusLine}`,
+          canDoLine,
+          "Use only their words and facts. Invent nothing. Aim at acceptance and self-forgiveness, not an upbeat fix. No silver linings for a death. Nothing about another person's motives.",
+          `Library title: For ${h.title}. Do not put their private sentences in the library description, and do not suggest sharing.`,
+        ].join("\n"),
+      );
+    }
     if (state.goal) {
       lines.push(`Life area: ${state.goal.lifeAreaTitle}`);
     }
@@ -1561,6 +1706,8 @@ export function CreateOneFlow({
       const provenance = buildMeditationCreationProvenance({
         creationPath: state.program
           ? "fromProgram"
+          : state.heal
+            ? "freeflow"
           : state.journals.length
             ? "journalReflect"
             : state.goal
@@ -1613,16 +1760,19 @@ export function CreateOneFlow({
         const sessionTitle =
           sessionId && state.program
             ? state.program.sessionTitles[sessionId] || "Session"
-            : null;
-        const transcript = sessionTitle
-          ? `${baseTranscript}\n\nProgram session: ${sessionTitle} (target ${minutes} min)`
-          : baseTranscript;
+            : state.heal
+              ? `For ${state.heal.title}`
+              : null;
+        const transcript =
+          sessionId && sessionTitle
+            ? `${baseTranscript}\n\nProgram session: ${sessionTitle} (target ${minutes} min)`
+            : baseTranscript;
 
         const { jobId } = await createMeditationAudioJob({
           meditationStyle: styleForJob ?? "General",
           journalMode:
             !state.style ||
-            Boolean(state.journals.length || state.goal || state.program),
+            Boolean(state.journals.length || state.goal || state.program || state.heal),
           meditationTargetMinutes: minutes,
           transcript,
           reference_id: soundExtras.reference_id,
@@ -1681,6 +1831,16 @@ export function CreateOneFlow({
         });
 
         if (!firstJobId) firstJobId = jobId;
+        if (state.heal || state.journals[0]) {
+          rememberHealMeditationLink({
+            jobId,
+            title: sessionTitle || state.prompt.trim() || "Meditation",
+            createdAt: new Date().toISOString(),
+            healItemId: state.heal?.itemId ?? null,
+            viewId: state.heal?.goodViewId ?? null,
+            journalEntryId: state.journals[0]?.id ?? null,
+          });
+        }
         const stagedSource = peekStagedLifeAreaMeditationSource();
         if (stagedSource) rememberLifeAreaMeditationSource(jobId, stagedSource);
         appendPendingLibraryGeneration({
@@ -1729,7 +1889,8 @@ export function CreateOneFlow({
     state.style ||
       state.program ||
       state.journals.length > 0 ||
-      state.goal,
+      state.goal ||
+      state.heal,
   );
 
   const tokens = (
@@ -1739,6 +1900,7 @@ export function CreateOneFlow({
       includeProgram?: boolean;
       includeJournal?: boolean;
       includeGoal?: boolean;
+      includeHeal?: boolean;
       kindLabels?: boolean;
     },
   ): ReactNode => (
@@ -1845,6 +2007,23 @@ export function CreateOneFlow({
           }
         />
       ) : null}
+      {opts?.includeHeal !== false && state.heal ? (
+        <ContextToken
+          name={`Heal · ${state.heal.title}`}
+          onRemove={
+            removable
+              ? () => {
+                  const title = state.heal!.title;
+                  removeShapeAttachment({
+                    contextKind: "heal",
+                    label: title,
+                    apply: (p) => ({ ...p, heal: null }),
+                  });
+                }
+              : undefined
+          }
+        />
+      ) : null}
     </>
   );
 
@@ -1878,7 +2057,7 @@ export function CreateOneFlow({
   const goalSelected = Boolean(state.goal);
 
   const renderStartTile = (
-    kind: "style" | "program" | "journal" | "goal",
+    kind: "style" | "program" | "journal" | "goal" | "heal",
     title: string,
     line: string,
     coverCategory: string,
@@ -1898,7 +2077,13 @@ export function CreateOneFlow({
         } ${opts.dimmed ? "opacity-40 grayscale" : ""}`}
       >
         <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20 md:aspect-[4/3] md:h-auto md:w-full">
-          {coverUrl ? (
+          {kind === "heal" ? (
+            <span className="flex h-full w-full items-center justify-center text-heal-accent">
+              <svg viewBox="0 0 24 24" className="h-8 w-8" fill="currentColor" aria-hidden>
+                <path d="M12 21s-6.7-4.35-9.33-8.2C.7 10.1 1.2 6.7 3.9 5.2 6.1 3.9 8.6 4.5 10 6.2L12 8.7l2-2.5c1.4-1.7 3.9-2.3 6.1-1 2.7 1.5 3.2 4.9 1.23 7.6C18.7 16.65 12 21 12 21z" />
+              </svg>
+            </span>
+          ) : coverUrl ? (
             <img
               src={categoryImageUrlForTile(coverUrl, 480, 360)}
               alt=""
@@ -2263,7 +2448,11 @@ export function CreateOneFlow({
                     ? removed
                       ? "Goal removed"
                       : "Goal added"
-                    : m.contextKind === "journal"
+                    : m.contextKind === "heal"
+                    ? removed
+                      ? "Heal removed"
+                      : "Heal added"
+                  : m.contextKind === "journal"
                       ? removed
                         ? "Journal removed"
                         : "Journal added"
@@ -2325,7 +2514,11 @@ export function CreateOneFlow({
                 </span>
                 <ContextToken
                   name={m.text}
-                  detail={m.contextKind === "journal" ? null : m.contextDetail}
+                  detail={
+                    m.contextKind === "journal" || m.contextKind === "heal"
+                      ? null
+                      : m.contextDetail
+                  }
                 />
               </div>
             );
@@ -2573,6 +2766,17 @@ export function CreateOneFlow({
                         },
                       )}
                     </div>
+                    {state.heal ? null : (
+                      <div className={startTileSlotClass}>
+                        {renderStartTile(
+                          "heal",
+                          "Heal",
+                          "Something you're carrying",
+                          "Heal",
+                          { selected: false, dimmed: false },
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2902,6 +3106,29 @@ export function CreateOneFlow({
               </div>
 
               <div className="relative z-20 flex shrink-0 flex-col gap-2 border-t border-border bg-card px-3 py-2.5 md:px-5 md:py-3.5 md:pb-3">
+                {state.heal &&
+                !state.heal.focus &&
+                state.chat.at(-1)?.role === "assistant" &&
+                state.chat.at(-1)?.text.includes("good-day view") ? (
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        ["Sit with it", "sit_with_it"],
+                        ["Move towards my good-day view", "move_towards"],
+                        ["Both", "both"],
+                      ] as const
+                    ).map(([label]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => sendShapeMessage(label)}
+                        className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-[13px] font-semibold"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex items-center gap-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-1.5">
                   <input
                     value={shapeInput}
@@ -3289,6 +3516,60 @@ export function CreateOneFlow({
           guidance=""
           onGuidanceChange={() => {}}
         />
+      </CreateOneFlowPickerShell>
+
+      <CreateOneFlowPickerShell
+        open={picker === "heal"}
+        eyebrow="Add · Heal"
+        title="Pick something from Heal"
+        confirmLabel="Add to meditation"
+        confirmDisabled={!draftHealId}
+        onClose={() => setPicker(null)}
+        onConfirm={confirmPicker}
+      >
+        {healStore.items.filter((row) => row.status !== "at_peace").length === 0 ? (
+          <div className="px-1 py-6 text-center">
+            <p className="text-sm text-muted">Nothing in Heal yet</p>
+            <button
+              type="button"
+              onClick={() => navigate("/heal")}
+              className="mt-3 cursor-pointer text-sm font-semibold"
+            >
+              Go to Heal
+            </button>
+          </div>
+        ) : (
+          <ul className="flex flex-col">
+            {healStore.items
+              .filter((row) => row.status !== "at_peace")
+              .map((row) => {
+                const good = currentView(healStore, row.id, "good");
+                const selected = draftHealId === row.id;
+                return (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      onClick={() => setDraftHealId(row.id)}
+                      className={`flex w-full cursor-pointer items-center gap-3 border-b border-border px-1 py-3 text-left ${
+                        selected ? "bg-accent-soft/40" : ""
+                      }`}
+                    >
+                      <HealAvatar item={row} store={healStore} size={40} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">
+                          {healTypeLabel(row.type)}
+                        </span>
+                        <span className="block truncate font-display text-[17px]">{row.title}</span>
+                        <span className="block truncate text-[13px] text-muted">
+                          {good?.text?.trim() || "No good-day view yet"}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+          </ul>
+        )}
       </CreateOneFlowPickerShell>
     </div>
   );

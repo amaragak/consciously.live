@@ -1,90 +1,183 @@
-import { Heart, Leaf, Play } from "lucide-react";
-import { loadIdeateStore } from "@/lib/plan-ideate-store";
-import { useMemo, useState } from "react";
+import { Leaf, Mail, PenLine, Play, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
-import { HEAL_LENSES, healTypeLabel, promptLabel, promptsForType } from "@/lib/heal-copy";
+import { SelectChevron } from "@/components/select-chevron";
 import {
-  defaultLensForKind,
-  healNewPerspective,
-  healRetryLens,
-  type HealFlag,
-} from "@/lib/heal-ai";
-import { loadJournalStore } from "@/lib/journal-storage";
-import { writePlanCreateHandoff } from "@/lib/plan-create-handoff";
-import { useRouter } from "@/lib/spa-nav";
-import {
-  addHealEntry,
-  addHealReframe,
-  currentReframe,
-  entriesForItem,
-  formatHealDate,
-  latestCheckin,
-  linksForItem,
-  loadHealStore,
-  newHealId,
-  patchHealItem,
-  setHealItemStatus,
-  staysHeavy,
-  weeklyScores,
-  writingChangedSinceMeditation,
-  type HealEntry,
-  type HealItem,
-  type HealLens,
-  type HealPerspective,
-  type HealStoreV1,
-} from "@/lib/heal-store";
-import {
-  CheckInDialog,
   HEAL_OUTLINE,
   HEAL_PAGE,
   HEAL_PRIMARY,
   HealAvatar,
   HealOverlay,
   HealRiskPill,
-  HealSparkline,
-  PerspectiveBlock,
   rememberRisk,
   useHealStore,
 } from "@/components/heal/heal-bits";
-import { HealNameChip } from "@/components/heal/heal-name-chip";
+import { HEAL_TYPES, healTypeLabel } from "@/lib/heal-copy";
+import { healAfterUpdate, healLenses, healSetup, healSuggestMore } from "@/lib/heal-ai";
+import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
 import {
-  HealPracticeDialog,
-  type HealPracticeId,
-} from "@/components/heal/heal-practices";
+  healMeditationsForItem,
+} from "@/lib/heal-meditation-links";
+import { useRouter } from "@/lib/spa-nav";
+import { addTrackerItem, patchTrackerItem } from "@/lib/tracker-items";
 import {
-  HowYouSeeIt,
-  ManifestDialog,
-  ReframeEnd,
-  ReframePill,
-  syncLinkedReframe,
-  TryAnotherAngle,
-  VersionTimeline,
-  WorkOnIt,
-} from "@/components/heal/heal-reframe";
+  actionsForItem,
+  addHealAction,
+  addHealEntry,
+  addHealExercises,
+  addHealUpdate,
+  addHealView,
+  currentView,
+  entriesForItem,
+  exercisesForItem,
+  fallbackExerciseQuestions,
+  formatHealDate,
+  healRelative,
+  loadHealStore,
+  patchHealAction,
+  patchHealExercise,
+  patchHealItem,
+  setHealItemStatus,
+  updatesForItem,
+  viewsForSide,
+  type HealCanDo,
+  type HealEntry,
+  type HealExercise,
+  type HealItem,
+  type HealSeeLens,
+  type HealStoreV1,
+  type HealView,
+} from "@/lib/heal-store";
 
-function pinnedEntries(entries: HealEntry[]): HealEntry[] {
-  const plan = entries.find((entry) => entry.promptKey === "if_then");
-  if (!plan) return entries;
-  return [plan, ...entries.filter((entry) => entry.id !== plan.id)];
+const SEE_LENSES: { id: HealSeeLens; label: string }[] = [
+  { id: "kind", label: "Be kind to myself" },
+  { id: "forgive", label: "Forgive" },
+  { id: "accept", label: "Accept" },
+  { id: "long", label: "The long view" },
+];
+
+const KIND_BLURB: Record<string, string> = {
+  shame: "Something I'm ashamed of",
+};
+
+function HealMeditationStrip({
+  itemId,
+  viewId,
+  onCreate,
+}: {
+  itemId: string;
+  viewId: string | null;
+  onCreate: () => void;
+}) {
+  const router = useRouter();
+  const links = healMeditationsForItem(itemId);
+  const latest = links[0] ?? null;
+  const changed = Boolean(latest && viewId && latest.viewId && latest.viewId !== viewId);
+  const made = latest
+    ? new Date(latest.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "";
+  if (!latest) {
+    return (
+      <>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-[17px]">No meditation for this yet</p>
+        </div>
+        <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
+          Create meditation
+        </button>
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="min-w-0 flex-1">
+        <p className="font-display text-[17px]">Meditation · {latest.title}</p>
+        <p className="text-[12px] text-muted">Made {made}</p>
+        {changed ? (
+          <p className="mt-1 text-[12px] text-muted">Your good-day view has changed since this was made.</p>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        className={HEAL_OUTLINE}
+        aria-label="Play"
+        onClick={() =>
+          router.push(
+            `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}&focus=pending:${encodeURIComponent(latest.jobId)}&play=1`,
+          )
+        }
+      >
+        <Play className="size-3.5" aria-hidden />
+      </button>
+      {links.length > 1 ? (
+        <button
+          type="button"
+          className="cursor-pointer text-[13px] font-semibold"
+          onClick={() =>
+            router.push(
+              `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}`,
+            )
+          }
+        >
+          {links.length - 1} more
+        </button>
+      ) : null}
+      {changed ? (
+        <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
+          Create meditation
+        </button>
+      ) : null}
+    </>
+  );
 }
 
 export function HealItemView({ itemId }: { itemId: string }) {
   const [store, setStore] = useHealStore();
-  const item = store.items.find((row) => row.id === itemId) ?? null;
   const router = useRouter();
-  const [checkIn, setCheckIn] = useState(false);
-  const [menu, setMenu] = useState(false);
-  const [practice, setPractice] = useState<HealPracticeId | null>(null);
+  const item = store.items.find((row) => row.id === itemId) ?? null;
+  const setupStarted = useRef(false);
+  const [settingUp, setSettingUp] = useState(false);
+  const [kindOpen, setKindOpen] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [addingUpdate, setAddingUpdate] = useState(false);
+  const [updateText, setUpdateText] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [badDraft, setBadDraft] = useState("");
+  const [goodDraft, setGoodDraft] = useState("");
+  const [lensSource, setLensSource] = useState<string | null>(null);
+  const [lensesOpen, setLensesOpen] = useState(false);
+  const [lens, setLens] = useState<HealSeeLens>("kind");
+  const [lensText, setLensText] = useState<Partial<Record<HealSeeLens, string>>>({});
+  const [lensBusy, setLensBusy] = useState(false);
   const [consentThen, setConsentThen] = useState<(() => void) | null>(null);
-  const [thought, setThought] = useState("");
-  const [promptKey, setPromptKey] = useState<string | null>(null);
-  const [tagOpen, setTagOpen] = useState(false);
-  const [editingSee, setEditingSee] = useState(false);
-  const [manifestOpen, setManifestOpen] = useState(false);
-  const [endStep, setEndStep] = useState<{ summary: string; entryId: string } | null>(null);
-  const [offerSync, setOfferSync] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ text: string; href: string } | null>(null);
+  const [exercise, setExercise] = useState<HealExercise | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [endStep, setEndStep] = useState<{ question: string; text: string; entryId: string } | null>(null);
+  const [goodNow, setGoodNow] = useState("");
+  const [ownQuestion, setOwnQuestion] = useState("");
+  const [addingOwn, setAddingOwn] = useState(false);
+  const [note, setNote] = useState("");
+  const [versions, setVersions] = useState(false);
+  const [restOpen, setRestOpen] = useState(false);
+  const [actionText, setActionText] = useState("");
+  const [addingAction, setAddingAction] = useState(false);
+  const [areaPick, setAreaPick] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [freshIds, setFreshIds] = useState<string[]>([]);
+  const [conflict, setConflict] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!item || setupStarted.current) return;
+    if (exercisesForItem(store, item.id).length > 0) return;
+    const first = updatesForItem(store, item.id)[0];
+    if (!first) return;
+    setupStarted.current = true;
+    setSettingUp(true);
+    void runSetup(item, first.text, first.id);
+    // setup runs once per item mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
 
   if (!item) {
     return (
@@ -95,479 +188,873 @@ export function HealItemView({ itemId }: { itemId: string }) {
   }
 
   const current = item;
+  const updates = updatesForItem(store, current.id);
+  const latestUpdate = updates[0] ?? null;
+  const bad = currentView(store, current.id, "bad");
+  const good = currentView(store, current.id, "good");
+  const exercises = exercisesForItem(store, current.id);
+  const active = [
+    ...exercises.filter((row) => row.status === "active" && !row.answeredEntryId),
+    ...exercises.filter((row) => row.status === "active" && row.answeredEntryId),
+  ];
   const entries = entriesForItem(store, current.id);
-  const latest = latestCheckin(store, item.id);
-  const scores = weeklyScores(store, item.id);
-  const heavy = staysHeavy(store, item.id);
-  const journal = loadJournalStore().entries.filter((entry) => entry.kind !== "gratitude");
+  const actions = actionsForItem(store, current.id);
+  const dreams = loadIdeateStore().dreams;
+  const areaId = current.linkedLifeAreaIds[0] || current.sourceObstacleId?.split("::")[0] || "";
 
   function commit(next: HealStoreV1) {
     setStore(next);
   }
 
   function enableAi(then: () => void) {
-    if (current.aiEnabled) {
+    if (loadHealStore().items.find((row) => row.id === current.id)?.aiEnabled) {
       then();
       return;
     }
     setConsentThen(() => then);
   }
 
-  function saveAbout(text: string) {
-    commit(
-      patchHealItem(store, current.id, {
-        aboutText: text,
-        aboutUpdatedAt: new Date().toISOString(),
-      }),
-    );
-    void rememberRisk(current.id, text, commit);
+  async function runSetup(target: HealItem, update: string, updateId: string) {
+    let next = loadHealStore();
+    if (target.aiEnabled) {
+      const result = await healSetup({ title: target.title, update });
+      if (result && result.exercises.length) {
+        if (result.badDayText) {
+          next = addHealView(next, { itemId: target.id, side: "bad", text: result.badDayText, source: "setup" });
+        }
+        if (result.goodDayText) {
+          next = addHealView(next, { itemId: target.id, side: "good", text: result.goodDayText, source: "setup" });
+        }
+        next = patchHealItem(next, target.id, { type: result.type, canDo: result.canDo, askedQuestions: result.exercises });
+        next = addHealExercises(
+          next,
+          result.exercises.map((question, index) => ({
+            itemId: target.id,
+            question,
+            status: index < 4 ? "active" : "pool",
+            source: "ai" as const,
+            createdFromUpdateId: updateId,
+            answeredEntryId: null,
+          })),
+        );
+        commit(next);
+        setSettingUp(false);
+        return;
+      }
+    }
+    seedFallbacks(target.id, target.canDo, updateId);
+    setSettingUp(false);
   }
 
-  function makeMeditation() {
-    const reframe = currentReframe(store, current.id)?.text ?? "";
-    const writing = [reframe, current.seeingText, current.aboutText, ...entries.map((entry) => entry.text)]
-      .filter(Boolean)
-      .join("\n\n")
-      .slice(0, 8000);
-    writePlanCreateHandoff({
-      v: 2,
-      goalTitle: `For ${current.title}`,
-      visionText: writing,
-      healBrief: `Move from how this has been seen to how it is seen now, using the writer's own words. How they've been seeing it: ${current.seeingText || "(not written)"}. How they see it now: ${reframe || "(not yet)"}. Be kind without spinning it positive. No clinical language, no advice about getting in touch or reconciling, and no silver linings.`,
-      project: { dreamText: "", resistanceText: "", visionText: writing },
-      activeResistanceThemes: [],
-      meditationTargetMinutes: 10,
-    });
-    commit(
-      patchHealItem(store, current.id, {
-        meditationBuiltAt: new Date().toISOString(),
-      }),
+  function seedFallbacks(itemId: string, canDo: HealCanDo | null, updateId: string | null, onlyPool = false) {
+    const questions = fallbackExerciseQuestions(canDo);
+    const existing = new Set(exercisesForItem(loadHealStore(), itemId).map((row) => row.question));
+    const fresh = questions.filter((question) => !existing.has(question));
+    let next = loadHealStore();
+    next = addHealExercises(
+      next,
+      fresh.map((question, index) => ({
+        itemId,
+        question,
+        status: !onlyPool && index < 4 ? "active" : "pool",
+        source: "fallback" as const,
+        createdFromUpdateId: updateId,
+        answeredEntryId: null,
+      })),
     );
-    router.push("/meditate/create?step=shape&fromDream=1&seed=goal");
+    next = patchHealItem(next, itemId, {
+      askedQuestions: [...(next.items.find((row) => row.id === itemId)?.askedQuestions ?? []), ...fresh],
+    });
+    commit(next);
   }
+
+  async function suggestMore() {
+    const latest = loadHealStore();
+    const row = latest.items.find((item) => item.id === current.id);
+    if (!row) return;
+    const asked = new Set(row.askedQuestions);
+    let questions: string[] = [];
+    if (row.aiEnabled) {
+      questions = await healSuggestMore({
+        type: row.type,
+        title: row.title,
+        canDo: row.canDo,
+        context: contextFor(latest, row),
+      });
+      questions = questions.filter((question) => !asked.has(question));
+    }
+    if (!questions.length) {
+      questions = fallbackExerciseQuestions(row.canDo).filter((question) => !asked.has(question)).slice(0, 3);
+    }
+    if (!questions.length) return;
+    let next = addHealExercises(
+      loadHealStore(),
+      questions.map((question) => ({
+        itemId: row.id,
+        question,
+        status: "active" as const,
+        source: row.aiEnabled ? ("ai" as const) : ("fallback" as const),
+        createdFromUpdateId: updatesForItem(loadHealStore(), row.id)[0]?.id ?? null,
+        answeredEntryId: null,
+      })),
+    );
+    next = patchHealItem(next, row.id, { askedQuestions: [...row.askedQuestions, ...questions] });
+    const added = next.exercises.slice(-questions.length).map((exercise) => exercise.id);
+    setFreshIds((ids) => [...ids, ...added]);
+    commit(next);
+  }
+
+  function saveUpdate() {
+    if (!updateText.trim()) return;
+    const before = currentView(store, current.id, "good")?.text ?? "";
+    let next = addHealUpdate(store, current.id, updateText);
+    commit(next);
+    const saved = updatesForItem(next, current.id)[0];
+    setUpdateText("");
+    setAddingUpdate(false);
+    void rememberRisk(current.id, updateText, commit);
+    if (!current.aiEnabled || !saved) return;
+    const previous = updates[0]?.text ?? "";
+    void healAfterUpdate({
+      type: current.type,
+      title: current.title,
+      canDo: current.canDo,
+      context: `Previous:\n${previous}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}`,
+    }).then((result) => {
+      if (!result) return;
+      applyExerciseChange(result.retire, result.add, "Your update changed things");
+      if (result.goodDayConflict && result.topic) setConflict(result.topic);
+    });
+  }
+
+  function applyExerciseChange(retire: string[], add: string[], lead: string) {
+    let next = loadHealStore();
+    const live = exercisesForItem(next, current.id);
+    for (const id of retire) {
+      const row = live.find((exercise) => exercise.id === id && !exercise.answeredEntryId);
+      if (row) next = patchHealExercise(next, id, { status: "dismissed" });
+    }
+    const asked = next.items.find((row) => row.id === current.id)?.askedQuestions ?? [];
+    const fresh = add.filter((question) => !asked.includes(question));
+    next = addHealExercises(
+      next,
+      fresh.map((question) => ({
+        itemId: current.id,
+        question,
+        status: "active" as const,
+        source: "ai" as const,
+        createdFromUpdateId: updatesForItem(next, current.id)[0]?.id ?? null,
+        answeredEntryId: null,
+      })),
+    );
+    next = patchHealItem(next, current.id, { askedQuestions: [...asked, ...fresh] });
+    const addedIds = next.exercises.slice(-fresh.length).map((row) => row.id);
+    setFreshIds((ids) => [...ids, ...addedIds]);
+    const n = retire.length + fresh.length;
+    if (n) {
+      setNotice(`${lead}, so ${n} exercise${n === 1 ? " was" : "s were"} ${fresh.length && retire.length ? "added and replaced" : fresh.length ? "added" : "replaced"}. Answers you've already written stay as they were.`);
+    }
+    commit(next);
+  }
+
+  function changeCanDo(value: HealCanDo) {
+    let next = patchHealItem(store, current.id, { canDo: value });
+    const pool = exercisesForItem(next, current.id).filter((row) => row.status === "pool");
+    for (const row of pool) next = patchHealExercise(next, row.id, { status: "dismissed" });
+    commit(next);
+    const questions = fallbackExerciseQuestions(value).slice(4);
+    next = addHealExercises(
+      loadHealStore(),
+      questions.map((question) => ({
+        itemId: current.id,
+        question,
+        status: "pool" as const,
+        source: "fallback" as const,
+        createdFromUpdateId: null,
+        answeredEntryId: null,
+      })),
+    );
+    commit(next);
+    if (!current.aiEnabled) {
+      setNotice("Your answer changed your exercises. Answers you've already written stay as they were.");
+      return;
+    }
+    void healAfterUpdate({
+      type: current.type,
+      title: current.title,
+      canDo: value,
+      context: `canDo is now ${value}.\n\nUnanswered:\n${unansweredContext(loadHealStore(), current.id)}`,
+    }).then((result) => {
+      if (!result) return;
+      applyExerciseChange(result.retire, result.add, "Your answer changed your exercises");
+    });
+  }
+
+  function dismissExercise(row: HealExercise) {
+    let next = patchHealExercise(store, row.id, { status: "dismissed" });
+    const pool = exercisesForItem(next, current.id).find((exercise) => exercise.status === "pool");
+    if (pool) next = patchHealExercise(next, pool.id, { status: "active" });
+    commit(next);
+    if (!pool) void suggestMore();
+  }
+
+  function saveAnswer() {
+    if (!exercise || !answer.trim()) return;
+    const saved = addHealEntry(loadHealStore(), {
+      itemId: current.id,
+      kind: "exercise",
+      promptKey: null,
+      exerciseId: exercise.id,
+      text: answer.trim(),
+    });
+    const next = patchHealExercise(saved.store, exercise.id, { answeredEntryId: saved.entry.id });
+    commit(next);
+    setEndStep({ question: exercise.question, text: answer.trim(), entryId: saved.entry.id });
+    setGoodNow(currentView(next, current.id, "good")?.text ?? "");
+    setExercise(null);
+    setAnswer("");
+    void rememberRisk(current.id, answer, commit);
+  }
+
+  function saveGood(text: string, entryId: string | null, source: "user" | "lens", lensName: string | null) {
+    const next = addHealView(loadHealStore(), {
+      itemId: current.id,
+      side: "good",
+      text,
+      source,
+      lens: lensName,
+      sourceEntryId: entryId,
+    });
+    commit(next);
+  }
+
+  function lifeAreaOf(id: string) {
+    return dreams.find((dream) => dream.id === id) ?? null;
+  }
+
+  function sendToTracker(actionId: string, lifeAreaId: string) {
+    const action = actionsForItem(loadHealStore(), current.id).find((row) => row.id === actionId);
+    if (!action) return;
+    const added = addTrackerItem(loadIdeateStore(), {
+      lifeAreaId,
+      parentId: null,
+      title: action.text,
+      kind: "task",
+    });
+    saveIdeateStore(added.store);
+    const next = patchHealItem(loadHealStore(), current.id, {
+      linkedLifeAreaIds: current.linkedLifeAreaIds.includes(lifeAreaId)
+        ? current.linkedLifeAreaIds
+        : [...current.linkedLifeAreaIds, lifeAreaId],
+    });
+    commit(patchHealAction(next, actionId, { trackerItemId: added.id }));
+    setAreaPick(null);
+  }
+
+  function toggleAction(actionId: string, done: boolean) {
+    const action = actions.find((row) => row.id === actionId);
+    let next = patchHealAction(store, actionId, { done });
+    commit(next);
+    if (action?.trackerItemId) {
+      saveIdeateStore(patchTrackerItem(loadIdeateStore(), action.trackerItemId, { status: done ? "done" : null }));
+    }
+  }
+
+  function createMeditation() {
+    router.push(
+      `/meditate/create?step=shape&fromHeal=${encodeURIComponent(current.id)}`,
+    );
+  }
+
+  async function loadLenses(which?: HealSeeLens) {
+    setLensBusy(true);
+    const result = await healLenses({
+      type: current.type,
+      title: current.title,
+      lens: which,
+      context: `Bad day:\n${bad?.text ?? ""}\n\nLatest:\n${latestUpdate?.text ?? ""}\n\nGood day:\n${good?.text ?? ""}`,
+    });
+    if (result) setLensText((currentText) => ({ ...currentText, ...result }));
+    setLensBusy(false);
+  }
+
+  const restBody =
+    current.canDo === "yes"
+      ? "Do this when you've done what you can and bad days don't feel like this any more."
+      : current.canDo === "no"
+        ? "Do this when you've made peace with it."
+        : "Do this when it doesn't weigh on you like it did.";
 
   return (
     <div className={HEAL_PAGE}>
-      <HealRiskPill show={Boolean(item.riskAt)} />
-      {heavy ? (
-        <section className="mb-4 flex gap-3 rounded-2xl border border-heal-border bg-heal-tint p-4">
-          <span className="inline-flex size-[38px] shrink-0 items-center justify-center rounded-full bg-card text-heal-accent">
-            <Heart className="size-4" aria-hidden />
-          </span>
-          <div>
-            <h2 className="font-display text-[20px] text-foreground">
-              This has felt heavy for a while
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-foreground">
-              You&apos;ve rated <HealNameChip item={item} store={store} /> 8 or more for six
-              weeks. That&apos;s a lot to carry on your own. Talking to someone trained in{" "}
-              {item.type === "grief" ? "grief" : "this"} can help, and in England you can refer
-              yourself to NHS Talking Therapies without seeing a GP.
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <a
-                href="https://www.nhs.uk/service-search/mental-health/find-an-nhs-talking-therapies-service"
-                className={HEAL_PRIMARY}
-              >
-                Find NHS Talking Therapies
-              </a>
-              {item.type === "grief" ? (
-                <a href="tel:08088081677" className={HEAL_OUTLINE}>
-                  Cruse Bereavement Support
-                </a>
-              ) : null}
-              <button
-                type="button"
-                className="cursor-pointer text-sm text-muted"
-                onClick={() =>
-                  commit(
-                    patchHealItem(store, item.id, {
-                      heavyNudgeDismissedAt: new Date().toISOString(),
-                    }),
-                  )
-                }
-              >
-                Not now
-              </button>
-            </div>
+      <HealRiskPill show={Boolean(current.riskAt)} />
+      {conflict ? (
+        <section className="mb-3 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm text-foreground">Your good-day view mentions {conflict}. Is it still true on a good day?</p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className={HEAL_OUTLINE}
+              onClick={() => {
+                setEditing(true);
+                setBadDraft(bad?.text ?? "");
+                setGoodDraft(good?.text ?? "");
+                setConflict(null);
+                document.getElementById("heal-views")?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              Edit good-day view
+            </button>
+            <button type="button" className={HEAL_OUTLINE} onClick={() => setConflict(null)}>
+              Still true
+            </button>
           </div>
         </section>
       ) : null}
 
       <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <HealAvatar item={item} store={store} size={84} />
+        <div className="flex items-start gap-3">
+          <HealAvatar item={current} store={store} size={64} />
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold uppercase tracking-[1.2px] text-heal-accent">
-              {healTypeLabel(item.type)}
-              {item.since ? ` · since ${formatHealDate(item.since, true)}` : ""}
-            </p>
-            <h2 className="font-display text-[34px] leading-none text-foreground">{item.title}</h2>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {item.linkedLifeAreaIds[0] ? (
-                <span className="rounded-full border border-border px-2.5 py-0.5 text-[12px]">
-                  Life area · {loadIdeateStore().dreams.find((dream) => dream.id === item.linkedLifeAreaIds[0])?.title || "Life area"}
-                </span>
-              ) : null}
-              <span className="rounded-full border border-border px-2.5 py-0.5 text-[12px]">
-                {entries.length} {entries.length === 1 ? "entry" : "entries"}
-              </span>
-            </div>
-          </div>
-          <div className="hidden gap-2 sm:flex">
-            <button type="button" className={HEAL_OUTLINE} onClick={() => enableAi(makeMeditation)}>
-              Meditate
+            <button type="button" className="cursor-pointer text-[12px] font-semibold uppercase tracking-[1.2px] text-heal-accent" onClick={() => setKindOpen(true)}>
+              {healTypeLabel(current.type)}
+              {current.since ? ` · since ${formatHealDate(current.since)}` : ""}
             </button>
-            <button type="button" className={HEAL_OUTLINE} onClick={() => setCheckIn(true)}>
-              Check in
-            </button>
+            <h2 className="font-display text-[32px] leading-none text-foreground">{current.title}</h2>
           </div>
+          <button type="button" className={HEAL_OUTLINE} onClick={() => setRestOpen(true)}>
+            <Leaf className="size-3.5" aria-hidden />
+            Lay to rest
+          </button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">
-          <button type="button" className={HEAL_OUTLINE} onClick={() => setCheckIn(true)}>
-            Check in
-          </button>
-          <button type="button" className={HEAL_OUTLINE} onClick={() => enableAi(makeMeditation)}>
-            Meditate
-          </button>
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">What&apos;s going on</p>
+            <p className="text-[12px] text-muted">
+              {latestUpdate
+                ? updates.length > 1
+                  ? `Updated ${healRelative(latestUpdate.createdAt)}`
+                  : `Written ${formatHealDate(latestUpdate.createdAt)}`
+                : ""}
+            </p>
+          </div>
+          {latestUpdate ? (
+            <p className={`mt-2 font-display text-[16px] leading-relaxed text-foreground ${updatesOpen ? "" : "line-clamp-3"}`}>
+              {latestUpdate.text}
+            </p>
+          ) : null}
+          {updatesOpen
+            ? updates.slice(1).map((row) => (
+                <p key={row.id} className="mt-3 border-t border-border/70 pt-3 font-display text-[16px] text-foreground">
+                  <span className="mb-1 block text-[12px] text-muted">{formatHealDate(row.createdAt)}</span>
+                  {row.text}
+                </p>
+              ))
+            : null}
+          {addingUpdate ? (
+            <div className="relative mt-3">
+              <textarea
+                value={updateText}
+                onChange={(event) => setUpdateText(event.target.value)}
+                rows={4}
+                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[16px] outline-none"
+              />
+              <span className="absolute bottom-2 right-2">
+                <DictationMicButton variant="inset" onTranscript={(spoken) => setUpdateText((value) => appendSpokenText(value, spoken))} />
+              </span>
+              <button type="button" className={`${HEAL_OUTLINE} mt-2`} onClick={saveUpdate}>
+                Save
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 flex items-center gap-3">
+              <button type="button" className={HEAL_OUTLINE} onClick={() => setAddingUpdate(true)}>
+                Add an update
+              </button>
+              {updates.length > 1 ? (
+                <button type="button" className="cursor-pointer text-[13px] font-semibold text-foreground" onClick={() => setUpdatesOpen((open) => !open)}>
+                  {updatesOpen ? "Show less" : "Show all"}
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
       </section>
 
-      <div className="mt-4">
-        <HowYouSeeIt
-          item={item}
-          store={store}
-          editing={editingSee}
-          link={linksForItem(store, item.id)[0] ?? null}
-          onEdit={setEditingSee}
-          onSaveSeeing={(text) => {
-            commit(patchHealItem(store, item.id, { seeingText: text.trim() }));
-            setEditingSee(false);
-          }}
-          onSaveNow={(text) => {
-            const previous = currentReframe(store, item.id)?.text ?? "";
-            commit(addHealReframe(store, { itemId: item.id, text, sourceEntryId: null }));
-            setEditingSee(false);
-            const link = linksForItem(store, item.id)[0];
-            if (link && text.trim() && text.trim() !== previous) {
-              const area = loadIdeateStore().dreams.find((dream) => dream.id === link.lifeAreaId);
-              setOfferSync(area?.title || "your life area");
-            }
-          }}
-          onManifest={() => setManifestOpen(true)}
-        />
-      </div>
-      {offerSync ? (
-        <p className="mt-2 text-[13px] text-muted">
-          This is in your {offerSync} vision.{" "}
+      <section id="heal-views" className="mt-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">How you see it</h2>
+          <button type="button" className="cursor-pointer text-[13px] font-semibold text-foreground" onClick={() => setVersions(true)}>
+            Earlier versions ({viewsForSide(store, current.id, "bad").length + viewsForSide(store, current.id, "good").length})
+          </button>
+        </div>
+        <div className="mt-3 flex flex-col items-stretch gap-2 md:flex-row md:items-stretch">
+          <ViewBox
+            label="On a bad day, I think…"
+            view={bad}
+            editing={editing}
+            draft={badDraft}
+            onDraft={setBadDraft}
+            empty="On a bad day, what do you tell yourself about it?"
+            accent={false}
+          />
+          <span className="self-center text-muted md:px-1" aria-hidden>
+            <span className="md:hidden">↓</span>
+            <span className="hidden md:inline">→</span>
+          </span>
+          <ViewBox
+            label="On a good day, I think…"
+            view={good}
+            editing={editing}
+            draft={goodDraft}
+            onDraft={setGoodDraft}
+            empty="Not yet. On a good day, how do you see it?"
+            accent
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            className="font-semibold text-heal-accent"
+            className={HEAL_OUTLINE}
             onClick={() => {
-              const latest = currentReframe(loadHealStore(), item.id);
-              if (latest) syncLinkedReframe(item.id, latest.text);
-              setOfferSync(null);
+              if (editing) {
+                if (badDraft.trim() && badDraft.trim() !== (bad?.text ?? "")) {
+                  commit(addHealView(loadHealStore(), { itemId: current.id, side: "bad", text: badDraft, source: "user" }));
+                }
+                if (goodDraft.trim() && goodDraft.trim() !== (good?.text ?? "")) {
+                  saveGood(goodDraft, null, lensSource ? "lens" : "user", lensSource);
+                }
+                setLensSource(null);
+                setEditing(false);
+              } else {
+                setBadDraft(bad?.text ?? "");
+                setGoodDraft(good?.text ?? "");
+                setEditing(true);
+              }
             }}
           >
-            Update it there too?
+            <PenLine className="size-3.5" aria-hidden />
+            {editing ? "Save" : "Edit"}
           </button>
-          <button type="button" className="ml-2 text-muted" onClick={() => setOfferSync(null)}>
-            No
+          <button
+            type="button"
+            className={HEAL_OUTLINE}
+            onClick={() =>
+              enableAi(() => {
+                setLensesOpen(true);
+                if (!lensText.kind) void loadLenses();
+              })
+            }
+          >
+            <Sparkles className="size-3.5" aria-hidden />
+            Show other ways to see it
           </button>
-        </p>
-      ) : null}
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="flex flex-col gap-4">
-          <WorkOnIt
-            item={item}
-            onOpen={(id) => setPractice(id)}
-            onPrompt={(key) => {
-              setPromptKey(key);
-              document.getElementById("heal-writing")?.scrollIntoView({ behavior: "smooth" });
-            }}
-          />
-          <TryAnotherAngle
-            item={item}
-            store={store}
-            onNeedAi={enableAi}
-            onSaved={(entryId, text) => setEndStep({ summary: text.slice(0, 140), entryId })}
-          />
-          <section id="heal-writing" className="rounded-2xl border border-border bg-card p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Writing</h2>
-            <textarea
-              value={thought}
-              onChange={(e) => setThought(e.target.value)}
-              placeholder="Write about it. Negative is fine here."
-              rows={3}
-              className="mt-2 w-full resize-none bg-transparent font-display text-[17px] outline-none"
-            />
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {promptsForType(item.type).map((prompt) => (
-                <button
-                  key={prompt.key}
-                  type="button"
-                  onClick={() => setPromptKey(prompt.key)}
-                  className={`cursor-pointer rounded-full border px-2.5 py-1 text-[12px] ${
-                    promptKey === prompt.key
-                      ? "border-foreground bg-foreground text-white"
-                      : "border-heal-border bg-heal-tint"
-                  }`}
-                >
-                  {prompt.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="cursor-pointer rounded-full border border-heal-border bg-heal-tint px-2.5 py-1 text-[12px]"
-                onClick={() => router.push(`/heal/${item.id}/letter`)}
-              >
-                Unsent letter
+        </div>
+        <p className="mt-2 text-[13px] text-muted">Each exercise below ends by asking if it changes your good-day view.</p>
+        {lensesOpen ? (
+          <div className="mt-3 rounded-xl border border-border bg-background p-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-heal-accent" aria-hidden />
+              <p className="text-[15px] font-semibold">Other ways to see it</p>
+              <button type="button" className="ml-auto cursor-pointer text-[13px] text-muted" onClick={() => setLensesOpen(false)}>
+                Close
               </button>
             </div>
-            <button
-              type="button"
-              disabled={!thought.trim()}
-              className={`${HEAL_PRIMARY} mt-3`}
-              onClick={() => {
-                const added = addHealEntry(store, {
-                  itemId: item.id,
-                  kind: promptKey ? "prompt" : "thought",
-                  promptKey,
-                  text: thought.trim(),
-                });
-                commit(added.store);
-                void rememberRisk(item.id, thought, commit);
-                setThought("");
-                setPromptKey(null);
-              }}
-            >
-              Add
-            </button>
-            <ul className="mt-4 flex flex-col gap-4">
-              {pinnedEntries(entries).map((entry) => (
-                <li key={entry.id} className="border-t border-border/70 pt-3">
-                  <p className="text-[12px] font-semibold text-heal-accent">
-                    {entry.kind === "letter"
-                      ? "Unsent letter"
-                      : entry.kind === "friend"
-                        ? "What I'd tell a friend"
-                        : entry.kind === "angle"
-                          ? "Another angle"
-                          : promptLabel(item.type, entry.promptKey) ?? "Writing"}
-                    <span className="ml-2 font-normal text-muted">
-                      {formatHealDate(entry.createdAt)}
-                    </span>
-                  </p>
-                  <p className="mt-1 font-display text-[17px] leading-relaxed text-foreground">
-                    {entry.text}
-                  </p>
-                  {entry.perspectives.map((perspective) => (
-                    <PerspectiveBlock key={perspective.id} text={perspective.text} />
-                  ))}
-                  <ReframePill store={store} itemId={item.id} entryId={entry.id} />
-                </li>
+            <p className="mt-1 text-[13px] text-muted">AI&apos;s take on your bad-day line, using only what you&apos;ve written. A starting point, not an answer.</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {SEE_LENSES.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => setLens(row.id)}
+                  className={`h-8 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${lens === row.id ? "bg-foreground text-white" : "border border-border bg-card"}`}
+                >
+                  {row.label}
+                </button>
               ))}
-              {item.aboutText ? (
-                <li className="border-t border-border/70 pt-3">
-                  <p className="text-[12px] font-semibold text-heal-accent">
-                    What happened
-                    <span className="ml-2 font-normal text-muted">{formatHealDate(item.aboutUpdatedAt)}</span>
-                  </p>
-                  <textarea
-                    defaultValue={item.aboutText}
-                    onBlur={(event) => saveAbout(event.target.value)}
-                    rows={3}
-                    className="mt-1 w-full resize-none bg-transparent font-display text-[17px] leading-relaxed outline-none"
-                  />
-                  {item.aboutPerspectives.map((perspective) => (
-                    <PerspectiveBlock key={perspective.id} text={perspective.text} />
-                  ))}
-                </li>
-              ) : null}
-            </ul>
-          </section>
-        </div>
-
-        <aside className="flex flex-col gap-3">
-          <VersionTimeline item={item} store={store} />
-          <section className="rounded-2xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground">Meditation</h3>
-            {item.meditationBuiltAt ? (
-              <div className="mt-2">
-                <div className="overflow-hidden rounded-xl">
-                  <HealAvatar item={item} store={store} size={120} />
-                </div>
-                <p className="mt-2 font-display text-[18px]">{item.title}</p>
-                <p className="text-[12px] text-muted">
-                  {Math.max(1, entries.length + (currentReframe(store, item.id) ? 1 : 0))} min · made from how you see it now
-                </p>
-                <button
-                  type="button"
-                  className={`${HEAL_PRIMARY} mt-2`}
-                  onClick={() => router.push("/meditate/library/creations")}
-                >
-                  <Play className="size-3.5" aria-hidden />
-                  Play
-                </button>
-                {writingChangedSinceMeditation(item, store) ? (
-                  <button
-                    type="button"
-                    className={`${HEAL_OUTLINE} mt-2`}
-                    onClick={() => enableAi(makeMeditation)}
-                  >
-                    Update
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <div className="mt-2">
-                <p className="font-display text-[18px]">{item.title}</p>
-                <p className="text-[12px] text-muted">
-                  {Math.max(1, entries.length + (currentReframe(store, item.id) ? 1 : 0))} min · made from how you see it now
-                </p>
-                <button
-                  type="button"
-                  className={`${HEAL_OUTLINE} mt-3`}
-                  onClick={() => enableAi(makeMeditation)}
-                >
-                  Make a meditation
-                </button>
-              </div>
-            )}
-          </section>
-          <section className="rounded-2xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground">How heavy</h3>
-            <p className="font-display text-[28px] text-foreground">
-              {latest ? latest.score : "–"}
-              <span className="text-base text-muted"> / 10</span>
+            </div>
+            <p className="mt-3 font-display text-[19px] italic leading-snug text-foreground">
+              {lensBusy ? "…" : lensText[lens] || "Nothing yet."}
             </p>
-            <p className="text-[13px] text-muted">{latest ? "Latest check-in" : "No check-in yet"}</p>
-            <HealSparkline scores={scores} />
-          </section>
-          <section className="rounded-2xl border border-heal-border bg-heal-tint p-4">
-            <h3 className="text-sm font-semibold text-foreground">When you&apos;re settled</h3>
-            <p className="mt-1 text-sm text-foreground">
-              When how you see it now feels true, lay this to rest. Nothing is deleted.
-            </p>
-            <button
-              type="button"
-              className={`${HEAL_OUTLINE} mt-3`}
-              onClick={() => {
-                commit(setHealItemStatus(store, item.id, "at_peace"));
-                router.push("/heal/rested");
-              }}
-            >
-              <Leaf className="size-3.5" aria-hidden />
-              Lay to rest
-            </button>
-            {item.status !== "active" ? (
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                className="mt-2 cursor-pointer text-sm font-semibold text-accent-link"
-                onClick={() => commit(setHealItemStatus(store, item.id, "active"))}
+                className={HEAL_OUTLINE}
+                disabled={!lensText[lens]}
+                onClick={() => {
+                  setGoodDraft(lensText[lens] ?? "");
+                  setBadDraft(bad?.text ?? "");
+                  setLensSource(lens);
+                  setEditing(true);
+                }}
               >
-                Bring back
+                <PenLine className="size-3.5" aria-hidden />
+                Start from this
               </button>
-            ) : null}
-          </section>
-        </aside>
-      </div>
-
-      {checkIn ? (
-        <CheckInDialog items={[item]} onClose={() => setCheckIn(false)} onSaved={commit} />
-      ) : null}
-      {practice ? (
-        <HealPracticeDialog
-          item={item}
-          practice={practice}
-          store={store}
-          onClose={() => setPractice(null)}
-          onStore={commit}
-          onRecorded={(summary, entryId) => {
-            setPractice(null);
-            setEndStep({ summary: summary.slice(0, 140), entryId });
-          }}
-        />
-      ) : null}
-      {endStep ? (
-        <HealOverlay title="How you see it" onClose={() => setEndStep(null)}>
-          <div className="overflow-y-auto px-5 py-5">
-            <ReframeEnd
-              summary={endStep.summary}
-              currentText={currentReframe(store, item.id)?.text ?? ""}
-              onSkip={() => setEndStep(null)}
-              onUpdate={(text) => {
-                const previous = currentReframe(store, item.id)?.text ?? "";
-                commit(addHealReframe(store, { itemId: item.id, text, sourceEntryId: endStep.entryId }));
-                const link = linksForItem(store, item.id)[0];
-                if (link && text.trim() !== previous) {
-                  const area = loadIdeateStore().dreams.find((dream) => dream.id === link.lifeAreaId);
-                  setOfferSync(area?.title || "your life area");
-                }
-                setEndStep(null);
-              }}
-            />
+              <button type="button" className={HEAL_OUTLINE} onClick={() => void loadLenses(lens)}>
+                Another
+              </button>
+            </div>
+            <p className="mt-2 text-[12px] text-muted">Start from this opens your good-day view with this text in it, for you to change and save.</p>
           </div>
-        </HealOverlay>
-      ) : null}
-      {manifestOpen ? (
-        <ManifestDialog
-          item={item}
-          store={store}
-          onClose={() => setManifestOpen(false)}
-          onStore={commit}
-          onToast={(text, href) => setToast({ text, href })}
-        />
-      ) : null}
-      {toast ? (
-        <p className="fixed bottom-24 left-1/2 z-[160] -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-white">
-          {toast.text}{" "}
-          <button type="button" className="font-semibold underline" onClick={() => router.push(toast.href)}>
-            View
-          </button>
+        ) : null}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-border bg-card p-4">
+        <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Can you do anything about it?</h2>
+        <div className="mt-3 flex rounded-full border border-border p-1">
+          {(
+            [
+              ["yes", "Yes"],
+              ["no", "No, it's done"],
+              ["not_sure", "Not sure"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => changeCanDo(value)}
+              className={`h-9 flex-1 cursor-pointer rounded-full text-[13px] font-semibold ${current.canDo === value ? "bg-foreground text-white" : "text-foreground"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[13px] text-muted">
+          {current.canDo === "yes"
+            ? "Exercises include next steps as well as acceptance."
+            : current.canDo === "no"
+              ? "Exercises focus on accepting it and forgiving yourself where you can."
+              : current.canDo === "not_sure"
+                ? "One of your exercises will help you work it out."
+                : "Your answer changes which exercises you get."}
         </p>
-      ) : null}
-      {consentThen ? (
-        <ConsentDialog
-          item={item}
-          store={store}
-          onClose={() => setConsentThen(null)}
-          onAllow={() => {
-            const next = patchHealItem(store, item.id, { aiEnabled: true });
-            commit(next);
-            const run = consentThen;
-            setConsentThen(null);
-            run();
-          }}
-        />
-      ) : null}
-      {tagOpen ? (
-        <HealOverlay title="Journal entries" onClose={() => setTagOpen(false)}>
-          <div className="overflow-y-auto px-5 py-5">
-            <h2 className="font-display text-[20px]">Tag a journal entry</h2>
-            <ul className="mt-3 flex flex-col gap-1">
-              {journal.slice(0, 20).map((entry) => {
-                const on = item.journalEntryIds.includes(entry.id);
-                return (
-                  <li key={entry.id}>
+        {current.canDo === "yes" ? (
+          <div className="mt-3">
+            {actions.map((action) => {
+              const area = action.trackerItemId
+                ? lifeAreaOf(areaId)
+                : null;
+              return (
+                <label key={action.id} className="flex items-start gap-2 border-t border-border/70 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={action.done}
+                    onChange={(event) => toggleAction(action.id, event.target.checked)}
+                    className="mt-0.5 size-5 rounded"
+                  />
+                  <span className={`min-w-0 flex-1 ${action.done ? "text-muted line-through" : ""}`}>{action.text}</span>
+                  {action.trackerItemId ? (
+                    <span className="text-[12px] text-muted">In Tracker · {area?.title || "life area"}</span>
+                  ) : (
                     <button
                       type="button"
-                      className="w-full cursor-pointer rounded-lg px-2 py-2 text-left text-sm hover:bg-heal-tint"
-                      onClick={() => {
-                        const journalEntryIds = on
-                          ? item.journalEntryIds.filter((id) => id !== entry.id)
-                          : [...item.journalEntryIds, entry.id];
-                        commit(patchHealItem(store, item.id, { journalEntryIds }));
+                      className="cursor-pointer text-[12px] font-semibold"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (areaId) sendToTracker(action.id, areaId);
+                        else setAreaPick(action.id);
                       }}
                     >
-                      {on ? "✓ " : ""}
-                      {entry.title.trim() || "Untitled"} · {formatHealDate(entry.createdAt)}
+                      Add to Tracker
                     </button>
-                  </li>
-                );
-              })}
-            </ul>
+                  )}
+                </label>
+              );
+            })}
+            {addingAction ? (
+              <form
+                className="mt-2 flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  commit(addHealAction(loadHealStore(), current.id, actionText));
+                  setActionText("");
+                  setAddingAction(false);
+                }}
+              >
+                <input value={actionText} onChange={(event) => setActionText(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm" />
+                <button type="submit" className={HEAL_OUTLINE}>Add</button>
+              </form>
+            ) : (
+              <button type="button" className="mt-2 cursor-pointer text-[13px] font-semibold" onClick={() => setAddingAction(true)}>
+                + Add something you could do
+              </button>
+            )}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
+        <HealAvatar item={current} store={store} size={48} />
+        <HealMeditationStrip itemId={current.id} viewId={good?.id ?? null} onCreate={createMeditation} />
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your exercises</h2>
+          <p className="text-[12px] text-muted">Suggested from what you wrote</p>
+        </div>
+        {notice ? <p className="mt-2 text-[13px] text-muted">{notice}</p> : null}
+        {settingUp ? (
+          <div className="mt-3 flex flex-col gap-2">
+            {[0, 1, 2, 3].map((row) => (
+              <div key={row} className="h-12 animate-pulse rounded-xl bg-background" />
+            ))}
+          </div>
+        ) : (
+          <ul className="mt-2">
+            {active.map((row) => {
+              const answered = entries.find((entry) => entry.id === row.answeredEntryId);
+              const stale = answered && latestUpdate && answered.createdAt < latestUpdate.createdAt;
+              return (
+                <li key={row.id} className="border-t border-border/70 py-3">
+                  <button type="button" className="flex w-full items-start gap-2 text-left" onClick={() => { setExercise(row); setAnswer(answered?.text ?? ""); }}>
+                    <span className={`mt-1 inline-flex size-[22px] shrink-0 items-center justify-center rounded-full border ${row.answeredEntryId ? "border-foreground bg-foreground text-white" : "border-border"}`}>
+                      {row.answeredEntryId ? "✓" : ""}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display text-[17px] leading-snug">{row.question}</span>
+                      <span className="mt-1 block text-[12px] text-muted">
+                        {freshIds.includes(row.id)
+                          ? "New · from your update"
+                          : answered
+                            ? `Answered ${healRelative(answered.createdAt)}${stale ? ", before your update" : ""}`
+                            : "Not answered yet"}
+                      </span>
+                    </span>
+                    <SelectChevron direction="right" />
+                  </button>
+                  {!row.answeredEntryId ? (
+                    <button type="button" className="mt-1 cursor-pointer pl-8 text-[13px] font-semibold" onClick={() => dismissExercise(row)}>
+                      Not for me
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="mt-2 flex flex-wrap gap-3">
+          {(current.aiEnabled || fallbackExerciseQuestions(current.canDo).some((question) => !current.askedQuestions.includes(question))) ? (
+            <button type="button" className="cursor-pointer text-[13px] font-semibold" onClick={() => void suggestMore()}>
+              + Suggest more exercises
+            </button>
+          ) : null}
+          <button type="button" className="cursor-pointer text-[13px] font-semibold" onClick={() => setAddingOwn(true)}>
+            + Add your own
+          </button>
+        </div>
+        {addingOwn ? (
+          <form
+            className="mt-2 flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!ownQuestion.trim()) return;
+              const next = addHealExercises(loadHealStore(), [
+                {
+                  itemId: current.id,
+                  question: ownQuestion.trim(),
+                  status: "active",
+                  source: "user",
+                  createdFromUpdateId: null,
+                  answeredEntryId: null,
+                },
+              ]);
+              commit(patchHealItem(next, current.id, { askedQuestions: [...current.askedQuestions, ownQuestion.trim()] }));
+              setOwnQuestion("");
+              setAddingOwn(false);
+            }}
+          >
+            <input value={ownQuestion} onChange={(event) => setOwnQuestion(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm" />
+            <button type="submit" className={HEAL_OUTLINE}>Add</button>
+          </form>
+        ) : null}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Writing</h2>
+          <p className="text-[12px] text-muted">Your answers and notes, newest first</p>
+        </div>
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder={`Anything else about ${current.title} on your mind? Negative is fine.`}
+          rows={3}
+          className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 font-display text-[17px] outline-none"
+        />
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <button type="button" className={HEAL_OUTLINE} onClick={() => router.push(`/heal/${current.id}/letter`)}>
+            <Mail className="size-3.5" aria-hidden />
+            Write a letter you won&apos;t send
+          </button>
+          <button
+            type="button"
+            className={HEAL_OUTLINE}
+            onClick={() => {
+              if (!note.trim()) return;
+              const saved = addHealEntry(loadHealStore(), {
+                itemId: current.id,
+                kind: "note",
+                promptKey: null,
+                text: note.trim(),
+              });
+              commit(saved.store);
+              setNote("");
+              void rememberRisk(current.id, note, commit);
+            }}
+          >
+            Save
+          </button>
+        </div>
+        <ul className="mt-4 flex flex-col gap-4">
+          {entries.map((entry) => (
+            <EntryRow key={entry.id} entry={entry} store={store} itemId={current.id} />
+          ))}
+        </ul>
+      </section>
+
+      {kindOpen ? (
+        <HealOverlay title="Kind" onClose={() => setKindOpen(false)}>
+          <div className="flex flex-col gap-1 overflow-y-auto p-3">
+            {HEAL_TYPES.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className="rounded-xl px-3 py-2 text-left hover:bg-background"
+                onClick={() => {
+                  commit(patchHealItem(loadHealStore(), current.id, { type: row.id }));
+                  setKindOpen(false);
+                }}
+              >
+                <span className="block text-sm font-semibold">{row.label}</span>
+                {KIND_BLURB[row.id] ? <span className="text-[12px] text-muted">{KIND_BLURB[row.id]}</span> : null}
+              </button>
+            ))}
+          </div>
+        </HealOverlay>
+      ) : null}
+
+      {exercise ? (
+        <HealOverlay title={exercise.question} onClose={() => setExercise(null)} wide>
+          <div className="overflow-y-auto px-5 py-5">
+            <p className="font-display text-[20px] leading-snug">{exercise.question}</p>
+            <div className="relative mt-3">
+              <textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={6} className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[17px] outline-none" />
+              <span className="absolute bottom-2 right-2">
+                <DictationMicButton variant="inset" onTranscript={(spoken) => setAnswer((value) => appendSpokenText(value, spoken))} />
+              </span>
+            </div>
+            <button type="button" className={`${HEAL_PRIMARY} mt-3`} disabled={!answer.trim()} onClick={saveAnswer}>
+              Save
+            </button>
+          </div>
+        </HealOverlay>
+      ) : null}
+
+      {endStep ? (
+        <HealOverlay title="Does this change how you see it?" onClose={() => setEndStep(null)} wide>
+          <div className="overflow-y-auto px-5 py-5">
+            <p className="text-[12px] font-semibold text-heal-accent">{endStep.question}</p>
+            <div className="mt-2 rounded-xl bg-background px-3 py-2 text-sm">{endStep.text}</div>
+            <h2 className="mt-4 font-display text-[24px]">Does this change how you see it?</h2>
+            <p className="mt-1 text-[13px] text-muted">
+              On a bad day you think: &quot;{bad?.text || "…"}&quot; Edit your good-day view, in your own words. The earlier version is kept.
+            </p>
+            <textarea
+              autoFocus
+              value={goodNow}
+              onChange={(event) => setGoodNow(event.target.value)}
+              rows={4}
+              className="mt-3 w-full resize-none rounded-xl border-[1.5px] border-heal-accent bg-card px-3 py-2 font-display text-[18px] outline-none"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={HEAL_PRIMARY}
+                disabled={!goodNow.trim() || goodNow.trim() === (good?.text ?? "")}
+                onClick={() => {
+                  saveGood(goodNow, endStep.entryId, "user", null);
+                  setEndStep(null);
+                }}
+              >
+                Update my good-day view
+              </button>
+              <button type="button" className={HEAL_OUTLINE} onClick={() => setEndStep(null)}>
+                Not yet
+              </button>
+              <p className="text-[12px] text-muted sm:ml-auto">Your answer is saved either way</p>
+            </div>
+          </div>
+        </HealOverlay>
+      ) : null}
+
+      {versions ? (
+        <HealOverlay title="Earlier versions" onClose={() => setVersions(false)} wide>
+          <div className="grid gap-4 overflow-y-auto p-5 md:grid-cols-2">
+            <VersionColumn title="On a bad day" rows={viewsForSide(store, current.id, "bad")} />
+            <VersionColumn title="On a good day" rows={viewsForSide(store, current.id, "good")} />
+          </div>
+        </HealOverlay>
+      ) : null}
+
+      {restOpen ? (
+        <HealOverlay title="Lay to rest" onClose={() => setRestOpen(false)}>
+          <div className="px-5 py-5">
+            <h2 className="font-display text-[22px]">Lay {current.title} to rest?</h2>
+            <p className="mt-2 text-sm text-foreground">{restBody} It moves to Laid to rest. Nothing is deleted.</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className={HEAL_PRIMARY}
+                onClick={() => {
+                  commit(setHealItemStatus(loadHealStore(), current.id, "at_peace"));
+                  router.push("/heal/rested");
+                }}
+              >
+                Lay to rest
+              </button>
+              <button type="button" className={HEAL_OUTLINE} onClick={() => setRestOpen(false)}>
+                Back
+              </button>
+            </div>
+          </div>
+        </HealOverlay>
+      ) : null}
+
+      {consentThen ? (
+        <HealOverlay title="Let AI read this" onClose={() => setConsentThen(null)}>
+          <div className="px-5 py-5">
+            <p className="text-sm">Let AI read this item&apos;s writing to suggest exercises and other ways to see it. Only this item is used.</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className={HEAL_PRIMARY}
+                onClick={() => {
+                  commit(patchHealItem(loadHealStore(), current.id, { aiEnabled: true }));
+                  const next = consentThen;
+                  setConsentThen(null);
+                  next();
+                }}
+              >
+                Allow
+              </button>
+              <button type="button" className={HEAL_OUTLINE} onClick={() => setConsentThen(null)}>
+                Not now
+              </button>
+            </div>
+          </div>
+        </HealOverlay>
+      ) : null}
+
+      {areaPick ? (
+        <HealOverlay title="Which life area?" onClose={() => setAreaPick(null)}>
+          <div className="flex flex-col gap-1 p-3">
+            {dreams.map((dream) => (
+              <button key={dream.id} type="button" className="rounded-xl px-3 py-2 text-left text-sm font-semibold hover:bg-background" onClick={() => sendToTracker(areaPick, dream.id)}>
+                {dream.title}
+              </button>
+            ))}
           </div>
         </HealOverlay>
       ) : null}
@@ -575,254 +1062,99 @@ export function HealItemView({ itemId }: { itemId: string }) {
   );
 }
 
-function AboutCard({
-  item,
-  store,
-  onSave,
-  onPerspective,
-  onNeedAi,
+function ViewBox({
+  label,
+  view,
+  editing,
+  draft,
+  onDraft,
+  empty,
+  accent,
 }: {
-  item: HealItem;
-  store: HealStoreV1;
-  onSave: (text: string) => void;
-  onPerspective: (perspective: HealPerspective) => void;
-  onNeedAi: (then: () => void) => void;
+  label: string;
+  view: HealView | null;
+  editing: boolean;
+  draft: string;
+  onDraft: (value: string) => void;
+  empty: string;
+  accent: boolean;
 }) {
-  const [text, setText] = useState(item.aboutText);
-  const [flags, setFlags] = useState<HealFlag[] | null>(null);
-  const [open, setOpen] = useState<number | null>(null);
-  const [lens, setLens] = useState<HealLens>("kind");
-  const [busy, setBusy] = useState(false);
-
-  function run() {
-    setBusy(true);
-    void healNewPerspective({
-      type: item.type,
-      title: item.title,
-      text,
-    }).then((next) => {
-      setFlags(next);
-      setBusy(false);
-    });
-  }
-
-  const ranges = useMemo(() => locateFlags(text, flags ?? []), [text, flags]);
-
+  const meta = !view
+    ? ""
+    : view.side === "bad"
+      ? view.source === "setup"
+        ? `From what you wrote · ${formatHealDate(view.createdAt)}`
+        : `Your words · ${formatHealDate(view.createdAt)}`
+      : view.source === "setup"
+        ? "Suggested from what you wrote"
+        : `Your words · updated ${healRelative(view.createdAt)}`;
   return (
-    <section className="rounded-2xl border border-border bg-card p-4">
-      <p className="text-[12px] font-semibold text-heal-accent">What happened</p>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          if (text !== item.aboutText) onSave(text);
-        }}
-        rows={6}
-        className="mt-2 w-full resize-none bg-transparent font-display text-[18px] leading-[1.65] outline-none"
-      />
-      <FlaggedText
-        text={text}
-        ranges={ranges}
-        onOpen={(index) => {
-          setOpen(index);
-          const flag = ranges[index];
-          if (flag) setLens(defaultLensForKind(flag.kind));
-        }}
-      />
-      {item.aboutPerspectives.map((perspective) => (
-        <PerspectiveBlock key={perspective.id} text={perspective.text} />
-      ))}
-      {open != null && ranges[open] ? (
-        <LensCard
-          item={item}
-          store={store}
-          flag={ranges[open]}
-          source={text}
-          lens={lens}
-          onLens={setLens}
-          busy={busy}
-          onAdd={() => {
-            const flag = ranges[open];
-            if (!flag) return;
-            onPerspective({
-              id: newHealId("perspective"),
-              anchorStart: flag.start,
-              anchorEnd: flag.end,
-              lens,
-              text: flag.lenses[lens],
-              createdAt: new Date().toISOString(),
-            });
-            setFlags((current) => current?.filter((_, i) => i !== open) ?? null);
-            setOpen(null);
-          }}
-          onRetry={() => {
-            const flag = ranges[open];
-            if (!flag) return;
-            setBusy(true);
-            void healRetryLens({
-              type: item.type,
-              title: item.title,
-              quote: flag.quote,
-              lens,
-              text,
-            }).then((next) => {
-              if (next) {
-                setFlags((current) =>
-                  current?.map((row, i) =>
-                    i === open ? { ...row, lenses: { ...row.lenses, [lens]: next } } : row,
-                  ) ?? null,
-                );
-              }
-              setBusy(false);
-            });
-          }}
-          onClose={() => setOpen(null)}
-        />
-      ) : null}
-      <div className="mt-3 flex items-center justify-between">
-        <DictationMicButton
-          variant="inset"
-          onTranscript={(spoken) => setText((current) => appendSpokenText(current, spoken))}
-        />
-        <button
-          type="button"
-          className={HEAL_OUTLINE}
-          onClick={() => onNeedAi(run)}
-        >
-          <Leaf className="size-3.5" aria-hidden />
-          {busy ? "Looking…" : "New perspective"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function locateFlags(text: string, flags: HealFlag[]) {
-  return flags
-    .map((flag) => {
-      const start = text.indexOf(flag.quote);
-      if (start < 0) return null;
-      return { ...flag, start, end: start + flag.quote.length };
-    })
-    .filter((flag): flag is HealFlag & { start: number; end: number } => flag != null);
-}
-
-function FlaggedText({
-  text,
-  ranges,
-  onOpen,
-}: {
-  text: string;
-  ranges: Array<HealFlag & { start: number; end: number }>;
-  onOpen: (index: number) => void;
-}) {
-  if (ranges.length === 0) return null;
-  return (
-    <p className="mt-2 text-sm leading-relaxed">
-      {ranges.map((range, index) => (
-        <button
-          key={`${range.start}-${index}`}
-          type="button"
-          onClick={() => onOpen(index)}
-          className="mr-2 cursor-pointer rounded bg-heal-tint px-0.5 underline decoration-heal-accent decoration-dotted underline-offset-[5px]"
-        >
-          {text.slice(range.start, range.end)}
-        </button>
-      ))}
-    </p>
-  );
-}
-
-function LensCard({
-  item,
-  store,
-  flag,
-  lens,
-  onLens,
-  onAdd,
-  onRetry,
-  onClose,
-  busy,
-}: {
-  item: HealItem;
-  store: HealStoreV1;
-  flag: HealFlag;
-  source: string;
-  lens: HealLens;
-  onLens: (lens: HealLens) => void;
-  onAdd: () => void;
-  onRetry: () => void;
-  onClose: () => void;
-  busy: boolean;
-}) {
-  return (
-    <div className="mt-3 rounded-[14px] border border-heal-border bg-heal-tint px-[18px] py-4">
-      <p className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[1.2px] text-heal-accent">
-        <Leaf className="size-3" aria-hidden />
-        New perspective
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {HEAL_LENSES.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            onClick={() => onLens(row.id)}
-            className={`h-8 cursor-pointer rounded-full px-3 text-[13px] ${
-              lens === row.id ? "bg-foreground text-white" : "bg-card text-foreground"
-            }`}
-          >
-            {row.label}
-          </button>
-        ))}
-      </div>
-      <p className="mt-3 font-display text-[18px] italic leading-relaxed">{flag.lenses[lens]}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className={HEAL_PRIMARY} onClick={onAdd} disabled={busy}>
-          Add to my writing
-        </button>
-        <button type="button" className={HEAL_OUTLINE} onClick={onRetry} disabled={busy}>
-          Try another
-        </button>
-        <button type="button" className="cursor-pointer text-sm text-muted" onClick={onClose}>
-          Not now
-        </button>
-      </div>
-      <span className="sr-only">{item.title}</span>
-      <span className="sr-only">{store.v}</span>
+    <div className={`min-w-0 flex-1 rounded-[14px] border bg-background p-3 ${accent ? "border-[1.5px] border-heal-accent" : "border-heal-border"}`}>
+      <p className={`text-[12px] font-semibold ${accent ? "text-heal-accent" : "text-muted"}`}>{label}</p>
+      {editing ? (
+        <textarea value={draft} onChange={(event) => onDraft(event.target.value)} rows={4} className="mt-2 w-full resize-none bg-transparent font-display text-[20px] leading-snug outline-none" />
+      ) : (
+        <p className={`mt-2 font-display text-[20px] leading-snug ${view ? "text-foreground" : "text-muted"}`}>{view?.text || empty}</p>
+      )}
+      {view && !editing ? <p className="mt-2 text-[12px] text-muted">{meta}</p> : null}
     </div>
   );
 }
 
-function ConsentDialog({
-  item,
-  store,
-  onClose,
-  onAllow,
-}: {
-  item: HealItem;
-  store: HealStoreV1;
-  onClose: () => void;
-  onAllow: () => void;
-}) {
+function VersionColumn({ title, rows }: { title: string; rows: HealView[] }) {
   return (
-    <HealOverlay title="Use AI" onClose={onClose}>
-      <div className="px-5 py-5">
-        <h2 className="font-display text-[22px] text-foreground">
-          Use AI with {item.title}&apos;s writing
-        </h2>
-        <p className="mt-2 text-sm leading-relaxed text-foreground">
-          This reads only what you&apos;ve written about <HealNameChip item={item} store={store} />.
-          It isn&apos;t used in Chat, insights, or anywhere else.
-        </p>
-        <div className="mt-4 flex gap-2">
-          <button type="button" className={HEAL_PRIMARY} onClick={onAllow}>
-            Turn on for {item.title}
-          </button>
-          <button type="button" className={HEAL_OUTLINE} onClick={onClose}>
-            Not now
-          </button>
-        </div>
-      </div>
-    </HealOverlay>
+    <div>
+      <p className="text-[12px] font-semibold uppercase tracking-[1.2px] text-muted">{title}</p>
+      <ul className="mt-2 flex flex-col gap-3">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <p className="text-[12px] text-muted">{formatHealDate(row.createdAt)}</p>
+            <p className="font-display text-[15px]">{row.text}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
+}
+
+function EntryRow({ entry, store, itemId }: { entry: HealEntry; store: HealStoreV1; itemId: string }) {
+  const exercise = store.exercises.find((row) => row.id === entry.exerciseId);
+  const goods = viewsForSide(store, itemId, "good");
+  const current = goods[0];
+  const ledNow = current?.sourceEntryId === entry.id;
+  const ledEarlier = goods.slice(1).some((row) => row.sourceEntryId === entry.id);
+  const kind = entry.kind === "letter" ? "Unsent letter" : entry.kind === "exercise" ? "Exercise" : "Note";
+  return (
+    <li>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">{kind}</p>
+        <p className="text-[12px] text-muted">{formatHealDate(entry.createdAt)}</p>
+      </div>
+      {exercise ? <p className="mt-1 text-[14px] font-semibold">{exercise.question}</p> : null}
+      <p className="mt-1 font-display text-[17px] leading-relaxed">{entry.text}</p>
+      {ledNow || ledEarlier ? (
+        <a href="#heal-views" className="mt-2 inline-flex rounded-full border border-border px-2 py-0.5 text-[12px]">
+          {ledNow ? "Led to my good-day view" : "Led to an earlier view"}
+        </a>
+      ) : null}
+    </li>
+  );
+}
+
+function contextFor(store: HealStoreV1, item: HealItem): string {
+  const update = updatesForItem(store, item.id)[0]?.text ?? "";
+  const bad = currentView(store, item.id, "bad")?.text ?? "";
+  const good = currentView(store, item.id, "good")?.text ?? "";
+  const writing = entriesForItem(store, item.id)
+    .slice(0, 10)
+    .map((entry) => entry.text)
+    .join("\n");
+  return `Update:\n${update}\n\nBad day:\n${bad}\n\nGood day:\n${good}\n\nWriting:\n${writing}\n\nAsked:\n${item.askedQuestions.join("\n")}`;
+}
+
+function unansweredContext(store: HealStoreV1, itemId: string): string {
+  return exercisesForItem(store, itemId)
+    .filter((row) => row.status === "active" && !row.answeredEntryId)
+    .map((row) => `${row.id}: ${row.question}`)
+    .join("\n");
 }

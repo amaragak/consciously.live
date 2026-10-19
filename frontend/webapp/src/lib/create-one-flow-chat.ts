@@ -391,6 +391,23 @@ export function buildShapeContextBlock(opts: {
     );
   }
 
+  if (state.heal) {
+    const focus =
+      state.heal.focus === "sit_with_it"
+        ? "sit with the feeling"
+        : state.heal.focus === "move_towards"
+          ? "move towards the good-day view"
+          : state.heal.focus === "both"
+            ? "sit with it, then move towards the good-day view"
+            : "not chosen yet";
+    lines.push(
+      "",
+      `Attached Heal item: ${state.heal.title}`,
+      `Focus: ${focus}.`,
+      "Do not quote their private writing in the chat. If a style is attached and its questions are still open, ask the next style question.",
+    );
+  }
+
   if (state.goal || lifeArea) {
     const title =
       state.goal?.lifeAreaTitle?.trim() ||
@@ -421,14 +438,15 @@ export function hasShapeStartMaterial(state: CreateOneFlowState): boolean {
       state.style ||
       state.program ||
       state.journals.length > 0 ||
-      state.goal,
+      state.goal ||
+      state.heal,
   );
 }
 
 /** True when Start carries brief/journal/goal the coach should scan before asking. */
 export function styleOpenHasUsableContext(state: CreateOneFlowState): boolean {
   return Boolean(
-    state.prompt.trim() || state.journals.length > 0 || state.goal,
+    state.prompt.trim() || state.journals.length > 0 || state.goal || state.heal,
   );
 }
 
@@ -519,6 +537,7 @@ type ShapeStartFingerprint = {
     lifeAreaTitle: string;
     goalId: string | null;
   } | null;
+  healItemId: string | null;
   lengthMinutes: number;
 };
 
@@ -544,6 +563,7 @@ function shapeStartFingerprintFromState(
           goalId: state.goal.goalId ?? null,
         }
       : null,
+    healItemId: state.heal?.itemId ?? null,
     lengthMinutes: state.lengthMinutes,
   };
 }
@@ -592,6 +612,7 @@ function parseShapeStartFingerprint(
                 typeof o.goal.goalId === "string" ? o.goal.goalId : null,
             }
           : null,
+      healItemId: typeof o.healItemId === "string" ? o.healItemId : null,
       lengthMinutes:
         typeof o.lengthMinutes === "number" && Number.isFinite(o.lengthMinutes)
           ? o.lengthMinutes

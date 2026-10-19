@@ -1,4 +1,4 @@
-import { Heart, KeyRound, Leaf, MessageCircle, Repeat } from "lucide-react";
+import { Heart, KeyRound, Leaf, Lock, MessageCircle, Repeat } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@/lib/spa-nav";
@@ -53,6 +53,12 @@ export function HealAvatar({
     >
       {photo ? (
         <img src={photo} alt="" className="h-full w-full object-cover" />
+      ) : item.type === "shame" ? (
+        <Lock
+          aria-hidden
+          strokeWidth={1.8}
+          style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42) }}
+        />
       ) : item.type === "pattern" || item.type === "recurring_thought" || item.type === "belief" ? (
         item.type === "belief" ? (
           <KeyRound

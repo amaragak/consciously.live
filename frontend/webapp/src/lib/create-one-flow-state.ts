@@ -27,7 +27,23 @@ export type CreateFlowContextKind =
   | "program"
   | "journal"
   | "goal"
+  | "heal"
   | "start";
+
+export type HealMeditationFocus = "sit_with_it" | "move_towards" | "both";
+
+/** Heal item attached to a meditation. The visible token is the name only. */
+export type CreateFlowHealAttachment = {
+  itemId: string;
+  title: string;
+  kind: string;
+  canDo: "yes" | "no" | "not_sure" | null;
+  goodDay: string;
+  badDay: string;
+  goodViewId: string | null;
+  context: string;
+  focus: HealMeditationFocus | null;
+};
 
 export type CreateFlowChatTurn = {
   role: "user" | "assistant";
@@ -95,6 +111,7 @@ export type CreateOneFlowState = {
   program: CreateFlowProgramAttachment | null;
   journals: CreateFlowJournalAttachment[];
   goal: CreateFlowGoalAttachment | null;
+  heal: CreateFlowHealAttachment | null;
   chat: CreateFlowChatTurn[];
   /** Style-question answers keyed by question index or id. */
   answers: Record<string, string>;
@@ -176,6 +193,7 @@ export function emptyCreateOneFlowState(
     program: null,
     journals: [],
     goal: null,
+    heal: null,
     chat: [],
     answers: {},
     lengthMinutes: coerceLength(lengthMinutes),

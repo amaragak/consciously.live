@@ -9,6 +9,7 @@ export const HEAL_TYPES: { id: HealType; label: string }[] = [
   { id: "recurring_thought", label: "Thought" },
   { id: "belief", label: "Belief" },
   { id: "fear", label: "Fear" },
+  { id: "shame", label: "Shame" },
   { id: "other", label: "Other" },
 ];
 
@@ -65,6 +66,12 @@ const PROMPTS: Record<HealType, HealPrompt[]> = {
     { key: "afraid", label: "What I'm afraid of" },
     { key: "control", label: "What's in my control" },
     { key: "help", label: "What would help" },
+  ],
+  shame: [
+    { key: "what_happened", label: "What happened" },
+    { key: "tell_myself", label: "What I tell myself" },
+    { key: "forgive", label: "What forgiveness would mean" },
+    { key: "keep", label: "What I want to keep" },
   ],
   other: [
     { key: "afraid", label: "What I'm afraid of" },
