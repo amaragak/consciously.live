@@ -1,13 +1,15 @@
-import { Leaf, Mail, Pencil, PenLine, Play, Sparkles } from "lucide-react";
+import { Leaf, Mail, MoreHorizontal, Pencil, PenLine, Play, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
+import { LogoMark } from "@/components/logo-mark";
 import { SelectChevron } from "@/components/select-chevron";
 import {
   HEAL_OUTLINE,
   HEAL_PAGE,
   HEAL_PRIMARY,
-  HealAvatar,
   HealOverlay,
   HealRiskPill,
   rememberRisk,
@@ -67,6 +69,11 @@ const KIND_BLURB: Record<string, string> = {
   shame: "Something I'm ashamed of",
 };
 
+const HERO_NAVY = "#1E232E";
+const HERO_IVORY = "#F3EDE2";
+const HERO_GHOST =
+  "inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-[rgb(243_237_226_/_0.35)] bg-[rgb(243_237_226_/_0.06)] px-3.5 text-[13px] font-semibold text-[#F3EDE2]";
+
 function MeditationMark() {
   return (
     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
@@ -108,11 +115,17 @@ function HealMeditationCard({
     ? Math.max(1, Math.round(libraryItem.durationSeconds / 60))
     : null;
   const cover = libraryItem?.coverImageUrl || "";
+  function play() {
+    if (!latest) return;
+    router.push(
+      `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}&focus=pending:${encodeURIComponent(latest.jobId)}&play=1`,
+    );
+  }
   return (
-    <section className="rounded-2xl border border-border bg-card p-4">
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]">
       <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Meditation</h2>
       {!latest ? (
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3.5 flex items-center justify-between gap-3">
           <p className="text-sm text-foreground">No meditation for this yet.</p>
           <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
             <MeditationMark />
@@ -121,30 +134,26 @@ function HealMeditationCard({
         </div>
       ) : (
         <>
-          <div className="mt-3 flex items-center gap-3">
-            {cover ? (
-              <img src={cover} alt="" className="size-14 shrink-0 rounded-[10px] object-cover" />
-            ) : (
-              <span className="size-14 shrink-0 rounded-[10px] bg-background" />
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-[17px] leading-snug text-foreground">{latest.title}</p>
+          <div className="mt-3.5 flex items-center gap-4">
+            <button
+              type="button"
+              className="relative size-[84px] shrink-0 cursor-pointer overflow-hidden rounded-[14px] bg-background"
+              aria-label="Play"
+              onClick={play}
+            >
+              {cover ? <img src={cover} alt="" className="size-full object-cover" /> : null}
+              <span className="absolute inset-0 grid place-items-center">
+                <span className="grid size-9 place-items-center rounded-full bg-white/90 text-[#0F1B2D]">
+                  <Play className="size-3.5 fill-current" aria-hidden />
+                </span>
+              </span>
+            </button>
+            <div className="min-w-0">
+              <p className="font-display text-[19px] leading-snug text-foreground">{latest.title}</p>
               <p className="text-[12px] text-muted">
                 {minutes ? `${minutes} min · ` : ""}made {healRelative(latest.createdAt)}, from your good-day view
               </p>
             </div>
-            <button
-              type="button"
-              className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-border bg-card"
-              aria-label="Play"
-              onClick={() =>
-                router.push(
-                  `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}&focus=pending:${encodeURIComponent(latest.jobId)}&play=1`,
-                )
-              }
-            >
-              <Play className="size-3.5" aria-hidden />
-            </button>
           </div>
           {changed ? (
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
@@ -195,6 +204,9 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const [note, setNote] = useState("");
   const [versions, setVersions] = useState(false);
   const [restOpen, setRestOpen] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const mobileMenuBtn = useRef<HTMLButtonElement>(null);
+  const [mobileMenuPos, setMobileMenuPos] = useState({ top: 0, right: 0 });
   const [actionText, setActionText] = useState("");
   const [addingAction, setAddingAction] = useState(false);
   const [areaPick, setAreaPick] = useState<string | null>(null);
@@ -552,9 +564,65 @@ export function HealItemView({ itemId }: { itemId: string }) {
 
   return (
     <div className={HEAL_PAGE}>
-      <HealRiskPill show={Boolean(current.riskAt)} />
+      <AppTopBarTrailingPortal>
+        <button
+          ref={mobileMenuBtn}
+          type="button"
+          aria-label="More"
+          aria-expanded={mobileMenu}
+          className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-nav-foreground lg:hidden"
+          onClick={() => {
+            const rect = mobileMenuBtn.current?.getBoundingClientRect();
+            if (rect) {
+              setMobileMenuPos({ top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) });
+            }
+            setMobileMenu((open) => !open);
+          }}
+        >
+          <MoreHorizontal className="size-5" aria-hidden />
+        </button>
+      </AppTopBarTrailingPortal>
+      {mobileMenu
+        ? createPortal(
+            <>
+              <button type="button" aria-label="Close menu" className="fixed inset-0 z-[140] cursor-default" onClick={() => setMobileMenu(false)} />
+              <div
+                className="fixed z-[141] w-52 overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg"
+                style={{ top: mobileMenuPos.top, right: mobileMenuPos.right }}
+              >
+                <button
+                  type="button"
+                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm font-semibold"
+                  onClick={() => {
+                    setMobileMenu(false);
+                    setVersions(true);
+                  }}
+                >
+                  Earlier versions ({viewsForSide(store, current.id, "bad").length + viewsForSide(store, current.id, "good").length})
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm font-semibold"
+                  onClick={() => {
+                    setMobileMenu(false);
+                    setRestOpen(true);
+                  }}
+                >
+                  <Leaf className="size-3.5" aria-hidden />
+                  Lay to rest
+                </button>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+      {current.riskAt ? (
+        <div className="mb-3 flex justify-end">
+          <HealRiskPill show />
+        </div>
+      ) : null}
       {conflict ? (
-        <section className="mb-3 rounded-2xl border border-border bg-card p-4">
+        <section className="mb-3 rounded-2xl border border-border bg-card p-4 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]">
           <p className="text-sm text-foreground">Your good-day view mentions {conflict}. Is it still true on a good day?</p>
           <div className="mt-2 flex gap-2">
             <button
@@ -575,23 +643,141 @@ export function HealItemView({ itemId }: { itemId: string }) {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <HealAvatar item={current} store={store} size={64} />
-          <div className="min-w-0 flex-1">
-            <button type="button" className="cursor-pointer text-[12px] font-semibold uppercase tracking-[1.2px] text-heal-accent" onClick={() => setKindOpen(true)}>
-              {healTypeLabel(current.type)}
-              {current.since ? ` · since ${formatHealDate(current.since)}` : ""}
-            </button>
-            <h2 className="font-display text-[32px] leading-none text-foreground">{current.title}</h2>
+      <section
+        id="heal-views"
+        className="relative overflow-hidden rounded-[18px] p-4 shadow-[0_8px_30px_rgb(15_27_45_/_0.16)] lg:rounded-[20px] lg:px-[30px] lg:pb-[22px] lg:pt-[26px]"
+        style={{ backgroundColor: HERO_NAVY, color: HERO_IVORY }}
+      >
+        <div className="navy-paisley-plate" aria-hidden />
+        <div className="relative flex flex-col gap-6">
+          <div className="flex items-start gap-4">
+            <div className="min-w-0">
+              <button
+                type="button"
+                className="cursor-pointer text-[11px] font-semibold uppercase tracking-[1.6px] text-[rgb(243_237_226_/_0.55)]"
+                onClick={() => setKindOpen(true)}
+              >
+                {healTypeLabel(current.type)}
+                {current.since ? ` · since ${formatHealDate(current.since)}` : ""}
+              </button>
+              <h2 className="font-display text-[26px] leading-[1.1] lg:text-[36px] lg:leading-[1.05]">{current.title}</h2>
+            </div>
+            <div className="ml-auto hidden items-center gap-3.5 lg:flex">
+              <button type="button" className="cursor-pointer text-[13px] font-semibold text-[rgb(243_237_226_/_0.7)]" onClick={() => setVersions(true)}>
+                Earlier versions ({viewsForSide(store, current.id, "bad").length + viewsForSide(store, current.id, "good").length})
+              </button>
+              <button type="button" className={HERO_GHOST} onClick={() => setRestOpen(true)}>
+                <Leaf className="size-3.5" aria-hidden />
+                Lay to rest
+              </button>
+            </div>
           </div>
-          <button type="button" className={HEAL_OUTLINE} onClick={() => setRestOpen(true)}>
-            <Leaf className="size-3.5" aria-hidden />
-            Lay to rest
-          </button>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-5">
+            <ViewBox
+              label="On a bad day, I think…"
+              view={bad}
+              empty="On a bad day, what do you tell yourself about it?"
+              accent={false}
+              onSave={(text) => commit(addHealView(loadHealStore(), { itemId: current.id, side: "bad", text, source: "user" }))}
+            />
+            <div className="relative flex h-11 items-center justify-center lg:hidden" aria-hidden>
+              <span className="absolute inset-x-0 top-1/2 h-[1.5px] -translate-y-1/2 bg-[linear-gradient(90deg,transparent,rgb(200_164_106_/_0.9),transparent)]" />
+              <span className="relative grid size-10 place-items-center rounded-full" style={{ backgroundColor: HERO_NAVY }}>
+                <LogoMark size={26} fill="#C8A46A" />
+              </span>
+            </div>
+            <div className="relative hidden w-14 shrink-0 items-center justify-center self-stretch lg:flex" aria-hidden>
+              <span className="absolute inset-y-0 left-1/2 w-[1.5px] -translate-x-1/2 bg-[linear-gradient(180deg,transparent,rgb(200_164_106_/_0.9)_50%,transparent)]" />
+              <span className="relative grid size-11 place-items-center rounded-full" style={{ backgroundColor: HERO_NAVY }}>
+                <LogoMark size={30} fill="#C8A46A" />
+              </span>
+            </div>
+            <ViewBox
+              label="On a good day, I think…"
+              view={good}
+              empty="Not yet. On a good day, how do you see it?"
+              accent
+              editRequest={goodEdit}
+              onSave={(text) => {
+                saveGood(text, null, lensSource ? "lens" : "user", lensSource);
+                setLensSource(null);
+              }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-[rgb(243_237_226_/_0.12)] pt-3.5 lg:flex-row lg:items-center">
+            <button
+              type="button"
+              className={`${HERO_GHOST} w-full lg:w-auto`}
+              onClick={() =>
+                enableAi(() => {
+                  setLensesOpen(true);
+                  if (!lensText.kind) void loadLenses();
+                })
+              }
+            >
+              <Sparkles className="size-3.5" aria-hidden />
+              Show other ways to see it
+            </button>
+            <p className="hidden text-[12px] text-[rgb(243_237_226_/_0.5)] lg:block">Click either side to edit it.</p>
+          </div>
+
+          {lensesOpen ? (
+            <div className="border-t border-[rgb(243_237_226_/_0.12)] pt-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-[rgb(243_237_226_/_0.7)]" aria-hidden />
+                <p className="text-[15px] font-semibold">Other ways to see it</p>
+                <button type="button" className="ml-auto cursor-pointer text-[13px] text-[rgb(243_237_226_/_0.7)]" onClick={() => setLensesOpen(false)}>
+                  Close
+                </button>
+              </div>
+              <p className="mt-1 text-[13px] text-[rgb(243_237_226_/_0.5)]">AI&apos;s take on your bad-day line, using only what you&apos;ve written. A starting point, not an answer.</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {SEE_LENSES.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => setLens(row.id)}
+                    className={`h-8 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${
+                      lens === row.id
+                        ? "bg-[#F3EDE2] text-[#1E232E]"
+                        : "border border-[rgb(243_237_226_/_0.35)] bg-[rgb(243_237_226_/_0.06)] text-[#F3EDE2]"
+                    }`}
+                  >
+                    {row.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 font-display text-[19px] italic leading-snug text-[#F3EDE2]">
+                {lensBusy ? "…" : lensText[lens] || "Nothing yet."}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={HERO_GHOST}
+                  disabled={!lensText[lens]}
+                  onClick={() => {
+                    setLensSource(lens);
+                    setGoodEdit({ token: Date.now(), text: lensText[lens] ?? "" });
+                  }}
+                >
+                  <PenLine className="size-3.5" aria-hidden />
+                  Start from this
+                </button>
+                <button type="button" className={HERO_GHOST} onClick={() => void loadLenses(lens)}>
+                  Another
+                </button>
+              </div>
+              <p className="mt-2 text-[12px] text-[rgb(243_237_226_/_0.5)]">Start from this opens your good-day view with this text in it, for you to change and save.</p>
+            </div>
+          ) : null}
         </div>
-        <div className="mt-4 border-t border-border pt-4">
-          <div className="flex items-center justify-between gap-3">
+      </section>
+
+      <div className="mt-4 grid items-start gap-[18px] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] sm:px-6">
+          <div className="flex items-end justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">What&apos;s going on</p>
             <div className="flex items-center gap-2">
               {description ? <p className="text-[12px] text-muted">Written {formatHealDate(description.createdAt)}</p> : null}
@@ -651,11 +837,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
           ) : null}
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-[12px] font-semibold text-muted">Updates</p>
-            <button
-              type="button"
-              className="cursor-pointer text-[13px] font-semibold"
-              onClick={() => setAddingUpdate(true)}
-            >
+            <button type="button" className="cursor-pointer text-[13px] font-semibold text-heal-accent" onClick={() => setAddingUpdate(true)}>
               + Add an update
             </button>
           </div>
@@ -691,10 +873,10 @@ export function HealItemView({ itemId }: { itemId: string }) {
                 <li key={row.id} className="border-t border-border/70">
                   <button
                     type="button"
-                    className="flex w-full cursor-pointer items-baseline gap-2 py-2 text-left text-[13px]"
+                    className="flex w-full cursor-pointer items-baseline gap-3 py-2 text-left text-[13px]"
                     onClick={() => setOpenUpdateId(open ? null : row.id)}
                   >
-                    <span className="shrink-0 text-muted">{updateWhen(row.createdAt)}</span>
+                    <span className="w-11 shrink-0 text-muted">{updateWhen(row.createdAt)}</span>
                     <span className={`min-w-0 text-foreground ${open ? "" : "truncate"}`}>{row.text}</span>
                   </button>
                   {open ? (
@@ -739,267 +921,188 @@ export function HealItemView({ itemId }: { itemId: string }) {
             })}
           </ul>
           {laterUpdates.length > 3 ? (
-            <button
-              type="button"
-              className="mt-1 cursor-pointer text-[13px] font-semibold"
-              onClick={() => setShowAllUpdates((open) => !open)}
-            >
+            <button type="button" className="mt-1 cursor-pointer text-[13px] font-semibold" onClick={() => setShowAllUpdates((open) => !open)}>
               {showAllUpdates ? "Show less" : `Show all ${laterUpdates.length}`}
             </button>
           ) : null}
-        </div>
-      </section>
+        </section>
 
-      <section id="heal-views" className="mt-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">How you see it</h2>
-          <button type="button" className="cursor-pointer text-[13px] font-semibold text-foreground" onClick={() => setVersions(true)}>
-            Earlier versions ({viewsForSide(store, current.id, "bad").length + viewsForSide(store, current.id, "good").length})
-          </button>
-        </div>
-        <div className="mt-3 flex flex-col items-stretch gap-2 md:flex-row md:items-stretch">
-          <ViewBox
-            label="On a bad day, I think…"
-            view={bad}
-            empty="On a bad day, what do you tell yourself about it?"
-            accent={false}
-            onSave={(text) => commit(addHealView(loadHealStore(), { itemId: current.id, side: "bad", text, source: "user" }))}
-          />
-          <span className="self-center text-muted md:px-1" aria-hidden>
-            <span className="md:hidden">↓</span>
-            <span className="hidden md:inline">→</span>
-          </span>
-          <ViewBox
-            label="On a good day, I think…"
-            view={good}
-            empty="Not yet. On a good day, how do you see it?"
-            accent
-            editRequest={goodEdit}
-            onSave={(text) => {
-              saveGood(text, null, lensSource ? "lens" : "user", lensSource);
-              setLensSource(null);
-            }}
-          />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            className={HEAL_OUTLINE}
-            onClick={() =>
-              enableAi(() => {
-                setLensesOpen(true);
-                if (!lensText.kind) void loadLenses();
-              })
-            }
-          >
-            <Sparkles className="size-3.5" aria-hidden />
-            Show other ways to see it
-          </button>
-          <p className="text-[13px] text-muted">Click either side to edit it. Each exercise ends by asking if it changes your good-day view.</p>
-        </div>
-        {lensesOpen ? (
-          <div className="mt-3 rounded-xl border border-border bg-background p-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-heal-accent" aria-hidden />
-              <p className="text-[15px] font-semibold">Other ways to see it</p>
-              <button type="button" className="ml-auto cursor-pointer text-[13px] text-muted" onClick={() => setLensesOpen(false)}>
-                Close
-              </button>
-            </div>
-            <p className="mt-1 text-[13px] text-muted">AI&apos;s take on your bad-day line, using only what you&apos;ve written. A starting point, not an answer.</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {SEE_LENSES.map((row) => (
+        <div className="flex flex-col gap-[18px]">
+          <HealMeditationCard itemId={current.id} viewId={good?.id ?? null} onCreate={createMeditation} />
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]">
+            <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Can you do anything about it?</h2>
+            <div className="mt-3 inline-flex w-fit max-w-full rounded-full border border-border p-1">
+              {(
+                [
+                  ["yes", "Yes"],
+                  ["no", "No, it's done"],
+                  ["not_sure", "Not sure"],
+                ] as const
+              ).map(([value, label]) => (
                 <button
-                  key={row.id}
+                  key={value}
                   type="button"
-                  onClick={() => setLens(row.id)}
-                  className={`h-8 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${lens === row.id ? "bg-foreground text-white" : "border border-border bg-card"}`}
+                  onClick={() => changeCanDo(value)}
+                  className={`h-8 cursor-pointer rounded-full px-3.5 text-[13px] font-semibold ${current.canDo === value ? "bg-foreground text-white" : "text-foreground"}`}
                 >
-                  {row.label}
+                  {label}
                 </button>
               ))}
             </div>
-            <p className="mt-3 font-display text-[19px] italic leading-snug text-foreground">
-              {lensBusy ? "…" : lensText[lens] || "Nothing yet."}
+            <p className="mt-3 text-[13px] text-muted">
+              {current.canDo === "yes"
+                ? "Exercises include next steps as well as acceptance."
+                : current.canDo === "no"
+                  ? "Exercises focus on accepting it and forgiving yourself where you can."
+                  : current.canDo === "not_sure"
+                    ? "One of your exercises will help you work it out."
+                    : "Your answer changes which exercises you get."}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={HEAL_OUTLINE}
-                disabled={!lensText[lens]}
-                onClick={() => {
-                  setLensSource(lens);
-                  setGoodEdit({ token: Date.now(), text: lensText[lens] ?? "" });
-                }}
-              >
-                <PenLine className="size-3.5" aria-hidden />
-                Start from this
-              </button>
-              <button type="button" className={HEAL_OUTLINE} onClick={() => void loadLenses(lens)}>
-                Another
-              </button>
-            </div>
-            <p className="mt-2 text-[12px] text-muted">Start from this opens your good-day view with this text in it, for you to change and save.</p>
-          </div>
-        ) : null}
-      </section>
-
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Can you do anything about it?</h2>
-        <div className="mt-3 inline-flex w-fit max-w-full rounded-full border border-border p-1">
-          {(
-            [
-              ["yes", "Yes"],
-              ["no", "No, it's done"],
-              ["not_sure", "Not sure"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => changeCanDo(value)}
-              className={`h-9 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${current.canDo === value ? "bg-foreground text-white" : "text-foreground"}`}
-            >
-              {label}
-            </button>
-          ))}
+            {current.canDo === "yes" ? (
+              <div className="mt-3">
+                {actions.map((action) => {
+                  const area = action.trackerItemId ? lifeAreaOf(areaId) : null;
+                  return (
+                    <label key={action.id} className="flex items-start gap-2 border-t border-border/70 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={action.done}
+                        onChange={(event) => toggleAction(action.id, event.target.checked)}
+                        className="mt-0.5 size-5 rounded"
+                      />
+                      <span className={`min-w-0 flex-1 ${action.done ? "text-muted line-through" : ""}`}>{action.text}</span>
+                      {action.trackerItemId ? (
+                        <span className="text-[12px] text-muted">In Tracker · {area?.title || "life area"}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="cursor-pointer text-[12px] font-semibold"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            if (areaId) sendToTracker(action.id, areaId);
+                            else setAreaPick(action.id);
+                          }}
+                        >
+                          Add to Tracker
+                        </button>
+                      )}
+                    </label>
+                  );
+                })}
+                {addingAction ? (
+                  <form
+                    className="mt-2 flex gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      commit(addHealAction(loadHealStore(), current.id, actionText));
+                      setActionText("");
+                      setAddingAction(false);
+                    }}
+                  >
+                    <input value={actionText} onChange={(event) => setActionText(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm" />
+                    <button type="submit" className={HEAL_OUTLINE}>Add</button>
+                  </form>
+                ) : (
+                  <button type="button" className="mt-2 cursor-pointer text-[13px] font-semibold text-heal-accent" onClick={() => setAddingAction(true)}>
+                    + Add something you could do
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </section>
         </div>
-        <p className="mt-2 text-[13px] text-muted">
-          {current.canDo === "yes"
-            ? "Exercises include next steps as well as acceptance."
-            : current.canDo === "no"
-              ? "Exercises focus on accepting it and forgiving yourself where you can."
-              : current.canDo === "not_sure"
-                ? "One of your exercises will help you work it out."
-                : "Your answer changes which exercises you get."}
-        </p>
-        {current.canDo === "yes" ? (
-          <div className="mt-3">
-            {actions.map((action) => {
-              const area = action.trackerItemId
-                ? lifeAreaOf(areaId)
-                : null;
-              return (
-                <label key={action.id} className="flex items-start gap-2 border-t border-border/70 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={action.done}
-                    onChange={(event) => toggleAction(action.id, event.target.checked)}
-                    className="mt-0.5 size-5 rounded"
-                  />
-                  <span className={`min-w-0 flex-1 ${action.done ? "text-muted line-through" : ""}`}>{action.text}</span>
-                  {action.trackerItemId ? (
-                    <span className="text-[12px] text-muted">In Tracker · {area?.title || "life area"}</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="cursor-pointer text-[12px] font-semibold"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        if (areaId) sendToTracker(action.id, areaId);
-                        else setAreaPick(action.id);
-                      }}
-                    >
-                      Add to Tracker
-                    </button>
-                  )}
-                </label>
-              );
-            })}
-            {addingAction ? (
-              <form
-                className="mt-2 flex gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  commit(addHealAction(loadHealStore(), current.id, actionText));
-                  setActionText("");
-                  setAddingAction(false);
-                }}
-              >
-                <input value={actionText} onChange={(event) => setActionText(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm" />
-                <button type="submit" className={HEAL_OUTLINE}>Add</button>
-              </form>
-            ) : (
-              <button type="button" className="mt-2 cursor-pointer text-[13px] font-semibold" onClick={() => setAddingAction(true)}>
-                + Add something you could do
-              </button>
-            )}
-          </div>
-        ) : null}
-      </section>
-
-      <HealMeditationCard itemId={current.id} viewId={good?.id ?? null} onCreate={createMeditation} />
       </div>
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-center justify-between gap-3">
+      <section className="mt-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your exercises</h2>
-          <p className="text-[12px] text-muted">Suggested from what you wrote</p>
+          <div className="flex flex-wrap gap-4">
+            {(current.aiEnabled || fallbackExerciseQuestions(current.canDo).some((question) => !current.askedQuestions.includes(question))) ? (
+              <button type="button" className="cursor-pointer text-[13px] font-semibold text-heal-accent" onClick={() => void suggestMore()}>
+                + Suggest more
+              </button>
+            ) : null}
+            <button type="button" className="cursor-pointer text-[13px] font-semibold text-heal-accent" onClick={() => setAddingOwn(true)}>
+              + Add your own
+            </button>
+          </div>
         </div>
         {notice ? <p className="mt-2 text-[13px] text-muted">{notice}</p> : null}
         {settingUp ? (
-          <div className="mt-3 flex flex-col gap-2">
+          <div className="mt-3.5 grid gap-3.5 lg:grid-cols-2">
             {[0, 1, 2, 3].map((row) => (
-              <div key={row} className="h-12 animate-pulse rounded-xl bg-background" />
+              <div key={row} className="h-36 animate-pulse rounded-2xl bg-card" />
             ))}
           </div>
         ) : (
-          <ul className="mt-2">
-            {active.map((row) => {
+          <ul className="mt-3.5 grid items-stretch gap-3.5 lg:grid-cols-2">
+            {active.map((row, index) => {
               const answered = entries.find((entry) => entry.id === row.answeredEntryId);
               const stale = answered && latestUpdate && answered.createdAt < latestUpdate.createdAt;
               return (
-                <li key={row.id} className="border-t border-border/70 py-3">
-                  <button type="button" className="flex w-full items-start gap-2 text-left" onClick={() => { setExercise(row); setAnswer(answered?.text ?? ""); }}>
-                    <span className={`mt-1 inline-flex size-[22px] shrink-0 items-center justify-center rounded-full border ${row.answeredEntryId ? "border-foreground bg-foreground text-white" : "border-border"}`}>
-                      {row.answeredEntryId ? "✓" : ""}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-display text-[17px] leading-snug">{row.question}</span>
-                      <span className="mt-1 flex items-center gap-3 text-[12px] text-muted">
-                        <span>
-                          {freshIds.includes(row.id)
-                            ? "New · from your update"
-                            : answered
-                              ? `Answered ${healRelative(answered.createdAt)}${stale ? ", before your update" : ""}`
-                              : "Not answered yet"}
+                <li
+                  key={row.id}
+                  className={`flex h-full flex-col gap-3 rounded-2xl border border-border px-[22px] py-5 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] ${
+                    answered ? "bg-[var(--surface)]" : "bg-card"
+                  }`}
+                >
+                  <span className="font-display text-[26px] leading-none text-accent">{String(index + 1).padStart(2, "0")}</span>
+                  <p className="font-display text-[19px] leading-snug text-foreground">{row.question}</p>
+                  {answered ? (
+                    <p className="line-clamp-2 font-display text-[15px] italic leading-snug text-foreground">&quot;{answered.text}&quot;</p>
+                  ) : null}
+                  <div className="mt-auto flex items-center gap-2.5 border-t border-border pt-3">
+                    {answered ? (
+                      <>
+                        <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-foreground">
+                          <span className="grid size-[18px] place-items-center rounded-full bg-foreground text-white">
+                            <span className="text-[10px] leading-none">✓</span>
+                          </span>
+                          Answered {healRelative(answered.createdAt)}
+                          {stale ? ", before your update" : ""}
                         </span>
-                        {!row.answeredEntryId ? (
-                          <button
-                            type="button"
-                            className="cursor-pointer text-[13px] font-semibold text-foreground"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              dismissExercise(row);
-                            }}
-                          >
-                            Not for me
-                          </button>
-                        ) : null}
-                      </span>
-                    </span>
-                    <SelectChevron direction="right" />
-                  </button>
+                        <button
+                          type="button"
+                          className="ml-auto cursor-pointer text-[13px] font-semibold text-foreground"
+                          onClick={() => {
+                            setExercise(row);
+                            setAnswer(answered.text);
+                          }}
+                        >
+                          Read
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="inline-flex cursor-pointer items-center text-[13px] font-semibold text-foreground"
+                          onClick={() => {
+                            setExercise(row);
+                            setAnswer("");
+                          }}
+                        >
+                          Write your answer
+                          <SelectChevron direction="right" className="text-foreground" />
+                        </button>
+                        <button
+                          type="button"
+                          className="ml-auto cursor-pointer text-[12px] font-semibold text-muted"
+                          onClick={() => dismissExercise(row)}
+                        >
+                          Not for me
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
-        <div className="mt-2 flex flex-wrap gap-3">
-          {(current.aiEnabled || fallbackExerciseQuestions(current.canDo).some((question) => !current.askedQuestions.includes(question))) ? (
-            <button type="button" className="cursor-pointer text-[13px] font-semibold" onClick={() => void suggestMore()}>
-              + Suggest more exercises
-            </button>
-          ) : null}
-          <button type="button" className="cursor-pointer text-[13px] font-semibold" onClick={() => setAddingOwn(true)}>
-            + Add your own
-          </button>
-        </div>
         {addingOwn ? (
           <form
-            className="mt-2 flex gap-2"
+            className="mt-3 flex gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               if (!ownQuestion.trim()) return;
@@ -1018,78 +1121,81 @@ export function HealItemView({ itemId }: { itemId: string }) {
               setAddingOwn(false);
             }}
           >
-            <input value={ownQuestion} onChange={(event) => setOwnQuestion(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm" />
+            <input value={ownQuestion} onChange={(event) => setOwnQuestion(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm" />
             <button type="submit" className={HEAL_OUTLINE}>Add</button>
           </form>
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your writing</h2>
-        <p className="mt-3 text-[13px] text-foreground">
-          Everything you&apos;ve written about this: exercise answers, notes and letters. Only you can see it.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" className={HEAL_OUTLINE} onClick={() => setWritingNote(true)}>
-            <PenLine className="size-3.5" aria-hidden />
-            Write a note
-          </button>
-          <button type="button" className={HEAL_OUTLINE} onClick={() => router.push(`/heal/${current.id}/letter`)}>
-            <Mail className="size-3.5" aria-hidden />
-            Write a letter you won&apos;t send
-          </button>
-        </div>
-        {writingNote ? (
-          <div className="relative mt-3">
-            <GrowField
-              value={note}
-              onChange={setNote}
-              placeholder={`Anything else about ${current.title} on your mind? Negative is fine.`}
-              className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[17px] outline-none"
-            />
-            <span className="absolute bottom-2 right-2">
-              <DictationMicButton variant="inset" onTranscript={(spoken) => setNote((value) => appendSpokenText(value, spoken))} />
-            </span>
-            <div className="mt-2 flex items-center gap-3">
-              <button
-                type="button"
-                className={HEAL_OUTLINE}
-                onClick={() => {
-                  if (!note.trim()) return;
-                  const saved = addHealEntry(loadHealStore(), {
-                    itemId: current.id,
-                    kind: "note",
-                    promptKey: null,
-                    text: note.trim(),
-                  });
-                  commit(saved.store);
-                  setNote("");
-                  setWritingNote(false);
-                  void rememberRisk(current.id, note, commit);
-                }}
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                className="cursor-pointer text-[13px] font-semibold text-muted"
-                onClick={() => {
-                  setNote("");
-                  setWritingNote(false);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+      <section className="mt-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your writing</h2>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={HEAL_OUTLINE} onClick={() => setWritingNote(true)}>
+              <PenLine className="size-3.5" aria-hidden />
+              Write a note
+            </button>
+            <button type="button" className={HEAL_OUTLINE} onClick={() => router.push(`/heal/${current.id}/letter`)}>
+              <Mail className="size-3.5" aria-hidden />
+              Write a letter you won&apos;t send
+            </button>
           </div>
-        ) : null}
-        <ul className="mt-4 flex flex-col gap-4">
-          {entries.map((entry) => (
-            <EntryRow key={entry.id} entry={entry} store={store} itemId={current.id} />
-          ))}
-        </ul>
+        </div>
+        <div className="mt-3.5 rounded-2xl border border-border bg-card px-5 pb-1 pt-6 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] sm:px-6">
+          <p className="pb-4 text-[13px] text-muted">
+            Exercise answers, notes and letters, newest first. Only you can see these.
+          </p>
+          {writingNote ? (
+            <div className="relative mb-4">
+              <GrowField
+                value={note}
+                onChange={setNote}
+                placeholder={`Anything else about ${current.title} on your mind? Negative is fine.`}
+                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[17px] outline-none"
+              />
+              <span className="absolute bottom-2 right-2">
+                <DictationMicButton variant="inset" onTranscript={(spoken) => setNote((value) => appendSpokenText(value, spoken))} />
+              </span>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  className={HEAL_OUTLINE}
+                  onClick={() => {
+                    if (!note.trim()) return;
+                    const saved = addHealEntry(loadHealStore(), {
+                      itemId: current.id,
+                      kind: "note",
+                      promptKey: null,
+                      text: note.trim(),
+                    });
+                    commit(saved.store);
+                    setNote("");
+                    setWritingNote(false);
+                    void rememberRisk(current.id, note, commit);
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="cursor-pointer text-[13px] font-semibold text-muted"
+                  onClick={() => {
+                    setNote("");
+                    setWritingNote(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <ul>
+            {entries.map((entry, index) => (
+              <EntryRow key={entry.id} entry={entry} store={store} itemId={current.id} last={index === entries.length - 1} />
+            ))}
+          </ul>
+        </div>
       </section>
-      </div>
 
       {kindOpen ? (
         <HealOverlay title="Kind" onClose={() => setKindOpen(false)}>
@@ -1293,7 +1399,7 @@ function ClampedText({ text, open, onToggle }: { text: string; open: boolean; on
   }, [text, open]);
   return (
     <>
-      <p ref={ref} className={`mt-2 font-display text-[16px] leading-relaxed text-foreground ${open ? "" : "line-clamp-3"}`}>
+      <p ref={ref} className={`mt-2 font-display text-[16px] leading-[1.6] text-foreground ${open ? "" : "line-clamp-4"}`}>
         {text}
       </p>
       {overflows || open ? (
@@ -1331,12 +1437,19 @@ function ViewBox({
   const [draft, setDraft] = useState(view?.text ?? "");
   const lock = useRef(false);
   const seen = useRef(0);
+  const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (!editRequest || editRequest.token === seen.current) return;
     seen.current = editRequest.token;
     setDraft(editRequest.text);
     setEditing(true);
   }, [editRequest]);
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft, editing]);
   const meta = !view
     ? ""
     : view.side === "bad"
@@ -1351,19 +1464,28 @@ function ViewBox({
     const text = draft.trim();
     if (save && text && text !== (view?.text ?? "")) onSave(text);
   }
+  const textClass = accent
+    ? "font-display text-[24px] leading-[1.45] text-[#F3EDE2]"
+    : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.72)]";
+  const emptyClass = accent
+    ? "font-display text-[24px] leading-[1.45] text-[rgb(243_237_226_/_0.45)]"
+    : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.45)]";
   return (
     <div
-      className={`relative min-w-0 flex-1 cursor-text rounded-[14px] border bg-background p-3 hover:border-foreground/30 ${accent ? "border-[1.5px] border-heal-accent" : "border-heal-border"}`}
+      className="relative min-w-0 flex-1 cursor-text"
       onClick={() => {
         if (editing) return;
         setDraft(view?.text ?? "");
         setEditing(true);
       }}
     >
-      <Pencil className="pointer-events-none absolute right-3 top-3 size-3.5 text-muted" aria-hidden />
-      <p className={`pr-5 text-[12px] font-semibold ${accent ? "text-heal-accent" : "text-muted"}`}>{label}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${accent ? "text-header-gold" : "text-[rgb(243_237_226_/_0.5)]"}`}>{label}</p>
+        <Pencil className="size-3.5 shrink-0 text-[rgb(243_237_226_/_0.45)]" aria-hidden />
+      </div>
       {editing ? (
         <textarea
+          ref={field}
           autoFocus
           value={draft}
           rows={3}
@@ -1389,12 +1511,12 @@ function ViewBox({
               finish(true);
             }
           }}
-          className="mt-2 w-full resize-none bg-transparent font-display text-[20px] leading-snug text-foreground outline-none placeholder:text-muted"
+          className={`mt-2.5 w-full resize-none border-b border-[rgb(243_237_226_/_0.35)] bg-transparent outline-none placeholder:text-[rgb(243_237_226_/_0.45)] ${textClass}`}
         />
       ) : (
-        <p className={`mt-2 font-display text-[20px] leading-snug ${view ? "text-foreground" : "text-muted"}`}>{view?.text || empty}</p>
+        <p className={`mt-2.5 ${view ? textClass : emptyClass}`}>{view?.text || empty}</p>
       )}
-      {view && !editing ? <p className="mt-2 text-[12px] text-muted">{meta}</p> : null}
+      {view && !editing ? <p className="mt-2.5 text-[12px] text-[rgb(243_237_226_/_0.45)]">{meta}</p> : null}
     </div>
   );
 }
@@ -1415,26 +1537,43 @@ function VersionColumn({ title, rows }: { title: string; rows: HealView[] }) {
   );
 }
 
-function EntryRow({ entry, store, itemId }: { entry: HealEntry; store: HealStoreV1; itemId: string }) {
+function EntryRow({
+  entry,
+  store,
+  itemId,
+  last,
+}: {
+  entry: HealEntry;
+  store: HealStoreV1;
+  itemId: string;
+  last: boolean;
+}) {
   const exercise = store.exercises.find((row) => row.id === entry.exerciseId);
   const goods = viewsForSide(store, itemId, "good");
   const current = goods[0];
   const ledNow = current?.sourceEntryId === entry.id;
   const ledEarlier = goods.slice(1).some((row) => row.sourceEntryId === entry.id);
   const kind = entry.kind === "letter" ? "Unsent letter" : entry.kind === "exercise" ? "Exercise" : "Note";
+  const when = healRelative(entry.createdAt);
   return (
-    <li>
-      <div className="flex items-center justify-between gap-2">
+    <li className="grid grid-cols-[20px_minmax(0,1fr)] gap-x-3.5 lg:grid-cols-[110px_20px_minmax(0,1fr)]">
+      <p className="hidden pt-0.5 text-[12px] text-muted lg:block">{when}</p>
+      <span className="flex flex-col items-center">
+        <span className="mt-1.5 size-[9px] shrink-0 rounded-full bg-accent" />
+        {last ? null : <span className="mt-1 w-px flex-1 bg-border" />}
+      </span>
+      <div className="flex flex-col gap-1.5 pb-5">
+        <p className="text-[12px] text-muted lg:hidden">{when}</p>
         <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">{kind}</p>
-        <p className="text-[12px] text-muted">{formatHealDate(entry.createdAt)}</p>
+        {exercise ? <p className="text-[14px] font-semibold">{exercise.question}</p> : null}
+        <p className="font-display text-[17px] leading-[1.55]">{entry.text}</p>
+        {ledNow || ledEarlier ? (
+          <a href="#heal-views" className="mt-0.5 inline-flex w-fit items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-[12px] font-semibold text-foreground">
+            <Leaf className="size-3" aria-hidden />
+            {ledNow ? "Led to my good-day view" : "Led to an earlier view"}
+          </a>
+        ) : null}
       </div>
-      {exercise ? <p className="mt-1 text-[14px] font-semibold">{exercise.question}</p> : null}
-      <p className="mt-1 font-display text-[17px] leading-relaxed">{entry.text}</p>
-      {ledNow || ledEarlier ? (
-        <a href="#heal-views" className="mt-2 inline-flex rounded-full border border-border px-2 py-0.5 text-[12px]">
-          {ledNow ? "Led to my good-day view" : "Led to an earlier view"}
-        </a>
-      ) : null}
     </li>
   );
 }
