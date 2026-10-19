@@ -1,5 +1,5 @@
-import { Leaf, Mail, PenLine, Play, Sparkles } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Leaf, Mail, Pencil, PenLine, Play, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
 import { SelectChevron } from "@/components/select-chevron";
@@ -15,6 +15,7 @@ import {
 } from "@/components/heal/heal-bits";
 import { HEAL_TYPES, healTypeLabel } from "@/lib/heal-copy";
 import { healAfterUpdate, healLenses, healSetup, healSuggestMore } from "@/lib/heal-ai";
+import { listLibraryMeditations, type LibraryMeditationItem } from "@/lib/medimade-api";
 import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
 import {
   healMeditationsForItem,
@@ -29,12 +30,17 @@ import {
   addHealUpdate,
   addHealView,
   currentView,
+  deleteHealUpdate,
+  descriptionForItem,
   entriesForItem,
   exercisesForItem,
   fallbackExerciseQuestions,
   formatHealDate,
   healRelative,
+  healUpdateNarrative,
+  laterUpdatesForItem,
   loadHealStore,
+  patchHealUpdate,
   patchHealAction,
   patchHealExercise,
   patchHealItem,
@@ -61,7 +67,16 @@ const KIND_BLURB: Record<string, string> = {
   shame: "Something I'm ashamed of",
 };
 
-function HealMeditationStrip({
+function MeditationMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
+      <circle cx="12" cy="6" r="2" />
+      <path d="M21 16v-2c-2.24 0-4.16-.96-5.6-2.68l-1.34-1.6A1.98 1.98 0 0 0 12.53 9h-1.05c-.59 0-1.15.26-1.53.72l-1.34 1.6C7.16 13.04 5.24 14 3 14v2c2.77 0 5.19-1.17 7-3.25V15l-3.88 1.55c-.67.27-1.12.93-1.12 1.66C5 19.2 5.8 20 6.79 20H9v-.5a2.5 2.5 0 0 1 2.5-2.5h3c.28 0 .5.22.5.5s-.22.5-.5.5h-3c-.83 0-1.5.67-1.5 1.5v.5h7.21c.99 0 1.79-.8 1.79-1.79 0-.73-.45-1.39-1.12-1.66L14 15v-2.25c1.81 2.08 4.23 3.25 7 3.25z" />
+    </svg>
+  );
+}
+
+function HealMeditationCard({
   itemId,
   viewId,
   onCreate,
@@ -71,64 +86,78 @@ function HealMeditationStrip({
   onCreate: () => void;
 }) {
   const router = useRouter();
-  const links = healMeditationsForItem(itemId);
-  const latest = links[0] ?? null;
+  const latest = healMeditationsForItem(itemId)[0] ?? null;
+  const [libraryItem, setLibraryItem] = useState<LibraryMeditationItem | null>(null);
   const changed = Boolean(latest && viewId && latest.viewId && latest.viewId !== viewId);
-  const made = latest
-    ? new Date(latest.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-    : "";
-  if (!latest) {
-    return (
-      <>
-        <div className="min-w-0 flex-1">
-          <p className="font-display text-[17px]">No meditation for this yet</p>
-        </div>
-        <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
-          Create meditation
-        </button>
-      </>
-    );
-  }
+  useEffect(() => {
+    if (!latest) return;
+    let live = true;
+    void listLibraryMeditations()
+      .then((items) => {
+        if (!live) return;
+        setLibraryItem(items.find((row) => row.jobId === latest.jobId) ?? null);
+      })
+      .catch(() => {
+        if (live) setLibraryItem(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [latest]);
+  const minutes = libraryItem?.durationSeconds
+    ? Math.max(1, Math.round(libraryItem.durationSeconds / 60))
+    : null;
+  const cover = libraryItem?.coverImageUrl || "";
   return (
-    <>
-      <div className="min-w-0 flex-1">
-        <p className="font-display text-[17px]">Meditation · {latest.title}</p>
-        <p className="text-[12px] text-muted">Made {made}</p>
-        {changed ? (
-          <p className="mt-1 text-[12px] text-muted">Your good-day view has changed since this was made.</p>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        className={HEAL_OUTLINE}
-        aria-label="Play"
-        onClick={() =>
-          router.push(
-            `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}&focus=pending:${encodeURIComponent(latest.jobId)}&play=1`,
-          )
-        }
-      >
-        <Play className="size-3.5" aria-hidden />
-      </button>
-      {links.length > 1 ? (
-        <button
-          type="button"
-          className="cursor-pointer text-[13px] font-semibold"
-          onClick={() =>
-            router.push(
-              `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}`,
-            )
-          }
-        >
-          {links.length - 1} more
-        </button>
-      ) : null}
-      {changed ? (
-        <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
-          Create meditation
-        </button>
-      ) : null}
-    </>
+    <section className="rounded-2xl border border-border bg-card p-4">
+      <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Meditation</h2>
+      {!latest ? (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-foreground">No meditation for this yet.</p>
+          <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
+            <MeditationMark />
+            Create meditation
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 flex items-center gap-3">
+            {cover ? (
+              <img src={cover} alt="" className="size-14 shrink-0 rounded-[10px] object-cover" />
+            ) : (
+              <span className="size-14 shrink-0 rounded-[10px] bg-background" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[17px] leading-snug text-foreground">{latest.title}</p>
+              <p className="text-[12px] text-muted">
+                {minutes ? `${minutes} min · ` : ""}made {healRelative(latest.createdAt)}, from your good-day view
+              </p>
+            </div>
+            <button
+              type="button"
+              className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-border bg-card"
+              aria-label="Play"
+              onClick={() =>
+                router.push(
+                  `/meditate/library/creations?source=heal&healItem=${encodeURIComponent(itemId)}&focus=pending:${encodeURIComponent(latest.jobId)}&play=1`,
+                )
+              }
+            >
+              <Play className="size-3.5" aria-hidden />
+            </button>
+          </div>
+          {changed ? (
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+              <p className="text-[13px] text-muted">Your good-day view has changed since.</p>
+              <button type="button" className={HEAL_OUTLINE} onClick={onCreate}>
+                <MeditationMark />
+                Create meditation
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -139,12 +168,18 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const setupStarted = useRef(false);
   const [settingUp, setSettingUp] = useState(false);
   const [kindOpen, setKindOpen] = useState(false);
-  const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const descriptionLock = useRef(false);
+  const [showAllUpdates, setShowAllUpdates] = useState(false);
+  const [openUpdateId, setOpenUpdateId] = useState<string | null>(null);
+  const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
+  const [updateEditDraft, setUpdateEditDraft] = useState("");
   const [addingUpdate, setAddingUpdate] = useState(false);
   const [updateText, setUpdateText] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [badDraft, setBadDraft] = useState("");
-  const [goodDraft, setGoodDraft] = useState("");
+  const [writingNote, setWritingNote] = useState(false);
+  const [goodEdit, setGoodEdit] = useState<{ token: number; text: string } | null>(null);
   const [lensSource, setLensSource] = useState<string | null>(null);
   const [lensesOpen, setLensesOpen] = useState(false);
   const [lens, setLens] = useState<HealSeeLens>("kind");
@@ -190,6 +225,9 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const current = item;
   const updates = updatesForItem(store, current.id);
   const latestUpdate = updates[0] ?? null;
+  const description = descriptionForItem(store, current.id);
+  const laterUpdates = laterUpdatesForItem(store, current.id);
+  const shownUpdates = showAllUpdates ? laterUpdates : laterUpdates.slice(0, 3);
   const bad = currentView(store, current.id, "bad");
   const good = currentView(store, current.id, "good");
   const exercises = exercisesForItem(store, current.id);
@@ -304,6 +342,34 @@ export function HealItemView({ itemId }: { itemId: string }) {
     commit(next);
   }
 
+  function saveDescription() {
+    setEditingDescription(false);
+    if (!description) return;
+    const text = descriptionDraft.trim();
+    if (!text || text === description.text) return;
+    commit(patchHealUpdate(loadHealStore(), description.id, text));
+    void rememberRisk(current.id, text, commit);
+  }
+
+  function onDescriptionKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      descriptionLock.current = true;
+      setEditingDescription(false);
+    } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      descriptionLock.current = true;
+      saveDescription();
+    }
+  }
+
+  function saveEditedUpdate(rowId: string) {
+    const text = updateEditDraft.trim();
+    setEditingUpdateId(null);
+    if (!text) return;
+    commit(patchHealUpdate(loadHealStore(), rowId, text));
+  }
+
   function saveUpdate() {
     if (!updateText.trim()) return;
     const before = currentView(store, current.id, "good")?.text ?? "";
@@ -314,12 +380,11 @@ export function HealItemView({ itemId }: { itemId: string }) {
     setAddingUpdate(false);
     void rememberRisk(current.id, updateText, commit);
     if (!current.aiEnabled || !saved) return;
-    const previous = updates[0]?.text ?? "";
     void healAfterUpdate({
       type: current.type,
       title: current.title,
       canDo: current.canDo,
-      context: `Previous:\n${previous}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}`,
+      context: `${healUpdateNarrative(store, current.id)}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}`,
     }).then((result) => {
       if (!result) return;
       applyExerciseChange(result.retire, result.add, "Your update changed things");
@@ -472,7 +537,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       type: current.type,
       title: current.title,
       lens: which,
-      context: `Bad day:\n${bad?.text ?? ""}\n\nLatest:\n${latestUpdate?.text ?? ""}\n\nGood day:\n${good?.text ?? ""}`,
+      context: `Bad day:\n${bad?.text ?? ""}\n\n${healUpdateNarrative(store, current.id)}\n\nGood day:\n${good?.text ?? ""}`,
     });
     if (result) setLensText((currentText) => ({ ...currentText, ...result }));
     setLensBusy(false);
@@ -496,9 +561,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
               type="button"
               className={HEAL_OUTLINE}
               onClick={() => {
-                setEditing(true);
-                setBadDraft(bad?.text ?? "");
-                setGoodDraft(good?.text ?? "");
+                setGoodEdit({ token: Date.now(), text: good?.text ?? "" });
                 setConflict(null);
                 document.getElementById("heal-views")?.scrollIntoView({ behavior: "smooth" });
               }}
@@ -530,54 +593,160 @@ export function HealItemView({ itemId }: { itemId: string }) {
         <div className="mt-4 border-t border-border pt-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">What&apos;s going on</p>
-            <p className="text-[12px] text-muted">
-              {latestUpdate
-                ? updates.length > 1
-                  ? `Updated ${healRelative(latestUpdate.createdAt)}`
-                  : `Written ${formatHealDate(latestUpdate.createdAt)}`
-                : ""}
-            </p>
+            <div className="flex items-center gap-2">
+              {description ? <p className="text-[12px] text-muted">Written {formatHealDate(description.createdAt)}</p> : null}
+              <button
+                type="button"
+                aria-label="Edit description"
+                className="grid size-7 cursor-pointer place-items-center rounded-full text-muted"
+                onClick={() => {
+                  setDescriptionDraft(description?.text ?? "");
+                  setEditingDescription(true);
+                }}
+              >
+                <Pencil className="size-3.5" aria-hidden />
+              </button>
+            </div>
           </div>
-          {latestUpdate ? (
-            <p className={`mt-2 font-display text-[16px] leading-relaxed text-foreground ${updatesOpen ? "" : "line-clamp-3"}`}>
-              {latestUpdate.text}
-            </p>
+          {editingDescription ? (
+            <div className="relative mt-2">
+              <GrowField
+                value={descriptionDraft}
+                onChange={setDescriptionDraft}
+                onKeyDown={onDescriptionKey}
+                onBlur={() => {
+                  if (descriptionLock.current) {
+                    descriptionLock.current = false;
+                    return;
+                  }
+                  saveDescription();
+                }}
+                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[16px] leading-relaxed outline-none"
+              />
+              <span className="absolute bottom-2 right-2">
+                <DictationMicButton variant="inset" onTranscript={(spoken) => setDescriptionDraft((value) => appendSpokenText(value, spoken))} />
+              </span>
+              <div className="mt-2 flex items-center gap-3">
+                <button type="button" className={HEAL_OUTLINE} onClick={saveDescription}>Save</button>
+                <button
+                  type="button"
+                  className="cursor-pointer text-[13px] font-semibold text-muted"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setEditingDescription(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : description ? (
+            <div
+              className="cursor-text"
+              onClick={() => {
+                setDescriptionDraft(description.text);
+                setEditingDescription(true);
+              }}
+            >
+              <ClampedText text={description.text} open={descriptionOpen} onToggle={() => setDescriptionOpen((open) => !open)} />
+            </div>
           ) : null}
-          {updatesOpen
-            ? updates.slice(1).map((row) => (
-                <p key={row.id} className="mt-3 border-t border-border/70 pt-3 font-display text-[16px] text-foreground">
-                  <span className="mb-1 block text-[12px] text-muted">{formatHealDate(row.createdAt)}</span>
-                  {row.text}
-                </p>
-              ))
-            : null}
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="text-[12px] font-semibold text-muted">Updates</p>
+            <button
+              type="button"
+              className="cursor-pointer text-[13px] font-semibold"
+              onClick={() => setAddingUpdate(true)}
+            >
+              + Add an update
+            </button>
+          </div>
           {addingUpdate ? (
-            <div className="relative mt-3">
-              <textarea
+            <div className="relative mt-2">
+              <GrowField
                 value={updateText}
-                onChange={(event) => setUpdateText(event.target.value)}
-                rows={4}
-                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[16px] outline-none"
+                onChange={setUpdateText}
+                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[16px] leading-relaxed outline-none"
               />
               <span className="absolute bottom-2 right-2">
                 <DictationMicButton variant="inset" onTranscript={(spoken) => setUpdateText((value) => appendSpokenText(value, spoken))} />
               </span>
-              <button type="button" className={`${HEAL_OUTLINE} mt-2`} onClick={saveUpdate}>
-                Save
-              </button>
-            </div>
-          ) : (
-            <div className="mt-3 flex items-center gap-3">
-              <button type="button" className={HEAL_OUTLINE} onClick={() => setAddingUpdate(true)}>
-                Add an update
-              </button>
-              {updates.length > 1 ? (
-                <button type="button" className="cursor-pointer text-[13px] font-semibold text-foreground" onClick={() => setUpdatesOpen((open) => !open)}>
-                  {updatesOpen ? "Show less" : "Show all"}
+              <div className="mt-2 flex items-center gap-3">
+                <button type="button" className={HEAL_OUTLINE} onClick={saveUpdate}>Save</button>
+                <button
+                  type="button"
+                  className="cursor-pointer text-[13px] font-semibold text-muted"
+                  onClick={() => {
+                    setUpdateText("");
+                    setAddingUpdate(false);
+                  }}
+                >
+                  Cancel
                 </button>
-              ) : null}
+              </div>
             </div>
-          )}
+          ) : null}
+          <ul className="mt-1">
+            {shownUpdates.map((row) => {
+              const open = openUpdateId === row.id;
+              return (
+                <li key={row.id} className="border-t border-border/70">
+                  <button
+                    type="button"
+                    className="flex w-full cursor-pointer items-baseline gap-2 py-2 text-left text-[13px]"
+                    onClick={() => setOpenUpdateId(open ? null : row.id)}
+                  >
+                    <span className="shrink-0 text-muted">{updateWhen(row.createdAt)}</span>
+                    <span className={`min-w-0 text-foreground ${open ? "" : "truncate"}`}>{row.text}</span>
+                  </button>
+                  {open ? (
+                    <div className="pb-2">
+                      {editingUpdateId === row.id ? (
+                        <GrowField
+                          value={updateEditDraft}
+                          onChange={setUpdateEditDraft}
+                          onBlur={() => saveEditedUpdate(row.id)}
+                          className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 font-display text-[16px] leading-relaxed outline-none"
+                        />
+                      ) : (
+                        <p className="text-[13px] leading-relaxed text-foreground">{row.text}</p>
+                      )}
+                      <div className="mt-1 flex gap-3">
+                        <button
+                          type="button"
+                          className="cursor-pointer text-[12px] font-semibold"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setUpdateEditDraft(row.text);
+                            setEditingUpdateId(row.id);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="cursor-pointer text-[12px] font-semibold text-muted"
+                          onClick={() => {
+                            commit(deleteHealUpdate(loadHealStore(), row.id));
+                            setOpenUpdateId(null);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {laterUpdates.length > 3 ? (
+            <button
+              type="button"
+              className="mt-1 cursor-pointer text-[13px] font-semibold"
+              onClick={() => setShowAllUpdates((open) => !open)}
+            >
+              {showAllUpdates ? "Show less" : `Show all ${laterUpdates.length}`}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -592,11 +761,9 @@ export function HealItemView({ itemId }: { itemId: string }) {
           <ViewBox
             label="On a bad day, I think…"
             view={bad}
-            editing={editing}
-            draft={badDraft}
-            onDraft={setBadDraft}
             empty="On a bad day, what do you tell yourself about it?"
             accent={false}
+            onSave={(text) => commit(addHealView(loadHealStore(), { itemId: current.id, side: "bad", text, source: "user" }))}
           />
           <span className="self-center text-muted md:px-1" aria-hidden>
             <span className="md:hidden">↓</span>
@@ -605,37 +772,16 @@ export function HealItemView({ itemId }: { itemId: string }) {
           <ViewBox
             label="On a good day, I think…"
             view={good}
-            editing={editing}
-            draft={goodDraft}
-            onDraft={setGoodDraft}
             empty="Not yet. On a good day, how do you see it?"
             accent
+            editRequest={goodEdit}
+            onSave={(text) => {
+              saveGood(text, null, lensSource ? "lens" : "user", lensSource);
+              setLensSource(null);
+            }}
           />
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={HEAL_OUTLINE}
-            onClick={() => {
-              if (editing) {
-                if (badDraft.trim() && badDraft.trim() !== (bad?.text ?? "")) {
-                  commit(addHealView(loadHealStore(), { itemId: current.id, side: "bad", text: badDraft, source: "user" }));
-                }
-                if (goodDraft.trim() && goodDraft.trim() !== (good?.text ?? "")) {
-                  saveGood(goodDraft, null, lensSource ? "lens" : "user", lensSource);
-                }
-                setLensSource(null);
-                setEditing(false);
-              } else {
-                setBadDraft(bad?.text ?? "");
-                setGoodDraft(good?.text ?? "");
-                setEditing(true);
-              }
-            }}
-          >
-            <PenLine className="size-3.5" aria-hidden />
-            {editing ? "Save" : "Edit"}
-          </button>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
             className={HEAL_OUTLINE}
@@ -649,8 +795,8 @@ export function HealItemView({ itemId }: { itemId: string }) {
             <Sparkles className="size-3.5" aria-hidden />
             Show other ways to see it
           </button>
+          <p className="text-[13px] text-muted">Click either side to edit it. Each exercise ends by asking if it changes your good-day view.</p>
         </div>
-        <p className="mt-2 text-[13px] text-muted">Each exercise below ends by asking if it changes your good-day view.</p>
         {lensesOpen ? (
           <div className="mt-3 rounded-xl border border-border bg-background p-3">
             <div className="flex items-center gap-2">
@@ -682,10 +828,8 @@ export function HealItemView({ itemId }: { itemId: string }) {
                 className={HEAL_OUTLINE}
                 disabled={!lensText[lens]}
                 onClick={() => {
-                  setGoodDraft(lensText[lens] ?? "");
-                  setBadDraft(bad?.text ?? "");
                   setLensSource(lens);
-                  setEditing(true);
+                  setGoodEdit({ token: Date.now(), text: lensText[lens] ?? "" });
                 }}
               >
                 <PenLine className="size-3.5" aria-hidden />
@@ -700,9 +844,10 @@ export function HealItemView({ itemId }: { itemId: string }) {
         ) : null}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-border bg-card p-4">
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+      <section className="rounded-2xl border border-border bg-card p-4">
         <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Can you do anything about it?</h2>
-        <div className="mt-3 flex rounded-full border border-border p-1">
+        <div className="mt-3 inline-flex w-fit max-w-full rounded-full border border-border p-1">
           {(
             [
               ["yes", "Yes"],
@@ -714,7 +859,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
               key={value}
               type="button"
               onClick={() => changeCanDo(value)}
-              className={`h-9 flex-1 cursor-pointer rounded-full text-[13px] font-semibold ${current.canDo === value ? "bg-foreground text-white" : "text-foreground"}`}
+              className={`h-9 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${current.canDo === value ? "bg-foreground text-white" : "text-foreground"}`}
             >
               {label}
             </button>
@@ -784,12 +929,11 @@ export function HealItemView({ itemId }: { itemId: string }) {
         ) : null}
       </section>
 
-      <section className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
-        <HealAvatar item={current} store={store} size={48} />
-        <HealMeditationStrip itemId={current.id} viewId={good?.id ?? null} onCreate={createMeditation} />
-      </section>
+      <HealMeditationCard itemId={current.id} viewId={good?.id ?? null} onCreate={createMeditation} />
+      </div>
 
-      <section className="mt-4 rounded-2xl border border-border bg-card p-4">
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+      <section className="rounded-2xl border border-border bg-card p-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your exercises</h2>
           <p className="text-[12px] text-muted">Suggested from what you wrote</p>
@@ -814,21 +958,30 @@ export function HealItemView({ itemId }: { itemId: string }) {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-display text-[17px] leading-snug">{row.question}</span>
-                      <span className="mt-1 block text-[12px] text-muted">
-                        {freshIds.includes(row.id)
-                          ? "New · from your update"
-                          : answered
-                            ? `Answered ${healRelative(answered.createdAt)}${stale ? ", before your update" : ""}`
-                            : "Not answered yet"}
+                      <span className="mt-1 flex items-center gap-3 text-[12px] text-muted">
+                        <span>
+                          {freshIds.includes(row.id)
+                            ? "New · from your update"
+                            : answered
+                              ? `Answered ${healRelative(answered.createdAt)}${stale ? ", before your update" : ""}`
+                              : "Not answered yet"}
+                        </span>
+                        {!row.answeredEntryId ? (
+                          <button
+                            type="button"
+                            className="cursor-pointer text-[13px] font-semibold text-foreground"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              dismissExercise(row);
+                            }}
+                          >
+                            Not for me
+                          </button>
+                        ) : null}
                       </span>
                     </span>
                     <SelectChevron direction="right" />
                   </button>
-                  {!row.answeredEntryId ? (
-                    <button type="button" className="mt-1 cursor-pointer pl-8 text-[13px] font-semibold" onClick={() => dismissExercise(row)}>
-                      Not for me
-                    </button>
-                  ) : null}
                 </li>
               );
             })}
@@ -871,48 +1024,72 @@ export function HealItemView({ itemId }: { itemId: string }) {
         ) : null}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Writing</h2>
-          <p className="text-[12px] text-muted">Your answers and notes, newest first</p>
-        </div>
-        <textarea
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder={`Anything else about ${current.title} on your mind? Negative is fine.`}
-          rows={3}
-          className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 font-display text-[17px] outline-none"
-        />
-        <div className="mt-2 flex items-center justify-between gap-2">
+      <section className="rounded-2xl border border-border bg-card p-4">
+        <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your writing</h2>
+        <p className="mt-3 text-[13px] text-foreground">
+          Everything you&apos;ve written about this: exercise answers, notes and letters. Only you can see it.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" className={HEAL_OUTLINE} onClick={() => setWritingNote(true)}>
+            <PenLine className="size-3.5" aria-hidden />
+            Write a note
+          </button>
           <button type="button" className={HEAL_OUTLINE} onClick={() => router.push(`/heal/${current.id}/letter`)}>
             <Mail className="size-3.5" aria-hidden />
             Write a letter you won&apos;t send
           </button>
-          <button
-            type="button"
-            className={HEAL_OUTLINE}
-            onClick={() => {
-              if (!note.trim()) return;
-              const saved = addHealEntry(loadHealStore(), {
-                itemId: current.id,
-                kind: "note",
-                promptKey: null,
-                text: note.trim(),
-              });
-              commit(saved.store);
-              setNote("");
-              void rememberRisk(current.id, note, commit);
-            }}
-          >
-            Save
-          </button>
         </div>
+        {writingNote ? (
+          <div className="relative mt-3">
+            <GrowField
+              value={note}
+              onChange={setNote}
+              placeholder={`Anything else about ${current.title} on your mind? Negative is fine.`}
+              className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 pr-12 font-display text-[17px] outline-none"
+            />
+            <span className="absolute bottom-2 right-2">
+              <DictationMicButton variant="inset" onTranscript={(spoken) => setNote((value) => appendSpokenText(value, spoken))} />
+            </span>
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                className={HEAL_OUTLINE}
+                onClick={() => {
+                  if (!note.trim()) return;
+                  const saved = addHealEntry(loadHealStore(), {
+                    itemId: current.id,
+                    kind: "note",
+                    promptKey: null,
+                    text: note.trim(),
+                  });
+                  commit(saved.store);
+                  setNote("");
+                  setWritingNote(false);
+                  void rememberRisk(current.id, note, commit);
+                }}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="cursor-pointer text-[13px] font-semibold text-muted"
+                onClick={() => {
+                  setNote("");
+                  setWritingNote(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
         <ul className="mt-4 flex flex-col gap-4">
           {entries.map((entry) => (
             <EntryRow key={entry.id} entry={entry} store={store} itemId={current.id} />
           ))}
         </ul>
       </section>
+      </div>
 
       {kindOpen ? (
         <HealOverlay title="Kind" onClose={() => setKindOpen(false)}>
@@ -1062,23 +1239,104 @@ export function HealItemView({ itemId }: { itemId: string }) {
   );
 }
 
+function updateWhen(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  if (date.toDateString() === new Date().toDateString()) return "Today";
+  return formatHealDate(iso);
+}
+
+function GrowField({
+  value,
+  onChange,
+  onBlur,
+  onKeyDown,
+  className,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      autoFocus
+      rows={2}
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      className={className}
+    />
+  );
+}
+
+function ClampedText({ text, open, onToggle }: { text: string; open: boolean; onToggle: () => void }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [text, open]);
+  return (
+    <>
+      <p ref={ref} className={`mt-2 font-display text-[16px] leading-relaxed text-foreground ${open ? "" : "line-clamp-3"}`}>
+        {text}
+      </p>
+      {overflows || open ? (
+        <button
+          type="button"
+          className="mt-1 cursor-pointer text-[13px] font-semibold"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 function ViewBox({
   label,
   view,
-  editing,
-  draft,
-  onDraft,
   empty,
   accent,
+  editRequest,
+  onSave,
 }: {
   label: string;
   view: HealView | null;
-  editing: boolean;
-  draft: string;
-  onDraft: (value: string) => void;
   empty: string;
   accent: boolean;
+  editRequest?: { token: number; text: string } | null;
+  onSave: (text: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(view?.text ?? "");
+  const lock = useRef(false);
+  const seen = useRef(0);
+  useEffect(() => {
+    if (!editRequest || editRequest.token === seen.current) return;
+    seen.current = editRequest.token;
+    setDraft(editRequest.text);
+    setEditing(true);
+  }, [editRequest]);
   const meta = !view
     ? ""
     : view.side === "bad"
@@ -1088,11 +1346,51 @@ function ViewBox({
       : view.source === "setup"
         ? "Suggested from what you wrote"
         : `Your words · updated ${healRelative(view.createdAt)}`;
+  function finish(save: boolean) {
+    setEditing(false);
+    const text = draft.trim();
+    if (save && text && text !== (view?.text ?? "")) onSave(text);
+  }
   return (
-    <div className={`min-w-0 flex-1 rounded-[14px] border bg-background p-3 ${accent ? "border-[1.5px] border-heal-accent" : "border-heal-border"}`}>
-      <p className={`text-[12px] font-semibold ${accent ? "text-heal-accent" : "text-muted"}`}>{label}</p>
+    <div
+      className={`relative min-w-0 flex-1 cursor-text rounded-[14px] border bg-background p-3 hover:border-foreground/30 ${accent ? "border-[1.5px] border-heal-accent" : "border-heal-border"}`}
+      onClick={() => {
+        if (editing) return;
+        setDraft(view?.text ?? "");
+        setEditing(true);
+      }}
+    >
+      <Pencil className="pointer-events-none absolute right-3 top-3 size-3.5 text-muted" aria-hidden />
+      <p className={`pr-5 text-[12px] font-semibold ${accent ? "text-heal-accent" : "text-muted"}`}>{label}</p>
       {editing ? (
-        <textarea value={draft} onChange={(event) => onDraft(event.target.value)} rows={4} className="mt-2 w-full resize-none bg-transparent font-display text-[20px] leading-snug outline-none" />
+        <textarea
+          autoFocus
+          value={draft}
+          rows={3}
+          placeholder={empty}
+          onChange={(event) => setDraft(event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          onBlur={() => {
+            if (lock.current) {
+              lock.current = false;
+              return;
+            }
+            finish(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              lock.current = true;
+              setDraft(view?.text ?? "");
+              finish(false);
+            } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              lock.current = true;
+              finish(true);
+            }
+          }}
+          className="mt-2 w-full resize-none bg-transparent font-display text-[20px] leading-snug text-foreground outline-none placeholder:text-muted"
+        />
       ) : (
         <p className={`mt-2 font-display text-[20px] leading-snug ${view ? "text-foreground" : "text-muted"}`}>{view?.text || empty}</p>
       )}
@@ -1142,14 +1440,14 @@ function EntryRow({ entry, store, itemId }: { entry: HealEntry; store: HealStore
 }
 
 function contextFor(store: HealStoreV1, item: HealItem): string {
-  const update = updatesForItem(store, item.id)[0]?.text ?? "";
+  const narrative = healUpdateNarrative(store, item.id);
   const bad = currentView(store, item.id, "bad")?.text ?? "";
   const good = currentView(store, item.id, "good")?.text ?? "";
   const writing = entriesForItem(store, item.id)
     .slice(0, 10)
     .map((entry) => entry.text)
     .join("\n");
-  return `Update:\n${update}\n\nBad day:\n${bad}\n\nGood day:\n${good}\n\nWriting:\n${writing}\n\nAsked:\n${item.askedQuestions.join("\n")}`;
+  return `${narrative}\n\nBad day:\n${bad}\n\nGood day:\n${good}\n\nWriting:\n${writing}\n\nAsked:\n${item.askedQuestions.join("\n")}`;
 }
 
 function unansweredContext(store: HealStoreV1, itemId: string): string {

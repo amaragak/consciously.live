@@ -967,6 +967,51 @@ export function addHealUpdate(store: HealStoreV1, itemId: string, text: string):
   });
 }
 
+/** Oldest update is the description written when the item was added. */
+export function descriptionForItem(store: HealStoreV1, itemId: string): HealUpdate | null {
+  const rows = updatesForItem(store, itemId);
+  return rows[rows.length - 1] ?? null;
+}
+
+/** Updates added after the description, newest first. */
+export function laterUpdatesForItem(store: HealStoreV1, itemId: string): HealUpdate[] {
+  const rows = updatesForItem(store, itemId);
+  return rows.slice(0, -1);
+}
+
+export function patchHealUpdate(store: HealStoreV1, updateId: string, text: string): HealStoreV1 {
+  const trimmed = text.trim();
+  if (!trimmed) return store;
+  const current = store.updates.find((row) => row.id === updateId);
+  if (!current || current.text === trimmed) return store;
+  const updates = store.updates.map((row) => (row.id === updateId ? { ...row, text: trimmed } : row));
+  const next = { ...store, updates };
+  const description = descriptionForItem(next, current.itemId);
+  if (description?.id === updateId && laterUpdatesForItem(next, current.itemId).length === 0) {
+    return patchHealItem(next, current.itemId, { aboutText: trimmed });
+  }
+  return next;
+}
+
+export function deleteHealUpdate(store: HealStoreV1, updateId: string): HealStoreV1 {
+  return { ...store, updates: store.updates.filter((row) => row.id !== updateId) };
+}
+
+/** Description plus later updates, newest first, capped so AI calls stay short. */
+export function healUpdateNarrative(store: HealStoreV1, itemId: string, maxWords = 600): string {
+  const description = descriptionForItem(store, itemId);
+  if (!description) return "";
+  const later = laterUpdatesForItem(store, itemId);
+  const body = [
+    `Description:\n${description.text}`,
+    later.length ? `Updates:\n${later.map((row) => row.text).join("\n\n")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const words = body.trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, maxWords).join(" ");
+}
+
 export function addHealView(
   store: HealStoreV1,
   input: {

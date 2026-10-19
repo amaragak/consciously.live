@@ -6,7 +6,7 @@ import type { CreateFlowHealAttachment } from "@/lib/create-one-flow-state";
 import {
   currentView,
   exercisesForItem,
-  updatesForItem,
+  healUpdateNarrative,
   type HealItem,
   type HealStoreV1,
 } from "@/lib/heal-store";
@@ -77,11 +77,6 @@ export function isHealLinkedJob(jobId: string | null | undefined): boolean {
   return readLinks().some((row) => row.jobId === id && Boolean(row.healItemId));
 }
 
-function trimWords(text: string, max: number): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  return words.slice(0, max).join(" ");
-}
-
 /** Private writing for the generator. The token only ever shows the item name. */
 export function healCreateAttachment(
   item: HealItem,
@@ -89,14 +84,13 @@ export function healCreateAttachment(
 ): CreateFlowHealAttachment {
   const good = currentView(store, item.id, "good");
   const bad = currentView(store, item.id, "bad");
-  const update = updatesForItem(store, item.id)[0];
   const answers = exercisesForItem(store, item.id)
     .filter((row) => row.answeredEntryId)
     .slice(-3)
     .map((row) => store.entries.find((entry) => entry.id === row.answeredEntryId)?.text?.trim() || "")
     .filter(Boolean);
   const context = [
-    trimWords(update?.text || "", 120),
+    healUpdateNarrative(store, item.id),
     ...answers.map((answer) => `Answer: ${answer}`),
   ]
     .filter(Boolean)
