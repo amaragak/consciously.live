@@ -27,6 +27,11 @@ import {
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
+/** Models write an em dash; Read posts store a normal hyphen. */
+function replaceAiLongHyphen(text: string): string {
+  return text.replace(/\u2014|&mdash;|&#8212;|&#x2014;/gi, "-");
+}
+
 async function fileToCompressedJpegDataUrl(file: File): Promise<{
   dataUrl: string;
   mimeType: string;
@@ -384,25 +389,32 @@ export function AdminReadPanel() {
           .replace(/\s+/g, " ")
           .trim(),
       );
-    const bodyToSave =
+    const bodyToSave = replaceAiLongHyphen(
       [liveBodyRef.current, d.body, selected?.body ?? ""].find(bodyHasText) ||
-      liveBodyRef.current ||
-      d.body;
+        liveBodyRef.current ||
+        d.body,
+    );
     const hasBody = bodyHasText(bodyToSave);
+    const title = replaceAiLongHyphen(d.title);
+    const subheader = replaceAiLongHyphen(d.subheader);
+    const excerpt = replaceAiLongHyphen(d.excerpt);
+    const tags = d.tags.map((tag) => replaceAiLongHyphen(tag));
+    const series = replaceAiLongHyphen(d.series);
+    const notes = replaceAiLongHyphen(d.notes);
     try {
       // Placeholder / metadata-only edits: omit empty TipTap `<p></p>` on existing
       // posts so a body race can't interfere — category/pin/etc. still persist.
       const payload: Partial<AdminBlogPost> & { id?: string } = {
         ...(d.id ? { id: d.id } : {}),
-        title: d.title,
-        slug: d.slug || slugify(d.title),
-        subheader: d.subheader,
-        excerpt: d.excerpt,
-        tags: d.tags,
+        title,
+        slug: d.slug || slugify(title),
+        subheader,
+        excerpt,
+        tags,
         category: d.category,
-        series: d.series,
+        series,
         part: d.part,
-        notes: d.notes,
+        notes,
         published: d.published,
         pinned: d.pinned,
         topPicks: d.topPicks,
@@ -417,14 +429,14 @@ export function AdminReadPanel() {
       // if the response is partial or an older lambda omitted new fields.
       const savedWithBody: AdminBlogPost = {
         ...saved,
-        title: d.title.trim() || saved.title,
-        subheader: d.subheader,
-        excerpt: d.excerpt,
-        tags: d.tags,
+        title: title.trim() || saved.title,
+        subheader,
+        excerpt,
+        tags,
         category: d.category,
-        series: d.series,
+        series,
         part: d.part,
-        notes: d.notes,
+        notes,
         published: d.published,
         pinned: d.pinned,
         topPicks: d.topPicks,

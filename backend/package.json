@@ -26,6 +26,7 @@
     "build-orpheus-serverless": "bash scripts/build-orpheus-serverless",
     "deploy-orpheus-serverless": "bash scripts/deploy-orpheus-serverless",
     "backfill-algolia": "tsx scripts/backfill-algolia.ts",
+    "backfill-blog-hyphens": "tsx scripts/backfill-blog-hyphens.ts",
     "seed-claude-preprompts": "tsx scripts/seed-claude-preprompts.ts"
   },
   "dependencies": {

@@ -115,6 +115,11 @@ function skForId(id: string): string {
   return `POST#${id}`;
 }
 
+/** Em dash (and its HTML forms) that models drop into Read copy. */
+export function replaceAiLongHyphen(text: string): string {
+  return text.replace(/\u2014|&mdash;|&#8212;|&#x2014;/gi, "-");
+}
+
 export function slugifyTitle(title: string): string {
   const base = title
     .trim()
@@ -499,10 +504,11 @@ export async function putBlogPost(
     typeof input.id === "string" && input.id.trim() ? input.id.trim() : "";
   const existing = existingId ? await getBlogPostById(existingId) : null;
 
-  const title =
+  const title = replaceAiLongHyphen(
     typeof input.title === "string" && input.title.trim()
       ? input.title.trim().slice(0, 200)
-      : existing?.title || "Untitled";
+      : existing?.title || "Untitled",
+  );
   const slugInput =
     typeof input.slug === "string" && input.slug.trim()
       ? input.slug.trim()
@@ -548,41 +554,50 @@ export async function putBlogPost(
     id: existingId || randomUUID(),
     slug: unique,
     title,
-    subheader:
+    subheader: replaceAiLongHyphen(
       typeof input.subheader === "string"
         ? input.subheader.trim().slice(0, 300)
         : (existing?.subheader ?? ""),
-    excerpt:
+    ),
+    excerpt: replaceAiLongHyphen(
       typeof input.excerpt === "string"
         ? input.excerpt.trim().slice(0, 500)
         : (existing?.excerpt ?? ""),
-    tags: Object.prototype.hasOwnProperty.call(input, "tags")
+    ),
+    tags: (Object.prototype.hasOwnProperty.call(input, "tags")
       ? normalizeBlogTags(input.tags)
-      : (existing?.tags ?? []),
+      : (existing?.tags ?? [])
+    ).map((tag) => replaceAiLongHyphen(tag)),
     category: Object.prototype.hasOwnProperty.call(input, "category")
       ? normalizeBlogCategory(input.category)
       : (existing?.category ?? DEFAULT_BLOG_CATEGORY),
-    series: Object.prototype.hasOwnProperty.call(input, "series")
-      ? normalizeBlogSeries(input.series)
-      : (existing?.series ?? ""),
+    series: replaceAiLongHyphen(
+      Object.prototype.hasOwnProperty.call(input, "series")
+        ? normalizeBlogSeries(input.series)
+        : (existing?.series ?? ""),
+    ),
     part: Object.prototype.hasOwnProperty.call(input, "part")
       ? normalizeBlogPart(input.part)
       : (existing?.part ?? null),
-    notes: Object.prototype.hasOwnProperty.call(input, "notes")
-      ? typeof input.notes === "string"
-        ? input.notes.slice(0, MAX_BLOG_NOTES_LEN)
-        : ""
-      : (existing?.notes ?? ""),
+    notes: replaceAiLongHyphen(
+      Object.prototype.hasOwnProperty.call(input, "notes")
+        ? typeof input.notes === "string"
+          ? input.notes.slice(0, MAX_BLOG_NOTES_LEN)
+          : ""
+        : (existing?.notes ?? ""),
+    ),
     // TipTap/React can race and PUT an empty body right after a good write.
     // Never blank out existing content unless the client sent real text.
-    body: (() => {
-      if (typeof input.body !== "string") return existing?.body ?? "";
-      const incoming = input.body.slice(0, 100_000);
-      if (blogBodyHasContent(incoming)) return incoming;
-      const prev = existing?.body ?? "";
-      if (blogBodyHasContent(prev)) return prev;
-      return incoming;
-    })(),
+    body: replaceAiLongHyphen(
+      (() => {
+        if (typeof input.body !== "string") return existing?.body ?? "";
+        const incoming = input.body.slice(0, 100_000);
+        if (blogBodyHasContent(incoming)) return incoming;
+        const prev = existing?.body ?? "";
+        if (blogBodyHasContent(prev)) return prev;
+        return incoming;
+      })(),
+    ),
     published,
     pinned,
     topPicks,
@@ -610,6 +625,50 @@ export async function putBlogPost(
     }),
   );
   return post;
+}
+
+function withPlainHyphens(post: BlogPost): BlogPost {
+  return {
+    ...post,
+    title: replaceAiLongHyphen(post.title),
+    subheader: replaceAiLongHyphen(post.subheader),
+    excerpt: replaceAiLongHyphen(post.excerpt),
+    series: replaceAiLongHyphen(post.series),
+    notes: replaceAiLongHyphen(post.notes),
+    body: replaceAiLongHyphen(post.body),
+    tags: post.tags.map((tag) => replaceAiLongHyphen(tag)),
+  };
+}
+
+/** Rewrite stored posts in place. Keeps `updatedAt` so index order stays put. */
+export async function backfillBlogLongHyphens(): Promise<string[]> {
+  const posts = await listBlogPosts();
+  const slugs: string[] = [];
+  for (const post of posts) {
+    const next = withPlainHyphens(post);
+    const same =
+      next.title === post.title &&
+      next.subheader === post.subheader &&
+      next.excerpt === post.excerpt &&
+      next.series === post.series &&
+      next.notes === post.notes &&
+      next.body === post.body &&
+      next.tags.join("\0") === post.tags.join("\0");
+    if (same) continue;
+    const row: BlogRow = {
+      pk: BLOG_PK,
+      sk: skForId(post.id),
+      ...next,
+    };
+    await ddb.send(
+      new PutCommand({
+        TableName: tableName(),
+        Item: row,
+      }),
+    );
+    slugs.push(post.slug);
+  }
+  return slugs;
 }
 
 export async function patchBlogPostAudio(
