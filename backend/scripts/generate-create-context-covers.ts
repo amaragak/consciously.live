@@ -1,5 +1,5 @@
 /**
- * Generate Create-flow Journal + Program category covers via Nano Banana Pro
+ * Generate Create-flow Journal, Program, Manifest, and Heal category covers via Nano Banana Pro
  * and store them in the media bucket + VoiceAdmin CATEGORY_IMAGES doc.
  *
  *   AWS_PROFILE=mm \
@@ -26,10 +26,10 @@ const JOBS = [
   {
     category: "Journal",
     prompt: [
-      "Quiet personal journaling moment at a sunlit wooden desk by a window,",
-      "open linen-bound notebook with soft handwritten pages, fountain pen resting beside it,",
-      "warm morning light, shallow depth of field, calm reflective mood,",
-      "photorealistic editorial lifestyle photograph, no text overlays, no logos, square crop.",
+      "Quiet still life of an open linen-bound journal alone on a sunlit wooden desk by a window,",
+      "blank cream pages, fountain pen resting beside the notebook, no hands, no fingers, no arms, no person,",
+      "warm morning light, calm reflective mood,",
+      "no text overlays, no logos, square full-bleed crop, no picture frame.",
     ].join(" "),
   },
   {
@@ -38,20 +38,27 @@ const JOBS = [
       "Gentle guided practice path: a calm sequence of soft meditation cushions",
       "arranged along a sunlit wooden floor in an airy wellness studio,",
       "warm natural light through sheer curtains, sense of progressive journey,",
-      "photorealistic editorial lifestyle photograph, no people faces close-up,",
-      "no text overlays, no logos, square crop.",
+      "no people,",
+      "no text overlays, no logos, square full-bleed crop, no picture frame.",
     ].join(" "),
   },
   {
     category: "Manifest",
     prompt: [
-      "Inspiring editorial lifestyle photo: a person standing on a gentle overlook,",
-      "arms gently open and outstretched, looking out over a soft misty valley at golden hour,",
-      "seen from behind or three-quarter back so the face is not the focus,",
-      "warm muted earth tones, calm hopeful mood, shallow atmospheric haze,",
-      "same soft natural light and photorealistic wellness look as a quiet journal desk scene",
-      "or sunlit meditation cushions — not HDR, not neon, not blown-out highlights,",
-      "no text overlays, no logos, square crop.",
+      "A stylised figure standing on a gentle overlook, seen from behind,",
+      "arms gently open, looking out over a soft misty valley,",
+      "calm hopeful mood, shallow atmospheric haze, face not the focus,",
+      "no text overlays, no logos, square full-bleed crop, no picture frame.",
+    ].join(" "),
+  },
+  {
+    category: "Heal",
+    prompt: [
+      "Quiet private moment of self-kindness: a person sitting alone beside a sunlit window,",
+      "seen from behind so the face is not the focus, one hand resting gently over the heart,",
+      "soft linen clothes, warm morning light, calm and tender mood,",
+      "a stylised figure, face not the focus,",
+      "no text overlays, no logos, square full-bleed crop, no picture frame.",
     ].join(" "),
   },
 ] as const;

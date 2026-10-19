@@ -25,6 +25,23 @@ export type JournalMeditationSnapshot = {
   openHref?: string | null;
 };
 
+export type JournalLinkTargetType = "meditation" | "life_area" | "heal_item";
+
+/** One row in the journal link table. An entry can link to several things. */
+export type JournalLink = {
+  id: string;
+  entryId: string;
+  targetType: JournalLinkTargetType;
+  targetId: string;
+  createdAt: string;
+  /** Display name captured when the link was added. */
+  label?: string;
+  /** True when Reflect opened the entry for this meditation. */
+  reflecting?: boolean;
+  meditationSource?: JournalMeditationSource;
+  meditationSnapshot?: JournalMeditationSnapshot;
+};
+
 export type JournalEntry = {
   id: string;
   createdAt: string;
@@ -55,11 +72,13 @@ export type JournalEntry = {
   folderId?: string;
   /**
    * Optional link to a library meditation (usually `s3Key`).
-   * Set when the entry was created via Reflect.
+   * Kept in sync with the primary meditation row in `links`.
    */
   meditationId?: string;
   meditationSource?: JournalMeditationSource;
   meditationSnapshot?: JournalMeditationSnapshot;
+  /** Links to meditations, life areas, and Heal items. */
+  links?: JournalLink[];
 };
 
 export type JournalFolder = {
@@ -632,6 +651,118 @@ function normalizeTags(raw: unknown): string[] | undefined {
   return tags.length ? [...new Set(tags)] : undefined;
 }
 
+function normalizeSnapshot(
+  snapRaw: JournalMeditationSnapshot | null | undefined,
+): JournalMeditationSnapshot | undefined {
+  if (!snapRaw || typeof snapRaw !== "object" || typeof snapRaw.title !== "string") {
+    return undefined;
+  }
+  return {
+    title: snapRaw.title.trim().slice(0, 200) || "Meditation",
+    ...(typeof snapRaw.coverImageUrl === "string"
+      ? { coverImageUrl: snapRaw.coverImageUrl }
+      : snapRaw.coverImageUrl === null
+        ? { coverImageUrl: null }
+        : {}),
+    ...(typeof snapRaw.speakerName === "string"
+      ? { speakerName: snapRaw.speakerName }
+      : snapRaw.speakerName === null
+        ? { speakerName: null }
+        : {}),
+    ...(typeof snapRaw.styleLabel === "string"
+      ? { styleLabel: snapRaw.styleLabel }
+      : snapRaw.styleLabel === null
+        ? { styleLabel: null }
+        : {}),
+    ...(typeof snapRaw.durationSeconds === "number"
+      ? { durationSeconds: snapRaw.durationSeconds }
+      : snapRaw.durationSeconds === null
+        ? { durationSeconds: null }
+        : {}),
+    ...(typeof snapRaw.openHref === "string"
+      ? { openHref: snapRaw.openHref }
+      : snapRaw.openHref === null
+        ? { openHref: null }
+        : {}),
+  };
+}
+
+function normalizeJournalLinks(
+  entryId: string,
+  raw: unknown,
+  legacy: {
+    meditationId?: string;
+    meditationSource?: JournalMeditationSource;
+    meditationSnapshot?: JournalMeditationSnapshot;
+    createdAt: string;
+  },
+): JournalLink[] | undefined {
+  const out: JournalLink[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== "object") continue;
+      const o = row as JournalLink;
+      const targetType = o.targetType;
+      if (
+        targetType !== "meditation" &&
+        targetType !== "life_area" &&
+        targetType !== "heal_item"
+      ) {
+        continue;
+      }
+      const targetId = typeof o.targetId === "string" ? o.targetId.trim().slice(0, 400) : "";
+      if (!targetId) continue;
+      const key = `${targetType}:${targetId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const source =
+        o.meditationSource === "own" ||
+        o.meditationSource === "community" ||
+        o.meditationSource === "program"
+          ? o.meditationSource
+          : undefined;
+      out.push({
+        id: typeof o.id === "string" && o.id.trim() ? o.id.trim().slice(0, 80) : `jl_${targetType}_${targetId.slice(0, 24)}`,
+        entryId,
+        targetType,
+        targetId,
+        createdAt:
+          typeof o.createdAt === "string" && o.createdAt.trim()
+            ? o.createdAt
+            : legacy.createdAt,
+        ...(typeof o.label === "string" && o.label.trim()
+          ? { label: o.label.trim().slice(0, 200) }
+          : {}),
+        ...(o.reflecting === true ? { reflecting: true } : {}),
+        ...(source ? { meditationSource: source } : {}),
+        ...(normalizeSnapshot(o.meditationSnapshot)
+          ? { meditationSnapshot: normalizeSnapshot(o.meditationSnapshot) }
+          : {}),
+      });
+      if (out.length >= 24) break;
+    }
+  }
+  if (legacy.meditationId && !seen.has(`meditation:${legacy.meditationId}`)) {
+    out.unshift({
+      id: `jl_reflect_${legacy.meditationId.slice(0, 24)}`,
+      entryId,
+      targetType: "meditation",
+      targetId: legacy.meditationId,
+      createdAt: legacy.createdAt,
+      reflecting: true,
+      ...(legacy.meditationSource ? { meditationSource: legacy.meditationSource } : {}),
+      ...(legacy.meditationSnapshot
+        ? {
+            label: legacy.meditationSnapshot.title,
+            meditationSnapshot: legacy.meditationSnapshot,
+          }
+        : {}),
+    });
+  }
+  return out.length ? out.slice(0, 24) : undefined;
+}
+
 function normalizeEntry(e: JournalEntry): JournalEntry {
   const kind = e.kind === "gratitude" ? "gratitude" : undefined;
   const gratitude = kind
@@ -706,6 +837,18 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
               : {}),
         }
       : undefined;
+  const links = normalizeJournalLinks(e.id, e.links, {
+    meditationId,
+    meditationSource,
+    meditationSnapshot,
+    createdAt: e.createdAt,
+  });
+  const primary = links?.find(
+    (link) => link.targetType === "meditation" && link.reflecting,
+  ) ?? links?.find((link) => link.targetType === "meditation");
+  const nextMeditationId = primary?.targetId ?? meditationId;
+  const nextSource = primary?.meditationSource ?? meditationSource;
+  const nextSnapshot = primary?.meditationSnapshot ?? meditationSnapshot;
   return {
     ...e,
     title: typeof e.title === "string" ? e.title : deriveEntryTitle(e.contentHtml),
@@ -719,13 +862,10 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
     ...(sourceMetadata ? { sourceMetadata } : { sourceMetadata: undefined }),
     ...(mediaRefs?.length ? { mediaRefs } : { mediaRefs: undefined }),
     ...(folderId ? { folderId } : { folderId: undefined }),
-    ...(meditationId ? { meditationId } : { meditationId: undefined }),
-    ...(meditationSource
-      ? { meditationSource }
-      : { meditationSource: undefined }),
-    ...(meditationSnapshot
-      ? { meditationSnapshot }
-      : { meditationSnapshot: undefined }),
+    ...(nextMeditationId ? { meditationId: nextMeditationId } : { meditationId: undefined }),
+    ...(nextSource ? { meditationSource: nextSource } : { meditationSource: undefined }),
+    ...(nextSnapshot ? { meditationSnapshot: nextSnapshot } : { meditationSnapshot: undefined }),
+    ...(links ? { links } : { links: undefined }),
   };
 }
 
@@ -751,14 +891,15 @@ export function mergeRemoteJournalKeepingLocalOnly(
     // Cloud used to drop meditation fields on PUT — keep a local link until
     // the remote entry carries one.
     if (
-      local?.meditationId?.trim() &&
-      !normalized.meditationId?.trim()
+      (local?.meditationId?.trim() && !normalized.meditationId?.trim()) ||
+      (local?.links?.length && !normalized.links?.length)
     ) {
       return normalizeEntry({
         ...normalized,
-        meditationId: local.meditationId,
-        meditationSource: local.meditationSource,
-        meditationSnapshot: local.meditationSnapshot,
+        meditationId: normalized.meditationId || local?.meditationId,
+        meditationSource: normalized.meditationSource || local?.meditationSource,
+        meditationSnapshot: normalized.meditationSnapshot || local?.meditationSnapshot,
+        links: normalized.links?.length ? normalized.links : local?.links,
       });
     }
     return normalized;

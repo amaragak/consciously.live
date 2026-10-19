@@ -1,10 +1,10 @@
 /**
  * Meditation library cover art via OpenAI gpt-image-1-mini (1024², low quality).
- * Prefer a photorealistic scene tied to title / description / style when clear;
- * otherwise a calm generic editorial still.
+ * Scene briefs describe the subject; rendering is the shared illustration style,
+ * applied at the model call.
  *
- * Admin surfaces (category / program covers) may also use Nano Banana Pro
- * (Gemini 3 Pro Image) via generateAdminImageFromPrompt.
+ * Admin surfaces (category / program / composition / voice covers) may also use
+ * Nano Banana Pro (Gemini 3 Pro Image) via generateAdminImageFromPrompt.
  */
 
 import {
@@ -18,6 +18,7 @@ import {
   recordGoogleImageUsage,
   recordOpenAiImageUsage,
 } from "./ai-usage";
+import { withIllustrationStyle } from "./illustration-style";
 import type { MeditationCreationProvenance } from "./meditation-creation-provenance";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
@@ -179,16 +180,15 @@ export function buildMeditationCoverPrompt(input: MeditationCoverInput): string 
     );
 
   const sceneGuidance = hasConcrete
-    ? `Invent one clear, fitting photorealistic subject that visually echoes this meditation's theme and emotional tone (not a literal illustration of the words). Prefer nature, light, texture, or quiet interiors over abstract graphics.`
-    : `No strong visual theme was given — choose a calm, generic editorial still suitable for a meditation library thumbnail (soft natural light, quiet landscape or intimate nature detail).`;
+    ? `Invent one clear subject that visually echoes this meditation's theme and emotional tone (not a literal caption of the words). Prefer nature, light, texture, or quiet interiors.`
+    : `No strong visual theme was given — choose a calm still suitable for a meditation library thumbnail (quiet landscape or intimate nature detail).`;
 
   return [
-    `A photorealistic photograph, editorial/lifestyle style, evoking the mood of a guided meditation.`,
+    `Evokes the mood of a guided meditation.`,
     sceneGuidance,
     subjectBits.join(" "),
-    `Natural lighting, shallow depth of field, subtle film grain. No people, no faces, no text, no logos, no overlaid graphics, no UI chrome.`,
-    `Square 1:1 composition, generous negative space suitable for a small thumbnail.`,
-    `Color palette chosen to suit the specific theme and emotional tone of this meditation, not fixed.`,
+    `No people, no faces, no text, no logos, no overlaid graphics, no UI chrome.`,
+    `Square 1:1, full-bleed, no picture frame or mockup. Generous space suitable for a small thumbnail.`,
   ].join(" ");
 }
 
@@ -209,12 +209,11 @@ export function buildCompositionCoverPrompt(params: {
     : "";
 
   return [
-    `Photorealistic photograph capturing the mood of the instrumental piece titled "${title}".`,
+    `Captures the mood of the instrumental piece titled "${title}".`,
     motifLine,
     guideLine,
-    `Subject matter is open: landscapes, interiors, people, objects, weather, architecture — whatever fits the title best. Make it specific and memorable to THIS title.`,
-    `Visual style: editorial photography, natural or dramatic light, shallow depth of field where it helps, subtle film grain, rich color graded to the title's emotional register.`,
-    `Square 1:1 composition. No overlaid text, logos, or UI chrome.`,
+    `Subject matter is open: landscapes, interiors, stylised figures, objects, weather, architecture — whatever fits the title best. Make it specific and memorable to THIS title. People only when the title asks for them.`,
+    `Square 1:1, full-bleed, no picture frame. No overlaid text, logos, or UI chrome.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -261,11 +260,11 @@ export async function refineCompositionCoverPromptWithChange(params: {
   try {
     const apiKey = await getClaudeApiKey();
     const system = [
-      "You revise image-generation prompts for square photoreal album/cover art.",
+      "You revise image-generation prompts for square editorial illustration covers.",
       "You are given prior prompt(s) that produced earlier versions of the cover, plus a short change request.",
       "Write ONE complete replacement image prompt that keeps what still works from the prior prompt(s) and applies the requested change.",
-      "Do not invent hard bans on subject matter (people, faces, objects, interiors are fine).",
-      "Keep: photorealistic editorial style, square 1:1 intent, no overlaid text/logos/UI.",
+      "Do not invent hard bans on subject matter (stylised figures, objects, interiors are fine when the title asks for them).",
+      "Keep: square 1:1, full-bleed with no picture frame, no overlaid text/logos/UI. Do not ask for a photograph.",
       "Reply with ONLY the prompt text — no quotes, labels, or explanation.",
     ].join("\n");
 
@@ -338,7 +337,7 @@ export async function refineCompositionCoverPromptWithChange(params: {
       "refineCompositionCoverPromptWithChange fallback:",
       e instanceof Error ? e.message : e,
     );
-    return `${baseFallback} Apply this change while keeping the square photoreal cover style: ${change}`.slice(
+    return `${baseFallback} Apply this change while keeping the square illustration cover: ${change}`.slice(
       0,
       4000,
     );
@@ -482,6 +481,8 @@ export async function generateJpegFromPrompt(
 export async function generateAdminImageFromPrompt(params: {
   prompt: string;
   model?: AdminImageModel | string | null;
+  /** Voice portraits pass false and stay photographic. */
+  illustrationStyle?: boolean;
 }): Promise<{
   body: Buffer;
   mime: "image/jpeg" | "image/png";
@@ -489,16 +490,18 @@ export async function generateAdminImageFromPrompt(params: {
   model: AdminImageModel;
 }> {
   const model = coerceAdminImageModel(params.model);
+  const illustrationStyle = params.illustrationStyle !== false;
   if (model === "nano-banana-pro") {
-    const out = await generateNanoBananaProImage(params.prompt);
+    const out = await generateNanoBananaProImage(params.prompt, illustrationStyle);
     return { ...out, model };
   }
-  const out = await generateGptImage1Mini(params.prompt);
+  const out = await generateGptImage1Mini(params.prompt, illustrationStyle);
   return { ...out, model };
 }
 
 async function generateGptImage1Mini(
   prompt: string,
+  illustrationStyle = true,
 ): Promise<{ body: Buffer; mime: "image/jpeg"; prompt: string }> {
   const trimmed = prompt.trim();
   if (!trimmed) throw new Error("Image prompt is empty");
@@ -511,7 +514,7 @@ async function generateGptImage1Mini(
     },
     body: JSON.stringify({
       model: COVER_MODEL,
-      prompt: trimmed,
+      prompt: illustrationStyle ? withIllustrationStyle(trimmed) : trimmed,
       size: COVER_SIZE,
       quality: COVER_QUALITY,
       output_format: COVER_FORMAT,
@@ -564,6 +567,7 @@ async function generateGptImage1Mini(
 /** Text-only Nano Banana Pro (Gemini 3 Pro Image) — square editorial still. */
 async function generateNanoBananaProImage(
   prompt: string,
+  illustrationStyle = true,
 ): Promise<{ body: Buffer; mime: "image/png" | "image/jpeg"; prompt: string }> {
   const trimmed = prompt.trim();
   if (!trimmed) throw new Error("Image prompt is empty");
@@ -572,11 +576,12 @@ async function generateNanoBananaProImage(
     process.env.ADMIN_NANO_BANANA_MODEL?.trim() || NANO_BANANA_PRO_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
-  const scenePrompt = [
-    "Create a single square 1:1 photorealistic photograph matching the scene brief below.",
-    "Follow the brief's subject and mood. People, faces, hands, interiors, objects, and landscapes are all allowed when they fit the brief.",
-    `Brief:\n${trimmed}`,
-  ].join("\n");
+  const scenePrompt = illustrationStyle
+    ? [
+        withIllustrationStyle(trimmed),
+        "Square 1:1. Follow the brief's subject. Full-bleed illustration, no picture frame, mat, or mockup.",
+      ].join("\n\n")
+    : trimmed;
 
   const upstream = await fetch(url, {
     method: "POST",

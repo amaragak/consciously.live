@@ -2063,7 +2063,10 @@ export function CreateOneFlow({
     coverCategory: string,
     opts: { selected: boolean; dimmed: boolean },
   ) => {
-    const coverUrl = categoryImageUrls[coverCategory]?.trim() || "";
+    const coverUrl =
+      categoryImageUrls[coverCategory]?.trim() ||
+      createContextCoverFallbacks()[coverCategory]?.trim() ||
+      "";
     return (
       <button
         key={kind}
@@ -2077,13 +2080,7 @@ export function CreateOneFlow({
         } ${opts.dimmed ? "opacity-40 grayscale" : ""}`}
       >
         <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20 md:aspect-[4/3] md:h-auto md:w-full">
-          {kind === "heal" ? (
-            <span className="flex h-full w-full items-center justify-center text-heal-accent">
-              <svg viewBox="0 0 24 24" className="h-8 w-8" fill="currentColor" aria-hidden>
-                <path d="M12 21s-6.7-4.35-9.33-8.2C.7 10.1 1.2 6.7 3.9 5.2 6.1 3.9 8.6 4.5 10 6.2L12 8.7l2-2.5c1.4-1.7 3.9-2.3 6.1-1 2.7 1.5 3.2 4.9 1.23 7.6C18.7 16.65 12 21 12 21z" />
-              </svg>
-            </span>
-          ) : coverUrl ? (
+          {coverUrl ? (
             <img
               src={categoryImageUrlForTile(coverUrl, 480, 360)}
               alt=""
@@ -2145,24 +2142,27 @@ export function CreateOneFlow({
     <button
       type="button"
       onClick={surpriseMe}
-      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[15px] font-semibold text-foreground hover:underline md:text-base"
+      aria-label="Make a meditation on a random theme"
+      title="Make a meditation on a random theme"
+      className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-accent/35 bg-card px-2.5 text-[13px] font-semibold text-foreground"
     >
       <svg
         viewBox="0 0 24 24"
-        className="h-[1.1em] w-[1.1em] shrink-0"
+        className="h-3.5 w-3.5 shrink-0"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden
       >
-        <circle cx="12" cy="12" r="9" />
-        <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
-        <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
-        <path d="M9.2 14.2c.85 1.15 1.9 1.7 2.8 1.7s1.95-.55 2.8-1.7" />
+        <rect x="4" y="4" width="16" height="16" rx="3" />
+        <circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none" />
       </svg>
-      Surprise me
+      <span className="hidden sm:inline">Random</span>
     </button>
   );
 
@@ -2644,6 +2644,7 @@ export function CreateOneFlow({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {renderSurpriseMe()}
                     <div className="mr-1">{renderLengthChip()}</div>
                     <DictationMicButton
                       variant="composer"
@@ -2668,8 +2669,14 @@ export function CreateOneFlow({
               </div>
 
               <div className="mt-1.5">
-                <div className="mt-2 grid grid-cols-1 gap-y-2 md:grid-cols-2 md:gap-x-6">
-                  <div className="flex min-h-8 items-center justify-between gap-2 md:col-start-1 md:row-start-1">
+                <div
+                  className={`mt-2 grid grid-cols-1 gap-y-2 md:gap-x-6 ${
+                    state.heal
+                      ? "md:grid-cols-2"
+                      : "md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
+                  }`}
+                >
+                  <div className="flex min-h-8 items-center md:col-start-1 md:row-start-1">
                     <p className="leading-none">
                       <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                         Format
@@ -2679,7 +2686,6 @@ export function CreateOneFlow({
                         (optional)
                       </span>
                     </p>
-                    <div className="md:hidden">{renderSurpriseMe()}</div>
                   </div>
                   <div
                     role="radiogroup"
@@ -2729,7 +2735,7 @@ export function CreateOneFlow({
                       </span>
                     </div>
                   </div>
-                  <div className="flex min-h-8 items-center justify-between gap-2 md:col-start-2 md:row-start-1">
+                  <div className="flex min-h-8 items-center md:col-start-2 md:row-start-1">
                     <p className="leading-none">
                       <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
                         Context
@@ -2739,7 +2745,6 @@ export function CreateOneFlow({
                         (optional)
                       </span>
                     </p>
-                    <div className="hidden md:block">{renderSurpriseMe()}</div>
                   </div>
                   <div className="grid grid-cols-1 gap-3 px-1.5 sm:grid-cols-2 md:col-start-2 md:row-start-2 md:flex md:items-stretch md:gap-3 md:p-2 md:px-2">
                     <div className={startTileSlotClass}>

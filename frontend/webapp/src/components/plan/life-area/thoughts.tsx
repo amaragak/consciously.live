@@ -1,5 +1,5 @@
 import { Pin } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
 import { DictationMicButton } from "@/components/dictation-mic-button";
@@ -26,6 +26,13 @@ import {
   guessThoughtKind,
   thoughtSource,
 } from "@/components/plan/life-area/kit";
+import {
+  journalContextDate,
+  journalHref,
+  journalRowsForLifeArea,
+  subscribeJournalEntries,
+  subscribeMeditationOrigins,
+} from "@/lib/journal-links";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { addTrackerItem, childrenOf, commitTracker, ensureTracker, itemsForArea } from "@/lib/tracker-items";
 
@@ -48,6 +55,7 @@ type Row = {
   kind: ThoughtKind | null;
   journal?: { title: string; href: string };
   pinned?: boolean;
+  compact?: { label: string; href: string };
 };
 
 type Props = {
@@ -66,6 +74,29 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
   const [menu, setMenu] = useState<string | null>(null);
   const [goalFor, setGoalFor] = useState<string | null>(null);
   const quotesOn = dream.journalQuotesOn !== false;
+  const [linkTick, setLinkTick] = useState(0);
+  useEffect(() => {
+    const stopEntries = subscribeJournalEntries(() => setLinkTick((n) => n + 1));
+    const stopOrigins = subscribeMeditationOrigins(() => setLinkTick((n) => n + 1));
+    return () => {
+      stopEntries();
+      stopOrigins();
+    };
+  }, []);
+
+  const linkedRows = useMemo(() => {
+    void linkTick;
+    return journalRowsForLifeArea(dream.id).map((row): Row => ({
+      id: `link-${row.entry.id}`,
+      text: row.line,
+      createdAt: row.at,
+      kind: null,
+      compact: {
+        label: `${row.mode === "reflection" ? "Reflection" : "Journal entry"} · ${journalContextDate(row.at)}`,
+        href: journalHref(row.entry),
+      },
+    }));
+  }, [dream.id, linkTick]);
 
   const journalRows = useMemo(() => {
     if (!quotesOn) return [];
@@ -102,10 +133,10 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
     pinned: e.pinned,
   }));
 
-  const rows = [...mine, ...journalRows]
+  const rows = [...mine, ...linkedRows, ...journalRows]
     .filter((r) => {
-      if (who === "mine") return !r.journal;
-      if (who === "journal") return Boolean(r.journal);
+      if (who === "mine") return !r.journal && !r.compact;
+      if (who === "journal") return Boolean(r.journal || r.compact);
       return true;
     })
     .filter((r) => kindFilter === "all" || r.kind === kindFilter)
@@ -259,7 +290,7 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
                     who === id ? "bg-card font-semibold" : "text-muted"
                   }`}
                 >
-                  {id === "all" ? "Everything" : id === "mine" ? "Mine" : "From journal"}
+                  {id === "all" ? "Everything" : id === "mine" ? "Mine" : "Journal"}
                 </button>
               ))}
             </div>
@@ -402,12 +433,28 @@ function Feed({
                   hover === row.id || tapped === row.id
                     ? "rounded-xl bg-background px-2"
                     : ""
-                } ${row.journal ? "border-l-2 border-accent/40 pl-3 italic" : ""}`}
+                } ${row.journal ? "border-l-2 border-accent/40 pl-3 italic" : ""} ${
+                  row.compact ? "items-center border-t border-border" : ""
+                }`}
               >
+                {row.compact ? null : (
                 <span className="w-[52px] shrink-0 text-xs text-muted">
                   {formatShortDate(row.createdAt)}
                 </span>
+                )}
                 <span className="min-w-0 flex-1">
+                  {row.compact ? (
+                    <>
+                      <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">
+                        {row.compact.label}
+                      </span>
+                      <span className="block truncate font-display text-[15px] text-foreground">
+                        {row.text}
+                      </span>
+                    </>
+                  ) : null}
+                  {row.compact ? null : (
+                  <>
                   <span
                     className={`block text-[15px] ${
                       row.journal ? "font-display" : "text-foreground"
@@ -494,7 +541,18 @@ function Feed({
                       ))}
                     </span>
                   ) : null}
+                  </>
+                  )}
                 </span>
+                {row.compact ? (
+                  <Link
+                    to={row.compact.href}
+                    className="shrink-0 text-[12px] font-semibold text-muted"
+                  >
+                    Open in Journal
+                  </Link>
+                ) : (
+                <>
                 <button
                   type="button"
                   aria-label="Thought actions"
@@ -556,6 +614,8 @@ function Feed({
                     )}
                   </span>
                 ) : null}
+                </>
+                )}
               </li>
             ))}
           </ul>

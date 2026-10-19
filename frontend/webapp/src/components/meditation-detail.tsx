@@ -729,31 +729,38 @@ function ReflectionsList({
   onReflect: () => void;
   asCard?: boolean;
 }) {
+  if (entries.length === 0) return null;
   const body = (
     <>
       {entries.map((e) => {
-        const excerpt = plainFromHtml(e.contentHtml ?? "", 60);
+        const excerpt = plainFromHtml(e.contentHtml ?? "", 140);
         const when = formatRelativeDay(e.updatedAt || e.createdAt);
         return (
-          <Link
+          <div
             key={e.id}
-            to={`/journal/my/${encodeURIComponent(e.id)}`}
-            className="flex flex-col gap-[3px] border-t border-border py-2 hover:opacity-80"
+            className="flex items-center gap-3 border-t border-border py-2.5"
           >
-            <span className="text-sm font-semibold text-foreground">
-              {e.title?.trim() || "Untitled entry"}
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">
+                Reflection · {when}
+              </span>
+              <span className="block truncate font-display text-[15px] text-foreground">
+                {excerpt || e.title?.trim() || "Untitled entry"}
+              </span>
             </span>
-            <span className="text-xs text-muted">
-              {when}
-              {excerpt ? ` · “${excerpt}”` : ""}
-            </span>
-          </Link>
+            <Link
+              to={`/journal/my/${encodeURIComponent(e.id)}`}
+              className="shrink-0 text-[12px] font-semibold text-muted"
+            >
+              Open in Journal
+            </Link>
+          </div>
         );
       })}
       <button
         type="button"
         onClick={onReflect}
-        className="cursor-pointer self-start text-[13px] font-semibold text-accent-link hover:opacity-80"
+        className="cursor-pointer self-start pt-1 text-[13px] font-semibold text-accent-link hover:opacity-80"
       >
         + New reflection
       </button>
@@ -762,13 +769,16 @@ function ReflectionsList({
   if (asCard) {
     return (
       <div className={CARD}>
-        <div className="flex flex-col gap-2 px-[18px] py-4">{body}</div>
+        <div className="flex flex-col gap-2 px-[18px] py-4">
+          <p className="text-xs font-semibold uppercase tracking-[1.6px] text-muted">Your reflections</p>
+          {body}
+        </div>
       </div>
     );
   }
-  return (
-    <RailCard label={`Reflections · ${entries.length}`}>{body}</RailCard>
-  );
+    return (
+      <RailCard label="Your reflections">{body}</RailCard>
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -960,7 +970,9 @@ export default function MeditationDetail(props: MeditationDetailProps) {
     const tabOptions: { id: MobileTab; label: string }[] = [
       { id: "script", label: "Script" },
       { id: "details", label: "Details" },
-      { id: "reflections", label: `Reflections · ${entries.length}` },
+      ...(entries.length
+        ? [{ id: "reflections" as const, label: `Reflections · ${entries.length}` }]
+        : []),
     ];
 
     const stickyScrollMargin = stickyBarVisible ? MOBILE_STICKY_BAR_PX : 0;

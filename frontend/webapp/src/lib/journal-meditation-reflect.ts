@@ -146,7 +146,13 @@ export function journalEntriesLinkedToMeditation(
           signedIn: isMedimadeSessionActive(),
         }).entries
       : loadJournalStoreRaw().entries);
-  return list.filter((e) => e.meditationId === id);
+  return list.filter(
+    (e) =>
+      e.meditationId === id ||
+      (e.links ?? []).some(
+        (link) => link.targetType === "meditation" && link.targetId === id,
+      ),
+  );
 }
 
 /**

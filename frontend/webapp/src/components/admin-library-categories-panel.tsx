@@ -207,7 +207,7 @@ export function AdminLibraryCategoriesPanel() {
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
           Covers for Library → Community (including All) and Create → Add
-          context tiles (Journal, Program, Manifest). Upload or generate keeps
+          context tiles (Journal, Program, Manifest, Heal). Upload or generate keeps
           prior versions so you can switch back. Choose GPT Image 1 Mini or
           Nano Banana Pro for generate.
         </p>

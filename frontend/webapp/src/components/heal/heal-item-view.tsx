@@ -5,6 +5,7 @@ import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
 import { LogoMark } from "@/components/logo-mark";
+import { MeditationReflectionLink } from "@/components/meditation-reflection-link";
 import { SelectChevron } from "@/components/select-chevron";
 import {
   HEAL_OUTLINE,
@@ -17,12 +18,22 @@ import {
 } from "@/components/heal/heal-bits";
 import { HEAL_TYPES, healTypeLabel } from "@/lib/heal-copy";
 import { healAfterUpdate, healLenses, healSetup, healSuggestMore } from "@/lib/heal-ai";
+import { meditationIdFromLibraryItem } from "@/lib/journal-meditation-reflect";
+import {
+  capWords,
+  journalFirstLine,
+  journalHref,
+  journalContextForHealItem,
+  journalRowsForHealItem,
+  subscribeJournalEntries,
+  subscribeMeditationOrigins,
+} from "@/lib/journal-links";
 import { listLibraryMeditations, type LibraryMeditationItem } from "@/lib/medimade-api";
 import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
 import {
   healMeditationsForItem,
 } from "@/lib/heal-meditation-links";
-import { useRouter } from "@/lib/spa-nav";
+import { Link, useRouter } from "@/lib/spa-nav";
 import { addTrackerItem, patchTrackerItem } from "@/lib/tracker-items";
 import {
   actionsForItem,
@@ -155,6 +166,14 @@ function HealMeditationCard({
               </p>
             </div>
           </div>
+          {libraryItem ? (
+            <div className="mt-3">
+              <MeditationReflectionLink
+                meditationId={meditationIdFromLibraryItem(libraryItem)}
+                item={libraryItem}
+              />
+            </div>
+          ) : null}
           {changed ? (
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
               <p className="text-[13px] text-muted">Your good-day view has changed since.</p>
@@ -213,6 +232,15 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [freshIds, setFreshIds] = useState<string[]>([]);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [journalTick, setJournalTick] = useState(0);
+  useEffect(() => {
+    const stopEntries = subscribeJournalEntries(() => setJournalTick((n) => n + 1));
+    const stopOrigins = subscribeMeditationOrigins(() => setJournalTick((n) => n + 1));
+    return () => {
+      stopEntries();
+      stopOrigins();
+    };
+  }, []);
 
   useEffect(() => {
     if (!item || setupStarted.current) return;
@@ -248,6 +276,12 @@ export function HealItemView({ itemId }: { itemId: string }) {
     ...exercises.filter((row) => row.status === "active" && row.answeredEntryId),
   ];
   const entries = entriesForItem(store, current.id);
+  void journalTick;
+  const journalRows = journalRowsForHealItem(current.id);
+  const timeline = [
+    ...entries.map((entry) => ({ kind: "heal" as const, at: entry.createdAt, entry })),
+    ...journalRows.map((row) => ({ kind: "journal" as const, at: row.at, row })),
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const actions = actionsForItem(store, current.id);
   const dreams = loadIdeateStore().dreams;
   const areaId = current.linkedLifeAreaIds[0] || current.sourceObstacleId?.split("::")[0] || "";
@@ -396,7 +430,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       type: current.type,
       title: current.title,
       canDo: current.canDo,
-      context: `${healUpdateNarrative(store, current.id)}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}`,
+      context: `${narrativeWithJournal(store, current.id)}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}`,
     }).then((result) => {
       if (!result) return;
       applyExerciseChange(result.retire, result.add, "Your update changed things");
@@ -549,7 +583,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       type: current.type,
       title: current.title,
       lens: which,
-      context: `Bad day:\n${bad?.text ?? ""}\n\n${healUpdateNarrative(store, current.id)}\n\nGood day:\n${good?.text ?? ""}`,
+      context: `Bad day:\n${bad?.text ?? ""}\n\n${narrativeWithJournal(store, current.id)}\n\nGood day:\n${good?.text ?? ""}`,
     });
     if (result) setLensText((currentText) => ({ ...currentText, ...result }));
     setLensBusy(false);
@@ -1190,9 +1224,23 @@ export function HealItemView({ itemId }: { itemId: string }) {
             </div>
           ) : null}
           <ul>
-            {entries.map((entry, index) => (
-              <EntryRow key={entry.id} entry={entry} store={store} itemId={current.id} last={index === entries.length - 1} />
-            ))}
+            {timeline.map((item, index) =>
+              item.kind === "heal" ? (
+                <EntryRow
+                  key={item.entry.id}
+                  entry={item.entry}
+                  store={store}
+                  itemId={current.id}
+                  last={index === timeline.length - 1}
+                />
+              ) : (
+                <JournalTimelineRow
+                  key={`journal-${item.row.entry.id}`}
+                  row={item.row}
+                  last={index === timeline.length - 1}
+                />
+              ),
+            )}
           </ul>
         </div>
       </section>
@@ -1466,10 +1514,10 @@ function ViewBox({
   }
   const textClass = accent
     ? "font-display text-[24px] leading-[1.45] text-[#F3EDE2]"
-    : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.72)]";
+    : "font-display text-[22px] leading-[1.45] text-[#F3EDE2]";
   const emptyClass = accent
-    ? "font-display text-[24px] leading-[1.45] text-[rgb(243_237_226_/_0.45)]"
-    : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.45)]";
+    ? "font-display text-[24px] leading-[1.45] text-[rgb(243_237_226_/_0.78)]"
+    : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.82)]";
   return (
     <div
       className="relative min-w-0 flex-1 cursor-text"
@@ -1480,7 +1528,7 @@ function ViewBox({
       }}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${accent ? "text-header-gold" : "text-[rgb(243_237_226_/_0.5)]"}`}>{label}</p>
+        <p className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${accent ? "text-header-gold" : "text-[rgb(243_237_226_/_0.9)]"}`}>{label}</p>
         <Pencil className="size-3.5 shrink-0 text-[rgb(243_237_226_/_0.45)]" aria-hidden />
       </div>
       {editing ? (
@@ -1511,7 +1559,7 @@ function ViewBox({
               finish(true);
             }
           }}
-          className={`mt-2.5 w-full resize-none border-b border-[rgb(243_237_226_/_0.35)] bg-transparent outline-none placeholder:text-[rgb(243_237_226_/_0.45)] ${textClass}`}
+          className={`mt-2.5 w-full resize-none border-b border-[rgb(243_237_226_/_0.55)] bg-transparent outline-none placeholder:text-[rgb(243_237_226_/_0.82)] ${textClass}`}
         />
       ) : (
         <p className={`mt-2.5 ${view ? textClass : emptyClass}`}>{view?.text || empty}</p>
@@ -1534,6 +1582,42 @@ function VersionColumn({ title, rows }: { title: string; rows: HealView[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+function JournalTimelineRow({
+  row,
+  last,
+}: {
+  row: ReturnType<typeof journalRowsForHealItem>[number];
+  last: boolean;
+}) {
+  const when = healRelative(row.at);
+  const text = journalFirstLine(row.entry);
+  const title = row.entry.title.trim();
+  return (
+    <li className="grid grid-cols-[20px_minmax(0,1fr)] gap-x-3.5 lg:grid-cols-[110px_20px_minmax(0,1fr)]">
+      <p className="hidden pt-0.5 text-[12px] text-muted lg:block">{when}</p>
+      <span className="flex flex-col items-center">
+        <span className="mt-1.5 size-[9px] shrink-0 rounded-full bg-accent" />
+        {last ? null : <span className="mt-1 w-px flex-1 bg-border" />}
+      </span>
+      <div className="flex flex-col gap-1.5 pb-5">
+        <p className="text-[12px] text-muted lg:hidden">{when}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">
+          {row.mode === "reflection" ? "Reflection" : "Journal entry"}
+        </p>
+        {row.mode === "reflection" && row.meditationTitle ? (
+          <p className="text-[14px] font-semibold">On {row.meditationTitle}</p>
+        ) : title ? (
+          <p className="text-[14px] font-semibold">{title}</p>
+        ) : null}
+        <p className="line-clamp-4 font-display text-[17px] leading-[1.55]">{text}</p>
+        <Link href={journalHref(row.entry)} className="text-[13px] font-semibold text-muted">
+          Open in Journal
+        </Link>
+      </div>
+    </li>
   );
 }
 
@@ -1578,8 +1662,17 @@ function EntryRow({
   );
 }
 
+function narrativeWithJournal(store: HealStoreV1, itemId: string): string {
+  return capWords(
+    [healUpdateNarrative(store, itemId, 10_000), journalContextForHealItem(itemId)]
+      .filter(Boolean)
+      .join("\n\n"),
+    600,
+  );
+}
+
 function contextFor(store: HealStoreV1, item: HealItem): string {
-  const narrative = healUpdateNarrative(store, item.id);
+  const narrative = narrativeWithJournal(store, item.id);
   const bad = currentView(store, item.id, "bad")?.text ?? "";
   const good = currentView(store, item.id, "good")?.text ?? "";
   const writing = entriesForItem(store, item.id)

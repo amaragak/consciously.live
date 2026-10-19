@@ -22,7 +22,7 @@ import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { Calendar, Folder, Play, SquarePen } from "lucide-react";
 import { journalMeditationForEntry } from "@/lib/heal-meditation-links";
-import { JournalReflectMeditationCard } from "@/components/journal-reflect-meditation-card";
+import { JournalEntryLinks } from "@/components/journal-entry-links";
 import {
   consumeReflectMeditationHandoff,
   findReflectionEntryForMeditation,
@@ -92,6 +92,7 @@ import {
 import {
   journalMoodDotColor,
 } from "@/lib/journal-moods";
+import { newJournalLink } from "@/lib/journal-links";
 import { journalEntriesLinkedToLifeArea } from "@/lib/plan-life-area-links";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
 
@@ -1235,7 +1236,7 @@ export function JournalView() {
     }) => {
       flushSaveSync();
       const title = opts?.title?.trim() ?? "";
-      const e = newJournalEntry({
+      const draft = newJournalEntry({
         ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
         ...(title ? { title } : {}),
         ...(opts?.meditationId
@@ -1250,6 +1251,22 @@ export function JournalView() {
             }
           : {}),
       });
+      const e = opts?.meditationId
+        ? {
+            ...draft,
+            links: [
+              newJournalLink({
+                entryId: draft.id,
+                targetType: "meditation",
+                targetId: opts.meditationId,
+                label: opts.meditationSnapshot?.title,
+                reflecting: true,
+                meditationSource: opts.meditationSource,
+                meditationSnapshot: opts.meditationSnapshot,
+              }),
+            ],
+          }
+        : draft;
       if (opts?.voice) {
         try {
           sessionStorage.setItem("journal-autostart-voice", "1");
@@ -1349,17 +1366,36 @@ export function JournalView() {
           entriesRef.current,
         );
         if (existing) {
-          const next = entriesRef.current.map((e) =>
-            e.id === existing.id
-              ? {
-                  ...e,
-                  meditationId: handoff.meditationId,
-                  meditationSource: handoff.meditationSource,
-                  meditationSnapshot: handoff.snapshot,
-                  updatedAt: new Date().toISOString(),
-                }
-              : e,
-          );
+          const next = entriesRef.current.map((e) => {
+            if (e.id !== existing.id) return e;
+            const already = (e.links ?? []).some(
+              (link) =>
+                link.targetType === "meditation" &&
+                link.targetId === handoff.meditationId,
+            );
+            const links = already
+              ? e.links
+              : [
+                  newJournalLink({
+                    entryId: e.id,
+                    targetType: "meditation",
+                    targetId: handoff.meditationId,
+                    label: handoff.snapshot.title,
+                    reflecting: true,
+                    meditationSource: handoff.meditationSource,
+                    meditationSnapshot: handoff.snapshot,
+                  }),
+                  ...(e.links ?? []),
+                ];
+            return {
+              ...e,
+              links,
+              meditationId: handoff.meditationId,
+              meditationSource: handoff.meditationSource,
+              meditationSnapshot: handoff.snapshot,
+              updatedAt: new Date().toISOString(),
+            };
+          });
           entriesRef.current = next;
           setEntries(next);
           persist(next, existing.id);
@@ -2370,24 +2406,7 @@ export function JournalView() {
                       </button>
                     );
                   })()}
-                  {activeEntry.meditationId ? (
-                    <JournalReflectMeditationCard
-                      meditationId={activeEntry.meditationId}
-                      snapshot={activeEntry.meditationSnapshot}
-                      onUnlink={() => {
-                        setUnlinkUndo({
-                          meditationId: activeEntry.meditationId!,
-                          meditationSource: activeEntry.meditationSource,
-                          meditationSnapshot: activeEntry.meditationSnapshot,
-                        });
-                        patchActive({
-                          meditationId: undefined,
-                          meditationSource: undefined,
-                          meditationSnapshot: undefined,
-                        });
-                      }}
-                    />
-                  ) : null}
+                  <JournalEntryLinks entry={activeEntry} onChange={patchActive} />
                   </>
                 }
               >

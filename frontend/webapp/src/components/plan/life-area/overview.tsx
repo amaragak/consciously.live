@@ -19,6 +19,8 @@ import {
   progressFor,
 } from "@/components/plan/life-area/kit";
 import { useLibraryPlayer } from "@/components/library-player-provider";
+import { MeditationReflectionLink } from "@/components/meditation-reflection-link";
+import { meditationIdFromLibraryItem } from "@/lib/journal-meditation-reflect";
 import {
   healItemsForLifeArea,
   loadHealStore,
@@ -420,9 +422,9 @@ function MeditationsCard({
       ) : (
       <div className="mt-3 flex flex-col gap-2.5 xl:flex-row">
         {rows.map((m) => (
+          <div key={m.sk || m.s3Key} className="flex min-w-0 flex-1 flex-col gap-2">
           <div
-            key={m.sk || m.s3Key}
-            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-background p-2.5"
+            className="flex min-w-0 items-center gap-2.5 rounded-xl border border-border bg-background p-2.5"
           >
             <span className="size-[52px] shrink-0 overflow-hidden rounded-lg bg-accent-soft">
               {m.speakerPortraitUrl ? (
@@ -452,6 +454,11 @@ function MeditationsCard({
             >
               ▶
             </button>
+          </div>
+          <MeditationReflectionLink
+            meditationId={meditationIdFromLibraryItem(m)}
+            item={m}
+          />
           </div>
         ))}
       </div>

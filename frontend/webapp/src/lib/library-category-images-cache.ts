@@ -24,6 +24,7 @@ const CREATE_CONTEXT_COVER_CATEGORIES = [
   "Journal",
   "Program",
   "Manifest",
+  "Heal",
 ] as const;
 
 /** Last-resort CDN covers so Create tiles paint even if the list API fails. */
@@ -35,10 +36,11 @@ export function createContextCoverFallbacks(): Partial<Record<string, string>> {
       : "https://d3k8rq6eqba40d.cloudfront.net"
   ).replace(/\/$/, "");
   return {
-    All: `${media}/category-covers/all-1790015419626.jpg`,
-    Journal: `${media}/category-covers/journal-1791073729812.jpg`,
-    Program: `${media}/category-covers/program-1791073744647.jpg`,
-    Manifest: `${media}/category-covers/manifest-1791074930787.jpg`,
+    All: `${media}/category-covers/all-1792450561037.jpg`,
+    Journal: `${media}/category-covers/journal-1792450561739.jpg`,
+    Program: `${media}/category-covers/program-1792449331845.jpg`,
+    Manifest: `${media}/category-covers/manifest-1792449332438.jpg`,
+    Heal: `${media}/category-covers/heal-1792449332972.jpg`,
   };
 }
 

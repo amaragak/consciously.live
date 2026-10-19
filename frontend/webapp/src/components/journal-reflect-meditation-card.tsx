@@ -55,10 +55,14 @@ export function JournalReflectMeditationCard({
   meditationId,
   snapshot,
   onUnlink,
+  label = "Reflecting on",
+  removable = true,
 }: {
   meditationId: string;
   snapshot?: JournalMeditationSnapshot | null;
-  onUnlink: () => void;
+  onUnlink?: () => void;
+  label?: string;
+  removable?: boolean;
 }) {
   const {
     nowPlaying,
@@ -170,7 +174,7 @@ export function JournalReflectMeditationCard({
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="text-[10px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-          Reflecting on
+          {label}
         </p>
         <p className="truncate font-display text-[17px] leading-tight text-foreground max-md:text-base">
           {title}
@@ -228,14 +232,16 @@ export function JournalReflectMeditationCard({
         >
           Open
         </Link>
-        <button
-          type="button"
-          aria-label="Unlink meditation"
-          onClick={onUnlink}
-          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-accent-soft/50 hover:text-foreground"
-        >
-          <X className="size-4" strokeWidth={2} />
-        </button>
+        {removable && onUnlink ? (
+          <button
+            type="button"
+            aria-label="Unlink meditation"
+            onClick={onUnlink}
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-accent-soft/50 hover:text-foreground"
+          >
+            <X className="size-4" strokeWidth={2} />
+          </button>
+        ) : null}
       </div>
 
       <div className="relative flex shrink-0 items-center gap-1.5 sm:hidden">
@@ -274,16 +280,18 @@ export function JournalReflectMeditationCard({
             >
               Open
             </Link>
-            <button
-              type="button"
-              className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/40"
-              onClick={() => {
-                setMenuOpen(false);
-                onUnlink();
-              }}
-            >
-              Unlink
-            </button>
+            {removable && onUnlink ? (
+              <button
+                type="button"
+                className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/40"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onUnlink();
+                }}
+              >
+                Unlink
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

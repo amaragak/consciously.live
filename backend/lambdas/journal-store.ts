@@ -89,6 +89,19 @@ type JournalEntry = {
   meditationId?: string;
   meditationSource?: JournalMeditationSource;
   meditationSnapshot?: JournalMeditationSnapshot;
+  links?: JournalLink[];
+};
+
+type JournalLink = {
+  id: string;
+  entryId: string;
+  targetType: "meditation" | "life_area" | "heal_item";
+  targetId: string;
+  createdAt: string;
+  label?: string;
+  reflecting?: boolean;
+  meditationSource?: JournalMeditationSource;
+  meditationSnapshot?: JournalMeditationSnapshot;
 };
 
 type JournalFolder = { id: string; name: string };
@@ -184,6 +197,77 @@ function tagsFromUnknown(raw: unknown): string[] | undefined {
   return tags.length ? tags : undefined;
 }
 
+function linksFromUnknown(raw: unknown, entryId: string): JournalLink[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: JournalLink[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const o = row as Record<string, unknown>;
+    const targetType = o.targetType;
+    if (
+      targetType !== "meditation" &&
+      targetType !== "life_area" &&
+      targetType !== "heal_item"
+    ) {
+      continue;
+    }
+    const targetId = typeof o.targetId === "string" ? o.targetId.trim().slice(0, 400) : "";
+    if (!targetId) continue;
+    const key = `${targetType}:${targetId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const createdAt = safeIsoLike(o.createdAt) ?? new Date().toISOString();
+    const link: JournalLink = {
+      id: typeof o.id === "string" && o.id.trim() ? o.id.trim().slice(0, 80) : `jl_${out.length}`,
+      entryId,
+      targetType,
+      targetId,
+      createdAt,
+    };
+    if (typeof o.label === "string" && o.label.trim()) link.label = o.label.trim().slice(0, 200);
+    if (o.reflecting === true) link.reflecting = true;
+    if (
+      o.meditationSource === "own" ||
+      o.meditationSource === "community" ||
+      o.meditationSource === "program"
+    ) {
+      link.meditationSource = o.meditationSource;
+    }
+    if (o.meditationSnapshot && typeof o.meditationSnapshot === "object" && !Array.isArray(o.meditationSnapshot)) {
+      const s = o.meditationSnapshot as Record<string, unknown>;
+      if (typeof s.title === "string" && s.title.trim()) {
+        link.meditationSnapshot = { title: s.title.trim().slice(0, 200) };
+        if (typeof s.coverImageUrl === "string" || s.coverImageUrl === null) {
+          link.meditationSnapshot.coverImageUrl = s.coverImageUrl as string | null;
+        }
+        if (typeof s.durationSeconds === "number" || s.durationSeconds === null) {
+          link.meditationSnapshot.durationSeconds = s.durationSeconds as number | null;
+        }
+        if (typeof s.openHref === "string" || s.openHref === null) {
+          link.meditationSnapshot.openHref = s.openHref as string | null;
+        }
+        if (typeof s.speakerName === "string" || s.speakerName === null) {
+          link.meditationSnapshot.speakerName = s.speakerName as string | null;
+        }
+        if (typeof s.styleLabel === "string" || s.styleLabel === null) {
+          link.meditationSnapshot.styleLabel = s.styleLabel as string | null;
+        }
+      }
+    }
+    out.push(link);
+    if (out.length >= 24) break;
+  }
+  return out.length ? out : undefined;
+}
+
+function safeIsoLike(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return value.trim();
+}
+
 function journalEntryFromItem(
   item: Record<string, unknown>,
   id: string,
@@ -269,6 +353,7 @@ function journalEntryFromItem(
     ...(meditationId ? { meditationId } : {}),
     ...(meditationSource ? { meditationSource } : {}),
     ...(meditationSnapshot ? { meditationSnapshot } : {}),
+    ...(linksFromUnknown(item.links, id) ? { links: linksFromUnknown(item.links, id) } : {}),
   };
 }
 
@@ -540,6 +625,8 @@ async function persistStoreToDdb(
       };
       item.meditationSnapshot = meditationSnapshot;
     }
+    const links = linksFromUnknown(e.links, e.id);
+    if (links) item.links = links;
     ops.push({
       op: "put",
       item,

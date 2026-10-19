@@ -548,6 +548,7 @@ async function handlePost(event: APIGatewayProxyEventV2) {
     const { body: imageBody, mime } = await generateAdminImageFromPrompt({
       prompt,
       model,
+      illustrationStyle: false,
     });
     const key = speakerPortraitObjectKey(modelId);
     await s3.send(

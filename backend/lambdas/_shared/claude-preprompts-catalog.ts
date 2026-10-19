@@ -27,6 +27,7 @@ import {
   scriptLabV3Pass1SystemPrompt,
 } from "./script-lab-generate-v3";
 import { soundCategorySuggestSystemPrompt } from "./sound-category-suggest";
+import { ILLUSTRATION_STYLE_PREPROMPT } from "./illustration-style";
 import { SPEAKER_PORTRAIT_STYLE_PREPROMPT } from "./speaker-portrait";
 
 export type ClaudePrepromptKind =
@@ -298,6 +299,15 @@ export function buildClaudePrepromptCatalog(): ClaudePrepromptEntry[] {
       kind: "system",
       sourcePath: "backend/lambdas/_shared/script-lab-generate-v3.ts",
       text: scriptLabV3ReviewSystemPrompt(),
+      sortOrder: next(),
+    },
+    {
+      id: "illustration-style",
+      title: "Illustration style (covers and scenes)",
+      feature: "Images",
+      kind: "fragment",
+      sourcePath: "backend/lambdas/_shared/illustration-style.ts",
+      text: ILLUSTRATION_STYLE_PREPROMPT,
       sortOrder: next(),
     },
     {

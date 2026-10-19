@@ -140,6 +140,7 @@ type JournalEntry = {
   updatedAt: string;
   title: string;
   contentHtml: string;
+  contextLabels?: string[];
 };
 
 type JournalInsightsTopic = {
@@ -244,7 +245,15 @@ async function queryAllJournalEntries(
       const title = typeof it.title === "string" ? it.title : "";
       const contentHtml = typeof it.contentHtml === "string" ? it.contentHtml : "";
       if (!createdAt || !updatedAt) continue;
-      out.push({ id, createdAt, updatedAt, title, contentHtml });
+      const contextLabels = linkLabelsFromUnknown(it.links);
+      out.push({
+        id,
+        createdAt,
+        updatedAt,
+        title,
+        contentHtml,
+        ...(contextLabels.length ? { contextLabels } : {}),
+      });
     }
     startKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey);
@@ -325,6 +334,29 @@ function entriesDeltaSince(
   return { delta, nextMax };
 }
 
+function linkLabelsFromUnknown(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const o = row as Record<string, unknown>;
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    if (!label) continue;
+    const kind =
+      o.targetType === "heal_item"
+        ? "Heal"
+        : o.targetType === "life_area"
+          ? "Manifest"
+          : o.targetType === "meditation"
+            ? "Meditation"
+            : "";
+    if (!kind) continue;
+    out.push(`${kind} · ${label}`);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 function formatEntriesForModel(entries: JournalEntry[]): string {
   const blocks: string[] = [];
   for (const e of entries) {
@@ -336,6 +368,7 @@ function formatEntriesForModel(entries: JournalEntry[]): string {
         `Created: ${e.createdAt}`,
         `Updated: ${e.updatedAt}`,
         `Title: ${title}`,
+        ...(e.contextLabels?.length ? [`Linked: ${e.contextLabels.join("; ")}`] : []),
         `Body: ${body || "(empty)"}`,
       ].join("\n"),
     );

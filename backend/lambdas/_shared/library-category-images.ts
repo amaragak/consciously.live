@@ -26,6 +26,7 @@ export const CREATE_CONTEXT_IMAGE_SLOTS = [
   "Journal",
   "Program",
   "Manifest",
+  "Heal",
 ] as const;
 
 /** Cover slots: Community "All" + library types + Create-flow context tiles. */

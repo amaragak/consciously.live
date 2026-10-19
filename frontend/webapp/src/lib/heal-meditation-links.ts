@@ -4,6 +4,10 @@ import {
 } from "@/lib/account-scoped-storage";
 import type { CreateFlowHealAttachment } from "@/lib/create-one-flow-state";
 import {
+  capWords,
+  journalContextForHealItem,
+} from "@/lib/journal-links";
+import {
   currentView,
   exercisesForItem,
   healUpdateNarrative,
@@ -90,7 +94,12 @@ export function healCreateAttachment(
     .map((row) => store.entries.find((entry) => entry.id === row.answeredEntryId)?.text?.trim() || "")
     .filter(Boolean);
   const context = [
-    healUpdateNarrative(store, item.id),
+    capWords(
+      [healUpdateNarrative(store, item.id, 10_000), journalContextForHealItem(item.id)]
+        .filter(Boolean)
+        .join("\n\n"),
+      600,
+    ),
     ...answers.map((answer) => `Answer: ${answer}`),
   ]
     .filter(Boolean)
