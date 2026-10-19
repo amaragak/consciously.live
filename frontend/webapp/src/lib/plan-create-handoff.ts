@@ -36,6 +36,13 @@ export type PlanCreateHandoffV2 = {
   obstacleText?: string;
   /** PlanDream / life-area id — carried into the library meditation. */
   lifeAreaId?: string;
+  /** Start-step brief when it differs from the life-area vision. */
+  brief?: string;
+  /** Life-area tab that started this meditation. */
+  meditationSource?: "goal" | "dream" | "plan" | "thought";
+  /** Goal attached with the life area, when the meditation is for one goal. */
+  linkedGoalId?: string;
+  linkedGoalTitle?: string;
   /** Prefer this length in Create (e.g. 2‑min pre-focus manifestation). */
   meditationTargetMinutes?: 2 | 5 | 10 | 20;
   /** After Generate, open Focus (Ideate task handoff still in sessionStorage). */
@@ -146,6 +153,22 @@ export function readPlanCreateHandoff(): PlanCreateHandoff | null {
         lifeAreaId:
           typeof o.lifeAreaId === "string" && o.lifeAreaId.trim()
             ? o.lifeAreaId.trim()
+            : undefined,
+        brief: typeof o.brief === "string" ? o.brief : undefined,
+        meditationSource:
+          o.meditationSource === "goal" ||
+          o.meditationSource === "dream" ||
+          o.meditationSource === "plan" ||
+          o.meditationSource === "thought"
+            ? o.meditationSource
+            : undefined,
+        linkedGoalId:
+          typeof o.linkedGoalId === "string" && o.linkedGoalId.trim()
+            ? o.linkedGoalId.trim()
+            : undefined,
+        linkedGoalTitle:
+          typeof o.linkedGoalTitle === "string" && o.linkedGoalTitle.trim()
+            ? o.linkedGoalTitle.trim()
             : undefined,
         meditationTargetMinutes:
           o.meditationTargetMinutes === 2 ||

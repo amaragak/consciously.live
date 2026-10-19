@@ -332,7 +332,7 @@ export function ManifestoStoryPrepareCheck({
 
   return createPortal(
     <div
-      className={`fixed inset-x-0 bottom-0 top-14 z-[210] lg:left-[var(--app-sidebar-w,200px)] ${
+      className={`fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[210] lg:left-[var(--app-sidebar-w,200px)] ${
         entered ? "bg-overlay/45" : "bg-overlay/0"
       } transition-colors duration-200`}
       onClick={onClose}

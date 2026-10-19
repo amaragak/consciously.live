@@ -1,11 +1,6 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useCallback, useEffect, useState } from "react";
 import { LifeAreaShell } from "@/components/plan/life-area/shell";
-import { activeResistanceThemesForProject } from "@/lib/plan-resistance-threads";
-import {
-  writePlanCreateHandoff,
-  type PlanCreateHandoffV2,
-} from "@/lib/plan-create-handoff";
 import { type PlanDream } from "@/lib/plan-dreams";
 import {
   loadIdeateStore,
@@ -20,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 function PlanGoalWorkspaceSkeleton() {
   return (
     <div
-      className="min-h-[calc(100vh-3.5rem)]"
+      className="min-h-[calc(100vh-var(--app-header-h))]"
       aria-busy="true"
       aria-live="polite"
     >
@@ -55,7 +50,6 @@ function persistDream(next: PlanDream) {
 type Props = { dreamId: string };
 
 export function PlanGoalWorkspace({ dreamId }: Props) {
-  const navigate = useNavigate();
   const [dream, setDream] = useState<PlanDream | null>(null);
   const [missing, setMissing] = useState(false);
   const [storeTick, setStoreTick] = useState(0);
@@ -102,36 +96,6 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
     setDream(next);
   }, [dreamId]);
 
-  function generateMeditation() {
-    if (!dream) return;
-    const vision = dream.visionText.trim();
-    if (!vision) return;
-    const store = loadIdeateStore();
-    const themes = activeResistanceThemesForProject(store, dream.id);
-    const handoff: PlanCreateHandoffV2 = {
-      v: 2,
-      goalTitle: dream.title.trim() || "My project",
-      visionText: vision,
-      dreamText: dream.dreamText.trim() || undefined,
-      obstacleText: dream.obstacleText.trim() || undefined,
-      lifeAreaId: dream.id,
-      project: {
-        dreamText: dream.dreamText.trim(),
-        resistanceText: dream.obstacleText.trim(),
-        visionText: vision,
-      },
-      activeResistanceThemes: themes.map((t) => ({
-        category: t.category,
-        sampleText: t.sampleText,
-        level: t.level,
-        occurrences: t.occurrences,
-      })),
-    };
-    writePlanCreateHandoff(handoff);
-    patch({ meditationsGenerated: dream.meditationsGenerated + 1 });
-    navigate("/meditate/create?step=shape&fromDream=1&seed=goal");
-  }
-
   if ((isMedimadeSessionActive() && !cloudReady) || missing || !dream) {
     if (missing) {
       return (
@@ -152,15 +116,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
   }
 
   void storeTick;
-  const canGenerate = Boolean(dream.visionText.trim());
-
   return (
-    <LifeAreaShell
-      dream={dream}
-      onPatch={patch}
-      onRefresh={load}
-      onGenerate={generateMeditation}
-      canGenerate={canGenerate}
-    />
+    <LifeAreaShell dream={dream} onPatch={patch} onRefresh={load} />
   );
 }

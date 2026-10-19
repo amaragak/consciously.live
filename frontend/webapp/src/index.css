@@ -38,6 +38,7 @@
   --marketing-band-d: #e4dfd6;
   --marketing-band-ideate: #e8eef2;
   --site-header-h: 3.5rem;
+  --app-header-h: 3.5rem;
   --app-sidebar-w: 200px;
   --content-max-width: 72rem;
   --gold: #C8A46A;
@@ -1225,10 +1226,16 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
 }
 
 /* SPA mobile sidebar drawer — slide + scrim fade like marketing. */
+@media (max-width: 767px) {
+  :root {
+    --app-header-h: 3rem;
+  }
+}
+
 .app-sidebar-drawer {
   position: fixed;
   left: 0;
-  top: 3.5rem; /* h-14 header */
+  top: var(--app-header-h);
   bottom: 0;
   z-index: 120;
   transform: translate3d(-100%, 0, 0);

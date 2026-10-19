@@ -2,22 +2,21 @@ import { Heart, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HealNameChip } from "@/components/heal/heal-name-chip";
+import { readCachedInsight } from "@/components/plan/life-area/insights";
 import { DreamPoster } from "@/components/plan/life-area/poster";
 import {
   AREA_LABEL,
   InsightText,
   MIST,
+  OUTLINE,
   ProgressBar,
-  activeOverviewGoal,
   areaThoughts,
   capWords,
-  commitIdeate,
   daysAgo,
   formatShortDate,
   goalsForArea,
   guessThoughtKind,
   progressFor,
-  type GoalProgress,
 } from "@/components/plan/life-area/kit";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
@@ -25,7 +24,15 @@ import {
   loadHealStore,
   type HealItem,
 } from "@/lib/heal-store";
-import { startLifeAreaFocus } from "@/lib/life-area-card-actions";
+import { queueTrackerFocus } from "@/lib/focus-ideate-link";
+import {
+  descendantsOf,
+  ensureTracker,
+  inFocusItem,
+  itemsForArea,
+  rollup,
+  type TrackerItem,
+} from "@/lib/tracker-items";
 import {
   listLibraryMeditations,
   type LibraryMeditationItem,
@@ -35,11 +42,7 @@ import {
   type PlanDream,
   type ThoughtKind,
 } from "@/lib/plan-dreams";
-import {
-  loadIdeateStore,
-  recomputeSubtaskStatus,
-  upsertTodo,
-} from "@/lib/plan-ideate-store";
+import { loadIdeateStore } from "@/lib/plan-ideate-store";
 function insightQuiet(dream: PlanDream, createdAt: string): boolean {
   const at = new Date(createdAt).getTime();
   if (!Number.isFinite(at)) return false;
@@ -61,11 +64,6 @@ type Props = {
   onCheckIn: () => void;
 };
 
-function focusHref(subtaskId: string, minutes: number) {
-  startLifeAreaFocus(subtaskId);
-  return `/focus?fromIdeate=${Date.now()}&minutes=${minutes}&autoStart=1`;
-}
-
 export function LifeAreaOverview({
   dream,
   onPatch,
@@ -74,13 +72,15 @@ export function LifeAreaOverview({
 }: Props) {
   const navigate = useNavigate();
   const store = loadIdeateStore();
-  const active = activeOverviewGoal(store, dream);
+  const tracked = ensureTracker(store);
+  const focusItem = inFocusItem(tracked, dream);
+  const areaItems = itemsForArea(tracked, dream.id);
   const others = goalsForArea(store, dream).filter(
-    (g) => g.status !== "done" && g.id !== active?.goal.id,
+    (g) => g.status !== "done" && g.id !== focusItem?.id,
   );
   const heal = healItemsForLifeArea(loadHealStore(), dream.id);
   const kept = (dream.ifThenPlans ?? []).filter((p) => p.kept);
-  const latestInsight = (dream.insights ?? [])[0];
+  const latestInsight = readCachedInsight(dream.id) ?? (dream.insights ?? [])[0];
   const showInsight = Boolean(
     latestInsight && !insightQuiet(dream, latestInsight.createdAt),
   );
@@ -110,13 +110,12 @@ export function LifeAreaOverview({
             hasSide ? "xl:col-span-2" : "xl:col-span-3"
           }`}
         >
-          {active ? (
+          {focusItem ? (
             <ActiveGoalCard
               dream={dream}
-              progress={active}
+              item={focusItem}
+              items={areaItems}
               keptPlan={kept[0]?.plan}
-              onRefresh={onRefresh}
-              onFocus={(id) => navigate(focusHref(id, 25))}
             />
           ) : (
             <GoalsEmpty dreamId={dream.id} />
@@ -214,107 +213,88 @@ function VisionSuggestion({
 
 function ActiveGoalCard({
   dream,
-  progress,
+  item,
+  items,
   keptPlan,
-  onRefresh,
-  onFocus,
 }: {
   dream: PlanDream;
-  progress: GoalProgress;
+  item: TrackerItem;
+  items: TrackerItem[];
   keptPlan?: string;
-  onRefresh: () => void;
-  onFocus: (subtaskId: string) => void;
 }) {
-  const { goal, todos, done, total, next, lastDone } = progress;
-  const open = todos.filter((t) => !t.isChecked && t.id !== next?.id);
-  const extra = Math.max(0, open.length - 3);
-
-  function toggle(todoId: string, checked: boolean) {
-    commitIdeate((store) => {
-      const todo = store.todos.find((t) => t.id === todoId);
-      if (!todo) return store;
-      let nextStore = upsertTodo(store, {
-        ...todo,
-        isChecked: checked,
-        checkedAt: checked ? new Date().toISOString() : null,
-      });
-      nextStore = recomputeSubtaskStatus(nextStore, todo.subtaskId);
-      return nextStore;
-    });
-    onRefresh();
-  }
+  const navigate = useNavigate();
+  const stats = rollup(items, item.id);
+  const doing = descendantsOf(items, item.id).filter((row) => row.status === "doing");
+  const shown = doing.slice(0, 3);
+  const extra = Math.max(0, doing.length - shown.length);
 
   return (
     <section className="flex h-full flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-[18px]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className={AREA_LABEL}>Active goal</p>
+          <p className={AREA_LABEL}>In focus</p>
           <h2 className="mt-1 font-display text-2xl text-foreground">
-            {goal.title}
+            {item.title || "Untitled"}
           </h2>
         </div>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dream.id)}/goals`}
+          to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker`}
           className="shrink-0 text-[13px] font-semibold text-accent-link"
         >
-          All goals →
+          All items →
         </Link>
       </div>
-      <div>
-        <ProgressBar done={done} total={total} />
-        <p className="mt-1.5 text-[13px] text-muted">
-          {done} of {total} steps
-        </p>
-      </div>
-      <ul className="flex flex-col gap-2">
-        {lastDone ? (
-          <li className="flex items-center gap-2 text-sm text-muted line-through">
-            <span className="inline-flex size-4 items-center justify-center rounded bg-accent text-[10px] text-on-accent">
-              ✓
-            </span>
-            {lastDone.title}
-          </li>
-        ) : null}
-        {next ? (
-          <li className="-mx-3 rounded-xl border border-accent/25 bg-accent-soft px-3 py-2.5">
-            <p className={AREA_LABEL}>Next step</p>
-            <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-[15px] font-semibold text-foreground">
-                {next.title}
-              </span>
+      {stats.leaves > 1 || stats.tickable ? (
+        <div>
+          <ProgressBar done={stats.doneLeaves} total={stats.leaves} />
+          <p className="mt-1.5 text-[13px] text-muted">
+            {stats.doneLeaves} of {stats.leaves}
+          </p>
+        </div>
+      ) : null}
+      {shown.length > 0 ? (
+        <ul className="flex flex-col gap-2">
+          {shown.map((row) => (
+            <li key={row.id} className="flex items-center justify-between gap-2 text-[15px]">
+              <span className="font-semibold">{row.title || "Untitled"}</span>
               <button
                 type="button"
-                onClick={() => onFocus(goal.id)}
-                className={`${MIST} h-9 w-full px-3 text-[13px] md:w-auto`}
+                className={`${MIST} h-9 shrink-0 px-3 text-[13px]`}
+                onClick={() =>
+                  navigate(
+                    queueTrackerFocus([
+                      { id: row.id, title: row.title, lifeAreaId: row.lifeAreaId },
+                    ]),
+                  )
+                }
               >
                 <Timer className="size-3.5" aria-hidden />
-                Focus on this
+                Focus
               </button>
-            </div>
-          </li>
-        ) : null}
-        {open.slice(0, 3).map((todo) => (
-          <li key={todo.id} className="flex items-center gap-2 text-[15px]">
-            <input
-              type="checkbox"
-              className="size-4 accent-[var(--accent)]"
-              checked={false}
-              onChange={() => toggle(todo.id, true)}
-            />
-            {todo.title}
-          </li>
-        ))}
-        {extra > 0 ? (
-          <li>
-            <Link
-              to={`/manifest/goal/${encodeURIComponent(dream.id)}/goals/${encodeURIComponent(goal.id)}`}
-              className="text-[13px] text-muted"
-            >
-              + {extra} more steps
-            </Link>
-          </li>
-        ) : null}
-      </ul>
+            </li>
+          ))}
+          {extra > 0 ? (
+            <li>
+              <Link
+                to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(item.id)}`}
+                className="text-[13px] text-muted"
+              >
+                + {extra} more
+              </Link>
+            </li>
+          ) : null}
+        </ul>
+      ) : (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted">Nothing marked Doing</p>
+          <Link
+            to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(item.id)}`}
+            className={`${OUTLINE} h-10 px-4 text-sm`}
+          >
+            Choose what you're on
+          </Link>
+        </div>
+      )}
       {keptPlan ? (
         <p className="text-[13px] text-foreground">If … then … {keptPlan}</p>
       ) : null}
@@ -327,7 +307,7 @@ function GoalsEmpty({ dreamId }: { dreamId: string }) {
     <section className="flex h-full flex-col gap-3 rounded-2xl border border-border bg-card px-5 py-[18px]">
       <p className="text-[15px] text-foreground">No goals here yet</p>
       <Link
-        to={`/manifest/goal/${encodeURIComponent(dreamId)}/goals`}
+        to={`/manifest/goal/${encodeURIComponent(dreamId)}/tracker`}
         className="text-[13px] font-semibold text-accent-link"
       >
         New goal
@@ -357,7 +337,7 @@ function OtherGoalsCard({
       <div className="flex items-baseline justify-between gap-3">
         <p className={AREA_LABEL}>Other goals</p>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dreamId)}/goals`}
+          to={`/manifest/goal/${encodeURIComponent(dreamId)}/tracker`}
           className="text-[13px] text-muted"
         >
           New goal
@@ -365,11 +345,11 @@ function OtherGoalsCard({
       </div>
       <div className="mt-1">
         {rows.map((goal) => {
-          const { done, total, next } = progressFor(store, goal);
+          const { done, total } = progressFor(store, goal);
           return (
             <Link
               key={goal.id}
-              to={`/manifest/goal/${encodeURIComponent(dreamId)}/goals/${encodeURIComponent(goal.id)}`}
+              to={`/manifest/goal/${encodeURIComponent(dreamId)}/tracker/${encodeURIComponent(goal.id)}`}
               className="flex items-center gap-3.5 border-t border-border py-2.5"
             >
               <span className="min-w-0 flex-1">
@@ -377,8 +357,7 @@ function OtherGoalsCard({
                   {goal.title}
                 </span>
                 <span className="mt-0.5 block text-xs leading-snug text-muted">
-                  {done} of {total} steps
-                  {next ? ` · Next: ${next.title}` : ""}
+                  {done} of {total}
                 </span>
               </span>
               <span className="hidden w-[90px] shrink-0 min-[360px]:block">
@@ -490,7 +469,10 @@ function InsightCard({
   onCheckIn: () => void;
   className?: string;
 }) {
-  const latest = (dream.insights ?? [])[0];
+  const cached = readCachedInsight(dream.id);
+  const latest = cached
+    ? { createdAt: cached.createdAt, text: cached.text, sections: undefined }
+    : (dream.insights ?? [])[0];
   if (!latest || insightQuiet(dream, latest.createdAt)) return null;
   const read = capWords(
     latest.sections?.find((s) => s.id === "summary")?.body || latest.text || "",

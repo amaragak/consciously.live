@@ -133,16 +133,16 @@ export function CreateOneFlowStepper({
               {hasLine ? (
                 <span
                   aria-hidden
-                  className={`h-px rounded-full ${
+                  className={`rounded-full ${
                     compact
-                      ? "w-3 shrink-0 sm:w-5"
-                      : "min-w-2 flex-1 max-w-6 md:w-14 md:max-w-none md:flex-none"
+                      ? "h-px w-3 shrink-0 sm:w-5"
+                      : "h-0.5 min-w-2 flex-1"
                   } ${
                     done
                       ? "header-gold-sunlit-fill"
                       : compact
                         ? "bg-[rgb(246_241_231_/_0.28)]"
-                        : "bg-border"
+                        : "bg-foreground/35"
                   }`}
                 />
               ) : null}

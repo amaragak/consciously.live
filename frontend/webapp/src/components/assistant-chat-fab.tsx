@@ -220,7 +220,7 @@ export function AssistantChatFab() {
         <button
           type="button"
           aria-label="Close chat"
-          className="fixed inset-x-0 bottom-0 top-14 z-[125] cursor-pointer bg-black/40"
+          className="fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[125] cursor-pointer bg-black/40"
           onClick={() => setOpen(false)}
         />
       ) : null}
@@ -229,7 +229,7 @@ export function AssistantChatFab() {
         aria-label="Chat"
         className={
           mdUp
-            ? "fixed bottom-0 right-0 top-14 z-[126] flex w-[420px] max-w-full flex-col border-l border-border bg-[color:var(--chat-panel-bg)] shadow-lg"
+            ? "fixed bottom-0 right-0 top-[var(--app-header-h)] z-[126] flex w-[420px] max-w-full flex-col border-l border-border bg-[color:var(--chat-panel-bg)] shadow-lg"
             : "fixed inset-0 z-[140] flex flex-col bg-[color:var(--chat-panel-bg)]"
         }
       >

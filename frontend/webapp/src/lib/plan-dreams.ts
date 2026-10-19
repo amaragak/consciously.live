@@ -82,6 +82,8 @@ export type DrvTimelineEntry = {
   /** Optional type tag (Win, Resistance, …). */
   kind?: ThoughtKind;
   pinned?: boolean;
+  obstacleId?: string | null;
+  newObstacleLabel?: string | null;
 };
 
 /** Outer-world progress notes on a life area (feedback loop). */
@@ -110,20 +112,29 @@ export type LifeAreaWbNode = {
   id: string;
   kind:
     | "dream"
+    | "moment"
     | "obstacle"
+    | "plan"
     | "goal"
     | "step"
+    | "item"
     | "thought"
+    | "meditation"
+    | "insight"
     | "image"
     | "sticky"
     | "text";
   refId: string | null;
+  /** What the node stays linked to: vision, item, thought, meditation, insight. */
+  refType?: string | null;
   x: number;
   y: number;
   w: number;
   h: number;
   text?: string;
   colour?: string;
+  size?: "s" | "m" | "l";
+  imageId?: string | null;
 };
 
 export type LifeAreaWbEdge = {
@@ -237,6 +248,8 @@ export type PlanDream = {
   visionImageId?: string | null;
   /** Short noun phrases for the poster. Never a split of the raw obstacles text. */
   obstacleLabels?: string[];
+  /** Copied reframe text sitting under an obstacle. Manifest does not read Heal writing. */
+  healObstacleAnswers?: { id: string; label: string; text: string; healItemId: string }[];
   themesCache?: {
     at: string;
     read: string;
@@ -351,6 +364,9 @@ function normalizeTimelineEntry(x: unknown): DrvTimelineEntry | null {
     coachReply: typeof o.coachReply === "string" ? o.coachReply : "",
     ...(sentiment ? { sentiment } : {}),
     ...(kind ? { kind } : {}),
+    ...(typeof o.obstacleId === "string" ? { obstacleId: o.obstacleId } : {}),
+    ...(typeof o.newObstacleLabel === "string" ? { newObstacleLabel: o.newObstacleLabel } : {}),
+    ...(o.pinned === true ? { pinned: true } : {}),
   };
 }
 
@@ -473,6 +489,13 @@ export function prependLifeAreaInsight(
   };
 }
 
+function whiteboardOf(raw: unknown): LifeAreaWhiteboardDoc | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const doc = raw as LifeAreaWhiteboardDoc;
+  if (!Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) return undefined;
+  return doc;
+}
+
 function normalizeDreams(raw: unknown[]): PlanDream[] {
   const out: PlanDream[] = [];
   for (const x of raw) {
@@ -527,7 +550,38 @@ function normalizeDreams(raw: unknown[]): PlanDream[] {
               .slice(0, 4),
           }
         : {}),
+      ...(Array.isArray(d.healObstacleAnswers)
+        ? {
+            healObstacleAnswers: d.healObstacleAnswers
+              .filter((row): row is { id: string; label: string; text: string; healItemId: string } => {
+                if (!row || typeof row !== "object") return false;
+                const answer = row as Record<string, unknown>;
+                return (
+                  typeof answer.id === "string" &&
+                  typeof answer.label === "string" &&
+                  typeof answer.text === "string" &&
+                  typeof answer.healItemId === "string"
+                );
+              })
+              .slice(0, 12),
+          }
+        : {}),
+      ...(Array.isArray(d.ifThenPlans)
+        ? {
+            ifThenPlans: d.ifThenPlans
+              .filter((row): row is LifeAreaIfThenPlan => {
+                if (!row || typeof row !== "object") return false;
+                const plan = row as LifeAreaIfThenPlan;
+                return typeof plan.id === "string" && typeof plan.obstacle === "string" && typeof plan.plan === "string";
+              })
+              .slice(0, 12)
+              .map((plan) => ({ ...plan, kept: plan.kept === true })),
+          }
+        : {}),
       ...(d.demo === true ? { demo: true as const } : {}),
+      ...(whiteboardOf(d.whiteboard)
+        ? { whiteboard: whiteboardOf(d.whiteboard) }
+        : {}),
     });
   }
   return out;

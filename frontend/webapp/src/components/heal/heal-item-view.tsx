@@ -1,4 +1,5 @@
 import { Heart, Leaf, Play } from "lucide-react";
+import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { useMemo, useState } from "react";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
@@ -14,15 +15,20 @@ import { writePlanCreateHandoff } from "@/lib/plan-create-handoff";
 import { useRouter } from "@/lib/spa-nav";
 import {
   addHealEntry,
+  addHealReframe,
+  currentReframe,
   entriesForItem,
   formatHealDate,
   latestCheckin,
+  linksForItem,
+  loadHealStore,
   newHealId,
   patchHealItem,
   setHealItemStatus,
   staysHeavy,
   weeklyScores,
   writingChangedSinceMeditation,
+  type HealEntry,
   type HealItem,
   type HealLens,
   type HealPerspective,
@@ -42,7 +48,26 @@ import {
   useHealStore,
 } from "@/components/heal/heal-bits";
 import { HealNameChip } from "@/components/heal/heal-name-chip";
-import { HealPracticeDialog, HealPracticesList } from "@/components/heal/heal-practices";
+import {
+  HealPracticeDialog,
+  type HealPracticeId,
+} from "@/components/heal/heal-practices";
+import {
+  HowYouSeeIt,
+  ManifestDialog,
+  ReframeEnd,
+  ReframePill,
+  syncLinkedReframe,
+  TryAnotherAngle,
+  VersionTimeline,
+  WorkOnIt,
+} from "@/components/heal/heal-reframe";
+
+function pinnedEntries(entries: HealEntry[]): HealEntry[] {
+  const plan = entries.find((entry) => entry.promptKey === "if_then");
+  if (!plan) return entries;
+  return [plan, ...entries.filter((entry) => entry.id !== plan.id)];
+}
 
 export function HealItemView({ itemId }: { itemId: string }) {
   const [store, setStore] = useHealStore();
@@ -50,13 +75,16 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const router = useRouter();
   const [checkIn, setCheckIn] = useState(false);
   const [menu, setMenu] = useState(false);
-  const [practice, setPractice] = useState<
-    "friend" | "compassion" | "write15" | "values" | "type" | null
-  >(null);
+  const [practice, setPractice] = useState<HealPracticeId | null>(null);
   const [consentThen, setConsentThen] = useState<(() => void) | null>(null);
   const [thought, setThought] = useState("");
   const [promptKey, setPromptKey] = useState<string | null>(null);
   const [tagOpen, setTagOpen] = useState(false);
+  const [editingSee, setEditingSee] = useState(false);
+  const [manifestOpen, setManifestOpen] = useState(false);
+  const [endStep, setEndStep] = useState<{ summary: string; entryId: string } | null>(null);
+  const [offerSync, setOfferSync] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; href: string } | null>(null);
 
   if (!item) {
     return (
@@ -96,7 +124,8 @@ export function HealItemView({ itemId }: { itemId: string }) {
   }
 
   function makeMeditation() {
-    const writing = [current.aboutText, ...entries.map((entry) => entry.text)]
+    const reframe = currentReframe(store, current.id)?.text ?? "";
+    const writing = [reframe, current.seeingText, current.aboutText, ...entries.map((entry) => entry.text)]
       .filter(Boolean)
       .join("\n\n")
       .slice(0, 8000);
@@ -104,7 +133,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       v: 2,
       goalTitle: `For ${current.title}`,
       visionText: writing,
-      healBrief: `Create a gentle, accepting meditation for ${healTypeLabel(current.type)}. Use the name ${current.title} and specifics from the writing. Follow the writer's own words. No clinical language, no advice about getting in touch or reconciling, and no silver linings.`,
+      healBrief: `Move from how this has been seen to how it is seen now, using the writer's own words. How they've been seeing it: ${current.seeingText || "(not written)"}. How they see it now: ${reframe || "(not yet)"}. Be kind without spinning it positive. No clinical language, no advice about getting in touch or reconciling, and no silver linings.`,
       project: { dreamText: "", resistanceText: "", visionText: writing },
       activeResistanceThemes: [],
       meditationTargetMinutes: 10,
@@ -175,31 +204,27 @@ export function HealItemView({ itemId }: { itemId: string }) {
             </p>
             <h2 className="font-display text-[34px] leading-none text-foreground">{item.title}</h2>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {item.linkedLifeAreaIds.length > 0 ? (
+              {item.linkedLifeAreaIds[0] ? (
                 <span className="rounded-full border border-border px-2.5 py-0.5 text-[12px]">
-                  Life area · {item.linkedLifeAreaIds.length}
+                  Life area · {loadIdeateStore().dreams.find((dream) => dream.id === item.linkedLifeAreaIds[0])?.title || "Life area"}
                 </span>
               ) : null}
-              <button
-                type="button"
-                onClick={() => setTagOpen(true)}
-                className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-[12px]"
-              >
-                {item.journalEntryIds.length} journal entries tagged
-              </button>
+              <span className="rounded-full border border-border px-2.5 py-0.5 text-[12px]">
+                {entries.length} {entries.length === 1 ? "entry" : "entries"}
+              </span>
             </div>
           </div>
           <div className="hidden gap-2 sm:flex">
             <button type="button" className={HEAL_OUTLINE} onClick={() => enableAi(makeMeditation)}>
               Meditate
             </button>
-            <button type="button" className={HEAL_PRIMARY} onClick={() => setCheckIn(true)}>
+            <button type="button" className={HEAL_OUTLINE} onClick={() => setCheckIn(true)}>
               Check in
             </button>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">
-          <button type="button" className={HEAL_PRIMARY} onClick={() => setCheckIn(true)}>
+          <button type="button" className={HEAL_OUTLINE} onClick={() => setCheckIn(true)}>
             Check in
           </button>
           <button type="button" className={HEAL_OUTLINE} onClick={() => enableAi(makeMeditation)}>
@@ -208,32 +233,75 @@ export function HealItemView({ itemId }: { itemId: string }) {
         </div>
       </section>
 
+      <div className="mt-4">
+        <HowYouSeeIt
+          item={item}
+          store={store}
+          editing={editingSee}
+          link={linksForItem(store, item.id)[0] ?? null}
+          onEdit={setEditingSee}
+          onSaveSeeing={(text) => {
+            commit(patchHealItem(store, item.id, { seeingText: text.trim() }));
+            setEditingSee(false);
+          }}
+          onSaveNow={(text) => {
+            const previous = currentReframe(store, item.id)?.text ?? "";
+            commit(addHealReframe(store, { itemId: item.id, text, sourceEntryId: null }));
+            setEditingSee(false);
+            const link = linksForItem(store, item.id)[0];
+            if (link && text.trim() && text.trim() !== previous) {
+              const area = loadIdeateStore().dreams.find((dream) => dream.id === link.lifeAreaId);
+              setOfferSync(area?.title || "your life area");
+            }
+          }}
+          onManifest={() => setManifestOpen(true)}
+        />
+      </div>
+      {offerSync ? (
+        <p className="mt-2 text-[13px] text-muted">
+          This is in your {offerSync} vision.{" "}
+          <button
+            type="button"
+            className="font-semibold text-heal-accent"
+            onClick={() => {
+              const latest = currentReframe(loadHealStore(), item.id);
+              if (latest) syncLinkedReframe(item.id, latest.text);
+              setOfferSync(null);
+            }}
+          >
+            Update it there too?
+          </button>
+          <button type="button" className="ml-2 text-muted" onClick={() => setOfferSync(null)}>
+            No
+          </button>
+        </p>
+      ) : null}
+
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-4">
-          <AboutCard
+          <WorkOnIt
+            item={item}
+            onOpen={(id) => setPractice(id)}
+            onPrompt={(key) => {
+              setPromptKey(key);
+              document.getElementById("heal-writing")?.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
+          <TryAnotherAngle
             item={item}
             store={store}
-            onSave={saveAbout}
-            onPerspective={(perspective) =>
-              commit(
-                patchHealItem(store, item.id, {
-                  aboutPerspectives: [...item.aboutPerspectives, perspective],
-                }),
-              )
-            }
             onNeedAi={enableAi}
+            onSaved={(entryId, text) => setEndStep({ summary: text.slice(0, 140), entryId })}
           />
-          <section className="rounded-2xl border border-border bg-card p-4">
+          <section id="heal-writing" className="rounded-2xl border border-border bg-card p-4">
+            <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Writing</h2>
             <textarea
               value={thought}
               onChange={(e) => setThought(e.target.value)}
-              placeholder=""
+              placeholder="Write about it. Negative is fine here."
               rows={3}
-              className="w-full resize-none bg-transparent font-display text-[17px] outline-none"
+              className="mt-2 w-full resize-none bg-transparent font-display text-[17px] outline-none"
             />
-            <p className="text-sm text-muted">
-              Add a thought about <HealNameChip item={item} store={store} />…
-            </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {promptsForType(item.type).map((prompt) => (
                 <button
@@ -277,14 +345,16 @@ export function HealItemView({ itemId }: { itemId: string }) {
               Add
             </button>
             <ul className="mt-4 flex flex-col gap-4">
-              {entries.map((entry) => (
+              {pinnedEntries(entries).map((entry) => (
                 <li key={entry.id} className="border-t border-border/70 pt-3">
                   <p className="text-[12px] font-semibold text-heal-accent">
                     {entry.kind === "letter"
                       ? "Unsent letter"
                       : entry.kind === "friend"
                         ? "What I'd tell a friend"
-                        : promptLabel(item.type, entry.promptKey) ?? "Running thought"}
+                        : entry.kind === "angle"
+                          ? "Another angle"
+                          : promptLabel(item.type, entry.promptKey) ?? "Writing"}
                     <span className="ml-2 font-normal text-muted">
                       {formatHealDate(entry.createdAt)}
                     </span>
@@ -295,25 +365,32 @@ export function HealItemView({ itemId }: { itemId: string }) {
                   {entry.perspectives.map((perspective) => (
                     <PerspectiveBlock key={perspective.id} text={perspective.text} />
                   ))}
+                  <ReframePill store={store} itemId={item.id} entryId={entry.id} />
                 </li>
               ))}
+              {item.aboutText ? (
+                <li className="border-t border-border/70 pt-3">
+                  <p className="text-[12px] font-semibold text-heal-accent">
+                    What happened
+                    <span className="ml-2 font-normal text-muted">{formatHealDate(item.aboutUpdatedAt)}</span>
+                  </p>
+                  <textarea
+                    defaultValue={item.aboutText}
+                    onBlur={(event) => saveAbout(event.target.value)}
+                    rows={3}
+                    className="mt-1 w-full resize-none bg-transparent font-display text-[17px] leading-relaxed outline-none"
+                  />
+                  {item.aboutPerspectives.map((perspective) => (
+                    <PerspectiveBlock key={perspective.id} text={perspective.text} />
+                  ))}
+                </li>
+              ) : null}
             </ul>
           </section>
         </div>
 
         <aside className="flex flex-col gap-3">
-          <section className="rounded-2xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground">How heavy</h3>
-            <p className="font-display text-[28px] text-foreground">
-              {latest ? latest.score : "–"}
-              <span className="text-base text-muted"> / 10</span>
-            </p>
-            <HealSparkline scores={scores} />
-            <div className="mt-1 flex justify-between text-[11px] text-muted">
-              <span>12 weeks ago</span>
-              <span>Today</span>
-            </div>
-          </section>
+          <VersionTimeline item={item} store={store} />
           <section className="rounded-2xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold text-foreground">Meditation</h3>
             {item.meditationBuiltAt ? (
@@ -321,10 +398,9 @@ export function HealItemView({ itemId }: { itemId: string }) {
                 <div className="overflow-hidden rounded-xl">
                   <HealAvatar item={item} store={store} size={120} />
                 </div>
-                <p className="mt-2 font-display text-[18px]">For {item.title}</p>
+                <p className="mt-2 font-display text-[18px]">{item.title}</p>
                 <p className="text-[12px] text-muted">
-                  {Math.max(1, entries.length + (item.aboutText ? 1 : 0))} min · made from your
-                  writing
+                  {Math.max(1, entries.length + (currentReframe(store, item.id) ? 1 : 0))} min · made from how you see it now
                 </p>
                 <button
                   type="button"
@@ -345,80 +421,46 @@ export function HealItemView({ itemId }: { itemId: string }) {
                 ) : null}
               </div>
             ) : (
-              <button
-                type="button"
-                className={`${HEAL_OUTLINE} mt-3`}
-                onClick={() => enableAi(makeMeditation)}
-              >
-                Make a meditation from your writing
-              </button>
+              <div className="mt-2">
+                <p className="font-display text-[18px]">{item.title}</p>
+                <p className="text-[12px] text-muted">
+                  {Math.max(1, entries.length + (currentReframe(store, item.id) ? 1 : 0))} min · made from how you see it now
+                </p>
+                <button
+                  type="button"
+                  className={`${HEAL_OUTLINE} mt-3`}
+                  onClick={() => enableAi(makeMeditation)}
+                >
+                  Make a meditation
+                </button>
+              </div>
             )}
           </section>
           <section className="rounded-2xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground">Practices</h3>
-            <HealPracticesList
-              item={item}
-              onOpen={(id) => {
-                if (id === "values") setPractice("values");
-                else setPractice(id);
-              }}
-            />
-            <button
-              type="button"
-              className="mt-2 cursor-pointer text-[13px] font-semibold text-accent-link"
-              onClick={() => setPractice("values")}
-            >
-              What would you want this to lead to?
-            </button>
+            <h3 className="text-sm font-semibold text-foreground">How heavy</h3>
+            <p className="font-display text-[28px] text-foreground">
+              {latest ? latest.score : "–"}
+              <span className="text-base text-muted"> / 10</span>
+            </p>
+            <p className="text-[13px] text-muted">{latest ? "Latest check-in" : "No check-in yet"}</p>
+            <HealSparkline scores={scores} />
           </section>
           <section className="rounded-2xl border border-heal-border bg-heal-tint p-4">
-            <h3 className="text-sm font-semibold text-foreground">When you&apos;re ready</h3>
+            <h3 className="text-sm font-semibold text-foreground">When you&apos;re settled</h3>
             <p className="mt-1 text-sm text-foreground">
-              Let go of something you&apos;ve written, or mark{" "}
-              <HealNameChip item={item} store={store} /> as lighter. Nothing is deleted unless you
-              choose.
+              When how you see it now feels true, lay this to rest. Nothing is deleted.
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={HEAL_OUTLINE}
-                onClick={() => router.push(`/heal/${item.id}/letter`)}
-              >
-                Let something go
-              </button>
-              <div className="relative">
-                <button
-                  type="button"
-                  className={HEAL_PRIMARY}
-                  onClick={() => {
-                    commit(setHealItemStatus(store, item.id, "lighter"));
-                    router.push("/heal/rested");
-                  }}
-                >
-                  Mark as lighter
-                </button>
-                <button
-                  type="button"
-                  aria-label="More"
-                  className="ml-1 cursor-pointer text-sm text-muted"
-                  onClick={() => setMenu((open) => !open)}
-                >
-                  ▾
-                </button>
-                {menu ? (
-                  <button
-                    type="button"
-                    className="absolute right-0 top-full z-10 mt-1 cursor-pointer rounded-lg border border-border bg-card px-3 py-2 text-sm"
-                    onClick={() => {
-                      commit(setHealItemStatus(store, item.id, "at_peace"));
-                      router.push("/heal/rested");
-                    }}
-                  >
-                    At peace
-                  </button>
-                ) : null}
-              </div>
-            </div>
+            <button
+              type="button"
+              className={`${HEAL_OUTLINE} mt-3`}
+              onClick={() => {
+                commit(setHealItemStatus(store, item.id, "at_peace"));
+                router.push("/heal/rested");
+              }}
+            >
+              <Leaf className="size-3.5" aria-hidden />
+              Lay to rest
+            </button>
             {item.status !== "active" ? (
               <button
                 type="button"
@@ -442,7 +484,49 @@ export function HealItemView({ itemId }: { itemId: string }) {
           store={store}
           onClose={() => setPractice(null)}
           onStore={commit}
+          onRecorded={(summary, entryId) => {
+            setPractice(null);
+            setEndStep({ summary: summary.slice(0, 140), entryId });
+          }}
         />
+      ) : null}
+      {endStep ? (
+        <HealOverlay title="How you see it" onClose={() => setEndStep(null)}>
+          <div className="overflow-y-auto px-5 py-5">
+            <ReframeEnd
+              summary={endStep.summary}
+              currentText={currentReframe(store, item.id)?.text ?? ""}
+              onSkip={() => setEndStep(null)}
+              onUpdate={(text) => {
+                const previous = currentReframe(store, item.id)?.text ?? "";
+                commit(addHealReframe(store, { itemId: item.id, text, sourceEntryId: endStep.entryId }));
+                const link = linksForItem(store, item.id)[0];
+                if (link && text.trim() !== previous) {
+                  const area = loadIdeateStore().dreams.find((dream) => dream.id === link.lifeAreaId);
+                  setOfferSync(area?.title || "your life area");
+                }
+                setEndStep(null);
+              }}
+            />
+          </div>
+        </HealOverlay>
+      ) : null}
+      {manifestOpen ? (
+        <ManifestDialog
+          item={item}
+          store={store}
+          onClose={() => setManifestOpen(false)}
+          onStore={commit}
+          onToast={(text, href) => setToast({ text, href })}
+        />
+      ) : null}
+      {toast ? (
+        <p className="fixed bottom-24 left-1/2 z-[160] -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-white">
+          {toast.text}{" "}
+          <button type="button" className="font-semibold underline" onClick={() => router.push(toast.href)}>
+            View
+          </button>
+        </p>
       ) : null}
       {consentThen ? (
         <ConsentDialog

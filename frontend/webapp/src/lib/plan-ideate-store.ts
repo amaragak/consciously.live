@@ -1,4 +1,5 @@
 import type { DreamState, PlanDream } from "@/lib/plan-dreams";
+import type { TrackerItem } from "@/lib/tracker-items";
 import { normalizeLifeAreaInsights } from "@/lib/plan-dreams";
 import { withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
 import {
@@ -74,6 +75,8 @@ export type IdeateStoreV2 = {
   subtasks: IdeateSubtask[];
   todos: IdeateTodo[];
   resistanceEntries: ResistanceEntry[];
+  /** Absent until goals and steps have been copied into the tracker tree. */
+  trackerItems?: TrackerItem[];
 };
 
 const LS_KEY = "mm_plan_dreams_v1";
@@ -310,6 +313,9 @@ export function loadIdeateStoreRaw(): IdeateStoreV2 {
               .map(normalizeResistance)
               .filter((r): r is ResistanceEntry => r != null)
           : [],
+        ...(Array.isArray(o.trackerItems)
+          ? { trackerItems: o.trackerItems as TrackerItem[] }
+          : {}),
       };
     }
     return migrateV1Raw(raw);
@@ -349,6 +355,7 @@ export function saveIdeateStoreLocal(store: IdeateStoreV2) {
     subtasks: store.subtasks.slice(0, 500),
     todos: store.todos.slice(0, 2000),
     resistanceEntries: store.resistanceEntries.slice(0, 1000),
+    ...(store.trackerItems ? { trackerItems: store.trackerItems.slice(0, 4000) } : {}),
   };
   if (isSignedIn()) {
     memoryStore = structuredClone(normalized);

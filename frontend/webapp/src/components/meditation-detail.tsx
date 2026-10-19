@@ -988,7 +988,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
       <div className="flex flex-col gap-3 px-3 pt-3" style={stripPad}>
         {/* Slides down from under the app header (z-130); stays mounted for exit. */}
         <div
-          className={`fixed inset-x-0 top-14 z-40 border-b border-border bg-card shadow-[0_4px_10px_rgb(15_27_45_/_0.06)] transition-transform duration-200 ease-out md:hidden ${
+          className={`fixed inset-x-0 top-[var(--app-header-h)] z-40 border-b border-border bg-card shadow-[0_4px_10px_rgb(15_27_45_/_0.06)] transition-transform duration-200 ease-out md:hidden ${
             stickyBarVisible
               ? "translate-y-0"
               : "pointer-events-none -translate-y-full"

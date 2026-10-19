@@ -95,7 +95,7 @@ function lifeAreaSnippet(d: PlanDream): string | null {
 function ManifestOverviewSkeleton() {
   return (
     <div
-      className="min-h-[calc(100vh-3.5rem)] pb-20"
+      className="min-h-[calc(100vh-var(--app-header-h))] pb-20"
       aria-busy="true"
       aria-live="polite"
     >
@@ -453,7 +453,7 @@ export function PlanHomeClient() {
   );
   const guidesForSection = publishedManifestGuides.slice(0, 4);
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] pb-20">
+    <div className="min-h-[calc(100vh-var(--app-header-h))] pb-20">
       <input
         ref={addImageInputRef}
         type="file"

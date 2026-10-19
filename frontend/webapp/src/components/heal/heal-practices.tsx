@@ -26,22 +26,39 @@ import {
 import { HealNameChip } from "@/components/heal/heal-name-chip";
 import { Sparkles } from "lucide-react";
 
+export type HealPracticeId =
+  | "friend"
+  | "compassion"
+  | "write15"
+  | "values"
+  | "type"
+  | "notice"
+  | "ifthen"
+  | "evidence";
+
 export function HealPracticesList({
   item,
   onOpen,
 }: {
   item: HealItem;
-  onOpen: (id: "friend" | "compassion" | "write15" | "values" | "type") => void;
+  onOpen: (id: HealPracticeId) => void;
 }) {
-  const rows = [
-    { id: "friend" as const, title: "If a friend were carrying this", meta: "5 min" },
-    { id: "compassion" as const, title: "Self-compassion break", meta: "3 min" },
-    { id: "write15" as const, title: "Write for 15 minutes", meta: "4 days" },
+  const rows: { id: HealPracticeId; title: string; meta: string }[] = [
+    { id: "friend", title: "If a friend were carrying this", meta: "5 min" },
+    { id: "compassion", title: "Self-compassion break", meta: "3 min" },
+    { id: "write15", title: "Write for 15 minutes", meta: "4 days" },
   ];
   const specific = typePracticePrompt(item.type);
+  const extra: { id: HealPracticeId; title: string; meta: string }[] =
+    item.type === "pattern"
+      ? [
+          { id: "notice", title: "Notice it, name it", meta: "3 min" },
+          { id: "ifthen", title: "If-then plan", meta: "2 min" },
+        ]
+      : [{ id: "type", title: specific.label, meta: "A few lines" }];
   return (
     <ul className="mt-2">
-      {[...rows, { id: "type" as const, title: specific.label, meta: "A few lines" }].map(
+      {[...rows, ...extra].map(
         (row) => (
           <li key={row.id}>
             <button
@@ -68,20 +85,22 @@ export function HealPracticeDialog({
   store,
   onClose,
   onStore,
+  onRecorded,
 }: {
   item: HealItem;
-  practice: "friend" | "compassion" | "write15" | "values" | "type";
+  practice: HealPracticeId;
   store: HealStoreV1;
   onClose: () => void;
   onStore: (next: HealStoreV1) => void;
+  onRecorded?: (summary: string, entryId: string) => void;
 }) {
   if (practice === "friend") {
     return (
-      <FriendPractice item={item} store={store} onClose={onClose} onStore={onStore} />
+      <FriendPractice item={item} store={store} onClose={onClose} onStore={onStore} onRecorded={onRecorded} />
     );
   }
   if (practice === "compassion") {
-    return <CompassionPractice item={item} onClose={onClose} />;
+    return <CompassionPractice item={item} onClose={onClose} onStore={onStore} onRecorded={onRecorded} />;
   }
   if (practice === "write15") {
     return <Write15Practice item={item} onClose={onClose} onStore={onStore} />;
@@ -90,6 +109,15 @@ export function HealPracticeDialog({
     return (
       <ValuesPractice item={item} store={store} onClose={onClose} onStore={onStore} />
     );
+  }
+  if (practice === "notice") {
+    return <NoticePractice item={item} onClose={onClose} onStore={onStore} onRecorded={onRecorded} />;
+  }
+  if (practice === "ifthen") {
+    return <IfThenPractice item={item} onClose={onClose} onStore={onStore} onRecorded={onRecorded} />;
+  }
+  if (practice === "evidence") {
+    return <EvidencePractice item={item} onClose={onClose} onStore={onStore} onRecorded={onRecorded} />;
   }
   return <TypePractice item={item} onClose={onClose} onStore={onStore} />;
 }
@@ -114,11 +142,13 @@ function FriendPractice({
   store,
   onClose,
   onStore,
+  onRecorded,
 }: {
   item: HealItem;
   store: HealStoreV1;
   onClose: () => void;
   onStore: (next: HealStoreV1) => void;
+  onRecorded?: (summary: string, entryId: string) => void;
 }) {
   const [step, setStep] = useState(0);
   const [text, setText] = useState("");
@@ -239,6 +269,7 @@ function FriendPractice({
                   });
                   onStore(added.store);
                   void rememberRisk(item.id, shown, onStore);
+                  onRecorded?.(shown, added.entry.id);
                   setSaved(true);
                 }}
               >
@@ -261,9 +292,13 @@ function FriendPractice({
 function CompassionPractice({
   item,
   onClose,
+  onStore,
+  onRecorded,
 }: {
   item: HealItem;
   onClose: () => void;
+  onStore: (next: HealStoreV1) => void;
+  onRecorded?: (summary: string, entryId: string) => void;
 }) {
   const steps = compassionSteps(item.type);
   const [step, setStep] = useState(0);
@@ -280,8 +315,19 @@ function CompassionPractice({
           type="button"
           className={`${HEAL_PRIMARY} mt-5`}
           onClick={() => {
-            if (step < 2) setStep(step + 1);
-            else onClose();
+            if (step < 2) {
+              setStep(step + 1);
+              return;
+            }
+            const added = addHealEntry(loadHealStore(), {
+              itemId: item.id,
+              kind: "prompt",
+              promptKey: "compassion",
+              text: "Self-compassion break",
+            });
+            onStore(added.store);
+            onRecorded?.("Self-compassion break", added.entry.id);
+            onClose();
           }}
         >
           {step < 2 ? "Next" : "Done"}
@@ -498,6 +544,224 @@ function ValuesPractice({
         >
           Save
         </button>
+      </div>
+    </HealOverlay>
+  );
+}
+
+function NoticePractice({
+  item,
+  onClose,
+  onStore,
+  onRecorded,
+}: {
+  item: HealItem;
+  onClose: () => void;
+  onStore: (next: HealStoreV1) => void;
+  onRecorded?: (summary: string, entryId: string) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [thought, setThought] = useState("");
+  const [next, setNext] = useState("");
+
+  return (
+    <HealOverlay title="Notice it, name it" onClose={onClose} wide>
+      <div className="overflow-y-auto px-6 py-[22px]">
+        <StepBars step={step} total={3} />
+        {step === 0 ? (
+          <>
+            <p className="font-display text-[24px] leading-snug text-foreground">
+              Write the thought that comes with the pattern, in your own words.
+            </p>
+            <textarea
+              value={thought}
+              onChange={(e) => setThought(e.target.value)}
+              rows={4}
+              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+            />
+            <button
+              type="button"
+              disabled={!thought.trim()}
+              className={`${HEAL_PRIMARY} mt-4`}
+              onClick={() => setStep(1)}
+            >
+              Next
+            </button>
+          </>
+        ) : null}
+        {step === 1 ? (
+          <>
+            <p className="font-display text-[24px] leading-snug text-foreground">
+              I&apos;m noticing the thought that {thought.trim()}
+            </p>
+            <p className="mt-3 text-[15px] leading-relaxed text-foreground">
+              Read it back slowly. It&apos;s a thought, not an instruction.
+            </p>
+            <button type="button" className={`${HEAL_PRIMARY} mt-4`} onClick={() => setStep(2)}>
+              Next
+            </button>
+          </>
+        ) : null}
+        {step === 2 ? (
+          <>
+            <p className="font-display text-[24px] leading-snug text-foreground">
+              What would you do if this thought were just background noise?
+            </p>
+            <textarea
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              rows={4}
+              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+            />
+            <button
+              type="button"
+              disabled={!next.trim()}
+              className={`${HEAL_PRIMARY} mt-4`}
+              onClick={() => {
+                const added = addHealEntry(loadHealStore(), {
+                  itemId: item.id,
+                  kind: "prompt",
+                  promptKey: "notice_name",
+                  text: next.trim(),
+                });
+                onStore(added.store);
+                void rememberRisk(item.id, next, onStore);
+                onRecorded?.(next.trim(), added.entry.id);
+                onClose();
+              }}
+            >
+              Save
+            </button>
+          </>
+        ) : null}
+      </div>
+    </HealOverlay>
+  );
+}
+
+function IfThenPractice({
+  item,
+  onClose,
+  onStore,
+  onRecorded,
+}: {
+  item: HealItem;
+  onClose: () => void;
+  onStore: (next: HealStoreV1) => void;
+  onRecorded?: (summary: string, entryId: string) => void;
+}) {
+  const [when, setWhen] = useState("");
+  const [will, setWill] = useState("");
+  const ready = when.trim().length > 0 && will.trim().length > 0;
+  return (
+    <HealOverlay title="If-then plan" onClose={onClose} wide>
+      <div className="overflow-y-auto px-6 py-[22px]">
+        <label className="block text-sm font-semibold text-foreground">
+          When…
+          <input
+            value={when}
+            onChange={(e) => setWhen(e.target.value)}
+            placeholder="someone asks me for something at work"
+            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal outline-none"
+          />
+        </label>
+        <label className="mt-3 block text-sm font-semibold text-foreground">
+          I will…
+          <input
+            value={will}
+            onChange={(e) => setWill(e.target.value)}
+            placeholder="say I'll check and get back to them"
+            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal outline-none"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!ready}
+          className={`${HEAL_PRIMARY} mt-4`}
+          onClick={() => {
+            const text = `If ${when.trim()}, then ${will.trim()}`;
+            const added = addHealEntry(loadHealStore(), {
+              itemId: item.id,
+              kind: "prompt",
+              promptKey: "if_then",
+              text,
+            });
+            onStore(added.store);
+            void rememberRisk(item.id, text, onStore);
+            onRecorded?.(text, added.entry.id);
+            onClose();
+          }}
+        >
+          Save
+        </button>
+      </div>
+    </HealOverlay>
+  );
+}
+
+function EvidencePractice({
+  item,
+  onClose,
+  onStore,
+  onRecorded,
+}: {
+  item: HealItem;
+  onClose: () => void;
+  onStore: (next: HealStoreV1) => void;
+  onRecorded?: (summary: string, entryId: string) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [thought, setThought] = useState(item.seeingText);
+  const [tested, setTested] = useState("");
+  return (
+    <HealOverlay title="Look at the evidence" onClose={onClose} wide>
+      <div className="overflow-y-auto px-6 py-[22px]">
+        <StepBars step={step} total={2} />
+        {step === 0 ? (
+          <>
+            <p className="font-display text-[24px] leading-snug text-foreground">The thought</p>
+            <textarea
+              value={thought}
+              onChange={(event) => setThought(event.target.value)}
+              rows={4}
+              className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+            />
+            <button type="button" className={`${HEAL_PRIMARY} mt-4`} onClick={() => setStep(1)}>
+              Next
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="font-display text-[24px] leading-snug text-foreground">
+              When has this been tested? What actually happened?
+            </p>
+            <textarea
+              value={tested}
+              onChange={(event) => setTested(event.target.value)}
+              rows={4}
+              className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+            />
+            <button
+              type="button"
+              disabled={!tested.trim()}
+              className={`${HEAL_PRIMARY} mt-4`}
+              onClick={() => {
+                const patched = patchHealItem(loadHealStore(), item.id, { seeingText: thought.trim() });
+                const added = addHealEntry(patched, {
+                  itemId: item.id,
+                  kind: "prompt",
+                  promptKey: "evidence",
+                  text: tested.trim(),
+                });
+                onStore(added.store);
+                onRecorded?.(tested.trim(), added.entry.id);
+                onClose();
+              }}
+            >
+              Save
+            </button>
+          </>
+        )}
       </div>
     </HealOverlay>
   );

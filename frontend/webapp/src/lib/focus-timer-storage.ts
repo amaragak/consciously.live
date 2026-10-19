@@ -9,7 +9,7 @@ export const FOCUS_TASK_STORAGE_KEY = "mm_focus_task_v1";
 export const FOCUS_TASKS_LIST_STORAGE_KEY = "mm_focus_tasks_list_v1";
 export const FOCUS_SESSIONS_TODAY_KEY = "mm_focus_sessions_today_v1";
 
-export type FocusIdeateKind = "subtask" | "todo";
+export type FocusIdeateKind = "subtask" | "todo" | "tracker";
 
 export type FocusTaskItem = {
   id: string;
@@ -60,7 +60,9 @@ function parseFocusTaskItem(raw: unknown): FocusTaskItem | null {
   if (typeof t.id !== "string" || typeof t.text !== "string") return null;
   if (typeof t.done !== "boolean") return null;
   const ideateKind =
-    t.ideateKind === "subtask" || t.ideateKind === "todo" ? t.ideateKind : null;
+    t.ideateKind === "subtask" || t.ideateKind === "todo" || t.ideateKind === "tracker"
+      ? t.ideateKind
+      : null;
   return {
     id: t.id,
     text: t.text,

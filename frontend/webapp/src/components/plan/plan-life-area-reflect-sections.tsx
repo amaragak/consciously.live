@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HealObstacleNote } from "@/components/heal/heal-reframe";
 import {
   DictationMicButton,
   appendSpokenText,
@@ -271,10 +272,12 @@ function VisionBandSection({
 }
 
 type VisionProps = {
+  dreamId?: string;
   dreamText: string;
   obstacleText: string;
   visionText: string;
   obstacleLabels?: string[];
+  healObstacleAnswers?: { id: string; label: string; text: string; healItemId: string }[];
   onLabelsChange?: (labels: string[]) => void;
   onPatch: (partial: {
     dreamText?: string;
@@ -284,10 +287,12 @@ type VisionProps = {
 };
 
 export function PlanLifeAreaVisionSections({
+  dreamId,
   dreamText,
   obstacleText,
   visionText,
   obstacleLabels = [],
+  healObstacleAnswers = [],
   onLabelsChange,
   onPatch,
 }: VisionProps) {
@@ -336,6 +341,22 @@ export function PlanLifeAreaVisionSections({
               </button>
             ) : null}
           </div>
+          {dreamId ? (
+            <div className="mt-2 flex flex-col gap-2">
+              {obstacleLabels.filter(Boolean).map((label) => {
+                const answer = healObstacleAnswers.find((row) => row.label === label);
+                return (
+                  <HealObstacleNote
+                    key={label}
+                    dreamId={dreamId}
+                    label={label}
+                    text={answer?.text}
+                    healItemId={answer?.healItemId}
+                  />
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <VisionBandSection

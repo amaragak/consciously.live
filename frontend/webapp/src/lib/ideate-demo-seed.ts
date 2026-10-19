@@ -90,7 +90,16 @@ export function withoutDemoIdeateStore(store: IdeateStoreV2): IdeateStoreV2 {
   const resistanceEntries = store.resistanceEntries.filter((r) =>
     keepProject.has(r.projectId),
   );
-  return { v: 2, dreams, subtasks, todos, resistanceEntries };
+  return {
+    v: 2,
+    dreams,
+    subtasks,
+    todos,
+    resistanceEntries,
+    ...(store.trackerItems
+      ? { trackerItems: store.trackerItems.filter((item) => keepProject.has(item.lifeAreaId)) }
+      : {}),
+  };
 }
 
 function markDemoSeedFlag(): void {

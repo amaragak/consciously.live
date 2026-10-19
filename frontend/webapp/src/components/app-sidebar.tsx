@@ -32,7 +32,12 @@ import {
   getMedimadeSessionEmail,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
-import { activeHealItems, loadHealStore, subscribeHealStore } from "@/lib/heal-store";
+import {
+  activeHealItems,
+  loadHealStore,
+  restedHealItems,
+  subscribeHealStore,
+} from "@/lib/heal-store";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import {
   pullIdeateStoreFromCloud,
@@ -116,9 +121,36 @@ function SelectedAccentBar() {
   );
 }
 
+/** Centre of a section icon: link padding 10px + half of the 18px icon. */
+const SECTION_GUIDE_X = 19;
+/** Nested parents have no icon; the line sits under the first letter. */
+const NESTED_GUIDE_X = 37;
+const GUIDE_TEXT_GAP = 14;
+const GUIDE_BAR = 3;
+/** Half of a one-line sub-row, so the hairline ends at the last row's middle. */
+const GUIDE_LAST_HALF = 16;
+
+function guideX(depth: number): number {
+  return depth <= 0 ? SECTION_GUIDE_X : NESTED_GUIDE_X + (depth - 1) * 18;
+}
+
+function GuideLine({ x }: { x: number }) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute z-0 w-px -translate-x-1/2 bg-border"
+      style={{ left: x, top: 6, bottom: GUIDE_LAST_HALF }}
+    />
+  );
+}
+
 const NAV_HOVER = "rounded-[10px] transition-colors hover:bg-background";
 const NAV_SELECTED =
   "rounded-[10px] bg-card/70 font-semibold text-foreground hover:bg-card/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60";
+const SUB_IDLE =
+  "rounded-[10px] font-normal text-foreground/78 transition-colors hover:bg-background group-hover/row:text-foreground";
+const SUB_META =
+  "text-foreground/60 group-hover/row:text-foreground hover:text-foreground";
 
 function NavSectionBlock({
   section,
@@ -165,7 +197,15 @@ function NavSectionBlock({
     !subtreeHasActive(lifeAreas, pathname, hash, search, section.id);
   const icon = SECTION_ICONS[section.id];
 
-  function renderSubLink(sub: AppNavSubItem) {
+  function childInset(depth: number) {
+    const x = guideX(depth);
+    return {
+      marginLeft: x - GUIDE_BAR / 2,
+      paddingLeft: GUIDE_TEXT_GAP + GUIDE_BAR / 2,
+    };
+  }
+
+  function renderSubLink(sub: AppNavSubItem, depth: number) {
     const active = isSubItemActive(
       pathname,
       hash,
@@ -174,20 +214,17 @@ function NavSectionBlock({
       section.id,
     );
     return (
-      <li key={sub.id} className="flex items-center gap-0.5">
+      <li key={sub.id} className="group/row flex items-center gap-0.5">
         <Link
           href={sub.href}
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
-          className={`relative flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm font-normal text-foreground ${
-            active ? NAV_SELECTED : NAV_HOVER
+          className={`relative z-[1] flex min-w-0 flex-1 items-center py-1.5 text-sm ${
+            active ? NAV_SELECTED : SUB_IDLE
           }`}
+          style={childInset(depth)}
         >
           {active ? <SelectedAccentBar /> : null}
-          <span
-            className="size-1 shrink-0 rounded-full bg-foreground/80"
-            aria-hidden
-          />
           <span className="min-w-0 truncate">{sub.label}</span>
         </Link>
         {sub.actionHref ? (
@@ -196,7 +233,7 @@ function NavSectionBlock({
             onClick={onNavigate}
             aria-label={sub.actionAriaLabel ?? `New ${sub.label}`}
             title={sub.actionAriaLabel ?? `New ${sub.label}`}
-            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center text-base font-medium leading-none text-foreground/80 ${NAV_HOVER}`}
+            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center text-base font-medium leading-none ${SUB_META} ${NAV_HOVER}`}
           >
             +
           </Link>
@@ -205,23 +242,20 @@ function NavSectionBlock({
     );
   }
 
-  function renderSub(sub: AppNavSubItem) {
+  function renderSub(sub: AppNavSubItem, depth: number) {
     const nested = sub.children ?? [];
-    if (nested.length === 0) return renderSubLink(sub);
+    if (nested.length === 0) return renderSubLink(sub, depth);
     const open = Boolean(nestedExpanded[sub.id]);
     return (
       <li key={sub.id}>
-        <div className="flex min-w-0 items-center gap-0.5">
+        <div className="group/row flex min-w-0 items-center gap-0.5">
           <Link
             href={sub.href}
             onClick={onNavigate}
             title={sub.label}
-            className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm font-normal text-foreground ${NAV_HOVER}`}
+            className={`relative z-[1] flex min-w-0 flex-1 items-center py-1.5 text-sm ${SUB_IDLE}`}
+            style={childInset(depth)}
           >
-            <span
-              className="size-1 shrink-0 rounded-full bg-foreground/80"
-              aria-hidden
-            />
             <span className="min-w-0 truncate">{sub.label}</span>
           </Link>
           <button
@@ -229,15 +263,18 @@ function NavSectionBlock({
             aria-label={open ? `Collapse ${sub.label}` : `Expand ${sub.label}`}
             aria-expanded={open}
             onClick={() => onToggleNested(sub.id)}
-            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center text-foreground/80 ${NAV_HOVER}`}
+            className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center ${SUB_META} ${NAV_HOVER}`}
           >
             <SelectChevron open={open} />
           </button>
         </div>
         <CollapsibleNavChildren open={open && showChildren}>
-          <ul className="mb-0.5 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
-            {nested.map(renderSubLink)}
-          </ul>
+          <div className="relative">
+            <GuideLine x={guideX(depth + 1)} />
+            <ul className="relative z-[1] space-y-0.5">
+              {nested.map((child) => renderSubLink(child, depth + 1))}
+            </ul>
+          </div>
         </CollapsibleNavChildren>
       </li>
     );
@@ -245,21 +282,27 @@ function NavSectionBlock({
 
   return (
     <div className="px-2">
-      <div className="flex min-w-0 items-center gap-0.5">
+      <div className="group/row flex min-w-0 items-center gap-0.5">
         <Link
           href={section.href}
           onClick={onNavigate}
           title={section.label}
-          className={`relative flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-[15px] text-foreground ${
+          className={`relative flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-[15px] ${
             sectionSelf
               ? NAV_SELECTED
               : sectionActive
-                ? `font-semibold ${NAV_HOVER}`
-                : `font-medium ${NAV_HOVER}`
+                ? `font-semibold text-foreground ${NAV_HOVER}`
+                : `font-medium text-foreground ${NAV_HOVER}`
           }`}
         >
           {sectionSelf ? <SelectedAccentBar /> : null}
-          <span className={sectionActive ? "text-foreground" : "text-foreground/80"}>
+          <span
+            className={
+              sectionActive
+                ? "text-foreground"
+                : "text-foreground/70 group-hover/row:text-foreground"
+            }
+          >
             {icon ?? null}
           </span>
           <span className="min-w-0 truncate whitespace-nowrap">
@@ -276,9 +319,7 @@ function NavSectionBlock({
             }
             aria-expanded={expanded}
             onClick={onToggle}
-            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center ${
-              sectionActive ? "text-foreground" : "text-foreground/80"
-            } ${NAV_HOVER}`}
+            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center text-foreground/70 group-hover/row:text-foreground hover:text-foreground ${NAV_HOVER}`}
           >
             <SelectChevron open={expanded} />
           </button>
@@ -286,32 +327,35 @@ function NavSectionBlock({
       </div>
       {hasChildren ? (
         <CollapsibleNavChildren open={expanded && showChildren}>
-          <ul className="mb-1 ml-2 mt-0.5 space-y-0.5 border-l border-border/80 pl-2">
-            {subs.map(renderSub)}
-            {lifeAreas.length > 0 || emptyAction ? (
-              <li className="pt-1.5" aria-hidden={lifeAreas.length === 0}>
-                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                  Your life areas
-                </p>
-              </li>
-            ) : null}
-            {lifeAreas.map(renderSub)}
-            {emptyAction ? (
-              <li>
-                <Link
-                  href={emptyAction.href}
-                  onClick={onNavigate}
-                  className={`flex items-center gap-2 px-2 py-1.5 text-sm font-normal text-foreground ${NAV_HOVER}`}
-                >
-                  <span
-                    className="size-1 shrink-0 rounded-full bg-foreground/80"
-                    aria-hidden
-                  />
-                  <span className="min-w-0 truncate">{emptyAction.label}</span>
-                </Link>
-              </li>
-            ) : null}
-          </ul>
+          <div className="relative">
+            <GuideLine x={SECTION_GUIDE_X} />
+            <ul className="relative z-[1] space-y-0.5">
+              {subs.map((sub) => renderSub(sub, 0))}
+              {lifeAreas.length > 0 || emptyAction ? (
+                <li className="pt-1.5" aria-hidden={lifeAreas.length === 0}>
+                  <p
+                    className="pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted"
+                    style={{ paddingLeft: SECTION_GUIDE_X + GUIDE_TEXT_GAP }}
+                  >
+                    Your life areas
+                  </p>
+                </li>
+              ) : null}
+              {lifeAreas.map((sub) => renderSub(sub, 0))}
+              {emptyAction ? (
+                <li className="group/row">
+                  <Link
+                    href={emptyAction.href}
+                    onClick={onNavigate}
+                    className={`relative z-[1] flex min-w-0 items-center py-1.5 text-sm ${SUB_IDLE}`}
+                    style={childInset(0)}
+                  >
+                    <span className="min-w-0 truncate">{emptyAction.label}</span>
+                  </Link>
+                </li>
+              ) : null}
+            </ul>
+          </div>
         </CollapsibleNavChildren>
       ) : null}
     </div>
@@ -352,6 +396,7 @@ export function AppSidebar({
   const [healItems, setHealItems] = useState<{ id: string; title: string }[]>(
     [],
   );
+  const [healHasRested, setHealHasRested] = useState(false);
   const [accountLabel, setAccountLabel] = useState(accountLabelFromSession);
   const [showAdmin, setShowAdmin] = useState(() =>
     isOwnerAdminAccount(getMedimadeSessionEmail()),
@@ -435,12 +480,14 @@ export function AppSidebar({
     window.addEventListener("medimade-session-changed", syncLifeAreas);
     window.addEventListener("medimade-session-changed", syncAccount);
     const syncHeal = () => {
+      const store = loadHealStore();
       setHealItems(
-        activeHealItems(loadHealStore()).map((item) => ({
+        activeHealItems(store).map((item) => ({
           id: item.id,
           title: item.title.trim() || "Untitled",
         })),
       );
+      setHealHasRested(restedHealItems(store).length > 0);
     };
     syncHeal();
     const unsubHeal = subscribeHealStore(syncHeal);
@@ -522,9 +569,11 @@ export function AppSidebar({
         label: item.title,
         href: `/heal/${encodeURIComponent(item.id)}`,
       })),
-      { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
+      ...(healHasRested
+        ? [{ id: "heal-rested", label: "Laid to rest", href: "/heal/rested" }]
+        : []),
     ];
-  }, [healItems]);
+  }, [healHasRested, healItems]);
 
   const ideateLifeAreaItems = useMemo((): AppNavSubItem[] => {
     return lifeAreas.map((d) => ({
@@ -553,7 +602,7 @@ export function AppSidebar({
         type="button"
         aria-label="Close menu"
         tabIndex={mobileOpen ? undefined : -1}
-        className={`app-sidebar-mobile-scrim fixed inset-0 top-14 z-[110] lg:hidden${
+        className={`app-sidebar-mobile-scrim fixed inset-0 top-[var(--app-header-h)] z-[110] lg:hidden${
           mobileOpen ? " is-open" : ""
         }`}
         onClick={onCloseMobile}

@@ -14,6 +14,9 @@ export type HealType =
   | "heartbreak"
   | "regret"
   | "resentment"
+  | "pattern"
+  | "recurring_thought"
+  | "belief"
   | "fear"
   | "other";
 
@@ -24,7 +27,29 @@ export type HealEntryKind =
   | "prompt"
   | "letter"
   | "friend"
-  | "write15";
+  | "write15"
+  | "angle";
+
+export type HealReframe = {
+  id: string;
+  itemId: string;
+  text: string;
+  sourceEntryId: string | null;
+  createdAt: string;
+};
+
+export type HealManifestTarget = "obstacle" | "affirmation" | "manifesto";
+
+export type HealManifestLink = {
+  id: string;
+  itemId: string;
+  reframeId: string;
+  lifeAreaId: string;
+  target: HealManifestTarget;
+  targetId: string;
+  text: string;
+  createdAt: string;
+};
 
 export type HealLens = "kind" | "forgive" | "accept" | "gave";
 
@@ -44,6 +69,8 @@ export type HealItem = {
   since: string | null;
   photoId: string | null;
   aboutText: string;
+  seeingText: string;
+  angleQuestions: string[];
   aboutUpdatedAt: string;
   aboutPerspectives: HealPerspective[];
   linkedLifeAreaIds: string[];
@@ -83,6 +110,8 @@ export type HealStoreV1 = {
   v: 1;
   items: HealItem[];
   entries: HealEntry[];
+  reframes: HealReframe[];
+  manifestLinks: HealManifestLink[];
   checkins: HealCheckin[];
   photos: Record<string, string>;
   shareWithChat: boolean;
@@ -97,6 +126,8 @@ function emptyStore(): HealStoreV1 {
     v: 1,
     items: [],
     entries: [],
+    reframes: [],
+    manifestLinks: [],
     checkins: [],
     photos: {},
     shareWithChat: false,
@@ -121,6 +152,9 @@ function asType(v: unknown): HealType {
     v === "heartbreak" ||
     v === "regret" ||
     v === "resentment" ||
+    v === "pattern" ||
+    v === "recurring_thought" ||
+    v === "belief" ||
     v === "fear" ||
     v === "other"
   ) {
@@ -167,6 +201,10 @@ function normalizeItem(x: unknown): HealItem | null {
     since: typeof o.since === "string" ? o.since : null,
     photoId: typeof o.photoId === "string" ? o.photoId : null,
     aboutText: typeof o.aboutText === "string" ? o.aboutText : "",
+    seeingText: typeof o.seeingText === "string" ? o.seeingText : "",
+    angleQuestions: Array.isArray(o.angleQuestions)
+      ? o.angleQuestions.filter((q): q is string => typeof q === "string").slice(-10)
+      : [],
     aboutUpdatedAt:
       typeof o.aboutUpdatedAt === "string" ? o.aboutUpdatedAt : createdAt,
     aboutPerspectives: Array.isArray(o.aboutPerspectives)
@@ -212,7 +250,8 @@ function normalizeEntry(x: unknown): HealEntry | null {
     o.kind === "prompt" ||
     o.kind === "letter" ||
     o.kind === "friend" ||
-    o.kind === "write15"
+    o.kind === "write15" ||
+    o.kind === "angle"
       ? o.kind
       : "thought";
   return {
@@ -226,6 +265,44 @@ function normalizeEntry(x: unknown): HealEntry | null {
           .map(normalizePerspective)
           .filter((p): p is HealPerspective => p != null)
       : [],
+    createdAt: typeof o.createdAt === "string" ? o.createdAt : nowIso(),
+  };
+}
+
+function normalizeReframe(x: unknown): HealReframe | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.itemId !== "string" || typeof o.text !== "string") {
+    return null;
+  }
+  return {
+    id: o.id,
+    itemId: o.itemId,
+    text: o.text,
+    sourceEntryId: typeof o.sourceEntryId === "string" ? o.sourceEntryId : null,
+    createdAt: typeof o.createdAt === "string" ? o.createdAt : nowIso(),
+  };
+}
+
+function normalizeManifestLink(x: unknown): HealManifestLink | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.itemId !== "string" || typeof o.reframeId !== "string") {
+    return null;
+  }
+  const target =
+    o.target === "obstacle" || o.target === "affirmation" || o.target === "manifesto"
+      ? o.target
+      : null;
+  if (!target || typeof o.lifeAreaId !== "string" || typeof o.targetId !== "string") return null;
+  return {
+    id: o.id,
+    itemId: o.itemId,
+    reframeId: o.reframeId,
+    lifeAreaId: o.lifeAreaId,
+    target,
+    targetId: o.targetId,
+    text: typeof o.text === "string" ? o.text : "",
     createdAt: typeof o.createdAt === "string" ? o.createdAt : nowIso(),
   };
 }
@@ -267,6 +344,16 @@ export function loadHealStore(): HealStoreV1 {
         ? parsed.entries
             .map(normalizeEntry)
             .filter((e): e is HealEntry => e != null)
+        : [],
+      reframes: Array.isArray(parsed.reframes)
+        ? parsed.reframes
+            .map(normalizeReframe)
+            .filter((row): row is HealReframe => row != null)
+        : [],
+      manifestLinks: Array.isArray(parsed.manifestLinks)
+        ? parsed.manifestLinks
+            .map(normalizeManifestLink)
+            .filter((row): row is HealManifestLink => row != null)
         : [],
       checkins: Array.isArray(parsed.checkins)
         ? parsed.checkins
@@ -352,6 +439,8 @@ export function createHealItem(
     title: string;
     since: string | null;
     aboutText: string;
+    seeingText?: string;
+    lifeAreaId?: string | null;
     photoDataUrl: string | null;
   },
 ): HealStoreV1 {
@@ -370,9 +459,11 @@ export function createHealItem(
     since: input.since,
     photoId,
     aboutText: input.aboutText.trim(),
+    seeingText: input.seeingText?.trim() ?? "",
+    angleQuestions: [],
     aboutUpdatedAt: createdAt,
     aboutPerspectives: [],
-    linkedLifeAreaIds: [],
+    linkedLifeAreaIds: input.lifeAreaId ? [input.lifeAreaId] : [],
     linkedValueIds: [],
     valuesAction: null,
     status: "active",
@@ -595,9 +686,60 @@ export function lastHealActivityIso(store: HealStoreV1, itemId: string): string 
 export function writingChangedSinceMeditation(item: HealItem, store: HealStoreV1): boolean {
   if (!item.meditationBuiltAt) return false;
   if (item.aboutUpdatedAt > item.meditationBuiltAt) return true;
+  if (
+    store.reframes.some(
+      (row) => row.itemId === item.id && row.createdAt > item.meditationBuiltAt!,
+    )
+  ) {
+    return true;
+  }
   return store.entries.some(
     (entry) => entry.itemId === item.id && entry.createdAt > item.meditationBuiltAt!,
   );
+}
+
+export function reframesForItem(store: HealStoreV1, itemId: string): HealReframe[] {
+  return store.reframes
+    .filter((row) => row.itemId === itemId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function currentReframe(store: HealStoreV1, itemId: string): HealReframe | null {
+  return reframesForItem(store, itemId)[0] ?? null;
+}
+
+export function addHealReframe(
+  store: HealStoreV1,
+  input: { itemId: string; text: string; sourceEntryId: string | null },
+): HealStoreV1 {
+  const text = input.text.trim();
+  if (!text) return store;
+  const current = currentReframe(store, input.itemId);
+  if (current?.text === text) return store;
+  const row: HealReframe = {
+    id: newHealId("reframe"),
+    itemId: input.itemId,
+    text,
+    sourceEntryId: input.sourceEntryId,
+    createdAt: nowIso(),
+  };
+  return { ...store, reframes: [row, ...store.reframes] };
+}
+
+export function linksForItem(store: HealStoreV1, itemId: string): HealManifestLink[] {
+  return store.manifestLinks
+    .filter((row) => row.itemId === itemId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function healRelative(iso: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+  const days = Math.round((Date.now() - then) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 14) return `${days} days ago`;
+  return formatHealDate(iso);
 }
 
 export function healItemsForLifeArea(store: HealStoreV1, lifeAreaId: string): HealItem[] {

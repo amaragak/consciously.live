@@ -3950,7 +3950,7 @@ export function ManifestoStoryView() {
     showGuides && typeof document !== "undefined"
       ? createPortal(
           <div
-            className="fixed inset-x-0 bottom-0 top-14 z-[210] overflow-y-auto bg-overlay/45 backdrop-blur-[2px] lg:left-[var(--app-sidebar-w,200px)]"
+            className="fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[210] overflow-y-auto bg-overlay/45 backdrop-blur-[2px] lg:left-[var(--app-sidebar-w,200px)]"
             onClick={() => setShowGuides(false)}
           >
             <div className="flex min-h-full items-center justify-center p-4">

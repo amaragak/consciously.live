@@ -505,7 +505,7 @@ export function AppTopBar({
   return (
     <header
       ref={headerRef}
-      className="relative sticky top-0 z-[130] flex h-14 w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)]"
+      className="relative sticky top-0 z-[130] flex h-[var(--app-header-h)] w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)]"
     >
       <div
         aria-hidden

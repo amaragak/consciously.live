@@ -122,6 +122,17 @@ function str(v: unknown, max = 8000): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
+/** Pattern is handled like regret: flag self-blame, same four lenses, and it is not a loss. */
+function typeGuidance(type: string): string {
+  if (type === "pattern" || type === "recurring_thought" || type === "belief") {
+    return " Treat this like a pattern: flag self-blame and absolutes, and offer the same four lenses (kind, forgive, accept, gave). Be kind, but do not spin it positive. A truer view is more accurate and kinder, not upbeat. This is not about loss.";
+  }
+  if (type === "regret") {
+    return " This is a regret: flag self-blame, and offer the same four lenses (kind, forgive, accept, gave).";
+  }
+  return "";
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -165,7 +176,7 @@ export async function handler(
     const action = str(body.action, 40);
     const title = str(body.title, 120) || "this";
     const type = str(body.type, 40) || "other";
-    const system = `${RULES} This writing is only about ${title} (${type}).`;
+    const system = `${RULES} This writing is only about ${title} (${type}).${typeGuidance(type)}`;
 
     if (action === "perspective") {
       const text = str(body.text, 8000);
@@ -211,6 +222,27 @@ export async function handler(
         400,
       )) as { text?: unknown };
       return json(200, { text: str(parsed.text, 800) });
+    }
+
+    if (action === "angle") {
+      const seeing = str(body.seeingText, 2000);
+      const reframe = str(body.reframe, 2000);
+      const writing = str(body.writing, 8000);
+      const asked = Array.isArray(body.asked)
+        ? body.asked.filter((row): row is string => typeof row === "string").slice(-10)
+        : [];
+      const parsed = (await haikuJson(
+        [
+          system,
+          "Ask one question, 30 words or fewer, that points at something in the user's own writing.",
+          "Never offer a reframe, an answer, or advice.",
+          "Never repeat a question already asked.",
+          'JSON {"question":""}.',
+        ].join(" "),
+        `How they've been seeing it:\n${seeing || "(empty)"}\n\nHow they see it now:\n${reframe || "(not yet)"}\n\nRecent writing:\n${writing || "(none)"}\n\nAlready asked:\n${asked.join("\n") || "(none)"}`,
+        300,
+      )) as { question?: unknown };
+      return json(200, { question: str(parsed.question, 400) });
     }
 
     if (action === "friend-swap") {

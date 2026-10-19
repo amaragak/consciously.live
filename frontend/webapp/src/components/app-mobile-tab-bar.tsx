@@ -24,7 +24,12 @@ import {
   type AppNavSection,
   type AppNavSubItem,
 } from "@/lib/app-nav";
-import { activeHealItems, loadHealStore, subscribeHealStore } from "@/lib/heal-store";
+import {
+  activeHealItems,
+  loadHealStore,
+  restedHealItems,
+  subscribeHealStore,
+} from "@/lib/heal-store";
 import { Link, usePathname, useRouter } from "@/lib/spa-nav";
 
 const LONG_PRESS_MS = 400;
@@ -309,7 +314,9 @@ export function AppMobileTabBar() {
 
   useEffect(() => {
     const sync = () => {
-      const items = activeHealItems(loadHealStore());
+      const store = loadHealStore();
+      const items = activeHealItems(store);
+      const rested = restedHealItems(store);
       setHealChildren([
         { id: "heal-home", label: "What you're carrying", href: "/heal" },
         ...items.map((item) => ({
@@ -317,7 +324,9 @@ export function AppMobileTabBar() {
           label: item.title.trim() || "Untitled",
           href: `/heal/${encodeURIComponent(item.id)}`,
         })),
-        { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
+        ...(rested.length > 0
+          ? [{ id: "heal-rested", label: "Laid to rest", href: "/heal/rested" }]
+          : []),
       ]);
     };
     sync();

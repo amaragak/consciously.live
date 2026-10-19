@@ -17,6 +17,10 @@ import {
   saveIdeateStore,
   upsertDream,
 } from "@/lib/plan-ideate-store";
+import {
+  stageLifeAreaMeditationSource,
+  type LifeAreaMeditationSource,
+} from "@/lib/life-area-meditation-source";
 import { activeResistanceThemesForProject } from "@/lib/plan-resistance-threads";
 
 /** Same as "Start focus session" on a goal: returns the Focus href. */
@@ -30,29 +34,43 @@ export function startLifeAreaFocus(subtaskId: string): string {
 export function startLifeAreaMeditation(
   lifeAreaId: string,
   fallbackTitle?: string,
+  opts?: {
+    source?: LifeAreaMeditationSource;
+    /** Replaces the vision as the Create brief. The life area stays attached. */
+    brief?: string;
+    goalId?: string;
+    goalTitle?: string;
+  },
 ): string | null {
   let store = loadIdeateStore();
   const dream = store.dreams.find((d) => d.id === lifeAreaId);
   if (!dream) return null;
+  const brief = opts?.brief?.trim() || "";
   const vision =
     dream.visionText.trim() ||
     dream.dreamText.trim() ||
     fallbackTitle?.trim() ||
+    brief ||
     dream.title.trim();
-  if (!vision) return null;
+  if (!vision && !brief) return null;
+  if (opts?.source) stageLifeAreaMeditationSource(opts.source);
 
   const themes = activeResistanceThemesForProject(store, dream.id);
   const handoff: PlanCreateHandoffV2 = {
     v: 2,
     goalTitle: dream.title.trim() || "My project",
-    visionText: vision,
+    visionText: vision || brief,
+    brief: brief || undefined,
     dreamText: dream.dreamText.trim() || undefined,
     obstacleText: dream.obstacleText.trim() || undefined,
     lifeAreaId: dream.id,
+    meditationSource: opts?.source,
+    linkedGoalId: opts?.goalId,
+    linkedGoalTitle: opts?.goalTitle,
     project: {
       dreamText: dream.dreamText.trim(),
       resistanceText: dream.obstacleText.trim(),
-      visionText: vision,
+      visionText: dream.visionText.trim(),
     },
     activeResistanceThemes: themes.map((t) => ({
       category: t.category,

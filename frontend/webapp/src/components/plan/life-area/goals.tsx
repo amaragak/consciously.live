@@ -1,6 +1,7 @@
-import { Pin, Sparkles, Timer } from "lucide-react";
-import { useEffect, useState } from "react";
+import { MessageSquare, Pin, Sparkles, Timer } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 import { SelectChevron } from "@/components/select-chevron";
 import {
   AREA_LABEL,
@@ -70,6 +71,35 @@ export function LifeAreaGoals({ dream, goalId, onPatch, onRefresh }: Props) {
     null;
   const desktopSelected = selected ?? shown[0] ?? null;
   const base = `/manifest/goal/${encodeURIComponent(dream.id)}/goals`;
+  const pillRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const [stripFade, setStripFade] = useState(false);
+
+  useEffect(() => {
+    const id = desktopSelected?.id;
+    if (!id) return;
+    pillRefs.current[id]?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+    });
+  }, [desktopSelected?.id]);
+
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const measure = () => {
+      setStripFade(
+        strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 8,
+      );
+    };
+    measure();
+    strip.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      strip.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [shown.length, filter]);
 
   function openGoal(id: string) {
     navigate(`${base}/${encodeURIComponent(id)}`);
@@ -82,11 +112,85 @@ export function LifeAreaGoals({ dream, goalId, onPatch, onRefresh }: Props) {
     openGoal(row.id);
   }
 
+  const filterControl = (
+    <GoalFilterControl
+      filter={filter}
+      activeCount={goals.filter((g) => g.status !== "done").length}
+      doneCount={goals.filter((g) => g.status === "done").length}
+      onChange={setFilter}
+    />
+  );
+
   return (
-    <div className="grid grid-cols-1 gap-3.5 md:grid-cols-[330px_minmax(0,1fr)]">
+    <div className="flex flex-col gap-3.5">
+      <div className="relative hidden md:block xl:hidden">
+        <div
+          ref={stripRef}
+          className="flex items-center gap-2.5 overflow-x-auto rounded-2xl border border-border bg-card p-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div className="shrink-0">
+            <GoalFilterControl
+              filter={filter}
+              activeCount={goals.filter((g) => g.status !== "done").length}
+              doneCount={goals.filter((g) => g.status === "done").length}
+              onChange={setFilter}
+              stretch={false}
+            />
+          </div>
+          {shown.map((goal) => {
+            const p = progressFor(store, goal);
+            const on = desktopSelected?.id === goal.id;
+            const ratio = p.total ? Math.round((p.done / p.total) * 100) : 0;
+            return (
+              <button
+                key={goal.id}
+                type="button"
+                ref={(node) => {
+                  pillRefs.current[goal.id] = node;
+                }}
+                onClick={() => openGoal(goal.id)}
+                className={`flex h-[52px] shrink-0 flex-col justify-center gap-1 rounded-[14px] px-3.5 text-left ${
+                  on
+                    ? "border border-accent/40 bg-accent-soft"
+                    : "border border-border bg-card"
+                }`}
+              >
+                <span className="whitespace-nowrap text-sm font-semibold text-foreground">
+                  {goal.title}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1 w-14 overflow-hidden rounded-full bg-background">
+                    <span
+                      className="block h-full bg-accent"
+                      style={{ width: `${ratio}%` }}
+                    />
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    {p.done}/{p.total}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => addGoal("New goal")}
+            className="inline-flex h-[52px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[14px] border border-dashed border-accent/40 px-4 text-sm font-semibold text-accent-link"
+          >
+            + New goal
+          </button>
+        </div>
+        {stripFade ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-2xl bg-gradient-to-l from-card to-transparent"
+          />
+        ) : null}
+      </div>
+    <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[330px_minmax(0,1fr)]">
       <section
         className={`rounded-2xl border border-border bg-card p-3 ${
-          goalId ? "hidden md:block" : ""
+          goalId ? "hidden xl:block" : "md:hidden xl:block"
         }`}
       >
         <button
@@ -96,26 +200,7 @@ export function LifeAreaGoals({ dream, goalId, onPatch, onRefresh }: Props) {
         >
           + New goal
         </button>
-        <div className="mt-3 flex gap-1 rounded-full bg-background p-1 text-xs">
-          {(
-            [
-              ["active", `Active · ${goals.filter((g) => g.status !== "done").length}`],
-              ["done", `Done · ${goals.filter((g) => g.status === "done").length}`],
-              ["all", "All"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setFilter(id)}
-              className={`flex-1 rounded-full px-2 py-1.5 font-semibold ${
-                filter === id ? "bg-card text-foreground shadow-sm" : "text-muted"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <div className="mt-3">{filterControl}</div>
         <div className="mt-2 flex items-center justify-between px-1 text-xs text-muted">
           <label>
             Sorted by{" "}
@@ -221,6 +306,52 @@ export function LifeAreaGoals({ dream, goalId, onPatch, onRefresh }: Props) {
           />
         )}
       </section>
+    </div>
+    </div>
+  );
+}
+
+function GoalFilterControl({
+  filter,
+  activeCount,
+  doneCount,
+  onChange,
+  stretch = true,
+}: {
+  filter: Filter;
+  activeCount: number;
+  doneCount: number;
+  onChange: (next: Filter) => void;
+  stretch?: boolean;
+}) {
+  return (
+    <div
+      className={`flex gap-0.5 rounded-[10px] bg-background p-[3px] text-[13px] ${
+        stretch ? "w-full" : "w-max"
+      }`}
+    >
+      {(
+        [
+          ["active", `Active · ${activeCount}`],
+          ["done", `Done · ${doneCount}`],
+          ["all", "All"],
+        ] as const
+      ).map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange(id)}
+          className={`inline-flex h-[34px] items-center justify-center whitespace-nowrap rounded-lg px-3 font-semibold ${
+            stretch ? "flex-1" : ""
+          } ${
+            filter === id
+              ? "border border-border bg-card text-foreground"
+              : "text-muted"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -405,7 +536,7 @@ function GoalDetail({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className={`${OUTLINE} h-9 px-3 text-[13px]`}
+            className={`${OUTLINE} h-10 px-4 text-[13px]`}
             onClick={() =>
               saveGoal({
                 status: goal.status === "done" ? "in_progress" : "done",
@@ -421,7 +552,7 @@ function GoalDetail({
             <button
               type="button"
               aria-label="Goal actions"
-              className={`${OUTLINE} size-9`}
+              className={`${OUTLINE} size-10`}
               onClick={() => setMenu((v) => !v)}
             >
               ⋯
@@ -563,7 +694,7 @@ function GoalDetail({
                 <button
                   type="button"
                   onClick={() => onFocus(goal.id, 25)}
-                  className={`${MIST} h-9 px-3 text-[13px]`}
+                  className={`${MIST} h-9 pl-3 pr-3.5 text-[13px]`}
                 >
                   <Timer className="size-3.5" />
                   Focus
@@ -642,24 +773,44 @@ function GoalDetail({
           className="h-11 w-full rounded-xl border border-dashed border-accent/40 bg-transparent px-3 text-sm outline-none"
         />
       </form>
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+      <div className="mt-4 flex flex-wrap gap-2.5 border-t border-border pt-4">
         <button
           type="button"
           disabled={!progress.next}
           onClick={() => onFocus(goal.id, 25)}
-          className={`${MIST} h-10 px-4 text-sm`}
+          className={`${MIST} h-10 px-4 text-[13px]`}
         >
+          <Timer className="size-3.5" />
           Focus session on the next 3 steps
         </button>
         <button
           type="button"
-          className={`${OUTLINE} h-10 px-4 text-sm`}
+          className={`${OUTLINE} h-10 px-4 text-[13px]`}
           onClick={() => {
-            const href = startLifeAreaMeditation(dream.id, goal.title);
+            const href = startLifeAreaMeditation(dream.id, goal.title, {
+              source: "goal",
+              brief: [goal.title, goal.dreamText].filter(Boolean).join("\n\n"),
+              goalId: goal.id,
+              goalTitle: goal.title,
+            });
             if (href) navigate(href);
           }}
         >
           ✦ Meditation for this goal
+        </button>
+        <button
+          type="button"
+          className={`${OUTLINE} h-10 px-4 text-[13px]`}
+          onClick={() =>
+            openAssistantChatFab({
+              kind: "life_area_ideate",
+              lifeAreaId: dream.id,
+              seed: `Plan the next steps for the goal “${goal.title}”.`,
+            })
+          }
+        >
+          <MessageSquare className="size-3.5" strokeWidth={1.8} />
+          Plan next steps
         </button>
       </div>
     </article>

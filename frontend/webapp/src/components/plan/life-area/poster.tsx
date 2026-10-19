@@ -12,6 +12,7 @@ import {
   textHash,
 } from "@/components/plan/life-area/kit";
 import { PlanLifeAreaVisionSections } from "@/components/plan/plan-life-area-reflect-sections";
+import { HealObstacleNote } from "@/components/heal/heal-reframe";
 import { flushIdeateCloudNow, subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
   getVisionMedia,
@@ -191,7 +192,7 @@ export function DreamPoster({ dream, onPatch }: Props) {
       onOpenGoal={() => {
         if (!progress) return;
         navigate(
-          `/manifest/goal/${encodeURIComponent(dream.id)}/goals/${encodeURIComponent(progress.goal.id)}`,
+          `/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(progress.goal.id)}`,
         );
       }}
       onLabel={(label) => setDetail(label)}
@@ -352,10 +353,12 @@ export function DreamPoster({ dream, onPatch }: Props) {
               </button>
             </div>
             <PlanLifeAreaVisionSections
+              dreamId={dream.id}
               dreamText={dream.dreamText}
               obstacleText={dream.obstacleText}
               visionText={dream.visionText}
               obstacleLabels={dream.obstacleLabels ?? []}
+              healObstacleAnswers={dream.healObstacleAnswers ?? []}
               onLabelsChange={(next) => {
                 labelsTouched.current = true;
                 onPatch({ obstacleLabels: next });
@@ -635,16 +638,26 @@ function PosterCopy({
           <span className="mr-0.5 text-[11px] font-semibold uppercase tracking-[1.2px] text-white/70">
             In the way
           </span>
-          {labels.map((label) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => onLabel(label)}
-              className="rounded-full border border-white/[0.22] bg-[color-mix(in_srgb,var(--deep)_45%,transparent)] px-[11px] py-[5px] text-xs text-white"
-            >
-              {label}
-            </button>
-          ))}
+          {labels.map((label) => {
+            const answer = (dream.healObstacleAnswers ?? []).find((row) => row.label === label);
+            return (
+              <span key={label} className="flex flex-col">
+                <button
+                  type="button"
+                  onClick={() => onLabel(label)}
+                  className="rounded-full border border-white/[0.22] bg-[color-mix(in_srgb,var(--deep)_45%,transparent)] px-[11px] py-[5px] text-xs text-white"
+                >
+                  {label}
+                </button>
+                <HealObstacleNote
+                  dreamId={dream.id}
+                  label={label}
+                  text={answer?.text}
+                  healItemId={answer?.healItemId}
+                />
+              </span>
+            );
+          })}
         </div>
       ) : null}
       {showProgress && progress ? (

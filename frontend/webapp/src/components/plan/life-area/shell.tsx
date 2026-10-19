@@ -2,7 +2,6 @@ import {
   CirclePlay,
   LayoutGrid,
   MessageSquare,
-  Mic,
   Presentation,
   Sparkles,
   Target,
@@ -16,9 +15,9 @@ import {
 } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { VoiceCheckIn } from "@/components/plan/life-area/checkin";
-import { LifeAreaGoals } from "@/components/plan/life-area/goals";
+import { LifeAreaTracker, trackerOpenCount } from "@/components/plan/life-area/tracker";
 import { LifeAreaInsights } from "@/components/plan/life-area/insights";
-import { activeOverviewGoal, areaThoughts } from "@/components/plan/life-area/kit";
+import { areaThoughts } from "@/components/plan/life-area/kit";
 import {
   isDemoJournalEntry,
   loadJournalStoreRaw,
@@ -29,14 +28,12 @@ import { LifeAreaOverview } from "@/components/plan/life-area/overview";
 import { LifeAreaThoughts } from "@/components/plan/life-area/thoughts";
 import { LifeAreaWhiteboard } from "@/components/plan/life-area/whiteboard";
 import { PlanLifeAreaMeditationsPanel } from "@/components/plan/plan-life-area-meditations-panel";
-import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 import type { PlanDream } from "@/lib/plan-dreams";
-import { loadIdeateStore, subtasksForProject } from "@/lib/plan-ideate-store";
 import { listLibraryMeditations } from "@/lib/medimade-api";
 
 const TABS = [
   "overview",
-  "goals",
+  "tracker",
   "thoughts",
   "insights",
   "meditations",
@@ -48,29 +45,26 @@ type TabId = (typeof TABS)[number];
 const LEGACY: Record<string, TabId> = {
   vision: "overview",
   reflect: "overview",
-  steps: "goals",
+  steps: "tracker",
   thoughts: "thoughts",
   insights: "insights",
   meditations: "meditations",
   whiteboard: "whiteboard",
   overview: "overview",
-  goals: "goals",
+  goals: "tracker",
+  tracker: "tracker",
 };
 
 type Props = {
   dream: PlanDream;
   onPatch: (partial: Partial<PlanDream>) => void;
   onRefresh: () => void;
-  onGenerate: () => void;
-  canGenerate: boolean;
 };
 
 export function LifeAreaShell({
   dream,
   onPatch,
   onRefresh,
-  onGenerate,
-  canGenerate,
 }: Props) {
   const navigate = useNavigate();
   const params = useParams();
@@ -80,17 +74,32 @@ export function LifeAreaShell({
     null,
   );
   const [meditations, setMeditations] = useState(0);
-  const tab = resolveTab(params.tab, params.goalId, search.get("tab"));
-  const goalId = params.goalId ? decodeURIComponent(params.goalId) : null;
+  const tab = resolveTab(params.tab, params.goalId, params.itemId, search.get("tab"));
+  const itemId = params.itemId
+    ? decodeURIComponent(params.itemId)
+    : params.goalId
+      ? decodeURIComponent(params.goalId)
+      : null;
   const activeRef = useRef<HTMLButtonElement | null>(null);
   const base = `/manifest/goal/${encodeURIComponent(dream.id)}`;
 
   useEffect(() => {
     const legacy = search.get("tab");
-    if (!legacy || params.tab || params.goalId) return;
-    const next = LEGACY[legacy] ?? "overview";
-    navigate(next === "overview" ? base : `${base}/${next}`, { replace: true });
-  }, [base, navigate, params.goalId, params.tab, search]);
+    if (legacy && !params.tab && !params.goalId && !params.itemId) {
+      const next = LEGACY[legacy] ?? "overview";
+      navigate(next === "overview" ? base : `${base}/${next}`, { replace: true });
+    }
+  }, [base, navigate, params.goalId, params.itemId, params.tab, search]);
+
+  useEffect(() => {
+    if (params.tab === "goals") {
+      navigate(`${base}/tracker`, { replace: true });
+      return;
+    }
+    if (params.goalId) {
+      navigate(`${base}/tracker/${encodeURIComponent(params.goalId)}`, { replace: true });
+    }
+  }, [base, navigate, params.goalId, params.tab]);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
@@ -113,7 +122,6 @@ export function LifeAreaShell({
     };
   }, [dream.id]);
 
-  const store = loadIdeateStore();
   const thoughtsSeen = lifeAreaLastSeen(dream.id, "thoughts");
   const insightsSeen = lifeAreaLastSeen(dream.id, "insights");
   const thoughtFeed = thoughtTimes(dream);
@@ -121,8 +129,7 @@ export function LifeAreaShell({
     tab === "thoughts" || !thoughtsSeen
       ? 0
       : thoughtFeed.filter((at) => at > thoughtsSeen).length;
-  const activeGoal = activeOverviewGoal(store, dream);
-  const goalTotal = subtasksForProject(store, dream.id).length;
+  const openItems = trackerOpenCount(dream.id);
   const latestInsight = (dream.insights ?? [])[0];
   const insightNew =
     tab !== "insights" &&
@@ -144,69 +151,21 @@ export function LifeAreaShell({
   }
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] pb-28 sm:pb-10">
+    <div className="min-h-[calc(100vh-var(--app-header-h))] pb-28 sm:pb-10">
       <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pt-4 sm:px-6">
-        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap-reverse md:items-center md:justify-start md:gap-x-4 md:gap-y-2">
-          <div className="order-1 flex gap-2 md:order-2 md:ml-auto">
-            <button
-              type="button"
-              aria-label="Check in"
-              title="Check in"
-              onClick={() => setCheckIn(true)}
-              className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground"
-            >
-              <Mic className="size-4" strokeWidth={1.8} />
-            </button>
-            <button
-              type="button"
-              aria-label="Plan next steps"
-              title="Plan next steps"
-              onClick={() =>
-                openAssistantChatFab({
-                  kind: "life_area_ideate",
-                  lifeAreaId: dream.id,
-                })
-              }
-              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-border bg-card text-sm font-semibold text-foreground md:size-10 md:flex-none md:px-0"
-            >
-              <MessageSquare className="size-[15px]" strokeWidth={1.8} />
-              <span className="md:hidden">Plan</span>
-            </button>
-            <button
-              type="button"
-              disabled={!canGenerate}
-              onClick={onGenerate}
-              className="accent-fill-gradient inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-semibold text-on-accent disabled:opacity-40 md:flex-none md:px-[18px] md:text-sm"
-            >
-              <Sparkles className="size-3.5 md:hidden" />
-              <span className="md:hidden">Meditation</span>
-              <span className="hidden md:inline">✦ Generate meditation</span>
-            </button>
-          </div>
-          <div className="order-2 min-w-0 md:order-1">
+        <div className="min-w-0">
           <LifeAreaTabTrack
             tab={tab}
             onSelect={go}
             activeRef={activeRef}
-            goalBadge={
-              activeGoal && activeGoal.total > 0
-                ? `${activeGoal.done}/${activeGoal.total}`
-                : goalTotal > 0
-                  ? String(goalTotal)
-                  : null
-            }
-            goalProgress={Boolean(activeGoal && activeGoal.total > 0)}
-            goalAria={
-              activeGoal && activeGoal.total > 0
-                ? `Goals, ${activeGoal.done} of ${activeGoal.total} steps`
-                : "Goals"
-            }
+            goalBadge={openItems > 0 ? String(openItems) : null}
+            goalProgress={false}
+            goalAria={openItems > 0 ? `Tracker, ${openItems} open` : "Tracker"}
             thoughtFresh={thoughtFresh}
             thoughtTotal={thoughtFeed.length}
             insightNew={insightNew}
             meditations={meditations}
           />
-          </div>
         </div>
         <div className="pt-[18px]">
           {tab === "overview" ? (
@@ -217,13 +176,8 @@ export function LifeAreaShell({
               onCheckIn={() => setCheckIn(true)}
             />
           ) : null}
-          {tab === "goals" ? (
-            <LifeAreaGoals
-              dream={dream}
-              goalId={goalId}
-              onPatch={onPatch}
-              onRefresh={onRefresh}
-            />
+          {tab === "tracker" ? (
+            <LifeAreaTracker dream={dream} itemId={itemId} onRefresh={onRefresh} />
           ) : null}
           {tab === "thoughts" ? (
             <LifeAreaThoughts
@@ -241,7 +195,10 @@ export function LifeAreaShell({
             />
           ) : null}
           {tab === "meditations" ? (
-            <PlanLifeAreaMeditationsPanel lifeAreaId={dream.id} />
+            <PlanLifeAreaMeditationsPanel
+              lifeAreaId={dream.id}
+              lifeAreaTitle={dream.title}
+            />
           ) : null}
           {tab === "whiteboard" ? (
             <LifeAreaWhiteboard
@@ -285,7 +242,7 @@ export function LifeAreaShell({
 
 const TAB_ICON: Record<TabId, typeof LayoutGrid> = {
   overview: LayoutGrid,
-  goals: Target,
+  tracker: Target,
   thoughts: MessageSquare,
   insights: Sparkles,
   meditations: CirclePlay,
@@ -320,7 +277,7 @@ function LifeAreaTabTrack({
   const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
     null,
   );
-  const [fade, setFade] = useState(false);
+  const [fade, setFade] = useState({ left: false, right: false });
   const [reduce, setReduce] = useState(false);
 
   const measure = () => {
@@ -336,9 +293,10 @@ function LifeAreaTabTrack({
     }
     const scroller = scrollerRef.current;
     if (scroller) {
-      setFade(
-        scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 8,
-      );
+      setFade({
+        left: scroller.scrollLeft > 8,
+        right: scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 8,
+      });
     }
   };
 
@@ -365,7 +323,7 @@ function LifeAreaTabTrack({
     <div className="relative -mx-4 md:mx-0">
       <div
         ref={scrollerRef}
-        className="overflow-x-auto px-4 [scrollbar-width:none] md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden"
+        className="overflow-x-auto px-4 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden"
       >
         <div
           ref={trackRef}
@@ -392,7 +350,7 @@ function LifeAreaTabTrack({
             const Icon = TAB_ICON[id];
             const label = id[0]!.toUpperCase() + id.slice(1);
             const aria =
-              id === "goals"
+              id === "tracker"
                 ? goalAria
                 : id === "thoughts" && thoughtFresh > 0
                   ? `Thoughts, ${thoughtFresh} new`
@@ -430,10 +388,16 @@ function LifeAreaTabTrack({
           })}
         </div>
       </div>
-      {fade ? (
+      {fade.left ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent md:hidden"
+          className="pointer-events-none absolute inset-y-0 left-0 z-[2] w-6 bg-gradient-to-r from-background to-transparent"
+        />
+      ) : null}
+      {fade.right ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 z-[2] w-6 bg-gradient-to-l from-background to-transparent"
         />
       ) : null}
     </div>
@@ -459,7 +423,7 @@ function TabBadge({
   insightNew: boolean;
   meditations: number;
 }) {
-  if (id === "goals" && goalBadge) {
+  if (id === "tracker" && goalBadge) {
     if (goalProgress) {
       return (
         <span
@@ -530,9 +494,11 @@ function thoughtTimes(dream: import("@/lib/plan-dreams").PlanDream): string[] {
 function resolveTab(
   pathTab: string | undefined,
   goalId: string | undefined,
+  itemId: string | undefined,
   queryTab: string | null,
 ): TabId {
-  if (goalId) return "goals";
+  if (itemId || goalId) return "tracker";
+  if (pathTab === "goals") return "tracker";
   if (pathTab && (TABS as readonly string[]).includes(pathTab)) {
     return pathTab as TabId;
   }

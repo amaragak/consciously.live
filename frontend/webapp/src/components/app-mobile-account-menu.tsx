@@ -52,7 +52,7 @@ export function AppMobileAccountMenu({
         aria-label={`Account: ${accountLabel}`}
         title={accountLabel}
         onClick={() => setOpen((v) => !v)}
-        className={`header-gold-sunlit-fill flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold text-on-accent transition-[box-shadow,opacity] hover:opacity-90 ${
+        className={`header-gold-sunlit-fill flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold text-on-accent transition-[box-shadow,opacity] hover:opacity-90 ${
           open ? "ring-2 ring-accent ring-offset-2 ring-offset-nav" : ""
         }`}
       >
@@ -70,7 +70,7 @@ export function AppMobileAccountMenu({
               <div
                 role="menu"
                 aria-label="Account"
-                className="absolute right-3 top-[calc(3.5rem+6px)] w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-[0_12px_32px_rgb(15_27_45_/_0.16)]"
+                className="absolute right-3 top-[calc(var(--app-header-h)+6px)] w-[min(calc(100vw-1.5rem),20rem)] overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-[0_12px_32px_rgb(15_27_45_/_0.16)]"
               >
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   <span className="header-gold-sunlit-fill flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-on-accent">

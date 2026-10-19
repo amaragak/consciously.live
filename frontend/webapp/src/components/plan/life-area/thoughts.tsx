@@ -1,6 +1,7 @@
 import { Pin } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 import {
@@ -21,18 +22,12 @@ import {
   AREA_LABEL,
   MIST,
   areaThoughts,
-  commitIdeate,
   formatShortDate,
-  goalsForArea,
   guessThoughtKind,
   thoughtSource,
 } from "@/components/plan/life-area/kit";
-import {
-  createTodo,
-  loadIdeateStore,
-  todosForSubtask,
-  upsertTodo,
-} from "@/lib/plan-ideate-store";
+import { loadIdeateStore } from "@/lib/plan-ideate-store";
+import { addTrackerItem, childrenOf, commitTracker, ensureTracker, itemsForArea } from "@/lib/tracker-items";
 
 const KIND_DOT: Record<ThoughtKind, string> = {
   win: "bg-emerald-600",
@@ -138,32 +133,40 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
     onPatch({ dreamEntries: [...(dream.dreamEntries ?? []), entry] });
     setDraft("");
     setTag(null);
-    if (!tag) {
-      setTagging(id);
-      try {
-        const raw = await streamPlanCoachReply(
-          [
-            {
-              role: "user",
-              content: `Reply with one tag only: win, hard_blocker, resistance, insight, question, intention, progress.\n${value}`,
-            },
-          ],
-          () => undefined,
-        );
-        const found = THOUGHT_KIND_OPTIONS.find((o) =>
-          raw.toLowerCase().includes(o.id),
-        );
-        const kind = found?.id ?? guessThoughtKind(value);
-        const current = loadIdeateStore().dreams.find((d) => d.id === dream.id);
-        if (!current) return;
-        onPatch({
-          dreamEntries: (current.dreamEntries ?? []).map((e) =>
-            e.id === id ? { ...e, kind } : e,
-          ),
-        });
-      } finally {
-        setTagging(null);
-      }
+    const labels = (dream.obstacleLabels ?? []).filter(Boolean);
+    setTagging(id);
+    try {
+      const raw = await streamPlanCoachReply(
+        [
+          {
+            role: "user",
+            content: `Reply with JSON only: {"tag":"win|hard_blocker|resistance|insight|question|intention|progress","obstacle":null,"newObstacle":null}. obstacle is one of ${JSON.stringify(labels)} when the thought names it, else null. newObstacle is a 1-3 word noun only when it names a blocker that is not in that list.\n${value}`,
+          },
+        ],
+        () => undefined,
+      );
+      const match = raw.match(/\{[\s\S]*\}/);
+      const parsed = match ? (JSON.parse(match[0]) as { tag?: string; obstacle?: string | null; newObstacle?: string | null }) : {};
+      const found = THOUGHT_KIND_OPTIONS.find((o) => o.id === parsed.tag || raw.toLowerCase().includes(o.id));
+      const kind = tag ?? found?.id ?? guessThoughtKind(value);
+      const current = loadIdeateStore().dreams.find((d) => d.id === dream.id);
+      if (!current) return;
+      onPatch({
+        dreamEntries: (current.dreamEntries ?? []).map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                kind,
+                ...(parsed.obstacle ? { obstacleId: parsed.obstacle } : {}),
+                ...(parsed.newObstacle ? { newObstacleLabel: parsed.newObstacle } : {}),
+              }
+            : e,
+        ),
+      });
+    } catch {
+      /* keep the thought without a tag */
+    } finally {
+      setTagging(null);
     }
   }
 
@@ -363,6 +366,8 @@ function Feed({
   onRefresh: () => void;
   onHideJournal: (id: string) => void;
 }) {
+  const navigate = useNavigate();
+  const [tapped, setTapped] = useState<string | null>(null);
   const groups = new Map<string, Row[]>();
   const now = new Date();
   for (const row of rows) {
@@ -375,7 +380,7 @@ function Feed({
           : d.toLocaleDateString(undefined, { month: "long" });
     groups.set(label, [...(groups.get(label) ?? []), row]);
   }
-  const goals = goalsForArea(loadIdeateStore(), dream);
+  const goals = childrenOf(itemsForArea(ensureTracker(loadIdeateStore()), dream.id), null);
   return (
     <div className="mt-4">
       {[...groups.entries()].map(([label, list]) => (
@@ -389,8 +394,14 @@ function Feed({
                 key={row.id}
                 onMouseEnter={() => setHover(row.id)}
                 onMouseLeave={() => setHover(null)}
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button, a")) return;
+                  setTapped((id) => (id === row.id ? null : row.id));
+                }}
                 className={`relative flex gap-3 py-2.5 ${
-                  hover === row.id ? "rounded-xl bg-background px-2" : ""
+                  hover === row.id || tapped === row.id
+                    ? "rounded-xl bg-background px-2"
+                    : ""
                 } ${row.journal ? "border-l-2 border-accent/40 pl-3 italic" : ""}`}
               >
                 <span className="w-[52px] shrink-0 text-xs text-muted">
@@ -421,8 +432,8 @@ function Feed({
                       From journal · “{row.journal.title}”
                     </Link>
                   ) : null}
-                  {hover === row.id && !row.journal ? (
-                    <span className="mt-1 flex flex-wrap gap-3 text-[13px] font-semibold text-accent-link">
+                  {(hover === row.id || tapped === row.id) && !row.journal ? (
+                    <span className="mt-1 flex flex-wrap items-center gap-3 text-[13px] font-semibold text-accent-link">
                       <button type="button" onClick={() => setGoalFor(row.id)}>
                         → Make it a step
                       </button>
@@ -440,7 +451,19 @@ function Feed({
                       </button>
                       <button
                         type="button"
-                        aria-label="Pin"
+                        onClick={() => {
+                          const href = startLifeAreaMeditation(dream.id, undefined, {
+                            source: "thought",
+                            brief: row.text,
+                          });
+                          if (href) navigate(href);
+                        }}
+                      >
+                        ✦ Make a meditation
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={row.pinned ? "Unpin" : "Pin"}
                         onClick={() => onUpdate(row.id, { pinned: !row.pinned })}
                       >
                         <Pin className="size-3.5" />
@@ -455,9 +478,12 @@ function Feed({
                           type="button"
                           className="text-xs font-semibold text-accent-link"
                           onClick={() => {
-                            const todos = todosForSubtask(loadIdeateStore(), g.id);
-                            commitIdeate((s) =>
-                              upsertTodo(s, createTodo(g.id, row.text, todos.length)),
+                            commitTracker((current) =>
+                              addTrackerItem(current, {
+                                lifeAreaId: dream.id,
+                                parentId: g.id,
+                                title: row.text,
+                              }).store,
                             );
                             onRefresh();
                             setGoalFor(null);

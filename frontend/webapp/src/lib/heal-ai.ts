@@ -118,6 +118,19 @@ export async function healFriendSwap(input: {
 }
 
 /** Explicit suicidal intent or self-harm only. Failure returns false and never blocks writing. */
+export async function healAskAngle(input: {
+  type: HealType;
+  title: string;
+  seeingText: string;
+  reframe: string;
+  writing: string;
+  asked: string[];
+}): Promise<string | null> {
+  const data = await postHeal("/heal/ai", { action: "angle", ...input });
+  const question = data && typeof data.question === "string" ? data.question.trim() : "";
+  return question || null;
+}
+
 export async function healScreenRisk(text: string): Promise<boolean> {
   const trimmed = text.trim();
   if (trimmed.length < 8) return false;

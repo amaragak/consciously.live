@@ -38,6 +38,7 @@ import {
 } from "./pages/manifest-home-page";
 import { ManifestInsightsPage } from "./pages/manifest-insights-page";
 import { ManifestQuestionsPage } from "./pages/manifest-questions-page";
+import { ManifestTrackerPage } from "./pages/manifest-tracker-page";
 import { ManifestVisionBoardPage } from "./pages/manifest-vision-board-page";
 import { ManifestWordsPage } from "./pages/manifest-words-page";
 import { JournalOverviewPage } from "./pages/journal-overview-page";
@@ -92,12 +93,14 @@ export function App() {
           path="manifest/my/vision-board"
           element={<ManifestVisionBoardPage />}
         />
+        <Route path="manifest/tracker" element={<ManifestTrackerPage />} />
         <Route
           path="manifest/my/insights"
           element={<ManifestInsightsPage />}
         />
         <Route path="manifest/goal/:id" element={<ManifestGoalPage />} />
         <Route path="manifest/goal/:id/goals/:goalId" element={<ManifestGoalPage />} />
+        <Route path="manifest/goal/:id/tracker/:itemId" element={<ManifestGoalPage />} />
         <Route path="manifest/goal/:id/:tab" element={<ManifestGoalPage />} />
         <Route path="manifest/words" element={<ManifestWordsPage />} />
         <Route path="manifest/questions" element={<ManifestQuestionsPage />} />

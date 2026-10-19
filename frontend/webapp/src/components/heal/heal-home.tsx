@@ -1,5 +1,5 @@
-import { Heart, Leaf, Plus } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, Heart, Leaf, PenLine, Plus, Sparkles } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Link } from "@/lib/spa-nav";
 import { HEAL_TYPES, healTypeLabel } from "@/lib/heal-copy";
 import {
@@ -45,7 +45,6 @@ export function HealHome() {
   const [store, setStore] = useHealStore();
   const active = activeHealItems(store);
   const rested = restedHealItems(store);
-  const [aboutOpen, setAboutOpen] = useState(active.length < 3);
   const [checkInItems, setCheckInItems] = useState<HealItem[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [addType, setAddType] = useState<HealType | null>(null);
@@ -57,47 +56,10 @@ export function HealHome() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-[calc(58px+env(safe-area-inset-bottom,0px)+16px)] pt-6 sm:px-6 sm:pb-10">
-      {aboutOpen ? (
-        <section className="flex flex-col gap-1.5 rounded-2xl border border-border bg-card p-4 sm:block sm:px-6 sm:py-[22px]">
-          <h2 className="font-display text-[19px] leading-[1.25] text-foreground sm:text-[24px] sm:leading-tight">
-            For the things you can&apos;t seem to put down
-          </h2>
-          <p className="text-[13px] leading-[1.5] text-foreground sm:hidden">
-            Long-term things that are hard to get past: grief, regret, a
-            relationship that ended. Day-to-day thoughts belong in{" "}
-            <Link href="/journal" className="font-semibold text-heal-accent">
-              Journal
-            </Link>
-            .
-          </p>
-          <div className="hidden sm:block">
-            <p className="mt-2 text-[15px] leading-relaxed text-foreground">
-              Heal is for long-term things you&apos;re finding hard to get past: grief,
-              regret, a relationship that ended, a falling-out that still hurts. Give
-              each one its own space, write about it when you need to, and see it get
-              lighter over time.
-            </p>
-            <p className="mt-2 text-[13px] text-muted">
-              Day-to-day thoughts belong in{" "}
-              <Link href="/journal" className="font-semibold text-foreground underline-offset-2 hover:underline">
-                Journal
-              </Link>
-              .
-            </p>
-          </div>
-        </section>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAboutOpen(true)}
-          className="cursor-pointer text-sm font-semibold text-accent-link"
-        >
-          About Heal
-        </button>
-      )}
+      {isEmpty ? <HealEmptyHome onAdd={openAdd} /> : null}
 
-      {active.length > 0 ? (
-        <section className="mt-3 flex flex-col gap-2.5 rounded-2xl border border-heal-border bg-heal-tint px-4 py-3.5 sm:mt-4 sm:flex-row sm:items-center sm:gap-3 sm:px-5 sm:py-4">
+      {!isEmpty && active.length > 0 ? (
+        <section className="flex flex-col gap-2.5 rounded-2xl border border-heal-border bg-heal-tint px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3 sm:px-5 sm:py-4">
           <span className="hidden size-11 shrink-0 items-center justify-center rounded-full bg-card text-heal-accent sm:inline-flex">
             <Heart className="size-5" strokeWidth={1.7} aria-hidden />
           </span>
@@ -119,6 +81,7 @@ export function HealHome() {
         </section>
       ) : null}
 
+      {!isEmpty ? (
       <section className="mt-[18px] sm:mt-8">
         <HealSectionLabel
           title="What you're carrying"
@@ -199,6 +162,7 @@ export function HealHome() {
           </ul>
         )}
       </section>
+      ) : null}
 
       {rested.length > 0 && !isEmpty ? (
         <section className="mt-[18px] sm:mt-8">
@@ -304,7 +268,101 @@ const EMPTY_EXAMPLES: { type: HealType; label: string }[] = [
   { type: "heartbreak", label: "A relationship that ended" },
   { type: "regret", label: "Something I regret" },
   { type: "resentment", label: "A falling-out" },
+  { type: "recurring_thought", label: "A thought that keeps coming back" },
+  { type: "belief", label: "A belief that holds me back" },
+  { type: "pattern", label: "A pattern I keep repeating" },
 ];
+
+const HOW_IT_WORKS: { icon: ReactNode; title: string; body: string }[] = [
+  {
+    icon: <PenLine className="size-[15px]" strokeWidth={1.8} aria-hidden />,
+    title: "Say it as it is",
+    body: "How you've been seeing it, negative included. It stays private.",
+  },
+  {
+    icon: <ArrowRight className="size-[15px]" strokeWidth={1.8} aria-hidden />,
+    title: "Work on it",
+    body: "Short tools and writing prompts. Each one asks if it changes how you see it.",
+  },
+  {
+    icon: <Sparkles className="size-[15px]" strokeWidth={1.8} aria-hidden />,
+    title: "Take the new view into Manifest",
+    body: "When it feels true, add it to your vision. Then lay this to rest.",
+  },
+];
+
+function HowItWorksRows() {
+  return (
+    <>
+      {HOW_IT_WORKS.map((row) => (
+        <div key={row.title} className="flex items-start gap-3">
+          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-heal-tint text-heal-accent">
+            {row.icon}
+          </span>
+          <span className="flex flex-col gap-[3px]">
+            <span className="text-sm font-semibold text-foreground">{row.title}</span>
+            <span className="text-[13px] leading-[1.45] text-foreground">{row.body}</span>
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function HealEmptyHome({ onAdd }: { onAdd: (type: HealType | null) => void }) {
+  return (
+    <>
+      <section className="rounded-2xl border border-border bg-card p-4 md:p-8">
+        <div className="flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:items-center md:gap-8">
+          <div className="flex flex-col gap-4">
+            <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[30px] md:leading-[1.15]">
+              For the things you can&apos;t seem to put down
+            </h2>
+            <p className="text-[15px] leading-[1.55] text-foreground">
+              Say what&apos;s actually in the way, negative included, and work towards seeing it
+              differently.
+            </p>
+            <p className="pt-1.5 text-[13px] font-semibold text-foreground">What are you carrying?</p>
+            <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
+              {EMPTY_EXAMPLES.map((example) => (
+                <button
+                  key={example.type}
+                  type="button"
+                  onClick={() => onAdd(example.type)}
+                  className="inline-flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-full border border-heal-border bg-heal-tint px-4 text-[13px] font-semibold text-foreground md:w-auto md:justify-start md:pl-4 md:pr-3.5 md:text-sm"
+                >
+                  {example.label}
+                  <Plus className="size-3.5 text-heal-accent" strokeWidth={1.8} aria-hidden />
+                </button>
+              ))}
+            </div>
+            <p className="text-[13px] text-muted">
+              Or{" "}
+              <button
+                type="button"
+                onClick={() => onAdd(null)}
+                className="cursor-pointer font-semibold text-heal-accent"
+              >
+                add something else
+              </button>
+              . Day-to-day thoughts belong in{" "}
+              <Link href="/journal" className="font-semibold text-heal-accent">
+                Journal
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="hidden flex-col gap-5 border-l border-heal-border pl-8 md:flex">
+            <HowItWorksRows />
+          </div>
+        </div>
+      </section>
+      <section className="mt-3 flex flex-col gap-3.5 rounded-2xl border border-border bg-card p-4 md:hidden">
+        <HowItWorksRows />
+      </section>
+    </>
+  );
+}
 
 function HealSectionLabel({
   title,
@@ -385,6 +443,7 @@ function AddSomething({
   const [type, setType] = useState<HealType | null>(initialType);
   const [title, setTitle] = useState("");
   const [since, setSince] = useState("");
+  const [seeing, setSeeing] = useState("");
   const [about, setAbout] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
 
@@ -401,6 +460,7 @@ function AddSomething({
               title,
               since: since || null,
               aboutText: about,
+              seeingText: seeing,
               photoDataUrl: photo,
             }),
           );
@@ -429,7 +489,17 @@ function AddSomething({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
+            placeholder={type === "pattern" ? "e.g. Saying yes to everything" : undefined}
             className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+          />
+        </label>
+        <label className="mt-3 block text-sm">
+          How have you been seeing it? (optional)
+          <textarea
+            value={seeing}
+            onChange={(e) => setSeeing(e.target.value)}
+            rows={3}
+            className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
           />
         </label>
         <label className="mt-3 block text-sm">

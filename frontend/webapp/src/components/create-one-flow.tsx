@@ -109,7 +109,17 @@ import {
   sortSubtasks,
   subtasksForProject,
 } from "@/lib/plan-ideate-store";
+import {
+  clearStagedLifeAreaMeditationSource,
+  peekStagedLifeAreaMeditationSource,
+  rememberLifeAreaMeditationSource,
+  stageLifeAreaMeditationSource,
+} from "@/lib/life-area-meditation-source";
 import { appendPendingLibraryGeneration } from "@/lib/pending-library-generations";
+import {
+  clearPlanCreateHandoff,
+  readPlanCreateHandoff,
+} from "@/lib/plan-create-handoff";
 import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
@@ -328,6 +338,7 @@ export function CreateOneFlow({
 
   // Guide "Make this meditation": pre-fill the Start brief once.
   const guideBriefConsumedRef = useRef(false);
+  const planHandoffAppliedRef = useRef(false);
   useEffect(() => {
     if (guideBriefConsumedRef.current) return;
     guideBriefConsumedRef.current = true;
@@ -348,6 +359,33 @@ export function CreateOneFlow({
           ]
         : p.journals,
     }));
+  }, []);
+
+  useEffect(() => {
+    const handoff = readPlanCreateHandoff();
+    if (!handoff || handoff.v !== 2) {
+      clearStagedLifeAreaMeditationSource();
+      return;
+    }
+    const brief = handoff.brief?.trim() || handoff.visionText.trim();
+    if (!brief && !handoff.lifeAreaId) return;
+    planHandoffAppliedRef.current = true;
+    if (handoff.meditationSource) {
+      stageLifeAreaMeditationSource(handoff.meditationSource);
+    }
+    setState((prev) => ({
+      ...prev,
+      prompt: brief || prev.prompt,
+      goal: handoff.lifeAreaId
+        ? {
+            lifeAreaId: handoff.lifeAreaId,
+            lifeAreaTitle: handoff.goalTitle.trim() || "Life area",
+            goalId: handoff.linkedGoalId ?? null,
+            goalTitle: handoff.linkedGoalTitle ?? null,
+          }
+        : prev.goal,
+    }));
+    clearPlanCreateHandoff();
   }, []);
 
   // Fresh mount has no draft — don't keep a mid-flow ?step= from a prior visit.
@@ -502,7 +540,12 @@ export function CreateOneFlow({
 
   useEffect(() => {
     const seed = searchParams.get("seed");
-    if (seed === "style" || seed === "program" || seed === "journal" || seed === "goal") {
+    if (
+      seed === "style" ||
+      seed === "program" ||
+      seed === "journal" ||
+      (seed === "goal" && !planHandoffAppliedRef.current)
+    ) {
       setPicker(seed);
       const next = new URLSearchParams(searchParams);
       next.delete("seed");
@@ -514,7 +557,7 @@ export function CreateOneFlow({
       setSearchParams(next, { replace: true });
     } else if (seedJournalContext) {
       setPicker("journal");
-    } else if (seedPlanContext) {
+    } else if (seedPlanContext && !planHandoffAppliedRef.current) {
       setPicker("goal");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- one-shot handoff seeds
@@ -1638,6 +1681,8 @@ export function CreateOneFlow({
         });
 
         if (!firstJobId) firstJobId = jobId;
+        const stagedSource = peekStagedLifeAreaMeditationSource();
+        if (stagedSource) rememberLifeAreaMeditationSource(jobId, stagedSource);
         appendPendingLibraryGeneration({
           jobId,
           createdAt: new Date().toISOString(),
@@ -1647,8 +1692,12 @@ export function CreateOneFlow({
           speakerName: soundExtras.speakerName,
           speakerModelId: soundExtras.reference_id,
           speakerPortraitUrl: soundExtras.speakerPortraitUrl,
+          ...(state.goal?.lifeAreaId
+            ? { lifeAreaId: state.goal.lifeAreaId }
+            : {}),
         });
       }
+      clearStagedLifeAreaMeditationSource();
 
       if (!firstJobId) throw new Error("Generation failed");
       ensurePendingMeditationJobPoller();

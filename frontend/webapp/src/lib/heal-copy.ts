@@ -5,6 +5,9 @@ export const HEAL_TYPES: { id: HealType; label: string }[] = [
   { id: "heartbreak", label: "Heartbreak" },
   { id: "regret", label: "Regret" },
   { id: "resentment", label: "Resentment" },
+  { id: "pattern", label: "Pattern" },
+  { id: "recurring_thought", label: "Thought" },
+  { id: "belief", label: "Belief" },
   { id: "fear", label: "Fear" },
   { id: "other", label: "Other" },
 ];
@@ -40,6 +43,24 @@ const PROMPTS: Record<HealType, HealPrompt[]> = {
     { key: "let_go", label: "What I need to let go of" },
     { key: "want_now", label: "What I want for myself now" },
   ],
+  pattern: [
+    { key: "shows_up", label: "When it shows up" },
+    { key: "protects", label: "What it protects me from" },
+    { key: "started", label: "Where it started" },
+    { key: "instead", label: "What I'd do instead" },
+  ],
+  recurring_thought: [
+    { key: "comes_up", label: "When it comes up" },
+    { key: "telling", label: "What it's telling me" },
+    { key: "protects", label: "What it's trying to protect" },
+    { key: "also_true", label: "What's also true" },
+  ],
+  belief: [
+    { key: "learned", label: "Where I learned it" },
+    { key: "cost", label: "What it's cost me" },
+    { key: "wasnt_true", label: "Times it wasn't true" },
+    { key: "instead", label: "What I'd believe instead" },
+  ],
   fear: [
     { key: "afraid", label: "What I'm afraid of" },
     { key: "control", label: "What's in my control" },
@@ -58,6 +79,10 @@ export function promptsForType(type: HealType): HealPrompt[] {
 
 export function promptLabel(type: HealType, key: string | null): string | null {
   if (!key) return null;
+  if (key === "notice_name") return "Notice it, name it";
+  if (key === "if_then") return "If-then plan";
+  if (key === "evidence") return "Look at the evidence";
+  if (key === "compassion") return "Self-compassion break";
   return promptsForType(type).find((row) => row.key === key)?.label ?? null;
 }
 
@@ -74,7 +99,7 @@ export function promptAllowsSuggestion(key: string | null): boolean {
 }
 
 export type HealPractice = {
-  id: "friend" | "compassion" | "write15" | "values" | "type";
+  id: "friend" | "compassion" | "write15" | "values" | "type" | "notice" | "ifthen";
   title: string;
   meta: string;
 };
@@ -89,13 +114,19 @@ export function practicesForType(type: HealType): HealPractice[] {
           ? { id: "type", title: "What I can still do", meta: "A few lines" }
           : type === "resentment"
             ? { id: "type", title: "What I want for myself now", meta: "A few lines" }
-            : { id: "type", title: "What's in my control", meta: "A few lines" };
-  return [
+            : type === "pattern"
+              ? { id: "notice", title: "Notice it, name it", meta: "3 min" }
+              : { id: "type", title: "What's in my control", meta: "A few lines" };
+  const rows: HealPractice[] = [
     { id: "friend", title: "If a friend were carrying this", meta: "5 min" },
     { id: "compassion", title: "Self-compassion break", meta: "3 min" },
     { id: "write15", title: "Write for 15 minutes", meta: "4 days" },
     specific,
   ];
+  if (type === "pattern") {
+    rows.push({ id: "ifthen", title: "If-then plan", meta: "2 min" });
+  }
+  return rows;
 }
 
 export function typePracticePrompt(type: HealType): HealPrompt {
@@ -103,6 +134,7 @@ export function typePracticePrompt(type: HealType): HealPrompt {
   if (type === "heartbreak") return { key: "next_time", label: "What I want next time" };
   if (type === "regret") return { key: "still_do", label: "What I can still do" };
   if (type === "resentment") return { key: "want_now", label: "What I want for myself now" };
+  if (type === "pattern") return { key: "instead", label: "What I'd do instead" };
   return { key: "control", label: "What's in my control" };
 }
 
@@ -152,6 +184,24 @@ export function compassionSteps(type: HealType): CompassionStep[] {
       sharedThird,
     ];
   }
+  if (type === "pattern" || type === "recurring_thought" || type === "belief") {
+    return [
+      {
+        title: "This is really hard.",
+        body:
+          type === "belief"
+            ? "Living inside a belief that holds you back is tiring. You don't have to pretend it isn't there."
+            : type === "recurring_thought"
+              ? "A thought that keeps coming back takes up a lot of room. You don't have to pretend you've already answered it."
+              : "Falling into the same pattern again is discouraging. You don't have to pretend you've already left it behind.",
+      },
+      {
+        title: "Other people feel this too.",
+        body: "Falling back into old habits when you're under pressure is how people work. It doesn't mean you haven't changed.",
+      },
+      sharedThird,
+    ];
+  }
   if (type === "resentment") {
     return [
       {
@@ -181,10 +231,17 @@ export function compassionSteps(type: HealType): CompassionStep[] {
   ];
 }
 
+export function friendQuestion(type: HealType): string {
+  return `What would you say to a friend who ${friendSituation(type)}?`;
+}
+
 export function friendSituation(type: HealType): string {
   if (type === "grief") return "had lost someone they love";
   if (type === "heartbreak") return "was heartbroken";
   if (type === "regret") return "was stuck in a regret";
+  if (type === "pattern") return "kept falling into the same pattern";
+  if (type === "recurring_thought") return "couldn't shake a thought that kept coming back";
+  if (type === "belief") return "was held back by a belief";
   if (type === "resentment") return "was still angry about something that hurt them";
   if (type === "fear") return "was afraid of something that wouldn't leave them alone";
   return "was carrying something heavy";

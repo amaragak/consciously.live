@@ -100,8 +100,8 @@ export function CreateOneFlowPickerShell({
   // contexts can't leave the FAB on top of the panel.
   const rootClass =
     host === "viewport"
-      ? "fixed inset-x-0 bottom-0 top-14 z-[100] lg:left-[var(--app-sidebar-w,200px)]"
-      : "fixed inset-x-0 bottom-0 top-14 z-[100] md:absolute md:inset-0 md:z-[60]";
+      ? "fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[100] lg:left-[var(--app-sidebar-w,200px)]"
+      : "fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[100] md:absolute md:inset-0 md:z-[60]";
 
   const tree = (
     <div className={rootClass}>

@@ -5,7 +5,9 @@
 import {
   type FocusTaskItem,
   type FocusIdeateKind,
+  writeFocusTasksList,
 } from "@/lib/focus-timer-storage";
+import { clearFocusSessionHandoff } from "@/lib/focus-session-handoff";
 import {
   loadIdeateStore,
   recomputeSubtaskStatus,
@@ -15,6 +17,7 @@ import {
   upsertTodo,
   type IdeateStoreV2,
 } from "@/lib/plan-ideate-store";
+import { patchTrackerItem } from "@/lib/tracker-items";
 
 export function newFocusTaskId(): string {
   return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -57,6 +60,29 @@ export function focusTasksFromIdeateSubtask(
   ];
 }
 
+/** Seed Focus from tracker leaves, in tree order, without the old single-goal handoff. */
+export function queueTrackerFocus(
+  rows: { id: string; title: string; lifeAreaId: string; done?: boolean }[],
+  minutes = 25,
+): string {
+  clearFocusSessionHandoff();
+  const store = loadIdeateStore();
+  const tasks: FocusTaskItem[] = rows.map((row) => {
+    const area = store.dreams.find((dream) => dream.id === row.lifeAreaId);
+    return {
+      id: newFocusTaskId(),
+      text: row.title.trim() || "(untitled)",
+      done: Boolean(row.done),
+      lifeAreaId: row.lifeAreaId,
+      lifeAreaTitle: area?.title?.trim() || null,
+      ideateKind: "tracker",
+      ideateId: row.id,
+    };
+  });
+  writeFocusTasksList(tasks);
+  return `/focus?minutes=${minutes}&autoStart=1`;
+}
+
 /** Apply Ideate check state onto linked Focus rows (keeps local free-text rows as-is). */
 export function syncFocusDoneFromIdeate(
   tasks: FocusTaskItem[],
@@ -82,6 +108,10 @@ function ideateDoneForLink(
     const todo = store.todos.find((t) => t.id === id);
     return todo ? todo.isChecked : null;
   }
+  if (kind === "tracker") {
+    const item = store.trackerItems?.find((row) => row.id === id);
+    return item ? item.status === "done" : null;
+  }
   const sub = store.subtasks.find((s) => s.id === id);
   return sub ? sub.status === "done" : null;
 }
@@ -97,6 +127,13 @@ export function writeIdeateDoneFromFocus(
 ): IdeateStoreV2 | null {
   let store = loadIdeateStore();
   const now = new Date().toISOString();
+  if (kind === "tracker") {
+    const item = store.trackerItems?.find((row) => row.id === ideateId);
+    if (!item) return null;
+    store = patchTrackerItem(store, ideateId, { status: done ? "done" : null });
+    saveIdeateStore(store);
+    return store;
+  }
   if (kind === "todo") {
     const todo = store.todos.find((t) => t.id === ideateId);
     if (!todo) return null;

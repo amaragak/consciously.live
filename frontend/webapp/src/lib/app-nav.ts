@@ -111,6 +111,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
       { id: "manifesto", label: "Manifesto", href: "/manifest/my" },
       { id: "story", label: "Story", href: "/manifest/story" },
       { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
+      { id: "tracker", label: "Tracker", href: "/manifest/tracker" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
   },
@@ -120,7 +121,6 @@ export const APP_NAV_MAIN: AppNavSection[] = [
     href: "/heal",
     children: [
       { id: "heal-home", label: "What you're carrying", href: "/heal" },
-      { id: "heal-rested", label: "Laid to rest", href: "/heal/rested" },
     ],
   },
   {
@@ -811,6 +811,12 @@ export function buildAppBreadcrumbs(
       return [
         { label: "Manifest", href: "/manifest/my" },
         { label: "Guides", href: null },
+      ];
+    }
+    if (pathname === "/manifest/tracker" || pathname.startsWith("/manifest/tracker/")) {
+      return [
+        { label: "Manifest", href: "/manifest/my" },
+        { label: "Tracker", href: null },
       ];
     }
     if (pathname.startsWith("/manifest/my/vision-board")) {
