@@ -24,6 +24,25 @@ export type VisionBoardVersion = {
 
 export type VisionImageStyle = "realistic" | "illustrated";
 
+/** One stored rendering of a generated image. Crop and caption stay on the item. */
+export type VisionStylePicture = {
+  imageUrl?: string;
+  mediaId?: string;
+  mediaKey?: string;
+  width?: number;
+  height?: number;
+  /**
+   * What an illustration was drawn from (`scene:…` or `likeness:…`).
+   * Missing means the picture was not made from a photo.
+   */
+  sourceKey?: string;
+};
+
+export type VisionStylePictures = {
+  realistic?: VisionStylePicture;
+  illustrated?: VisionStylePicture;
+};
+
 /** The picture a redraw replaced, so the tile can swap back once. */
 export type VisionPreviousImage = {
   imageUrl?: string;
@@ -75,6 +94,12 @@ export type VisionBoardItem = {
   crop?: VisionCrop | null;
   /** Style this picture was made in. Omitted on older images and uploads means realistic. */
   imageStyle?: VisionImageStyle;
+  /** Both renderings of a generated scene. Uploads omit this. */
+  styles?: VisionStylePictures;
+  /** Short label shown on the tile. Uploads omit it until the user adds one. */
+  caption?: string;
+  /** Caption was written as "Me …" or a scene description, not a clipped prompt. */
+  captionVoice?: boolean;
   /** Last picture this tile showed, kept until the next redraw. */
   previousImage?: VisionPreviousImage | null;
 };
@@ -127,12 +152,89 @@ export type IdeateVisionBoardStoreV1 = {
   extraReferences?: VisionExtraReference[];
   /** How new vision-board images are made. Omitted means realistic. */
   imageStyle?: VisionImageStyle;
+  /** Existing boards have been ordered favourites-first within each area. */
+  boardGrouped?: boolean;
 };
 
 export function visionImageStyleOf(
   value: VisionImageStyle | null | undefined,
 ): VisionImageStyle {
   return value === "illustrated" ? "illustrated" : "realistic";
+}
+
+export function visionAreaId(item: VisionBoardItem): string | null {
+  const id = item.lifeAreaIds?.[0]?.trim();
+  return id || null;
+}
+
+export function activeStylePicture(item: VisionBoardItem): VisionStylePicture {
+  return {
+    ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+    ...(item.mediaKey ? { mediaKey: item.mediaKey } : {}),
+    ...(item.width ? { width: item.width } : {}),
+    ...(item.height ? { height: item.height } : {}),
+  };
+}
+
+/** Remember the picture on screen as the item's current style. */
+export function stampActiveStyle(item: VisionBoardItem): VisionBoardItem {
+  if (!item.prompt?.trim()) return item;
+  const style = visionImageStyleOf(item.imageStyle);
+  const picture = activeStylePicture(item);
+  if (!picture.imageUrl && !picture.mediaId) return item;
+  const previous = item.styles?.[style];
+  const samePicture =
+    previous &&
+    ((picture.imageUrl && previous.imageUrl === picture.imageUrl) ||
+      (picture.mediaId && previous.mediaId === picture.mediaId));
+  return {
+    ...item,
+    imageStyle: style,
+    styles: {
+      ...item.styles,
+      [style]: {
+        ...picture,
+        ...(samePicture && previous?.sourceKey ? { sourceKey: previous.sourceKey } : {}),
+      },
+    },
+  };
+}
+
+export function showStylePicture(
+  item: VisionBoardItem,
+  style: VisionImageStyle,
+  picture: VisionStylePicture,
+): VisionBoardItem {
+  return {
+    ...item,
+    imageStyle: style,
+    ...(picture.imageUrl ? { imageUrl: picture.imageUrl } : { imageUrl: undefined }),
+    ...(picture.mediaId ? { mediaId: picture.mediaId } : { mediaId: undefined }),
+    ...(picture.mediaKey ? { mediaKey: picture.mediaKey } : { mediaKey: undefined }),
+    width: picture.width,
+    height: picture.height,
+    styles: { ...item.styles, [style]: picture },
+  };
+}
+
+/** 2–5 words from a scene, used until a generated caption arrives. */
+export function shortCaption(prompt: string): string {
+  let text = prompt.replace(/\s+/g, " ").trim();
+  text = text.replace(
+    /^(?:a |an )?(?:wide|medium-wide|medium|close-up|close)[^.]{0,80}?\b(?:shot|framing)\b[,:]?\s*/i,
+    "",
+  );
+  const words = text
+    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word && !/^(of|the|a|an|with|and|in|on)$/i.test(word))
+    .slice(0, 4);
+  if (!words.length) return "";
+  return words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 const LS_KEY = "mm_ideate_vision_board_v1";
@@ -255,9 +357,43 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
     ...(o.imageStyle === "illustrated" || o.imageStyle === "realistic"
       ? { imageStyle: o.imageStyle }
       : {}),
+    ...(normalizeStyles(o.styles) ? { styles: normalizeStyles(o.styles) } : {}),
+    ...(typeof o.caption === "string" && o.caption.trim()
+      ? { caption: o.caption.trim().slice(0, 80) }
+      : {}),
+    ...(o.captionVoice === true ? { captionVoice: true } : {}),
     ...(normalizePreviousImage(o.previousImage)
       ? { previousImage: normalizePreviousImage(o.previousImage) }
       : {}),
+  };
+}
+
+function normalizeStylePicture(raw: unknown): VisionStylePicture | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const next: VisionStylePicture = {
+    ...(typeof o.imageUrl === "string" ? { imageUrl: o.imageUrl } : {}),
+    ...(typeof o.mediaId === "string" ? { mediaId: o.mediaId } : {}),
+    ...(typeof o.mediaKey === "string" ? { mediaKey: o.mediaKey } : {}),
+    ...(typeof o.width === "number" && o.width > 0 ? { width: o.width } : {}),
+    ...(typeof o.height === "number" && o.height > 0 ? { height: o.height } : {}),
+    ...(typeof o.sourceKey === "string" && o.sourceKey.trim()
+      ? { sourceKey: o.sourceKey.trim().slice(0, 240) }
+      : {}),
+  };
+  if (!next.imageUrl && !next.mediaId) return null;
+  return next;
+}
+
+function normalizeStyles(raw: unknown): VisionStylePictures | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const realistic = normalizeStylePicture(o.realistic);
+  const illustrated = normalizeStylePicture(o.illustrated);
+  if (!realistic && !illustrated) return undefined;
+  return {
+    ...(realistic ? { realistic } : {}),
+    ...(illustrated ? { illustrated } : {}),
   };
 }
 
@@ -462,6 +598,7 @@ function normalizeStore(raw: unknown): IdeateVisionBoardStoreV1 {
     selfReference?: unknown;
     extraReferences?: unknown[];
     imageStyle?: unknown;
+    boardGrouped?: unknown;
   };
   if ((parsed?.v !== 1 && parsed?.v !== 2) || !Array.isArray(parsed.items)) {
     return emptyBoard();
@@ -482,6 +619,7 @@ function normalizeStore(raw: unknown): IdeateVisionBoardStoreV1 {
     ...(parsed.imageStyle === "illustrated" || parsed.imageStyle === "realistic"
       ? { imageStyle: parsed.imageStyle }
       : {}),
+    ...(parsed.boardGrouped === true ? { boardGrouped: true } : {}),
   };
 }
 
@@ -512,6 +650,7 @@ export function saveIdeateVisionBoardStoreLocal(store: IdeateVisionBoardStoreV1)
     ...(store.imageStyle === "illustrated" || store.imageStyle === "realistic"
       ? { imageStyle: store.imageStyle }
       : {}),
+    ...(store.boardGrouped ? { boardGrouped: true } : {}),
     extraReferences: (store.extraReferences ?? [])
       .slice(0, MAX_VISION_EXTRA_REFERENCES)
       .map((r) => ({
@@ -578,6 +717,55 @@ const LEGACY_BOARD_COUNT = 8;
 function boardMembershipExplicit(items: readonly VisionBoardItem[]): boolean {
   return items.some(
     (item) => typeof item.boardOrder === "number" || item.offBoard === true,
+  );
+}
+
+/** Board images in life-area order, then images with no area. */
+export function groupBoardByAreas(
+  board: readonly VisionBoardItem[],
+  areaIds: readonly string[],
+): VisionBoardItem[] {
+  const buckets = new Map<string, VisionBoardItem[]>();
+  for (const id of areaIds) buckets.set(id, []);
+  const loose: VisionBoardItem[] = [];
+  for (const item of board) {
+    const id = visionAreaId(item);
+    if (id && buckets.has(id)) buckets.get(id)!.push(item);
+    else loose.push(item);
+  }
+  return [...areaIds.flatMap((id) => buckets.get(id) ?? []), ...loose];
+}
+
+/** Favourites first within each area, then oldest first. Writes boardOrder. */
+export function seedGroupedBoard(
+  items: readonly VisionBoardItem[],
+  areaIds: readonly string[],
+): VisionBoardItem[] {
+  const board = boardVisionItems(items);
+  const boardIds = new Set(board.map((item) => item.id));
+  const sortArea = (list: VisionBoardItem[]) =>
+    list.slice().sort((a, b) => {
+      const fav = Number(Boolean(b.favourite)) - Number(Boolean(a.favourite));
+      if (fav) return fav;
+      return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+    });
+  const buckets = new Map<string, VisionBoardItem[]>();
+  for (const id of areaIds) buckets.set(id, []);
+  const loose: VisionBoardItem[] = [];
+  for (const item of board) {
+    const id = visionAreaId(item);
+    if (id && buckets.has(id)) buckets.get(id)!.push(item);
+    else loose.push(item);
+  }
+  const ordered = [
+    ...areaIds.flatMap((id) => sortArea(buckets.get(id) ?? [])),
+    ...sortArea(loose),
+  ];
+  const orderOf = new Map(ordered.map((item, index) => [item.id, index]));
+  return items.map((item) =>
+    boardIds.has(item.id)
+      ? { ...item, boardOrder: orderOf.get(item.id) ?? item.boardOrder }
+      : item,
   );
 }
 
@@ -732,6 +920,41 @@ export function getComposeSlotIds(
  * Insert or move an image to a board index. Adding past the limit leaves the
  * store unchanged so the caller can show the full-board message.
  */
+/** Move or add an image into an area section, then rewrite board order. */
+export function moveVisionItemToArea(
+  store: IdeateVisionBoardStoreV1,
+  itemId: string,
+  areaId: string | null,
+  index: number,
+  areaIds: readonly string[],
+): IdeateVisionBoardStoreV1 {
+  const target = store.items.find((item) => item.id === itemId);
+  if (!target || !visionItemHasImage(target)) return store;
+  const board = boardVisionItems(store.items);
+  const onBoard = board.some((item) => item.id === itemId);
+  if (!onBoard && board.length >= VISION_COMPOSE_SLOT_COUNT) return store;
+  const moved: VisionBoardItem = { ...target };
+  if (areaId) moved.lifeAreaIds = [areaId];
+  else delete moved.lifeAreaIds;
+  const rest = board.filter((item) => item.id !== itemId);
+  const buckets = new Map<string | null, VisionBoardItem[]>();
+  for (const id of areaIds) buckets.set(id, []);
+  buckets.set(null, []);
+  for (const item of rest) {
+    const id = visionAreaId(item);
+    const key = id && buckets.has(id) ? id : null;
+    buckets.get(key)!.push(item);
+  }
+  const key = areaId && buckets.has(areaId) ? areaId : null;
+  const dest = buckets.get(key)!;
+  dest.splice(Math.max(0, Math.min(index, dest.length)), 0, moved);
+  const ordered = [
+    ...areaIds.flatMap((id) => buckets.get(id) ?? []),
+    ...(buckets.get(null) ?? []),
+  ];
+  return writeBoard(store, ordered);
+}
+
 export function placeVisionItemInComposeSlot(
   store: IdeateVisionBoardStoreV1,
   itemId: string,
@@ -845,7 +1068,7 @@ export function applyVisionBoardRefinement(
       createdAt: item.createdAt || now,
     });
   }
-  return {
+  return stampActiveStyle({
     ...item,
     label: visionLabelFromPrompt(next.prompt),
     kind: "image",
@@ -856,7 +1079,7 @@ export function applyVisionBoardRefinement(
     ...(next.changeRequest ? { changeRequest: next.changeRequest } : {}),
     createdAt: now,
     versions: prior.slice(-24),
-  };
+  });
 }
 
 /** Make a prior version active; current active is pushed onto history. */
@@ -881,7 +1104,7 @@ export function restoreVisionBoardVersion(
       createdAt: item.createdAt || now,
     });
   }
-  return {
+  return stampActiveStyle({
     ...item,
     prompt: chosen.prompt,
     label: visionLabelFromPrompt(chosen.prompt),
@@ -892,5 +1115,5 @@ export function restoreVisionBoardVersion(
     changeRequest: chosen.changeRequest,
     createdAt: chosen.createdAt || now,
     versions: rest.slice(-24),
-  };
+  });
 }

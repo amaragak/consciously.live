@@ -197,6 +197,8 @@ export type PlanDream = {
   dreamText: string;
   obstacleText: string;
   visionText: string;
+  /** What this area actually is. Optional, about 300 characters. */
+  description?: string;
   dreamReflectReply: string;
   obstacleExploreReply: string;
   visionBuildReply: string;
@@ -281,12 +283,20 @@ function safeIso(): string {
   }
 }
 
+export const LIFE_AREA_DESCRIPTION_MAX = 300;
+
+export function clipLifeAreaDescription(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.trim().slice(0, LIFE_AREA_DESCRIPTION_MAX);
+}
+
 export function createPlanDream(input: {
   title: string;
   firstThought?: string;
   dreamText?: string;
   obstacleText?: string;
   visionText?: string;
+  description?: string;
 }): PlanDream {
   const first = (input.firstThought ?? "").trim();
   const dreamText = (input.dreamText ?? first).trim();
@@ -302,6 +312,7 @@ export function createPlanDream(input: {
     dreamText,
     obstacleText: (input.obstacleText ?? "").trim(),
     visionText: (input.visionText ?? "").trim(),
+    description: clipLifeAreaDescription(input.description),
     dreamReflectReply: "",
     obstacleExploreReply: "",
     visionBuildReply: "",
@@ -514,6 +525,7 @@ function normalizeDreams(raw: unknown[]): PlanDream[] {
       dreamText: typeof d.dreamText === "string" ? d.dreamText : "",
       obstacleText: typeof d.obstacleText === "string" ? d.obstacleText : "",
       visionText: typeof d.visionText === "string" ? d.visionText : "",
+      description: clipLifeAreaDescription(d.description),
       dreamReflectReply:
         typeof d.dreamReflectReply === "string" ? d.dreamReflectReply : "",
       obstacleExploreReply:

@@ -244,6 +244,7 @@ function stripVisionForCloud(
     ...(board.imageStyle === "illustrated" || board.imageStyle === "realistic"
       ? { imageStyle: board.imageStyle }
       : {}),
+    ...(board.boardGrouped ? { boardGrouped: true } : {}),
     extraReferences: (board.extraReferences ?? [])
       .map(cloudExtraReference)
       .filter((r): r is VisionExtraReference => Boolean(r))

@@ -25,7 +25,6 @@ import { createPortal } from "react-dom";
 import {
   VISION_COMPOSE_SLOT_COUNT,
   visionItemAspect,
-  visionImageStyleOf,
   type VisionBoardItem,
   type VisionCrop,
   type VisionCropPreset,
@@ -758,8 +757,6 @@ function Row({
                     onFeature={() => onFeature(item)}
                     onCrop={() => onCrop(item.id)}
                     onBoardAction={() => onRemove(item)}
-                    onRedraw={() => onRedraw(item)}
-                    onRestore={() => onRestore(item)}
                     onClose={() => onMenu(null)}
                   />
                 ) : null
@@ -966,12 +963,11 @@ function TileMenu({
   onFeature: () => void;
   onCrop: () => void;
   onBoardAction: () => void;
-  onRedraw: () => void;
-  onRestore: () => void;
+  onRedraw?: () => void;
+  onRestore?: () => void;
   onClose: () => void;
 }) {
   const versions = (item.versions?.length ?? 0) + 1;
-  const style = visionImageStyleOf(item.imageStyle);
   const run = (fn: () => void) => {
     onClose();
     fn();
@@ -982,14 +978,6 @@ function TileMenu({
       onPointerDown={(event) => event.stopPropagation()}
       className="absolute left-2 top-12 z-40 w-[220px] rounded-xl border border-border bg-card p-1.5 shadow-lg"
     >
-      {item.prompt?.trim() ? (
-        <MenuButton onClick={() => run(onRedraw)}>
-          {style === "illustrated" ? "Redraw as realistic" : "Redraw as illustration"}
-        </MenuButton>
-      ) : null}
-      {item.previousImage ? (
-        <MenuButton onClick={() => run(onRestore)}>Go back to previous version</MenuButton>
-      ) : null}
       <MenuButton onClick={() => run(onNewTake)}>New take</MenuButton>
       {versions > 1 ? (
         <MenuButton onClick={() => run(onVersions)}>Versions ({versions})</MenuButton>
@@ -1065,7 +1053,7 @@ function fitRect(
   };
 }
 
-function CropDialog({
+export function CropDialog({
   item,
   url,
   onClose,
@@ -1248,25 +1236,6 @@ function CropDialog({
           />
           <span className="w-12 text-right">{zoom}%</span>
         </label>
-        <div className="flex items-center gap-3">
-          <span className="text-[13px] font-semibold text-foreground">Size on board</span>
-          <div className="inline-flex rounded-full border border-border p-0.5">
-            <button
-              type="button"
-              onClick={() => setFeatured(false)}
-              className={`h-8 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${featured ? "" : "bg-foreground text-background"}`}
-            >
-              Normal
-            </button>
-            <button
-              type="button"
-              onClick={() => setFeatured(true)}
-              className={`h-8 cursor-pointer rounded-full px-3 text-[13px] font-semibold ${featured ? "bg-foreground text-background" : ""}`}
-            >
-              Feature
-            </button>
-          </div>
-        </div>
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"

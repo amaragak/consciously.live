@@ -137,6 +137,8 @@ function normalizeDream(d: PlanDream): PlanDream {
     dreamEntries: Array.isArray(d.dreamEntries) ? d.dreamEntries : [],
     obstacleEntries: Array.isArray(d.obstacleEntries) ? d.obstacleEntries : [],
     visionEntries: Array.isArray(d.visionEntries) ? d.visionEntries : [],
+    description:
+      typeof d.description === "string" ? d.description.trim().slice(0, 300) : "",
     looseNotes: typeof d.looseNotes === "string" ? d.looseNotes : "",
     checkIns: Array.isArray(d.checkIns) ? d.checkIns.slice(0, 40) : [],
     insights: normalizeLifeAreaInsights(d.insights),

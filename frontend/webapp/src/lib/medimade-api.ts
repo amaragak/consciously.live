@@ -803,9 +803,13 @@ export type VisionGenerateResult = {
   mimeType: string;
   /** Final prompt used (after optional Haiku refine). */
   prompt?: string;
+  /** 2–5 word tile caption, when the generator returned one. */
+  caption?: string;
   url?: string;
   key?: string;
   model?: string;
+  /** True when an illustration was drawn from a photoreal scene or likeness photo. */
+  referenced?: boolean;
 };
 
 /**
@@ -831,14 +835,19 @@ export async function generateVisionBoardScene(params: {
   style?: "realistic" | "illustrated";
   /** Realistic image with no likeness photo. */
   skipLikeness?: boolean;
+  /** Photoreal vision image to redraw as an illustration. */
+  sceneKey?: string;
+  sceneBase64?: string;
+  sceneMimeType?: string;
 }): Promise<VisionGenerateResult> {
   const base = getMedimadeApiBase();
   if (!base) {
     throw new Error("VITE_MEDIMADE_API_URL is not set");
   }
   const illustrated = params.style === "illustrated";
-  const skipLikeness = illustrated || params.skipLikeness === true;
-  if (!skipLikeness && !params.referenceBase64 && !params.referenceKey) {
+  const hasScene = Boolean(params.sceneKey?.trim() || params.sceneBase64?.trim());
+  const skipLikeness = !illustrated && params.skipLikeness === true;
+  if (!skipLikeness && !hasScene && !params.referenceBase64 && !params.referenceKey) {
     throw new Error("Reference photo is required");
   }
   const token = sessionTokenForBody();
@@ -867,10 +876,17 @@ export async function generateVisionBoardScene(params: {
       ...(skipLikeness || !params.referenceKey
         ? {}
         : { referenceKey: params.referenceKey }),
+      ...(params.sceneKey?.trim() ? { sceneKey: params.sceneKey.trim() } : {}),
+      ...(params.sceneBase64?.trim()
+        ? {
+            sceneBase64: params.sceneBase64.trim(),
+            ...(params.sceneMimeType ? { sceneMimeType: params.sceneMimeType } : {}),
+          }
+        : {}),
       ...(params.style ? { style: params.style } : {}),
       ...(skipLikeness ? { skipLikeness: true } : {}),
       mimeType: params.mimeType,
-      ...(illustrated || !extras.length ? {} : { extraReferences: extras }),
+      ...(!extras.length ? {} : { extraReferences: extras }),
       ...(token ? { sessionToken: token } : {}),
     }),
   });
@@ -900,9 +916,13 @@ export async function generateVisionBoardScene(params: {
     mimeType:
       typeof data.mimeType === "string" ? data.mimeType : "image/png",
     ...(typeof data.prompt === "string" ? { prompt: data.prompt } : {}),
+    ...(typeof data.caption === "string" && data.caption.trim()
+      ? { caption: data.caption.trim() }
+      : {}),
     ...(typeof data.url === "string" ? { url: data.url } : {}),
     ...(typeof data.key === "string" ? { key: data.key } : {}),
     ...(typeof data.model === "string" ? { model: data.model } : {}),
+    ...(data.referenced === true ? { referenced: true } : {}),
   };
 }
 

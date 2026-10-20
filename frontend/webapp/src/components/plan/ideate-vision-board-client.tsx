@@ -19,6 +19,11 @@ import {
   setVisionItemLifeAreaIds,
   stashVisionBoardTake,
   upsertVisionBoardItem,
+  moveVisionItemToArea,
+  seedGroupedBoard,
+  shortCaption,
+  stampActiveStyle,
+  visionAreaId,
   visionImageStyleOf,
   visionItemHasImage,
   visionLabelFromPrompt,
@@ -29,8 +34,9 @@ import {
   type VisionSelfReference,
 } from "@/lib/ideate-vision-board";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { MIST, OUTLINE } from "@/components/plan/life-area/kit";
 import { WhiteboardBackChip } from "@/components/plan/life-area/whiteboard-return";
-import { loadIdeateStore } from "@/lib/plan-ideate-store";
+import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
   blobToArrayBuffer,
@@ -52,12 +58,14 @@ import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { VisionBoardLayout } from "@/components/plan/vision-board-layout";
 import {
   hasVisionLikeness,
-  pushVisionToast,
-  redrawVisionItem,
-  redrawVisionItems,
-  restoreVisionPrevious,
-  saveVisionImageStyle,
+  illustratedNeedsLikeness,
+  missingStyleIds,
+  setPendingStyleRedraw,
+  shapeVisionCaptions,
+  subscribeVisionFrames,
+  switchVisionImageStyle,
   takePendingStyleRedraw,
+  visionHasUploads,
 } from "@/lib/vision-image-jobs";
 import {
   VisionBoardImage,
@@ -97,6 +105,60 @@ function visionKeyFromUrl(url: string | undefined | null): string | null {
   }
 }
 
+function StyleConfirm({
+  style,
+  count,
+  uploads,
+  onConfirm,
+  onCancel,
+}: {
+  style: VisionImageStyle;
+  count: number;
+  uploads: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const illustrated = style === "illustrated";
+  const noun = count === 1 ? "image" : "images";
+  return (
+    <div
+      className="fixed inset-0 z-[180] flex items-center justify-center bg-foreground/40 p-4"
+      role="presentation"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vision-style-confirm-title"
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 id="vision-style-confirm-title" className="font-display text-lg font-medium text-foreground">
+          {illustrated
+            ? `Make illustrated versions of ${count} ${noun}?`
+            : `Make photorealistic versions of ${count} ${noun}?`}
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-foreground">
+          {illustrated
+            ? "Each image gets an illustrated version of the same scene. It takes a minute or two and you can keep using the app. Your photorealistic versions are kept, so you can switch back at any time."
+            : "Each image gets a photorealistic version of the same scene. It takes a minute or two and you can keep using the app. Your illustrated versions are kept, so you can switch back at any time."}
+        </p>
+        {uploads ? (
+          <p className="mt-2 text-xs text-muted">Uploads stay as they are.</p>
+        ) : null}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" className={`${OUTLINE} h-10 px-4 text-sm`} onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className={`${MIST} h-10 px-4 text-sm`} onClick={onConfirm}>
+            {illustrated ? "Make illustrations" : "Make photorealistic"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Vision board — same content shell as My Ideas (`max-w-6xl`).
  * Signed-in: S3 + Ideate cloud store only (no IndexedDB).
@@ -107,6 +169,9 @@ export function IdeateVisionBoardClient() {
   const [items, setItems] = useState<VisionBoardItem[]>([]);
   const [imageStyle, setImageStyle] = useState<VisionImageStyle>("realistic");
   const [photoAsk, setPhotoAsk] = useState<VisionBoardItem | null>(null);
+  const [photoAskStyle, setPhotoAskStyle] = useState<VisionImageStyle>("realistic");
+  const [styleConfirm, setStyleConfirm] = useState<VisionImageStyle | null>(null);
+  const [undoMove, setUndoMove] = useState<{ label: string; apply: () => void } | null>(null);
   const [selfRef, setSelfRef] = useState<VisionSelfReference | null>(null);
   const [extraRefs, setExtraRefs] = useState<VisionExtraReference[]>([]);
   const [selfPreviewUrl, setSelfPreviewUrl] = useState<string | null>(null);
@@ -199,8 +264,37 @@ export function IdeateVisionBoardClient() {
   }, [refreshLifeAreas, revision]);
 
   const refresh = useCallback(async () => {
-    const store = loadIdeateVisionBoardStore();
+    let store = loadIdeateVisionBoardStore();
+    if (!store.boardGrouped) {
+      const areaIds = loadIdeateStore()
+        .dreams.filter((dream) => !isDemoIdeateDream(dream))
+        .map((dream) => dream.id);
+      const seeded = seedGroupedBoard(store.items, areaIds).map((item) => {
+        const stamped = stampActiveStyle(item);
+        const prompt = stamped.prompt?.trim() ?? "";
+        const rough = /^(medium-wide|wide|medium|a medium|a wide)\b/i.test(stamped.caption ?? "");
+        if (prompt && (!stamped.caption || rough)) {
+          return { ...stamped, caption: shortCaption(prompt) };
+        }
+        return stamped;
+      });
+      store = { ...store, v: 2, items: seeded, boardGrouped: true };
+      saveIdeateVisionBoardStore(store);
+    }
+    const repaired = store.items.map((item) => {
+      const prompt = item.prompt?.trim() ?? "";
+      const rough = /^(medium-wide|wide|medium|a medium|a wide)\b/i.test(item.caption ?? "");
+      if (!prompt || !rough) return item;
+      return { ...item, caption: shortCaption(prompt) };
+    });
+    if (repaired.some((item, index) => item !== store.items[index])) {
+      store = { ...store, v: 2, items: repaired };
+      saveIdeateVisionBoardStore(store);
+    }
     setItems(store.items);
+    void shapeVisionCaptions()
+      .then(() => setItems(loadIdeateVisionBoardStore().items))
+      .catch(() => undefined);
     setImageStyle(visionImageStyleOf(store.imageStyle));
     setSelfRef(store.selfReference ?? null);
     setExtraRefs(store.extraReferences ?? []);
@@ -372,7 +466,7 @@ export function IdeateVisionBoardClient() {
 
       const store = loadIdeateVisionBoardStore();
       const style = params.style ?? visionImageStyleOf(store.imageStyle);
-      const skipLikeness = style === "illustrated" || params.skipLikeness === true;
+      const skipLikeness = style !== "illustrated" && params.skipLikeness === true;
       const refMeta = store.selfReference;
       if (!skipLikeness && !refMeta) {
         throw new Error("Upload a clear photo of yourself first.");
@@ -475,8 +569,7 @@ export function IdeateVisionBoardClient() {
         return out.slice(0, MAX_VISION_EXTRA_REFERENCES);
       };
 
-      const extraReferences =
-        style === "illustrated" ? [] : await buildExtras();
+      const extraReferences = await buildExtras();
 
       // Cloud path: Lambda reads the object from S3 (no browser CORS to CloudFront).
       if (jwt && referenceKey) {
@@ -804,13 +897,14 @@ export function IdeateVisionBoardClient() {
           imageUrl: result.url,
           ...(result.key ? { mediaKey: result.key } : {}),
           prompt: finalPrompt,
+          caption: result.caption?.trim() || shortCaption(finalPrompt),
           imageStyle: visionImageStyleOf(loadIdeateVisionBoardStore().imageStyle),
           createdAt: new Date().toISOString(),
           ...area,
         };
         setFreshId(item.id);
         await persistBoard(
-          insertVisionItemInLibrary(loadIdeateVisionBoardStore(), item),
+          insertVisionItemInLibrary(loadIdeateVisionBoardStore(), stampActiveStyle(item)),
         );
       } else {
         const outBytes = Uint8Array.from(atob(result.imageBase64), (c) =>
@@ -835,13 +929,14 @@ export function IdeateVisionBoardClient() {
           ...(result.url ? { imageUrl: result.url } : {}),
           ...(result.key ? { mediaKey: result.key } : {}),
           prompt: finalPrompt,
+          caption: result.caption?.trim() || shortCaption(finalPrompt),
           imageStyle: visionImageStyleOf(loadIdeateVisionBoardStore().imageStyle),
           createdAt: new Date().toISOString(),
           ...area,
         };
         setFreshId(item.id);
         await persistBoard(
-          insertVisionItemInLibrary(loadIdeateVisionBoardStore(), item),
+          insertVisionItemInLibrary(loadIdeateVisionBoardStore(), stampActiveStyle(item)),
         );
       }
       setScenePrompt("");
@@ -1148,11 +1243,17 @@ export function IdeateVisionBoardClient() {
         setError("Your board is full. Remove one to add another.");
                           return;
                         }
-      const next = placeVisionItemInComposeSlot(store, item.id, empty);
+      const next = moveVisionItemToArea(
+        store,
+        item.id,
+        visionAreaId(item),
+        999,
+        lifeAreas.map((area) => area.id),
+      );
       await persistBoard(next);
       setItems(next.items);
     },
-    [persistBoard],
+    [lifeAreas, persistBoard],
   );
 
   const onFeature = useCallback(
@@ -1282,40 +1383,64 @@ export function IdeateVisionBoardClient() {
     ? Boolean(selfRef?.url && (selfRef?.key || visionKeyFromUrl(selfRef?.url)))
     : Boolean(selfRef?.mediaId || selfRef?.url);
 
+  const beginStyleSwitch = useCallback((next: VisionImageStyle, opts?: { skipLikeness?: boolean }) => {
+    setImageStyle(next);
+    void switchVisionImageStyle(next, opts).catch((e) =>
+      setError(e instanceof Error ? e.message : "Couldn't switch image style"),
+    );
+  }, []);
+
+  useEffect(() => {
+    return subscribeVisionFrames(() => {
+      const store = loadIdeateVisionBoardStore();
+      setItems(store.items);
+      setImageStyle(visionImageStyleOf(store.imageStyle));
+      setTileUrls((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const item of store.items) {
+          if (item.imageUrl && next[item.id] !== item.imageUrl) {
+            next[item.id] = item.imageUrl;
+            changed = true;
+          }
+        }
+        if (changed) tileUrlsRef.current = next;
+        return changed ? next : prev;
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!styleConfirm) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setStyleConfirm(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [styleConfirm]);
+
   useEffect(() => {
     if (!hasReference) return;
     const pending = takePendingStyleRedraw();
-    if (pending) {
-      void (async () => {
-        await saveVisionImageStyle(pending);
-        setImageStyle(pending);
-        const n = await redrawVisionItems(pending);
-        pushVisionToast(
-          n === 1
-            ? `Redrawn as ${pending === "illustrated" ? "an illustration" : "a realistic image"}`
-            : `Redrawn ${n} images`,
-        );
-        await refresh();
-      })().catch((e) =>
-        setError(e instanceof Error ? e.message : "Couldn't redraw those images"),
-      );
-      return;
-    }
-    if (!photoAsk) return;
-    const item = photoAsk;
+    if (!pending) return;
     setPhotoAsk(null);
-    void redrawVisionItem(item, "realistic")
-      .then(async () => {
-        pushVisionToast("Redrawn as a realistic image");
-        await refresh();
-      })
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Couldn't redraw that image"),
-      );
-  }, [hasReference, photoAsk, refresh]);
+    beginStyleSwitch(pending);
+  }, [beginStyleSwitch, hasReference, photoAsk]);
 
   return (
     <>
+      {undoMove ? (
+        <button
+          type="button"
+          onClick={() => {
+            undoMove.apply();
+            setUndoMove(null);
+          }}
+          className="fixed bottom-[calc(58px+env(safe-area-inset-bottom,0px)+76px)] left-1/2 z-40 -translate-x-1/2 cursor-pointer rounded-full bg-foreground px-4 py-2 text-sm text-background"
+        >
+          {undoMove.label}
+        </button>
+      ) : null}
       {boardSearch.get("wb") ? (
         <div className="px-4 pt-3">
           <WhiteboardBackChip areaId={boardSearch.get("wb")!} />
@@ -1345,48 +1470,54 @@ export function IdeateVisionBoardClient() {
       <VisionBoardLayout
         items={items}
         imageStyle={imageStyle}
-        onStyleCommit={(next, redraw, skipLikeness) => {
-          void (async () => {
-            await saveVisionImageStyle(next);
-            setImageStyle(next);
-            if (!redraw) return;
-            const n = await redrawVisionItems(next, { skipLikeness });
-            pushVisionToast(
-              n === 1
-                ? `Redrawn as ${next === "illustrated" ? "an illustration" : "a realistic image"}`
-                : `Redrawn ${n} images`,
-            );
-            await refresh();
-          })();
-        }}
-        onRedraw={(item) => {
-          const next =
-            visionImageStyleOf(item.imageStyle) === "illustrated"
-              ? "realistic"
-              : "illustrated";
-          if (next === "realistic" && !hasVisionLikeness()) {
-            setPhotoAsk(item);
+        onStyle={(next) => {
+          if (missingStyleIds(items, next).length === 0) {
+            beginStyleSwitch(next);
             return;
           }
-          void (async () => {
-            await redrawVisionItem(item, next);
-            pushVisionToast(
-              next === "illustrated"
-                ? "Redrawn as an illustration"
-                : "Redrawn as a realistic image",
-            );
-            await refresh();
-          })().catch((e) =>
-            setError(e instanceof Error ? e.message : "Couldn't redraw that image"),
-          );
+          setStyleConfirm(next);
         }}
-        onRestore={(item) => {
-          const next = restoreVisionPrevious(item);
-          if (!next) return;
-          void (async () => {
-            await persistBoard(upsertVisionBoardItem(loadIdeateVisionBoardStore(), next));
-            await refresh();
-          })();
+        onDropImage={(itemId, areaId, index) => {
+          const store = loadIdeateVisionBoardStore();
+          const item = store.items.find((entry) => entry.id === itemId);
+          if (!item) return;
+          const previousArea = visionAreaId(item);
+          const areaIds = lifeAreas.map((area) => area.id);
+          const next = moveVisionItemToArea(store, itemId, areaId, index, areaIds);
+          if (next === store) {
+            setError("Your board is full. Remove one to add another.");
+            return;
+          }
+          void persistBoard(next).then(() => setItems(next.items));
+          if (previousArea !== areaId) {
+            const name = lifeAreas.find((area) => area.id === areaId)?.title ?? "no life area";
+            setUndoMove({
+              label: `Moved to ${name} · Undo`,
+              apply: () => {
+                void persistBoard(store).then(() => setItems(store.items));
+              },
+            });
+          }
+        }}
+        onMoveArea={(areaId, direction) => {
+          const store = loadIdeateStore();
+          const index = store.dreams.findIndex((dream) => dream.id === areaId);
+          const nextIndex = index + direction;
+          if (index < 0 || nextIndex < 0 || nextIndex >= store.dreams.length) return;
+          const dreams = store.dreams.slice();
+          const [row] = dreams.splice(index, 1);
+          if (!row) return;
+          dreams.splice(nextIndex, 0, row);
+          saveIdeateStore({ ...store, dreams });
+          refreshLifeAreas();
+        }}
+        onCaption={(item, caption) => {
+          const store = loadIdeateVisionBoardStore();
+          const next = upsertVisionBoardItem(store, {
+            ...item,
+            ...(caption ? { caption, captionVoice: true } : { caption: undefined, captionVoice: undefined }),
+          });
+          void persistBoard(next).then(() => setItems(next.items));
         }}
         tileUrls={tileUrls}
         lifeAreas={lifeAreas}
@@ -1418,12 +1549,36 @@ export function IdeateVisionBoardClient() {
         onExtraDescription={(id, value) => void updateExtraDescription(id, value)}
         selfFileName={selfRef?.fileName ?? null}
       />
+      {styleConfirm ? (
+        <StyleConfirm
+          style={styleConfirm}
+          count={missingStyleIds(items, styleConfirm).length}
+          uploads={visionHasUploads(items)}
+          onCancel={() => setStyleConfirm(null)}
+          onConfirm={() => {
+            const next = styleConfirm;
+            setStyleConfirm(null);
+            const needsPhoto =
+              !hasVisionLikeness() &&
+              (next === "realistic" || illustratedNeedsLikeness(items));
+            if (needsPhoto) {
+              setPhotoAskStyle(next);
+              setPendingStyleRedraw(next);
+              setPhotoAsk(items[0] ?? ({ id: "style" } as VisionBoardItem));
+              return;
+            }
+            beginStyleSwitch(next);
+          }}
+        />
+      ) : null}
       {photoAsk ? (
         <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/40 sm:items-center">
           <div className="w-full max-w-md rounded-t-[20px] bg-card p-6 sm:rounded-[20px]">
             <h2 className="font-display text-2xl">Add your photo</h2>
             <p className="mt-2 text-sm text-muted">
-              Realistic images can use a photo of you. Skip makes this one without your likeness.
+              {photoAskStyle === "illustrated"
+                ? "Illustrations use your photo so they look like you."
+                : "Realistic images can use a photo of you. Skip makes this one without your likeness."}
             </p>
             <div className="mt-5 flex flex-col gap-2">
               <button
@@ -1433,28 +1588,26 @@ export function IdeateVisionBoardClient() {
               >
                 Add a photo
               </button>
+              {photoAskStyle === "illustrated" ? null : (
               <button
                 type="button"
                 className="h-11 cursor-pointer rounded-full border border-border text-sm font-semibold"
                 onClick={() => {
-                  const item = photoAsk;
                   setPhotoAsk(null);
-                  void redrawVisionItem(item, "realistic", { skipLikeness: true })
-                    .then(async () => {
-                      pushVisionToast("Redrawn as a realistic image");
-                      await refresh();
-                    })
-                    .catch((e) =>
-                      setError(e instanceof Error ? e.message : "Couldn't redraw that image"),
-                    );
+                  takePendingStyleRedraw();
+                  beginStyleSwitch("realistic", { skipLikeness: true });
                 }}
               >
                 Skip
               </button>
+              )}
               <button
                 type="button"
                 className="h-11 cursor-pointer text-sm font-semibold text-muted"
-                onClick={() => setPhotoAsk(null)}
+                onClick={() => {
+                  takePendingStyleRedraw();
+                  setPhotoAsk(null);
+                }}
               >
                 Cancel
               </button>

@@ -315,10 +315,14 @@ export async function handler(
     mimeType?: unknown;
     extraReferences?: unknown;
     sessionToken?: unknown;
-    /** realistic (default) or illustrated. Illustrated never receives the user's photo. */
+    /** realistic (default) or illustrated. */
     style?: unknown;
     /** Realistic scene with no likeness photo. */
     skipLikeness?: unknown;
+    /** Photoreal vision image to redraw as an illustration. */
+    sceneKey?: unknown;
+    sceneBase64?: unknown;
+    sceneMimeType?: unknown;
   };
   try {
     body = JSON.parse(event.body || "{}") as typeof body;
@@ -365,7 +369,7 @@ export async function handler(
   }
 
   const style = body.style === "illustrated" ? "illustrated" : "realistic";
-  const skipLikeness = style === "illustrated" || body.skipLikeness === true;
+  const skipLikeness = style !== "illustrated" && body.skipLikeness === true;
 
   const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
   const referenceKey = skipLikeness
@@ -397,7 +401,38 @@ export async function handler(
     mime = loaded.mime;
   }
 
-  if (!skipLikeness && !b64) {
+  const sceneKey =
+    style === "illustrated" && typeof body.sceneKey === "string"
+      ? body.sceneKey.trim()
+      : "";
+  let sceneB64 =
+    style === "illustrated" && typeof body.sceneBase64 === "string"
+      ? body.sceneBase64.trim()
+      : "";
+  let sceneMime =
+    typeof body.sceneMimeType === "string" && body.sceneMimeType.trim()
+      ? body.sceneMimeType.trim().split(";")[0]!.toLowerCase()
+      : "image/jpeg";
+  if (sceneKey && !sceneB64) {
+    if (!bucket) {
+      return json(500, { error: "MEDIA_BUCKET_NAME is not set" });
+    }
+    const loadedScene = await loadRefImageFromS3({
+      bucket,
+      key: sceneKey,
+      userId,
+    });
+    if ("error" in loadedScene) return loadedScene.error;
+    sceneB64 = loadedScene.b64;
+    sceneMime = loadedScene.mime;
+  }
+
+  if (style === "illustrated" && !sceneB64 && !b64) {
+    return json(400, {
+      error: "Upload a reference photo of yourself before generating an illustration.",
+    });
+  }
+  if (style !== "illustrated" && !skipLikeness && !b64) {
     return json(400, {
       error: "Upload a reference photo of yourself before generating a scene.",
     });
@@ -417,6 +452,23 @@ export async function handler(
     }
     if (!mime.startsWith("image/")) {
       return json(400, { error: "Reference must be an image" });
+    }
+  }
+
+  if (sceneB64) {
+    let sceneBuf: Buffer;
+    try {
+      sceneBuf = Buffer.from(sceneB64, "base64");
+    } catch {
+      return json(400, { error: "Invalid base64 scene image" });
+    }
+    if (sceneBuf.length < 64 || sceneBuf.length > MAX_REF_BYTES) {
+      return json(400, {
+        error: `Scene image must be between 64 bytes and ${MAX_REF_BYTES} bytes`,
+      });
+    }
+    if (!sceneMime.startsWith("image/")) {
+      return json(400, { error: "Scene image must be an image" });
     }
   }
 
@@ -470,14 +522,31 @@ export async function handler(
 
   const instructionLines: string[] = [];
   if (style === "illustrated") {
+    const identity = sceneB64
+      ? [
+          "Redraw IMAGE 1 in the illustration style. IMAGE 1 is the photoreal version of this exact vision-board scene.",
+          "Keep the same person, gender, age, pose, clothing, setting, and what they are doing.",
+          "Do not replace them with a different person.",
+          ...(b64
+            ? [
+                "IMAGE 2 is a photo of that same person. The illustrated figure must still be recognizably them: same gender, hair, skin tone, and build.",
+              ]
+            : []),
+        ]
+      : [
+          "IMAGE 1 is a photo of the vision-board owner. Draw them in this scene.",
+          "They must be recognizably the same person: same gender, age range, hair, skin tone, and build.",
+          "Stylise the rendering, not their identity. Do not invent a different person.",
+        ];
     instructionLines.push(
       withIllustrationStyle(
         [
-          "Create a single cohesive vision-board image.",
-          "No photograph of the vision-board owner is attached. People are stylised figures, not portraits of a real person.",
+          "Create a single cohesive vision-board illustration.",
+          ...identity,
           `Scene: ${prompt}`,
         ].join("\n"),
       ),
+      "IDENTITY (overrides any line above about faceless or generic figures): stylise the picture, not the person. Same gender and the same individual as the attached photo. Do not change them into someone else.",
     );
   } else if (b64) {
     instructionLines.push(
@@ -512,7 +581,7 @@ export async function handler(
       `Scene: ${prompt}`,
     );
   }
-  if (loadedExtras.length && style !== "illustrated") {
+  if (loadedExtras.length) {
     instructionLines.push(
       `Additional supporting reference image(s) follow (${loadedExtras.length}). Each has a description — when the scene involves that person/pet/place, match their likeness from that image. Do not invent unrelated extras.`,
       ...loadedExtras.map(
@@ -526,13 +595,24 @@ export async function handler(
     | { inline_data: { mime_type: string; data: string } };
 
   const parts: GeminiPart[] = [{ text: instructionLines.join("\n") }];
+  if (style === "illustrated" && sceneB64) {
+    parts.push({
+      text: "IMAGE 1 — the photoreal scene. Redraw this picture. Keep this person, their gender, and this moment:",
+    });
+    parts.push({ inline_data: { mime_type: sceneMime, data: sceneB64 } });
+  }
   if (b64) {
     parts.push({
-      text: "PRIMARY SUBJECT reference photo (use for identity only — improve attractiveness; do not reproduce under-eye darkness or tired facial flaws):",
+      text:
+        style === "illustrated"
+          ? sceneB64
+            ? "IMAGE 2 — photo of the same person. Match their gender, face, hair, skin tone, and build:"
+            : "IMAGE 1 — photo of the person to draw. Match their gender, face, hair, skin tone, and build:"
+          : "PRIMARY SUBJECT reference photo (use for identity only — improve attractiveness; do not reproduce under-eye darkness or tired facial flaws):",
     });
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
-  if (style !== "illustrated") for (let i = 0; i < loadedExtras.length; i++) {
+  for (let i = 0; i < loadedExtras.length; i++) {
     const e = loadedExtras[i]!;
     parts.push({
       text: `SUPPORTING REFERENCE ${i + 1} (${e.description}):`,
@@ -541,6 +621,8 @@ export async function handler(
       inline_data: { mime_type: e.mime, data: e.b64 },
     });
   }
+
+  const captionPromise = captionForScene(prompt);
 
   const upstream = await fetch(url, {
     method: "POST",
@@ -713,11 +795,58 @@ export async function handler(
     }
   }
 
+  const caption = await captionPromise;
   return json(200, {
     imageBase64: outB64,
     mimeType: outMime,
     prompt,
+    ...(caption ? { caption } : {}),
     ...(urlOut && key ? { url: urlOut, key } : {}),
     model,
+    ...(style === "illustrated" && (sceneB64 || b64) ? { referenced: true } : {}),
   });
+}
+
+async function captionForScene(scene: string): Promise<string | null> {
+  const idea = scene.trim();
+  if (idea.length < 3) return null;
+  try {
+    const apiKey = await getClaudeApiKey();
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(
+        withClaudeThinkingOff({
+          model: CLAUDE_HAIKU_45_MODEL_ID,
+          max_tokens: 80,
+          temperature: 0.3,
+          system:
+            "Write the short line printed on a vision-board image. If the vision-board owner is in the scene, start with \"Me\" and say what they are doing. Example: \"Me playing guitar on stage\". If they are not in the scene, describe what is shown and do not start with \"Me\". Example: \"A quiet studio at sunset\". A person who is the subject of the scene is the owner. One line. No quotes. No trailing period.",
+          messages: [{ role: "user", content: idea.slice(0, 1200) }],
+        }),
+      ),
+    });
+    if (!res.ok) return null;
+    const raw = (await res.json()) as {
+      content?: Array<{ type?: string; text?: string }>;
+    };
+    let text = (raw.content ?? [])
+      .filter((part) => part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text!.trim())
+      .join(" ")
+      .replace(/^["']+|["']+$/g, "")
+      .replace(/[.]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (/^me\b/i.test(text)) text = `Me${text.slice(2)}`;
+    const words = text.split(/\s+/).filter(Boolean).slice(0, 12);
+    if (!words.length) return null;
+    return words.join(" ").slice(0, 80);
+  } catch {
+    return null;
+  }
 }

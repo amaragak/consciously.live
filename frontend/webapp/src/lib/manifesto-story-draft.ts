@@ -136,6 +136,8 @@ export type RaiseLifeAreaMeta = {
   dream: string;
   /** Vision — what it looks like when true. */
   vision: string;
+  /** What the area actually is. */
+  description?: string;
 };
 
 /** `area-achieved:dream_…` → dream id. */
@@ -231,6 +233,8 @@ export function annotateDraftWithPrompts(
               meta += `[Life area: ${area.title.trim() || "Untitled"}]\n`;
               const dream = clipRaiseMeta(area.dream, 360);
               const vision = clipRaiseMeta(area.vision, 360);
+              const description = clipRaiseMeta(area.description ?? "", 300);
+              if (description) meta += `What it is: ${description}\n`;
               if (dream) meta += `Dream: ${dream}\n`;
               if (vision) meta += `What it looks like: ${vision}\n`;
             }

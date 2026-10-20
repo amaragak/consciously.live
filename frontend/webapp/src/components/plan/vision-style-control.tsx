@@ -171,8 +171,8 @@ export function VisionBoardImagesSetting() {
 
   useEffect(() => {
     let timer = 0;
-    const unsubscribe = subscribeVisionToast((text) => {
-      setToast(text);
+    const unsubscribe = subscribeVisionToast((notice) => {
+      setToast(notice.text);
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setToast(null), 3200);
     });
