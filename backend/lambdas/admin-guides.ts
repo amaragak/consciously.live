@@ -5,6 +5,7 @@ import type {
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { requireAdminJson } from "./_shared/admin-auth";
 import { jsonAuth } from "./_shared/consciously-auth-http";
+import { generateAdminImageFromPrompt } from "./_shared/meditation-cover";
 import {
   deleteGuide,
   listGuides,
@@ -87,6 +88,43 @@ async function uploadCover(body: Record<string, unknown>): Promise<string> {
   return putBlogMediaObject({ key, body: buf, mime });
 }
 
+function guideCoverPrompt(body: Record<string, unknown>): string {
+  const title =
+    typeof body.title === "string" && body.title.trim()
+      ? body.title.trim().slice(0, 200)
+      : "Untitled guide";
+  const summary =
+    typeof body.summary === "string" ? body.summary.trim().slice(0, 600) : "";
+  const category =
+    typeof body.category === "string" ? body.category.trim().slice(0, 80) : "";
+  const direction =
+    typeof body.direction === "string" ? body.direction.trim().slice(0, 400) : "";
+  return [
+    `Cover for a short reading guide titled "${title}".`,
+    category ? `Section: ${category}.` : "",
+    summary ? `The guide is about: ${summary}.` : "",
+    direction ? `Creative direction: ${direction}.` : "",
+    "One clear subject that belongs to this guide.",
+    "No letters, words, logos, or interface.",
+    "Square 1:1, full-bleed, no picture frame.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Draw a guide cover from its title and summary. Does not save the guide. */
+async function generateCover(body: Record<string, unknown>): Promise<string> {
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (!title) throw new Error("Title is required");
+  const { body: imageBody, mime } = await generateAdminImageFromPrompt({
+    prompt: guideCoverPrompt(body),
+    model: "nano-banana-pro",
+  });
+  const ext = mime === "image/png" ? "png" : "jpg";
+  const key = `guides/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  return putBlogMediaObject({ key, body: imageBody, mime });
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -126,6 +164,10 @@ export async function handler(
       }
       if (action === "uploadCover") {
         const url = await uploadCover(body);
+        return json(200, { url });
+      }
+      if (action === "generateCover") {
+        const url = await generateCover(body);
         return json(200, { url });
       }
       if (action === "reorder") {

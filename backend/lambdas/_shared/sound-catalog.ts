@@ -173,6 +173,18 @@ export type SoundCatalogRow = {
    * Sound card is 4:1; 50 = centre band (legacy default).
    */
   coverWideCropY?: number;
+  /** Photograph version of the cover. Current rows without this still use coverImage* as the photo. */
+  coverPhotoKey?: string;
+  coverPhotoUrl?: string;
+  coverPhotoThumbKey?: string;
+  coverPhotoThumbUrl?: string;
+  /** Illustration redraw of the photograph. */
+  coverIllustrationKey?: string;
+  coverIllustrationUrl?: string;
+  coverIllustrationThumbKey?: string;
+  coverIllustrationThumbUrl?: string;
+  /** Which version the public cover fields point at. */
+  coverVariant?: "photo" | "illustration";
   /** Last prompt used to generate the cover (admin). */
   lastCoverPrompt?: string;
   /** Prior cover prompts (oldest → newest), used when refining with a change note. */
@@ -369,6 +381,14 @@ export function normalizeTags(raw: unknown): string[] {
   return out;
 }
 
+function coverKeyField(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}
+
+function coverUrlField(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}
+
 function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
   const sk = typeof it.sk === "string" ? it.sk : "";
   if (!sk) return null;
@@ -459,6 +479,16 @@ function rowFromItem(it: Record<string, unknown>): SoundCatalogRow | null {
       typeof it.coverImageThumbUrl === "string" && it.coverImageThumbUrl.trim()
         ? it.coverImageThumbUrl.trim()
         : undefined,
+    coverPhotoKey: coverKeyField(it.coverPhotoKey),
+    coverPhotoUrl: coverUrlField(it.coverPhotoUrl),
+    coverPhotoThumbKey: coverKeyField(it.coverPhotoThumbKey),
+    coverPhotoThumbUrl: coverUrlField(it.coverPhotoThumbUrl),
+    coverIllustrationKey: coverKeyField(it.coverIllustrationKey),
+    coverIllustrationUrl: coverUrlField(it.coverIllustrationUrl),
+    coverIllustrationThumbKey: coverKeyField(it.coverIllustrationThumbKey),
+    coverIllustrationThumbUrl: coverUrlField(it.coverIllustrationThumbUrl),
+    coverVariant:
+      it.coverVariant === "illustration" ? "illustration" : undefined,
     coverWideCropY: (() => {
       if (it.coverWideCropY == null || it.coverWideCropY === "") return undefined;
       return coerceCoverWideCropY(it.coverWideCropY);

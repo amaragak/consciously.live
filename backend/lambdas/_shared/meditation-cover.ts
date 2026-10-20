@@ -18,7 +18,10 @@ import {
   recordGoogleImageUsage,
   recordOpenAiImageUsage,
 } from "./ai-usage";
-import { withIllustrationStyle } from "./illustration-style";
+import {
+  ILLUSTRATION_STYLE_PREPROMPT,
+  withIllustrationStyle,
+} from "./illustration-style";
 import type { MeditationCreationProvenance } from "./meditation-creation-provenance";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
@@ -656,6 +659,100 @@ async function generateNanoBananaProImage(
     mime: outMime,
     prompt: trimmed,
   };
+}
+
+/**
+ * Redraw an existing cover photograph in the shared illustration style.
+ * The reference image is the subject; the model must not invent a new scene.
+ */
+export async function generateIllustrationFromReference(params: {
+  reference: Buffer;
+  mime?: string;
+}): Promise<{ body: Buffer; mime: "image/png" | "image/jpeg" }> {
+  if (!params.reference.length) throw new Error("Reference image is empty");
+  const apiKey = await getGoogleAiApiKey();
+  const model =
+    process.env.ADMIN_NANO_BANANA_MODEL?.trim() || NANO_BANANA_PRO_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const prompt = [
+    "Redraw the attached cover as a vector illustration of the SAME scene.",
+    "Keep the same subject, pose, objects, setting, camera angle, crop, and layout.",
+    "Do not invent a new place, object, or story.",
+    "Drop any photographic film border.",
+    "If a person is in the reference, keep them as a stylised figure in the same pose and place, without a detailed face.",
+    "Square 1:1. Full-bleed illustration, no picture frame, mat, mockup, text, letters, or logos.",
+    "",
+    ILLUSTRATION_STYLE_PREPROMPT,
+  ].join("\n");
+  const mime = params.mime?.includes("png") ? "image/png" : "image/jpeg";
+  const upstream = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: mime,
+                data: params.reference.toString("base64"),
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseModalities: ["TEXT", "IMAGE"],
+        imageConfig: { aspectRatio: "1:1", imageSize: "1K" },
+      },
+    }),
+  });
+  const rawText = await upstream.text();
+  if (!upstream.ok) {
+    throw new Error(
+      `Nano Banana Pro failed (${upstream.status}): ${rawText.slice(0, 400)}`,
+    );
+  }
+  let outB64 = "";
+  let outMime: "image/png" | "image/jpeg" = "image/png";
+  try {
+    const data = JSON.parse(rawText) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            inlineData?: { mimeType?: string; data?: string };
+            inline_data?: { mime_type?: string; data?: string };
+          }>;
+        };
+      }>;
+    };
+    for (const part of data.candidates?.[0]?.content?.parts ?? []) {
+      const inline = part.inlineData ?? part.inline_data;
+      if (!inline?.data) continue;
+      outB64 = inline.data;
+      const guess =
+        "mimeType" in inline
+          ? inline.mimeType
+          : "mime_type" in inline
+            ? inline.mime_type
+            : "";
+      outMime =
+        guess?.includes("jpeg") || guess?.includes("jpg")
+          ? "image/jpeg"
+          : "image/png";
+      break;
+    }
+  } catch {
+    throw new Error("Invalid JSON from Nano Banana Pro");
+  }
+  if (!outB64) throw new Error("Nano Banana Pro response missing image data");
+  void recordGoogleImageUsage({ feature: "cover-image", model });
+  return { body: Buffer.from(outB64, "base64"), mime: outMime };
 }
 
 /** S3 key for a library category cover (stable per category label). */

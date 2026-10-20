@@ -442,6 +442,20 @@ export function LibraryAudioStrip({
     onPlayingChangeRef.current?.(track.s3Key, playing);
   }, [track?.s3Key, playing, track]);
 
+  /** Desktop app chrome: size the strip to the main column, not the viewport. */
+  const [contentColumnLayout, setContentColumnLayout] = useState(false);
+  useEffect(() => {
+    if (!besideSidebar || inline) {
+      setContentColumnLayout(false);
+      return;
+    }
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setContentColumnLayout(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [besideSidebar, inline]);
+
   /** Focus tasks shelf — inset the strip so it doesn't run under the rail. */
   const [focusTasksInsetPx, setFocusTasksInsetPx] = useState(0);
   useEffect(() => {
@@ -1331,16 +1345,14 @@ export function LibraryAudioStrip({
     <div
       ref={rootRef}
       className={
-        // Padding inside max-w-6xl so the pill matches page content width
-        // (create/library columns use mx-auto max-w-6xl px-4 md:px-6).
-        // Sidebar inset must match AppChrome spacer (`lg:block`), not `md` —
-        // otherwise the strip is shifted right between 768–1023px.
+        // Match the page column: left-aligned max-w-6xl in the main area.
+        // The column does not center in the leftover viewport (flex + max-width),
+        // so a viewport-wide w-full pill with a sidebar left inset hangs off the right.
+        // Sidebar inset must match AppChrome spacer (`lg:block`), not `md`.
         inline
           ? "pointer-events-none relative z-50 mx-auto w-full max-w-6xl px-4 pb-3 pt-2 md:px-6"
-          : `pointer-events-none fixed z-50 mx-auto w-full max-w-6xl px-4 pt-3 md:px-6 ${
-              besideSidebar
-                ? "left-0 right-0 lg:left-[var(--app-sidebar-w,200px)]"
-                : "left-0 right-0"
+          : `pointer-events-none fixed z-50 left-0 w-full max-w-6xl px-4 pt-3 md:px-6 ${
+              besideSidebar ? "lg:left-[var(--app-sidebar-w,200px)]" : ""
             }`
       }
       style={
@@ -1348,8 +1360,12 @@ export function LibraryAudioStrip({
           ? undefined
           : {
               bottom: Math.max(0, bottomOffsetPx),
-              // `right` from focus inset; otherwise left+right:0 centers max-w-6xl.
-              ...(focusTasksInsetPx > 0 ? { right: focusTasksInsetPx } : {}),
+              ...(contentColumnLayout
+                ? {
+                    width: `min(72rem, calc(100% - var(--app-sidebar-w, 200px) - ${Math.max(0, focusTasksInsetPx)}px))`,
+                    maxWidth: "none",
+                  }
+                : {}),
               paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
             }
       }

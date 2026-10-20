@@ -17,12 +17,15 @@ import {
   applyAdminSoundEq,
   measureAdminCompositionLoudnorm,
   generateAdminCompositionCover,
+  generateAdminCompositionIllustration,
   getMedimadeMediaBaseUrl,
   listAdminCompositionCovers,
   renameAdminCompositionPackName,
   saveAdminCompositionPackNames,
   saveAdminCompositionTagTypes,
+  SOUND_CARD_COVER_ASPECT,
   setAdminCompositionCoverTags,
+  setAdminCompositionCoverVariant,
   trimAdminSound,
   updateAdminCompositionCoverMeta,
   uploadAdminSoundToS3,
@@ -208,7 +211,7 @@ type RowState = {
 };
 
 function blankRowState(
-  model: AdminImageModel = "gpt-image-1-mini",
+  model: AdminImageModel = "nano-banana-pro",
   item?: Pick<
     AdminCompositionCoverItem,
     "name" | "binauralHz" | "coverWideCropY"
@@ -271,6 +274,45 @@ function hasCover(item: AdminCompositionCoverItem): boolean {
 function hasThumb(item: AdminCompositionCoverItem): boolean {
   return Boolean(item.coverImageThumbUrl || item.coverImageThumbKey);
 }
+
+/** Existing photograph, including covers stored before versions existed. */
+function photographUrl(item: AdminCompositionCoverItem): string | null {
+  if (item.coverPhotoUrl) return item.coverPhotoUrl;
+  if (item.coverVariant === "illustration") return null;
+  return item.coverImageUrl;
+}
+
+function photographThumb(item: AdminCompositionCoverItem): string | null {
+  if (item.coverPhotoThumbUrl || item.coverPhotoUrl) {
+    return item.coverPhotoThumbUrl || item.coverPhotoUrl;
+  }
+  if (item.coverVariant === "illustration") return null;
+  return item.coverImageThumbUrl || item.coverImageUrl;
+}
+
+function illustrationThumb(item: AdminCompositionCoverItem): string | null {
+  return item.coverIllustrationThumbUrl || item.coverIllustrationUrl;
+}
+
+/** Same widescreen focus the sound card already uses for this composition. */
+function coverCropStyle(cropY: number | null | undefined): {
+  objectPosition: string;
+} {
+  const y =
+    typeof cropY === "number" && Number.isFinite(cropY)
+      ? Math.min(100, Math.max(0, Math.round(cropY)))
+      : 50;
+  return { objectPosition: `center ${y}%` };
+}
+
+type CoverPreview = {
+  key: string;
+  name: string;
+  label: "Photograph" | "Illustration";
+  url: string;
+  variant: "photo" | "illustration";
+  active: boolean;
+};
 
 function titleFromFilename(name: string): string {
   const leaf = name.split(/[/\\]/).pop() ?? name;
@@ -411,8 +453,10 @@ export function AdminCompositionCoversPanel() {
   rowsRef.current = rows;
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [defaultModel, setDefaultModel] =
-    useState<AdminImageModel>("gpt-image-1-mini");
+    useState<AdminImageModel>("nano-banana-pro");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [variantBusy, setVariantBusy] = useState(false);
+  const [preview, setPreview] = useState<CoverPreview | null>(null);
   const [thumbBusy, setThumbBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
   const bulkAbortRef = useRef(false);
@@ -504,7 +548,25 @@ export function AdminCompositionCoversPanel() {
         if (!hasThumb(it)) missingThumb += 1;
       } else missing += 1;
     }
-    return { total: items.length, missing, withCover, missingThumb };
+    let illustrated = 0;
+    let missingIllustration = 0;
+    let usingIllustration = 0;
+    for (const it of items) {
+      if (it.coverIllustrationUrl) illustrated += 1;
+      else if (photographUrl(it)) missingIllustration += 1;
+      if (it.coverVariant === "illustration" && it.coverIllustrationUrl) {
+        usingIllustration += 1;
+      }
+    }
+    return {
+      total: items.length,
+      missing,
+      withCover,
+      missingThumb,
+      illustrated,
+      missingIllustration,
+      usingIllustration,
+    };
   }, [items]);
 
   /** Catalog-wide tags (most used first) so admins reuse the same wording. */
@@ -716,6 +778,119 @@ export function AdminCompositionCoversPanel() {
       });
       return false;
     }
+  }
+
+  async function onGenerateIllustration(
+    item: AdminCompositionCoverItem,
+  ): Promise<boolean> {
+    if (!photographUrl(item)) {
+      patchRow(item.key, { error: "Generate a photograph first" });
+      return false;
+    }
+    patchRow(item.key, { busy: true, error: null });
+    try {
+      const saved = await generateAdminCompositionIllustration(item.key);
+      setItems((prev) =>
+        prev.map((p) => (p.key === saved.key ? { ...p, ...saved } : p)),
+      );
+      patchRow(item.key, { busy: false });
+      return true;
+    } catch (e) {
+      patchRow(item.key, {
+        busy: false,
+        error: e instanceof Error ? e.message : "Illustration failed",
+      });
+      return false;
+    }
+  }
+
+  function mergeCoverItems(saved: AdminCompositionCoverItem[]) {
+    if (saved.length === 0) return;
+    const byKey = new Map(saved.map((row) => [row.key, row]));
+    setItems((prev) =>
+      prev.map((row) => {
+        const next = byKey.get(row.key);
+        return next ? { ...row, ...next } : row;
+      }),
+    );
+  }
+
+  async function onUseCoverVariant(
+    item: AdminCompositionCoverItem,
+    variant: "photo" | "illustration",
+  ) {
+    patchRow(item.key, { busy: true, error: null });
+    try {
+      const result = await setAdminCompositionCoverVariant({
+        variant,
+        key: item.key,
+      });
+      mergeCoverItems(result.items);
+      patchRow(item.key, { busy: false });
+      setPreview((current) =>
+        current && current.key === item.key
+          ? { ...current, active: current.variant === variant }
+          : current,
+      );
+    } catch (e) {
+      patchRow(item.key, {
+        busy: false,
+        error: e instanceof Error ? e.message : "Could not switch cover",
+      });
+    }
+  }
+
+  async function onSetAllCovers(variant: "photo" | "illustration") {
+    if (variantBusy || bulkBusy) return;
+    setVariantBusy(true);
+    setError(null);
+    try {
+      const result = await setAdminCompositionCoverVariant({ variant });
+      mergeCoverItems(result.items);
+      setBulkProgress(
+        variant === "illustration"
+          ? `Using illustrations on ${result.updated}. ${result.skipped} still have only a photograph.`
+          : `Using photographs on ${result.updated}. ${result.skipped} have no photograph.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not switch covers");
+    } finally {
+      setVariantBusy(false);
+    }
+  }
+
+  async function generateMissingIllustrations() {
+    const queue = items.filter(
+      (it) => photographUrl(it) && !it.coverIllustrationUrl,
+    );
+    if (queue.length === 0 || bulkBusy) return;
+    if (
+      !window.confirm(
+        `Generate an illustration version for ${queue.length} composition${queue.length === 1 ? "" : "s"} that do not have one? Each uses its photograph and the crop already set. The live cover stays the photograph until you choose it.`,
+      )
+    ) {
+      return;
+    }
+    bulkAbortRef.current = false;
+    setBulkBusy(true);
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < queue.length; i += 1) {
+      if (bulkAbortRef.current) break;
+      const item = queue[i]!;
+      setBulkProgress(
+        `Illustrating ${i + 1} of ${queue.length}: ${item.name}`,
+      );
+      const succeeded = await onGenerateIllustration(item);
+      if (succeeded) ok += 1;
+      else fail += 1;
+    }
+    setBulkProgress(
+      bulkAbortRef.current
+        ? `Stopped — ${ok} illustrated, ${fail} failed.`
+        : `Done — ${ok} illustrated, ${fail} failed.`,
+    );
+    setBulkBusy(false);
   }
 
   async function onClear(item: AdminCompositionCoverItem) {
@@ -1616,7 +1791,8 @@ export function AdminCompositionCoversPanel() {
           </p>
           <p className="mt-1 text-xs text-muted">
             {counts.total} total · {counts.missing} missing · {counts.withCover}{" "}
-            with cover
+            with cover · {counts.illustrated} illustrated ·{" "}
+            {counts.usingIllustration} using illustration
             {counts.missingThumb > 0
               ? ` · ${counts.missingThumb} missing thumb`
               : ""}
@@ -1649,6 +1825,40 @@ export function AdminCompositionCoversPanel() {
               : counts.missingThumb > 0
                 ? `Generate missing thumbnails (${counts.missingThumb})`
                 : "Thumbnails up to date"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              counts.missingIllustration === 0 || loading || bulkBusy || variantBusy
+            }
+            onClick={() => void generateMissingIllustrations()}
+            className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-card disabled:opacity-50"
+            title="Draw an illustration from each photograph that does not have one yet. Uses the crop already set."
+          >
+            {bulkBusy
+              ? "Working…"
+              : `Generate illustration version (${counts.missingIllustration})`}
+          </button>
+          <button
+            type="button"
+            disabled={loading || bulkBusy || variantBusy || counts.withCover === 0}
+            onClick={() => void onSetAllCovers("photo")}
+            className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-card disabled:opacity-50"
+          >
+            {variantBusy ? "Switching…" : "Use photographs"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              loading || bulkBusy || variantBusy || counts.illustrated === 0
+            }
+            onClick={() => void onSetAllCovers("illustration")}
+            className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-card disabled:opacity-50"
+            title="Switches covers that already have an illustration. Does not generate new ones."
+          >
+            {variantBusy
+              ? "Switching…"
+              : `Use illustrations (${counts.illustrated})`}
           </button>
           <label className="flex flex-col gap-1 text-xs text-muted">
             Default model
@@ -2098,6 +2308,7 @@ export function AdminCompositionCoversPanel() {
                         }
                         alt=""
                         className="h-full w-full object-cover"
+                        style={coverCropStyle(item.coverWideCropY)}
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[10px] text-muted">
@@ -2116,6 +2327,57 @@ export function AdminCompositionCoversPanel() {
                       </span>
                     </span>
                   </button>
+                  <div className="flex shrink-0 gap-2">
+                    <CoverVersionTile
+                      label="Photograph"
+                      src={photographThumb(item)}
+                      cropY={item.coverWideCropY}
+                      active={item.coverVariant !== "illustration" && covered}
+                      disabled={state.busy || bulkBusy}
+                      emptyLabel="No photo"
+                      onOpen={
+                        photographUrl(item)
+                          ? () =>
+                              setPreview({
+                                key: item.key,
+                                name: item.name,
+                                label: "Photograph",
+                                url: photographUrl(item)!,
+                                variant: "photo",
+                                active: item.coverVariant !== "illustration",
+                              })
+                          : undefined
+                      }
+                    />
+                    <CoverVersionTile
+                      label="Illustration"
+                      src={illustrationThumb(item)}
+                      cropY={item.coverWideCropY}
+                      active={
+                        item.coverVariant === "illustration" &&
+                        Boolean(item.coverIllustrationUrl)
+                      }
+                      disabled={state.busy || bulkBusy}
+                      emptyLabel={
+                        photographUrl(item) ? "Generate" : "Needs photo"
+                      }
+                      onOpen={
+                        item.coverIllustrationUrl
+                          ? () =>
+                              setPreview({
+                                key: item.key,
+                                name: item.name,
+                                label: "Illustration",
+                                url: item.coverIllustrationUrl!,
+                                variant: "illustration",
+                                active: item.coverVariant === "illustration",
+                              })
+                          : photographUrl(item)
+                            ? () => void onGenerateIllustration(item)
+                            : undefined
+                      }
+                    />
+                  </div>
                   <div className="min-w-0 flex-1 space-y-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -2653,7 +2915,8 @@ export function AdminCompositionCoversPanel() {
                           </button>
                           {!state.cropOpen ? (
                             <span className="text-[11px] text-muted">
-                              Focus {item.coverWideCropY ?? 50}% · 4:1 band
+                              Focus {item.coverWideCropY ?? 50}% · same crop
+                              for the illustration
                             </span>
                           ) : null}
                         </div>
@@ -2661,6 +2924,7 @@ export function AdminCompositionCoversPanel() {
                           <div className="mt-3 space-y-2">
                             <CompositionCoverWideCropper
                               imageUrl={
+                                photographUrl(item) ||
                                 item.coverImageUrl ||
                                 item.coverImageThumbUrl ||
                                 ""
@@ -2708,6 +2972,32 @@ export function AdminCompositionCoversPanel() {
                                 Reset to centre
                               </button>
                             </div>
+                            {item.coverIllustrationUrl ? (
+                              <div className="overflow-hidden rounded-xl border border-border bg-card">
+                                <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                                  Illustration · same crop
+                                </p>
+                                <div
+                                  className="relative mx-3 mb-3 mt-1 overflow-hidden rounded-lg bg-accent-soft"
+                                  style={{
+                                    aspectRatio: `${SOUND_CARD_COVER_ASPECT} / 1`,
+                                  }}
+                                >
+                                  <img
+                                    src={item.coverIllustrationUrl}
+                                    alt=""
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                    style={coverCropStyle(
+                                      state.coverWideCropYDraft,
+                                    )}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-muted">
+                                An illustration version uses this same crop.
+                              </p>
+                            )}
                           </div>
                         ) : null}
                       </div>
@@ -2789,6 +3079,21 @@ export function AdminCompositionCoversPanel() {
                           </button>
                           <button
                             type="button"
+                            disabled={
+                              state.busy || bulkBusy || !photographUrl(item)
+                            }
+                            onClick={() => void onGenerateIllustration(item)}
+                            className="cursor-pointer rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-background disabled:opacity-50"
+                            title="Redraw the current photograph as a second cover"
+                          >
+                            {state.busy
+                              ? "Working…"
+                              : item.coverIllustrationUrl
+                                ? "Regenerate illustration"
+                                : "Generate illustration alternative"}
+                          </button>
+                          <button
+                            type="button"
                             disabled={state.busy || bulkBusy}
                             onClick={() => void onClear(item)}
                             className="cursor-pointer rounded-xl border border-border px-3 py-1.5 text-sm text-danger hover:bg-danger-soft disabled:opacity-50"
@@ -2808,6 +3113,128 @@ export function AdminCompositionCoversPanel() {
           })}
         </ul>
       )}
+      {preview ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${preview.name} ${preview.label}`}
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-3xl flex-col gap-3 overflow-auto rounded-2xl bg-card p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  {preview.label}
+                  {preview.active ? " · live cover" : ""}
+                </p>
+                <h2 className="font-display text-lg text-foreground">
+                  {preview.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="cursor-pointer rounded-xl border border-border px-3 py-1.5 text-sm text-foreground hover:bg-background"
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={preview.url}
+              alt=""
+              className="max-h-[70vh] w-full rounded-xl object-contain bg-border/30"
+            />
+            {(() => {
+              const row = items.find((item) => item.key === preview.key);
+              const cropY = row?.coverWideCropY ?? 50;
+              return (
+                <div className="overflow-hidden rounded-xl border border-border bg-background">
+                  <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    Sound card · same crop {cropY}%
+                  </p>
+                  <div
+                    className="relative mx-3 mb-3 mt-1 overflow-hidden rounded-lg bg-accent-soft"
+                    style={{
+                      aspectRatio: `${SOUND_CARD_COVER_ASPECT} / 1`,
+                    }}
+                  >
+                    <img
+                      src={preview.url}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={coverCropStyle(cropY)}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={preview.active || variantBusy || bulkBusy}
+                onClick={() => {
+                  const item = items.find((row) => row.key === preview.key);
+                  if (!item) return;
+                  void onUseCoverVariant(item, preview.variant);
+                }}
+                className="cursor-pointer rounded-xl accent-fill-gradient px-3 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+              >
+                {preview.active ? "This is the live cover" : "Use this cover"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function CoverVersionTile({
+  label,
+  src,
+  cropY,
+  active,
+  disabled,
+  emptyLabel,
+  onOpen,
+}: {
+  label: string;
+  src: string | null;
+  cropY?: number | null;
+  active: boolean;
+  disabled: boolean;
+  emptyLabel: string;
+  onOpen?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled || !onOpen}
+      onClick={onOpen}
+      title={src ? `View ${label.toLowerCase()}` : emptyLabel}
+      className={`flex h-24 w-16 cursor-pointer flex-col overflow-hidden rounded-xl border bg-border/30 text-[10px] font-medium text-muted disabled:cursor-not-allowed disabled:opacity-50 ${
+        active ? "border-accent ring-2 ring-accent" : "border-border"
+      }`}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          className="h-16 w-full object-cover"
+          style={coverCropStyle(cropY)}
+        />
+      ) : (
+        <span className="flex h-16 w-full items-center justify-center px-1 text-center">
+          {emptyLabel}
+        </span>
+      )}
+      <span className="flex flex-1 items-center justify-center px-1">
+        {label}
+      </span>
+    </button>
   );
 }

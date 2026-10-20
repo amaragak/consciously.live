@@ -3992,6 +3992,13 @@ export type AdminCompositionCoverItem = {
   coverImageUrl: string | null;
   coverImageThumbKey: string | null;
   coverImageThumbUrl: string | null;
+  coverPhotoKey: string | null;
+  coverPhotoUrl: string | null;
+  coverPhotoThumbUrl: string | null;
+  coverIllustrationKey: string | null;
+  coverIllustrationUrl: string | null;
+  coverIllustrationThumbUrl: string | null;
+  coverVariant: "photo" | "illustration";
   /** CSS object-position Y % for the widescreen sound-card crop. */
   coverWideCropY: number;
   lastCoverPrompt: string | null;
@@ -4058,6 +4065,33 @@ function parseAdminCompositionCoverItem(
       typeof o.coverImageThumbUrl === "string" && o.coverImageThumbUrl.trim()
         ? o.coverImageThumbUrl.trim()
         : null,
+    coverPhotoKey:
+      typeof o.coverPhotoKey === "string" && o.coverPhotoKey.trim()
+        ? o.coverPhotoKey.trim()
+        : null,
+    coverPhotoUrl:
+      typeof o.coverPhotoUrl === "string" && o.coverPhotoUrl.trim()
+        ? o.coverPhotoUrl.trim()
+        : null,
+    coverPhotoThumbUrl:
+      typeof o.coverPhotoThumbUrl === "string" && o.coverPhotoThumbUrl.trim()
+        ? o.coverPhotoThumbUrl.trim()
+        : null,
+    coverIllustrationKey:
+      typeof o.coverIllustrationKey === "string" && o.coverIllustrationKey.trim()
+        ? o.coverIllustrationKey.trim()
+        : null,
+    coverIllustrationUrl:
+      typeof o.coverIllustrationUrl === "string" &&
+      o.coverIllustrationUrl.trim()
+        ? o.coverIllustrationUrl.trim()
+        : null,
+    coverIllustrationThumbUrl:
+      typeof o.coverIllustrationThumbUrl === "string" &&
+      o.coverIllustrationThumbUrl.trim()
+        ? o.coverIllustrationThumbUrl.trim()
+        : null,
+    coverVariant: o.coverVariant === "illustration" ? "illustration" : "photo",
     coverWideCropY: (() => {
       if (o.coverWideCropY == null || o.coverWideCropY === "") return 50;
       const n =
@@ -4336,10 +4370,68 @@ export async function generateAdminCompositionCover(params: {
     action: "generate-cover",
     key: params.key,
     title: params.title ?? "",
-    model: params.model ?? "gpt-image-1-mini",
+    model: params.model ?? "nano-banana-pro",
     guidePrompt: params.guidePrompt ?? "",
     changeRequest: params.changeRequest ?? "",
   });
+}
+
+/** Redraw the existing photograph as a second cover. Does not switch the live cover. */
+export async function generateAdminCompositionIllustration(
+  key: string,
+): Promise<AdminCompositionCoverItem> {
+  return postAdminCompositionCoverAction({
+    action: "generate-illustration",
+    key,
+  });
+}
+
+/** Point one composition, or every composition, at its photograph or illustration. */
+export async function setAdminCompositionCoverVariant(params: {
+  variant: "photo" | "illustration";
+  key?: string;
+}): Promise<{
+  updated: number;
+  skipped: number;
+  items: AdminCompositionCoverItem[];
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/composition-covers`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "set-cover-variant",
+      variant: params.variant,
+      ...(params.key ? { key: params.key } : {}),
+    }),
+  });
+  const data = (await res.json()) as {
+    updated?: number;
+    skipped?: number;
+    items?: unknown;
+    item?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const items: AdminCompositionCoverItem[] = [];
+  if (Array.isArray(data.items)) {
+    for (const raw of data.items) {
+      const item = parseAdminCompositionCoverItem(raw);
+      if (item) items.push(item);
+    }
+  }
+  const single = parseAdminCompositionCoverItem(data.item);
+  if (single && !items.some((row) => row.key === single.key)) items.push(single);
+  invalidateBackgroundAudioClientCache();
+  return {
+    updated: typeof data.updated === "number" ? data.updated : items.length,
+    skipped: typeof data.skipped === "number" ? data.skipped : 0,
+    items,
+  };
 }
 
 export async function clearAdminCompositionCover(
@@ -7376,6 +7468,29 @@ export async function uploadAdminGuideCover(params: {
     action: "uploadCover",
     imageBase64: params.imageBase64,
     mimeType: params.mimeType,
+  });
+  const url = typeof data.url === "string" ? data.url.trim() : "";
+  if (!url) {
+    throw new Error(
+      "Server did not return an image URL — redeploy backend, then try again",
+    );
+  }
+  return { url };
+}
+
+/** Draw a guide cover from its title. Save the guide to keep the returned URL. */
+export async function generateAdminGuideCover(params: {
+  title: string;
+  summary?: string;
+  category?: string;
+  direction?: string;
+}): Promise<{ url: string }> {
+  const data = await postAdminGuides({
+    action: "generateCover",
+    title: params.title,
+    summary: params.summary ?? "",
+    category: params.category ?? "",
+    direction: params.direction ?? "",
   });
   const url = typeof data.url === "string" ? data.url.trim() : "";
   if (!url) {

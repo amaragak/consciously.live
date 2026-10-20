@@ -563,7 +563,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/admin-guides.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(60),
         memorySize: 512,
         role,
         environment: {
@@ -572,6 +572,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           ADMIN_EMAILS: adminEmails,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );

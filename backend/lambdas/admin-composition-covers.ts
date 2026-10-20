@@ -39,6 +39,7 @@ import {
   coerceAdminImageModel,
   compositionCoverObjectKey,
   generateAdminImageFromPrompt,
+  generateIllustrationFromReference,
   refineCompositionCoverPromptWithChange,
 } from "./_shared/meditation-cover";
 import { listAllS3Objects } from "./_shared/s3-list-all";
@@ -110,6 +111,15 @@ function itemPayload(row: SoundCatalogRow) {
     coverImageUrl: row.coverImageUrl ?? null,
     coverImageThumbKey: row.coverImageThumbKey ?? null,
     coverImageThumbUrl: row.coverImageThumbUrl ?? null,
+    coverPhotoKey: row.coverPhotoKey ?? null,
+    coverPhotoUrl: row.coverPhotoUrl ?? null,
+    coverPhotoThumbKey: row.coverPhotoThumbKey ?? null,
+    coverPhotoThumbUrl: row.coverPhotoThumbUrl ?? null,
+    coverIllustrationKey: row.coverIllustrationKey ?? null,
+    coverIllustrationUrl: row.coverIllustrationUrl ?? null,
+    coverIllustrationThumbKey: row.coverIllustrationThumbKey ?? null,
+    coverIllustrationThumbUrl: row.coverIllustrationThumbUrl ?? null,
+    coverVariant: row.coverVariant === "illustration" ? "illustration" : "photo",
     coverWideCropY: coerceCoverWideCropY(row.coverWideCropY),
     lastCoverPrompt: row.lastCoverPrompt ?? null,
     coverPromptHistory: row.coverPromptHistory ?? [],
@@ -444,6 +454,15 @@ async function handleList(): Promise<APIGatewayProxyStructuredResultV2> {
         coverImageUrl: null,
         coverImageThumbKey: null,
         coverImageThumbUrl: null,
+        coverPhotoKey: null,
+        coverPhotoUrl: null,
+        coverPhotoThumbKey: null,
+        coverPhotoThumbUrl: null,
+        coverIllustrationKey: null,
+        coverIllustrationUrl: null,
+        coverIllustrationThumbKey: null,
+        coverIllustrationThumbUrl: null,
+        coverVariant: "photo",
         coverWideCropY: 50,
         lastCoverPrompt: null,
         coverPromptHistory: [],
@@ -582,6 +601,7 @@ async function handleGenerate(
   const { body: imageBody, mime } = await generateAdminImageFromPrompt({
     prompt,
     model,
+    illustrationStyle: false,
   });
   const ext = imageExt(mime);
   const objectKey = compositionCoverObjectKey(key, ext);
@@ -595,33 +615,236 @@ async function handleGenerate(
     }),
   );
   const url = publicUrl(cfDomain, objectKey);
+  const showingIllustration = row.coverVariant === "illustration";
+  const previousPhotoKey =
+    row.coverPhotoKey || (!showingIllustration ? row.coverImageKey : undefined);
+  const previousPhotoThumb =
+    row.coverPhotoThumbKey ||
+    (!showingIllustration ? row.coverImageThumbKey : undefined);
   const thumb = await putThumbFromFullBuffer({
     bucket,
     cfDomain,
     fullCoverKey: objectKey,
     fullBody: imageBody,
-    prevThumbKey: row.coverImageThumbKey,
+    prevThumbKey: previousPhotoThumb,
   });
-  const prevKey = row.coverImageKey;
   const next: SoundCatalogRow = {
     ...row,
     name: title,
     category: "compositions",
-    coverImageKey: objectKey,
-    coverImageUrl: url,
-    coverImageThumbKey: thumb.thumbKey,
-    coverImageThumbUrl: thumb.thumbUrl,
+    coverPhotoKey: objectKey,
+    coverPhotoUrl: url,
+    coverPhotoThumbKey: thumb.thumbKey,
+    coverPhotoThumbUrl: thumb.thumbUrl,
+    ...(showingIllustration
+      ? {}
+      : {
+          coverImageKey: objectKey,
+          coverImageUrl: url,
+          coverImageThumbKey: thumb.thumbKey,
+          coverImageThumbUrl: thumb.thumbUrl,
+          coverVariant: "photo" as const,
+        }),
     lastCoverPrompt: prompt.slice(0, 4000),
     coverPromptHistory: previousPrompts,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(next);
-  if (prevKey && prevKey !== objectKey) {
+  await deleteCoverObjects(
+    bucket,
+    [previousPhotoKey].filter((k) => k && k !== objectKey),
+  );
+  return json(200, { item: itemPayload(next) });
+}
+
+type StoredCover = {
+  key: string;
+  url: string;
+  thumbKey?: string;
+  thumbUrl?: string;
+};
+
+function storedPhoto(row: SoundCatalogRow): StoredCover | null {
+  if (row.coverPhotoKey && row.coverPhotoUrl) {
+    return {
+      key: row.coverPhotoKey,
+      url: row.coverPhotoUrl,
+      thumbKey: row.coverPhotoThumbKey,
+      thumbUrl: row.coverPhotoThumbUrl,
+    };
+  }
+  if (row.coverVariant === "illustration") return null;
+  if (!row.coverImageKey || !row.coverImageUrl) return null;
+  return {
+    key: row.coverImageKey,
+    url: row.coverImageUrl,
+    thumbKey: row.coverImageThumbKey,
+    thumbUrl: row.coverImageThumbUrl,
+  };
+}
+
+function storedIllustration(row: SoundCatalogRow): StoredCover | null {
+  if (!row.coverIllustrationKey || !row.coverIllustrationUrl) return null;
+  return {
+    key: row.coverIllustrationKey,
+    url: row.coverIllustrationUrl,
+    thumbKey: row.coverIllustrationThumbKey,
+    thumbUrl: row.coverIllustrationThumbUrl,
+  };
+}
+
+function withActiveCover(
+  row: SoundCatalogRow,
+  variant: "photo" | "illustration",
+  cover: StoredCover,
+): SoundCatalogRow {
+  return {
+    ...row,
+    coverVariant: variant,
+    coverImageKey: cover.key,
+    coverImageUrl: cover.url,
+    coverImageThumbKey: cover.thumbKey,
+    coverImageThumbUrl: cover.thumbUrl,
+    ...(variant === "photo"
+      ? {
+          coverPhotoKey: cover.key,
+          coverPhotoUrl: cover.url,
+          coverPhotoThumbKey: cover.thumbKey,
+          coverPhotoThumbUrl: cover.thumbUrl,
+        }
+      : {
+          coverIllustrationKey: cover.key,
+          coverIllustrationUrl: cover.url,
+          coverIllustrationThumbKey: cover.thumbKey,
+          coverIllustrationThumbUrl: cover.thumbUrl,
+        }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function deleteCoverObjects(bucket: string, keys: Array<string | undefined>) {
+  const seen = new Set<string>();
+  for (const key of keys) {
+    const k = key?.trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
     await s3
-      .send(new DeleteObjectCommand({ Bucket: bucket, Key: prevKey }))
+      .send(new DeleteObjectCommand({ Bucket: bucket, Key: k }))
       .catch(() => undefined);
   }
+}
+
+async function handleGenerateIllustration(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const { bucket, cfDomain } = mediaConfig();
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  if (!key) return json(400, { error: "key is required" });
+  const row = await getSoundRow(key);
+  if (!row) return json(404, { error: "Composition not found in catalog" });
+  const photo = storedPhoto(row);
+  if (!photo) {
+    return json(400, { error: "This composition has no photograph to redraw" });
+  }
+  const got = await s3.send(
+    new GetObjectCommand({ Bucket: bucket, Key: photo.key }),
+  );
+  const reference = await streamToBuffer(got.Body);
+  if (!reference.length) return json(400, { error: "Photograph file is empty" });
+  const mime = photo.key.toLowerCase().endsWith(".png")
+    ? "image/png"
+    : "image/jpeg";
+  const { body: imageBody, mime: outMime } = await generateIllustrationFromReference({
+    reference,
+    mime,
+  });
+  const ext = imageExt(outMime);
+  const objectKey = compositionCoverObjectKey(key, ext);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      Body: imageBody,
+      ContentType: outMime,
+      CacheControl: "public, max-age=31536000, immutable",
+    }),
+  );
+  const url = publicUrl(cfDomain, objectKey);
+  const thumb = await putThumbFromFullBuffer({
+    bucket,
+    cfDomain,
+    fullCoverKey: objectKey,
+    fullBody: imageBody,
+    prevThumbKey: row.coverIllustrationThumbKey,
+  });
+  const previousIllustration = row.coverIllustrationKey;
+  let next: SoundCatalogRow = {
+    ...row,
+    coverPhotoKey: photo.key,
+    coverPhotoUrl: photo.url,
+    coverPhotoThumbKey: photo.thumbKey,
+    coverPhotoThumbUrl: photo.thumbUrl,
+    coverIllustrationKey: objectKey,
+    coverIllustrationUrl: url,
+    coverIllustrationThumbKey: thumb.thumbKey,
+    coverIllustrationThumbUrl: thumb.thumbUrl,
+    updatedAt: new Date().toISOString(),
+  };
+  if (row.coverVariant !== "illustration") {
+    next = {
+      ...next,
+      coverVariant: "photo",
+      coverImageKey: photo.key,
+      coverImageUrl: photo.url,
+      coverImageThumbKey: photo.thumbKey,
+      coverImageThumbUrl: photo.thumbUrl,
+    };
+  }
+  await putSoundRow(next);
+  await deleteCoverObjects(
+    bucket,
+    [previousIllustration].filter((k) => k && k !== objectKey),
+  );
   return json(200, { item: itemPayload(next) });
+}
+
+async function handleSetCoverVariant(
+  body: Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const variant = body.variant === "illustration" ? "illustration" : "photo";
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  const rows = key
+    ? [await getSoundRow(key)].filter((row): row is SoundCatalogRow => Boolean(row))
+    : (await listAllSoundRows()).filter((row) => {
+        const cat = normalizeBgAudioCategory(row.category) || row.category;
+        return cat === "compositions";
+      });
+  if (key && rows.length === 0) {
+    return json(404, { error: "Composition not found in catalog" });
+  }
+  let updated = 0;
+  let skipped = 0;
+  const items: ReturnType<typeof itemPayload>[] = [];
+  for (const row of rows) {
+    const cover = variant === "illustration" ? storedIllustration(row) : storedPhoto(row);
+    if (!cover) {
+      skipped += 1;
+      continue;
+    }
+    const already =
+      row.coverVariant === variant &&
+      row.coverImageKey === cover.key;
+    if (already) {
+      updated += 1;
+      items.push(itemPayload(row));
+      continue;
+    }
+    const next = withActiveCover(row, variant, cover);
+    await putSoundRow(next);
+    updated += 1;
+    items.push(itemPayload(next));
+  }
+  return json(200, { updated, skipped, items, ...(key && items[0] ? { item: items[0] } : {}) });
 }
 
 /**
@@ -710,25 +933,35 @@ async function handleClear(
   if (!key) return json(400, { error: "key is required" });
   const row = await getSoundRow(key);
   if (!row) return json(404, { error: "Composition not found in catalog" });
-  const prevKey = row.coverImageKey;
-  const prevThumb = row.coverImageThumbKey;
+  const doomed = [
+    row.coverImageKey,
+    row.coverImageThumbKey,
+    row.coverPhotoKey,
+    row.coverPhotoThumbKey,
+    row.coverIllustrationKey,
+    row.coverIllustrationThumbKey,
+  ];
   const next: SoundCatalogRow = {
     ...row,
     coverImageKey: undefined,
     coverImageUrl: undefined,
     coverImageThumbKey: undefined,
     coverImageThumbUrl: undefined,
+    coverPhotoKey: undefined,
+    coverPhotoUrl: undefined,
+    coverPhotoThumbKey: undefined,
+    coverPhotoThumbUrl: undefined,
+    coverIllustrationKey: undefined,
+    coverIllustrationUrl: undefined,
+    coverIllustrationThumbKey: undefined,
+    coverIllustrationThumbUrl: undefined,
+    coverVariant: undefined,
     lastCoverPrompt: undefined,
     coverPromptHistory: undefined,
     updatedAt: new Date().toISOString(),
   };
   await putSoundRow(next);
-  for (const k of [prevKey, prevThumb]) {
-    if (!k) continue;
-    await s3
-      .send(new DeleteObjectCommand({ Bucket: bucket, Key: k }))
-      .catch(() => undefined);
-  }
+  await deleteCoverObjects(bucket, doomed);
   return json(200, { item: itemPayload(next) });
 }
 
@@ -894,6 +1127,10 @@ export async function handler(
       }
       const action = String(body.action ?? "").trim();
       if (action === "generate-cover") return await handleGenerate(body);
+      if (action === "generate-illustration") {
+        return await handleGenerateIllustration(body);
+      }
+      if (action === "set-cover-variant") return await handleSetCoverVariant(body);
       if (action === "ensure-thumbs") return await handleEnsureThumbs(body);
       if (action === "clear-cover") return await handleClear(body);
       if (action === "set-tags") return await handleSetTags(body);

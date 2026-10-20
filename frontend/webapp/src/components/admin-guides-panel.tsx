@@ -16,6 +16,7 @@ import {
   reorderAdminGuides,
   saveAdminGuide,
   seedAdminGuides,
+  generateAdminGuideCover,
   uploadAdminGuideCover,
   type AdminGuide,
   type GuideArea,
@@ -221,6 +222,12 @@ export function AdminGuidesPanel() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [coverKind, setCoverKind] = useState<"upload" | "generate" | null>(
+    null,
+  );
+  const [coverDirection, setCoverDirection] = useState("");
+  const [coverBulkBusy, setCoverBulkBusy] = useState(false);
+  const coverBulkAbortRef = useRef(false);
   const [reorderBusy, setReorderBusy] = useState(false);
   const [seedBusy, setSeedBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -504,6 +511,7 @@ export function AdminGuidesPanel() {
       return;
     }
     setCoverBusy(true);
+    setCoverKind("upload");
     setStatus(null);
     try {
       const { dataUrl, mimeType } = await fileToCompressedJpegDataUrl(file);
@@ -517,8 +525,81 @@ export function AdminGuidesPanel() {
       setStatus(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setCoverBusy(false);
+      setCoverKind(null);
       if (coverInputRef.current) coverInputRef.current.value = "";
     }
+  }
+
+  async function onGenerateCover() {
+    const d = draftRef.current;
+    if (!d.title.trim()) {
+      setStatus("Add a title before generating a cover.");
+      return;
+    }
+    setCoverBusy(true);
+    setCoverKind("generate");
+    setStatus(null);
+    try {
+      const { url } = await generateAdminGuideCover({
+        title: d.title.trim(),
+        summary: d.summary,
+        category: d.category,
+        direction: coverDirection,
+      });
+      setDraft((prev) => ({ ...prev, coverImageUrl: url }));
+      setStatus("Cover generated — Save to keep it.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Cover generation failed");
+    } finally {
+      setCoverBusy(false);
+      setCoverKind(null);
+    }
+  }
+
+  async function generateMissingCovers() {
+    const queue = guides.filter((g) => !g.coverImageUrl);
+    if (queue.length === 0 || coverBulkBusy || coverBusy) return;
+    if (
+      !window.confirm(
+        `Generate a cover for ${queue.length} guide${queue.length === 1 ? "" : "s"} that do not have one? Each cover is saved on that guide.`,
+      )
+    ) {
+      return;
+    }
+    coverBulkAbortRef.current = false;
+    setCoverBulkBusy(true);
+    setStatus(null);
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < queue.length; i += 1) {
+      if (coverBulkAbortRef.current) break;
+      const guide = queue[i]!;
+      setStatus(`Cover ${i + 1} of ${queue.length}: ${guide.title}`);
+      try {
+        const { url } = await generateAdminGuideCover({
+          title: guide.title,
+          summary: guide.summary,
+          category: guide.category,
+        });
+        const saved = await saveAdminGuide({ id: guide.id, coverImageUrl: url });
+        setGuides((prev) =>
+          sortGuides(prev.map((g) => (g.id === saved.id ? saved : g))),
+        );
+        if (draftRef.current.id === saved.id) {
+          setDraft((prev) => ({ ...prev, coverImageUrl: saved.coverImageUrl }));
+        }
+        ok += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    invalidateGuidesCache();
+    setStatus(
+      coverBulkAbortRef.current
+        ? `Stopped — ${ok} covers saved, ${fail} failed.`
+        : `Done — ${ok} covers saved, ${fail} failed.`,
+    );
+    setCoverBulkBusy(false);
   }
 
   async function onMove(id: string, dir: -1 | 1) {
@@ -786,6 +867,32 @@ export function AdminGuidesPanel() {
             New
           </button>
         </div>
+        <button
+          type="button"
+          disabled={
+            coverBulkBusy ||
+            coverBusy ||
+            loading ||
+            guides.every((g) => Boolean(g.coverImageUrl))
+          }
+          onClick={() => void generateMissingCovers()}
+          className="mt-3 w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-card disabled:opacity-50"
+        >
+          {coverBulkBusy
+            ? "Generating covers…"
+            : `Generate missing covers (${guides.filter((g) => !g.coverImageUrl).length})`}
+        </button>
+        {coverBulkBusy ? (
+          <button
+            type="button"
+            onClick={() => {
+              coverBulkAbortRef.current = true;
+            }}
+            className="mt-2 text-xs font-medium text-muted underline"
+          >
+            Stop
+          </button>
+        ) : null}
 
         <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter by area">
           {FILTERS.map((f) => (
@@ -1140,20 +1247,37 @@ export function AdminGuidesPanel() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    disabled={coverBusy || busy}
+                    disabled={coverBusy || busy || coverBulkBusy}
                     onClick={() => coverInputRef.current?.click()}
                     className={OUTLINE_BTN_CLASS}
                   >
-                    {coverBusy
+                    {coverKind === "upload"
                       ? "Uploading…"
                       : draft.coverImageUrl
                         ? "Replace"
                         : "Upload"}
                   </button>
+                  <button
+                    type="button"
+                    disabled={coverBusy || busy || coverBulkBusy}
+                    onClick={() => void onGenerateCover()}
+                    className={OUTLINE_BTN_CLASS}
+                    title="Draw a cover from the title and summary"
+                  >
+                    {coverKind === "generate" ? "Generating…" : "Generate"}
+                  </button>
+                  <input
+                    type="text"
+                    value={coverDirection}
+                    disabled={coverBusy || busy || coverBulkBusy}
+                    onChange={(e) => setCoverDirection(e.target.value)}
+                    placeholder="Optional direction"
+                    className="h-8 min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                  />
                   {draft.coverImageUrl ? (
                     <button
                       type="button"
-                      disabled={coverBusy || busy}
+                      disabled={coverBusy || busy || coverBulkBusy}
                       onClick={() =>
                         setDraft((d) => ({ ...d, coverImageUrl: null }))
                       }
