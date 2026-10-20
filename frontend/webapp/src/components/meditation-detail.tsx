@@ -39,13 +39,10 @@ const FOLLOW_ALONG_PREF_KEY = "consciously.library.followAlong";
 
 function readFollowAlongPref(): boolean {
   try {
-    const v = window.localStorage.getItem(FOLLOW_ALONG_PREF_KEY);
-    if (v === "0") return false;
-    if (v === "1") return true;
+    return window.localStorage.getItem(FOLLOW_ALONG_PREF_KEY) === "1";
   } catch {
-    /* */
+    return false;
   }
-  return true;
 }
 
 function writeFollowAlongPref(on: boolean) {
