@@ -17,6 +17,7 @@ import type {
   VoicePreferredTraits,
 } from "@/lib/medimade-api";
 import { coerceEnergies, hasVoicePrefs, VOICE_ENERGY_VALUES } from "@/lib/medimade-api";
+import { isPublicSoundscapeHidden } from "@/components/composition-artist-select";
 import { pickDefaultSpeechifySpeaker } from "@/lib/fish-speakers";
 import { MEDITATION_STYLE_LABELS } from "@/lib/meditation-style-intake";
 
@@ -361,7 +362,11 @@ export function computeSoundPicks(opts: {
    */
   randomOurPick?: boolean;
 }): SoundPicks {
-  const { speakers, soundscapes, style } = opts;
+  const { speakers, style } = opts;
+  const soundscapes = opts.soundscapes.filter(
+    (s) => !isPublicSoundscapeHidden(s),
+  );
+  const soundscapeCatalog = opts.soundscapes;
   const styleKey = style?.trim() || "_general";
   const lastVoice = readLastVoiceId();
   const lastSoundMap = readLastSoundByStyle();
@@ -434,7 +439,7 @@ export function computeSoundPicks(opts: {
       : "";
   const soundExists =
     soundId === SILENCE_SOUND_ID ||
-    soundscapes.some((s) => s.key === soundId);
+    soundscapeCatalog.some((s) => s.key === soundId);
 
   if (opts.lockedSoundId == null || !soundExists) {
     if (

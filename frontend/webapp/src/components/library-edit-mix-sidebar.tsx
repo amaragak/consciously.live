@@ -27,6 +27,7 @@ import {
 } from "@/components/mix-editor-panel";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import { SelectChevron } from "@/components/select-chevron";
+import { isPublicSoundscapeHidden } from "@/components/composition-artist-select";
 import { SoundscapePicker } from "@/components/soundscape-picker";
 import {
   SyncedMarqueeProvider,
@@ -285,7 +286,7 @@ export function LibraryEditMixSidebar({
   const soundscapeSelected = isSoundscapeKey(compositionItems, musicKey);
 
   const filteredSoundscapes = useMemo(() => {
-    let list = [...compositionItems];
+    let list = compositionItems.filter((c) => !isPublicSoundscapeHidden(c));
     if (soundCategory === "favourites") {
       list = list.filter((c) => favorites.compositionSet.has(c.key));
     } else if (soundCategory === "our-picks") {
@@ -305,6 +306,7 @@ export function LibraryEditMixSidebar({
   const soundPacks = useMemo(() => {
     const packs = new Set<string>();
     for (const c of compositionItems) {
+      if (isPublicSoundscapeHidden(c)) continue;
       const p = c.customPackName?.trim();
       if (p) packs.add(p);
     }

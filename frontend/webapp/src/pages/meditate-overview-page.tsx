@@ -13,6 +13,7 @@ import {
   listBackgroundAudio,
   listFishSpeakers,
   listLibraryMeditations,
+  getMedimadeMediaBaseUrl,
   listLibraryPrograms,
   type LibraryMeditationItem,
 } from "@/lib/medimade-api";
@@ -36,7 +37,15 @@ import {
 } from "@/lib/meditation-type-pill";
 import { SOUNDS_HREF } from "@/lib/sounds-tabs";
 
-const HERO = "/patterns/hero";
+const EXPLORE_THUMB_STAMP = "1792456353682";
+
+/** Generated illustration thumbs for the Explore tiles. */
+function exploreThumb(name: string): string {
+  const media = (
+    getMedimadeMediaBaseUrl() ?? "https://d3k8rq6eqba40d.cloudfront.net"
+  ).replace(/\/$/, "");
+  return `${media}/explore-thumbs/${name}-${EXPLORE_THUMB_STAMP}.jpg`;
+}
 
 function SectionHeading({
   title,
@@ -341,14 +350,14 @@ export function MeditateOverviewPage() {
               title="My Creations"
               description="Everything you've made, ready to play again."
               count={creationsCount}
-              imageSrc={`${HERO}/adobestock-2162625652.webp`}
+              imageSrc={exploreThumb("creations")}
               icon={<Library className="size-5" strokeWidth={1.75} />}
             />
             <ExploreMiniCard
               href="/meditate/library/community"
               title="Community"
               description="Meditations other people have shared."
-              imageSrc={`${HERO}/adobestock-2162625652-chat-tile.webp`}
+              imageSrc={exploreThumb("community")}
               icon={<Users className="size-5" strokeWidth={1.75} />}
             />
             <ExploreMiniCard
@@ -356,7 +365,7 @@ export function MeditateOverviewPage() {
               title="Programs"
               description="Guided courses you can follow or make your own."
               count={programsCount}
-              imageSrc={`${HERO}/adobestock-2055049378.webp`}
+              imageSrc={exploreThumb("programs")}
               icon={<Library className="size-5" strokeWidth={1.75} />}
             />
             <ExploreMiniGroupLabel>Sounds</ExploreMiniGroupLabel>
@@ -365,7 +374,7 @@ export function MeditateOverviewPage() {
               title="Soundscapes"
               description="Just listen. Meditation music for sitting on your own."
               count={soundscapesCount}
-              imageSrc={`${HERO}/adobestock-2157180245.webp`}
+              imageSrc={exploreThumb("soundscapes")}
               icon={<Waves className="size-5" strokeWidth={1.75} />}
             />
             <ExploreMiniCard
@@ -373,14 +382,14 @@ export function MeditateOverviewPage() {
               title="Voices"
               description="Meet the guides who narrate your meditations."
               count={voicesCount}
-              imageSrc={`${HERO}/adobestock-1713569649.webp`}
+              imageSrc={exploreThumb("voices")}
               icon={<Users className="size-5" strokeWidth={1.75} />}
             />
             <ExploreMiniCard
               href={SOUNDS_HREF}
               title="Custom sounds"
               description="Layer music, ambience and noise into a mix of your own."
-              imageSrc={`${HERO}/adobestock-2089052451.webp`}
+              imageSrc={exploreThumb("custom-sounds")}
               icon={<Waves className="size-5" strokeWidth={1.75} />}
             />
           </ExploreMiniGrid>

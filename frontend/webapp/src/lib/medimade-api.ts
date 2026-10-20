@@ -5639,14 +5639,14 @@ export type AdminLibraryCategoryImageVersion = {
   createdAt: string;
 };
 
-/** Admin image gen model (category / program covers). Meditations always use mini. */
-export type AdminImageModel = "gpt-image-1-mini" | "nano-banana-pro";
+/** Admin image gen model (category / program covers). Meditations always use Flare at low quality. */
+export type AdminImageModel = "gpt-image-2.5-flare" | "nano-banana-pro";
 
 export const ADMIN_IMAGE_MODELS: ReadonlyArray<{
   id: AdminImageModel;
   label: string;
 }> = [
-  { id: "gpt-image-1-mini", label: "GPT Image 1 Mini" },
+  { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare" },
   { id: "nano-banana-pro", label: "Nano Banana Pro" },
 ];
 
@@ -5820,7 +5820,7 @@ export async function generateAdminLibraryCategoryImage(params: {
     action: "generate",
     category: params.category,
     prompt: params.prompt,
-    model: params.model ?? "gpt-image-1-mini",
+    model: params.model ?? "gpt-image-2.5-flare",
   });
 }
 
@@ -6838,7 +6838,7 @@ export async function generateAdminProgramCover(params: {
     programId: params.programId,
     dayId: params.dayId ?? null,
     prompt: params.prompt ?? "",
-    model: params.model ?? "gpt-image-1-mini",
+    model: params.model ?? "gpt-image-2.5-flare",
   });
 }
 

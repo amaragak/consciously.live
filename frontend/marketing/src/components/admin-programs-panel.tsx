@@ -303,7 +303,7 @@ export function AdminProgramsPanel() {
   const coverBusyKeysRef = useRef<Set<string>>(new Set());
   const [coverStatus, setCoverStatus] = useState<string | null>(null);
   const [coverImageModel, setCoverImageModel] =
-    useState<AdminImageModel>("gpt-image-1-mini");
+    useState<AdminImageModel>("gpt-image-2.5-flare");
   const programCoverFileRef = useRef<HTMLInputElement | null>(null);
   const dayCoverFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 

@@ -34,7 +34,10 @@ export function fishUsdFromBillableBytes(
   return (bytes / 1_000_000) * perM;
 }
 
-/** gpt-image-1-mini — 1024² low quality (our meditation/admin cover default). */
+/**
+ * Flat per-image estimate kept for usage totals.
+ * Flare bills tokens ($5 / 1M text in, $30 / 1M image out); this figure is only a stand-in.
+ */
 export const GPT_IMAGE_1_MINI_LOW_1024_USD = 0.005;
 
 /** Gemini 3 Pro Image (Nano Banana Pro) — 1K square (~1120 image output tokens). */
@@ -94,9 +97,9 @@ export const AI_PROVIDER_CATALOG: AiProviderCatalogEntry[] = [
   {
     id: "openai",
     label: "OpenAI",
-    uses: "gpt-image-1-mini covers, Whisper transcription",
+    uses: "gpt-image-2.5-flare covers, Whisper transcription",
     rateLines: [
-      `gpt-image-1-mini 1024² low: ~$${GPT_IMAGE_1_MINI_LOW_1024_USD.toFixed(3)} / image`,
+      "gpt-image-2.5-flare low: $5 / 1M text input tokens, $30 / 1M image output tokens",
       "Whisper: see OpenAI audio pricing (usage not aggregated here yet)",
     ],
     creditSource: "manual",

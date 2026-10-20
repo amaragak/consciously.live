@@ -636,8 +636,8 @@ function clampGain(n: unknown): number {
   return Math.min(100, Math.max(0, n));
 }
 
-/** Same peak as ready-made soundscape listen level (0.75 × 0.67). */
-const BED_GAIN_PEAK_VOLUME = 0.75 * 0.67;
+/** Same peak as ready-made soundscape listen level (0.67 of full scale). */
+const BED_GAIN_PEAK_VOLUME = 0.67;
 
 /**
  * Mix speech (input 0) with one or more looped background beds.

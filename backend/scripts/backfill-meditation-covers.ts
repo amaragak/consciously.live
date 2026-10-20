@@ -1,5 +1,5 @@
 /**
- * Generate gpt-image-1-mini cover art for library meditations missing coverImageKey.
+ * Generate gpt-image-2.5-flare cover art for library meditations missing coverImageKey.
  *
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts
  *   AWS_PROFILE=mm npx tsx scripts/backfill-meditation-covers.ts --email=you@example.com

@@ -1,5 +1,6 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { isPublicSoundscapeHidden } from "@/components/composition-artist-select";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import type { BackgroundAudioItem } from "@/lib/medimade-api";
 import { createAudioPulseDelayMs } from "@/lib/create-audio-pulse";
@@ -112,26 +113,30 @@ export function SoundscapePicker({
   variant = "default",
   requirePreviewUrl = true,
 }: SoundscapePickerProps) {
-  const durations = useDurations(items, previewUrl);
+  const visibleItems = useMemo(
+    () => items.filter((item) => !isPublicSoundscapeHidden(item)),
+    [items],
+  );
+  const durations = useDurations(visibleItems, previewUrl);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const selectedItemRef = useRef<HTMLLIElement | null>(null);
   const isCreate = variant === "create";
 
   const categories = useMemo(() => {
     const ids = new Set<string>();
-    for (const item of items) {
+    for (const item of visibleItems) {
       if (item.subcategory) ids.add(item.subcategory);
     }
     return [...ids].sort((a, b) =>
       prettySubcategoryLabel(a).localeCompare(prettySubcategoryLabel(b)),
     );
-  }, [items]);
+  }, [visibleItems]);
 
   const sorted = useMemo(() => {
-    const list = [...items].sort((a, b) => a.name.localeCompare(b.name));
+    const list = [...visibleItems].sort((a, b) => a.name.localeCompare(b.name));
     if (!isCreate || categoryFilter === "all") return list;
     return list.filter((item) => item.subcategory === categoryFilter);
-  }, [items, isCreate, categoryFilter]);
+  }, [visibleItems, isCreate, categoryFilter]);
 
   const pulseDelay = useMemo(
     () => (value ? createAudioPulseDelayMs() : undefined),
@@ -140,12 +145,12 @@ export function SoundscapePicker({
   // Keep a pre-selected soundscape visible if the category filter would hide it.
   useEffect(() => {
     if (!isCreate || !value || categoryFilter === "all") return;
-    const selected = items.find((item) => item.key === value);
+    const selected = visibleItems.find((item) => item.key === value);
     if (!selected) return;
     if (selected.subcategory !== categoryFilter) {
       setCategoryFilter("all");
     }
-  }, [isCreate, value, categoryFilter, items]);
+  }, [isCreate, value, categoryFilter, visibleItems]);
 
   useLayoutEffect(() => {
     if (!value) return;
@@ -163,7 +168,7 @@ export function SoundscapePicker({
       <p className="px-1 py-6 text-sm text-muted">Loading soundscapes…</p>
     );
   }
-  if (items.length === 0) {
+  if (visibleItems.length === 0) {
     return (
       <p className="px-1 py-6 text-sm text-muted">
         No soundscapes yet. Use Build your own to mix your own bed.

@@ -17,6 +17,36 @@ export function looksLikeGuideHtml(source: string): boolean {
   return /^\s*</.test(source.trim());
 }
 
+const MARKDOWN_IN_TEXT_RE =
+  /(?:^|\n)[ \t]*#{1,3}[ \t]+\S|(?:^|\n)[ \t]*:::[ \t]*[a-z]|(?:\*\*|__)|(?:^|\n)[ \t]*[-*+][ \t]+\S|(?:^|\n)[ \t]*\d+[.)][ \t]+\S|(?:^|\n)[ \t]*>[ \t]*\S/i;
+
+/**
+ * Some saves wrap legacy markdown in `<p>` / `<br>` and leave the marks as
+ * text. When the document has no real tags, hand it back to the markdown parser.
+ */
+function markdownSourceFromBody(body: string): string | null {
+  const trimmed = body.trim();
+  if (!looksLikeGuideHtml(trimmed)) return null;
+  const leftover = trimmed.replace(/<\/?(?:p|br)\b[^>]*\/?>/gi, "");
+  if (/<[a-z!/]/i.test(leftover)) return null;
+  const text = trimmed
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p\b[^>]*>/gi, "\n\n")
+    .replace(/<\/?p\b[^>]*>/gi, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(?:39|x27);|&apos;/gi, "'");
+  if (!MARKDOWN_IN_TEXT_RE.test(text)) return null;
+  return text;
+}
+
+function renderableGuideBody(body: string): string {
+  return markdownSourceFromBody(body) ?? body;
+}
+
 /** Allowlist sanitizer for TipTap StarterKit output (no DOM required). */
 export function sanitizeGuideHtml(html: string): string {
   let out = html
@@ -372,8 +402,9 @@ function extractGuideHeadingsFromHtml(body: string): GuideHeading[] {
 
 /** `##` / `<h2>` headings (same ids the renderer uses) for the contents list. */
 export function extractGuideHeadings(body: string): GuideHeading[] {
-  if (looksLikeGuideHtml(body)) return extractGuideHeadingsFromHtml(body);
-  return parseBlocks(body)
+  const source = renderableGuideBody(body);
+  if (looksLikeGuideHtml(source)) return extractGuideHeadingsFromHtml(source);
+  return parseBlocks(source)
     .filter((b): b is Extract<Block, { id: string }> => b.t === "h2")
     .map((b) => ({ id: b.id, text: plainText(b.text) }));
 }
@@ -660,17 +691,18 @@ export function GuideBody({
   body: string;
   className?: string;
 }) {
-  const isHtml = looksLikeGuideHtml(body);
+  const source = useMemo(() => renderableGuideBody(body), [body]);
+  const isHtml = looksLikeGuideHtml(source);
   const html = useMemo(
     () =>
       isHtml
-        ? withGuideHeadingIds(sanitizeGuideHtml(body))
+        ? withGuideHeadingIds(sanitizeGuideHtml(source))
         : "",
-    [body, isHtml],
+    [source, isHtml],
   );
   const blocks = useMemo(
-    () => (isHtml ? [] : parseBlocks(body)),
-    [body, isHtml],
+    () => (isHtml ? [] : parseBlocks(source)),
+    [source, isHtml],
   );
   // Lead = the first paragraph, but only when it precedes any heading.
   const leadIndex = useMemo(() => {

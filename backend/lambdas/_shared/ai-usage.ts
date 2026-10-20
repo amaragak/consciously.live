@@ -331,7 +331,7 @@ export async function recordOpenAiImageUsage(params: {
 }): Promise<void> {
   await recordAiUsage({
     provider: "openai",
-    model: params.model ?? "gpt-image-1-mini",
+    model: params.model ?? "gpt-image-2.5-flare",
     feature: params.feature,
     unit: "images",
     quantity: params.images ?? 1,

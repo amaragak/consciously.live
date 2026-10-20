@@ -64,7 +64,7 @@ export function AdminLibraryCategoriesPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageModel, setImageModel] =
-    useState<AdminImageModel>("gpt-image-1-mini");
+    useState<AdminImageModel>("gpt-image-2.5-flare");
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const applyImages = useCallback((list: AdminLibraryCategoryImage[]) => {
@@ -210,7 +210,7 @@ export function AdminLibraryCategoriesPanel() {
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
           Covers for Library → Community (including All) and Create → Add
           context tiles (Journal, Program, Manifest, Heal). Upload or generate keeps
-          prior versions so you can switch back. Choose GPT Image 1 Mini or
+          prior versions so you can switch back. Choose GPT Image 2.5 Flare or
           Nano Banana Pro for generate.
         </p>
         <label className="mt-4 flex max-w-xs flex-col gap-1 text-xs font-medium text-muted">

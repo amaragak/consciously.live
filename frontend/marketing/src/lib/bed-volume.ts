@@ -1,9 +1,8 @@
 /**
  * Ready-made soundscapes are a whole produced bed rather than one mixer
- * channel. Tuned via the reductive dev fader at 67% of the prior 0.75 peak
- * (speech stays at 1.0).
+ * channel. Default listen level is 0.67 of full scale (speech stays at 1.0).
  */
-export const SOUNDSCAPE_ELEMENT_VOLUME = 0.75 * 0.67;
+export const SOUNDSCAPE_ELEMENT_VOLUME = 0.67;
 
 /**
  * Mixer fader 100% (music and every other bed channel) maps to the same

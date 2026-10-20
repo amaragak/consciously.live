@@ -1,5 +1,5 @@
 /**
- * Meditation library cover art via OpenAI gpt-image-1-mini (1024², low quality).
+ * Meditation library cover art via OpenAI gpt-image-2.5-flare (1024², low quality).
  * Scene briefs describe the subject; rendering is the shared illustration style,
  * applied at the model call.
  *
@@ -25,7 +25,7 @@ import {
 import type { MeditationCreationProvenance } from "./meditation-creation-provenance";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
-const COVER_MODEL = "gpt-image-1-mini";
+const COVER_MODEL = "gpt-image-2.5-flare";
 const COVER_SIZE = "1024x1024";
 const COVER_QUALITY = "low";
 const COVER_FORMAT = "jpeg";
@@ -34,20 +34,20 @@ const COVER_FORMAT = "jpeg";
 const NANO_BANANA_PRO_MODEL = "gemini-3-pro-image";
 
 export const ADMIN_IMAGE_MODELS = [
-  "gpt-image-1-mini",
+  "gpt-image-2.5-flare",
   "nano-banana-pro",
 ] as const;
 export type AdminImageModel = (typeof ADMIN_IMAGE_MODELS)[number];
 
 export function coerceAdminImageModel(raw: unknown): AdminImageModel {
   if (raw === "nano-banana-pro") return "nano-banana-pro";
-  return "gpt-image-1-mini";
+  return "gpt-image-2.5-flare";
 }
 
 export function adminImageModelLabel(model: AdminImageModel): string {
   return model === "nano-banana-pro"
     ? "Nano Banana Pro"
-    : "GPT Image 1 Mini";
+    : "GPT Image 2.5 Flare";
 }
 
 const secrets = new SecretsManagerClient({});
@@ -469,16 +469,16 @@ export async function generateMeditationCoverJpeg(
   return generateJpegFromPrompt(prompt);
 }
 
-/** Always gpt-image-1-mini — used for meditation library covers. */
+/** Always gpt-image-2.5-flare at low quality — used for meditation library covers. */
 export async function generateJpegFromPrompt(
   prompt: string,
 ): Promise<{ jpeg: Buffer; prompt: string }> {
-  const out = await generateGptImage1Mini(prompt);
+  const out = await generateGptImageCover(prompt);
   return { jpeg: out.body, prompt: out.prompt };
 }
 
 /**
- * Admin-only image gen: gpt-image-1-mini (default) or Nano Banana Pro (Gemini).
+ * Admin-only image gen: gpt-image-2.5-flare (default, low) or Nano Banana Pro (Gemini).
  * Meditation covers must keep using generateJpegFromPrompt / generateMeditationCoverJpeg.
  */
 export async function generateAdminImageFromPrompt(params: {
@@ -498,11 +498,11 @@ export async function generateAdminImageFromPrompt(params: {
     const out = await generateNanoBananaProImage(params.prompt, illustrationStyle);
     return { ...out, model };
   }
-  const out = await generateGptImage1Mini(params.prompt, illustrationStyle);
+  const out = await generateGptImageCover(params.prompt, illustrationStyle);
   return { ...out, model };
 }
 
-async function generateGptImage1Mini(
+async function generateGptImageCover(
   prompt: string,
   illustrationStyle = true,
 ): Promise<{ body: Buffer; mime: "image/jpeg"; prompt: string }> {

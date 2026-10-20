@@ -20,6 +20,8 @@ import {
 } from "@/lib/medimade-api";
 import {
   CONSCIOUSLY_ORIGINALS_PACK,
+  HIDE_CONSCIOUSLY_ORIGINALS_FROM_PUBLIC,
+  isPublicSoundscapeHidden,
   matchesConsciouslyOriginalsPack,
 } from "@/components/composition-artist-select";
 import { SoundsBrowseWell } from "@/components/sounds-browse-well";
@@ -159,14 +161,13 @@ export function SoundsSoundscapesBrowse() {
   const soundPacks = useMemo(() => {
     const packs = new Set<string>();
     for (const item of compositions) {
+      if (isPublicSoundscapeHidden(item)) continue;
       const pack = item.customPackName?.trim();
       if (pack && pack !== CONSCIOUSLY_ORIGINALS_PACK) packs.add(pack);
     }
-    // Always surface Consciously Originals in the pack row (composer filter).
-    return [
-      CONSCIOUSLY_ORIGINALS_PACK,
-      ...[...packs].sort((a, b) => a.localeCompare(b)),
-    ];
+    const sorted = [...packs].sort((a, b) => a.localeCompare(b));
+    if (HIDE_CONSCIOUSLY_ORIGINALS_FROM_PUBLIC) return sorted;
+    return [CONSCIOUSLY_ORIGINALS_PACK, ...sorted];
   }, [compositions]);
 
   /** Consciously Originals + first real packs as chips; overflow (+ tags) in Filter. */
@@ -188,6 +189,7 @@ export function SoundsSoundscapesBrowse() {
   const filteredSoundscapes = useMemo(() => {
     const requiredExtra = extraTags;
     let list = compositions.filter((item) => {
+      if (isPublicSoundscapeHidden(item)) return false;
       if (soundCategory === "favourites") {
         if (!favorites.compositionSet.has(item.key)) return false;
       } else if (soundCategory === "our-picks") {

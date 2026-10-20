@@ -25,3 +25,14 @@ export function matchesConsciouslyOriginalsPack(
 ): boolean {
   return compositionArtist(item) === CONSCIOUSLY_ORIGINALS_PACK;
 }
+
+/** Public soundscape pickers hide this catalog until the flag is turned off. */
+export const HIDE_CONSCIOUSLY_ORIGINALS_FROM_PUBLIC = true;
+
+export function isPublicSoundscapeHidden(
+  item: Pick<BackgroundAudioItem, "composer" | "customPackName">,
+): boolean {
+  if (!HIDE_CONSCIOUSLY_ORIGINALS_FROM_PUBLIC) return false;
+  if (matchesConsciouslyOriginalsPack(item)) return true;
+  return (item.customPackName ?? "").trim() === CONSCIOUSLY_ORIGINALS_PACK;
+}

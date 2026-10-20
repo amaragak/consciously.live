@@ -106,6 +106,8 @@ import {
 } from "@/lib/create-sound-picks";
 import {
   CONSCIOUSLY_ORIGINALS_PACK,
+  HIDE_CONSCIOUSLY_ORIGINALS_FROM_PUBLIC,
+  isPublicSoundscapeHidden,
   matchesConsciouslyOriginalsPack,
 } from "@/components/composition-artist-select";
 import { useSoundFavorites } from "@/lib/sound-favorites";
@@ -2456,14 +2458,13 @@ export const CreateSoundStep = forwardRef<
   const soundPacks = useMemo(() => {
     const names = new Set<string>();
     for (const item of compositions) {
+      if (isPublicSoundscapeHidden(item)) continue;
       const pack = item.customPackName?.trim();
       if (pack && pack !== CONSCIOUSLY_ORIGINALS_PACK) names.add(pack);
     }
-    // Always surface Consciously Originals in the pack row (composer filter).
-    return [
-      CONSCIOUSLY_ORIGINALS_PACK,
-      ...[...names].sort((a, b) => a.localeCompare(b)),
-    ];
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    if (HIDE_CONSCIOUSLY_ORIGINALS_FROM_PUBLIC) return sorted;
+    return [CONSCIOUSLY_ORIGINALS_PACK, ...sorted];
   }, [compositions]);
   const soundTagFilterTypes = useMemo(() => {
     const list =
@@ -2490,6 +2491,7 @@ export const CreateSoundStep = forwardRef<
   const filteredSoundscapes = useMemo(() => {
     const requiredTags = [...activeSoundTags];
     let list = compositions.filter((item) => {
+      if (isPublicSoundscapeHidden(item)) return false;
       if (soundCategory === "favourites") {
         if (!favorites.compositionSet.has(item.key)) return false;
       } else if (soundCategory === "our-picks") {
