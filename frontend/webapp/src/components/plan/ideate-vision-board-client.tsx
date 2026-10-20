@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   applyVisionBoardRefinement,
   getComposeSlotIds,
@@ -18,14 +19,17 @@ import {
   setVisionItemLifeAreaIds,
   stashVisionBoardTake,
   upsertVisionBoardItem,
+  visionImageStyleOf,
   visionItemHasImage,
   visionLabelFromPrompt,
+  type VisionImageStyle,
   type VisionBoardItem,
   type VisionCrop,
   type VisionExtraReference,
   type VisionSelfReference,
 } from "@/lib/ideate-vision-board";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { WhiteboardBackChip } from "@/components/plan/life-area/whiteboard-return";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
@@ -46,6 +50,15 @@ import {
 } from "@/lib/medimade-api";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { VisionBoardLayout } from "@/components/plan/vision-board-layout";
+import {
+  hasVisionLikeness,
+  pushVisionToast,
+  redrawVisionItem,
+  redrawVisionItems,
+  restoreVisionPrevious,
+  saveVisionImageStyle,
+  takePendingStyleRedraw,
+} from "@/lib/vision-image-jobs";
 import {
   VisionBoardImage,
   VisionBoardImageSkeleton,
@@ -90,7 +103,10 @@ function visionKeyFromUrl(url: string | undefined | null): string | null {
  * Guests: device IndexedDB only.
  */
 export function IdeateVisionBoardClient() {
+  const [boardSearch] = useSearchParams();
   const [items, setItems] = useState<VisionBoardItem[]>([]);
+  const [imageStyle, setImageStyle] = useState<VisionImageStyle>("realistic");
+  const [photoAsk, setPhotoAsk] = useState<VisionBoardItem | null>(null);
   const [selfRef, setSelfRef] = useState<VisionSelfReference | null>(null);
   const [extraRefs, setExtraRefs] = useState<VisionExtraReference[]>([]);
   const [selfPreviewUrl, setSelfPreviewUrl] = useState<string | null>(null);
@@ -129,6 +145,7 @@ export function IdeateVisionBoardClient() {
   const extraPreviewUrlsRef = useRef<Record<string, string>>({});
   const tileUrlsRef = useRef<Record<string, string>>({});
   const boardRef = useRef<HTMLUListElement | null>(null);
+  const pickedTile = useRef<string | null>(null);
   const { ready: cloudReady, signedIn, revision } = useIdeateCloud();
 
   const revokePreview = useCallback(() => {
@@ -151,15 +168,28 @@ export function IdeateVisionBoardClient() {
     document.getElementById(id)?.scrollIntoView({ block: "center" });
   }, [items]);
 
+  useEffect(() => {
+    const id = boardSearch.get("select");
+    if (!id || !hydrated || pickedTile.current === id) return;
+    const tile = document.getElementById(`vision-tile-${id}`);
+    if (!tile) return;
+    pickedTile.current = id;
+    setMenuTileId(id);
+    tile.scrollIntoView({ block: "center" });
+    tile.classList.add("ring-2", "ring-accent");
+    const timer = window.setTimeout(() => tile.classList.remove("ring-2", "ring-accent"), 2200);
+    return () => window.clearTimeout(timer);
+  }, [boardSearch, hydrated, items]);
+
   const refreshLifeAreas = useCallback(() => {
     setLifeAreas(
       loadIdeateStore()
         .dreams.filter((d) => !isDemoIdeateDream(d))
-      .map((d) => ({
-        id: d.id,
-        title: d.title.trim() || "Untitled",
+        .map((d) => ({
+          id: d.id,
+          title: d.title.trim() || "Untitled",
         visionText: d.visionText?.trim() ?? "",
-      })),
+        })),
     );
   }, []);
 
@@ -171,6 +201,7 @@ export function IdeateVisionBoardClient() {
   const refresh = useCallback(async () => {
     const store = loadIdeateVisionBoardStore();
     setItems(store.items);
+    setImageStyle(visionImageStyleOf(store.imageStyle));
     setSelfRef(store.selfReference ?? null);
     setExtraRefs(store.extraReferences ?? []);
 
@@ -327,6 +358,8 @@ export function IdeateVisionBoardClient() {
       polishPrompt?: boolean;
       continuityKey?: string;
       continuityMediaId?: string;
+      style?: VisionImageStyle;
+      skipLikeness?: boolean;
     }) => {
       await import("@/lib/auth-session").then((m) =>
         m.ensureMedimadeSession({ force: false }),
@@ -338,8 +371,10 @@ export function IdeateVisionBoardClient() {
       }
 
       const store = loadIdeateVisionBoardStore();
+      const style = params.style ?? visionImageStyleOf(store.imageStyle);
+      const skipLikeness = style === "illustrated" || params.skipLikeness === true;
       const refMeta = store.selfReference;
-      if (!refMeta) {
+      if (!skipLikeness && !refMeta) {
         throw new Error("Upload a clear photo of yourself first.");
       }
 
@@ -353,10 +388,10 @@ export function IdeateVisionBoardClient() {
 
       const jwt = Boolean(auth.getMedimadeSessionJwt());
       const referenceKey =
-        refMeta.key?.trim() || visionKeyFromUrl(refMeta.url) || "";
+        refMeta?.key?.trim() || visionKeyFromUrl(refMeta?.url) || "";
 
       // Persist recovered key so later generates don't need URL parsing.
-      if (jwt && referenceKey && !refMeta.key) {
+      if (jwt && referenceKey && refMeta && !refMeta.key) {
         await persistBoard({
           ...store,
           v: 2,
@@ -440,15 +475,16 @@ export function IdeateVisionBoardClient() {
         return out.slice(0, MAX_VISION_EXTRA_REFERENCES);
       };
 
-      const extraReferences = await buildExtras();
+      const extraReferences =
+        style === "illustrated" ? [] : await buildExtras();
 
       // Cloud path: Lambda reads the object from S3 (no browser CORS to CloudFront).
       if (jwt && referenceKey) {
         try {
           return await generateVisionBoardScene({
             ...common,
-            referenceKey,
-            mimeType: refMeta.mimeType,
+            style,
+            ...(skipLikeness ? { skipLikeness: true } : { referenceKey, mimeType: refMeta?.mimeType }),
             ...(extraReferences.length ? { extraReferences } : {}),
           });
         } catch (e) {
@@ -463,7 +499,7 @@ export function IdeateVisionBoardClient() {
       }
 
       // Guest IndexedDB binary.
-      if (refMeta.mediaId) {
+      if (!skipLikeness && refMeta?.mediaId) {
         const rec = await getVisionMedia(refMeta.mediaId);
         if (!rec) {
           throw new Error("Reference photo is missing — upload it again.");
@@ -479,13 +515,22 @@ export function IdeateVisionBoardClient() {
         });
         return generateVisionBoardScene({
           ...common,
+          style,
           referenceBase64,
           mimeType: prepared.mimeType,
           ...(extraReferences.length ? { extraReferences } : {}),
         });
       }
 
-      if (refMeta.url && !jwt) {
+      if (skipLikeness) {
+        return generateVisionBoardScene({
+          ...common,
+          style,
+          skipLikeness: true,
+        });
+      }
+
+      if (refMeta?.url && !jwt) {
         throw new Error(
           "Your session expired. Sign in again to regenerate with your cloud photo.",
         );
@@ -500,7 +545,10 @@ export function IdeateVisionBoardClient() {
 
   const onPickReference = useCallback(
     async (file: File | null) => {
-      if (!file) return;
+      if (!file) {
+        takePendingStyleRedraw();
+        return;
+      }
       setError(null);
       setBusy("ref");
       try {
@@ -756,6 +804,7 @@ export function IdeateVisionBoardClient() {
           imageUrl: result.url,
           ...(result.key ? { mediaKey: result.key } : {}),
           prompt: finalPrompt,
+          imageStyle: visionImageStyleOf(loadIdeateVisionBoardStore().imageStyle),
           createdAt: new Date().toISOString(),
           ...area,
         };
@@ -786,6 +835,7 @@ export function IdeateVisionBoardClient() {
           ...(result.url ? { imageUrl: result.url } : {}),
           ...(result.key ? { mediaKey: result.key } : {}),
           prompt: finalPrompt,
+          imageStyle: visionImageStyleOf(loadIdeateVisionBoardStore().imageStyle),
           createdAt: new Date().toISOString(),
           ...area,
         };
@@ -915,6 +965,7 @@ export function IdeateVisionBoardClient() {
         const result = await runGenerate({
           prompt: basePrompt,
           polishPrompt: false,
+          style: visionImageStyleOf(item.imageStyle),
         });
         const finalPrompt = result.prompt?.trim() || basePrompt;
 
@@ -988,6 +1039,7 @@ export function IdeateVisionBoardClient() {
         const result = await runGenerate({
           prompt: basePrompt,
           changeRequest: change,
+          style: visionImageStyleOf(item.imageStyle),
         });
         const finalPrompt = result.prompt?.trim() || basePrompt;
 
@@ -1094,8 +1146,8 @@ export function IdeateVisionBoardClient() {
       const empty = slots.findIndex((id) => !id);
       if (empty < 0) {
         setError("Your board is full. Remove one to add another.");
-        return;
-      }
+                          return;
+                        }
       const next = placeVisionItemInComposeSlot(store, item.id, empty);
       await persistBoard(next);
       setItems(next.items);
@@ -1126,8 +1178,8 @@ export function IdeateVisionBoardClient() {
       const onBoard = slots.includes(item.id);
       if (featured && !onBoard && slots.every(Boolean)) {
         setError("Your board is full. Remove one to add another.");
-        return;
-      }
+                          return;
+                        }
       const next = setVisionItemCrop(store, item.id, crop, featured);
       await persistBoard(next);
       setItems(next.items);
@@ -1148,7 +1200,7 @@ export function IdeateVisionBoardClient() {
 
   const onNewTake = useCallback(
     async (item: VisionBoardItem): Promise<{ versionId: string } | null> => {
-      setError(null);
+                          setError(null);
       const basePrompt = item.prompt?.trim();
       if (!basePrompt) {
         setError("This image has no scene to take again.");
@@ -1163,6 +1215,7 @@ export function IdeateVisionBoardClient() {
         const result = await runGenerate({
           prompt: basePrompt,
           polishPrompt: false,
+          style: visionImageStyleOf(item.imageStyle),
           ...(item.mediaKey ? { continuityKey: item.mediaKey } : {}),
           ...(!item.mediaKey && item.mediaId
             ? { continuityMediaId: item.mediaId }
@@ -1229,20 +1282,57 @@ export function IdeateVisionBoardClient() {
     ? Boolean(selfRef?.url && (selfRef?.key || visionKeyFromUrl(selfRef?.url)))
     : Boolean(selfRef?.mediaId || selfRef?.url);
 
+  useEffect(() => {
+    if (!hasReference) return;
+    const pending = takePendingStyleRedraw();
+    if (pending) {
+      void (async () => {
+        await saveVisionImageStyle(pending);
+        setImageStyle(pending);
+        const n = await redrawVisionItems(pending);
+        pushVisionToast(
+          n === 1
+            ? `Redrawn as ${pending === "illustrated" ? "an illustration" : "a realistic image"}`
+            : `Redrawn ${n} images`,
+        );
+        await refresh();
+      })().catch((e) =>
+        setError(e instanceof Error ? e.message : "Couldn't redraw those images"),
+      );
+      return;
+    }
+    if (!photoAsk) return;
+    const item = photoAsk;
+    setPhotoAsk(null);
+    void redrawVisionItem(item, "realistic")
+      .then(async () => {
+        pushVisionToast("Redrawn as a realistic image");
+        await refresh();
+      })
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Couldn't redraw that image"),
+      );
+  }, [hasReference, photoAsk, refresh]);
+
   return (
     <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
+      {boardSearch.get("wb") ? (
+        <div className="px-4 pt-3">
+          <WhiteboardBackChip areaId={boardSearch.get("wb")!} />
+        </div>
+      ) : null}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
         onChange={(e) => void onPickReference(e.target.files?.[0] ?? null)}
       />
-      <input
-        ref={extraFileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
+              <input
+                ref={extraFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
         onChange={(e) => void onPickExtraReference(e.target.files?.[0] ?? null)}
       />
       <input
@@ -1254,6 +1344,50 @@ export function IdeateVisionBoardClient() {
       />
       <VisionBoardLayout
         items={items}
+        imageStyle={imageStyle}
+        onStyleCommit={(next, redraw, skipLikeness) => {
+          void (async () => {
+            await saveVisionImageStyle(next);
+            setImageStyle(next);
+            if (!redraw) return;
+            const n = await redrawVisionItems(next, { skipLikeness });
+            pushVisionToast(
+              n === 1
+                ? `Redrawn as ${next === "illustrated" ? "an illustration" : "a realistic image"}`
+                : `Redrawn ${n} images`,
+            );
+            await refresh();
+          })();
+        }}
+        onRedraw={(item) => {
+          const next =
+            visionImageStyleOf(item.imageStyle) === "illustrated"
+              ? "realistic"
+              : "illustrated";
+          if (next === "realistic" && !hasVisionLikeness()) {
+            setPhotoAsk(item);
+            return;
+          }
+          void (async () => {
+            await redrawVisionItem(item, next);
+            pushVisionToast(
+              next === "illustrated"
+                ? "Redrawn as an illustration"
+                : "Redrawn as a realistic image",
+            );
+            await refresh();
+          })().catch((e) =>
+            setError(e instanceof Error ? e.message : "Couldn't redraw that image"),
+          );
+        }}
+        onRestore={(item) => {
+          const next = restoreVisionPrevious(item);
+          if (!next) return;
+          void (async () => {
+            await persistBoard(upsertVisionBoardItem(loadIdeateVisionBoardStore(), next));
+            await refresh();
+          })();
+        }}
         tileUrls={tileUrls}
         lifeAreas={lifeAreas}
         hydrated={hydrated}
@@ -1284,6 +1418,50 @@ export function IdeateVisionBoardClient() {
         onExtraDescription={(id, value) => void updateExtraDescription(id, value)}
         selfFileName={selfRef?.fileName ?? null}
       />
+      {photoAsk ? (
+        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/40 sm:items-center">
+          <div className="w-full max-w-md rounded-t-[20px] bg-card p-6 sm:rounded-[20px]">
+            <h2 className="font-display text-2xl">Add your photo</h2>
+            <p className="mt-2 text-sm text-muted">
+              Realistic images can use a photo of you. Skip makes this one without your likeness.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                className="accent-fill-gradient h-11 cursor-pointer rounded-full text-sm font-semibold text-on-accent"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Add a photo
+              </button>
+              <button
+                type="button"
+                className="h-11 cursor-pointer rounded-full border border-border text-sm font-semibold"
+                onClick={() => {
+                  const item = photoAsk;
+                  setPhotoAsk(null);
+                  void redrawVisionItem(item, "realistic", { skipLikeness: true })
+                    .then(async () => {
+                      pushVisionToast("Redrawn as a realistic image");
+                      await refresh();
+                    })
+                    .catch((e) =>
+                      setError(e instanceof Error ? e.message : "Couldn't redraw that image"),
+                    );
+                }}
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                className="h-11 cursor-pointer text-sm font-semibold text-muted"
+                onClick={() => setPhotoAsk(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

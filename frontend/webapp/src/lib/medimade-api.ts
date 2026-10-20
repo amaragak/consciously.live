@@ -828,12 +828,17 @@ export async function generateVisionBoardScene(params: {
     referenceBase64?: string;
     mimeType?: string;
   }>;
+  style?: "realistic" | "illustrated";
+  /** Realistic image with no likeness photo. */
+  skipLikeness?: boolean;
 }): Promise<VisionGenerateResult> {
   const base = getMedimadeApiBase();
   if (!base) {
     throw new Error("VITE_MEDIMADE_API_URL is not set");
   }
-  if (!params.referenceBase64 && !params.referenceKey) {
+  const illustrated = params.style === "illustrated";
+  const skipLikeness = illustrated || params.skipLikeness === true;
+  if (!skipLikeness && !params.referenceBase64 && !params.referenceKey) {
     throw new Error("Reference photo is required");
   }
   const token = sessionTokenForBody();
@@ -856,12 +861,16 @@ export async function generateVisionBoardScene(params: {
         ? { changeRequest: params.changeRequest.trim() }
         : {}),
       ...(params.polishPrompt === false ? { polishPrompt: false } : {}),
-      ...(params.referenceBase64
-        ? { referenceBase64: params.referenceBase64 }
-        : {}),
-      ...(params.referenceKey ? { referenceKey: params.referenceKey } : {}),
+      ...(skipLikeness || !params.referenceBase64
+        ? {}
+        : { referenceBase64: params.referenceBase64 }),
+      ...(skipLikeness || !params.referenceKey
+        ? {}
+        : { referenceKey: params.referenceKey }),
+      ...(params.style ? { style: params.style } : {}),
+      ...(skipLikeness ? { skipLikeness: true } : {}),
       mimeType: params.mimeType,
-      ...(extras.length ? { extraReferences: extras } : {}),
+      ...(illustrated || !extras.length ? {} : { extraReferences: extras }),
       ...(token ? { sessionToken: token } : {}),
     }),
   });

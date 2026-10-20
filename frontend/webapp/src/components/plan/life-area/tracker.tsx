@@ -24,6 +24,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { MIST, OUTLINE, ProgressBar } from "@/components/plan/life-area/kit";
 import { queueTrackerFocus } from "@/lib/focus-ideate-link";
 import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
@@ -60,6 +61,13 @@ const EXPAND_KEY = "mm_tracker_expand_v1";
 const KINDS: TrackerKind[] = ["goal", "project", "feature", "task"];
 const STATUSES: TrackerStatus[] = ["not_started", "doing", "waiting", "done"];
 
+export const TRACKER_KIND_DOT: Record<TrackerKind, string> = {
+  goal: "bg-accent",
+  project: "bg-sky-500",
+  feature: "bg-violet-400",
+  task: "bg-muted",
+};
+
 const KIND_CLASS: Record<TrackerKind, string> = {
   goal: "border-accent/50 text-accent-link",
   project: "border-sky-500/40 text-sky-800",
@@ -67,12 +75,7 @@ const KIND_CLASS: Record<TrackerKind, string> = {
   task: "border-border text-muted",
 };
 
-const KIND_DOT: Record<TrackerKind, string> = {
-  goal: "bg-accent",
-  project: "bg-sky-500",
-  feature: "bg-violet-400",
-  task: "bg-muted",
-};
+const KIND_DOT = TRACKER_KIND_DOT;
 
 type Visible = { item: TrackerItem; level: number };
 
@@ -83,7 +86,7 @@ const STATUS_LABEL: Record<TrackerStatus, string> = {
   done: "Done",
 };
 
-const KIND_LABEL: Record<TrackerKind, string> = {
+export const TRACKER_KIND_LABEL: Record<TrackerKind, string> = {
   goal: "Goal",
   project: "Project",
   feature: "Feature",
@@ -395,6 +398,34 @@ export function LifeAreaTracker({
     // Only seed once per area.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dream.id]);
+
+  const flashedRow = useRef<string | null>(null);
+  useEffect(() => {
+    const focus = search.get("focus");
+    if (!focus || flashedRow.current === focus) return;
+    flashedRow.current = focus;
+    setExpanded((current) => {
+      const next = new Set(current);
+      let row = areaItems.find((item) => item.id === focus) ?? null;
+      const seen = new Set<string>();
+      while (row?.parentId && !seen.has(row.parentId)) {
+        seen.add(row.parentId);
+        next.add(row.parentId);
+        row = areaItems.find((item) => item.id === row!.parentId) ?? null;
+      }
+      return next;
+    });
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector(`[data-tracker-row="${CSS.escape(focus)}"]`);
+      if (!(el instanceof HTMLElement)) return;
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("bg-accent-soft");
+      window.setTimeout(() => el.classList.remove("bg-accent-soft"), 2200);
+    }, 120);
+    return () => window.clearTimeout(timer);
+    // Flash the opened row once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   function persistExpand(next: Set<string>) {
     setExpanded(next);
@@ -735,7 +766,7 @@ export function LifeAreaTracker({
           >
             <option value="all">All</option>
             {KINDS.map((kind) => (
-              <option key={kind} value={kind}>{KIND_LABEL[kind]}</option>
+              <option key={kind} value={kind}>{TRACKER_KIND_LABEL[kind]}</option>
             ))}
           </select>
         </label>
@@ -979,17 +1010,17 @@ export function LifeAreaTracker({
   );
 }
 
-function KindTag({ kind }: { kind: TrackerKind | null }) {
+export function KindTag({ kind }: { kind: TrackerKind | null }) {
   if (!kind) return null;
   return (
     <span className={`inline-flex h-5 items-center gap-1 rounded-md border px-1.5 text-[11px] font-semibold ${KIND_CLASS[kind]}`}>
       <span className={`size-1.5 rounded-sm ${KIND_DOT[kind]}`} />
-      {KIND_LABEL[kind]}
+      {TRACKER_KIND_LABEL[kind]}
     </span>
   );
 }
 
-function StatusPill({ item }: { item: TrackerItem }) {
+export function StatusPill({ item }: { item: TrackerItem }) {
   if (!item.status) return null;
   if (item.status === "doing") {
     return <span className={`${MIST} h-6 px-2 text-[11.5px]`}>Doing</span>;
@@ -1110,6 +1141,7 @@ function Outline({
               onDragEnd(id, asChild ? item.id : item.parentId, asChild ? null : item.id);
             }}
             tabIndex={0}
+            data-tracker-row={item.id}
             onKeyDown={(event) => rowOpensOnKey(event, () => onOpen(item.id))}
             onClick={(event) => {
               const target = event.target as HTMLElement;
@@ -1548,6 +1580,7 @@ function Detail(props: {
   onAdd: () => void;
   onPlan: () => void;
 }) {
+  const chatOn = useMvpFlags().chat;
   const stats = rollup(props.items, props.item.id);
   const doing = descendantsOf(props.items, props.item.id).filter((item) => item.status === "doing").length;
   const [hover, setHover] = useState<string | null>(null);
@@ -1580,7 +1613,7 @@ function Detail(props: {
           </button>
         ))}
       </div>
-      <section className="rounded-2xl border border-border bg-card p-4">
+      <section className="rounded-2xl border border-border bg-card p-4" data-tracker-row={props.item.id}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2"><KindTag kind={props.item.kind} /><StatusPill item={props.item} /></div>
@@ -1618,6 +1651,7 @@ function Detail(props: {
             <div key={item.id}>
             <div
               tabIndex={0}
+              data-tracker-row={item.id}
               className="group flex items-center gap-2 border-t border-border py-2 outline-none hover:bg-background focus-within:bg-background"
               style={{ paddingLeft: Math.min(level, props.indentCap) * props.indent }}
               onMouseEnter={() => setHover(item.id)}
@@ -1686,9 +1720,11 @@ function Detail(props: {
           <button type="button" className="mt-2 text-sm text-muted" onClick={props.onAdd}>+ Add an item… <span className="text-xs">Tab to indent · Shift+Tab to outdent</span></button>
         </div>
         <div className="mt-4 flex flex-col gap-2">
+          {chatOn ? (
           <button type="button" className={`${OUTLINE} h-10 px-4 text-sm`} onClick={props.onPlan}>
             <MessageSquare className="size-3.5" /> Plan next steps
           </button>
+          ) : null}
           <p className="text-xs text-muted">Select items with the dot on the left to start a focus session</p>
         </div>
       </section>

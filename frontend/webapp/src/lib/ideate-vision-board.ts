@@ -22,6 +22,18 @@ export type VisionBoardVersion = {
   createdAt: string;
 };
 
+export type VisionImageStyle = "realistic" | "illustrated";
+
+/** The picture a redraw replaced, so the tile can swap back once. */
+export type VisionPreviousImage = {
+  imageUrl?: string;
+  mediaId?: string;
+  mediaKey?: string;
+  imageStyle?: VisionImageStyle;
+  width?: number;
+  height?: number;
+};
+
 export type VisionBoardItem = {
   id: string;
   /** Soft fill for the preview mosaic (and fallback when no image). */
@@ -61,6 +73,10 @@ export type VisionBoardItem = {
   featured?: boolean;
   /** Non-destructive crop. Null / omitted is the full image. */
   crop?: VisionCrop | null;
+  /** Style this picture was made in. Omitted on older images and uploads means realistic. */
+  imageStyle?: VisionImageStyle;
+  /** Last picture this tile showed, kept until the next redraw. */
+  previousImage?: VisionPreviousImage | null;
 };
 
 export type VisionCropPreset =
@@ -109,7 +125,15 @@ export type IdeateVisionBoardStoreV1 = {
   selfReference?: VisionSelfReference | null;
   /** Optional supporting photos (mum, dog, etc.), max 3. */
   extraReferences?: VisionExtraReference[];
+  /** How new vision-board images are made. Omitted means realistic. */
+  imageStyle?: VisionImageStyle;
 };
+
+export function visionImageStyleOf(
+  value: VisionImageStyle | null | undefined,
+): VisionImageStyle {
+  return value === "illustrated" ? "illustrated" : "realistic";
+}
 
 const LS_KEY = "mm_ideate_vision_board_v1";
 export const MAX_VISION_EXTRA_REFERENCES = 3;
@@ -228,7 +252,32 @@ function normalizeItem(x: unknown): VisionBoardItem | null {
     ...(o.offBoard === true ? { offBoard: true } : {}),
     ...(o.featured === true ? { featured: true } : {}),
     ...(normalizeCrop(o.crop) ? { crop: normalizeCrop(o.crop) } : {}),
+    ...(o.imageStyle === "illustrated" || o.imageStyle === "realistic"
+      ? { imageStyle: o.imageStyle }
+      : {}),
+    ...(normalizePreviousImage(o.previousImage)
+      ? { previousImage: normalizePreviousImage(o.previousImage) }
+      : {}),
   };
+}
+
+function normalizePreviousImage(raw: unknown): VisionPreviousImage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const imageStyle =
+    o.imageStyle === "illustrated" || o.imageStyle === "realistic"
+      ? o.imageStyle
+      : undefined;
+  const next: VisionPreviousImage = {
+    ...(typeof o.imageUrl === "string" ? { imageUrl: o.imageUrl } : {}),
+    ...(typeof o.mediaId === "string" ? { mediaId: o.mediaId } : {}),
+    ...(typeof o.mediaKey === "string" ? { mediaKey: o.mediaKey } : {}),
+    ...(imageStyle ? { imageStyle } : {}),
+    ...(typeof o.width === "number" && o.width > 0 ? { width: o.width } : {}),
+    ...(typeof o.height === "number" && o.height > 0 ? { height: o.height } : {}),
+  };
+  if (!next.imageUrl && !next.mediaId) return null;
+  return next;
 }
 
 function normalizeCrop(raw: unknown): VisionCrop | null {
@@ -412,6 +461,7 @@ function normalizeStore(raw: unknown): IdeateVisionBoardStoreV1 {
     items?: unknown[];
     selfReference?: unknown;
     extraReferences?: unknown[];
+    imageStyle?: unknown;
   };
   if ((parsed?.v !== 1 && parsed?.v !== 2) || !Array.isArray(parsed.items)) {
     return emptyBoard();
@@ -429,6 +479,9 @@ function normalizeStore(raw: unknown): IdeateVisionBoardStoreV1 {
           .filter((r): r is VisionExtraReference => Boolean(r))
           .slice(0, MAX_VISION_EXTRA_REFERENCES)
       : [],
+    ...(parsed.imageStyle === "illustrated" || parsed.imageStyle === "realistic"
+      ? { imageStyle: parsed.imageStyle }
+      : {}),
   };
 }
 
@@ -456,6 +509,9 @@ export function saveIdeateVisionBoardStoreLocal(store: IdeateVisionBoardStoreV1)
     v: 2,
     items: store.items.slice(0, 48),
     selfReference: store.selfReference ?? null,
+    ...(store.imageStyle === "illustrated" || store.imageStyle === "realistic"
+      ? { imageStyle: store.imageStyle }
+      : {}),
     extraReferences: (store.extraReferences ?? [])
       .slice(0, MAX_VISION_EXTRA_REFERENCES)
       .map((r) => ({

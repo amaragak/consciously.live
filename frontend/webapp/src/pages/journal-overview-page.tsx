@@ -7,6 +7,7 @@ import {
 import { BookOpen, ChevronRight, Heart, Mic, Plus, Sparkles } from "lucide-react";
 import { IconHeart, IconSparkles, IconSun } from "@tabler/icons-react";
 import { Link } from "@/lib/spa-nav";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import {
   ExploreMiniCard,
   ExploreMiniGrid,
@@ -636,6 +637,7 @@ function EmptyWelcomeCard() {
 }
 
 export function JournalOverviewPage() {
+  const journalInsights = useMvpFlags().journalInsights;
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [dreams, setDreams] = useState<PlanDream[]>([]);
   const [letter, setLetter] = useState<JournalWeeklyLetterSummary | null>(null);
@@ -670,6 +672,12 @@ export function JournalOverviewPage() {
   }, []);
 
   useEffect(() => {
+    if (!journalInsights) {
+      setLetter(null);
+      setReflection(null);
+      setReady(true);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
@@ -702,11 +710,11 @@ export function JournalOverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [journalInsights]);
 
   const recent = entries.slice(0, 3);
   const showEmptyWelcome = ready && entries.length === 0 && !letter;
-  const showInsights = Boolean(letter);
+  const showInsights = journalInsights && Boolean(letter);
 
   return (
     <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
@@ -784,13 +792,15 @@ export function JournalOverviewPage() {
               imageSrc="/patterns/hero/adobestock-2156039259.webp"
               icon={<Heart className="size-5" strokeWidth={1.75} />}
             />
-            <ExploreMiniCard
-              href="/journal/my/insights"
-              title="Insights"
-              description="A weekly letter on how things moved, written from your entries."
-              imageSrc="/patterns/hero/adobestock-2089052451.webp"
-              icon={<Sparkles className="size-5" strokeWidth={1.75} />}
-            />
+            {journalInsights ? (
+              <ExploreMiniCard
+                href="/journal/my/insights"
+                title="Insights"
+                description="A weekly letter on how things moved, written from your entries."
+                imageSrc="/patterns/hero/adobestock-2089052451.webp"
+                icon={<Sparkles className="size-5" strokeWidth={1.75} />}
+              />
+            ) : null}
           </ExploreMiniGrid>
         </section>
       </div>

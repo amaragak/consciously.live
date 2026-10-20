@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ColorSchemePicker } from "@consciously/common";
 import { SelectChevron } from "@/components/select-chevron";
+import { applyMvpNav, useMvpFlags } from "@/lib/mvp-flags";
 import {
   APP_NAV_MAIN,
   APP_SIDEBAR_WIDTH_TRANSITION_MS,
@@ -379,6 +380,8 @@ export function AppSidebar({
   onToggleCollapsed,
 }: Props) {
   const pathname = usePathname() || "/";
+  const mvp = useMvpFlags();
+  const navMain = useMemo(() => applyMvpNav(APP_NAV_MAIN, mvp), [mvp]);
   const [hash, setHash] = useState("");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
@@ -611,7 +614,7 @@ export function AppSidebar({
         {railCollapsed ? (
           <>
             <nav className="app-sidebar-scroll flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
-              {APP_NAV_MAIN.map((section) => {
+              {navMain.map((section) => {
                 const sectionActive = activeNavSectionId(pathname) === section.id;
                 const icon = SECTION_ICONS[section.id];
                 return (
@@ -659,7 +662,7 @@ export function AppSidebar({
         ) : (
           <>
         <nav className="app-sidebar-scroll app-sidebar-expanded-panel flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
-          {APP_NAV_MAIN.map((section) => (
+          {navMain.map((section) => (
             <NavSectionBlock
               key={section.id}
               section={section}

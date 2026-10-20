@@ -4,6 +4,7 @@ import { ChevronRight, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -17,6 +18,7 @@ import {
   setAppMobileTabBarState,
   shouldHideMobileTabBar,
 } from "@/lib/app-mobile-tab-bar";
+import { applyMvpNav, useMvpFlags } from "@/lib/mvp-flags";
 import {
   APP_NAV_MAIN,
   activeNavSectionId,
@@ -292,6 +294,8 @@ function SheetRow({
 }
 
 export function AppMobileTabBar() {
+  const mvp = useMvpFlags();
+  const navMain = useMemo(() => applyMvpNav(APP_NAV_MAIN, mvp), [mvp]);
   const mdUp = useMinWidth(768);
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -421,7 +425,7 @@ export function AppMobileTabBar() {
 
   const sheetSection = (() => {
     if (sheetSectionId == null) return null;
-    const found = APP_NAV_MAIN.find((s) => s.id === sheetSectionId) ?? null;
+    const found = navMain.find((s) => s.id === sheetSectionId) ?? null;
     if (!found) return null;
     if (found.id !== "heal") return found;
     return { ...found, children: healChildren };
@@ -442,7 +446,7 @@ export function AppMobileTabBar() {
         className="grid grid-cols-5"
         style={{ height: APP_MOBILE_TAB_BAR_H_PX }}
       >
-        {APP_NAV_MAIN.filter((section) => section.id !== "chat").map((section) => {
+        {navMain.filter((section) => section.id !== "chat").map((section) => {
           const active = activeId === section.id;
           const hasChildren = (section.children?.length ?? 0) > 0;
           return (

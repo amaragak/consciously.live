@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
+import { useMvpFlags, mvpFlagsSnapshot } from "@/lib/mvp-flags";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JournalInsightsView } from "@/components/journal-insights-view";
 import { InsightsNeedSupportLink } from "@/components/insights-need-support-link";
@@ -416,7 +417,8 @@ export function JournalView() {
     Boolean(/^\/journal\/insights\/[^/]+\/?$/.test(pathname));
   const mobileComposeChrome =
     mobileJournalEditor || mobileGratitudeCompose || mobileInsightsLetter;
-  const insightsOpen = section === "insights";
+  const mvp = useMvpFlags();
+  const insightsOpen = section === "insights" && mvp.journalInsights;
   const [insightsMounted, setInsightsMounted] = useState(insightsOpen);
   const [listTab, setListTab] = useState<JournalMainTab>(() =>
     section === "gratitude" ? "gratitude" : "journal",
@@ -459,9 +461,13 @@ export function JournalView() {
       setListTab(section);
     }
     if (section === "insights") {
+      if (!mvp.journalInsights) {
+        navigate("/journal/my", { replace: true });
+        return;
+      }
       setInsightsMounted(true);
     }
-  }, [section]);
+  }, [mvp.journalInsights, navigate, section]);
 
   useEffect(() => {
     const sync = () => {
@@ -1445,7 +1451,7 @@ export function JournalView() {
       setImportBatchId(batchId);
       setImportOpen(false);
       navigate(`/journal/my/${encodeURIComponent(first.id)}`);
-      if (getMedimadeSessionJwt()) {
+      if (getMedimadeSessionJwt() && mvpFlagsSnapshot().journalInsights) {
         void runJournalInsightsRemote().catch(() => {
           /* insights can catch up later */
         });
@@ -1647,12 +1653,16 @@ export function JournalView() {
             className={HEADER_SECTION_TABS_TRACK}
             idleClassName={HEADER_SECTION_TABS_IDLE}
             selectedClassName={HEADER_SECTION_TABS_SELECTED}
-            options={JOURNAL_SECTION_TABS}
+            options={JOURNAL_SECTION_TABS.filter(
+              (tab) => tab.id !== "insights" || mvp.journalInsights,
+            )}
           />
         </AppPrimaryTabsDesktop>
         {/* Support link only — section tabs in header from md+ (sidebar below). */}
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 py-1.5 md:hidden">
-          <InsightsNeedSupportLink className="shrink-0" />
+          {mvp.journalInsights ? (
+            <InsightsNeedSupportLink className="shrink-0" />
+          ) : null}
         </div>
         {importBatchId ? (
           <p className="mt-2 text-sm text-muted">
@@ -1669,7 +1679,9 @@ export function JournalView() {
       </div>
 
       {/* Desktop: float over journal/insights chrome — must not push layout or sit under rails. */}
-      <InsightsNeedSupportLink className="pointer-events-auto absolute right-4 top-3 z-20 hidden sm:right-6 md:block" />
+      {mvp.journalInsights ? (
+        <InsightsNeedSupportLink className="pointer-events-auto absolute right-4 top-3 z-20 hidden sm:right-6 md:block" />
+      ) : null}
 
       {insightsMounted ? (
         <div

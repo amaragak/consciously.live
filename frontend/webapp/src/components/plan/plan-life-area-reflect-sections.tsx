@@ -209,7 +209,7 @@ function VisionBandSection({
   }
 
   return (
-    <section className={`w-full ${meta.bandClass}`}>
+    <section id={`vision-field-${kind}`} className={`w-full ${meta.bandClass}`}>
       <div className={`${INNER} py-10`}>
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-marketing-muted sm:text-xs">
@@ -318,6 +318,7 @@ export function PlanLifeAreaVisionSections({
               <input
                 key={index}
                 value={label}
+                data-obstacle-label={label}
                 maxLength={32}
                 onChange={(e) => {
                   const next = [...obstacleLabels];

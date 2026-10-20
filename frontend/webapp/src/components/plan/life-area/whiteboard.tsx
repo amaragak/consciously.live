@@ -18,6 +18,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
+  ArrowUpRight,
   ChevronDown,
   ChevronRight,
   Hand,
@@ -27,6 +28,7 @@ import {
   Spline,
   StickyNote,
   Type,
+  Upload,
 } from "lucide-react";
 import {
   createContext,
@@ -39,9 +41,22 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLibraryPlayer } from "@/components/library-player-provider";
-import { MIST, ProgressBar, areaThoughts, thoughtSource } from "@/components/plan/life-area/kit";
-import { HealObstacleNote } from "@/components/heal/heal-reframe";
+import { MIST, OUTLINE, areaThoughts, thoughtSource } from "@/components/plan/life-area/kit";
 import { readCachedInsight } from "@/components/plan/life-area/insights";
+import { SourceCard } from "@/components/plan/life-area/whiteboard-card";
+import {
+  rememberTrackerDetail,
+  TRACKER_KIND_DOT,
+  TRACKER_KIND_LABEL,
+  useCoarsePointer,
+} from "@/components/plan/life-area/tracker";
+import { THOUGHT_KIND_DOT } from "@/components/plan/life-area/thoughts";
+import { thoughtKindLabel, type ThoughtKind } from "@/lib/plan-dreams";
+import {
+  rememberWhiteboardView,
+  sourceCardTarget,
+  takeWhiteboardReturn,
+} from "@/components/plan/life-area/whiteboard-return";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import {
   loadIdeateVisionBoardStore,
@@ -60,12 +75,14 @@ import {
   childrenOf,
   commitTracker,
   descendantsOf,
+  dueLabel,
   ensureTracker,
   inFocusItem,
   itemsForArea,
   rollup,
   toggleTrackerDone,
   type TrackerItem,
+  type TrackerKind,
 } from "@/lib/tracker-items";
 
 type Props = {
@@ -98,6 +115,7 @@ type SourceRow = {
   parentId?: string | null;
   hasChildren?: boolean;
   when?: string;
+  extra?: string;
 };
 
 const COLOURS = ["sand", "rose", "sage", "sky", "mist"] as const;
@@ -129,7 +147,11 @@ type BoardApi = {
   tickItem: (id: string) => void;
   playMeditation: (id: string) => void;
   beginReplace: (id: string) => void;
+  openNode: (id: string) => void;
   meditations: LibraryMeditationItem[];
+  coarse: boolean;
+  menuId: string | null;
+  setMenu: (id: string | null) => void;
 };
 
 const BoardContext = createContext<BoardApi | null>(null);
@@ -156,8 +178,9 @@ function Board({ dream, onPatch, onRefresh }: Props) {
   const [picked, setPicked] = useState<string[]>([]);
   const [folded, setFolded] = useState<string[]>([]);
   const [editingId, setEditing] = useState<string | null>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
   const [title, setTitle] = useState(doc?.title || `${dream.title.trim() || "This area"}, the map`);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [meditations, setMeditations] = useState<LibraryMeditationItem[]>([]);
   const [narrow, setNarrow] = useState(false);
   const undo = useRef<string[]>([]);
@@ -169,6 +192,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const flow = useReactFlow();
+  const coarse = useCoarsePointer();
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -293,7 +317,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
     const okType = file.type.startsWith("image/") || /\.(heic|heif)$/i.test(file.name);
     if (!okType) return;
     if (file.size > 10 * 1024 * 1024) {
-      setToast("Images need to be 10MB or smaller.");
+      setToast({ text: "Images need to be 10MB or smaller." });
       return;
     }
     const id = replacing ?? `wb_${Date.now()}`;
@@ -336,7 +360,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
           ? cur.map((node) => (node.id === id ? { ...node, data: { ...node.data, uploading: false } } : node))
           : cur.filter((node) => node.id !== id),
       );
-      setToast(error instanceof Error ? error.message : "Couldn't add that image.");
+      setToast({ text: error instanceof Error ? error.message : "Couldn't add that image." });
     }
   }
 
@@ -398,8 +422,17 @@ function Board({ dream, onPatch, onRefresh }: Props) {
         }
       },
       tickItem: (id) => {
+        const before = (ensureTracker(loadIdeateStore()).trackerItems ?? []).find((item) => item.id === id);
         commitTracker((store) => toggleTrackerDone(store, id));
         onRefresh();
+        const marked = before?.status !== "done";
+        setToast({
+          text: marked ? "Marked done" : "Marked not done",
+          undo: () => {
+            commitTracker((store) => toggleTrackerDone(store, id));
+            onRefresh();
+          },
+        });
       },
       playMeditation: (id) => {
         const item = meditations.find((row) => row.id === id || row.sk === id);
@@ -409,9 +442,23 @@ function Board({ dream, onPatch, onRefresh }: Props) {
         replaceId.current = id;
         fileRef.current?.click();
       },
+      openNode: (id) => {
+        const node = (nodes as FlowNode[]).find((row) => row.id === id);
+        if (!node) return;
+        const target = sourceCardTarget(dream.id, node.data);
+        if (!target) return;
+        const selected = (nodes as FlowNode[]).filter((row) => row.selected).map((row) => row.id);
+        if (!selected.includes(id)) selected.push(id);
+        rememberWhiteboardView(dream.id, { viewport: flow.getViewport(), selected });
+        if (target.place === "Tracker") rememberTrackerDetail(dream.id);
+        navigate(target.href);
+      },
       meditations,
+      coarse,
+      menuId,
+      setMenu: setMenuId,
     }),
-    [dream, editingId, meditations, nodes, onPatch, onRefresh, playItem, setEdges, setNodes],
+    [coarse, dream, editingId, flow, meditations, menuId, navigate, nodes, onPatch, onRefresh, playItem, setEdges, setNodes],
   );
 
   useEffect(() => {
@@ -429,6 +476,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
         setAddOpen(false);
         setImageOpen(false);
         setEditing(null);
+        setMenuId(null);
         setLocked(false);
         setTool("select");
         return;
@@ -461,7 +509,12 @@ function Board({ dream, onPatch, onRefresh }: Props) {
       }
       if (event.key === "Enter" && selected.length === 1 && !editingId) {
         event.preventDefault();
-        setEditing(selected[0]!.id);
+        const node = selected[0]!;
+        if (node.data.kind === "sticky" || node.data.kind === "text") {
+          setEditing(node.id);
+          return;
+        }
+        api.openNode(node.id);
         return;
       }
       if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && selected.length === 1 && !editingId) {
@@ -490,7 +543,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = window.setTimeout(() => setToast(""), 3200);
+    const t = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(t);
   }, [toast]);
 
@@ -652,7 +705,11 @@ function Board({ dream, onPatch, onRefresh }: Props) {
           </p>
         ) : null}
         <ReactFlow
-          nodes={nodes}
+          nodes={
+            coarse
+              ? nodes.map((node) => ({ ...node, draggable: Boolean(node.selected) && !editingId }))
+              : nodes
+          }
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -664,6 +721,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
           onPaneClick={(event) => {
             setAddOpen(false);
             setImageOpen(false);
+            setMenuId(null);
             if (tool === "sticky" || tool === "text") {
               placeBlank(tool, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
             }
@@ -689,9 +747,34 @@ function Board({ dream, onPatch, onRefresh }: Props) {
             const row = JSON.parse(raw) as SourceRow;
             addNodes([row], at, true);
           }}
-          fitView
-          panOnDrag={tool === "pan"}
-          selectionOnDrag={tool === "select"}
+          onInit={(instance) => {
+            const saved = takeWhiteboardReturn(dream.id);
+            if (saved) {
+              void instance.setViewport(saved.viewport);
+              const selected = new Set(saved.selected);
+              setNodes((cur) => cur.map((node) => ({ ...node, selected: selected.has(node.id) })));
+              return;
+            }
+            void Promise.resolve(instance.fitView()).then(() => {
+              const pane = canvasRef.current;
+              const width = pane?.clientWidth ?? 0;
+              const height = pane?.clientHeight ?? 0;
+              const { x, y, zoom } = instance.getViewport();
+              const nextZoom = zoom / 2;
+              if (width <= 0 || height <= 0) {
+                void instance.setViewport({ x, y, zoom: nextZoom });
+                return;
+              }
+              void instance.setViewport({
+                x: width / 4 + x / 2,
+                y: height / 4 + y / 2,
+                zoom: nextZoom,
+              });
+            });
+          }}
+          minZoom={0.05}
+          panOnDrag={tool === "pan" || (coarse && tool === "select")}
+          selectionOnDrag={tool === "select" && !coarse}
           nodesDraggable={!editingId}
           className={`!absolute inset-0 ${tool === "sticky" || tool === "text" ? "[&_.react-flow__pane]:cursor-crosshair" : ""}`}
           proOptions={{ hideAttribution: true }}
@@ -727,37 +810,39 @@ function Board({ dream, onPatch, onRefresh }: Props) {
               }}
             >
               {active?.id === "images" ? (
-                <div className="mb-2 rounded-xl border border-dashed border-border p-3 text-center text-sm text-muted">
+                <div className="mb-2 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted">
                   Drop images here
-                  <button type="button" className="ml-2 font-semibold text-accent-link" onClick={() => fileRef.current?.click()}>Upload</button>
+                  <button type="button" className={`${OUTLINE} h-9 px-3 text-sm`} onClick={() => fileRef.current?.click()}>
+                    <Upload className="size-4" aria-hidden />
+                    Upload
+                  </button>
                 </div>
               ) : null}
               {shownSourceRows(active?.rows ?? [], active?.id === "tracker" ? folded : []).map((row) => {
                 const placed = onBoard.has(row.refId);
                 const on = picked.includes(row.id);
                 const depth = row.depth ?? 0;
+                const target = sourceCardTarget(dream.id, row);
                 return (
-                  <button
+                  <div
                     key={row.id}
-                    type="button"
                     draggable={!placed}
-                    disabled={placed}
                     onDragStart={(event) => event.dataTransfer.setData("application/x-wb", JSON.stringify(row))}
                     onClick={(event) => {
-                      if ((event.target as HTMLElement).closest("[data-fold]")) {
-                        setFolded((cur) => (cur.includes(row.id) ? cur.filter((id) => id !== row.id) : [...cur, row.id]));
-                        return;
-                      }
+                      if (placed) return;
+                      if ((event.target as HTMLElement).closest("[data-fold], [data-open]")) return;
                       setPicked((cur) => (cur.includes(row.id) ? cur.filter((id) => id !== row.id) : [...cur, row.id]));
                     }}
-                    className="relative flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm disabled:opacity-50"
+                    className={`group relative flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm ${placed ? "opacity-50" : "cursor-pointer"}`}
                     style={{ paddingLeft: 8 + depth * 18 }}
+                    role="button"
+                    tabIndex={0}
                   >
                     {depth > 0 ? (
                       <span className="pointer-events-none absolute inset-y-1 border-l border-border" style={{ left: (depth - 1) * 18 + 16 }} />
                     ) : null}
                     {row.hasChildren ? (
-                      <span data-fold role="presentation" className="grid size-5 shrink-0 place-items-center text-muted">
+                      <span data-fold role="presentation" className="grid size-5 shrink-0 place-items-center text-muted" onClick={() => setFolded((cur) => (cur.includes(row.id) ? cur.filter((id) => id !== row.id) : [...cur, row.id]))}>
                         {folded.includes(row.id) ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                       </span>
                     ) : depth > 0 ? (
@@ -765,12 +850,38 @@ function Board({ dream, onPatch, onRefresh }: Props) {
                     ) : null}
                     <span className={`grid size-[18px] shrink-0 place-items-center rounded-full border ${on ? "border-foreground bg-foreground text-[10px] text-white" : "border-border"}`}>{on ? "✓" : ""}</span>
                     {row.imageUrl ? <img src={row.imageUrl} alt="" className="size-8 rounded-md object-cover" /> : null}
-                    <span className="min-w-0 flex-1 truncate">{row.label}</span>
-                    {row.refType === "item" || row.refType === "thought" ? (
-                      <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-link">{row.meta}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {row.label}
+                      {row.extra ? <span className="text-muted"> {row.extra}</span> : null}
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
+                      <span className={`size-1.5 rounded-full ${sourceDot(row)}`} />
+                      {sourceKindLabel(row)}
+                    </span>
+                    {placed ? <span className="shrink-0 text-xs text-muted">On board</span> : null}
+                    {target ? (
+                      <button
+                        type="button"
+                        data-open
+                        title={`Open in ${target.place}`}
+                        aria-label={`Open in ${target.place}`}
+                        className={`nodrag grid shrink-0 place-items-center rounded-lg border border-border bg-card ${
+                          coarse
+                            ? "size-7 text-muted"
+                            : "invisible size-[26px] group-hover:visible"
+                        }`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const selected = (nodes as FlowNode[]).filter((node) => node.selected).map((node) => node.id);
+                          rememberWhiteboardView(dream.id, { viewport: flow.getViewport(), selected });
+                          if (target.place === "Tracker") rememberTrackerDetail(dream.id);
+                          navigate(target.href);
+                        }}
+                      >
+                        <ArrowUpRight className="size-3.5" aria-hidden />
+                      </button>
                     ) : null}
-                    <span className="shrink-0 text-xs text-muted">{placed ? "On board" : row.when || (row.refType === "item" || row.refType === "thought" ? "" : row.meta)}</span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -796,7 +907,10 @@ function Board({ dream, onPatch, onRefresh }: Props) {
         ) : null}
         {imageOpen ? (
           <div className="absolute left-3 top-16 z-30 w-72 rounded-2xl border border-border bg-card p-2 shadow-xl">
-            <button type="button" className="block w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent-soft" onClick={() => fileRef.current?.click()}>Upload</button>
+            <button type="button" className={`${OUTLINE} mb-1 h-10 w-full px-3 text-sm`} onClick={() => fileRef.current?.click()}>
+              <Upload className="size-4" aria-hidden />
+              Upload
+            </button>
             <p className="px-3 pt-2 text-[11px] uppercase tracking-wide text-muted">From your vision board</p>
             {visionImages(dream.id).slice(0, 8).map((item) => (
               <button
@@ -825,7 +939,16 @@ function Board({ dream, onPatch, onRefresh }: Props) {
             if (file) void placeFile(file);
           }}
         />
-        {toast ? <p className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-white">{toast}</p> : null}
+        {toast ? (
+          <p className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full bg-foreground px-4 py-2 text-sm text-white">
+            {toast.text}
+            {toast.undo ? (
+              <button type="button" className="font-semibold" onClick={() => { toast.undo?.(); setToast(null); }}>
+                Undo
+              </button>
+            ) : null}
+          </p>
+        ) : null}
       </div>
     </BoardContext.Provider>
   );
@@ -837,16 +960,17 @@ function CardNode({ id, data, selected }: NodeProps<FlowNode>) {
   const tilt = ((id.charCodeAt(id.length - 1) % 21) - 10) / 10;
   const size = data.size === "s" ? "text-[15px]" : data.size === "l" ? "text-[28px]" : "text-[20px]";
   const image = data.imageId ? loadIdeateVisionBoardStore().items.find((item) => item.id === data.imageId) : null;
-  const tracker = data.refType === "item" && data.refId
-    ? itemsForArea(ensureTracker(loadIdeateStore()), api?.dream.id ?? "").find((item) => item.id === data.refId) ?? null
-    : null;
+
+  const boardOnly = data.kind === "sticky" || data.kind === "text";
+  const target = api ? sourceCardTarget(api.dream.id, data) : null;
+  const menu = api?.menuId === id;
 
   return (
     <>
       {selected && !editing && data.kind === "image" ? <NodeResizer keepAspectRatio minWidth={120} /> : null}
       {selected && !editing && data.kind !== "image" ? <NodeResizer minWidth={140} /> : null}
-      {selected && !editing ? (
-        <NodeToolbar className="flex items-center gap-1 rounded-full bg-foreground px-1.5 py-1 text-xs text-white">
+      {selected && !editing && boardOnly ? (
+        <NodeToolbar isVisible className="flex items-center gap-1 rounded-full bg-foreground px-1.5 py-1 text-xs text-white">
           {data.kind === "sticky"
             ? COLOURS.map((colour) => (
                 <button key={colour} type="button" aria-label={colour} className="size-4 rounded-full border border-white/40" style={{ background: COLOUR_FILL[colour] }} onClick={() => api?.patchNode(id, { colour })} />
@@ -857,23 +981,31 @@ function CardNode({ id, data, selected }: NodeProps<FlowNode>) {
                 <button key={value} type="button" className="px-1 uppercase" onClick={() => api?.patchNode(id, { size: value })}>{value}</button>
               ))
             : null}
-          {data.kind === "image" ? (
-            <>
-              <button type="button" className="px-1" onClick={() => api?.beginReplace(id)}>Replace</button>
-              <button type="button" className="px-1" onClick={() => api?.setEditing(id)}>Edit caption</button>
-            </>
-          ) : (
-            <button type="button" className="px-1" onClick={() => api?.setEditing(id)}>Edit</button>
-          )}
+          <button type="button" className="px-1" onClick={() => api?.setEditing(id)}>Edit</button>
           <button type="button" className="px-1" onClick={() => api?.duplicateNode(id)}>Duplicate</button>
-          {data.refType === "thought" || data.refType === "item" ? (
-            <button type="button" className="px-1" onClick={() => api?.dream && window.location.assign(`/manifest/goal/${encodeURIComponent(api.dream.id)}/${data.refType === "thought" ? "thoughts" : "tracker"}`)}>Open</button>
-          ) : null}
-          {data.kind === "insight" ? (
-            <button type="button" className="px-1" onClick={() => api?.dream && window.location.assign(`/manifest/goal/${encodeURIComponent(api.dream.id)}/insights`)}>Open in Insights</button>
-          ) : null}
           <button type="button" className="px-1" onClick={() => api?.removeNode(id)}>Delete</button>
         </NodeToolbar>
+      ) : null}
+      {selected && !editing && !boardOnly && target ? (
+        <NodeToolbar isVisible className="flex items-center gap-1 rounded-full bg-foreground px-1.5 py-1 text-xs text-white">
+          <button type="button" className="inline-flex items-center gap-1 px-1" onClick={() => api?.openNode(id)}>
+            <ArrowUpRight className="size-3.5" aria-hidden />
+            Open in {target.place}
+          </button>
+          <button type="button" className="px-1" onClick={() => api?.removeNode(id)}>Remove from board</button>
+          <button type="button" className="px-1" aria-label="More" onClick={() => api?.setMenu(menu ? null : id)}>⋯</button>
+        </NodeToolbar>
+      ) : null}
+      {menu ? (
+        <div className="nodrag absolute right-0 top-0 z-20 mt-8 rounded-xl border border-border bg-card p-1 text-sm shadow-md">
+          <button type="button" className="block w-full rounded-lg px-3 py-1.5 text-left" onClick={() => { api?.duplicateNode(id); api?.setMenu(null); }}>Duplicate</button>
+          {data.kind === "image" ? (
+            <>
+              <button type="button" className="block w-full rounded-lg px-3 py-1.5 text-left" onClick={() => { api?.beginReplace(id); api?.setMenu(null); }}>Replace</button>
+              <button type="button" className="block w-full rounded-lg px-3 py-1.5 text-left" onClick={() => { api?.setEditing(id); api?.setMenu(null); }}>Edit caption</button>
+            </>
+          ) : null}
+        </div>
       ) : null}
       <NodeBody
         id={id}
@@ -883,7 +1015,6 @@ function CardNode({ id, data, selected }: NodeProps<FlowNode>) {
         tilt={tilt}
         size={size}
         image={image}
-        tracker={tracker}
       />
     </>
   );
@@ -897,7 +1028,6 @@ function NodeBody({
   tilt,
   size,
   image,
-  tracker,
 }: {
   id: string;
   data: NodeData;
@@ -906,7 +1036,6 @@ function NodeBody({
   tilt: number;
   size: string;
   image?: VisionBoardItem | null;
-  tracker: TrackerItem | null;
 }) {
   const api = useContext(BoardContext);
   const outline = editing || selected ? "outline outline-[1.5px] outline-accent" : "";
@@ -924,74 +1053,38 @@ function NodeBody({
       </div>
     );
   }
-  if (data.kind === "image") {
+  if (data.uploading) {
     return (
-      <div className={`overflow-hidden rounded-xl bg-card ${outline}`}>
-        {data.uploading ? (
-          <div className="relative h-40 overflow-hidden rounded-xl bg-border">
-            <span className="absolute inset-x-3 bottom-3 h-1 overflow-hidden rounded-full bg-white/70">
-              <span className="block h-full w-1/2 animate-pulse bg-accent" />
-            </span>
-          </div>
-        ) : image?.imageUrl ? <img src={image.imageUrl} alt="" className="w-full rounded-xl object-cover" /> : <div className="grid h-40 place-items-center text-sm text-muted">Image</div>}
-        <div className="px-2 py-1.5 text-[13px]">
-          <Editor id={id} value={data.label} placeholder="Add a caption…" editing={editing} />
-        </div>
+      <div className="relative h-40 overflow-hidden rounded-[14px] bg-border">
+        <span className="absolute inset-x-3 bottom-3 h-1 overflow-hidden rounded-full bg-white/70">
+          <span className="block h-full w-1/2 animate-pulse bg-accent" />
+        </span>
       </div>
     );
   }
-  if (data.kind === "item" || data.refType === "item") {
-    const stats = tracker ? rollup(ensureTracker(loadIdeateStore()).trackerItems ?? [], tracker.id) : null;
-    const kids = tracker ? childrenOf(ensureTracker(loadIdeateStore()).trackerItems ?? [], tracker.id) : [];
-    return (
-      <div className={`rounded-xl border border-border bg-card px-3 py-2 text-sm ${outline}`}>
-        <p className="text-[11px] font-semibold uppercase text-accent-link">{tracker?.kind || "Item"}</p>
-        <p className="font-semibold">{data.label}</p>
-        {stats && kids.length > 0 && stats.tickable ? (
-          <div className="mt-1">
-            <ProgressBar done={stats.doneLeaves} total={stats.leaves} />
-            <p className="text-xs text-muted">{stats.doneLeaves}/{stats.leaves}</p>
-          </div>
-        ) : tracker && kids.length === 0 ? (
-          <input type="checkbox" className="nodrag mt-1 size-4" checked={tracker.status === "done"} onChange={() => api?.tickItem(tracker.id)} />
-        ) : null}
-        {tracker?.status ? <p className="mt-1 text-xs text-muted">{tracker.status.replace("_", " ")}</p> : null}
-      </div>
-    );
-  }
-  if (data.kind === "meditation") {
-    const row = api?.meditations.find((item) => item.id === data.refId);
-    return (
-      <div className={`w-[200px] overflow-hidden rounded-xl border border-border bg-card ${outline}`}>
-        {row?.coverImageUrl ? <img src={row.coverImageUrl} alt="" className="h-24 w-full object-cover" /> : <div className="h-24 bg-accent-soft" />}
-        <div className="p-2">
-          <p className="text-sm font-semibold">{data.label}</p>
-          <button type="button" className={`${MIST} mt-2 h-8 px-3 text-xs`} onClick={() => data.refId && api?.playMeditation(data.refId)}>Play</button>
-        </div>
-      </div>
-    );
-  }
-  if (data.kind === "obstacle" || data.refType === "obstacle") {
-    const answer = (api?.dream.healObstacleAnswers ?? []).find((row) => row.label === data.label);
-    return (
-      <div className={`w-[220px] rounded-xl border border-border bg-card px-3 py-2 ${outline}`}>
-        <p className="text-[11px] font-semibold uppercase text-accent-link">Obstacle</p>
-        <p className="text-sm font-semibold">{data.label}</p>
-        {api?.dream ? (
-          <HealObstacleNote
-            dreamId={api.dream.id}
-            label={data.label}
-            text={answer?.text}
-            healItemId={answer?.healItemId}
-          />
-        ) : null}
-      </div>
-    );
-  }
+  if (!api) return null;
+  const meditation = api.meditations.find((item) => item.id === data.refId || item.sk === data.refId) ?? null;
   return (
-    <div className={`rounded-xl border border-border bg-card px-3 py-2 ${outline}`} onDoubleClick={() => api?.setEditing(id)}>
-      <Editor id={id} value={data.label} placeholder="" editing={editing && data.kind !== "insight"} />
-    </div>
+    <SourceCard
+      dream={api.dream}
+      card={data}
+      selected={selected}
+      coarse={api.coarse}
+      outline={outline}
+      image={image}
+      meditation={meditation}
+      caption={
+        editing && data.kind === "image" ? (
+          <Editor id={id} value={data.label} placeholder="Add a caption…" editing />
+        ) : (
+          <p className={data.label ? "" : "italic text-muted"}>{data.label || "Add a caption…"}</p>
+        )
+      }
+      onOpen={() => api.openNode(id)}
+      onTick={(itemId) => api.tickItem(itemId)}
+      onPlay={(itemId) => api.playMeditation(itemId)}
+      onLongPress={() => api.setMenu(id)}
+    />
   );
 }
 
@@ -1077,6 +1170,7 @@ function trackerSourceRows(items: TrackerItem[], match: (label: string) => boole
         depth,
         parentId,
         hasChildren: kids.length > 0,
+        extra: trackerRowExtra(linked, item),
       });
       walk(item.id, depth + 1);
     }
@@ -1156,6 +1250,35 @@ function buildSources(dream: PlanDream, meditations: LibraryMeditationItem[], qu
     { id: "meditations", label: "Meditations", rows: meds },
     { id: "insights", label: "Insights", rows: insights },
   ].filter((group) => group.rows.length > 0 || group.id === "images");
+}
+
+function trackerRowExtra(items: TrackerItem[], item: TrackerItem) {
+  const kids = childrenOf(items, item.id);
+  if (kids.length > 0) {
+    const stats = rollup(items, item.id);
+    return stats.leaves > 0 ? `· ${stats.doneLeaves}/${stats.leaves}` : "";
+  }
+  return item.due ? `· due ${dueLabel(item.due)}` : "";
+}
+
+function sourceDot(row: SourceRow) {
+  if (row.kind === "dream" || row.kind === "moment") return "bg-accent";
+  if (row.kind === "obstacle" || row.kind === "plan") return "bg-danger";
+  if (row.kind === "meditation") return "bg-success";
+  if (row.kind === "insight") return "bg-accent-link";
+  if (row.kind === "image") return "bg-muted";
+  if (row.kind === "thought") {
+    const kind = row.meta as ThoughtKind;
+    return THOUGHT_KIND_DOT[kind] ?? "bg-accent";
+  }
+  if (row.refType === "item") return TRACKER_KIND_DOT[row.meta as TrackerKind] ?? "bg-accent-button";
+  return "bg-muted";
+}
+
+function sourceKindLabel(row: SourceRow) {
+  if (row.refType === "item") return TRACKER_KIND_LABEL[row.meta as TrackerKind] ?? "Item";
+  if (row.refType === "thought") return thoughtKindLabel(row.meta as ThoughtKind) ?? "Thought";
+  return row.meta;
 }
 
 function toFlow(nodes: LifeAreaWbNode[], edges: LifeAreaWbEdge[]) {

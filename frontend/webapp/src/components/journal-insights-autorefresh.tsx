@@ -7,6 +7,7 @@ import {
 } from "@/lib/medimade-api";
 import { setCachedJournalInsights } from "@/lib/journal-remote-cache";
 import { loadJournalStoreRaw } from "@/lib/journal-storage";
+import { mvpFlagsSnapshot } from "@/lib/mvp-flags";
 
 function maxUpdatedAtIso(): string | null {
   try {
@@ -38,6 +39,7 @@ const lastTriggeredForUpdatedAtRef = { current: null as string | null };
  * Journal / Gratitudes, including to Insights).
  */
 export function scheduleJournalInsightsRefreshAfterLeavingEditor(): void {
+  if (!mvpFlagsSnapshot().journalInsights) return;
   const base = getMedimadeApiBase();
   if (!base) return;
 

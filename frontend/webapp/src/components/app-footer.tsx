@@ -2,6 +2,7 @@
 
 import { IconBrandInstagram } from "@tabler/icons-react";
 import { Link } from "@/lib/spa-nav";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import { LogoMark } from "@/components/logo-mark";
 
 const INSTAGRAM_URL = "https://www.instagram.com/consciously.live/";
@@ -22,6 +23,8 @@ const FOOTER_NAV: { href: string; label: string }[] = [
  */
 export function AppFooter() {
   const year = new Date().getFullYear();
+  const chatOn = useMvpFlags().chat;
+  const nav = FOOTER_NAV.filter((item) => item.href !== "/chat" || chatOn);
 
   return (
     <footer className="app-footer mt-auto shrink-0 border-t border-border">
@@ -48,7 +51,7 @@ export function AppFooter() {
               aria-label="Footer"
               className="flex flex-wrap gap-x-5 gap-y-2 sm:justify-end"
             >
-              {FOOTER_NAV.map((item) => (
+              {nav.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}

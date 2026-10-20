@@ -35,6 +35,7 @@ import { journalLockIsSet } from "@/lib/journal-prefs";
 import { getSessionPrivileges } from "@/lib/session-privileges";
 import { shouldShowSettingsRow } from "@/lib/settings-status";
 import { COLOR_SCHEME_OPTIONS, setColorScheme } from "@/lib/color-scheme";
+import { VisionBoardImagesSetting } from "@/components/plan/vision-style-control";
 import {
   ACCOUNT_PRONOUNS,
   pronounsLabel,
@@ -1779,7 +1780,9 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
     (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim() ||
     "0.1.0";
 
-  const rows: ReactNode[] = [];
+  const rows: ReactNode[] = [
+    <VisionBoardImagesSetting key="vision-images" />,
+  ];
   const a11yRows: ReactNode[] = [];
 
   if (shouldShowSettingsRow("general.theme")) {

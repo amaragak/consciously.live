@@ -2,6 +2,7 @@ import { MessageSquare, Pin, Sparkles, Timer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import { SelectChevron } from "@/components/select-chevron";
 import {
   AREA_LABEL,
@@ -418,6 +419,7 @@ function GoalDetail({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const navigate = useNavigate();
+  const chatOn = useMvpFlags().chat;
   useEffect(() => {
     setPlan(goal?.dreamText ?? "");
   }, [goal?.id, goal?.dreamText]);
@@ -798,6 +800,7 @@ function GoalDetail({
         >
           ✦ Meditation for this goal
         </button>
+        {chatOn ? (
         <button
           type="button"
           className={`${OUTLINE} h-10 px-4 text-[13px]`}
@@ -812,6 +815,7 @@ function GoalDetail({
           <MessageSquare className="size-3.5" strokeWidth={1.8} />
           Plan next steps
         </button>
+        ) : null}
       </div>
     </article>
   );

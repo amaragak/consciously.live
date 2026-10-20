@@ -100,6 +100,8 @@ export type UserSettingsV1 = {
     textSize: TextSize;
     reducedMotion: ReducedMotionPref;
     captions: boolean;
+    /** Admin only. When on, this account sees the app as a non-admin does. */
+    mvpMode: boolean;
   };
 };
 
@@ -168,6 +170,7 @@ export function defaultUserSettings(): UserSettingsV1 {
       textSize: "default",
       reducedMotion: "system",
       captions: false,
+      mvpMode: false,
     },
   };
 }
@@ -436,6 +439,7 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
         d.general.reducedMotion,
       ),
       captions: asBool(general.captions, d.general.captions),
+      mvpMode: asBool(general.mvpMode, d.general.mvpMode),
     },
   };
 }

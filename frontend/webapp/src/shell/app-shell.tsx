@@ -7,6 +7,7 @@ import {
   consumeAuthHandoffFromUrl,
   hasPendingAuthHandoff,
 } from "@/lib/spa-handoff";
+import { MvpFlagsProvider } from "@/lib/mvp-flags";
 import { LoggedOutShell } from "./logged-out-shell";
 
 /**
@@ -64,10 +65,12 @@ export function AppShell() {
   void location.pathname;
 
   return (
-    <LibraryPlayerProvider>
-      <AppChrome>
-        <Outlet />
-      </AppChrome>
-    </LibraryPlayerProvider>
+    <MvpFlagsProvider>
+      <LibraryPlayerProvider>
+        <AppChrome>
+          <Outlet />
+        </AppChrome>
+      </LibraryPlayerProvider>
+    </MvpFlagsProvider>
   );
 }

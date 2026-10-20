@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SettingsSwitch } from "@/components/settings/settings-primitives";
+import { useMvpMode } from "@/lib/mvp-flags";
 import {
   defaultDevUiSettings,
   fetchDevUiSettings,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/medimade-api";
 
 export function AdminDevUiPanel() {
+  const { mvpMode, isAdmin, setMvpMode } = useMvpMode();
   const [settings, setSettings] = useState<DevUiSettings>(defaultDevUiSettings);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -77,6 +79,23 @@ export function AdminDevUiPanel() {
           <p className="mt-3 text-sm text-muted">Loading…</p>
         ) : (
           <ul className="mt-4 space-y-4">
+            {isAdmin ? (
+              <li className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">MVP mode</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                    Hide Manifest Insights, Journal Insights, Whiteboard and Chat,
+                    as non-admin users see the app.
+                  </p>
+                </div>
+                <SettingsSwitch
+                  aria-label="MVP mode"
+                  checked={mvpMode}
+                  disabled={busy}
+                  onCheckedChange={(next) => void setMvpMode(next)}
+                />
+              </li>
+            ) : null}
             <li className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">

@@ -1,10 +1,14 @@
+import { Navigate } from "react-router-dom";
 import { Link } from "@/lib/spa-nav";
+import { useMvpFlags } from "@/lib/mvp-flags";
 
 /**
  * Stub for Manifest insights — aggregate progress across life areas.
  * Linked from the Manifesto "This month" strip.
  */
 export function ManifestInsightsPage() {
+  const flags = useMvpFlags();
+  if (!flags.manifestInsights) return <Navigate to="/manifest/my" replace />;
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
       <p className="text-[10px] font-semibold uppercase tracking-[1.4px] text-accent-link">

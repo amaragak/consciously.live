@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconEye, IconSparkles, IconWind } from "@tabler/icons-react";
 import { ChevronRight, Plus } from "lucide-react";
@@ -129,6 +130,7 @@ function ManifestOverviewSkeleton() {
 
 export function PlanHomeClient() {
   const navigate = useNavigate();
+  const manifestInsights = useMvpFlags().manifestInsights;
   const [dreams, setDreams] = useState<PlanDream[]>([]);
   const [visionItems, setVisionItems] = useState<VisionBoardItem[]>([]);
   const [visionTileUrls, setVisionTileUrls] = useState<Record<string, string>>(
@@ -628,6 +630,7 @@ export function PlanHomeClient() {
               <span className="text-xs font-semibold uppercase tracking-[1.6px] text-accent-link">
                 This month
               </span>
+              {manifestInsights ? (
               <Link
                 to="/manifest/my/insights"
                 className="inline-flex items-center gap-0.5 text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
@@ -639,6 +642,7 @@ export function PlanHomeClient() {
                   strokeWidth={1.8}
                 />
               </Link>
+              ) : null}
             </div>
             {(
               [

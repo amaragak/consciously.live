@@ -1,6 +1,6 @@
 import { ChevronRight, Pin } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import {
@@ -36,7 +36,7 @@ import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { ensureTracker, itemsForArea, type TrackerItem } from "@/lib/tracker-items";
 import { rememberTrackerDetail } from "@/components/plan/life-area/tracker";
 
-const KIND_DOT: Record<ThoughtKind, string> = {
+export const THOUGHT_KIND_DOT: Record<ThoughtKind, string> = {
   win: "bg-emerald-600",
   hard_blocker: "bg-rose-600",
   resistance: "bg-amber-600",
@@ -45,6 +45,18 @@ const KIND_DOT: Record<ThoughtKind, string> = {
   intention: "bg-teal-600",
   progress: "bg-lime-700",
 };
+
+export function ThoughtKindChip({ kind }: { kind: ThoughtKind | null }) {
+  if (!kind) return null;
+  const label = thoughtKindLabel(kind);
+  if (!label) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-link">
+      <span className={`size-1.5 rounded-full ${THOUGHT_KIND_DOT[kind]}`} />
+      {label}
+    </span>
+  );
+}
 
 type FeedFilter = "all" | "mine" | "journal";
 
@@ -65,6 +77,7 @@ type Props = {
 };
 
 export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
+  const [search] = useSearchParams();
   const [draft, setDraft] = useState("");
   const [tag, setTag] = useState<ThoughtKind | null>(null);
   const [tagging, setTagging] = useState<string | null>(null);
@@ -74,6 +87,21 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
   const [menu, setMenu] = useState<string | null>(null);
   const quotesOn = dream.journalQuotesOn !== false;
   const [linkTick, setLinkTick] = useState(0);
+  useEffect(() => {
+    const id = search.get("thought");
+    if (!id) return;
+    setKindFilter("all");
+    setWho("all");
+    const timer = window.setTimeout(() => {
+      const el = document.getElementById(`thought-${id}`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("rounded-xl", "bg-accent-soft");
+      window.setTimeout(() => el.classList.remove("rounded-xl", "bg-accent-soft"), 2200);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
   useEffect(() => {
     const stopEntries = subscribeJournalEntries(() => setLinkTick((n) => n + 1));
     const stopOrigins = subscribeMeditationOrigins(() => setLinkTick((n) => n + 1));
@@ -288,7 +316,7 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
                 key={o.id}
                 on={kindFilter === o.id}
                 label={`${o.label} · ${counts.get(o.id)}`}
-                dot={KIND_DOT[o.id]}
+                dot={THOUGHT_KIND_DOT[o.id]}
                 onClick={() => setKindFilter(o.id)}
               />
             ))}
@@ -429,6 +457,7 @@ function Feed({
             {list.map((row) => (
               <li
                 key={row.id}
+                id={`thought-${row.id}`}
                 onMouseEnter={() => setHover(row.id)}
                 onMouseLeave={() => setHover(null)}
                 onClick={(event) => {
@@ -469,9 +498,8 @@ function Feed({
                     {row.journal ? `“${row.text}”` : row.text}
                   </span>
                   {row.kind ? (
-                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-link">
-                      <span className={`size-1.5 rounded-full ${KIND_DOT[row.kind]}`} />
-                      {thoughtKindLabel(row.kind)}
+                    <span className="mt-1 inline-flex">
+                      <ThoughtKindChip kind={row.kind} />
                     </span>
                   ) : null}
                   {tagging === row.id ? (

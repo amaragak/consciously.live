@@ -18,6 +18,7 @@ import {
   isMarketingPreviewMode,
 } from "@/lib/marketing-preview";
 import { markSpaClientNavigation } from "@/lib/spa-client-nav";
+import { useMvpFlags } from "@/lib/mvp-flags";
 
 /** Marketing / logged-out top nav — section roots only (no app flyouts). */
 const marketingNav: { href: string; label: string }[] = [
@@ -39,6 +40,8 @@ function sectionActive(path: string, root: string): boolean {
 }
 
 export function SiteHeader() {
+  const chatOn = useMvpFlags().chat;
+  const nav = marketingNav.filter((item) => item.href !== "/chat" || chatOn);
   const pathname = usePathname() || "/";
   const prevPathnameRef = useRef(pathname);
   const mobileMenuRef = useRef<HTMLDetailsElement | null>(null);
@@ -121,7 +124,7 @@ export function SiteHeader() {
             </span>
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
-            {marketingNav.map((item) => {
+            {nav.map((item) => {
               const label =
                 item.href === "/pricing"
                   ? pricingNavLabel(showSignedInChrome)
@@ -209,7 +212,7 @@ export function SiteHeader() {
                 </svg>
               </summary>
               <div className="absolute right-0 mt-2 max-h-[70vh] w-56 overflow-y-auto rounded-xl border border-border bg-card py-2 shadow-lg">
-                {marketingNav.map((item) => (
+                {nav.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}

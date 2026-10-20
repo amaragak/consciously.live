@@ -1,6 +1,6 @@
 /**
  * Shared rendering lock for generated covers and scenes.
- * Voice portraits and the vision board stay photographic and do not use this.
+ * Voice portraits stay photographic. Illustrated vision-board images use this style; realistic ones do not.
  * Scene briefs stay separate; this is prepended at the model call.
  */
 export const ILLUSTRATION_STYLE_PREPROMPT = `High-quality editorial vector illustration, crafted by a professional illustrator — rich, detailed and well-composed, in the spirit of modern travel posters and premium wellness app artwork. Clean vector rendering: crisp shapes, smooth bezier curves, precise silhouettes, no visible outlines. Depth through many layered planes and atmospheric perspective — foreground detail, mid-ground subject, hazy background — with distant layers lighter and lower in contrast. Considered detail where it matters: foliage built from varied leaf shapes, textured rock faces, wood grain on furniture, folds in fabric, reflections on water, soft light rays. Subtle flat shading and gentle tonal steps instead of gradients; a fine riso/paper grain over the whole image.

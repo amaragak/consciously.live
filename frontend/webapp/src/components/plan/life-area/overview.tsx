@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HealNameChip } from "@/components/heal/heal-name-chip";
 import { readCachedInsight } from "@/components/plan/life-area/insights";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import { DreamPoster } from "@/components/plan/life-area/poster";
 import {
   AREA_LABEL,
@@ -73,6 +74,7 @@ export function LifeAreaOverview({
   onCheckIn,
 }: Props) {
   const navigate = useNavigate();
+  const mvp = useMvpFlags();
   const store = loadIdeateStore();
   const tracked = ensureTracker(store);
   const focusItem = inFocusItem(tracked, dream);
@@ -83,9 +85,9 @@ export function LifeAreaOverview({
   const heal = healItemsForLifeArea(loadHealStore(), dream.id);
   const kept = (dream.ifThenPlans ?? []).filter((p) => p.kept);
   const latestInsight = readCachedInsight(dream.id) ?? (dream.insights ?? [])[0];
-  const showInsight = Boolean(
-    latestInsight && !insightQuiet(dream, latestInsight.createdAt),
-  );
+  const showInsight =
+    mvp.manifestInsights &&
+    Boolean(latestInsight && !insightQuiet(dream, latestInsight.createdAt));
   const hasOthers = others.length > 0;
   const hasSide = hasOthers || showInsight;
 

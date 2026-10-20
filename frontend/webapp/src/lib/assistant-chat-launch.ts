@@ -3,12 +3,15 @@
  * The panel is a right drawer from `md` up and a full-screen sheet on phones.
  */
 
+import { mvpFlagsSnapshot } from "@/lib/mvp-flags";
+
 export const ASSISTANT_CHAT_OPEN_EVENT = "mm-assistant-chat-open";
 export const ASSISTANT_CHAT_TOGGLE_EVENT = "mm-assistant-chat-toggle";
 export const ASSISTANT_CHAT_OPEN_CHANGED_EVENT = "mm-assistant-chat-open-changed";
 
 export function toggleAssistantChatPanel(): void {
   if (typeof window === "undefined") return;
+  if (!mvpFlagsSnapshot().chat) return;
   window.dispatchEvent(new Event(ASSISTANT_CHAT_TOGGLE_EVENT));
 }
 
@@ -45,6 +48,7 @@ export function consumeAssistantChatPendingLaunch(): AssistantChatOpenDetail | n
 
 export function openAssistantChatFab(detail: AssistantChatOpenDetail): void {
   if (typeof window === "undefined") return;
+  if (!mvpFlagsSnapshot().chat) return;
   window.dispatchEvent(
     new CustomEvent(ASSISTANT_CHAT_OPEN_EVENT, { detail }),
   );

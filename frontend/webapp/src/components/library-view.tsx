@@ -89,6 +89,7 @@ import { LibraryEditMixSidebar } from "@/components/library-edit-mix-sidebar";
 import MeditationDetail, {
   type MeditationDetailSource,
 } from "@/components/meditation-detail";
+import { WhiteboardBackChip } from "@/components/plan/life-area/whiteboard-return";
 import {
   findLibraryItemByDetailId,
   isLibraryDetailFrom,
@@ -2370,7 +2371,13 @@ export default function LibraryView({
       compositions: mixCompositions,
     });
     return (
-      <MeditationDetail
+      <>
+        {searchParams.get("wb") ? (
+          <div className="px-4 pt-3">
+            <WhiteboardBackChip areaId={searchParams.get("wb")!} />
+          </div>
+        ) : null}
+        <MeditationDetail
         item={item}
         source={source}
         isMobile={isMobileLayout}
@@ -2408,6 +2415,7 @@ export default function LibraryView({
         mixOpen={mixEditor?.sk != null && mixEditor.sk === item.sk}
         onCloseMix={() => mixCloseRef.current?.()}
       />
+      </>
     );
   }
 

@@ -27,9 +27,11 @@ import { lifeAreaLastSeen, markLifeAreaSeen } from "@/lib/life-area-visits";
 import { LifeAreaOverview } from "@/components/plan/life-area/overview";
 import { LifeAreaThoughts } from "@/components/plan/life-area/thoughts";
 import { LifeAreaWhiteboard } from "@/components/plan/life-area/whiteboard";
+import { WhiteboardBackChip } from "@/components/plan/life-area/whiteboard-return";
 import { PlanLifeAreaMeditationsPanel } from "@/components/plan/plan-life-area-meditations-panel";
 import type { PlanDream } from "@/lib/plan-dreams";
 import { listLibraryMeditations } from "@/lib/medimade-api";
+import { useMvpFlags } from "@/lib/mvp-flags";
 
 const TABS = [
   "overview",
@@ -75,6 +77,12 @@ export function LifeAreaShell({
   );
   const [meditations, setMeditations] = useState(0);
   const tab = resolveTab(params.tab, params.goalId, params.itemId, search.get("tab"));
+  const mvp = useMvpFlags();
+  const tabs = TABS.filter((id) => {
+    if (id === "insights") return mvp.manifestInsights;
+    if (id === "whiteboard") return mvp.whiteboard;
+    return true;
+  });
   const itemId = params.itemId
     ? decodeURIComponent(params.itemId)
     : params.goalId
@@ -87,9 +95,23 @@ export function LifeAreaShell({
     const legacy = search.get("tab");
     if (legacy && !params.tab && !params.goalId && !params.itemId) {
       const next = LEGACY[legacy] ?? "overview";
-      navigate(next === "overview" ? base : `${base}/${next}`, { replace: true });
+      const hidden =
+        (next === "insights" && !mvp.manifestInsights) ||
+        (next === "whiteboard" && !mvp.whiteboard);
+      navigate(hidden || next === "overview" ? base : `${base}/${next}`, {
+        replace: true,
+      });
     }
-  }, [base, navigate, params.goalId, params.itemId, params.tab, search]);
+  }, [
+    base,
+    mvp.manifestInsights,
+    mvp.whiteboard,
+    navigate,
+    params.goalId,
+    params.itemId,
+    params.tab,
+    search,
+  ]);
 
   useEffect(() => {
     if (params.tab === "goals") {
@@ -100,6 +122,14 @@ export function LifeAreaShell({
       navigate(`${base}/tracker/${encodeURIComponent(params.goalId)}`, { replace: true });
     }
   }, [base, navigate, params.goalId, params.tab]);
+
+  useEffect(() => {
+    if (tab === "insights" && !mvp.manifestInsights) {
+      navigate(base, { replace: true });
+    } else if (tab === "whiteboard" && !mvp.whiteboard) {
+      navigate(base, { replace: true });
+    }
+  }, [base, mvp.manifestInsights, mvp.whiteboard, navigate, tab]);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
@@ -155,6 +185,7 @@ export function LifeAreaShell({
       <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pt-4 sm:px-6">
         <div className="min-w-0">
           <LifeAreaTabTrack
+            tabs={tabs}
             tab={tab}
             onSelect={go}
             activeRef={activeRef}
@@ -168,6 +199,9 @@ export function LifeAreaShell({
           />
         </div>
         <div className="pt-[18px]">
+          {mvp.whiteboard && search.get("wb") === "1" && tab !== "whiteboard" ? (
+            <WhiteboardBackChip areaId={dream.id} />
+          ) : null}
           {tab === "overview" ? (
             <LifeAreaOverview
               dream={dream}
@@ -186,7 +220,7 @@ export function LifeAreaShell({
               onRefresh={onRefresh}
             />
           ) : null}
-          {tab === "insights" ? (
+          {tab === "insights" && mvp.manifestInsights ? (
             <LifeAreaInsights
               dream={dream}
               onPatch={onPatch}
@@ -200,7 +234,7 @@ export function LifeAreaShell({
               lifeAreaTitle={dream.title}
             />
           ) : null}
-          {tab === "whiteboard" ? (
+          {tab === "whiteboard" && mvp.whiteboard ? (
             <LifeAreaWhiteboard
               dream={dream}
               onPatch={onPatch}
@@ -250,6 +284,7 @@ const TAB_ICON: Record<TabId, typeof LayoutGrid> = {
 };
 
 function LifeAreaTabTrack({
+  tabs,
   tab,
   onSelect,
   activeRef,
@@ -261,6 +296,7 @@ function LifeAreaTabTrack({
   insightNew,
   meditations,
 }: {
+  tabs: readonly TabId[];
   tab: TabId;
   onSelect: (id: TabId) => void;
   activeRef: RefObject<HTMLButtonElement | null>;
@@ -345,7 +381,7 @@ function LifeAreaTabTrack({
               }}
             />
           ) : null}
-          {TABS.map((id) => {
+          {tabs.map((id) => {
             const active = tab === id;
             const Icon = TAB_ICON[id];
             const label = id[0]!.toUpperCase() + id.slice(1);

@@ -9,6 +9,9 @@ import {
 } from "lucide-react";
 import { LIGHT_ACCENT_BORDER } from "@/components/plan/manifesto-section";
 import { VisionBoardMosaic } from "@/components/plan/vision-board-mosaic";
+import { VisionStyleControl } from "@/components/plan/vision-style-control";
+import { subscribeVisionToast } from "@/lib/vision-image-jobs";
+import type { VisionImageStyle } from "@/lib/ideate-vision-board";
 import {
   boardVisionItems,
   visionItemHasImage,
@@ -44,6 +47,10 @@ function draftScene(area: VisionArea, names: string[]): string {
 
 export function VisionBoardLayout({
   items,
+  imageStyle,
+  onStyleCommit,
+  onRedraw,
+  onRestore,
   tileUrls,
   lifeAreas,
   hydrated,
@@ -75,6 +82,10 @@ export function VisionBoardLayout({
   selfFileName,
 }: {
   items: VisionBoardItem[];
+  imageStyle: VisionImageStyle;
+  onStyleCommit: (next: VisionImageStyle, redraw: boolean, skipLikeness: boolean) => void;
+  onRedraw: (item: VisionBoardItem) => void;
+  onRestore: (item: VisionBoardItem) => void;
   tileUrls: Record<string, string>;
   lifeAreas: VisionArea[];
   hydrated: boolean;
@@ -115,12 +126,34 @@ export function VisionBoardLayout({
   const [draftAreaName, setDraftAreaName] = useState("");
   const [search, setSearch] = useSearchParams();
   const launchedCreate = useRef(false);
+  const [toast, setToast] = useState<string | null>(null);
   const [take, setTake] = useState<{
     itemId: string;
     phase: "making" | "ready";
     versionId: string | null;
     selected: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (search.get("refs") !== "1") return;
+    setRefsOpen(true);
+    const next = new URLSearchParams(search);
+    next.delete("refs");
+    setSearch(next, { replace: true });
+  }, [search, setSearch]);
+
+  useEffect(() => {
+    let timer = 0;
+    const unsubscribe = subscribeVisionToast((text) => {
+      setToast(text);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setToast(null), 3200);
+    });
+    return () => {
+      unsubscribe();
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const openCreate = (area: VisionArea | null, prefill: boolean) => {
     setCreateArea(area?.id ?? null);
@@ -179,6 +212,14 @@ export function VisionBoardLayout({
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-28 pt-6 sm:px-6 sm:pb-10 sm:pt-6">
+      {toast ? (
+        <p
+          role="status"
+          className="fixed bottom-[calc(58px+env(safe-area-inset-bottom,0px)+76px)] left-1/2 z-40 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background sm:bottom-24"
+        >
+          {toast}
+        </p>
+      ) : null}
       <VisionBoardMosaic
         board={board}
         library={images}
@@ -209,11 +250,14 @@ export function VisionBoardLayout({
         onMeasure={onMeasure}
         onNewTake={(item) => void startTake(item)}
         onVersions={(item) => setVersionsFor(item.id)}
+        onRedraw={onRedraw}
+        onRestore={onRestore}
       />
 
       {createOpen ? (
         <Sheet title="Create an image" onClose={() => setCreateOpen(false)}>
-          <label className="block text-[13px] font-semibold text-foreground">
+          <VisionStyleControl value={imageStyle} onCommit={onStyleCommit} onAddPhoto={onPickSelf} />
+          <label className="mt-4 block text-[13px] font-semibold text-foreground">
             Describe the scene
           </label>
           <textarea
@@ -262,7 +306,7 @@ export function VisionBoardLayout({
           </div>
           <p className="mt-5 text-[13px] font-semibold text-foreground">References</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {hasReference && selfPreviewUrl ? (
+            {imageStyle === "realistic" && hasReference && selfPreviewUrl ? (
               <span className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-card pr-3">
                 <img src={selfPreviewUrl} alt="" className="size-8 rounded-full object-cover" />
                 You
@@ -309,7 +353,11 @@ export function VisionBoardLayout({
           <div className="mt-auto pt-6">
             <button
               type="button"
-              disabled={busy !== null || !hasReference || scenePrompt.trim().length < 3}
+              disabled={
+                busy !== null ||
+                scenePrompt.trim().length < 3 ||
+                (imageStyle === "realistic" && !hasReference)
+              }
               onClick={() => onGenerate(createArea)}
               className="accent-fill-gradient inline-flex h-[46px] w-full cursor-pointer items-center justify-center rounded-full text-sm font-semibold text-on-accent disabled:opacity-40"
             >
@@ -332,6 +380,9 @@ export function VisionBoardLayout({
                 <X className="size-5" />
               </button>
             </div>
+            <VisionStyleControl value={imageStyle} onCommit={onStyleCommit} onAddPhoto={onPickSelf} />
+            {imageStyle === "illustrated" ? null : (
+            <>
             <p className="mt-3 text-sm font-semibold">You</p>
             {selfPreviewUrl ? (
               <img src={selfPreviewUrl} alt="" className="mt-2 h-40 w-full rounded-lg object-cover" />
@@ -359,6 +410,8 @@ export function VisionBoardLayout({
                 </button>
               ) : null}
             </div>
+            </>
+            )}
             <p className="mt-5 text-sm font-semibold">Also in the scene</p>
             <ul className="mt-2 flex flex-col gap-3">
               {extraRefs.map((ref) => (

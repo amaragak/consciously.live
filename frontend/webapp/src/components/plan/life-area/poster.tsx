@@ -1,6 +1,6 @@
 import { Image as ImageIcon, Mic } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogoMark } from "@/components/logo-mark";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { RaiseControl } from "@/components/plan/life-area/raise-control";
@@ -57,6 +57,7 @@ function keepObstacleLinks(dreamId: string, labels: string[]) {
 
 export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
   const navigate = useNavigate();
+  const [search] = useSearchParams();
   const { signedIn } = useIdeateCloud();
   const [editing, setEditing] = useState(false);
   const [picker, setPicker] = useState(false);
@@ -164,6 +165,37 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
     labelsTouched.current = false;
     setEditing(true);
   }
+
+  useEffect(() => {
+    const edit = search.get("edit");
+    if (edit !== "dream" && edit !== "moment" && edit !== "obstacle") return;
+    openEditor();
+    const label = search.get("label");
+    const timer = window.setTimeout(() => {
+      const labeled = label
+        ? [...document.querySelectorAll("[data-obstacle-label]")].find(
+            (node) => node.getAttribute("data-obstacle-label") === label,
+          )
+        : null;
+      const el =
+        labeled instanceof HTMLElement
+          ? labeled
+          : document.getElementById(
+              edit === "dream"
+                ? "vision-field-dream"
+                : edit === "moment"
+                  ? "vision-field-vision"
+                  : "vision-field-resistance",
+            );
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("bg-accent-soft");
+      window.setTimeout(() => el.classList.remove("bg-accent-soft"), 2200);
+    }, 80);
+    return () => window.clearTimeout(timer);
+    // Open the vision editor once when a whiteboard card asked for this line.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   async function closeEditor() {
     setEditing(false);

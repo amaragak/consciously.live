@@ -16,6 +16,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -24,10 +25,12 @@ import { createPortal } from "react-dom";
 import {
   VISION_COMPOSE_SLOT_COUNT,
   visionItemAspect,
+  visionImageStyleOf,
   type VisionBoardItem,
   type VisionCrop,
   type VisionCropPreset,
 } from "@/lib/ideate-vision-board";
+import { subscribeVisionRedrawing, visionRedrawingIds } from "@/lib/vision-image-jobs";
 
 export type MosaicArea = { id: string; title: string; visionText?: string };
 
@@ -154,6 +157,8 @@ export function VisionBoardMosaic({
   onMeasure,
   onNewTake,
   onVersions,
+  onRedraw,
+  onRestore,
 }: {
   board: VisionBoardItem[];
   library: VisionBoardItem[];
@@ -179,6 +184,8 @@ export function VisionBoardMosaic({
   onMeasure: (item: VisionBoardItem, width: number, height: number) => void;
   onNewTake: (item: VisionBoardItem) => void;
   onVersions: (item: VisionBoardItem) => void;
+  onRedraw: (item: VisionBoardItem) => void;
+  onRestore: (item: VisionBoardItem) => void;
 }) {
   const wallRef = useRef<HTMLDivElement | null>(null);
   const libraryRef = useRef<HTMLElement | null>(null);
@@ -293,7 +300,7 @@ export function VisionBoardMosaic({
     onPlace(dragId, index);
   };
 
-  return (
+    return (
     <>
       <div
         ref={wallRef}
@@ -353,6 +360,8 @@ export function VisionBoardMosaic({
                         onFeature={() => onFeature(featured)}
                         onCrop={() => setCropFor(featured.id)}
                         onBoardAction={() => onRemove(featured)}
+                        onRedraw={() => onRedraw(featured)}
+                        onRestore={() => onRestore(featured)}
                         onClose={() => setMenuId(null)}
                       />
                     ) : null
@@ -490,7 +499,7 @@ export function VisionBoardMosaic({
                 {row.items.map(({ item, width: tileW }) => {
                   const onBoard = board.some((entry) => entry.id === item.id);
                   const versions = (item.versions?.length ?? 0) + 1;
-                  return (
+    return (
                     <div
                       key={item.id}
                       draggable={arrange}
@@ -509,6 +518,7 @@ export function VisionBoardMosaic({
                         url={tileUrls[item.id]}
                         onMeasure={onMeasure}
                       />
+                      <RedrawVeil id={item.id} />
                       {item.favourite ? (
                         <Star className="absolute bottom-2.5 right-2.5 size-[18px] fill-accent text-accent" />
                       ) : null}
@@ -542,6 +552,8 @@ export function VisionBoardMosaic({
                           onFeature={() => onFeature(item)}
                           onCrop={() => setCropFor(item.id)}
                           onBoardAction={() => (onBoard ? onRemove(item) : onAdd(item))}
+                          onRedraw={() => onRedraw(item)}
+                          onRestore={() => onRestore(item)}
                           onClose={() => setMenuId(null)}
                         />
                       ) : null}
@@ -711,7 +723,7 @@ function Row({
     <div className="flex" style={{ gap }}>
       {row.items.map(({ item, width }) => {
         const index = boardIndex.get(item.id) ?? 0;
-        return (
+    return (
           <div key={item.id} className="relative shrink-0" style={{ width, height: row.height }}>
             {arrange && overIndex === index ? (
               <span className="absolute -left-1 top-0 z-10 h-full w-1 rounded-full bg-accent shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_35%,transparent)]" />
@@ -746,6 +758,8 @@ function Row({
                     onFeature={() => onFeature(item)}
                     onCrop={() => onCrop(item.id)}
                     onBoardAction={() => onRemove(item)}
+                    onRedraw={() => onRedraw(item)}
+                    onRestore={() => onRestore(item)}
                     onClose={() => onMenu(null)}
                   />
                 ) : null
@@ -831,6 +845,7 @@ function Tile({
       style={{ width, height }}
     >
       <TileImage item={item} url={url} onMeasure={onMeasure} />
+      <RedrawVeil id={item.id} />
       {item.favourite && !arrange ? (
         <Star className="pointer-events-none absolute bottom-2.5 right-2.5 size-[18px] fill-accent text-accent" />
       ) : null}
@@ -939,6 +954,8 @@ function TileMenu({
   onFeature,
   onCrop,
   onBoardAction,
+  onRedraw,
+  onRestore,
   onClose,
 }: {
   item: VisionBoardItem;
@@ -949,19 +966,30 @@ function TileMenu({
   onFeature: () => void;
   onCrop: () => void;
   onBoardAction: () => void;
+  onRedraw: () => void;
+  onRestore: () => void;
   onClose: () => void;
 }) {
   const versions = (item.versions?.length ?? 0) + 1;
+  const style = visionImageStyleOf(item.imageStyle);
   const run = (fn: () => void) => {
     onClose();
     fn();
   };
-  return (
-    <div
+    return (
+      <div
       role="menu"
       onPointerDown={(event) => event.stopPropagation()}
       className="absolute left-2 top-12 z-40 w-[220px] rounded-xl border border-border bg-card p-1.5 shadow-lg"
     >
+      {item.prompt?.trim() ? (
+        <MenuButton onClick={() => run(onRedraw)}>
+          {style === "illustrated" ? "Redraw as realistic" : "Redraw as illustration"}
+        </MenuButton>
+      ) : null}
+      {item.previousImage ? (
+        <MenuButton onClick={() => run(onRestore)}>Go back to previous version</MenuButton>
+      ) : null}
       <MenuButton onClick={() => run(onNewTake)}>New take</MenuButton>
       {versions > 1 ? (
         <MenuButton onClick={() => run(onVersions)}>Versions ({versions})</MenuButton>
@@ -974,6 +1002,20 @@ function TileMenu({
       <MenuButton onClick={() => run(onBoardAction)}>
         {onBoard ? "Remove from board" : "Add to board"}
       </MenuButton>
+      </div>
+    );
+  }
+
+function RedrawVeil({ id }: { id: string }) {
+  const ids = useSyncExternalStore(
+    subscribeVisionRedrawing,
+    visionRedrawingIds,
+    visionRedrawingIds,
+  );
+  if (!ids.includes(id)) return null;
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35">
+      <span className="size-6 animate-pulse rounded-full bg-white/80" />
     </div>
   );
 }
@@ -985,7 +1027,7 @@ function MenuButton({
   onClick: () => void;
   children: ReactNode;
 }) {
-  return (
+    return (
     <button
       type="button"
       role="menuitem"
@@ -1141,8 +1183,8 @@ function CropDialog({
             >
               {entry.label}
             </button>
-          ))}
-        </div>
+        ))}
+      </div>
         <div
           className="relative mx-auto w-full overflow-hidden bg-black"
           style={{ aspectRatio: String(imageAspect) }}
@@ -1191,8 +1233,8 @@ function CropDialog({
                 };
                 frameRef.current?.setPointerCapture(event.pointerId);
               }}
-            />
-          </div>
+      />
+    </div>
         </div>
         <label className="flex items-center gap-3 text-[13px] font-semibold text-foreground">
           Zoom

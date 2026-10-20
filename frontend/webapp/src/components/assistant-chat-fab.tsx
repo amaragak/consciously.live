@@ -31,6 +31,7 @@ import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
 
 /** Hide only when main content already hosts a chat UI. */
@@ -47,6 +48,7 @@ function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
 
 /** Header control. Opens the same panel as the life-area chat launch. */
 export function AssistantChatHeaderButton() {
+  const chatOn = useMvpFlags().chat;
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onChange = (event: Event) => {
@@ -56,6 +58,7 @@ export function AssistantChatHeaderButton() {
     return () =>
       window.removeEventListener(ASSISTANT_CHAT_OPEN_CHANGED_EVENT, onChange);
   }, []);
+  if (!chatOn) return null;
   return (
     <button
       type="button"
@@ -75,6 +78,7 @@ export function AssistantChatHeaderButton() {
  * Hidden only when full Chat (`/chat/my`) or Create’s chat pane is already on screen.
  */
 export function AssistantChatFab() {
+  const chatOn = useMvpFlags().chat;
   const mdUp = useMinWidth(768);
   const pathname = usePathname() || "/";
   const [createChatVisible, setCreateChatVisible] = useState(
@@ -92,6 +96,7 @@ export function AssistantChatFab() {
   }), []);
 
   useEffect(() => {
+    if (!chatOn) return;
     clearLegacyAssistantChatKeys();
     const sync = () => {
       const signedIn =
@@ -111,7 +116,7 @@ export function AssistantChatFab() {
     sync();
     window.addEventListener("medimade-session-changed", sync);
     return () => window.removeEventListener("medimade-session-changed", sync);
-  }, []);
+  }, [chatOn]);
 
   // Re-check session when navigating between app pages (late JWT hydrate).
   useEffect(() => {
@@ -140,6 +145,7 @@ export function AssistantChatFab() {
   }, [open]);
 
   useEffect(() => {
+    if (!chatOn) return;
     const onOpen = (ev: Event) => {
       const detail = (ev as CustomEvent<AssistantChatOpenDetail>).detail;
       pendingLaunchRef.current = detail ?? { kind: "default" };
@@ -149,7 +155,7 @@ export function AssistantChatFab() {
     };
     window.addEventListener(ASSISTANT_CHAT_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(ASSISTANT_CHAT_OPEN_EVENT, onOpen);
-  }, []);
+  }, [chatOn]);
 
   const chat = useAssistantChatThread({
     threadId: null,
@@ -208,7 +214,7 @@ export function AssistantChatFab() {
     return () => window.removeEventListener(ASSISTANT_CHAT_TOGGLE_EVENT, onToggle);
   }, [toggleOpen]);
 
-  if (!enabled || hidden || !open || typeof document === "undefined") return null;
+  if (!chatOn || !enabled || hidden || !open || typeof document === "undefined") return null;
 
   const fullHref = chat.activeId
     ? `/chat/my/${encodeURIComponent(chat.activeId)}`

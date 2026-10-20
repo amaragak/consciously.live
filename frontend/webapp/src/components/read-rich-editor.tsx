@@ -16,6 +16,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { uploadAdminBlogPostImage } from "@/lib/medimade-api";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import {
   ReadImage,
   compressBlogPostImage,
@@ -123,6 +124,8 @@ export function ReadRichEditor({
   const pendingLayoutRef = useRef<ReadImageLayout>("inline");
   const [imageBusy, setImageBusy] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const chatOn = useMvpFlags().chat;
+  const linkPresets = APP_LINK_PRESETS.filter((preset) => preset.id !== "chat" || chatOn);
 
   const editor = useEditor({
     extensions: [
@@ -393,7 +396,7 @@ export function ReadRichEditor({
                 App pages
               </p>
               <ul className="max-h-44 overflow-y-auto border-b border-border pb-1">
-                {APP_LINK_PRESETS.map((p) => (
+                {linkPresets.map((p) => (
                   <li key={p.id}>
                     <button
                       type="button"

@@ -19,6 +19,7 @@ import {
 import { randomUUID } from "crypto";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
 import { CLAUDE_HAIKU_45_MODEL_ID, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
+import { withIllustrationStyle } from "./_shared/illustration-style";
 
 const secrets = new SecretsManagerClient({});
 const s3 = new S3Client({});
@@ -314,6 +315,10 @@ export async function handler(
     mimeType?: unknown;
     extraReferences?: unknown;
     sessionToken?: unknown;
+    /** realistic (default) or illustrated. Illustrated never receives the user's photo. */
+    style?: unknown;
+    /** Realistic scene with no likeness photo. */
+    skipLikeness?: unknown;
   };
   try {
     body = JSON.parse(event.body || "{}") as typeof body;
@@ -359,11 +364,20 @@ export async function handler(
     }
   }
 
+  const style = body.style === "illustrated" ? "illustrated" : "realistic";
+  const skipLikeness = style === "illustrated" || body.skipLikeness === true;
+
   const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
-  const referenceKey =
-    typeof body.referenceKey === "string" ? body.referenceKey.trim() : "";
-  let b64 =
-    typeof body.referenceBase64 === "string" ? body.referenceBase64.trim() : "";
+  const referenceKey = skipLikeness
+    ? ""
+    : typeof body.referenceKey === "string"
+      ? body.referenceKey.trim()
+      : "";
+  let b64 = skipLikeness
+    ? ""
+    : typeof body.referenceBase64 === "string"
+      ? body.referenceBase64.trim()
+      : "";
   let mime =
     typeof body.mimeType === "string" && body.mimeType.trim()
       ? body.mimeType.trim().split(";")[0]!.toLowerCase()
@@ -383,26 +397,27 @@ export async function handler(
     mime = loaded.mime;
   }
 
-  if (!b64) {
+  if (!skipLikeness && !b64) {
     return json(400, {
       error: "Upload a reference photo of yourself before generating a scene.",
     });
   }
 
-  let refBuf: Buffer;
-  try {
-    refBuf = Buffer.from(b64, "base64");
-  } catch {
-    return json(400, { error: "Invalid base64 reference image" });
-  }
-  if (refBuf.length < 64 || refBuf.length > MAX_REF_BYTES) {
-    return json(400, {
-      error: `Reference image must be between 64 bytes and ${MAX_REF_BYTES} bytes`,
-    });
-  }
-
-  if (!mime.startsWith("image/")) {
-    return json(400, { error: "Reference must be an image" });
+  if (b64) {
+    let refBuf: Buffer;
+    try {
+      refBuf = Buffer.from(b64, "base64");
+    } catch {
+      return json(400, { error: "Invalid base64 reference image" });
+    }
+    if (refBuf.length < 64 || refBuf.length > MAX_REF_BYTES) {
+      return json(400, {
+        error: `Reference image must be between 64 bytes and ${MAX_REF_BYTES} bytes`,
+      });
+    }
+    if (!mime.startsWith("image/")) {
+      return json(400, { error: "Reference must be an image" });
+    }
   }
 
   const loadedExtras: Array<{ description: string; b64: string; mime: string }> =
@@ -453,29 +468,51 @@ export async function handler(
   const model = modelId();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
-  const instructionLines = [
-    "Create a single cohesive vision-board image.",
-    "IMAGE 1 is the PRIMARY SUBJECT (vision-board owner). Keep their identity (same face, age range, hair family, skin tone, body type) — recognizably them, not a different model.",
-    "CRITICAL GLOW-UP: they must look MORE physically attractive than IMAGE 1 — flattering beauty-retouched lifestyle campaign quality of the same person, never a less-attractive or more-tired version.",
-    "Actively correct unflattering cues that often appear in selfies/reference photos:",
-    "- Remove or strongly soften dark under-eye circles, patches, bags, and shadowing in the eye sockets.",
-    "- Remove tired / sleep-deprived look; eyes bright, rested, clear whites, soft catchlights.",
-    "- Even out blotchy or dull skin; healthy luminous glow; refined texture (not muddy, grey, or sallow).",
-    "- Soften harsh wrinkles/shadows caused by bad lighting; keep natural bone structure.",
-    "Do NOT copy dark under-eye patches, hollow tired eyes, or other facial flaws from the reference. Identity yes — flaws no.",
-    "Beauty lighting: soft key + gentle fill that lifts the midface and under-eyes; warm highlights; flattering angle and posture; healthy hair.",
-    "If the output would look less attractive than the reference, revise toward a complimentary glow-up instead.",
-    "",
-    "COMPOSITION (vision board = person + environment, equal weight — camera further back by default):",
-    "- Do NOT make the person the sole central focus filling most of the frame.",
-    "- FORBIDDEN: tight head-and-shoulders, selfie crop, face-dominant center portrait, medium close-up that hides the setting.",
-    "- Pull the camera FURTHER BACK than a typical portrait. Prefer wide / medium-wide environmental framing.",
-    "- Full body or loose three-quarter figure with generous space around them; room, landscape, architecture, and props must read clearly.",
-    "- Person roughly **20–40%** of the frame; environment a similar or larger share — setting is as important as the figure.",
-    "- Every important situational element in the scene description must be LARGE, sharp, and clearly visible — not tiny scraps at the edges or soft bokeh behind a dominant face.",
-    "- If they are sitting on / interacting with something, show that object and the surrounding place fully enough that a viewer instantly understands the story and the world they are in.",
-  ];
-  if (loadedExtras.length) {
+  const instructionLines: string[] = [];
+  if (style === "illustrated") {
+    instructionLines.push(
+      withIllustrationStyle(
+        [
+          "Create a single cohesive vision-board image.",
+          "No photograph of the vision-board owner is attached. People are stylised figures, not portraits of a real person.",
+          `Scene: ${prompt}`,
+        ].join("\n"),
+      ),
+    );
+  } else if (b64) {
+    instructionLines.push(
+      "Create a single cohesive vision-board image.",
+      "IMAGE 1 is the PRIMARY SUBJECT (vision-board owner). Keep their identity (same face, age range, hair family, skin tone, body type) — recognizably them, not a different model.",
+      "CRITICAL GLOW-UP: they must look MORE physically attractive than IMAGE 1 — flattering beauty-retouched lifestyle campaign quality of the same person, never a less-attractive or more-tired version.",
+      "Actively correct unflattering cues that often appear in selfies/reference photos:",
+      "- Remove or strongly soften dark under-eye circles, patches, bags, and shadowing in the eye sockets.",
+      "- Remove tired / sleep-deprived look; eyes bright, rested, clear whites, soft catchlights.",
+      "- Even out blotchy or dull skin; healthy luminous glow; refined texture (not muddy, grey, or sallow).",
+      "- Soften harsh wrinkles/shadows caused by bad lighting; keep natural bone structure.",
+      "Do NOT copy dark under-eye patches, hollow tired eyes, or other facial flaws from the reference. Identity yes — flaws no.",
+      "Beauty lighting: soft key + gentle fill that lifts the midface and under-eyes; warm highlights; flattering angle and posture; healthy hair.",
+      "If the output would look less attractive than the reference, revise toward a complimentary glow-up instead.",
+      "",
+      "COMPOSITION (vision board = person + environment, equal weight — camera further back by default):",
+      "- Do NOT make the person the sole central focus filling most of the frame.",
+      "- FORBIDDEN: tight head-and-shoulders, selfie crop, face-dominant center portrait, medium close-up that hides the setting.",
+      "- Pull the camera FURTHER BACK than a typical portrait. Prefer wide / medium-wide environmental framing.",
+      "- Full body or loose three-quarter figure with generous space around them; room, landscape, architecture, and props must read clearly.",
+      "- Person roughly **20–40%** of the frame; environment a similar or larger share — setting is as important as the figure.",
+      "- Every important situational element in the scene description must be LARGE, sharp, and clearly visible — not tiny scraps at the edges or soft bokeh behind a dominant face.",
+      "- If they are sitting on / interacting with something, show that object and the surrounding place fully enough that a viewer instantly understands the story and the world they are in.",
+      "Photorealistic, warm, hopeful, cinematic editorial. No text overlays, watermarks, or logos.",
+      `Scene: ${prompt}`,
+    );
+  } else {
+    instructionLines.push(
+      "Create a single cohesive vision-board image.",
+      "No reference photo of the vision-board owner is attached. Invent a natural person who fits the scene. Do not imitate a celebrity or public figure.",
+      "Photorealistic, warm, hopeful, cinematic editorial. No text overlays, watermarks, or logos.",
+      `Scene: ${prompt}`,
+    );
+  }
+  if (loadedExtras.length && style !== "illustrated") {
     instructionLines.push(
       `Additional supporting reference image(s) follow (${loadedExtras.length}). Each has a description — when the scene involves that person/pet/place, match their likeness from that image. Do not invent unrelated extras.`,
       ...loadedExtras.map(
@@ -483,23 +520,19 @@ export async function handler(
       ),
     );
   }
-  instructionLines.push(
-    "Photorealistic, warm, hopeful, cinematic editorial. No text overlays, watermarks, or logos.",
-    `Scene: ${prompt}`,
-  );
 
   type GeminiPart =
     | { text: string }
     | { inline_data: { mime_type: string; data: string } };
 
-  const parts: GeminiPart[] = [
-    { text: instructionLines.join("\n") },
-    {
+  const parts: GeminiPart[] = [{ text: instructionLines.join("\n") }];
+  if (b64) {
+    parts.push({
       text: "PRIMARY SUBJECT reference photo (use for identity only — improve attractiveness; do not reproduce under-eye darkness or tired facial flaws):",
-    },
-    { inline_data: { mime_type: mime, data: b64 } },
-  ];
-  for (let i = 0; i < loadedExtras.length; i++) {
+    });
+    parts.push({ inline_data: { mime_type: mime, data: b64 } });
+  }
+  if (style !== "illustrated") for (let i = 0; i < loadedExtras.length; i++) {
     const e = loadedExtras[i]!;
     parts.push({
       text: `SUPPORTING REFERENCE ${i + 1} (${e.description}):`,

@@ -1,6 +1,7 @@
 "use client";
 
 import { Link, useRouter } from "@/lib/spa-nav";
+import { useMvpFlags } from "@/lib/mvp-flags";
 import {
   useCallback,
   useEffect,
@@ -339,6 +340,7 @@ export function AppGlobalSearch({
   onOpenChange?: (open: boolean) => void;
 } = {}) {
   const router = useRouter();
+  const mvp = useMvpFlags();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<UserContentSearchHit[]>([]);
@@ -625,20 +627,26 @@ export function AppGlobalSearch({
           );
         },
       },
-      {
-        id: "ask-chat",
-        title: `Ask Chat about ${quoted}`,
-        body: "Chat.",
-        href: "/chat/my",
-        icon: "chat",
-        primary: true,
-      },
+      ...(mvp.chat
+        ? [
+            {
+              id: "ask-chat",
+              title: `Ask Chat about ${quoted}`,
+              body: "Chat.",
+              href: "/chat/my",
+              icon: "chat" as const,
+              primary: true,
+            },
+          ]
+        : []),
     ];
-  }, [rawQuery]);
+  }, [mvp.chat, rawQuery]);
 
   const emptyQuickRows = useMemo(
     (): FlyoutRow[] =>
-      EMPTY_QUICK_ACTIONS.map((a) => ({
+      EMPTY_QUICK_ACTIONS.filter(
+        (a) => a.id !== "insights" || mvp.journalInsights,
+      ).map((a) => ({
         id: a.id,
         title: a.title,
         body: a.body,
@@ -647,7 +655,7 @@ export function AppGlobalSearch({
         primary: a.primary,
         shortcut: a.shortcut,
       })),
-    [],
+    [mvp.journalInsights],
   );
 
   const recentRows = useMemo(
