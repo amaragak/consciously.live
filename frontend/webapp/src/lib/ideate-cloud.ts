@@ -376,6 +376,10 @@ export function applyIdeateCloudBundle(bundle: IdeateCloudBundle): void {
       extraReferences: Array.isArray(rawVision.extraReferences)
         ? rawVision.extraReferences.slice(0, 3)
         : [],
+      ...(rawVision.imageStyle === "illustrated" || rawVision.imageStyle === "realistic"
+        ? { imageStyle: rawVision.imageStyle }
+        : {}),
+      ...(rawVision.boardGrouped ? { boardGrouped: true } : {}),
     });
 
     saveIdeateReflectionQuestionsStoreLocal(

@@ -26,6 +26,7 @@ import {
   loadIdeateVisionBoardStore,
   saveIdeateVisionBoardStore,
   setVisionItemLifeAreaIds,
+  visionBoardPhotoFilter,
   visionItemAspect,
   visionItemHasImage,
   type VisionBoardItem,
@@ -288,7 +289,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
               className="absolute inset-0 size-full object-cover"
               style={{
                 objectPosition: cropPosition(image),
-                filter: HERO_PHOTO_FILTER,
+                filter: visionBoardPhotoFilter(HERO_PHOTO_FILTER),
                 WebkitMaskImage: WIDE_PHOTO_MASK,
                 maskImage: WIDE_PHOTO_MASK,
               }}
@@ -309,7 +310,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
               className="size-full object-cover"
               style={{
                 objectPosition: cropPosition(image),
-                filter: HERO_PHOTO_FILTER,
+                filter: visionBoardPhotoFilter(HERO_PHOTO_FILTER),
                 WebkitMaskImage: "linear-gradient(to right, transparent, #000 90px)",
                 maskImage: "linear-gradient(to right, transparent, #000 90px)",
               }}
@@ -336,7 +337,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
               className="size-full object-cover"
               style={{
                 objectPosition: cropPosition(image),
-                filter: HERO_PHOTO_FILTER,
+                filter: visionBoardPhotoFilter(HERO_PHOTO_FILTER),
                 WebkitMaskImage:
                   "linear-gradient(to bottom, #000 calc(100% - 70px), transparent)",
                 maskImage:

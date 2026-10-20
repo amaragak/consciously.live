@@ -13,6 +13,7 @@ import {
 } from "@/lib/account-scoped-storage";
 import {
   boardVisionItems,
+  visionBoardPhotoFilter,
   visionPickOrder,
   type VisionBoardItem,
 } from "@/lib/ideate-vision-board";
@@ -101,8 +102,9 @@ function TilePicture({ image }: { image: HeroImage }) {
       className="absolute inset-0 h-full w-full object-cover"
       style={{
         animation: "hero-tile-fade 250ms ease",
-        filter:
+        filter: visionBoardPhotoFilter(
           "grayscale(32%) sepia(22%) contrast(0.88) brightness(0.82) saturate(0.7)",
+        ),
       }}
     />
   ) : (

@@ -162,6 +162,31 @@ export function visionImageStyleOf(
   return value === "illustrated" ? "illustrated" : "realistic";
 }
 
+/** The style the board is showing. The store setting wins; otherwise the pictures already on the board. */
+export function resolvedVisionImageStyle(
+  store: Pick<IdeateVisionBoardStoreV1, "imageStyle" | "items"> | null | undefined,
+): VisionImageStyle {
+  if (store?.imageStyle === "illustrated" || store?.imageStyle === "realistic") {
+    return store.imageStyle;
+  }
+  const styles = (store?.items ?? [])
+    .map((item) => item.imageStyle)
+    .filter(
+      (style): style is VisionImageStyle =>
+        style === "illustrated" || style === "realistic",
+    );
+  if (styles.length > 0 && styles.every((style) => style === "illustrated")) {
+    return "illustrated";
+  }
+  return "realistic";
+}
+
+/** Photo soften used on vision-board images elsewhere in the app. Illustrations stay unfiltered. */
+export function visionBoardPhotoFilter(filter: string): string | undefined {
+  const style = resolvedVisionImageStyle(loadIdeateVisionBoardStore());
+  return style === "illustrated" ? undefined : filter;
+}
+
 export function visionAreaId(item: VisionBoardItem): string | null {
   const id = item.lifeAreaIds?.[0]?.trim();
   return id || null;

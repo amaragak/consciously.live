@@ -24,6 +24,7 @@ import {
   shortCaption,
   stampActiveStyle,
   visionAreaId,
+  resolvedVisionImageStyle,
   visionImageStyleOf,
   visionItemHasImage,
   visionLabelFromPrompt,
@@ -295,7 +296,7 @@ export function IdeateVisionBoardClient() {
     void shapeVisionCaptions()
       .then(() => setItems(loadIdeateVisionBoardStore().items))
       .catch(() => undefined);
-    setImageStyle(visionImageStyleOf(store.imageStyle));
+    setImageStyle(resolvedVisionImageStyle(store));
     setSelfRef(store.selfReference ?? null);
     setExtraRefs(store.extraReferences ?? []);
 
@@ -1394,7 +1395,7 @@ export function IdeateVisionBoardClient() {
     return subscribeVisionFrames(() => {
       const store = loadIdeateVisionBoardStore();
       setItems(store.items);
-      setImageStyle(visionImageStyleOf(store.imageStyle));
+      setImageStyle(resolvedVisionImageStyle(store));
       setTileUrls((prev) => {
         let changed = false;
         const next = { ...prev };
