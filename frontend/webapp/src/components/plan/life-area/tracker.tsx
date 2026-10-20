@@ -8,6 +8,7 @@ import {
   List,
   MessageSquare,
   MoreHorizontal,
+  Pencil,
   Pin,
   Plus,
   Tag,
@@ -93,6 +94,108 @@ function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+export function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: none)");
+    const apply = () => setCoarse(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return coarse;
+}
+
+const OPEN_PILL =
+  "invisible inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-border bg-card px-2 text-xs font-semibold text-foreground pointer-events-none group-hover:visible group-hover:pointer-events-auto group-focus-within:visible group-focus-within:pointer-events-auto";
+
+export function TrackerTitleField({
+  title,
+  editing,
+  fresh,
+  grabFocus,
+  bold,
+  coarse,
+  placeholder,
+  onBegin,
+  onOpen,
+  onFinish,
+  onKeyDown,
+}: {
+  title: string;
+  editing: boolean;
+  fresh: boolean;
+  grabFocus: boolean;
+  bold: boolean;
+  coarse: boolean;
+  placeholder: string;
+  onBegin: () => void;
+  onOpen: () => void;
+  onFinish: (value: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!grabFocus) return;
+    input.current?.focus();
+  }, [grabFocus]);
+  useEffect(() => {
+    if (editing || !input.current) return;
+    if (input.current.value !== title) input.current.value = title;
+  }, [editing, title]);
+
+  if (coarse && !editing) {
+    return (
+      <button
+        type="button"
+        className={`min-w-0 truncate text-left ${bold ? "font-semibold" : ""}`}
+        onClick={onOpen}
+      >
+        {title || "Untitled"}
+      </button>
+    );
+  }
+
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+      <input
+        ref={input}
+        autoFocus={fresh}
+        size={Math.min(Math.max((title || placeholder).length, 4), 72)}
+        defaultValue={title}
+        placeholder={placeholder}
+        aria-label="Item title"
+        className={
+          editing
+            ? "h-[30px] min-w-0 max-w-full flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none placeholder:italic placeholder:text-muted"
+            : `h-7 min-w-0 max-w-full cursor-text truncate border border-transparent bg-transparent px-0 text-sm outline-none ${bold ? "font-semibold" : ""}`
+        }
+        onFocus={onBegin}
+        onBlur={(event) => onFinish(event.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      {fresh ? (
+        <span className="shrink-0 text-[11px] text-muted">Enter adds another · Tab nests · Esc finishes</span>
+      ) : null}
+      {!coarse && !fresh ? (
+        <button type="button" className={OPEN_PILL} onClick={onOpen}>
+          <ArrowUpRight className="size-3.5" aria-hidden />
+          Open
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+export function rowOpensOnKey(event: KeyboardEvent<HTMLDivElement>, open: () => void) {
+  const target = event.target as HTMLElement;
+  if (target.closest("button, input, textarea, select, a, label")) return;
+  if (event.key === " " || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
+    event.preventDefault();
+    open();
+  }
+}
+
 function readView(areaId: string): "outline" | "detail" {
   try {
     const raw = readAccountLocalStorage(VIEW_KEY);
@@ -112,6 +215,10 @@ function writeView(areaId: string, view: "outline" | "detail") {
   } catch {
     /* */
   }
+}
+
+export function rememberTrackerDetail(areaId: string) {
+  writeView(areaId, "detail");
 }
 
 function readExpanded(areaId: string): Set<string> | null {
@@ -135,6 +242,98 @@ function writeExpanded(areaId: string, ids: Set<string>) {
   }
 }
 
+function parentChoices(items: TrackerItem[]): { id: string; depth: number; title: string }[] {
+  const out: { id: string; depth: number; title: string }[] = [];
+  const walk = (parentId: string | null, depth: number) => {
+    for (const item of childrenOf(items, parentId)) {
+      out.push({ id: item.id, depth, title: item.title || "Untitled" });
+      walk(item.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return out;
+}
+
+function ThoughtTrackerAdd({
+  dreamId,
+  title,
+  thoughtId,
+  items,
+  onCancel,
+  onSave,
+}: {
+  dreamId: string;
+  title: string;
+  thoughtId: string;
+  items: TrackerItem[];
+  onCancel: () => void;
+  onSave: (parentId: string | null) => void;
+}) {
+  const [text, setText] = useState(title);
+  const [parentId, setParentId] = useState("");
+  const choices = parentChoices(items);
+  function save() {
+    const next = text.trim();
+    if (!next) return;
+    commitTracker((current) =>
+      addTrackerItem(current, {
+        lifeAreaId: dreamId,
+        parentId: parentId || null,
+        title: next,
+        sourceThoughtId: thoughtId,
+      }).store,
+    );
+    onSave(parentId || null);
+  }
+  return (
+    <form
+      className="rounded-2xl border border-border bg-card p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save();
+      }}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">Add to Tracker</p>
+      <input
+        autoFocus
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+        aria-label="Item title"
+        className="mt-2 h-[30px] w-full rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none"
+      />
+      <label className="mt-2 flex items-center gap-2 text-[13px] text-foreground">
+        Parent
+        <select
+          value={parentId}
+          onChange={(event) => setParentId(event.target.value)}
+          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm"
+        >
+          <option value="">Top level</option>
+          {choices.map((choice) => (
+            <option key={choice.id} value={choice.id}>
+              {`${"\u2013 ".repeat(choice.depth)}${choice.title}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="mt-3 flex gap-2">
+        <button type="submit" className={`${MIST} h-9 px-4 text-sm`}>
+          Add
+        </button>
+        <button type="button" className={`${OUTLINE} h-9 px-4 text-sm`} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function LifeAreaTracker({
   dream,
   itemId,
@@ -152,6 +351,9 @@ export function LifeAreaTracker({
   const [statusFilter, setStatusFilter] = useState<TrackerStatus | "any">("any");
   const [hideDone, setHideDone] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingMode, setEditingMode] = useState<"create" | "rename" | null>(null);
+  const [grabId, setGrabId] = useState<string | null>(null);
+  const coarse = useCoarsePointer();
   const [menu, setMenu] = useState<string | null>(null);
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
   const [picker, setPicker] = useState<{ id: string; field: "status" | "kind" | "due"; el: HTMLElement } | null>(null);
@@ -264,7 +466,15 @@ export function LifeAreaTracker({
       return result.store;
     });
     if (parentId) persistExpand(new Set([...expanded, parentId]));
+    setEditingMode("create");
+    setGrabId(created);
     setEditing(created);
+  }
+
+  function startEdit(id: string | null, mode: "create" | "rename" = "rename", grab = false) {
+    setEditing(id);
+    setEditingMode(id ? mode : null);
+    setGrabId(grab ? id : null);
   }
 
   function openMenu(id: string | null, el?: HTMLElement) {
@@ -289,11 +499,17 @@ export function LifeAreaTracker({
     if (!title) {
       mutate((current) => deleteTrackerItem(current, item.id));
       setEditing(null);
+      setEditingMode(null);
+      setGrabId(null);
       return false;
     }
     mutate((current) => patchTrackerItem(current, item.id, { title }));
     if (next === "sibling") addItem(item.parentId, item.id);
-    else if (next === "close") setEditing(null);
+    else if (next === "close") {
+      setEditing(null);
+      setEditingMode(null);
+      setGrabId(null);
+    }
     return true;
   }
 
@@ -306,6 +522,24 @@ export function LifeAreaTracker({
   }
 
   function onTitleKey(event: KeyboardEvent<HTMLInputElement>, item: TrackerItem) {
+    if (event.key === "Enter" && editingMode === "rename") {
+      event.preventDefault();
+      titleLock.current = true;
+      applyTitle(item, event.currentTarget.value, "close");
+      event.currentTarget.blur();
+      return;
+    }
+    if (event.key === "Escape" && editingMode === "rename") {
+      event.preventDefault();
+      event.stopPropagation();
+      titleLock.current = true;
+      event.currentTarget.value = item.title;
+      event.currentTarget.blur();
+      setEditing(null);
+      setEditingMode(null);
+      setGrabId(null);
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       titleLock.current = true;
@@ -442,6 +676,36 @@ export function LifeAreaTracker({
           </p>
         </div>
       ) : null}
+      {search.get("fromThought") ? (
+        <ThoughtTrackerAdd
+          dreamId={dream.id}
+          title={search.get("addTitle") ?? ""}
+          thoughtId={search.get("fromThought") ?? ""}
+          items={areaItems}
+          onCancel={() => {
+            const params = new URLSearchParams(search);
+            params.delete("fromThought");
+            params.delete("addTitle");
+            setSearch(params, { replace: true });
+          }}
+          onSave={(parentId) => {
+            if (parentId) {
+              const next = new Set(expanded);
+              let current: string | null = parentId;
+              while (current) {
+                next.add(current);
+                current = areaItems.find((item) => item.id === current)?.parentId ?? null;
+              }
+              persistExpand(next);
+            }
+            const params = new URLSearchParams(search);
+            params.delete("fromThought");
+            params.delete("addTitle");
+            setSearch(params, { replace: true });
+            onRefresh();
+          }}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex h-[34px] items-center rounded-full border border-border bg-card p-0.5 text-[13px]">
           {([
@@ -518,8 +782,11 @@ export function LifeAreaTracker({
             else next.add(id);
             persistExpand(next);
           }}
+          coarse={coarse}
+          editingMode={editingMode}
+          grabId={grabId}
           onOpen={openDetail}
-          onEdit={setEditing}
+          onEdit={startEdit}
           onTitle={(id, title) => mutate((current) => patchTrackerItem(current, id, { title }))}
           onTitleKey={onTitleKey}
           onDone={(item) => {
@@ -558,6 +825,9 @@ export function LifeAreaTracker({
           areas={areas}
           topLevel={childrenOf(areaItems, null)}
           narrow={narrow}
+          coarse={coarse}
+          editingMode={editingMode}
+          grabId={grabId}
           editing={editing}
           menu={menu}
           expanded={expanded}
@@ -584,7 +854,8 @@ export function LifeAreaTracker({
               })
               .finally(() => setSuggesting(false));
           }}
-          onEdit={setEditing}
+          onOpen={openDetail}
+          onEdit={startEdit}
           onTitle={(id, title) => mutate((current) => patchTrackerItem(current, id, { title }))}
           onTitleKey={onTitleKey}
           onDone={(item) => mutate((current) => toggleTrackerDone(current, item.id))}
@@ -676,6 +947,7 @@ export function LifeAreaTracker({
           item={areaItems.find((item) => item.id === menu)!}
           items={areaItems}
           areas={areas}
+          onRename={coarse ? (id) => startEdit(id, "rename", true) : undefined}
           onOpen={(id) => {
             openDetail(id);
             openMenu(null);
@@ -741,6 +1013,9 @@ function Outline({
   expanded,
   selected,
   editing,
+  editingMode,
+  grabId,
+  coarse,
   menu,
   indent,
   indentCap,
@@ -770,6 +1045,9 @@ function Outline({
   expanded: Set<string>;
   selected: string[];
   editing: string | null;
+  editingMode: "create" | "rename" | null;
+  grabId: string | null;
+  coarse: boolean;
   menu: string | null;
   indent: number;
   indentCap: number;
@@ -777,7 +1055,7 @@ function Outline({
   areas: PlanDream[];
   onToggleExpand: (id: string) => void;
   onOpen: (id: string) => void;
-  onEdit: (id: string | null) => void;
+  onEdit: (id: string | null, mode?: "create" | "rename", grab?: boolean) => void;
   onTitle: (id: string, title: string) => void;
   onTitleKey: (event: KeyboardEvent<HTMLInputElement>, item: TrackerItem) => void;
   onDone: (item: TrackerItem) => void;
@@ -815,7 +1093,14 @@ function Outline({
           <div key={item.id}>
           <div
             draggable
-            onDragStart={(event) => event.dataTransfer.setData("text/plain", item.id)}
+            onDragStart={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest("input, textarea")) {
+                event.preventDefault();
+                return;
+              }
+              event.dataTransfer.setData("text/plain", item.id);
+            }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
@@ -824,9 +1109,16 @@ function Outline({
               const asChild = event.nativeEvent.offsetX > 48 + depth * indent;
               onDragEnd(id, asChild ? item.id : item.parentId, asChild ? null : item.id);
             }}
+            tabIndex={0}
+            onKeyDown={(event) => rowOpensOnKey(event, () => onOpen(item.id))}
+            onClick={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest("button, input, textarea, select, a, label")) return;
+              onSelect(item.id, event);
+            }}
             onMouseEnter={() => setHover(item.id)}
             onMouseLeave={() => setHover((current) => (current === item.id ? null : current))}
-            className={`group grid min-w-[720px] grid-cols-[minmax(0,3fr)_150px_140px_90px_120px] items-center border-t border-border px-3 py-[9px] text-sm ${selected.includes(item.id) ? "bg-[color-mix(in_srgb,var(--primary)_28%,transparent)]" : "hover:bg-background focus-within:bg-background"}`}
+            className={`group grid min-w-[720px] grid-cols-[minmax(0,3fr)_150px_140px_90px_120px] items-center border-t border-border px-3 py-[9px] text-sm outline-none ${selected.includes(item.id) ? "bg-[color-mix(in_srgb,var(--primary)_28%,transparent)]" : "hover:bg-background focus-within:bg-background"}`}
             style={{ boxShadow: selected.includes(item.id) ? "inset 3px 0 0 var(--foreground)" : undefined }}
           >
             <div className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: depth * indent }}>
@@ -850,23 +1142,22 @@ function Outline({
               ) : (
                 <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={item.status === "done"} onChange={() => onDone(item)} />
               )}
-              {editing === item.id ? (
-                <>
-                  <input
-                    autoFocus
-                    defaultValue={item.title}
-                    placeholder={parent ? `New item in ${parent.title || "this item"}` : "New item"}
-                    className="h-[30px] min-w-0 flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none placeholder:italic placeholder:text-muted"
-                    onBlur={(event) => onFinish(item, event.target.value)}
-                    onKeyDown={(event) => onTitleKey(event, item)}
-                  />
-                  <span className="shrink-0 text-[11px] text-muted">Enter adds another · Tab nests · Esc finishes</span>
-                </>
-              ) : (
-                <button type="button" className={`truncate text-left ${level === 0 ? "font-semibold" : ""}`} onClick={() => onOpen(item.id)} onDoubleClick={() => onEdit(item.id)}>
-                  {item.title || "Untitled"}
-                </button>
-              )}
+              <TrackerTitleField
+                title={item.title}
+                editing={editing === item.id}
+                fresh={editing === item.id && editingMode === "create"}
+                grabFocus={grabId === item.id}
+                bold={level === 0}
+                coarse={coarse}
+                placeholder={parent ? `New item in ${parent.title || "this item"}` : "New item"}
+                onBegin={() => {
+                  if (editing === item.id && editingMode === "create") return;
+                  onEdit(item.id, "rename");
+                }}
+                onOpen={() => onOpen(item.id)}
+                onFinish={(value) => onFinish(item, value)}
+                onKeyDown={(event) => onTitleKey(event, item)}
+              />
               {item.kind ? (
                 <button type="button" onClick={(event) => onPick(item.id, "kind", event.currentTarget)}><KindTag kind={item.kind} /></button>
               ) : (
@@ -890,8 +1181,14 @@ function Outline({
               {item.due ? dueLabel(item.due) : <span className="text-xs text-muted opacity-0 group-hover:opacity-100">Set date</span>}
             </button>
             <div className="flex items-center justify-end gap-1">
-              <span className="text-muted group-hover:hidden group-focus-within:hidden">{relativeTouched(item.lastTouchedAt)}</span>
-              <span className="hidden items-center gap-1 group-hover:flex group-focus-within:flex">
+              {coarse ? (
+                <button type="button" className="grid size-7 place-items-center text-muted" aria-label="Open" onClick={() => onOpen(item.id)}>
+                  <ChevronRight className="size-4" />
+                </button>
+              ) : (
+                <span className="text-muted group-hover:hidden group-focus-within:hidden">{relativeTouched(item.lastTouchedAt)}</span>
+              )}
+              <span className={`${coarse ? "flex" : "hidden group-hover:flex group-focus-within:flex"} items-center gap-1`}>
                 {kids.length > 0 ? (
                   <button type="button" title="Zoom in" aria-label="Zoom in" className="grid size-7 place-items-center rounded-lg border border-border bg-card" onClick={() => onZoom(item.id)}>
                     <ZoomIn className="size-3.5" />
@@ -1003,6 +1300,7 @@ function ItemMenu({
   items,
   areas,
   onOpen,
+  onRename,
   onZoom,
   onPatch,
   onDelete,
@@ -1016,6 +1314,7 @@ function ItemMenu({
   items: TrackerItem[];
   areas: PlanDream[];
   onOpen: (id: string) => void;
+  onRename?: (id: string) => void;
   onZoom: (id: string) => void;
   onPatch: (id: string, patch: Partial<TrackerItem>) => void;
   onDelete: (id: string) => void;
@@ -1032,6 +1331,16 @@ function ItemMenu({
   return (
     <Anchored anchor={anchor} width={250} onClose={onClose}>
       <MenuButton icon={ArrowUpRight} label="Open" onClick={() => onOpen(item.id)} />
+      {onRename ? (
+        <MenuButton
+          icon={Pencil}
+          label="Rename"
+          onClick={() => {
+            onRename(item.id);
+            onClose();
+          }}
+        />
+      ) : null}
       {kids.length > 0 ? <MenuButton icon={ZoomIn} label="Zoom in" onClick={() => onZoom(item.id)} /> : null}
       <div className="my-1 h-px bg-border" />
       <MenuButton icon={Tag} label="Kind" chevron onClick={() => setSub(sub === "kind" ? null : "kind")} />
@@ -1208,6 +1517,9 @@ function Detail(props: {
   areas: PlanDream[];
   topLevel: TrackerItem[];
   narrow: boolean;
+  coarse: boolean;
+  editingMode: "create" | "rename" | null;
+  grabId: string | null;
   editing: string | null;
   menu: string | null;
   expanded: Set<string>;
@@ -1217,7 +1529,8 @@ function Detail(props: {
   onHideDone: () => void;
   onSelectTop: (id: string) => void;
   onSuggest: () => void;
-  onEdit: (id: string | null) => void;
+  onOpen: (id: string) => void;
+  onEdit: (id: string | null, mode?: "create" | "rename", grab?: boolean) => void;
   onTitle: (id: string, title: string) => void;
   onTitleKey: (event: React.KeyboardEvent<HTMLInputElement>, item: TrackerItem) => void;
   onDone: (item: TrackerItem) => void;
@@ -1303,7 +1616,19 @@ function Detail(props: {
             const parent = item.parentId ? props.items.find((row) => row.id === item.parentId) : null;
             return (
             <div key={item.id}>
-            <div className="group flex items-center gap-2 border-t border-border py-2 hover:bg-background focus-within:bg-background" style={{ paddingLeft: Math.min(level, props.indentCap) * props.indent }} onMouseEnter={() => setHover(item.id)} onMouseLeave={() => setHover((current) => (current === item.id ? null : current))}>
+            <div
+              tabIndex={0}
+              className="group flex items-center gap-2 border-t border-border py-2 outline-none hover:bg-background focus-within:bg-background"
+              style={{ paddingLeft: Math.min(level, props.indentCap) * props.indent }}
+              onMouseEnter={() => setHover(item.id)}
+              onMouseLeave={() => setHover((current) => (current === item.id ? null : current))}
+              onKeyDown={(event) => rowOpensOnKey(event, () => props.onOpen(item.id))}
+              onClick={(event) => {
+                const target = event.target as HTMLElement;
+                if (target.closest("button, input, textarea, select, a, label")) return;
+                props.onSelect(item.id, event);
+              }}
+            >
               <button type="button" title="Add an item inside" aria-label="Add an item inside" className="grid size-[18px] shrink-0 place-items-center rounded-md border border-border bg-card opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100" onClick={() => props.onAddChild(item.id)}>
                 <Plus className="size-3" />
               </button>
@@ -1312,21 +1637,22 @@ function Detail(props: {
               ) : (
                 <button type="button" onClick={() => props.onToggleExpand(item.id)}><ChevronRight className={`size-4 ${props.expanded.has(item.id) ? "rotate-90" : ""}`} /></button>
               )}
-              {props.editing === item.id ? (
-                <>
-                  <input
-                    autoFocus
-                    defaultValue={item.title}
-                    placeholder={parent ? `New item in ${parent.title || "this item"}` : "New item"}
-                    className="h-[30px] min-w-0 flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none placeholder:italic placeholder:text-muted"
-                    onBlur={(event) => props.onFinish(item, event.target.value)}
-                    onKeyDown={(event) => props.onTitleKey(event, item)}
-                  />
-                  <span className="shrink-0 text-[11px] text-muted">Enter adds another · Tab nests · Esc finishes</span>
-                </>
-              ) : (
-                <button type="button" className="truncate text-left" onDoubleClick={() => props.onEdit(item.id)}>{item.title || "Untitled"}</button>
-              )}
+              <TrackerTitleField
+                title={item.title}
+                editing={props.editing === item.id}
+                fresh={props.editing === item.id && props.editingMode === "create"}
+                grabFocus={props.grabId === item.id}
+                bold={false}
+                coarse={props.coarse}
+                placeholder={parent ? `New item in ${parent.title || "this item"}` : "New item"}
+                onBegin={() => {
+                  if (props.editing === item.id && props.editingMode === "create") return;
+                  props.onEdit(item.id, "rename");
+                }}
+                onOpen={() => props.onOpen(item.id)}
+                onFinish={(value) => props.onFinish(item, value)}
+                onKeyDown={(event) => props.onTitleKey(event, item)}
+              />
               {item.kind ? (
                 <button type="button" onClick={(event) => props.onPick(item.id, "kind", event.currentTarget)}><KindTag kind={item.kind} /></button>
               ) : (
@@ -1340,9 +1666,14 @@ function Detail(props: {
                   <ZoomIn className="size-3.5" />
                 </button>
               ) : null}
-              <button type="button" aria-label="Item menu" className="grid size-7 place-items-center rounded-lg border border-border bg-card opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" onClick={(event) => props.onMenu(props.menu === item.id ? null : item.id, event.currentTarget)}>
+              <button type="button" aria-label="Item menu" className={`grid size-7 place-items-center rounded-lg border border-border bg-card ${props.coarse ? "" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`} onClick={(event) => props.onMenu(props.menu === item.id ? null : item.id, event.currentTarget)}>
                 <MoreHorizontal className="size-3.5" />
               </button>
+              {props.coarse ? (
+                <button type="button" className="grid size-7 place-items-center text-muted" aria-label="Open" onClick={() => props.onOpen(item.id)}>
+                  <ChevronRight className="size-4" />
+                </button>
+              ) : null}
             </div>
             {(ghosts.get(index) ?? []).map((ghost) => (props.narrow || groupHot(hover, ghost.parent.id, props.items)) ? (
               <button key={`add-${ghost.parent.id}`} type="button" className="flex items-center gap-1.5 border-t border-border py-2 text-[13px] text-muted" style={{ paddingLeft: 8 + Math.min(ghost.level, props.indentCap) * props.indent }} onClick={() => props.onAddChild(ghost.parent.id)}>

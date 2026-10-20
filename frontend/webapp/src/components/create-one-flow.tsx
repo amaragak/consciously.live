@@ -411,7 +411,13 @@ export function CreateOneFlow({
   // Heal and journal handoffs open on Shape with the token already attached.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("fromHeal") || params.get("fromJournal") === "1") return;
+    if (
+      params.get("fromHeal") ||
+      params.get("fromJournal") === "1" ||
+      params.get("fromLifeArea")
+    ) {
+      return;
+    }
     if (step === "start") return;
     navigate(createOneFlowHref("start"), { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount
@@ -627,6 +633,28 @@ export function CreateOneFlow({
           prompt: attachment.title,
           heal: attachment,
           chat: [{ role: "assistant", text: healShapeOpeningLine(attachment.title) }],
+        };
+        stateRef.current = next;
+        setState(next);
+        if (step === "shape") {
+          window.setTimeout(() => onEnterShapeStepRef.current?.(), 0);
+        } else {
+          goStep("shape");
+        }
+      }
+    } else if (new URLSearchParams(window.location.search).get("fromLifeArea")) {
+      const areaId =
+        new URLSearchParams(window.location.search).get("fromLifeArea") || "";
+      const dream = loadIdeateStore().dreams.find((row) => row.id === areaId);
+      if (dream) {
+        const next: CreateOneFlowState = {
+          ...stateRef.current,
+          goal: {
+            lifeAreaId: dream.id,
+            lifeAreaTitle: dream.title.trim() || "Life area",
+            goalId: null,
+            goalTitle: null,
+          },
         };
         stateRef.current = next;
         setState(next);

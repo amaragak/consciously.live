@@ -268,6 +268,7 @@ export async function handler(
           "badDayText is one or two sentences copied verbatim from the update: the strongest self-judgement or belief. goodDayText is a sentence copied verbatim that is kinder or more hopeful, or null.",
           "canDo is yes, no, or not_sure.",
           "exercises is 10 ranked questions. At least one quotes or refers to something specific they wrote.",
+          "If the note lists obstacles and life areas, a question may refer to one of them. badDayText and goodDayText still have to be copied from the note itself.",
           canDoRule("not_sure"),
           '{"type":"other","badDayText":"","goodDayText":null,"canDo":"not_sure","exercises":[""]}',
         ].join(" "),
@@ -292,6 +293,7 @@ export async function handler(
           system,
           canDoRule(canDo),
           "Return 3 new questions. None may repeat a question already asked.",
+          "If the context names obstacles and life areas, a question may refer to one of them.",
           '{"questions":["","",""]}',
         ].join(" "),
         str(body.context, 8000),
@@ -311,6 +313,7 @@ export async function handler(
           "add is up to 3 new questions.",
           "goodDayConflict is true only when the good-day view states something the update contradicts.",
           "topic is 2 to 4 words naming that contradiction, or an empty string.",
+          "If the context names obstacles and life areas, a new question may refer to one of them.",
           '{"retire":[],"add":[],"goodDayConflict":false,"topic":""}',
         ].join(" "),
         str(body.context, 8000),
@@ -334,6 +337,7 @@ export async function handler(
           "Forgive: separate what they did from who they are.",
           "Accept: what was and was not in their control.",
           "The long view: how this might look in a few years. No silver linings for a death.",
+          "If the context names obstacles and life areas, you may mention one when it belongs in the lens.",
           lens
             ? `Rewrite only the ${lens} lens. JSON {"text":""}.`
             : 'JSON {"kind":"","forgive":"","accept":"","long":""}.',
@@ -353,6 +357,33 @@ export async function handler(
         500,
       )) as { text?: unknown };
       return json(200, { text: str(parsed.text, 2000) || text });
+    }
+
+    if (action === "match-obstacle") {
+      const obstacle = str(body.obstacle, 200);
+      const items = Array.isArray(body.items) ? body.items.slice(0, 20) : [];
+      const brief = items
+        .map((row) => {
+          if (!row || typeof row !== "object") return "";
+          const item = row as { id?: unknown; title?: unknown; bad?: unknown; description?: unknown };
+          const id = typeof item.id === "string" ? item.id : "";
+          if (!id) return "";
+          return `${id} | ${str(item.title, 120)} | ${str(item.bad, 240)} | ${str(item.description, 240)}`;
+        })
+        .filter(Boolean)
+        .join("\n");
+      const parsed = (await haikuJson(
+        [
+          system,
+          "Pick the one existing item that is the closest home for this obstacle.",
+          "Judge by the item name, the bad-day line, and the description.",
+          "Return that item's id. If none are close, still pick the least distant.",
+          '{"itemId":""}',
+        ].join(" "),
+        `Obstacle: ${obstacle}\n\nItems:\n${brief}`,
+        80,
+      )) as { itemId?: unknown };
+      return json(200, { itemId: str(parsed.itemId, 80) });
     }
 
     return json(400, { error: "Unknown action" });

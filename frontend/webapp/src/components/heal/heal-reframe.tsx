@@ -1,7 +1,8 @@
 import { ArrowDown, ArrowRight, Check, ChevronRight, Heart, Leaf, PenLine, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SelectChevron } from "@/components/select-chevron";
 import { HEAL_OUTLINE, HEAL_PRIMARY, HealOverlay, useHealStore } from "@/components/heal/heal-bits";
+import { ObstacleHealMenu, ObstacleHealPicker } from "@/components/heal/heal-obstacle-picker";
 import { friendQuestion, typePracticePrompt } from "@/lib/heal-copy";
 import { healAskAngle } from "@/lib/heal-ai";
 import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
@@ -661,33 +662,80 @@ export function HealObstacleNote({
 }) {
   const [store] = useHealStore();
   const item = healItemForObstacle(store, dreamId, label);
-  if (item) {
-    const updated = lastHealActivityIso(store, item.id);
-    return (
-      <a
-        href={`/heal/${encodeURIComponent(item.id)}`}
-        className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-[13px]"
-      >
-        <Heart className="size-3.5 text-heal-accent" aria-hidden />
-        <span className="font-semibold">Working on it in Heal</span>
-        {updated ? <span className="text-muted">· updated {healRelative(updated)}</span> : null}
-        <ChevronRight className="ml-auto size-3.5 text-muted" aria-hidden />
-      </a>
-    );
-  }
+  const [picker, setPicker] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const updated = item ? lastHealActivityIso(store, item.id) : null;
   return (
-    <button
-      type="button"
-      className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[13px] font-semibold"
-      onClick={() => {
-        const name = encodeURIComponent(label);
-        const area = encodeURIComponent(dreamId);
-        const obstacle = encodeURIComponent(`${dreamId}::${label}`);
-        window.location.assign(`/heal?describe=1&name=${name}&area=${area}&obstacle=${obstacle}`);
-      }}
-    >
-      <Heart className="size-3.5 text-heal-accent" aria-hidden />
-      Work through this in Heal
-    </button>
+    <div className="mt-2 flex items-center gap-1">
+      {item ? (
+        <a
+          href={`/heal/${encodeURIComponent(item.id)}`}
+          className="flex min-w-0 flex-1 items-center gap-2 border-t border-border pt-2 text-[13px] text-foreground"
+        >
+          <Heart className="size-3.5 shrink-0 text-heal-accent" aria-hidden />
+          <span className="font-semibold">Working on it in Heal</span>
+          {updated ? <span className="truncate text-muted">· updated {healRelative(updated)}</span> : null}
+          <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted" aria-hidden />
+        </a>
+      ) : (
+        <button
+          ref={anchor}
+          type="button"
+          className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-foreground"
+          onClick={() => setPicker(true)}
+        >
+          <Heart className="size-3.5 text-heal-accent" aria-hidden />
+          Work through this in Heal
+        </button>
+      )}
+      <ObstacleHealMenu dreamId={dreamId} label={label} />
+      {picker ? (
+        <ObstacleHealPicker dreamId={dreamId} label={label} anchor={anchor.current} onClose={() => setPicker(false)} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Icon-only heart for a dark surface, sitting inside an obstacle chip. */
+export function HealObstacleHeart({
+  dreamId,
+  label,
+}: {
+  dreamId: string;
+  label: string;
+}) {
+  const [store] = useHealStore();
+  const item = healItemForObstacle(store, dreamId, label);
+  const linked = Boolean(item);
+  const name = linked ? "Working on it in Heal" : "Work through this in Heal";
+  const [picker, setPicker] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        title={name}
+        aria-label={name}
+        className="inline-flex size-6 shrink-0 items-center justify-center border-l border-white/30 text-white/70"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (item) {
+            window.location.assign(`/heal/${encodeURIComponent(item.id)}`);
+            return;
+          }
+          setPicker(true);
+        }}
+      >
+        <Heart
+          className={linked ? "size-3.5 fill-accent text-accent" : "size-3.5"}
+          strokeWidth={1.75}
+          aria-hidden
+        />
+      </button>
+      {picker ? (
+        <ObstacleHealPicker dreamId={dreamId} label={label} anchor={anchor.current} onClose={() => setPicker(false)} />
+      ) : null}
+    </>
   );
 }

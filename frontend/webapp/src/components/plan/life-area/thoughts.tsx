@@ -1,9 +1,8 @@
-import { Pin } from "lucide-react";
+import { ChevronRight, Pin } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
 import { DictationMicButton } from "@/components/dictation-mic-button";
-import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
 import {
   isDemoJournalEntry,
   loadJournalStoreRaw,
@@ -34,7 +33,8 @@ import {
   subscribeMeditationOrigins,
 } from "@/lib/journal-links";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
-import { addTrackerItem, childrenOf, commitTracker, ensureTracker, itemsForArea } from "@/lib/tracker-items";
+import { ensureTracker, itemsForArea, type TrackerItem } from "@/lib/tracker-items";
+import { rememberTrackerDetail } from "@/components/plan/life-area/tracker";
 
 const KIND_DOT: Record<ThoughtKind, string> = {
   win: "bg-emerald-600",
@@ -72,7 +72,6 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
   const [who, setWho] = useState<FeedFilter>("all");
   const [hover, setHover] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
-  const [goalFor, setGoalFor] = useState<string | null>(null);
   const quotesOn = dream.journalQuotesOn !== false;
   const [linkTick, setLinkTick] = useState(0);
   useEffect(() => {
@@ -166,6 +165,18 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
     setTag(null);
     const labels = (dream.obstacleLabels ?? []).filter(Boolean);
     setTagging(id);
+    let settled = false;
+    let timer = 0;
+    const stop = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      setTagging((current) => (current === id ? null : current));
+    };
+    timer = window.setTimeout(() => {
+      console.error("Thought tagging timed out");
+      stop();
+    }, 8000);
     try {
       const raw = await streamPlanCoachReply(
         [
@@ -176,6 +187,7 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
         ],
         () => undefined,
       );
+      if (settled) return;
       const match = raw.match(/\{[\s\S]*\}/);
       const parsed = match ? (JSON.parse(match[0]) as { tag?: string; obstacle?: string | null; newObstacle?: string | null }) : {};
       const found = THOUGHT_KIND_OPTIONS.find((o) => o.id === parsed.tag || raw.toLowerCase().includes(o.id));
@@ -194,10 +206,10 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
             : e,
         ),
       });
-    } catch {
-      /* keep the thought without a tag */
+    } catch (error) {
+      console.error("Thought tagging failed", error);
     } finally {
-      setTagging(null);
+      stop();
     }
   }
 
@@ -300,13 +312,10 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
             tagging={tagging}
             hover={hover}
             menu={menu}
-            goalFor={goalFor}
             dream={dream}
             setHover={setHover}
             setMenu={setMenu}
-            setGoalFor={setGoalFor}
             onUpdate={updateEntry}
-            onRefresh={onRefresh}
             onHideJournal={(id) =>
               onPatch({
                 hiddenJournalIds: [...(dream.hiddenJournalIds ?? []), id],
@@ -375,26 +384,20 @@ function Feed({
   tagging,
   hover,
   menu,
-  goalFor,
   dream,
   setHover,
   setMenu,
-  setGoalFor,
   onUpdate,
-  onRefresh,
   onHideJournal,
 }: {
   rows: Row[];
   tagging: string | null;
   hover: string | null;
   menu: string | null;
-  goalFor: string | null;
   dream: PlanDream;
   setHover: (id: string | null) => void;
   setMenu: (id: string | null) => void;
-  setGoalFor: (id: string | null) => void;
   onUpdate: (id: string, partial: Partial<DrvTimelineEntry> | null) => void;
-  onRefresh: () => void;
   onHideJournal: (id: string) => void;
 }) {
   const navigate = useNavigate();
@@ -411,7 +414,10 @@ function Feed({
           : d.toLocaleDateString(undefined, { month: "long" });
     groups.set(label, [...(groups.get(label) ?? []), row]);
   }
-  const goals = childrenOf(itemsForArea(ensureTracker(loadIdeateStore()), dream.id), null);
+  const linked = new Map<string, TrackerItem>();
+  for (const item of itemsForArea(ensureTracker(loadIdeateStore()), dream.id)) {
+    if (item.sourceThoughtId && !linked.has(item.sourceThoughtId)) linked.set(item.sourceThoughtId, item);
+  }
   return (
     <div className="mt-4">
       {[...groups.entries()].map(([label, list]) => (
@@ -471,6 +477,16 @@ function Feed({
                   {tagging === row.id ? (
                     <span className="ml-2 text-[11px] text-muted">Tagging…</span>
                   ) : null}
+                  {linked.get(row.id) ? (
+                    <Link
+                      to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(linked.get(row.id)!.id)}`}
+                      onClick={() => rememberTrackerDetail(dream.id)}
+                      className="mt-1 inline-flex items-center gap-0.5 text-xs text-muted"
+                    >
+                      In Tracker
+                      <ChevronRight className="size-3.5" />
+                    </Link>
+                  ) : null}
                   {row.journal ? (
                     <Link
                       to={row.journal.href}
@@ -481,21 +497,6 @@ function Feed({
                   ) : null}
                   {(hover === row.id || tapped === row.id) && !row.journal ? (
                     <span className="mt-1 flex flex-wrap items-center gap-3 text-[13px] font-semibold text-accent-link">
-                      <button type="button" onClick={() => setGoalFor(row.id)}>
-                        → Make it a step
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openAssistantChatFab({
-                            kind: "life_area_ideate",
-                            lifeAreaId: dream.id,
-                            seed: row.text,
-                          })
-                        }
-                      >
-                        ✦ Talk it through
-                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -515,30 +516,6 @@ function Feed({
                       >
                         <Pin className="size-3.5" />
                       </button>
-                    </span>
-                  ) : null}
-                  {goalFor === row.id ? (
-                    <span className="mt-1 flex flex-wrap gap-2">
-                      {goals.map((g) => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          className="text-xs font-semibold text-accent-link"
-                          onClick={() => {
-                            commitTracker((current) =>
-                              addTrackerItem(current, {
-                                lifeAreaId: dream.id,
-                                parentId: g.id,
-                                title: row.text,
-                              }).store,
-                            );
-                            onRefresh();
-                            setGoalFor(null);
-                          }}
-                        >
-                          {g.title}
-                        </button>
-                      ))}
                     </span>
                   ) : null}
                   </>
@@ -604,6 +581,30 @@ function Feed({
                           type="button"
                           className="block w-full px-3 py-1.5 text-left"
                           onClick={() => {
+                            const item = linked.get(row.id);
+                            if (item) {
+                              rememberTrackerDetail(dream.id);
+                              navigate(
+                                `/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(item.id)}`,
+                              );
+                            } else {
+                              const params = new URLSearchParams({
+                                fromThought: row.id,
+                                addTitle: thoughtTrackerTitle(row.text),
+                              });
+                              navigate(
+                                `/manifest/goal/${encodeURIComponent(dream.id)}/tracker?${params.toString()}`,
+                              );
+                            }
+                            setMenu(null);
+                          }}
+                        >
+                          {linked.get(row.id) ? "Open in Tracker" : "Add to Tracker"}
+                        </button>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-1.5 text-left"
+                          onClick={() => {
                             onUpdate(row.id, null);
                             setMenu(null);
                           }}
@@ -623,6 +624,11 @@ function Feed({
       ))}
     </div>
   );
+}
+
+function thoughtTrackerTitle(text: string): string {
+  const line = text.split(/\n/)[0]?.trim() ?? "";
+  return line.length > 80 ? `${line.slice(0, 77).trimEnd()}…` : line;
 }
 
 function ThemesCard({ chips }: { chips: { label: string; count: number }[] }) {

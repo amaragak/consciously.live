@@ -156,8 +156,14 @@ export function meditationCoverObjectKey(
 }
 
 /**
- * Build the image prompt. Concrete create inputs → related scene;
- * thin metadata → calm generic editorial still.
+ * Subject brief for meditation covers. Rendering stays in the shared
+ * illustration style; this only decides what the picture is of.
+ */
+const MEDITATION_COVER_SUBJECT = `Subject: choose one clear focal subject from this meditation's theme, and let the kind of subject change from cover to cover. It may be a stylised person or a few figures, an animal, a gesture or the body, a path, weather, water, a room, a single object, or a view — whichever actually carries the feeling. People are an ordinary choice when the theme is about care, relationship, the body, or being with others; draw them without detailed faces. Do not default to a meditation cushion, a still life of objects, or a landscape seen from a terrace. Warm, light, and unhurried. Echo the feeling; do not illustrate the title word for word.`;
+
+/**
+ * Build the image prompt. Concrete create inputs → a subject that fits them;
+ * thin metadata → one specific subject, still not the stock terrace view.
  */
 export function buildMeditationCoverPrompt(input: MeditationCoverInput): string {
   const title = input.title.trim() || "Guided meditation";
@@ -183,14 +189,14 @@ export function buildMeditationCoverPrompt(input: MeditationCoverInput): string 
     );
 
   const sceneGuidance = hasConcrete
-    ? `Invent one clear subject that visually echoes this meditation's theme and emotional tone (not a literal caption of the words). Prefer nature, light, texture, or quiet interiors.`
-    : `No strong visual theme was given — choose a calm still suitable for a meditation library thumbnail (quiet landscape or intimate nature detail).`;
+    ? MEDITATION_COVER_SUBJECT
+    : `${MEDITATION_COVER_SUBJECT} Little theme was given — still pick one specific subject, and do not fall back to a cushion in front of a scenic view.`;
 
   return [
     `Evokes the mood of a guided meditation.`,
     sceneGuidance,
     subjectBits.join(" "),
-    `No people, no faces, no text, no logos, no overlaid graphics, no UI chrome.`,
+    `No text, letters, logos, overlaid graphics, or UI chrome.`,
     `Square 1:1, full-bleed, no picture frame or mockup. Generous space suitable for a small thumbnail.`,
   ].join(" ");
 }

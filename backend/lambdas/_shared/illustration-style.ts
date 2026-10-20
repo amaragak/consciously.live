@@ -7,7 +7,7 @@ export const ILLUSTRATION_STYLE_PREPROMPT = `High-quality editorial vector illus
 
 Palette (keep strictly to these families): warm sand #E9C890, pale cream #F3E6CC, dusty clay #8A6E5E, deep plum-brown #4E4352, sage #8FA27A, deep olive #5F7350, muted slate blue #7F93AE, soft navy #3B4459, warm gold accent #C8A46A. Muted, warm, low saturation; light comes from a low warm sun. No neon, no pure black or white.
 
-Composition: a clear focal point with strong visual hierarchy, elegant framing, a sense of calm and space, and enough detail to reward a closer look while still reading at thumbnail size. Quiet, grounded, slightly nostalgic mood. People only if asked, as stylised figures without detailed faces. No text, letters, logos or borders.`;
+Composition: a clear focal point with strong visual hierarchy, elegant framing, a sense of calm and space, and enough detail to reward a closer look while still reading at thumbnail size. Quiet, grounded, slightly nostalgic mood. When people are in the scene, draw them as stylised figures without detailed faces. No text, letters, logos or borders.`;
 
 const STYLE_MARKER = "High-quality editorial vector illustration";
 

@@ -1,6 +1,8 @@
-import { ChevronRight, Plus } from "lucide-react";
+import { ArrowUpRight, ChevronRight, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
+import { TrackerTitleField, rowOpensOnKey, useCoarsePointer } from "@/components/plan/life-area/tracker";
 import { MIST, ProgressBar } from "@/components/plan/life-area/kit";
 import { IdeateCloudProvider, useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
@@ -72,6 +74,11 @@ function TrackerAll() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [seeded, setSeeded] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingMode, setEditingMode] = useState<"create" | "rename" | null>(null);
+  const [grabId, setGrabId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<string | null>(null);
+  const coarse = useCoarsePointer();
+  const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [areaMenu, setAreaMenu] = useState<string | null>(null);
   const [statusMenu, setStatusMenu] = useState<string | null>(null);
@@ -118,6 +125,8 @@ function TrackerAll() {
       return result.store;
     });
     setAdding(false);
+    setEditingMode("create");
+    setGrabId(created);
     setEditing(created);
   }
 
@@ -133,7 +142,29 @@ function TrackerAll() {
       return result.store;
     });
     setExpanded((current) => new Set([...current, parent.id]));
+    setEditingMode("create");
+    setGrabId(created);
     setEditing(created);
+  }
+
+  function startEdit(id: string | null, mode: "create" | "rename" = "rename", grab = false) {
+    setEditing(id);
+    setEditingMode(id ? mode : null);
+    setGrabId(grab ? id : null);
+  }
+
+  function openItem(item: TrackerItem) {
+    if (!item.lifeAreaId) return;
+    let top = item;
+    const byId = new Map(items.map((row) => [row.id, row]));
+    while (top.parentId) {
+      const parent = byId.get(top.parentId);
+      if (!parent) break;
+      top = parent;
+    }
+    navigate(
+      `/manifest/goal/${encodeURIComponent(item.lifeAreaId)}/tracker/${encodeURIComponent(top.id)}`,
+    );
   }
 
   function applyTitle(item: TrackerItem, value: string, next: "close" | "sibling") {
@@ -141,6 +172,8 @@ function TrackerAll() {
     if (!title) {
       mutate((current) => deleteTrackerItem(current, item.id));
       setEditing(null);
+      setEditingMode(null);
+      setGrabId(null);
       return;
     }
     mutate((current) => patchTrackerItem(current, item.id, { title }));
@@ -156,13 +189,34 @@ function TrackerAll() {
         created = result.id;
         return result.store;
       });
+      setEditingMode("create");
+      setGrabId(created);
       setEditing(created);
       return;
     }
     setEditing(null);
+    setEditingMode(null);
+    setGrabId(null);
   }
 
   function onTitleKey(event: KeyboardEvent<HTMLInputElement>, item: TrackerItem) {
+    if (event.key === "Enter" && editingMode === "rename") {
+      event.preventDefault();
+      titleLock.current = true;
+      applyTitle(item, event.currentTarget.value, "close");
+      event.currentTarget.blur();
+      return;
+    }
+    if (event.key === "Escape" && editingMode === "rename") {
+      event.preventDefault();
+      titleLock.current = true;
+      event.currentTarget.value = item.title;
+      event.currentTarget.blur();
+      setEditing(null);
+      setEditingMode(null);
+      setGrabId(null);
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       titleLock.current = true;
@@ -268,7 +322,9 @@ function TrackerAll() {
           return (
             <div
               key={item.id}
-              className="group grid min-w-[760px] grid-cols-[minmax(0,3fr)_150px_140px_90px_120px] items-center border-t border-border px-3 py-[9px] text-sm hover:bg-background"
+              tabIndex={0}
+              onKeyDown={(event) => rowOpensOnKey(event, () => openItem(item))}
+              className="group grid min-w-[760px] grid-cols-[minmax(0,3fr)_150px_140px_90px_120px] items-center border-t border-border px-3 py-[9px] text-sm outline-none hover:bg-background focus-within:bg-background"
             >
               <div className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: depth * 24 }}>
                 <button
@@ -309,24 +365,22 @@ function TrackerAll() {
                     }}
                   />
                 )}
-                {editing === item.id ? (
-                  <input
-                    autoFocus
-                    defaultValue={item.title}
-                    placeholder="New item"
-                    className="h-[30px] min-w-0 flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none placeholder:italic placeholder:text-muted"
-                    onBlur={(event) => finishTitle(item, event.target.value)}
-                    onKeyDown={(event) => onTitleKey(event, item)}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className={`min-w-0 truncate text-left ${level === 0 ? "font-semibold" : ""}`}
-                    onClick={() => setEditing(item.id)}
-                  >
-                    {item.title || "Untitled"}
-                  </button>
-                )}
+                <TrackerTitleField
+                  title={item.title}
+                  editing={editing === item.id}
+                  fresh={editing === item.id && editingMode === "create"}
+                  grabFocus={grabId === item.id}
+                  bold={level === 0}
+                  coarse={coarse}
+                  placeholder="New item"
+                  onBegin={() => {
+                    if (editing === item.id && editingMode === "create") return;
+                    startEdit(item.id, "rename");
+                  }}
+                  onOpen={() => openItem(item)}
+                  onFinish={(value) => finishTitle(item, value)}
+                  onKeyDown={(event) => onTitleKey(event, item)}
+                />
                 <AreaChip
                   label={areaName(item.lifeAreaId)}
                   open={areaMenu === item.id}
@@ -381,7 +435,35 @@ function TrackerAll() {
                   onChange={(event) => mutate((current) => patchTrackerItem(current, item.id, { due: event.target.value || null }))}
                 />
               </label>
-              <span className="text-right text-muted">{relativeTouched(item.lastTouchedAt)}</span>
+              <span className="relative flex items-center justify-end gap-1 text-muted">
+                {coarse ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Item menu"
+                      className="grid size-7 place-items-center rounded-lg border border-border bg-card text-foreground"
+                      onClick={() => setMenu(menu === item.id ? null : item.id)}
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </button>
+                    {menu === item.id ? (
+                      <span className="absolute right-8 top-8 z-20 flex w-36 flex-col rounded-xl border border-border bg-card p-1 text-foreground shadow-[0_16px_40px_-18px_rgba(15,27,45,0.45)]">
+                        <button type="button" className="flex h-[34px] items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-accent-soft" onClick={() => { openItem(item); setMenu(null); }}>
+                          <ArrowUpRight className="size-3.5" /> Open
+                        </button>
+                        <button type="button" className="flex h-[34px] items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-accent-soft" onClick={() => { startEdit(item.id, "rename", true); setMenu(null); }}>
+                          <Pencil className="size-3.5" /> Rename
+                        </button>
+                      </span>
+                    ) : null}
+                    <button type="button" className="grid size-7 place-items-center" aria-label="Open" onClick={() => openItem(item)}>
+                      <ChevronRight className="size-4" />
+                    </button>
+                  </>
+                ) : (
+                  relativeTouched(item.lastTouchedAt)
+                )}
+              </span>
             </div>
           );
         })}

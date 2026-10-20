@@ -1,9 +1,10 @@
-import { Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon, Mic } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogoMark } from "@/components/logo-mark";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { RaiseControl } from "@/components/plan/life-area/raise-control";
+import { RaisePanelSlot } from "@/components/plan/raise-ceiling-panel";
 import {
   MIST,
   activeOverviewGoal,
@@ -11,8 +12,10 @@ import {
   obstacleChips,
   textHash,
 } from "@/components/plan/life-area/kit";
+import { MeditateIcon } from "@/components/meditate-icon";
 import { PlanLifeAreaVisionSections } from "@/components/plan/plan-life-area-reflect-sections";
-import { HealObstacleNote } from "@/components/heal/heal-reframe";
+import { HealObstacleHeart } from "@/components/heal/heal-reframe";
+import { loadHealStore, pruneObstacleLinks, saveHealStore } from "@/lib/heal-store";
 import { flushIdeateCloudNow, subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
   getVisionMedia,
@@ -43,9 +46,16 @@ const HERO_PHOTO_FILTER =
 type Props = {
   dream: PlanDream;
   onPatch: (partial: Partial<PlanDream>) => void;
+  onCheckIn: () => void;
 };
 
-export function DreamPoster({ dream, onPatch }: Props) {
+function keepObstacleLinks(dreamId: string, labels: string[]) {
+  const current = loadHealStore();
+  const next = pruneObstacleLinks(current, dreamId, labels);
+  if (next !== current) saveHealStore(next);
+}
+
+export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
   const navigate = useNavigate();
   const { signedIn } = useIdeateCloud();
   const [editing, setEditing] = useState(false);
@@ -128,7 +138,10 @@ export function DreamPoster({ dream, onPatch }: Props) {
     let cancel = false;
     void suggestObstacleLabels(text)
       .then((labels) => {
-        if (!cancel) onPatch({ obstacleLabels: labels });
+        if (!cancel) {
+          onPatch({ obstacleLabels: labels });
+          keepObstacleLinks(dream.id, labels);
+        }
       })
       .catch(() => {
         labelAttempt.current = null;
@@ -158,6 +171,7 @@ export function DreamPoster({ dream, onPatch }: Props) {
     if (dream.obstacleText.trim() === obstacleWhenOpened.current.trim()) return;
     const labelsNext = await suggestObstacleLabels(dream.obstacleText);
     onPatch({ obstacleLabels: labelsNext });
+    keepObstacleLinks(dream.id, labelsNext);
   }
 
   async function onUpload(file: File | null) {
@@ -196,23 +210,29 @@ export function DreamPoster({ dream, onPatch }: Props) {
         );
       }}
       onLabel={(label) => setDetail(label)}
+      onCreate={() =>
+        navigate(
+          `/meditate/create?step=shape&fromLifeArea=${encodeURIComponent(dream.id)}`,
+        )
+      }
+      onCheckIn={onCheckIn}
       showChoose={!image && !md}
       onChoose={() => setPicker(true)}
     />
   );
 
   return (
-    <>
+    <RaisePanelSlot>
       <section
         className={`relative overflow-hidden rounded-[20px] bg-[#1a1820] text-white shadow-[0_18px_40px_-20px_color-mix(in_srgb,var(--deep)_50%,transparent)] ${
           empty
             ? "md:h-[350px]"
             : !image
-              ? "md:h-[350px]"
+              ? "md:min-h-[350px]"
               : wide
-                ? "h-[430px] md:h-[340px]"
+                ? "h-[486px] md:h-[396px]"
                 : md
-                  ? "h-[372px]"
+                  ? "h-[428px]"
                   : ""
         }`}
       >
@@ -362,6 +382,7 @@ export function DreamPoster({ dream, onPatch }: Props) {
               onLabelsChange={(next) => {
                 labelsTouched.current = true;
                 onPatch({ obstacleLabels: next });
+                keepObstacleLinks(dream.id, next);
               }}
               onPatch={(p) => {
                 const next: Partial<PlanDream> = { ...p };
@@ -425,7 +446,7 @@ export function DreamPoster({ dream, onPatch }: Props) {
           onClose={() => setDetail(null)}
         />
       ) : null}
-    </>
+    </RaisePanelSlot>
   );
 }
 
@@ -539,6 +560,8 @@ function PosterCopy({
   progress,
   onOpenGoal,
   onLabel,
+  onCreate,
+  onCheckIn,
   showChoose,
   onChoose,
 }: {
@@ -554,9 +577,35 @@ function PosterCopy({
   progress: ReturnType<typeof activeOverviewGoal>;
   onOpenGoal: () => void;
   onLabel: (label: string) => void;
+  onCreate: () => void;
+  onCheckIn: () => void;
   showChoose: boolean;
   onChoose: () => void;
 }) {
+  const dreamRaised =
+    Boolean(dream.dreamText.trim()) &&
+    dream.dreamRaisedFrom === textHash(dream.dreamText);
+  const momentField = moment
+    ? {
+        text: dream.visionText,
+        original: dream.outcomeOriginal,
+        raisedFrom: dream.outcomeRaisedFrom,
+        storageKey: `mm_raise_original:${dream.id}:outcome`,
+        onAccept: (next: string, original: string) =>
+          onPatch({
+            visionText: next,
+            outcomeOriginal: original,
+            outcomeRaisedFrom: textHash(next),
+          }),
+        onRestore: (text: string) =>
+          onPatch({
+            visionText: text,
+            outcomeOriginal: dream.visionText,
+            outcomeRaisedFrom: null,
+          }),
+        onClear: () => onPatch({ outcomeOriginal: null, outcomeRaisedFrom: null }),
+      }
+    : null;
   const dreamSize = !hasImage
     ? "text-[22px] md:text-[30px]"
     : wide
@@ -592,6 +641,7 @@ function PosterCopy({
           })
         }
         onClear={() => onPatch({ dreamOriginal: null, dreamRaisedFrom: null })}
+        also={dreamRaised ? null : momentField}
       />
       {moment ? (
         <div>
@@ -608,27 +658,14 @@ function PosterCopy({
           {momentOpen ? (
             <RaiseControl
               tone="onDark"
+              hideTrigger={!dreamRaised}
               text={dream.visionText}
               original={dream.outcomeOriginal}
               raisedFrom={dream.outcomeRaisedFrom}
               storageKey={`mm_raise_original:${dream.id}:outcome`}
-              onAccept={(next, original) =>
-                onPatch({
-                  visionText: next,
-                  outcomeOriginal: original,
-                  outcomeRaisedFrom: textHash(next),
-                })
-              }
-              onRestore={(text) =>
-                onPatch({
-                  visionText: text,
-                  outcomeOriginal: dream.visionText,
-                  outcomeRaisedFrom: null,
-                })
-              }
-              onClear={() =>
-                onPatch({ outcomeOriginal: null, outcomeRaisedFrom: null })
-              }
+              onAccept={momentField!.onAccept}
+              onRestore={momentField!.onRestore}
+              onClear={momentField!.onClear}
             />
           ) : null}
         </div>
@@ -638,26 +675,21 @@ function PosterCopy({
           <span className="mr-0.5 text-[11px] font-semibold uppercase tracking-[1.2px] text-white/70">
             In the way
           </span>
-          {labels.map((label) => {
-            const answer = (dream.healObstacleAnswers ?? []).find((row) => row.label === label);
-            return (
-              <span key={label} className="flex flex-col">
-                <button
-                  type="button"
-                  onClick={() => onLabel(label)}
-                  className="rounded-full border border-white/[0.22] bg-[color-mix(in_srgb,var(--deep)_45%,transparent)] px-[11px] py-[5px] text-xs text-white"
-                >
-                  {label}
-                </button>
-                <HealObstacleNote
-                  dreamId={dream.id}
-                  label={label}
-                  text={answer?.text}
-                  healItemId={answer?.healItemId}
-                />
-              </span>
-            );
-          })}
+          {labels.map((label) => (
+            <span
+              key={label}
+              className="inline-flex items-center rounded-full border border-white/[0.22] bg-[color-mix(in_srgb,var(--deep)_45%,transparent)] text-xs text-white"
+            >
+              <button
+                type="button"
+                onClick={() => onLabel(label)}
+                className="px-[11px] py-[5px]"
+              >
+                {label}
+              </button>
+              <HealObstacleHeart dreamId={dream.id} label={label} />
+            </span>
+          ))}
         </div>
       ) : null}
       {showProgress && progress ? (
@@ -693,6 +725,25 @@ function PosterCopy({
           Choose an image
         </button>
       ) : null}
+      <div className="mt-1 flex items-center gap-2 md:mt-0.5">
+        <button
+          type="button"
+          onClick={onCreate}
+          className={`${GLASS} h-10 gap-1.5 px-3.5 max-md:min-w-0 max-md:flex-1`}
+        >
+          <MeditateIcon size={16} />
+          Create meditation
+        </button>
+        <button
+          type="button"
+          onClick={onCheckIn}
+          aria-label="Check in"
+          className={`${GLASS} size-10 shrink-0 md:h-10 md:w-auto md:gap-1.5 md:px-3.5`}
+        >
+          <Mic className="size-4" strokeWidth={1.8} aria-hidden />
+          <span className="max-md:sr-only">Check in</span>
+        </button>
+      </div>
     </div>
   );
 }

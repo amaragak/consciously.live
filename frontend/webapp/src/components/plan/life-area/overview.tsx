@@ -91,7 +91,7 @@ export function LifeAreaOverview({
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
-      <DreamPoster dream={dream} onPatch={onPatch} />
+      <DreamPoster dream={dream} onPatch={onPatch} onCheckIn={onCheckIn} />
       {dream.visionSuggestion ? (
         <VisionSuggestion dream={dream} onPatch={onPatch} />
       ) : null}

@@ -251,9 +251,15 @@ function DescribeDialog({
     });
     const item = next.items[0];
     if (!item) return;
+    const split = obstacleId?.indexOf("::") ?? -1;
+    const obstacleLink =
+      obstacleId && split > 0
+        ? { lifeAreaId: obstacleId.slice(0, split), label: obstacleId.slice(split + 2) }
+        : null;
     next = patchHealItem(next, item.id, {
       aiEnabled: ai,
       sourceObstacleId: obstacleId,
+      linkedObstacles: obstacleLink ? [obstacleLink] : item.linkedObstacles,
       linkedLifeAreaIds: areaId ? [areaId] : item.linkedLifeAreaIds,
     });
     next = addHealUpdate(next, item.id, text);

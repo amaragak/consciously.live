@@ -32,6 +32,8 @@ export type TrackerItem = {
   createdAt: string;
   updatedAt: string;
   lastTouchedAt: string;
+  /** Thought this item was added from, when it came from the Thoughts tab. */
+  sourceThoughtId?: string | null;
 };
 
 const KINDS: TrackerKind[] = ["goal", "project", "feature", "task"];
@@ -66,6 +68,7 @@ export function parseTrackerItems(raw: unknown): TrackerItem[] {
       createdAt: typeof o.createdAt === "string" ? o.createdAt : now,
       updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : now,
       lastTouchedAt: typeof o.lastTouchedAt === "string" ? o.lastTouchedAt : now,
+      sourceThoughtId: typeof o.sourceThoughtId === "string" ? o.sourceThoughtId : null,
     });
   }
   return out.slice(0, 4000);
@@ -319,6 +322,7 @@ export function addTrackerItem(
     title?: string;
     kind?: TrackerKind | null;
     afterId?: string | null;
+    sourceThoughtId?: string | null;
   },
 ): { store: IdeateStoreV2; id: string } {
   const items = store.trackerItems ?? [];
@@ -353,6 +357,7 @@ export function addTrackerItem(
     createdAt: now,
     updatedAt: now,
     lastTouchedAt: now,
+    sourceThoughtId: input.sourceThoughtId ?? null,
   };
   return { store: writeItems(store, [...items, item]), id };
 }

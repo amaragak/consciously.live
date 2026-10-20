@@ -382,14 +382,21 @@ async function handleRaise(
       null;
     if (ambitious != null || audacious != null || delusional != null) {
       const base = ambitious ?? audacious ?? delusional ?? "";
+      const keptAudacious =
+        audacious && audacious !== (ambitious ?? base) ? audacious : "";
       suggestions = {
         ambitious: ambitious ?? base,
-        audacious: audacious ?? base,
-        delusional: delusional ?? base,
+        audacious: keptAudacious,
+        delusional:
+          delusional &&
+          delusional !== (ambitious ?? base) &&
+          delusional !== keptAudacious
+            ? delusional
+            : "",
       };
     } else if (typeof r.suggestion === "string") {
       const one = r.suggestion.trim();
-      suggestions = { ambitious: one, audacious: one, delusional: one };
+      suggestions = { ambitious: one, audacious: "", delusional: "" };
     }
     if (!suggestions) continue;
     const suggestion = suggestions.ambitious;

@@ -301,7 +301,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
   async function runSetup(target: HealItem, update: string, updateId: string) {
     let next = loadHealStore();
     if (target.aiEnabled) {
-      const result = await healSetup({ title: target.title, update });
+      const result = await healSetup({ title: target.title, update, extra: comesUpContext(target) });
       if (result && result.exercises.length) {
         if (result.badDayText) {
           next = addHealView(next, { itemId: target.id, side: "bad", text: result.badDayText, source: "setup" });
@@ -430,7 +430,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       type: current.type,
       title: current.title,
       canDo: current.canDo,
-      context: `${narrativeWithJournal(store, current.id)}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}`,
+      context: `${narrativeWithJournal(store, current.id)}\n\nNew:\n${saved.text}\n\nUnanswered:\n${unansweredContext(next, current.id)}\n\nBad day:\n${currentView(next, current.id, "bad")?.text ?? ""}\n\nGood day:\n${before}${comesUpContext(current)}`,
     }).then((result) => {
       if (!result) return;
       applyExerciseChange(result.retire, result.add, "Your update changed things");
@@ -494,7 +494,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       type: current.type,
       title: current.title,
       canDo: value,
-      context: `canDo is now ${value}.\n\nUnanswered:\n${unansweredContext(loadHealStore(), current.id)}`,
+      context: `canDo is now ${value}.\n\nUnanswered:\n${unansweredContext(loadHealStore(), current.id)}${comesUpContext(current)}`,
     }).then((result) => {
       if (!result) return;
       applyExerciseChange(result.retire, result.add, "Your answer changed your exercises");
@@ -583,7 +583,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
       type: current.type,
       title: current.title,
       lens: which,
-      context: `Bad day:\n${bad?.text ?? ""}\n\n${narrativeWithJournal(store, current.id)}\n\nGood day:\n${good?.text ?? ""}`,
+      context: `Bad day:\n${bad?.text ?? ""}\n\n${narrativeWithJournal(store, current.id)}\n\nGood day:\n${good?.text ?? ""}${comesUpContext(current)}`,
     });
     if (result) setLensText((currentText) => ({ ...currentText, ...result }));
     setLensBusy(false);
@@ -695,6 +695,27 @@ export function HealItemView({ itemId }: { itemId: string }) {
                 {current.since ? ` · since ${formatHealDate(current.since)}` : ""}
               </button>
               <h2 className="font-display text-[26px] leading-[1.1] lg:text-[36px] lg:leading-[1.05]">{current.title}</h2>
+              {current.linkedObstacles.length ? (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span className="mr-0.5 text-[11px] font-semibold uppercase tracking-[1.2px] text-[rgb(243_237_226_/_0.5)]">
+                    Comes up in
+                  </span>
+                  {current.linkedObstacles.map((link) => {
+                    const area = dreams.find((dream) => dream.id === link.lifeAreaId)?.title?.trim() || "another area";
+                    return (
+                      <button
+                        key={`${link.lifeAreaId}::${link.label}`}
+                        type="button"
+                        className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-full border border-[rgb(243_237_226_/_0.25)] px-2.5 text-xs text-[rgb(243_237_226_/_0.85)]"
+                        onClick={() => router.push(`/manifest/goal/${encodeURIComponent(link.lifeAreaId)}`)}
+                      >
+                        {link.label}
+                        <span className="text-[rgb(243_237_226_/_0.5)]">· {area}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
             <div className="ml-auto hidden items-center gap-3.5 lg:flex">
               <button type="button" className="cursor-pointer text-[13px] font-semibold text-[rgb(243_237_226_/_0.7)]" onClick={() => setVersions(true)}>
@@ -1679,7 +1700,17 @@ function contextFor(store: HealStoreV1, item: HealItem): string {
     .slice(0, 10)
     .map((entry) => entry.text)
     .join("\n");
-  return `${narrative}\n\nBad day:\n${bad}\n\nGood day:\n${good}\n\nWriting:\n${writing}\n\nAsked:\n${item.askedQuestions.join("\n")}`;
+  return `${narrative}\n\nBad day:\n${bad}\n\nGood day:\n${good}\n\nWriting:\n${writing}\n\nAsked:\n${item.askedQuestions.join("\n")}${comesUpContext(item)}`;
+}
+
+function comesUpContext(item: HealItem): string {
+  if (!item.linkedObstacles.length) return "";
+  const dreams = loadIdeateStore().dreams;
+  const lines = item.linkedObstacles.map((link) => {
+    const area = dreams.find((dream) => dream.id === link.lifeAreaId)?.title?.trim() || "a life area";
+    return `${link.label} — ${area}`;
+  });
+  return `\n\nComes up as what's in the way:\n${lines.join("\n")}\nYou may mention these. Their wording is separate from this item's name.`;
 }
 
 function unansweredContext(store: HealStoreV1, itemId: string): string {

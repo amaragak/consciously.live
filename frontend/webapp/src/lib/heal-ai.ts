@@ -142,21 +142,33 @@ const HEAL_TYPES = new Set([
 export async function healSetup(input: {
   title: string;
   update: string;
+  extra?: string;
 }): Promise<HealSetupResult | null> {
-  const data = await postHeal("/heal/ai", { action: "setup", title: input.title, update: input.update });
+  const sent = input.extra?.trim() ? `${input.update}\n\n${input.extra.trim()}` : input.update;
+  const data = await postHeal("/heal/ai", { action: "setup", title: input.title, update: sent });
   if (!data) return null;
   const type = typeof data.type === "string" && HEAL_TYPES.has(data.type) ? (data.type as HealType) : "other";
   const canDo = data.canDo === "yes" || data.canDo === "no" || data.canDo === "not_sure" ? data.canDo : "not_sure";
   const exercises = Array.isArray(data.exercises)
     ? data.exercises.filter((row): row is string => typeof row === "string" && row.trim().length > 0).slice(0, 10)
     : [];
-  const update = input.update;
-  const bad = typeof data.badDayText === "string" && update.includes(data.badDayText) ? data.badDayText.trim() : "";
+  const written = input.update;
+  const bad = typeof data.badDayText === "string" && written.includes(data.badDayText) ? data.badDayText.trim() : "";
   const good =
-    typeof data.goodDayText === "string" && data.goodDayText.trim() && update.includes(data.goodDayText)
+    typeof data.goodDayText === "string" && data.goodDayText.trim() && written.includes(data.goodDayText)
       ? data.goodDayText.trim()
       : null;
   return { type, badDayText: bad, goodDayText: good, canDo, exercises };
+}
+
+export async function healMatchObstacle(input: {
+  obstacle: string;
+  items: { id: string; title: string; bad: string; description: string }[];
+}): Promise<string | null> {
+  if (input.items.length < 2) return input.items[0]?.id ?? null;
+  const data = await postHeal("/heal/ai", { action: "match-obstacle", ...input });
+  const id = data && typeof data.itemId === "string" ? data.itemId : "";
+  return input.items.some((item) => item.id === id) ? id : null;
 }
 
 export async function healSuggestMore(input: {

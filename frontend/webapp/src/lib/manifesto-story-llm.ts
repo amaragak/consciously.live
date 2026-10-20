@@ -16,6 +16,11 @@ import {
   type RaiseLifeAreaMeta,
 } from "@/lib/manifesto-story-draft";
 import {
+  blankCopiedRaiseLevels,
+  offlineRaiseSpans,
+  suggestionsDiffer,
+} from "@/lib/raise-levels";
+import {
   storyPronounComposeCue,
   type AccountPronouns,
 } from "@/lib/story-pronouns";
@@ -69,15 +74,15 @@ export function parseRaiseSuggestions(
     const delusional = pick("delusional");
     if (ambitious != null || audacious != null || delusional != null) {
       const base = ambitious ?? audacious ?? delusional ?? "";
-      return {
+      return blankCopiedRaiseLevels({
         ambitious: ambitious ?? base,
-        audacious: audacious ?? base,
-        delusional: delusional ?? base,
-      };
+        audacious: audacious ?? "",
+        delusional: delusional ?? "",
+      });
     }
   }
   if (typeof legacy === "string") {
-    return sameRaiseSuggestions(legacy.trim());
+    return blankCopiedRaiseLevels(sameRaiseSuggestions(legacy.trim()));
   }
   return null;
 }
@@ -87,7 +92,8 @@ export function suggestionAt(
   level: RaiseLevel,
 ): string {
   const s = f.suggestions?.[level];
-  return typeof s === "string" ? s : f.suggestion;
+  if (typeof s === "string") return s.trim();
+  return f.suggestion;
 }
 
 export const RAISE_LEVEL_NAME: Record<RaiseLevel, string> = {
@@ -281,16 +287,27 @@ export function stripOvertlyNegativeRaiseLocks(
   );
 }
 
-function heuristicNegativeSuggestion(quote: string): string {
+function heuristicNegativeSuggestion(quote: string): RaiseSuggestions {
   const q = quote.trim();
   if (/friends?/i.test(q) && /describe|say|call|think/i.test(q)) {
-    return "Friends would describe me as warm, loyal, and someone they feel lucky to know.";
+    return {
+      ambitious: "Friends would describe me as warm, loyal, and someone they feel lucky to know.",
+      audacious: "Friends would describe me as the person who changed their lives.",
+      delusional: "Friends would describe me as the most beloved person they have ever known.",
+    };
   }
   if (/^i\b/i.test(q)) {
-    return "I am warm, generous, and deeply loved by the people around me.";
+    return {
+      ambitious: "I am warm, generous, and deeply loved by the people around me.",
+      audacious: "I am the person people feel lucky to have in their lives.",
+      delusional: "I am someone the people around me consider the great love of their lives.",
+    };
   }
-  // Fragments / bare insults under a “how others see you” answer — full sentence.
-  return "Friends would describe me as warm, loyal, and someone they feel lucky to know.";
+  return {
+    ambitious: "Friends would describe me as warm, loyal, and someone they feel lucky to know.",
+    audacious: "Friends would describe me as the person who changed their lives.",
+    delusional: "Friends would describe me as the most beloved person they have ever known.",
+  };
 }
 
 /** Local pass: always surface overtly negative sentences (locks cannot suppress). */
@@ -314,8 +331,8 @@ function heuristicNegativeFindings(text: string): StoryFinding[] {
     end: h.end,
     quote: h.quote,
     type: "negative" as const,
-    suggestion: heuristicNegativeSuggestion(h.quote),
-    suggestions: sameRaiseSuggestions(heuristicNegativeSuggestion(h.quote)),
+    suggestion: heuristicNegativeSuggestion(h.quote).ambitious,
+    suggestions: heuristicNegativeSuggestion(h.quote),
   }));
 }
 
@@ -706,6 +723,57 @@ function applyRaiseLocks(
   };
 }
 
+/** One call for every finding whose levels were copied or left blank. */
+async function completeDistinctLevels(
+  draft: string,
+  result: StoryRaiseResult,
+): Promise<StoryRaiseResult> {
+  const pending = result.findings.filter(
+    (f) => f.suggestions.ambitious.trim() && !suggestionsDiffer(f.suggestions),
+  );
+  if (pending.length === 0) return result;
+  const lines = pending
+    .map(
+      (f) =>
+        `- quote: ${JSON.stringify(f.quote)}\n  ambitious: ${JSON.stringify(f.suggestions.ambitious)}`,
+    )
+    .join("\n");
+  const prompt =
+    `These life-vision rewrites used the same sentence for more than one level. ` +
+    `For each quote, return three different present-tense replacements of that quote. ` +
+    `ambitious is a really great but reasonable outcome. ` +
+    `audacious is rarer, a handful of people. ` +
+    `delusional is world-leading. ` +
+    `Each level must be a clearly bigger step than the one before it. Do not repeat a sentence across levels. ` +
+    `Keep the subject, person, and specifics. ` +
+    `Reply with ONLY JSON: {"findings":[{"quote":"...","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}\n\n` +
+    `${lines}\n\nNearby:\n${draft.slice(0, 2000)}`;
+  try {
+    const parsed = (await askJson(prompt)) as Record<string, unknown>;
+    const rows = Array.isArray(parsed.findings) ? parsed.findings : [];
+    const byQuote = new Map<string, RaiseSuggestions>();
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const r = row as Record<string, unknown>;
+      const quote = typeof r.quote === "string" ? r.quote : "";
+      const suggestions = parseRaiseSuggestions(r.suggestions, r.suggestion);
+      if (!quote || !suggestions || !suggestionsDiffer(suggestions)) continue;
+      byQuote.set(quote, suggestions);
+    }
+    if (byQuote.size === 0) return result;
+    return {
+      ...result,
+      findings: result.findings.map((f) => {
+        const suggestions = byQuote.get(f.quote);
+        if (!suggestions) return f;
+        return { ...f, suggestions, suggestion: suggestions.ambitious };
+      }),
+    };
+  } catch {
+    return result;
+  }
+}
+
 export async function raiseStoryCeiling(
   draft: string,
   raiseLocks: readonly string[] = [],
@@ -754,12 +822,15 @@ export async function raiseStoryCeiling(
       locks,
     );
     // Always merge local so heuristic negatives survive an empty/soft remote.
-    return applyRaiseLocks(draft, mergeRaiseFindings(parsed, local), locks);
+    return completeDistinctLevels(
+      text,
+      applyRaiseLocks(draft, mergeRaiseFindings(parsed, local), locks),
+    );
   }
 
   // Don't fall through to the chat stream — that path can hang the UI.
   // Prefer the local hedge pass, then a bounded ask via the raise endpoint.
-  if (local.findings.length > 0) return local;
+  if (local.findings.length > 0) return completeDistinctLevels(text, local);
 
   const lockBlock =
     locks.length > 0
@@ -839,16 +910,19 @@ export async function raiseStoryCeiling(
         window.setTimeout(() => reject(new Error("raise chat timeout")), 20_000),
       ),
     ]);
-    return applyRaiseLocks(
+    return completeDistinctLevels(
+      text,
+      applyRaiseLocks(
         draft,
         mergeRaiseFindings(
           parseRaisePayload(parsed as Record<string, unknown>, text),
           local,
         ),
         locks,
+      ),
     );
   } catch {
-    return local;
+    return completeDistinctLevels(text, local);
   }
 }
 
@@ -956,47 +1030,17 @@ function mergeRaiseFindings(
 function heuristicRaise(text: string): StoryRaiseResult {
   const findings: StoryFinding[] = [...heuristicNegativeFindings(text)];
 
-  const patterns: Array<{
-    re: RegExp;
-    type: StoryFindingType;
-    suggestion: string;
-  }> = [
-    { re: /\bI think\b/i, type: "hedging", suggestion: "I know" },
-    { re: /\bI hope\b/i, type: "hedging", suggestion: "I have" },
-    { re: /\bmaybe\b/i, type: "hedging", suggestion: "definitely" },
-    { re: /\btry to\b/i, type: "hedging", suggestion: "do" },
-    { re: /\bsomeday\b/i, type: "future", suggestion: "now" },
-    { re: /\bI will\b/i, type: "future", suggestion: "I" },
-    { re: /\bI'm going to\b/i, type: "future", suggestion: "I" },
-    // Lukewarm affection — keep quotes small so they sit beside hedge findings.
-    { re: /\blike me\b/i, type: "small", suggestion: "love me" },
-    { re: /\blikes me\b/i, type: "small", suggestion: "loves me" },
-    { re: /\blike them\b/i, type: "small", suggestion: "love them" },
-    { re: /\blike him\b/i, type: "small", suggestion: "love him" },
-    { re: /\blike her\b/i, type: "small", suggestion: "love her" },
-    { re: /\bI like\b/i, type: "small", suggestion: "I love" },
-    // Past-doubt leftovers — delete (quote keeps leading space).
-    { re: /\s+again\b/i, type: "doubt", suggestion: "" },
-    { re: /\s+finally\b/i, type: "doubt", suggestion: "" },
-    { re: /\s+this time\b/i, type: "doubt", suggestion: "" },
-  ];
-
-  for (const p of patterns) {
+  for (const hit of offlineRaiseSpans(text)) {
     if (findings.length >= 8) break;
-    const m = p.re.exec(text);
-    if (!m || m.index == null) continue;
-    const quote = m[0]!;
-    const start = m.index;
-    const end = start + quote.length;
-    if (findings.some((f) => !(end <= f.start || start >= f.end))) continue;
+    if (findings.some((f) => !(hit.end <= f.start || hit.start >= f.end))) continue;
     findings.push({
-      id: `h_${start}`,
-      start,
-      end,
-      quote,
-      type: p.type,
-      suggestion: p.suggestion,
-      suggestions: sameRaiseSuggestions(p.suggestion),
+      id: `h_${hit.start}`,
+      start: hit.start,
+      end: hit.end,
+      quote: hit.quote,
+      type: hit.type,
+      suggestion: hit.suggestions.ambitious,
+      suggestions: hit.suggestions,
     });
   }
 

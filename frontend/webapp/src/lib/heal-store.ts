@@ -41,6 +41,11 @@ export type HealReframe = {
   createdAt: string;
 };
 
+export type HealObstacleLink = {
+  lifeAreaId: string;
+  label: string;
+};
+
 export type HealManifestTarget = "obstacle" | "affirmation" | "manifesto";
 
 export type HealManifestLink = {
@@ -126,6 +131,8 @@ export type HealItem = {
   angleQuestions: string[];
   canDo: HealCanDo | null;
   sourceObstacleId: string | null;
+  /** Obstacles that open this item. One item can hold many, across life areas. */
+  linkedObstacles: HealObstacleLink[];
   askedQuestions: string[];
   aboutUpdatedAt: string;
   aboutPerspectives: HealPerspective[];
@@ -204,6 +211,37 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function obstacleKeyParts(key: string | null | undefined): HealObstacleLink | null {
+  if (!key || !key.includes("::")) return null;
+  const split = key.indexOf("::");
+  const lifeAreaId = key.slice(0, split).trim();
+  const label = key.slice(split + 2).trim();
+  if (!lifeAreaId || !label) return null;
+  return { lifeAreaId, label };
+}
+
+function sameObstacle(a: HealObstacleLink, b: HealObstacleLink): boolean {
+  return a.lifeAreaId === b.lifeAreaId && a.label === b.label;
+}
+
+function readObstacleLinks(raw: unknown, sourceObstacleId: string | null): HealObstacleLink[] {
+  const links: HealObstacleLink[] = [];
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== "object") continue;
+      const lifeAreaId = (row as { lifeAreaId?: unknown }).lifeAreaId;
+      const label = (row as { label?: unknown }).label;
+      if (typeof lifeAreaId !== "string" || typeof label !== "string") continue;
+      const next = { lifeAreaId: lifeAreaId.trim(), label: label.trim() };
+      if (!next.lifeAreaId || !next.label || links.some((link) => sameObstacle(link, next))) continue;
+      links.push(next);
+    }
+  }
+  const fromSource = obstacleKeyParts(sourceObstacleId);
+  if (fromSource && !links.some((link) => sameObstacle(link, fromSource))) links.unshift(fromSource);
+  return links;
+}
+
 export function newHealId(prefix: string): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}_${crypto.randomUUID()}`;
@@ -273,6 +311,10 @@ function normalizeItem(x: unknown): HealItem | null {
       : [],
     canDo: o.canDo === "yes" || o.canDo === "no" || o.canDo === "not_sure" ? o.canDo : null,
     sourceObstacleId: typeof o.sourceObstacleId === "string" ? o.sourceObstacleId : null,
+    linkedObstacles: readObstacleLinks(
+      o.linkedObstacles,
+      typeof o.sourceObstacleId === "string" ? o.sourceObstacleId : null,
+    ),
     askedQuestions: Array.isArray(o.askedQuestions)
       ? o.askedQuestions.filter((q): q is string => typeof q === "string")
       : [],
@@ -496,10 +538,14 @@ function migrateHealStore(store: HealStoreV1): HealStoreV1 {
         createdAt: reframe.createdAt,
       });
     }
-    if (item.sourceObstacleId) return item;
+    if (item.sourceObstacleId || item.linkedObstacles.length) return item;
     const link = store.manifestLinks.find((row) => row.itemId === item.id && row.target === "obstacle");
-    if (!link) return item;
-    return { ...item, sourceObstacleId: `${link.lifeAreaId}::${link.targetId}` };
+    if (!link?.lifeAreaId || !link.targetId) return item;
+    return {
+      ...item,
+      sourceObstacleId: `${link.lifeAreaId}::${link.targetId}`,
+      linkedObstacles: [{ lifeAreaId: link.lifeAreaId, label: link.targetId }],
+    };
   });
   return { ...store, items, updates, views, manifestLinks: [] };
 }
@@ -658,6 +704,7 @@ export function createHealItem(
     angleQuestions: [],
     canDo: null,
     sourceObstacleId: null,
+    linkedObstacles: [],
     askedQuestions: [],
     aboutUpdatedAt: createdAt,
     aboutPerspectives: [],
@@ -1105,8 +1152,80 @@ export function healItemForObstacle(
   lifeAreaId: string,
   label: string,
 ): HealItem | null {
-  const key = healObstacleKey(lifeAreaId, label);
-  return store.items.find((item) => item.sourceObstacleId === key) ?? null;
+  const needle = { lifeAreaId, label };
+  return store.items.find((item) => item.linkedObstacles.some((link) => sameObstacle(link, needle))) ?? null;
+}
+
+function withoutObstacle(item: HealItem, lifeAreaId: string, label: string): HealItem {
+  const needle = { lifeAreaId, label };
+  const linkedObstacles = item.linkedObstacles.filter((link) => !sameObstacle(link, needle));
+  if (linkedObstacles.length === item.linkedObstacles.length) return item;
+  const source = obstacleKeyParts(item.sourceObstacleId);
+  const sourceObstacleId = source && sameObstacle(source, needle)
+    ? linkedObstacles[0]
+      ? healObstacleKey(linkedObstacles[0].lifeAreaId, linkedObstacles[0].label)
+      : null
+    : item.sourceObstacleId;
+  return { ...item, linkedObstacles, sourceObstacleId };
+}
+
+/** Attach this obstacle to one item. A previous item for the same obstacle loses it. */
+export function linkObstacleToItem(
+  store: HealStoreV1,
+  itemId: string,
+  lifeAreaId: string,
+  label: string,
+): HealStoreV1 {
+  const trimmed = label.trim();
+  if (!trimmed) return store;
+  const items = store.items.map((item) => {
+    const cleared = withoutObstacle(item, lifeAreaId, trimmed);
+    if (item.id !== itemId) return cleared;
+    return {
+      ...cleared,
+      linkedObstacles: [...cleared.linkedObstacles, { lifeAreaId, label: trimmed }],
+      sourceObstacleId: cleared.sourceObstacleId ?? healObstacleKey(lifeAreaId, trimmed),
+      updatedAt: nowIso(),
+    };
+  });
+  return { ...store, items };
+}
+
+export function unlinkObstacle(store: HealStoreV1, lifeAreaId: string, label: string): HealStoreV1 {
+  const items = store.items.map((item) => withoutObstacle(item, lifeAreaId, label.trim()));
+  return { ...store, items };
+}
+
+/** Drop links whose labels are no longer on this life area. The Heal item stays. */
+export function pruneObstacleLinks(store: HealStoreV1, lifeAreaId: string, keep: Iterable<string>): HealStoreV1 {
+  const kept = new Set([...keep].map((label) => label.trim()).filter(Boolean));
+  let changed = false;
+  const items = store.items.map((item) => {
+    const drop = item.linkedObstacles.filter((link) => link.lifeAreaId === lifeAreaId && !kept.has(link.label));
+    if (!drop.length) return item;
+    changed = true;
+    return drop.reduce((row, link) => withoutObstacle(row, link.lifeAreaId, link.label), item);
+  });
+  return changed ? { ...store, items } : store;
+}
+
+export function deleteHealItem(store: HealStoreV1, itemId: string): HealStoreV1 {
+  const item = store.items.find((row) => row.id === itemId);
+  const photos = { ...store.photos };
+  if (item?.photoId) delete photos[item.photoId];
+  return {
+    ...store,
+    photos,
+    items: store.items.filter((row) => row.id !== itemId),
+    entries: store.entries.filter((row) => row.itemId !== itemId),
+    checkins: store.checkins.filter((row) => row.itemId !== itemId),
+    manifestLinks: store.manifestLinks.filter((row) => row.itemId !== itemId),
+    reframes: store.reframes.filter((row) => row.itemId !== itemId),
+    updates: store.updates.filter((row) => row.itemId !== itemId),
+    views: store.views.filter((row) => row.itemId !== itemId),
+    exercises: store.exercises.filter((row) => row.itemId !== itemId),
+    actions: store.actions.filter((row) => row.itemId !== itemId),
+  };
 }
 
 export const FALLBACK_EXERCISES = [
