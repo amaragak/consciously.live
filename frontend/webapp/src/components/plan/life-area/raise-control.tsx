@@ -1,12 +1,15 @@
 import { Sparkles } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MIST, textHash } from "@/components/plan/life-area/kit";
 import {
   BottomSheet,
   RaiseCard,
-  RaiseCeilingPlacement,
+  RaiseFlyout,
   RaiseSheetBody,
+  RaiseSidePanel,
+  useSetRaiseSideOpen,
   type RaiseCeilingFinding,
+  type RaiseReadPhase,
 } from "@/components/plan/raise-ceiling-panel";
 import { useMinWidth } from "@/hooks/use-min-width";
 import {
@@ -83,6 +86,9 @@ export function RaiseControl({
   tone?: "default" | "onDark";
 }) {
   const wide = useMinWidth(768);
+  const side = useMinWidth(1024);
+  const setRaiseSide = useSetRaiseSideOpen();
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const onDark = tone === "onDark";
   const primary: Field = {
     text,
@@ -98,6 +104,7 @@ export function RaiseControl({
   const cache = useRef(new Map<string, { ambition: number; findings: Live[] }>());
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [level, setLevel] = useState<RaiseLevel>("audacious");
   const [ambition, setAmbition] = useState(0);
@@ -127,6 +134,12 @@ export function RaiseControl({
     return unlocked.map((field) => field.text.trim()).join("\n\n");
   }
 
+  useEffect(() => {
+    if (!(open && side)) return;
+    setRaiseSide(true);
+    return () => setRaiseSide(false);
+  }, [open, setRaiseSide, side]);
+
   function applyLevel(next: RaiseLevel, rows = findings) {
     setLevel(next);
     setFindings(rows.map((f) => (f.status === "open" ? { ...f, level: next } : f)));
@@ -137,6 +150,7 @@ export function RaiseControl({
     if (!key) return;
     const hit = cache.current.get(key);
     if (hit) {
+      setFailed(false);
       setAmbition(hit.ambition);
       applyLevel(level, hit.findings);
       setActiveId(hit.findings[0]?.id ?? null);
@@ -144,6 +158,8 @@ export function RaiseControl({
       return;
     }
     setBusy(true);
+    setFailed(false);
+    setFindings([]);
     setOpen(true);
     try {
       const merged: Live[] = [];
@@ -164,6 +180,8 @@ export function RaiseControl({
       setAmbition(score);
       setFindings(merged);
       setActiveId(merged[0]?.id ?? null);
+    } catch {
+      setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -178,7 +196,12 @@ export function RaiseControl({
 
   function useOne(f: Live) {
     writeFinding(f, suggestionAt(f, f.level));
-    setOpen(false);
+    setFindings((rows) => {
+      const next = rows.filter((row) => row.id !== f.id);
+      setActiveId(next[0]?.id ?? null);
+      if (next.length === 0) setOpen(false);
+      return next;
+    });
   }
 
   function useAll() {
@@ -237,6 +260,32 @@ export function RaiseControl({
 
   const showButton = !hideTrigger && unlocked.length > 0;
   const raisedPrimary = isRaised(primary);
+  const phase: RaiseReadPhase = busy ? "reading" : failed ? "error" : "ready";
+  const card = (
+    <RaiseCard
+      variant="flyout"
+      stacked={side}
+      phase={phase}
+      onRetry={() => void raise()}
+      ambition={ambition}
+      level={level}
+      onLevel={(next) => applyLevel(next)}
+      findings={findings}
+      activeId={activeId}
+      anotherBusyId={busyId}
+      onSelect={setActiveId}
+      onLineLevel={(id, next) =>
+        setFindings((rows) =>
+          rows.map((row) => (row.id === id ? { ...row, level: next } : row)),
+        )
+      }
+      onUseAll={useAll}
+      onDone={() => setOpen(false)}
+      onUse={useOne}
+      onAnother={(f) => void another(f)}
+      onKeep={keep}
+    />
+  );
 
   return (
     <div className="mt-2">
@@ -264,9 +313,20 @@ export function RaiseControl({
       ) : null}
       {showButton ? (
         <button
+          ref={setAnchor}
           type="button"
-          onClick={() => void raise()}
-          className={`${MIST} mt-2 h-8 px-3 text-xs`}
+          onClick={() => {
+            if (open && !side) {
+              setOpen(false);
+              return;
+            }
+            if (open) return;
+            void raise();
+          }}
+          aria-expanded={open}
+          className={`${MIST} mt-2 h-8 px-3 text-xs ${
+            open && !busy ? "shadow-[0_0_0_3px_rgba(200,164,106,0.45)]" : ""
+          }`}
         >
           <Sparkles className={`size-3 ${busy ? "animate-pulse" : ""}`} aria-hidden />
           {busy ? "Reading…" : "Raise the ceiling"}
@@ -304,86 +364,64 @@ export function RaiseControl({
             </button>
           </div>
         ) : null}
-      {open ? (
-        <RaiseCeilingPlacement
-          wide={wide}
-          card={
-            busy ? (
-              <p className="mt-3 text-sm text-muted">Reading…</p>
-            ) : (
-              <RaiseCard
-                ambition={ambition}
-                level={level}
-                onLevel={(next) => applyLevel(next)}
-                findings={findings}
-                activeId={activeId}
-                anotherBusyId={busyId}
-                onSelect={setActiveId}
-                onLineLevel={(id, next) =>
-                  setFindings((rows) =>
-                    rows.map((row) => (row.id === id ? { ...row, level: next } : row)),
-                  )
-                }
-                onUseAll={useAll}
-                onDone={() => setOpen(false)}
-                onUse={useOne}
-                onAnother={(f) => void another(f)}
-                onKeep={keep}
-              />
-            )
+      {open && side ? <RaiseSidePanel onClose={() => setOpen(false)}>{card}</RaiseSidePanel> : null}
+      {open && wide && !side ? (
+        <RaiseFlyout anchor={anchor} onClose={() => setOpen(false)}>
+          {card}
+        </RaiseFlyout>
+      ) : null}
+      {open && !wide ? (
+        <BottomSheet
+          open
+          onClose={() => setOpen(false)}
+          title="Raise the ceiling"
+          top={400}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={useAll}
+                disabled={findings.length === 0 || phase !== "ready"}
+                className="accent-fill-gradient inline-flex h-[42px] flex-1 items-center justify-center rounded-full text-sm font-semibold text-on-accent disabled:opacity-45"
+              >
+                Use all {findings.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-[42px] items-center justify-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground"
+              >
+                Done
+              </button>
+            </>
           }
-          sheet={
-            <BottomSheet
-              open
-              onClose={() => setOpen(false)}
-              title="Raise the ceiling"
-              top={400}
-              footer={
-                <>
-                  <button
-                    type="button"
-                    onClick={useAll}
-                    disabled={findings.length === 0 || busy}
-                    className="accent-fill-gradient inline-flex h-[42px] flex-1 items-center justify-center rounded-full text-sm font-semibold text-on-accent disabled:opacity-45"
-                  >
-                    Use all {findings.length}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    className="inline-flex h-[42px] items-center justify-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground"
-                  >
-                    Done
-                  </button>
-                </>
-              }
-            >
-              {busy ? (
-                <p className="px-[18px] py-4 text-sm text-muted">Reading…</p>
-              ) : (
-                <RaiseSheetBody
-                  ambition={ambition}
-                  level={level}
-                  onLevel={(next) => applyLevel(next)}
-                  findings={findings}
-                  activeId={activeId}
-                  busyId={busyId}
-                  onSelect={setActiveId}
-                  onLineLevel={(id, next) =>
-                    setFindings((rows) =>
-                      rows.map((row) =>
-                        row.id === id ? { ...row, level: next } : row,
-                      ),
-                    )
-                  }
-                  onUse={useOne}
-                  onAnother={(f) => void another(f)}
-                  onKeep={keep}
-                />
-              )}
-            </BottomSheet>
-          }
-        />
+        >
+          <p
+            className="px-[18px] pb-2 font-display text-lg leading-snug text-foreground"
+            style={{ fontVariationSettings: "'opsz' 144" }}
+          >
+            {text.trim()}
+          </p>
+          <RaiseSheetBody
+            ambition={ambition}
+            level={level}
+            onLevel={(next) => applyLevel(next)}
+            findings={findings}
+            activeId={activeId}
+            busyId={busyId}
+            phase={phase}
+            onRetry={() => void raise()}
+            onSelect={setActiveId}
+            onLineLevel={(id, next) =>
+              setFindings((rows) =>
+                rows.map((row) => (row.id === id ? { ...row, level: next } : row)),
+              )
+            }
+            onUse={useOne}
+            onAnother={(f) => void another(f)}
+            onKeep={keep}
+          />
+        </BottomSheet>
       ) : null}
     </div>
   );

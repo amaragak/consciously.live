@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogoMark } from "@/components/logo-mark";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { RaiseControl } from "@/components/plan/life-area/raise-control";
-import { RaisePanelSlot } from "@/components/plan/raise-ceiling-panel";
+import { useRaiseSideOpen } from "@/components/plan/raise-ceiling-panel";
 import {
   MIST,
   activeOverviewGoal,
@@ -96,6 +96,8 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
   }, []);
 
   const image = posterImage(items, dream);
+  const hidePhoto = useRaiseSideOpen();
+  const showPhoto = Boolean(image) && !hidePhoto;
   const knownSize = Boolean(
     (image?.width && image.height) || (image?.crop && image.crop.w > 0),
   );
@@ -227,8 +229,8 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
   ) : (
     <PosterCopy
       dream={dream}
-      wide={wide}
-      hasImage={Boolean(image)}
+      wide={showPhoto && wide}
+      hasImage={showPhoto}
       labels={labels}
       moment={moment}
       momentOpen={momentOpen}
@@ -255,12 +257,13 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
   );
 
   return (
-    <RaisePanelSlot>
+    <>
       <section
+        data-life-hero
         className={`relative overflow-hidden rounded-[20px] bg-[#1a1820] text-white shadow-[0_18px_40px_-20px_color-mix(in_srgb,var(--deep)_50%,transparent)] ${
           empty
             ? "md:h-[350px]"
-            : !image
+            : !showPhoto
               ? "md:min-h-[350px]"
               : wide
                 ? "h-[486px] md:h-[396px]"
@@ -273,7 +276,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
           aria-hidden
           className="navy-paisley-plate"
         />
-        {!image ? (
+        {!showPhoto ? (
           <div
             className="pointer-events-none absolute -right-6 -top-10 size-[220px] opacity-10 md:-right-10 md:-top-16 md:size-[360px]"
             aria-hidden
@@ -281,7 +284,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
             <LogoMark size={48} fill="#C8A46A" className="size-full" />
           </div>
         ) : null}
-        {!empty && image && wide && src ? (
+        {!empty && image && !hidePhoto && wide && src ? (
           <>
             <img
               src={src}
@@ -302,7 +305,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
             />
           </>
         ) : null}
-        {!empty && image && !wide && md && src ? (
+        {!empty && image && !hidePhoto && !wide && md && src ? (
           <div className="absolute inset-y-0 right-0 w-[372px]">
             <img
               src={src}
@@ -329,7 +332,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
             />
           </div>
         ) : null}
-        {!empty && image && !wide && !md && src ? (
+        {!empty && image && !hidePhoto && !wide && !md && src ? (
           <div className="relative aspect-square w-full">
             <img
               src={src}
@@ -363,11 +366,11 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
 
         <div
           className={
-            !empty && image && !wide && md
+            !empty && showPhoto && !wide && md
               ? "relative flex h-full w-[calc(100%-372px)] flex-col justify-between py-[22px] pl-7 pr-[18px]"
-              : !empty && image && wide
+              : !empty && showPhoto && wide
                 ? "absolute inset-x-4 bottom-4 top-3.5 flex flex-col md:bottom-[22px]"
-                : !empty && image && !wide && !md
+                : !empty && showPhoto && !wide && !md
                   ? "relative flex flex-col gap-3 px-4 pb-4 pt-1"
                   : "relative flex h-full min-h-[240px] flex-col justify-between px-4 py-4 md:px-7 md:py-[22px]"
           }
@@ -376,7 +379,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
             <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[var(--header-gold)]">
               The dream
             </p>
-            {!empty && !(image && !wide) ? (
+            {!empty && !(showPhoto && !wide) ? (
               <PosterActions
                 showImage={Boolean(image) || md}
                 labelledImage={!image}
@@ -385,7 +388,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
               />
             ) : null}
           </div>
-          {!empty && image && wide ? (
+          {!empty && showPhoto && wide ? (
             <div className="mt-auto flex flex-col gap-3 md:gap-3.5 md:px-3">{body}</div>
           ) : (
             body
@@ -479,7 +482,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
           onClose={() => setDetail(null)}
         />
       ) : null}
-    </RaisePanelSlot>
+    </>
   );
 }
 

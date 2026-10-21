@@ -101,10 +101,13 @@ export function RaiseLevelDial({
   level,
   onChange,
   sunSize = 36,
+  natural = false,
 }: {
   level: RaiseLevel;
   onChange: (level: RaiseLevel) => void;
   sunSize?: number;
+  /** Size to its labels from `lg` up, instead of stretching across the row. */
+  natural?: boolean;
 }) {
   const [pop, setPop] = useState<RaiseLevel | null>(null);
   const selected = RAISE_LEVELS.indexOf(level);
@@ -129,7 +132,9 @@ export function RaiseLevelDial({
       role="radiogroup"
       aria-label="How far to push"
       onKeyDown={onKeyDown}
-      className="flex gap-0.5 rounded-[15px] bg-border p-[3px]"
+      className={`flex gap-0.5 rounded-[15px] bg-border p-[3px] ${
+        natural ? "w-full lg:w-max lg:shrink-0" : ""
+      }`}
     >
       <style>{`@keyframes raise-sun-in{from{transform:scale(.85)}to{transform:scale(1)}}`}</style>
       {RAISE_LEVELS.map((id, i) => {
@@ -144,6 +149,8 @@ export function RaiseLevelDial({
             tabIndex={on ? 0 : -1}
             onClick={() => pick(id)}
             className={`flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-xl px-1 pb-[7px] pt-2 ${
+              natural ? "lg:flex-none lg:px-3" : ""
+            } ${
               on
                 ? "bg-card text-foreground shadow-[0_1px_4px_color-mix(in_srgb,var(--foreground)_16%,transparent)]"
                 : below

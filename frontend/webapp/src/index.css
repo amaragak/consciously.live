@@ -253,6 +253,19 @@ body {
   }
 }
 
+@keyframes raise-cards-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.raise-cards-in {
+  animation: raise-cards-in 220ms ease;
+}
+
 .vision-board-tile-skeleton,
 .mm-skeleton {
   background-color: #e4dfd6;

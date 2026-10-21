@@ -25,6 +25,7 @@ import {
 } from "@/lib/journal-storage";
 import { lifeAreaLastSeen, markLifeAreaSeen } from "@/lib/life-area-visits";
 import { LifeAreaOverview } from "@/components/plan/life-area/overview";
+import { RaiseSideFrame } from "@/components/plan/raise-ceiling-panel";
 import { LifeAreaThoughts } from "@/components/plan/life-area/thoughts";
 import { LifeAreaWhiteboard } from "@/components/plan/life-area/whiteboard";
 import { WhiteboardBackChip } from "@/components/plan/life-area/whiteboard-return";
@@ -181,7 +182,7 @@ export function LifeAreaShell({
   }
 
   return (
-    <div className="min-h-[calc(100vh-var(--app-header-h))] pb-28 sm:pb-10">
+    <RaiseSideFrame className="min-h-[calc(100vh-var(--app-header-h))] pb-28 sm:pb-10">
       <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pt-4 sm:px-6">
         <div className="min-w-0">
           <LifeAreaTabTrack
@@ -270,7 +271,7 @@ export function LifeAreaShell({
           </button>
         </div>
       ) : null}
-    </div>
+    </RaiseSideFrame>
   );
 }
 
