@@ -23,6 +23,7 @@ import {
   ListOrdered,
   MessageCircle,
   Minus,
+  Pause,
   Target,
   Underline,
 } from "lucide-react";
@@ -55,26 +56,13 @@ const IMPORT_CHIPS = [
   "Handwritten photos",
 ];
 
-const SOUND_MOODS = [
-  "Our picks",
-  "Chill / Simple",
-  "Dark / Distant",
-  "Majestic / Uplifting",
-  "Mystic",
-  "Nature heavy",
-  "World",
+const SHOWCASE_SOUNDS: { name: string; mood: string }[] = [
+  { name: "Celestial Chamber", mood: "Majestic" },
+  { name: "Astral Secrets", mood: "Mystic" },
+  { name: "Deep Stillness", mood: "Mystic" },
 ];
 
-const SHOWCASE_SOUNDS = [
-  "Celestial Chamber",
-  "Astral Secrets",
-  "Deep Stillness",
-  "Echoes of the Ancients",
-  "Enchanted Echoes",
-  "Gazing Beyond Sea",
-];
-
-const SHOWCASE_VOICES = ["Beatrice", "Benjamin", "Imogen", "Elijah"];
+const SHOWCASE_VOICES = ["Benjamin", "Arun", "Beatrice"];
 
 const STYLE_ORDER = [
   "Manifestation",
@@ -93,54 +81,54 @@ const STYLE_ORDER = [
 
 const BRIEFS: {
   text: string;
-  tokens: { icon?: "journal" | "goal" | "heal"; label: string; chip?: boolean }[];
+  tokens: { icon?: "journal" | "goal" | "heal"; kind?: string; value: string; chip?: boolean }[];
 }[] = [
   {
     text: "Can't switch off after work.",
     tokens: [
-      { label: "Style: Sleep" },
-      { icon: "journal", label: "Journal: Monday, late again" },
-      { label: "10 min", chip: true },
+      { kind: "Style", value: "Sleep" },
+      { icon: "journal", kind: "Journal", value: "Late Monday" },
+      { value: "10 min", chip: true },
     ],
   },
   {
     text: "Big pitch on Friday. I want to walk in calm and certain.",
     tokens: [
-      { label: "Style: Visualization" },
-      { icon: "goal", label: "Manifest goal: Open my own studio" },
-      { label: "8 min", chip: true },
+      { kind: "Style", value: "Visualize" },
+      { icon: "goal", kind: "Manifest goal", value: "Own studio" },
+      { value: "8 min", chip: true },
     ],
   },
   {
     text: "Another Sunday dreading Monday.",
     tokens: [
-      { label: "Style: Reflection" },
-      { icon: "journal", label: "Journal: Sunday night again" },
-      { label: "10 min", chip: true },
+      { kind: "Style", value: "Reflect" },
+      { icon: "journal", kind: "Journal", value: "Sunday night" },
+      { value: "10 min", chip: true },
     ],
   },
   {
     text: "I keep sabotaging things just as they take off.",
     tokens: [
-      { label: "Style: Affirmation loop" },
-      { icon: "heal", label: "Heal: Self-sabotage" },
-      { label: "8 min", chip: true },
+      { kind: "Style", value: "Affirm" },
+      { icon: "heal", kind: "Heal", value: "Self-sabotage" },
+      { value: "8 min", chip: true },
     ],
   },
   {
     text: "Day 3 of my Chakra Cleanse.",
     tokens: [
-      { label: "Program: Chakra Cleanse · Session 3" },
-      { icon: "goal", label: "Manifest goal: Run the London marathon" },
-      { label: "15 min", chip: true },
+      { kind: "Program", value: "Chakra 3" },
+      { icon: "goal", kind: "Manifest goal", value: "Marathon" },
+      { value: "15 min", chip: true },
     ],
   },
   {
     text: "Still thinking about how it ended with Sam.",
     tokens: [
-      { label: "Style: Loving-kindness" },
-      { icon: "heal", label: "Heal: Me and Sam" },
-      { label: "12 min", chip: true },
+      { kind: "Style", value: "Kindness" },
+      { icon: "heal", kind: "Heal", value: "Me and Sam" },
+      { value: "12 min", chip: true },
     ],
   },
 ];
@@ -219,6 +207,8 @@ function Lockup({ lead, accent, light }: { lead: string; accent: string; light?:
   );
 }
 
+const ROW_STEP = 90;
+
 function useReveal() {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -226,24 +216,75 @@ function useReveal() {
     const root = rootRef.current;
     if (!root) return;
     const nodes = [...root.querySelectorAll<HTMLElement>("[data-hv2-reveal]")];
-    nodes.forEach((node) => node.classList.add("home-v2-reveal"));
-    const reveal = (node: HTMLElement) => node.classList.add("is-in");
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      nodes.forEach(reveal);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      nodes.forEach((node) => node.classList.add("is-in"));
       return;
     }
+
+    const play = (node: HTMLElement, delay: number) => {
+      if (node.dataset.hv2Played === "1") return;
+      node.dataset.hv2Played = "1";
+      node.style.animationDelay = `${delay}ms`;
+      requestAnimationFrame(() => node.classList.add("is-in"));
+    };
+
+    const inHiddenTab = (node: HTMLElement) => {
+      const panel = node.closest(".new-home-tabpanel");
+      return panel instanceof HTMLElement && !panel.classList.contains("is-on");
+    };
+
+    const playGroup = (list: HTMLElement[]) => {
+      list.forEach((node, index) => play(node, index * ROW_STEP));
+    };
+
+    let scroller: HTMLElement | null = root.parentElement;
+    while (scroller) {
+      const { overflowY } = getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(overflowY) && scroller.scrollHeight > scroller.clientHeight + 1) break;
+      scroller = scroller.parentElement;
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
-          reveal(entry.target as HTMLElement);
-          observer.unobserve(entry.target);
+          const section = entry.target as HTMLElement;
+          section.dataset.hv2Seen = "1";
+          const panel = section.querySelector<HTMLElement>(".new-home-tabpanel.is-on");
+          if (panel) panel.setAttribute("data-hv2-tab-played", "1");
+          playGroup(
+            [...section.querySelectorAll<HTMLElement>("[data-hv2-reveal]")].filter(
+              (node) => !inHiddenTab(node),
+            ),
+          );
+          observer.unobserve(section);
         });
       },
-      { threshold: 0.16 },
+      {
+        root: scroller instanceof HTMLElement ? scroller : null,
+        rootMargin: "0px 0px 20% 0px",
+        threshold: 0,
+      },
     );
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+
+    root.querySelectorAll<HTMLElement>("section").forEach((section) => observer.observe(section));
+
+    const tabs = new MutationObserver(() => {
+      root.querySelectorAll<HTMLElement>(".new-home-tabpanel.is-on").forEach((panel) => {
+        if (panel.getAttribute("data-hv2-tab-played") === "1") return;
+        const section = panel.closest("section");
+        if (!(section instanceof HTMLElement) || section.dataset.hv2Seen !== "1") return;
+        panel.setAttribute("data-hv2-tab-played", "1");
+        playGroup([...panel.querySelectorAll<HTMLElement>("[data-hv2-reveal]")]);
+      });
+    });
+    tabs.observe(root, { subtree: true, attributes: true, attributeFilter: ["class"] });
+
+    return () => {
+      observer.disconnect();
+      tabs.disconnect();
+    };
   }, []);
 
   return rootRef;
@@ -283,7 +324,7 @@ function BandHead({
   tabs?: ReactNode;
 }) {
   return (
-    <div className="new-home-band-head is-center">
+    <div className="new-home-band-head is-center" data-hv2-reveal>
       <Lockup lead={lockup[0]} accent={lockup[1]} light={light} />
       <h2 className="new-home-display">{title}</h2>
       <p className="new-home-body">{body}</p>
@@ -419,16 +460,16 @@ function BriefPanel() {
         <span>Attached</span>
         <div className={`new-home-brief-tokens${ready ? " is-in" : ""}`}>
           {brief.tokens.map((token) => (
-            <span key={token.label} className={token.chip ? "is-chip" : ""}>
+            <span key={`${token.kind ?? ""}-${token.value}`} className={token.chip ? "is-chip" : ""}>
               <TokenIcon icon={token.icon} />
-              {token.label}
+              {token.kind ? <em>{token.kind}</em> : null}
+              <b>{token.value}</b>
             </span>
           ))}
         </div>
         <div className="new-home-brief-actions">
-          <button type="button">Skip to audio</button>
           <button type="button" className="is-talk">
-            Talk it through
+            Create meditation
             <ChevronRight size={16} aria-hidden />
           </button>
         </div>
@@ -627,11 +668,11 @@ function NewHomeMixer() {
   );
 }
 
-function Row({ title, body, children }: { title: string; body: string; children?: ReactNode }) {
+function Row({ title, body, children }: { title: string; body?: string; children?: ReactNode }) {
   return (
-    <div className="new-home-row">
+    <div className="new-home-row" data-hv2-reveal>
       <h3 className="new-home-display">{title}</h3>
-      <p>{body}</p>
+      {body ? <p>{body}</p> : null}
       {children}
     </div>
   );
@@ -641,133 +682,121 @@ function MeditateBand() {
   const base = useId();
   const [tab, setTab] = useState(0);
   const tabs = ["Create", "Sounds", "Library"];
-  const sounds = SHOWCASE_SOUNDS.map((name) => SOUNDS.find((sound) => sound.name === name)).filter(
-    (sound): sound is (typeof SOUNDS)[number] => Boolean(sound),
-  );
+  const sounds = SHOWCASE_SOUNDS.map((item) => {
+    const sound = SOUNDS.find((entry) => entry.name === item.name);
+    return sound ? { ...sound, mood: item.mood } : null;
+  }).filter((sound): sound is (typeof SOUNDS)[number] & { mood: string } => Boolean(sound));
   const voices = SHOWCASE_VOICES.map((name) => VOICES.find((voice) => voice.name === name)).filter(
     (voice): voice is (typeof VOICES)[number] => Boolean(voice),
   );
 
   return (
     <section id="meditate" className="new-home-band new-home-dark">
-      <div className="new-home-wrap" data-hv2-reveal>
+      <div className="new-home-wrap">
         <BandHead
           light
           lockup={["consciously", "Meditate"]}
           title="Written for you, every time."
-          body="Calm, sleep, confidence, a goal you're chasing: say what you need and the meditation is made around it."
+          body="Massive customisation and personalisation. Written from your words, your goals, your journal and your blocks."
           tabs={<FeatureTabs base={base} label="Meditate" tabs={tabs} selected={tab} onSelect={setTab} />}
         />
         <TabPanels base={base} tabs={tabs} selected={tab}>
           <div className="new-home-rows">
-            <Row
-              title="Massive customisation and personalisation."
-              body="Your words, your goals, your journal, your blocks. Every meditation is written from your life, in the style and length you choose. Nothing off the shelf."
-            >
+            <div data-hv2-reveal>
               <BriefPanel />
-            </Row>
-            <Row
-              title="Start from anything in your life."
-              body="Feed in a journal entry, a Manifest goal, something you're working through in Heal, or just talk it through in chat. The meditation is written around it."
-            >
-              <div className="new-home-starts">
-                {(
-                  [
-                    ["chat", "Chat", "Talk it through with us"],
-                    ["journal", "Journal", "An entry you wrote"],
-                    ["goal", "Manifest", "A goal you're working towards"],
-                    ["heal", "Heal", "Something you're carrying"],
-                  ] as const
-                ).map(([icon, name, line]) => (
-                  <article key={name}>
-                    <span>
-                      {icon === "journal" ? <BookOpen size={18} aria-hidden /> : null}
-                      {icon === "goal" ? <Target size={18} aria-hidden /> : null}
-                      {icon === "heal" ? <Heart size={18} aria-hidden /> : null}
-                      {icon === "chat" ? <MessageCircle size={18} aria-hidden /> : null}
-                    </span>
-                    <strong>{name}</strong>
-                    <p>{line}</p>
-                  </article>
-                ))}
+            </div>
+            <div className="new-home-create-split" data-hv2-reveal>
+              <div>
+                <h3 className="new-home-display">Start from anything in your life</h3>
+                <div className="new-home-starts">
+                  {(
+                    [
+                      ["chat", "Chat", "Talk it through with us"],
+                      ["journal", "Journal", "An entry you wrote"],
+                      ["goal", "Manifest", "A goal you're working towards"],
+                      ["heal", "Heal", "Something you're carrying"],
+                    ] as const
+                  ).map(([icon, name, line]) => (
+                    <article key={name}>
+                      <span>
+                        {icon === "journal" ? <BookOpen size={16} aria-hidden /> : null}
+                        {icon === "goal" ? <Target size={16} aria-hidden /> : null}
+                        {icon === "heal" ? <Heart size={16} aria-hidden /> : null}
+                        {icon === "chat" ? <MessageCircle size={16} aria-hidden /> : null}
+                      </span>
+                      <div>
+                        <strong>{name}</strong>
+                        <p>{line}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </div>
-            </Row>
-            <Row
-              title="Twelve meditation styles."
-              body="From a body scan to a full manifestation session. Pick one, or let the brief decide."
-            >
-              <div className="new-home-style-grid">
-                {STYLES_IN_ORDER.map((style) => (
-                  <figure key={style.file}>
-                    <img src={styleImage(style.file)} alt="" />
-                    <figcaption>{style.label}</figcaption>
-                  </figure>
-                ))}
+              <div>
+                <h3 className="new-home-display">Twelve meditation styles</h3>
+                <div className="new-home-style-pills">
+                  {STYLES_IN_ORDER.map((style) => (
+                    <span key={style.file}>{style.label}</span>
+                  ))}
+                </div>
               </div>
-              <div className="new-home-style-pills">
-                {STYLES_IN_ORDER.map((style) => (
-                  <span key={style.file}>{style.label}</span>
-                ))}
-              </div>
-            </Row>
+            </div>
           </div>
 
           <div className="new-home-rows">
-            <Row
-              title="Beautiful sound library."
-              body="Soundscapes sorted by mood. Pair one with a meditation, or just press play and sit with it."
-            >
-              <div className="new-home-moods">
-                {SOUND_MOODS.map((mood) => (
-                  <span key={mood} className={mood === "Our picks" ? "is-on" : ""}>
-                    {mood}
-                  </span>
-                ))}
+            <div className="new-home-sound-split" data-hv2-reveal>
+              <div>
+                <h3 className="new-home-display">Beautiful sound library</h3>
+                <div>
+                  <div className="new-home-sound-grid">
+                    {sounds.map((sound) => (
+                      <article key={sound.name}>
+                        <div>
+                          <img src={sound.art} alt="" />
+                          <PreviewButton src={sound.audio} label={`Preview ${sound.name}`} />
+                        </div>
+                        <strong>{sound.name}</strong>
+                        <span>{sound.mood}</span>
+                      </article>
+                    ))}
+                  </div>
+                  <a className="new-home-text-link" href={appHref("/meditate/sounds/soundscapes")}>
+                    Browse the whole library in the app →
+                  </a>
+                </div>
               </div>
-              <div className="new-home-sound-grid">
-                {sounds.map((sound) => (
-                  <article key={sound.name}>
-                    <div>
-                      <img src={sound.art} alt="" />
-                      <PreviewButton src={sound.audio} label={`Preview ${sound.name}`} />
-                    </div>
-                    <strong>{sound.name}</strong>
-                    <span>{sound.category}</span>
-                  </article>
-                ))}
+              <div>
+                <h3 className="new-home-display">Realistic, calming voices</h3>
+                <div>
+                  <div className="new-home-voice-grid">
+                    {voices.map((voice) => (
+                      <article key={voice.name}>
+                        <img src={voice.portrait} alt="" />
+                        <div>
+                          <strong>{voice.name}</strong>
+                          <span>{voice.descriptor}</span>
+                        </div>
+                        <PreviewButton
+                          className="new-home-voice-play"
+                          src={voice.sample}
+                          label={`Preview ${voice.name}`}
+                        />
+                      </article>
+                    ))}
+                  </div>
+                  <a className="new-home-text-link" href={appHref("/meditate/sounds/voices")}>
+                    And more voices →
+                  </a>
+                </div>
               </div>
-            </Row>
-            <Row
-              title="Realistic, calming voices."
-              body="Four voices to choose from. Hear each one, then tune the echo and pacing until it sounds right to you."
-            >
-              <div className="new-home-voice-grid">
-                {voices.map((voice) => (
-                  <article key={voice.name}>
-                    <img src={voice.portrait} alt="" />
-                    <strong>{voice.name}</strong>
-                    <PreviewButton
-                      className="new-home-voice-play"
-                      src={voice.sample}
-                      label={`Preview ${voice.name}`}
-                    />
-                  </article>
-                ))}
-              </div>
-            </Row>
-            <Row
-              title="Build your own sounds with our mixer."
-              body="Layer music, ambience, drums and noise, set each level, and save it as a preset to use on any meditation."
-            >
+            </div>
+            <Row title="Build your own sounds with our mixer.">
               <NewHomeMixer />
             </Row>
           </div>
 
           <div className="new-home-rows">
-            <Row
-              title="Your own growing library."
-              body="Every meditation you create is kept in My creations. Replay it, favourite it, or write a reflection afterwards."
-            >
+            <Row title="Your own growing library.">
               <div className="new-home-library">
                 <div className="new-home-library-chips">
                   <span className="is-on">My creations</span>
@@ -794,11 +823,11 @@ function MeditateBand() {
             </Row>
             <Row
               title="Shared by the community."
-              body="A public library of meditations other members have made and chosen to share. Browse by style, favourite the ones you love, and share your own if you want to."
+              body="Meditations other members have chosen to share. Browse by style, and share your own if you like."
             />
             <Row
               title="Programs, made personal."
-              body="Guided journeys over several sessions. We plan the structure session by session; you answer a few questions and every session is written around your life. A Chakra Cleanse, for example, based on the energy dynamics of your own life."
+              body="Multi-session journeys we plan and you make yours: answer a few questions and every session is written around your life. A Chakra Cleanse based on your own energy, for example."
             >
               <p className="new-home-swipe-hint new-home-program-swipe">Swipe for more →</p>
               <div className="new-home-program-row">
@@ -852,18 +881,18 @@ function ManifestBand() {
 
   return (
     <section id="manifest" className="new-home-band">
-      <div className="new-home-wrap" data-hv2-reveal>
+      <div className="new-home-wrap">
         <BandHead
           lockup={["consciously", "Manifest"]}
           title="See it. Hear it. Become it."
-          body="Picture the life you want, aim higher than you dare, and turn it into steps."
+          body="Picture it, aim higher, turn it into steps."
           tabs={<FeatureTabs base={base} label="Manifest" tabs={tabs} selected={tab} onSelect={setTab} />}
         />
         <TabPanels base={base} tabs={tabs} selected={tab}>
           <div className="new-home-rows">
             <Row
               title="See yourself living your dreams."
-              body="A vision board of AI images made from a photo of you, in the life you describe. Photorealistic or illustrated. Look at it every day."
+              body="AI images of you in the life you describe, from one photo. Photorealistic or illustrated."
             >
               <div className="new-home-vision-card">
                 <div className="new-home-vision is-captioned">
@@ -881,7 +910,7 @@ function ManifestBand() {
           <div className="new-home-rows">
             <Row
               title="Your ideal life, narrated to you every night."
-              body="Write the life you want. We turn it into an ambitious story about you, told in the third person, and narrate it in the voice you chose. Listen every night as you fall asleep and let it programme your mind: this is who you are, this is where you're going."
+              body="An ambitious story about you, in the third person, narrated in your chosen voice. Listen every night and let it programme your mind."
             >
               <div className="new-home-story-card">
                 <div className="new-home-step">
@@ -892,7 +921,7 @@ function ManifestBand() {
                   <div>
                     <h4 className="new-home-display">Write your story</h4>
                     <p className="new-home-story-help">
-                      A few lines, in your own words, about the life you want.
+                      A few lines on the life you want.
                     </p>
                     <p className="new-home-story-quote">
                       I open a small studio and sell some of my paintings. I work for myself, and
@@ -922,8 +951,7 @@ function ManifestBand() {
                       </div>
                     </div>
                     <p className="new-home-story-help">
-                      We rewrite it in the third person, bigger than you&apos;d dare to write it
-                      yourself. Pick how far to push.
+                      Rewritten in the third person, bigger than you&apos;d dare. Pick how far to push.
                     </p>
                     <StoryText level={level} />
                   </div>
@@ -935,8 +963,8 @@ function ManifestBand() {
                   <div>
                     <h4 className="new-home-display">Listen every night</h4>
                     <p className="new-home-story-help">
-                      Narrated in the voice you chose, over your soundscape. Play it as you fall
-                      asleep, every night, until your mind stops arguing with it.
+                      Narrated over your soundscape. Play it as you fall asleep, until your mind
+                      stops arguing with it.
                     </p>
                   </div>
                 </div>
@@ -959,10 +987,7 @@ function ManifestBand() {
           </div>
 
           <div className="new-home-rows">
-            <Row
-              title="Turn it into steps."
-              body="A goal tracker for every area of your life. Break each goal into steps and sub-steps, and watch the bar move."
-            >
+            <Row title="Turn it into steps.">
               <div className="new-home-goal-grid">
                 {GOALS.map((goal) => (
                   <article key={goal.title}>
@@ -992,10 +1017,7 @@ function ManifestBand() {
                 ))}
               </div>
             </Row>
-            <Row
-              title="Write your manifesto."
-              body="Who you are becoming, in your own words: your values, the quotes you live by, and the questions you ask yourself."
-            >
+            <Row title="Write your manifesto.">
               <div className="new-home-manifesto-grid">
                 <article>
                   <h4>Values</h4>
@@ -1031,18 +1053,18 @@ function JournalBand() {
 
   return (
     <section id="journal" className="new-home-band new-home-warm">
-      <div className="new-home-wrap" data-hv2-reveal>
+      <div className="new-home-wrap">
         <BandHead
           lockup={["consciously", "Journal"]}
           title="Hear what you've been telling yourself."
-          body="Your day-to-day journal. Write or speak freely, and see the doubts that keep coming back and the dreams that won't go away."
+          body="Write or speak freely. See the doubts that keep coming back and the dreams that won’t go away."
           tabs={<FeatureTabs base={base} label="Journal" tabs={tabs} selected={tab} onSelect={setTab} />}
         />
         <TabPanels base={base} tabs={tabs} selected={tab}>
           <div className="new-home-rows">
             <Row
               title="A proper journal, first."
-              body="Rich text, headings, lists and photos. Write it or dictate it. Attach the Manifest goal, Heal item or meditation an entry is about, so it sits next to the rest of your life."
+              body="Write it or dictate it. Attach the goal, Heal item or meditation it’s about."
             >
               <div className="new-home-editor" aria-hidden>
                 <div className="new-home-editor-tools">
@@ -1105,10 +1127,7 @@ function JournalBand() {
                 </div>
               </div>
             </Row>
-            <Row
-              title="Bring your old journals with you."
-              body="Import years of entries from Day One, PDF, Word or plain text, or snap photos of a handwritten journal and we'll transcribe them."
-            >
+            <Row title="Bring your old journals with you.">
               <button type="button" className="new-home-import" onClick={openJournalImport}>
                 <strong>Import a journal</strong>
                 <div>
@@ -1121,10 +1140,7 @@ function JournalBand() {
           </div>
 
           <div className="new-home-rows">
-            <Row
-              title="A gratitude journal, with a daily reminder."
-              body="Its own space, separate from your entries. Pick a time and we remind you every day to write down three things that went well. Look back on them whenever you need to."
-            >
+            <Row title="A gratitude journal, with a daily reminder.">
               <div className="new-home-thanks">
                 <div className="new-home-thanks-remind">
                   <div className="new-home-thanks-art" aria-hidden>
@@ -1193,7 +1209,7 @@ function JournalBand() {
           <div className="new-home-pair">
             <Row
               title="Every entry, read back to you."
-              body="We underline the vision, the self-doubt and the gratitude in what you wrote, and count the patterns across the month."
+              body="The vision, self-doubt and gratitude in what you wrote, underlined and counted."
             >
               <article className="new-home-insight-entry">
                 <p>
@@ -1222,7 +1238,7 @@ function JournalBand() {
             </Row>
             <Row
               title="Insights."
-              body="Mood week by week, and a letter on how your month went, if you want one."
+              body="Mood week by week, and a letter on your month if you want one."
             >
               <article className="new-home-insight-mood">
                 <h4>Mood, week by week</h4>
@@ -1248,19 +1264,19 @@ function HealBand() {
 
   return (
     <section id="heal" className="new-home-band new-home-dark">
-      <div className="new-home-wrap" data-hv2-reveal>
+      <div className="new-home-wrap">
         <BandHead
           light
           lockup={["consciously", "Heal"]}
           title="Face what keeps stopping you."
-          body="For the blocks that keep coming back. Target them, work through them, and get past them for good."
+          body="For the blocks that keep coming back. Work through them and get past them for good."
           tabs={<FeatureTabs base={base} label="Heal" tabs={tabs} selected={tab} onSelect={setTab} />}
         />
         <TabPanels base={base} tabs={tabs} selected={tab}>
           <div className="new-home-rows">
             <Row
               title="One card for each thing you're carrying."
-              body="Patterns, heartbreak, regret, grief. Name it, say how long it's been there, and write the thought it gives you on a bad day and the one you'd rather believe. When one is laid to rest, it stays here, lighter."
+              body="Patterns, heartbreak, regret, grief. Name it, note how long it's been there, and write the bad-day thought and the one you'd rather believe."
             >
               <div className="new-home-carry">
                 {(
@@ -1286,7 +1302,7 @@ function HealBand() {
           <div className="new-home-rows">
             <Row
               title="Work through it, one card at a time."
-              body="Put the bad-day thought next to the good-day one. Then exercises written for that exact block, an unsent letter you can keep or let go, and one thing you can actually do, added straight to your tracker. Any card can become a meditation."
+              body="Exercises for that block, an unsent letter, and one thing you can actually do. Any card can become a meditation."
             >
               <div className="new-home-heal-stage" style={{ backgroundImage: `url(${HEAL_ART})` }}>
                 <article>
@@ -1331,11 +1347,11 @@ function HealBand() {
 function FocusBand() {
   return (
     <section id="focus" className="new-home-band">
-      <div className="new-home-wrap" data-hv2-reveal>
+      <div className="new-home-wrap">
         <BandHead
           lockup={["consciously", "Focus"]}
           title="Give your hours to your dream."
-          body="Pull the next step from your Manifest goals, settle your mind, and do the work."
+          body="Pull the next step from your goals, settle your mind, do the work."
           action={
             <a className="new-home-text-link" href={appHref("/focus")}>
               Start a focus session <ChevronRight size={16} aria-hidden />
@@ -1343,55 +1359,95 @@ function FocusBand() {
           }
         />
         <div className="new-home-rows">
-          <Row
-            title="A timer that knows your goals."
-            body="A focus timer built around what you're actually working towards. Pick the step, settle in with a short meditation made for the task, then work with music or a soundscape from the library."
-          >
-            <article className="new-home-clock">
-              <div className="new-home-timer" aria-hidden>
-                <span>
-                  <strong>25:00</strong>
-                  <small>Deep work</small>
-                </span>
-              </div>
-              <ul>
-                <li>Settle</li>
-                <li className="is-now">Deep work</li>
-                <li>Break</li>
-              </ul>
-              <div className="new-home-points">
-                <div>
-                  <strong>120</strong>
-                  <span>points this week</span>
+          <div className="new-home-focus-split" data-hv2-reveal>
+            <div>
+              <h3 className="new-home-display">A timer that knows your goals.</h3>
+              <p>Settle in with a short meditation made for the step, then work to music or a soundscape.</p>
+              <article className="new-home-focus-card">
+                <div className="new-home-focus-top">
+                  <div className="new-home-focus-ring">
+                    <svg viewBox="0 0 120 120" aria-hidden>
+                      <circle className="track" cx="60" cy="60" r="50" />
+                      <circle className="arc" cx="60" cy="60" r="50" />
+                    </svg>
+                    <div>
+                      <strong>18:24</strong>
+                      <span>of 25:00</span>
+                    </div>
+                  </div>
+                  <div className="new-home-focus-session">
+                    <p>This session</p>
+                    <ul>
+                      <li className="is-done">
+                        <i aria-hidden>
+                          <Check size={14} strokeWidth={2.4} />
+                        </i>
+                        2-min settle-in meditation
+                      </li>
+                      <li className="is-now">
+                        <i aria-hidden />
+                        <span>
+                          Price the first collection
+                          <em>Manifest</em>
+                        </span>
+                      </li>
+                      <li>
+                        <i aria-hidden />
+                        Email the framer
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-                <div>
-                  <strong>4</strong>
-                  <span>sessions finished</span>
+                <div className="new-home-focus-points">
+                  <div>
+                    <strong>Your goals, ready</strong>
+                    <span>Pull steps from Manifest, or add your own.</span>
+                  </div>
+                  <div>
+                    <strong>Settle in first</strong>
+                    <span>A short meditation made for the task.</span>
+                  </div>
+                  <div>
+                    <strong>Sound while you work</strong>
+                    <span>Music and soundscapes from the library.</span>
+                  </div>
                 </div>
-                <div>
-                  <strong>2h</strong>
-                  <span>on this goal</span>
+                <div className="new-home-focus-now">
+                  <span className="thumb" aria-hidden />
+                  <div>
+                    <small>Now playing</small>
+                    <strong>Soft rain + ambient piano</strong>
+                  </div>
+                  <span className="pause" aria-hidden>
+                    <Pause size={14} strokeWidth={2.4} />
+                  </span>
                 </div>
-              </div>
-              <p className="new-home-now">Now playing · Deep Stillness</p>
-            </article>
-          </Row>
-          <Row
-            title="Add from Manifest."
-            body="Your next steps come straight from your Manifest goals, so every session moves a real goal forward. Add your own tasks too."
-          >
-            <article className="new-home-focus-pick">
-              <div style={{ backgroundImage: `url(${FOCUS_ART})` }} />
-              <div>
-                <p>Work · Open my own studio</p>
-                <ol>
-                  <li className="is-done">Find a space</li>
-                  <li className="is-now">Price the first collection</li>
-                  <li>Open the online shop</li>
-                </ol>
-              </div>
-            </article>
-          </Row>
+              </article>
+            </div>
+            <div>
+              <h3 className="new-home-display">Add from Manifest.</h3>
+              <p>Steps come straight from your goals.</p>
+              <article className="new-home-focus-add">
+                <div className="art" style={{ backgroundImage: `url(${FOCUS_ART})` }} />
+                <ul>
+                  <li className="is-on">
+                    <i aria-hidden>
+                      <Check size={13} strokeWidth={2.6} />
+                    </i>
+                    Price the first collection
+                  </li>
+                  <li>
+                    <i aria-hidden>+</i>
+                    Open the online shop
+                  </li>
+                  <li>
+                    <i aria-hidden>+</i>
+                    Photograph the collection
+                  </li>
+                </ul>
+              </article>
+            </div>
+          </div>
         </div>
       </div>
     </section>

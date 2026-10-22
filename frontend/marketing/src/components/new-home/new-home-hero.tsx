@@ -54,10 +54,12 @@ const TILES = [
   ["focus", "Focus"],
 ] as const;
 
-function rise(delayMs: number) {
+const HERO_STEP = 90;
+
+function rise(step: number) {
   return {
-    className: "home-v2-hero-anim is-ready",
-    style: { animationDelay: `${delayMs}ms` } as const,
+    className: "home-v2-hero-anim",
+    style: { animationDelay: `${step * HERO_STEP}ms` } as const,
   };
 }
 
@@ -114,6 +116,11 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTriggerId = useId();
   const menuPanelId = useId();
+  const strap = rise(1);
+  const text = rise(2);
+  const path = rise(3);
+  const input = rise(4);
+  const cards = rise(5);
 
   useEffect(() => {
     const nodes = NAV.map(([, id]) => document.getElementById(id)).filter(
@@ -132,8 +139,6 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
   }, []);
-
-  const copy = rise(0);
 
   return (
     <>
@@ -235,25 +240,27 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
         </div>
         <div className="new-home-stage-shade" aria-hidden />
         <div className="new-home-wrap new-home-stage-inner">
-          <div className={copy.className} style={copy.style}>
-            <div className="new-home-copy">
-              <h1 className="new-home-display">
-                Become who you <em>said</em> you’d be.
-              </h1>
-              <p className="new-home-lead">The app that catalyses personal transformation.</p>
-              <p className="new-home-path new-home-display">
-                <span>See it</span>
-                <span aria-hidden>→</span>
-                <span>Clear it</span>
-                <span aria-hidden>→</span>
-                <span>Believe it</span>
-                <span aria-hidden>→</span>
-                <i>Become it.</i>
-              </p>
+          <div className="new-home-copy">
+            <h1 className={`new-home-display ${strap.className}`} style={strap.style}>
+              Become who you <em>said</em> you’d be.
+            </h1>
+            <p className={`new-home-lead ${text.className}`} style={text.style}>
+              The app that catalyses personal transformation.
+            </p>
+            <p className={`new-home-path new-home-display ${path.className}`} style={path.style}>
+              <span>See it</span>
+              <span aria-hidden>→</span>
+              <span>Clear it</span>
+              <span aria-hidden>→</span>
+              <span>Believe it</span>
+              <span aria-hidden>→</span>
+              <i>Become it.</i>
+            </p>
+            <div className={`new-home-prompt-slot ${input.className}`} style={input.style}>
               <HeroPrompt tone="line" />
             </div>
           </div>
-          <div className="new-home-dock">
+          <div className={`new-home-dock ${cards.className}`} style={cards.style}>
             <nav className="new-home-tiles new-home-swipe" aria-label="Features">
               {TILES.map(([id, label]) => (
                 <a

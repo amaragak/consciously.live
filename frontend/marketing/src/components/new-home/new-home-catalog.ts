@@ -82,6 +82,13 @@ export const FEATURED_PROGRAMS = [
     chakras: true,
   },
   {
+    title: "Sleep Reset",
+    sessions: "6 sessions",
+    href: "/meditate/library/programs/sleep-reset",
+    cover: `${CDN}/program-covers/ff329c14-a828-435f-816f-b603eeb8d972/program-1792451684125.jpg`,
+    chakras: false,
+  },
+  {
     title: "Four Directions of Self-Compassion",
     sessions: "5 sessions",
     href: "/meditate/library/programs/four-directions-of-self-compassion",
