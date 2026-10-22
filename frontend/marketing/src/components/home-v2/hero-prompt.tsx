@@ -29,14 +29,24 @@ function hasSession(): boolean {
   return isMedimadeSessionActive() && Boolean(getMedimadeSessionJwt());
 }
 
+const LINE_EXAMPLES = [
+  "Calm and certain before my pitch on Friday.",
+  "A quiet morning to paint, with the door closed.",
+  "Steady hands the day I open the shop.",
+  "Sleep that lasts after a long week.",
+] as const;
+
 export function HeroPrompt({
   tone = "default",
 }: { tone?: "default" | "light" | "card" | "line" } = {}) {
   const router = useRouter();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
-  const [prompt, setPrompt] = useState(
-    tone === "line" ? "Calm and certain before my pitch on Friday." : "",
-  );
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [exampleIndex, setExampleIndex] = useState(0);
+  const [exampleCount, setExampleCount] = useState(0);
+  const [examplePhase, setExamplePhase] = useState<"type" | "hold" | "delete">("type");
+  const [showingExample, setShowingExample] = useState(tone === "line");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placeholder, setPlaceholder] = useState("e.g. calm before a pitch");
@@ -54,6 +64,35 @@ export function HeroPrompt({
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (tone !== "line" || !showingExample || reduceMotion) return;
+    const full = LINE_EXAMPLES[exampleIndex].length;
+    const wait = examplePhase === "hold" ? 1400 : examplePhase === "delete" ? 16 : 28;
+    const timer = window.setTimeout(() => {
+      if (examplePhase === "type" && exampleCount < full) {
+        setExampleCount((value) => value + 1);
+      } else if (examplePhase === "type") {
+        setExamplePhase("hold");
+      } else if (examplePhase === "hold") {
+        setExamplePhase("delete");
+      } else if (exampleCount > 0) {
+        setExampleCount((value) => value - 1);
+      } else {
+        setExampleIndex((value) => (value + 1) % LINE_EXAMPLES.length);
+        setExamplePhase("type");
+      }
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [tone, showingExample, reduceMotion, exampleIndex, exampleCount, examplePhase]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -86,7 +125,7 @@ export function HeroPrompt({
   const light = tone === "light";
 
   if (tone === "line") {
-    const pulsing = Boolean(prompt.trim()) && !busy;
+    const entered = !showingExample && Boolean(prompt.trim());
     return (
       <form
         onSubmit={(e) => void onSubmit(e)}
@@ -100,16 +139,38 @@ export function HeroPrompt({
             <input
               id="new-home-manifest-prompt"
               type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              value={showingExample ? "" : prompt}
+              onFocus={() => {
+                if (!showingExample) return;
+                setShowingExample(false);
+                setPrompt("");
+              }}
+              onBlur={() => {
+                if (prompt.trim()) return;
+                setExampleCount(0);
+                setExamplePhase("type");
+                setShowingExample(true);
+              }}
+              onChange={(e) => {
+                setShowingExample(false);
+                setPrompt(e.target.value);
+              }}
               disabled={busy}
-              placeholder="Calm and certain before my pitch on Friday."
+              placeholder=""
             />
+            {showingExample ? (
+              <span className="new-home-line-example" aria-hidden>
+                {reduceMotion
+                  ? LINE_EXAMPLES[0]
+                  : LINE_EXAMPLES[exampleIndex].slice(0, exampleCount)}
+                {reduceMotion ? null : <i className="new-home-caret" />}
+              </span>
+            ) : null}
           </div>
           <button
             type="submit"
-            disabled={busy || !prompt.trim()}
-            className={`new-home-mist${pulsing ? " home-v2-create-meditate-pulse" : ""}`}
+            disabled={busy || !entered}
+            className={`new-home-mist${entered && !busy ? " home-v2-create-meditate-pulse" : ""}`}
           >
             <span>{busy ? "Starting…" : "Create meditation"}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

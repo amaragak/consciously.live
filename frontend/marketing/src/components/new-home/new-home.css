@@ -240,10 +240,27 @@ main:has(.new-home) {
 }
 
 .new-home-line-field {
+  position: relative;
   display: flex;
   flex: 1 1 180px;
   flex-direction: column;
   min-width: 0;
+}
+
+.new-home-line-example {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  overflow: hidden;
+  color: var(--nh-ink);
+  font-size: 16px;
+  line-height: 28px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .new-home-line-label {
@@ -329,6 +346,11 @@ main:has(.new-home) {
     height: 32px;
   }
 
+  .new-home-line-example {
+    height: 32px;
+    line-height: 32px;
+  }
+
   .new-home-line-row .new-home-mist {
     height: 48px;
     padding: 0 22px;
@@ -384,8 +406,9 @@ main:has(.new-home) {
     margin-top: 0;
     gap: 0;
     overflow: visible;
-    border: 1px solid color-mix(in srgb, #fff 70%, var(--nh-line));
+    border: 2px solid color-mix(in srgb, #c3d2e8 55%, transparent);
     border-radius: 20px;
+    animation: new-home-line-border-pulse 1.6s ease-in-out infinite;
     background: color-mix(in srgb, var(--nh-card) 78%, transparent);
     box-shadow: 0 12px 32px rgba(30, 37, 48, 0.14);
     backdrop-filter: blur(16px);
@@ -553,7 +576,10 @@ main:has(.new-home) {
   margin-bottom: 52px;
 }
 
-.new-home-stage .new-home-line,
+.new-home-stage .new-home-line {
+  width: min(800px, 100%);
+}
+
 .new-home-stage .new-home-dock {
   width: min(640px, 100%);
 }
@@ -630,7 +656,6 @@ main:has(.new-home) {
 }
 
 @media (min-width: 768px) and (max-width: 1023.98px) {
-  .new-home-stage .new-home-line,
   .new-home-stage .new-home-dock {
     width: 80%;
   }
@@ -1973,6 +1998,36 @@ main:has(.new-home) {
   animation: home-v2-prompt-border-pulse 1.6s ease-in-out infinite;
 }
 
+.new-home-stage .new-home-line-row {
+  border-width: 2px;
+}
+
+.new-home-stage .new-home-prompt-card:not(:focus-within) {
+  animation: new-home-line-border-pulse 1.6s ease-in-out infinite;
+}
+
+.new-home .new-home-line-row input:focus,
+.new-home .new-home-line-row input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+@keyframes new-home-line-border-pulse {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, #c3d2e8 55%, transparent);
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, #c3d2e8 0%, transparent),
+      0 10px 28px rgba(30, 37, 48, 0.08);
+  }
+  50% {
+    border-color: #c3d2e8;
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, #c3d2e8 72%, transparent),
+      0 10px 28px rgba(30, 37, 48, 0.08);
+  }
+}
+
 .new-home .new-home-prompt-card:focus-within {
   outline: 2px solid #c3d2e8;
   outline-offset: 0;
@@ -1986,8 +2041,26 @@ main:has(.new-home) {
   background-image: none;
 }
 
+.new-home .new-home-mist.home-v2-create-meditate-pulse {
+  animation: new-home-create-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes new-home-create-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--nh-mist) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--nh-mist) 70%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .new-home-prompt-card:not(:focus-within) {
+  .new-home-prompt-card:not(:focus-within),
+  .new-home-stage .new-home-prompt-card:not(:focus-within),
+  .new-home-stage .new-home-tiles,
+  .new-home-stage .new-home-tile,
+  .new-home .new-home-mist.home-v2-create-meditate-pulse {
     animation: none;
   }
 }
@@ -2218,6 +2291,11 @@ main:has(.new-home) {
     padding: 0;
   }
 
+  .new-home-line-example {
+    height: 44px;
+    line-height: 44px;
+  }
+
   .new-home-line-row .new-home-mist {
     width: 100%;
   }
@@ -2259,8 +2337,9 @@ main:has(.new-home) {
     gap: 6px;
     min-width: 0;
     padding: 12px 8px 14px;
-    border: 1px solid color-mix(in srgb, #fff 70%, var(--nh-line));
+    border: 2px solid color-mix(in srgb, #c3d2e8 55%, transparent);
     border-radius: 18px;
+    animation: new-home-line-border-pulse 1.6s ease-in-out infinite;
     background: color-mix(in srgb, var(--nh-card) 78%, transparent);
     box-shadow: 0 8px 22px rgba(30, 37, 48, 0.12);
     text-align: center;
