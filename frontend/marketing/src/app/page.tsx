@@ -1,29 +1,47 @@
 import type { Metadata } from "next";
-import { HomeV2Page } from "@/components/home-v2/home-v2-page";
-import { LegacyHome } from "@/components/legacy/LegacyHome";
-import { isHomeV2Enabled } from "@/lib/home-v2-flag";
+import { headers } from "next/headers";
+import {
+  HERO_PORTRAIT_AVIF,
+  HERO_PORTRAIT_SIZES,
+  HERO_WIDE_AVIF,
+  HERO_WIDE_SIZES,
+  isPhoneUserAgent,
+} from "@/components/new-home/new-home-hero-art";
+import { NewHomePage } from "@/components/new-home/new-home-page";
 
-export const metadata: Metadata = isHomeV2Enabled()
-  ? {
-      title: {
-        absolute: "Consciously — become who you said you'd be",
-      },
-      description:
-        "Get clear on the life you want, quiet the doubt in the way, and spend your days building it.",
-    }
-  : {
-      title: {
-        absolute: "Consciously — live consciously with meditation & journal",
-      },
-      description:
-        "Consciously at consciously.live: generate guided meditations, keep a personal library, and journal with smart insights—all in one place.",
-    };
+export const metadata: Metadata = {
+  title: {
+    absolute: "Consciously — become who you said you'd be",
+  },
+  description:
+    "Get clear on the life you want, quiet the doubt in the way, and spend your days building it.",
+};
 
-/**
- * Public marketing home.
- * `NEXT_PUBLIC_HOME_V2=false` rolls back to the legacy suite landing.
- */
-export default function HomePage() {
-  if (isHomeV2Enabled()) return <HomeV2Page />;
-  return <LegacyHome />;
+export default async function HomePage() {
+  const phone = isPhoneUserAgent((await headers()).get("user-agent"));
+  return (
+    <>
+      {phone ? (
+        <link
+          rel="preload"
+          as="image"
+          type="image/avif"
+          media="(max-width: 767.98px)"
+          imageSrcSet={HERO_PORTRAIT_AVIF}
+          imageSizes={HERO_PORTRAIT_SIZES}
+          fetchPriority="high"
+        />
+      ) : null}
+      <link
+        rel="preload"
+        as="image"
+        type="image/avif"
+        media={phone ? "(min-width: 768px)" : undefined}
+        imageSrcSet={HERO_WIDE_AVIF}
+        imageSizes={HERO_WIDE_SIZES}
+        fetchPriority="high"
+      />
+      <NewHomePage phone={phone} />
+    </>
+  );
 }

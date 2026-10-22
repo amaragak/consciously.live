@@ -34,3 +34,6 @@ docs/docs/
 
 # Duplicate HomeMobile dumps — canonical copies are in docs/design/marketing/
 docs/design/homepage-v2/HomeMobile*
+
+# Local generated images (Nano Banana and other one-off stills)
+tmp/

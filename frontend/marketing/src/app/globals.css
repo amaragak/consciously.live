@@ -153,6 +153,7 @@ input[type="search"].app-search-input::-webkit-search-cancel-button {
   --color-marketing-band-c: var(--marketing-band-c);
   --color-marketing-band-d: var(--marketing-band-d);
   --color-marketing-band-ideate: var(--marketing-band-ideate);
+  --color-marketing-page-bg: var(--marketing-page-bg);
   --color-marketing-card-bg: var(--marketing-card-bg);
   --color-marketing-card-border: var(--marketing-card-border);
   --color-marketing-card-hover: var(--marketing-card-hover);

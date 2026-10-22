@@ -56,6 +56,12 @@ const NAV = "#33465C";
 // const NAV = "#6E88A3";
 /** SPA header fill — shared by light + dark (tonal navy). */
 const NAV_HEADER = "#1E232E";
+/**
+ * Light marketing page. Near-white with a faint warm tint — lighter than the
+ * cream canvas and distinct from pure white `--surface`. Same in dark: the
+ * page that uses it has no dark variant.
+ */
+const MARKETING_PAGE_BG = "#FFFDF9";
 /** Light app canvas. Hybrid header fill stays cream; SPA light/dark header is navy. */
 const APP_CANVAS_LIGHT = "#FAF6F0";
 const NAV_LIGHT = APP_CANVAS_LIGHT;
@@ -374,6 +380,8 @@ type Semantic = {
   marketingBandD: string;
   /** Ideate band on meditate page (distinct light tan). */
   marketingBandIdeate: string;
+  /** Light marketing page — near-white, faint warm tint. */
+  marketingPageBg: string;
   marketingBody: string;
   marketingCardBg: string;
   marketingCardBorder: string;
@@ -533,6 +541,7 @@ function assemble(
     marketingBandIdeate: dark
       ? "#1A2330"
       : mixHex(HEADER_GOLD, paper.background, 0.98),
+    marketingPageBg: MARKETING_PAGE_BG,
     marketingCardBg: dark ? "#2A3544" : "#FFFFFF",
     marketingCardBorder: dark ? "rgba(255,255,255,0.1)" : "#E5DFD0",
     marketingCardHover: dark ? "#323E4F" : "#FBF8F2",
@@ -721,6 +730,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--marketing-band-c": s.marketingBandC,
     "--marketing-band-d": s.marketingBandD,
     "--marketing-band-ideate": s.marketingBandIdeate,
+    "--marketing-page-bg": s.marketingPageBg,
     "--marketing-body": s.marketingBody,
     "--marketing-card-bg": s.marketingCardBg,
     "--marketing-card-border": s.marketingCardBorder,

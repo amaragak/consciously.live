@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { MouseEvent } from "react";
 import type { HomeV2ToolId } from "@/components/home-v2/constants";
 import { LogoMark } from "@/components/logo-mark";
 
@@ -20,7 +21,7 @@ type Props = {
    * The tool verb stays plain text beside the link.
    */
   homeHref?: string;
-  onHomeClick?: () => void;
+  onHomeClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
 };
 
 const sizeClass: Record<NonNullable<Props["size"]>, string> = {
