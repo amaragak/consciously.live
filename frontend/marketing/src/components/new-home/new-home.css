@@ -2278,8 +2278,22 @@ main:has(.new-home) {
     transform: none;
   }
 
+  /* The portrait is mostly sky, so a short stage hides her head and the
+     sun behind the prompt. Fill the screen under the nav, and never go
+     shorter than 740px, so both sit in the open band. */
+  .new-home.is-phone .new-home-stage,
+  .new-home.is-phone .new-home-stage-inner {
+    min-height: max(calc(100svh - 64px), 740px);
+  }
+
   .new-home.is-phone .new-home-hero-photo {
-    object-position: 50% 58%;
+    object-position: 62% center;
+  }
+
+  .new-home.is-phone .new-home-stage-shade {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--nh-dark) 84%, transparent) 0%, transparent 42%),
+      linear-gradient(0deg, color-mix(in srgb, var(--nh-dark) 42%, transparent) 0%, transparent 22%);
   }
 
   .new-home-next {
