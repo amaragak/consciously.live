@@ -40,6 +40,8 @@ type Props = {
   activeSecondary?: string | null;
   triggerId: string;
   panelId: string;
+  /** Pre-release: one waitlist button instead of Start free and Sign in. */
+  joinWaitlist?: () => void;
 };
 
 /**
@@ -55,6 +57,7 @@ export function HomeV2MobileMenu({
   activeSecondary = null,
   triggerId,
   panelId,
+  joinWaitlist,
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
@@ -316,6 +319,18 @@ export function HomeV2MobileMenu({
                   Sign out
                 </button>
               </>
+            ) : joinWaitlist ? (
+              <button
+                type="button"
+                tabIndex={open ? undefined : -1}
+                className="accent-fill-gradient inline-flex h-[52px] w-full cursor-pointer items-center justify-center rounded-full text-[16px] font-semibold text-[var(--hv2-navy)]"
+                onClick={() => {
+                  onClose();
+                  joinWaitlist();
+                }}
+              >
+                Join the waitlist
+              </button>
             ) : (
               <>
                 <Link

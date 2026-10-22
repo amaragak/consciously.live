@@ -47,6 +47,7 @@ import {
 } from "./new-home-catalog";
 import { SelectChevron } from "@/components/select-chevron";
 import { PlayMark, PreviewButton } from "./new-home-preview";
+import { useWaitlist, WaitlistAppLink, WaitlistInlineForm } from "./waitlist-modal";
 
 const IMPORT_CHIPS = [
   "Day One",
@@ -424,6 +425,7 @@ function TokenIcon({ icon }: { icon?: "journal" | "goal" | "heal" }) {
 
 function BriefPanel() {
   const reduce = useReducedMotion();
+  const waitlist = useWaitlist();
   const [index, setIndex] = useState(0);
   const [count, setCount] = useState(0);
   const [phase, setPhase] = useState<"type" | "hold" | "delete">("type");
@@ -468,7 +470,15 @@ function BriefPanel() {
           ))}
         </div>
         <div className="new-home-brief-actions">
-          <button type="button" className="is-talk">
+          <button
+            type="button"
+            className="is-talk"
+            onClick={
+              waitlist
+                ? () => waitlist.open({ source: "create" })
+                : () => window.location.assign(HOME_V2_START_FREE_HREF)
+            }
+          >
             Create meditation
             <ChevronRight size={16} aria-hidden />
           </button>
@@ -596,6 +606,7 @@ function MixFader({
 }
 
 function NewHomeMixer() {
+  const waitlist = useWaitlist();
   const [presetName, setPresetName] = useState("Nostalgia");
   const [lanes, setLanes] = useState<MixLane[]>(NOSTALGIA_LANES);
   const touched = useRef(false);
@@ -631,10 +642,19 @@ function NewHomeMixer() {
           </div>
         </div>
         <div className="new-home-mix-actions">
-          <button type="button" tabIndex={-1}>
+          <button
+            type="button"
+            tabIndex={waitlist ? undefined : -1}
+            onClick={waitlist ? () => waitlist.open({ source: "mixer" }) : undefined}
+          >
             Pause mix
           </button>
-          <button type="button" className="is-save" tabIndex={-1}>
+          <button
+            type="button"
+            className="is-save"
+            tabIndex={waitlist ? undefined : -1}
+            onClick={waitlist ? () => waitlist.open({ source: "mixer" }) : undefined}
+          >
             Save as new
           </button>
         </div>
@@ -680,6 +700,7 @@ function Row({ title, body, children }: { title: string; body?: string; children
 
 function MeditateBand() {
   const base = useId();
+  const waitlist = useWaitlist();
   const [tab, setTab] = useState(0);
   const tabs = ["Create", "Sounds", "Library"];
   const sounds = SHOWCASE_SOUNDS.map((item) => {
@@ -760,9 +781,13 @@ function MeditateBand() {
                       </article>
                     ))}
                   </div>
-                  <a className="new-home-text-link" href={appHref("/meditate/sounds/soundscapes")}>
+                  <WaitlistAppLink
+                    className="new-home-text-link"
+                    href={appHref("/meditate/sounds/soundscapes")}
+                    source="soundscapes"
+                  >
                     Browse the whole library in the app →
-                  </a>
+                  </WaitlistAppLink>
                 </div>
               </div>
               <div>
@@ -784,9 +809,13 @@ function MeditateBand() {
                       </article>
                     ))}
                   </div>
-                  <a className="new-home-text-link" href={appHref("/meditate/sounds/voices")}>
+                  <WaitlistAppLink
+                    className="new-home-text-link"
+                    href={appHref("/meditate/sounds/voices")}
+                    source="voices"
+                  >
                     And more voices →
-                  </a>
+                  </WaitlistAppLink>
                 </div>
               </div>
             </div>
@@ -805,7 +834,23 @@ function MeditateBand() {
                 </div>
                 <div className="new-home-library-row">
                   {LIBRARY.map((item) => (
-                    <article key={item.title}>
+                    <article
+                      key={item.title}
+                      className={waitlist ? "is-waitlist" : undefined}
+                      role={waitlist ? "button" : undefined}
+                      tabIndex={waitlist ? 0 : undefined}
+                      onClick={waitlist ? () => waitlist.open({ source: "library" }) : undefined}
+                      onKeyDown={
+                        waitlist
+                          ? (event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                waitlist.open({ source: "library" });
+                              }
+                            }
+                          : undefined
+                      }
+                    >
                       <div className="new-home-library-art">
                         <img src={item.art} alt="" />
                         <span className="new-home-library-play" aria-hidden>
@@ -1048,6 +1093,7 @@ function ManifestBand() {
 
 function JournalBand() {
   const base = useId();
+  const waitlist = useWaitlist();
   const [tab, setTab] = useState(0);
   const tabs = ["Journal", "Gratitude", "Insights"];
 
@@ -1123,12 +1169,28 @@ function JournalBand() {
                     <Heart size={14} strokeWidth={1.75} />
                     Heal · Self-sabotage
                   </em>
-                  <span className="new-home-editor-add">+ Attach</span>
+                  {waitlist ? (
+                    <button
+                      type="button"
+                      className="new-home-editor-add"
+                      onClick={() => waitlist.open({ source: "journal" })}
+                    >
+                      + Attach
+                    </button>
+                  ) : (
+                    <span className="new-home-editor-add">+ Attach</span>
+                  )}
                 </div>
               </div>
             </Row>
             <Row title="Bring your old journals with you.">
-              <button type="button" className="new-home-import" onClick={openJournalImport}>
+              <button
+                type="button"
+                className="new-home-import"
+                onClick={
+                  waitlist ? () => waitlist.open({ source: "journal" }) : openJournalImport
+                }
+              >
                 <strong>Import a journal</strong>
                 <div>
                   {IMPORT_CHIPS.map((chip) => (
@@ -1353,9 +1415,9 @@ function FocusBand() {
           title="Give your hours to your dream."
           body="Pull the next step from your goals, settle your mind, do the work."
           action={
-            <a className="new-home-text-link" href={appHref("/focus")}>
+            <WaitlistAppLink className="new-home-text-link" href={appHref("/focus")} source="focus">
               Start a focus session <ChevronRight size={16} aria-hidden />
-            </a>
+            </WaitlistAppLink>
           }
         />
         <div className="new-home-rows">
@@ -1455,6 +1517,7 @@ function FocusBand() {
 }
 
 function CloseBand() {
+  const waitlist = useWaitlist();
   return (
     <section className="new-home-close">
       <Image
@@ -1468,9 +1531,16 @@ function CloseBand() {
         <h2 className="new-home-display">
           Who are you <em>becoming?</em>
         </h2>
-        <a className="new-home-mist" href={HOME_V2_START_FREE_HREF}>
-          Start free
-        </a>
+        {waitlist ? (
+          <>
+            <p className="new-home-close-lead">Be one of the first to find out.</p>
+            <WaitlistInlineForm />
+          </>
+        ) : (
+          <a className="new-home-mist" href={HOME_V2_START_FREE_HREF}>
+            Start free
+          </a>
+        )}
       </div>
     </section>
   );

@@ -38,7 +38,12 @@ const LINE_EXAMPLES = [
 
 export function HeroPrompt({
   tone = "default",
-}: { tone?: "default" | "light" | "card" | "line" } = {}) {
+  onLineIntent,
+}: {
+  tone?: "default" | "light" | "card" | "line";
+  /** Homepage pre-release: open the waitlist instead of creating a meditation. */
+  onLineIntent?: (brief: string) => void;
+} = {}) {
   const router = useRouter();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -50,10 +55,12 @@ export function HeroPrompt({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placeholder, setPlaceholder] = useState("e.g. calm before a pitch");
+  const [phoneLayout, setPhoneLayout] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
     const sync = () => {
+      setPhoneLayout(!mq.matches);
       setPlaceholder(
         mq.matches
           ? "Calm before my big pitch, confidence for launch day, deeper sleep…"
@@ -96,7 +103,15 @@ export function HeroPrompt({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const trimmed = prompt.trim();
+    if (tone === "line" && onLineIntent) {
+      onLineIntent(showingExample ? "" : prompt.trim());
+      return;
+    }
+    const exampleBrief =
+      showingExample && phoneLayout
+        ? LINE_EXAMPLES[reduceMotion ? 0 : exampleIndex]
+        : "";
+    const trimmed = prompt.trim() || exampleBrief;
     if (!trimmed || busy) return;
     setBusy(true);
     setError(null);
@@ -126,6 +141,7 @@ export function HeroPrompt({
 
   if (tone === "line") {
     const entered = !showingExample && Boolean(prompt.trim());
+    const exampleReady = phoneLayout && showingExample;
     return (
       <form
         onSubmit={(e) => void onSubmit(e)}
@@ -169,7 +185,7 @@ export function HeroPrompt({
           </div>
           <button
             type="submit"
-            disabled={busy || !entered}
+            disabled={busy || (!onLineIntent && !entered && !exampleReady)}
             className={`new-home-mist${entered && !busy ? " home-v2-create-meditate-pulse" : ""}`}
           >
             <span>{busy ? "Starting…" : "Create meditation"}</span>
@@ -313,6 +329,7 @@ export function HomeV2AuthActions({
   ctaLabel,
   ctaIcon,
   tone = "default",
+  onJoinWaitlist,
 }: {
   compact?: boolean;
   ctaHref: string;
@@ -320,6 +337,8 @@ export function HomeV2AuthActions({
   /** Sidebar-matching glyph for tool CTAs (not Start free / Dashboard). */
   ctaIcon?: ReactNode;
   tone?: "default" | "mist";
+  /** When set, hide Sign in and open the waitlist instead of following ctaHref. */
+  onJoinWaitlist?: () => void;
 }) {
   const [signedIn, setSignedIn] = useState(false);
   const [dashboardBusy, setDashboardBusy] = useState(false);
@@ -364,23 +383,29 @@ export function HomeV2AuthActions({
 
   return (
     <div className="flex items-center gap-3">
-      <Link
-        href={loginHref}
-        className={
-          mist
-            ? "hidden whitespace-nowrap text-[15px] text-[#4A4652] hover:text-[#3E3442] md:inline"
-            : "whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] hover:text-[var(--hv2-gold)]"
-        }
-      >
-        Sign in
-      </Link>
-      <Link
-        href={ctaHref}
-        className={ctaClass}
-      >
-        {ctaIcon}
-        {ctaLabel}
-      </Link>
+      {onJoinWaitlist ? null : (
+        <Link
+          href={loginHref}
+          className={
+            mist
+              ? "hidden whitespace-nowrap text-[15px] text-[#4A4652] hover:text-[#3E3442] md:inline"
+              : "whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] hover:text-[var(--hv2-gold)]"
+          }
+        >
+          Sign in
+        </Link>
+      )}
+      {onJoinWaitlist ? (
+        <button type="button" className={ctaClass} onClick={onJoinWaitlist}>
+          {ctaIcon}
+          {ctaLabel}
+        </button>
+      ) : (
+        <Link href={ctaHref} className={ctaClass}>
+          {ctaIcon}
+          {ctaLabel}
+        </Link>
+      )}
     </div>
   );
 }

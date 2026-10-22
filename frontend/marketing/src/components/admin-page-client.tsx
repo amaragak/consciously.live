@@ -13,6 +13,7 @@ const SECTIONS = [
   { href: "/admin/programs", label: "Programs" },
   { href: "/admin/read", label: "Read" },
   { href: "/admin/analytics", label: "Analytics" },
+  { href: "/admin/waitlist", label: "Waitlist" },
   { href: "/admin/ai-costs", label: "AI costs" },
   { href: "/admin/script-lab", label: "Script Lab" },
   { href: "/admin/stress-test", label: "Stress Test" },

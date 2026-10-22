@@ -4,6 +4,7 @@ import { AdminCompositionCoversPanel } from "./components/admin-composition-cove
 import { AdminAnalyticsPanel } from "./components/admin-analytics-panel";
 import { AdminReadPanel } from "./components/admin-blog-panel";
 import { AdminGuidesPanel } from "./components/admin-guides-panel";
+import { AdminWaitlistPanel } from "./components/admin-waitlist-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
 import { AdminPrepromptsPanel } from "./components/admin-preprompts-panel";
 import { AdminLibraryCategoriesPanel } from "./components/admin-library-categories-panel";
@@ -147,6 +148,7 @@ export function App() {
           <Route path="blog" element={<AdminReadPanel />} />
           <Route path="read" element={<AdminReadPanel />} />
           <Route path="guides" element={<AdminGuidesPanel />} />
+          <Route path="waitlist" element={<AdminWaitlistPanel />} />
           <Route path="analytics" element={<AdminAnalyticsPanel />} />
           <Route path="ai-costs" element={<AdminAiCostsPanel />} />
           <Route path="script-lab" element={<AdminScriptLabPanel />} />

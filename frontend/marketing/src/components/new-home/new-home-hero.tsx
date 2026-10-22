@@ -31,6 +31,7 @@ import {
   scrollToSection,
   scrollToTop,
 } from "@/components/new-home/new-home-scroll";
+import { useWaitlist } from "@/components/new-home/waitlist-modal";
 
 const NAV = [
   ["Meditate", "meditate"],
@@ -116,6 +117,7 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTriggerId = useId();
   const menuPanelId = useId();
+  const waitlist = useWaitlist();
   const strap = rise(1);
   const text = rise(2);
   const path = rise(3);
@@ -193,8 +195,11 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
           <div className="new-home-nav-end">
             <HomeV2AuthActions
               ctaHref={HOME_V2_START_FREE_HREF}
-              ctaLabel="Start free"
+              ctaLabel={waitlist ? "Join the waitlist" : "Start free"}
               tone="mist"
+              onJoinWaitlist={
+                waitlist ? () => waitlist.open({ source: "header" }) : undefined
+              }
             />
             <button
               id={menuTriggerId}
@@ -229,6 +234,14 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
           activeTool={active as HomeV2ToolId}
           triggerId={menuTriggerId}
           panelId={menuPanelId}
+          joinWaitlist={
+            waitlist
+              ? () => {
+                  setMenuOpen(false);
+                  waitlist.open({ source: "header" });
+                }
+              : undefined
+          }
         />
       </div>
       <header className="new-home-hero">
@@ -257,7 +270,14 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
               <i>Become it.</i>
             </p>
             <div className={`new-home-prompt-slot ${input.className}`} style={input.style}>
-              <HeroPrompt tone="line" />
+              <HeroPrompt
+                tone="line"
+                onLineIntent={
+                  waitlist
+                    ? (brief) => waitlist.open({ source: "hero", brief })
+                    : undefined
+                }
+              />
             </div>
           </div>
           <div className={`new-home-dock ${cards.className}`} style={cards.style}>

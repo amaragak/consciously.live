@@ -23,6 +23,8 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
   readonly meditationJobs: dynamodb.Table;
   /** Lifetime + daily AI spend ledger (events + aggregates). */
   readonly aiUsage: dynamodb.Table;
+  /** Homepage pre-release sign-ups. Rate-limit rows use a ttl; sign-ups do not. */
+  readonly waitlist: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.NestedStackProps) {
     super(scope, id, props);
@@ -88,6 +90,12 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
     this.aiUsage = new dynamodb.Table(this, "AiUsageTable", {
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      timeToLiveAttribute: "ttl",
+      ...payPerRequest,
+    });
+
+    this.waitlist = new dynamodb.Table(this, "WaitlistTable", {
+      partitionKey: { name: "email", type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: "ttl",
       ...payPerRequest,
     });

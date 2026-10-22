@@ -943,5 +943,29 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         voiceFx,
       ),
     });
+
+    props.database.waitlist.grantReadData(role);
+    const adminWaitlist = new lambda_nodejs.NodejsFunction(this, "AdminWaitlistFunction", {
+      entry: path.join(__dirname, "../../lambdas/admin-waitlist.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      role,
+      environment: {
+        WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        ADMIN_EMAILS: adminEmails,
+      },
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminWaitlistRoute",
+      path: "/admin/waitlist",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminWaitlistIntegration",
+        adminWaitlist,
+      ),
+    });
   }
 }

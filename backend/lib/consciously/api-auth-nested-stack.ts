@@ -60,6 +60,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
     magicLinkTable.grantReadWriteData(role);
     usersTable.grantReadWriteData(role);
     refreshTable.grantReadWriteData(role);
+    props.database.waitlist.grantReadWriteData(role);
     authJwtSecret.grantRead(role);
     brevoApiKeySecret.grantRead(role);
     role.addToPolicy(
@@ -105,6 +106,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
           MAGIC_LINK_TABLE_NAME: magicLinkTable.tableName,
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
+          WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
         },
@@ -158,6 +160,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
           MAGIC_LINK_TABLE_NAME: magicLinkTable.tableName,
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
+          WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
         },
@@ -194,6 +197,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
         environment: {
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
+          WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
         },
@@ -270,6 +274,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
         environment: {
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
+          WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
           COGNITO_USER_POOL_ID: userPool.userPoolId,
@@ -388,6 +393,27 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthCognitoResendIntegration",
         authCognitoResend,
+      ),
+    });
+
+    const waitlistJoin = new lambda_nodejs.NodejsFunction(this, "WaitlistJoinFunction", {
+      entry: path.join(__dirname, "../../lambdas/waitlist-join.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      environment: {
+        WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
+      },
+    });
+    props.database.waitlist.grantReadWriteData(waitlistJoin);
+    addNestHttpRoutes(this, httpApi, {
+      id: "WaitlistJoinRoute",
+      path: "/waitlist",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "WaitlistJoinIntegration",
+        waitlistJoin,
       ),
     });
   }

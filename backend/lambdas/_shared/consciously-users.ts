@@ -22,6 +22,42 @@ function usersTableName(): string {
   return n;
 }
 
+/** Copy a waitlist brief onto the account the first time this email signs in. */
+async function linkWaitlistToUser(email: string, userId: string): Promise<void> {
+  const table = process.env.WAITLIST_TABLE_NAME?.trim();
+  if (!table) return;
+  try {
+    const got = await ddb.send(new GetCommand({ TableName: table, Key: { email } }));
+    const item = got.Item;
+    if (!item || item.kind === "rate") return;
+    const brief =
+      typeof item.brief === "string" && item.brief.trim() ? item.brief.trim() : null;
+    const source = typeof item.source === "string" ? item.source : null;
+    const joinedAt = typeof item.createdAt === "string" ? item.createdAt : null;
+    await ddb.send(
+      new UpdateCommand({
+        TableName: usersTableName(),
+        Key: { email },
+        UpdateExpression:
+          "SET waitlistBrief = :b, waitlistSource = :s, waitlistJoinedAt = :t",
+        ExpressionAttributeValues: { ":b": brief, ":s": source, ":t": joinedAt },
+      }),
+    );
+    if (item.userId !== userId) {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: table,
+          Key: { email },
+          UpdateExpression: "SET userId = :u",
+          ExpressionAttributeValues: { ":u": userId },
+        }),
+      );
+    }
+  } catch (err) {
+    console.error("waitlist link", err);
+  }
+}
+
 export type ConsciouslyUserRecord = {
   email: string;
   userId: string;
@@ -83,7 +119,7 @@ export async function getOrCreateUserByEmail(
       Key: { email },
     }),
   );
-  const existing = got.Item as Record<string, unknown> | undefined;
+    const existing = got.Item as Record<string, unknown> | undefined;
   if (existing && typeof existing.userId === "string" && existing.userId.trim()) {
     const incoming = opts?.cognitoSub?.trim() || null;
     const prior =
@@ -100,7 +136,9 @@ export async function getOrCreateUserByEmail(
         }),
       );
     }
-    return fromItem(email, existing, incoming);
+    const user = fromItem(email, existing, incoming);
+    await linkWaitlistToUser(email, user.userId);
+    return user;
   }
 
   const userId = randomUUID();
@@ -122,15 +160,17 @@ export async function getOrCreateUserByEmail(
         ExpressionAttributeNames: { "#e": "email" },
       }),
     );
-    return {
+    const user = {
       email,
       userId,
       displayName: null,
       cognitoSub,
-      role: "user",
-      plan: "free",
+      role: "user" as const,
+      plan: "free" as const,
       createdAt: now,
     };
+    await linkWaitlistToUser(email, userId);
+    return user;
   } catch (e: unknown) {
     const name =
       e && typeof e === "object" && "name" in e
