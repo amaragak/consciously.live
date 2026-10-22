@@ -3,8 +3,11 @@ main:has(.new-home) {
   background: var(--marketing-page-bg);
 }
 
+/* Safari applies overflow-x: clip to the vertical axis as well, which
+   freezes this scrollport. The chevron and section links then sit in
+   place. hidden keeps the wide hero inside the viewport. */
 main:has(.new-home) {
-  overflow-x: clip;
+  overflow-x: hidden;
 }
 
 .home-v2.new-home {
@@ -607,7 +610,8 @@ main:has(.new-home) {
 
 .new-home-next {
   position: fixed;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 22px;
   z-index: 18;
   display: inline-flex;
@@ -615,34 +619,36 @@ main:has(.new-home) {
   justify-content: center;
   width: 36px;
   height: 36px;
+  margin-inline: auto;
   padding: 0;
   border: 1px solid color-mix(in srgb, #fff 72%, transparent);
   border-radius: 50%;
-  background: color-mix(in srgb, #fffdf9 82%, transparent);
+  background: color-mix(in srgb, #fffdf9 92%, transparent);
   color: var(--nh-dark);
   box-shadow: 0 8px 22px rgba(20, 24, 32, 0.18);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  text-decoration: none;
   cursor: pointer;
-  transform: translateX(-50%);
   opacity: 0;
-  animation:
-    new-home-cue-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) 540ms both,
-    new-home-next-pulse 1.6s ease-in-out 1440ms infinite;
+  animation: new-home-cue-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) 540ms both;
+}
+
+.new-home-next svg {
+  animation: new-home-next-pulse 1.6s ease-in-out 1440ms infinite;
 }
 
 @keyframes new-home-cue-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(18px);
+    transform: translateY(18px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: none;
   }
 }
 
-.new-home-next.is-gone {
+.new-home-next.is-gone,
+.new-home-next.is-gone svg {
   opacity: 0;
   pointer-events: none;
   animation: none;
@@ -651,10 +657,10 @@ main:has(.new-home) {
 @keyframes new-home-next-pulse {
   0%,
   100% {
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
   50% {
-    transform: translateX(-50%) translateY(7px);
+    transform: translateY(7px);
   }
 }
 
@@ -662,7 +668,8 @@ main:has(.new-home) {
   .new-home-hero-frame,
   .new-home-hero-frame.is-in,
   .new-home-next,
-  .new-home-next.is-in {
+  .new-home-next.is-in,
+  .new-home-next svg {
     animation: none;
     opacity: 1;
   }

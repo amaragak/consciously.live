@@ -1,6 +1,10 @@
 const BANDS = ["meditate", "manifest", "journal", "heal", "focus"] as const;
 
 function scrollParent(el: HTMLElement): HTMLElement {
+  const main = el.closest("main");
+  if (main instanceof HTMLElement && main.scrollHeight > main.clientHeight + 1) {
+    return main;
+  }
   let node: HTMLElement | null = el.parentElement;
   while (node) {
     const style = getComputedStyle(node);

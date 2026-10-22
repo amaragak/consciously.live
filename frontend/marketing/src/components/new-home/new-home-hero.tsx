@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Heart } from "lucide-react";
 import {
   HOME_V2_CONNECT_HREF,
@@ -319,6 +320,11 @@ export function NewHomeHero({ phone = false }: { phone?: boolean }) {
 
 export function NewHomeScrollCue() {
   const [atBottom, setAtBottom] = useState(false);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalHost(document.body);
+  }, []);
 
   useEffect(() => {
     const scroller = pageScroller();
@@ -335,16 +341,24 @@ export function NewHomeScrollCue() {
     };
   }, []);
 
-  return (
-    <button
-      type="button"
+  const cue = (
+    <a
+      href="#meditate"
       className={`new-home-next${atBottom ? " is-gone" : ""}`}
       aria-label="Next section"
       aria-hidden={atBottom}
       tabIndex={atBottom ? -1 : 0}
-      onClick={() => scrollToNextBand()}
+      onClick={(event) => {
+        event.preventDefault();
+        scrollToNextBand();
+      }}
     >
       <ChevronDown aria-hidden width={18} height={18} strokeWidth={1.8} />
-    </button>
+    </a>
   );
+
+  // Fixed inside the scrolling main is clipped in Safari, so the circle
+  // paints and the click misses. Anchor it to the viewport instead.
+  if (portalHost) return createPortal(cue, portalHost);
+  return cue;
 }
