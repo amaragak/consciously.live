@@ -1239,6 +1239,11 @@ export function JournalView() {
       meditationId?: string;
       meditationSource?: JournalEntry["meditationSource"];
       meditationSnapshot?: JournalEntry["meditationSnapshot"];
+      link?: {
+        targetType: "heal_item" | "life_area";
+        targetId: string;
+        label?: string;
+      };
     }) => {
       flushSaveSync();
       const title = opts?.title?.trim() ?? "";
@@ -1257,22 +1262,32 @@ export function JournalView() {
             }
           : {}),
       });
-      const e = opts?.meditationId
-        ? {
-            ...draft,
-            links: [
+      const links = [
+        ...(opts?.meditationId
+          ? [
               newJournalLink({
                 entryId: draft.id,
-                targetType: "meditation",
+                targetType: "meditation" as const,
                 targetId: opts.meditationId,
                 label: opts.meditationSnapshot?.title,
                 reflecting: true,
                 meditationSource: opts.meditationSource,
                 meditationSnapshot: opts.meditationSnapshot,
               }),
-            ],
-          }
-        : draft;
+            ]
+          : []),
+        ...(opts?.link?.targetId
+          ? [
+              newJournalLink({
+                entryId: draft.id,
+                targetType: opts.link.targetType,
+                targetId: opts.link.targetId,
+                label: opts.link.label,
+              }),
+            ]
+          : []),
+      ];
+      const e = links.length ? { ...draft, links } : draft;
       if (opts?.voice) {
         try {
           sessionStorage.setItem("journal-autostart-voice", "1");
@@ -1428,7 +1443,22 @@ export function JournalView() {
     }
     const title = params.get("title")?.trim() || undefined;
     const voice = params.get("voice") === "1";
-    createEntry({ title, voice });
+    const heal = params.get("heal")?.trim();
+    const area = params.get("area")?.trim();
+    const link = heal
+      ? {
+          targetType: "heal_item" as const,
+          targetId: heal,
+          label: params.get("healTitle")?.trim() || undefined,
+        }
+      : area
+        ? {
+            targetType: "life_area" as const,
+            targetId: area,
+            label: params.get("areaTitle")?.trim() || undefined,
+          }
+        : undefined;
+    createEntry({ title, voice, link });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
   const commitImport = useCallback(

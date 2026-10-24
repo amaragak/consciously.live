@@ -1,13 +1,8 @@
 import { ChevronRight, Pin } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
 import { DictationMicButton } from "@/components/dictation-mic-button";
-import {
-  isDemoJournalEntry,
-  loadJournalStoreRaw,
-  stripHtmlToText,
-} from "@/lib/journal-storage";
 import {
   THOUGHT_KIND_OPTIONS,
   newDreamId,
@@ -25,13 +20,6 @@ import {
   guessThoughtKind,
   thoughtSource,
 } from "@/components/plan/life-area/kit";
-import {
-  journalContextDate,
-  journalHref,
-  journalRowsForLifeArea,
-  subscribeJournalEntries,
-  subscribeMeditationOrigins,
-} from "@/lib/journal-links";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { ensureTracker, itemsForArea, type TrackerItem } from "@/lib/tracker-items";
 import { rememberTrackerDetail } from "@/components/plan/life-area/tracker";
@@ -58,8 +46,6 @@ export function ThoughtKindChip({ kind }: { kind: ThoughtKind | null }) {
   );
 }
 
-type FeedFilter = "all" | "mine" | "journal";
-
 type Row = {
   id: string;
   text: string;
@@ -82,16 +68,12 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
   const [tag, setTag] = useState<ThoughtKind | null>(null);
   const [tagging, setTagging] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<ThoughtKind | "all">("all");
-  const [who, setWho] = useState<FeedFilter>("all");
   const [hover, setHover] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
-  const quotesOn = dream.journalQuotesOn !== false;
-  const [linkTick, setLinkTick] = useState(0);
   useEffect(() => {
     const id = search.get("thought");
     if (!id) return;
     setKindFilter("all");
-    setWho("all");
     const timer = window.setTimeout(() => {
       const el = document.getElementById(`thought-${id}`);
       if (!el) return;
@@ -102,56 +84,6 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    const stopEntries = subscribeJournalEntries(() => setLinkTick((n) => n + 1));
-    const stopOrigins = subscribeMeditationOrigins(() => setLinkTick((n) => n + 1));
-    return () => {
-      stopEntries();
-      stopOrigins();
-    };
-  }, []);
-
-  const linkedRows = useMemo(() => {
-    void linkTick;
-    return journalRowsForLifeArea(dream.id).map((row): Row => ({
-      id: `link-${row.entry.id}`,
-      text: row.line,
-      createdAt: row.at,
-      kind: null,
-      compact: {
-        label: `${row.mode === "reflection" ? "Reflection" : "Journal entry"} · ${journalContextDate(row.at)}`,
-        href: journalHref(row.entry),
-      },
-    }));
-  }, [dream.id, linkTick]);
-
-  const journalRows = useMemo(() => {
-    if (!quotesOn) return [];
-    const tokens = dream.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-    return loadJournalStoreRaw()
-      .entries.filter((e) => !isDemoJournalEntry(e))
-      .map((e): Row | null => {
-        const text = stripHtmlToText(e.contentHtml).trim();
-        const hay = `${e.title} ${text}`.toLowerCase();
-        if ((dream.hiddenJournalIds ?? []).includes(e.id)) return null;
-        const hit = tokens.some((t) => hay.includes(t));
-        return hit
-          ? {
-              id: `journal-${e.id}`,
-              text: text.slice(0, 280),
-              createdAt: e.updatedAt || e.createdAt,
-              kind: null,
-              journal: {
-                title: e.title.trim() || "Untitled",
-                href: `/journal/my/${encodeURIComponent(e.id)}`,
-              },
-            }
-          : null;
-      })
-      .filter((r): r is Row => r !== null)
-      .slice(0, 12);
-  }, [dream.title, dream.hiddenJournalIds, quotesOn]);
-
   const mine: Row[] = areaThoughts(dream).map((e) => ({
     id: e.id,
     text: e.text,
@@ -160,12 +92,7 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
     pinned: e.pinned,
   }));
 
-  const rows = [...mine, ...linkedRows, ...journalRows]
-    .filter((r) => {
-      if (who === "mine") return !r.journal && !r.compact;
-      if (who === "journal") return Boolean(r.journal || r.compact);
-      return true;
-    })
+  const rows = mine
     .filter((r) => kindFilter === "all" || r.kind === kindFilter)
     .sort(
       (a, b) =>
@@ -320,20 +247,6 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
                 onClick={() => setKindFilter(o.id)}
               />
             ))}
-            <div className="ml-auto flex rounded-full bg-background p-0.5 text-xs">
-              {(["all", "mine", "journal"] as const).map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setWho(id)}
-                  className={`rounded-full px-2 py-1 capitalize ${
-                    who === id ? "bg-card font-semibold" : "text-muted"
-                  }`}
-                >
-                  {id === "all" ? "Everything" : id === "mine" ? "Mine" : "Journal"}
-                </button>
-              ))}
-            </div>
           </div>
           <Feed
             rows={rows}
@@ -351,16 +264,14 @@ export function LifeAreaThoughts({ dream, onPatch, onRefresh }: Props) {
             }
           />
         </section>
-        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3 xl:hidden">
+        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:hidden">
           <ThemesCard chips={themes} />
           <PinnedCard rows={pinned} />
-          <JournalSetting dream={dream} onPatch={onPatch} />
         </div>
       </div>
       <aside className="hidden flex-col gap-3.5 xl:flex">
         <ThemesCard chips={themes} />
         <PinnedCard rows={pinned} />
-        <JournalSetting dream={dream} onPatch={onPatch} />
       </aside>
     </div>
   );
@@ -702,41 +613,3 @@ function PinnedCard({ rows }: { rows: Row[] }) {
   );
 }
 
-function JournalSetting({
-  dream,
-  onPatch,
-}: {
-  dream: PlanDream;
-  onPatch: (partial: Partial<PlanDream>) => void;
-}) {
-  const on = dream.journalQuotesOn !== false;
-  return (
-    <section className="rounded-2xl border border-dashed border-accent/40 bg-card p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-foreground">
-          Journal quotes are {on ? "on" : "off"}
-        </p>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          onClick={() => onPatch({ journalQuotesOn: !on })}
-          className={`h-6 w-10 rounded-full ${on ? "bg-accent" : "bg-border"}`}
-        >
-          <span
-            className={`block size-5 rounded-full bg-card transition-transform ${
-              on ? "translate-x-4" : "translate-x-0.5"
-            }`}
-          />
-        </button>
-      </div>
-      <p className="mt-2 text-[13px] text-foreground">
-        Lines about {dream.title.trim() || "this area"} from your journal appear
-        here, marked “From journal”. Only you can see them.
-      </p>
-      <Link to="/settings/account" className="mt-2 inline-block text-[13px] font-semibold text-accent-link">
-        Manage in settings
-      </Link>
-    </section>
-  );
-}

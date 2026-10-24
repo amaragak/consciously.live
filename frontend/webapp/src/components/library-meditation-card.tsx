@@ -397,9 +397,8 @@ export type LibraryMeditationCardProps = {
   onSpeechifyEmotionChange?: (emotion: SpeechifyEmotionPlayback) => void;
   /** Reflect → new journal entry linked to this meditation. */
   onReflect?: () => void;
-  /** Entries already linked to this meditation. */
+  /** Journal entries attached to this meditation, reflections included. */
   reflectionCount?: number;
-  onOpenReflections?: () => void;
   /** Meditation detail page (`/meditate/library/:id`). Card body taps open it. */
   detailHref?: string;
   /** Runs just before navigating to the detail page (e.g. remember scroll). */
@@ -439,7 +438,6 @@ export function LibraryMeditationCard({
   onRemovePending,
   onReflect,
   reflectionCount = 0,
-  onOpenReflections,
   detailHref,
   onOpenDetail,
   itemRef,
@@ -1102,22 +1100,26 @@ export function LibraryMeditationCard({
       </span>
     ) : null;
 
-  const reflectionsLink =
-    reflectionCount > 0 && onOpenReflections ? (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenReflections();
-        }}
-        className="ml-2 inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-accent-link transition-opacity hover:opacity-80"
-      >
-        <BookOpen className="size-3" strokeWidth={2} aria-hidden />
-        {reflectionCount === 1
-          ? "1 reflection"
-          : `${reflectionCount} reflections`}
-      </button>
-    ) : null;
+  function openJournal(event: React.MouseEvent) {
+    event.stopPropagation();
+    event.preventDefault();
+    if (!detailHref) return;
+    onOpenDetail?.();
+    navigate(`${detailHref}#journal`);
+  }
+
+  const journalCount = reflectionCount > 0 && detailHref ? (
+    <button
+      type="button"
+      onClick={openJournal}
+      title={`${reflectionCount} journal ${reflectionCount === 1 ? "entry" : "entries"}`}
+      aria-label={`${reflectionCount} journal ${reflectionCount === 1 ? "entry" : "entries"}`}
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[12px] font-semibold text-foreground"
+    >
+      <BookOpen className="size-3.5" strokeWidth={1.8} aria-hidden />
+      {reflectionCount}
+    </button>
+  ) : null;
 
   const reflectButton = onReflect ? (
     <button
@@ -1139,11 +1141,18 @@ export function LibraryMeditationCard({
   ) : null;
 
   const metaRow =
-    metaLine || stars || reflectionsLink ? (
-      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+    metaLine || stars || journalCount ? (
+      <div className="mt-2 hidden flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted sm:flex">
         {metaLine}
         {stars}
-        {reflectionsLink}
+        {journalCount ? (
+          <>
+            {metaLine || stars ? (
+              <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+            ) : null}
+            {journalCount}
+          </>
+        ) : null}
       </div>
     ) : null;
 
@@ -1213,11 +1222,7 @@ export function LibraryMeditationCard({
   const mobileReflect = onReflect ? (
     <button
       type="button"
-      aria-label={
-        reflectionCount > 0
-          ? `Reflect on this meditation (${reflectionCount} reflection${reflectionCount === 1 ? "" : "s"})`
-          : "Reflect on this meditation"
-      }
+      aria-label="Reflect on this meditation"
       onClick={(e) => {
         e.stopPropagation();
         onReflect();
@@ -1225,11 +1230,6 @@ export function LibraryMeditationCard({
       className={mobileIconBtn}
     >
       <SquarePen className="size-[18px]" strokeWidth={2} aria-hidden />
-      {reflectionCount > 0 ? (
-        <span className="absolute -right-[3px] -top-[3px] flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-bold leading-none text-white">
-          {reflectionCount}
-        </span>
-      ) : null}
     </button>
   ) : null;
 
@@ -1306,6 +1306,19 @@ export function LibraryMeditationCard({
             </span>
           ) : null}
           <span className="min-w-0 truncate">{mobileFooterMeta}</span>
+          {journalCount ? (
+            <button
+              type="button"
+              onClick={openJournal}
+              title={`${reflectionCount} journal ${reflectionCount === 1 ? "entry" : "entries"}`}
+              aria-label={`${reflectionCount} journal ${reflectionCount === 1 ? "entry" : "entries"}`}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[11.5px] font-semibold text-foreground"
+            >
+              <span aria-hidden className="font-normal text-border">·</span>
+              <BookOpen className="size-3.5" strokeWidth={1.8} aria-hidden />
+              {reflectionCount}
+            </button>
+          ) : null}
         </span>
         {mobileReflect}
         {mobileHeart}

@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   CirclePlay,
   LayoutGrid,
   MessageSquare,
@@ -18,11 +19,13 @@ import { VoiceCheckIn } from "@/components/plan/life-area/checkin";
 import { LifeAreaTracker, trackerOpenCount } from "@/components/plan/life-area/tracker";
 import { LifeAreaInsights } from "@/components/plan/life-area/insights";
 import { areaThoughts } from "@/components/plan/life-area/kit";
+import { LifeAreaJournal } from "@/components/plan/life-area/journal";
 import {
-  isDemoJournalEntry,
-  loadJournalStoreRaw,
-  stripHtmlToText,
-} from "@/lib/journal-storage";
+  ensureMeditationOrigins,
+  journalRowsForLifeArea,
+  subscribeJournalEntries,
+  subscribeMeditationOrigins,
+} from "@/lib/journal-links";
 import { lifeAreaLastSeen, markLifeAreaSeen } from "@/lib/life-area-visits";
 import { LifeAreaOverview } from "@/components/plan/life-area/overview";
 import { RaiseSideFrame } from "@/components/plan/raise-ceiling-panel";
@@ -39,6 +42,7 @@ const TABS = [
   "tracker",
   "thoughts",
   "insights",
+  "journal",
   "meditations",
   "whiteboard",
 ] as const;
@@ -52,6 +56,7 @@ const LEGACY: Record<string, TabId> = {
   thoughts: "thoughts",
   insights: "insights",
   meditations: "meditations",
+  journal: "journal",
   whiteboard: "whiteboard",
   overview: "overview",
   goals: "tracker",
@@ -77,6 +82,7 @@ export function LifeAreaShell({
     null,
   );
   const [meditations, setMeditations] = useState(0);
+  const [journalCount, setJournalCount] = useState(0);
   const tab = resolveTab(params.tab, params.goalId, params.itemId, search.get("tab"));
   const mvp = useMvpFlags();
   const tabs = TABS.filter((id) => {
@@ -153,6 +159,18 @@ export function LifeAreaShell({
     };
   }, [dream.id]);
 
+  useEffect(() => {
+    const sync = () => setJournalCount(journalRowsForLifeArea(dream.id).length);
+    sync();
+    const stopEntries = subscribeJournalEntries(sync);
+    const stopOrigins = subscribeMeditationOrigins(sync);
+    void ensureMeditationOrigins().then(sync);
+    return () => {
+      stopEntries();
+      stopOrigins();
+    };
+  }, [dream.id]);
+
   const thoughtsSeen = lifeAreaLastSeen(dream.id, "thoughts");
   const insightsSeen = lifeAreaLastSeen(dream.id, "insights");
   const thoughtFeed = thoughtTimes(dream);
@@ -197,6 +215,7 @@ export function LifeAreaShell({
             thoughtTotal={thoughtFeed.length}
             insightNew={insightNew}
             meditations={meditations}
+            journalCount={journalCount}
           />
         </div>
         <div className="pt-[18px]">
@@ -229,6 +248,7 @@ export function LifeAreaShell({
               onCheckIn={() => setCheckIn(true)}
             />
           ) : null}
+          {tab === "journal" ? <LifeAreaJournal dream={dream} /> : null}
           {tab === "meditations" ? (
             <PlanLifeAreaMeditationsPanel
               lifeAreaId={dream.id}
@@ -280,6 +300,7 @@ const TAB_ICON: Record<TabId, typeof LayoutGrid> = {
   tracker: Target,
   thoughts: MessageSquare,
   insights: Sparkles,
+  journal: BookOpen,
   meditations: CirclePlay,
   whiteboard: Presentation,
 };
@@ -296,6 +317,7 @@ function LifeAreaTabTrack({
   thoughtTotal,
   insightNew,
   meditations,
+  journalCount,
 }: {
   tabs: readonly TabId[];
   tab: TabId;
@@ -308,6 +330,7 @@ function LifeAreaTabTrack({
   thoughtTotal: number;
   insightNew: boolean;
   meditations: number;
+  journalCount: number;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -339,7 +362,7 @@ function LifeAreaTabTrack({
 
   useLayoutEffect(() => {
     measure();
-  }, [tab, goalBadge, thoughtFresh, thoughtTotal, insightNew, meditations]);
+  }, [tab, goalBadge, thoughtFresh, thoughtTotal, insightNew, meditations, journalCount]);
 
   useEffect(() => {
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -419,6 +442,7 @@ function LifeAreaTabTrack({
                   thoughtTotal={thoughtTotal}
                   insightNew={insightNew}
                   meditations={meditations}
+                  journalCount={journalCount}
                 />
               </button>
             );
@@ -450,6 +474,7 @@ function TabBadge({
   thoughtTotal,
   insightNew,
   meditations,
+  journalCount,
 }: {
   id: TabId;
   active: boolean;
@@ -459,6 +484,7 @@ function TabBadge({
   thoughtTotal: number;
   insightNew: boolean;
   meditations: number;
+  journalCount: number;
 }) {
   if (id === "tracker" && goalBadge) {
     if (goalProgress) {
@@ -509,23 +535,18 @@ function TabBadge({
       </span>
     );
   }
+  if (id === "journal" && journalCount > 0) {
+    return (
+      <span className={`text-xs ${active ? "text-white/70" : "text-muted"}`}>
+        {journalCount}
+      </span>
+    );
+  }
   return null;
 }
 
 function thoughtTimes(dream: import("@/lib/plan-dreams").PlanDream): string[] {
-  const mine = areaThoughts(dream).map((row) => row.createdAt);
-  if (dream.journalQuotesOn === false) return mine;
-  const tokens = dream.title.toLowerCase().split(/\s+/).filter((word) => word.length > 3);
-  const journal = loadJournalStoreRaw()
-    .entries.filter((entry) => !isDemoJournalEntry(entry))
-    .filter((entry) => !(dream.hiddenJournalIds ?? []).includes(entry.id))
-    .filter((entry) => {
-      const hay = `${entry.title} ${stripHtmlToText(entry.contentHtml)}`.toLowerCase();
-      return tokens.some((token) => hay.includes(token));
-    })
-    .slice(0, 12)
-    .map((entry) => entry.updatedAt || entry.createdAt);
-  return [...mine, ...journal];
+  return areaThoughts(dream).map((row) => row.createdAt);
 }
 
 function resolveTab(

@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Link } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { AttachedJournalList } from "@/components/attached-journal-list";
 import { LibraryHowMadeModal } from "@/components/library-how-made-modal";
 import {
   formatDuration,
@@ -18,16 +19,12 @@ import {
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
-import {
-  journalEntriesLinkedToMeditation,
-  meditationIdFromLibraryItem,
-} from "@/lib/journal-meditation-reflect";
-import { subscribeJournalStore, type JournalEntry } from "@/lib/journal-storage";
+import { meditationIdFromLibraryItem } from "@/lib/journal-meditation-reflect";
+import { journalRowsForMeditation, type HealJournalRow } from "@/lib/journal-links";
+import { subscribeJournalStore } from "@/lib/journal-storage";
 import {
   formatChunkClock,
-  formatRelativeDay,
   meditationMadeFrom,
-  plainFromHtml,
   scriptChunksFromLibraryItem,
   scriptChunksHaveTimings,
   scriptChunksPlainText,
@@ -704,85 +701,106 @@ function SoundVoiceCard({
   );
 }
 
-function useLinkedEntries(meditationId: string): JournalEntry[] {
+function useJournalRows(meditationId: string): HealJournalRow[] {
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeJournalStore(() => setTick((n) => n + 1)), []);
   return useMemo(() => {
     void tick;
-    return journalEntriesLinkedToMeditation(meditationId).sort(
-      (a, b) =>
-        (Date.parse(b.updatedAt || b.createdAt) || 0) -
-        (Date.parse(a.updatedAt || a.createdAt) || 0),
-    );
+    return journalRowsForMeditation(meditationId);
   }, [meditationId, tick]);
 }
 
-function ReflectionsList({
-  entries,
+function ReflectAction({
   onReflect,
-  asCard,
+  pill,
 }: {
-  entries: JournalEntry[];
   onReflect: () => void;
-  asCard?: boolean;
+  pill?: boolean;
 }) {
-  if (entries.length === 0) return null;
-  const body = (
-    <>
-      {entries.map((e) => {
-        const excerpt = plainFromHtml(e.contentHtml ?? "", 140);
-        const when = formatRelativeDay(e.updatedAt || e.createdAt);
-        return (
-          <div
-            key={e.id}
-            className="flex items-center gap-3 border-t border-border py-2.5"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">
-                Reflection · {when}
-              </span>
-              <span className="block truncate font-display text-[15px] text-foreground">
-                {excerpt || e.title?.trim() || "Untitled entry"}
-              </span>
-            </span>
-            <Link
-              to={`/journal/my/${encodeURIComponent(e.id)}`}
-              className="shrink-0 text-[12px] font-semibold text-muted"
-            >
-              Open in Journal
-            </Link>
-          </div>
-        );
-      })}
+  if (pill) {
+    return (
       <button
         type="button"
         onClick={onReflect}
-        className="cursor-pointer self-start pt-1 text-[13px] font-semibold text-accent-link hover:opacity-80"
+        className={`${OUTLINE_BTN} h-[38px] self-start px-3.5 text-[13px]`}
       >
-        + New reflection
+        <SquarePen className="size-3.5 text-accent-link" strokeWidth={1.8} aria-hidden />
+        Reflect
       </button>
-    </>
-  );
-  if (asCard) {
-    return (
-      <div className={CARD}>
-        <div className="flex flex-col gap-2 px-[18px] py-4">
-          <p className="text-xs font-semibold uppercase tracking-[1.6px] text-muted">Your reflections</p>
-          {body}
-        </div>
-      </div>
     );
   }
-    return (
-      <RailCard label="Your reflections">{body}</RailCard>
-    );
+  return (
+    <button
+      type="button"
+      onClick={onReflect}
+      className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-accent-link"
+    >
+      <SquarePen className="size-3.5" strokeWidth={1.8} aria-hidden />
+      Reflect
+    </button>
+  );
+}
+
+function JournalEntriesCard({
+  rows,
+  meditationId,
+  onReflect,
+  mobile,
+}: {
+  rows: HealJournalRow[];
+  meditationId: string;
+  onReflect: () => void;
+  mobile?: boolean;
+}) {
+  const label =
+    rows.length > 0 ? `Journal entries · ${rows.length}` : "Journal entries";
+  const card = (
+    <div id="meditation-journal" className={CARD}>
+      <div className="flex flex-col px-[18px] pb-3.5 pt-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+          {label}
+        </p>
+        {rows.length ? (
+          <>
+            <AttachedJournalList
+              rows={rows}
+              current={{ targetType: "meditation", targetId: meditationId }}
+            />
+            {mobile ? null : (
+              <div className="border-t border-border pt-2.5">
+                <ReflectAction onReflect={onReflect} />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-[13px] leading-[1.5] text-muted">
+              Reflect after listening, or attach this meditation to any journal entry, and it shows up here.
+            </p>
+            {mobile ? null : (
+              <div className="mt-2">
+                <ReflectAction onReflect={onReflect} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+  if (!mobile) return card;
+  return (
+    <div className="flex flex-col gap-3">
+      {card}
+      <ReflectAction onReflect={onReflect} pill />
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-type MobileTab = "script" | "details" | "reflections";
+type MobileTab = "script" | "details" | "journal";
 
 export default function MeditationDetail(props: MeditationDetailProps) {
   const {
@@ -805,6 +823,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
     playItem,
     seekTo,
   } = useLibraryPlayer();
+  const location = useLocation();
   const [howMadeOpen, setHowMadeOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("script");
   const [stickyBarVisible, setStickyBarVisible] = useState(false);
@@ -820,7 +839,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
   const hasDuration = durationLabel !== "—";
   const voice = item.speakerName?.trim() || "";
   const meditationId = meditationIdFromLibraryItem(item);
-  const entries = useLinkedEntries(meditationId);
+  const journalRows = useJournalRows(meditationId);
 
   const chunks = useMemo(
     () => scriptChunksFromLibraryItem(item),
@@ -912,6 +931,15 @@ export default function MeditationDetail(props: MeditationDetailProps) {
 
   /* ---------------- Mobile ---------------- */
   useEffect(() => {
+    if (location.hash !== "#journal") return;
+    if (isMobile) setMobileTab("journal");
+    const timer = window.setTimeout(() => {
+      document.getElementById("meditation-journal")?.scrollIntoView({ block: "start" });
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [location.hash, isMobile, journalRows.length]);
+
+  useEffect(() => {
     if (!isMobile) {
       setStickyBarVisible(false);
       return;
@@ -967,9 +995,10 @@ export default function MeditationDetail(props: MeditationDetailProps) {
     const tabOptions: { id: MobileTab; label: string }[] = [
       { id: "script", label: "Script" },
       { id: "details", label: "Details" },
-      ...(entries.length
-        ? [{ id: "reflections" as const, label: `Reflections · ${entries.length}` }]
-        : []),
+      {
+        id: "journal",
+        label: journalRows.length ? `Journal · ${journalRows.length}` : "Journal",
+      },
     ];
 
     const stickyScrollMargin = stickyBarVisible ? MOBILE_STICKY_BAR_PX : 0;
@@ -1139,8 +1168,13 @@ export default function MeditationDetail(props: MeditationDetailProps) {
               <SoundVoiceCard item={item} soundscapeName={soundscapeName} />
             </div>
           ) : null}
-          {mobileTab === "reflections" ? (
-            <ReflectionsList entries={entries} onReflect={onReflect} asCard />
+          {mobileTab === "journal" ? (
+            <JournalEntriesCard
+              rows={journalRows}
+              meditationId={meditationId}
+              onReflect={onReflect}
+              mobile
+            />
           ) : null}
         </div>
         {howMadeModal}
@@ -1253,7 +1287,11 @@ export default function MeditationDetail(props: MeditationDetailProps) {
         <aside className="flex w-[320px] shrink-0 flex-col gap-3.5">
           {own ? <MadeFromCard item={item} /> : null}
           <SoundVoiceCard item={item} soundscapeName={soundscapeName} />
-          <ReflectionsList entries={entries} onReflect={onReflect} />
+          <JournalEntriesCard
+            rows={journalRows}
+            meditationId={meditationId}
+            onReflect={onReflect}
+          />
         </aside>
       </div>
       {howMadeModal}

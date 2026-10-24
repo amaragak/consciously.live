@@ -14,6 +14,7 @@ import {
   type JournalMeditationSnapshot,
   type JournalMeditationSource,
 } from "@/lib/journal-storage";
+import { journalEntriesLinkedToMeditation } from "@/lib/journal-meditation-reflect";
 import { listLibraryMeditations, type LibraryMeditationItem } from "@/lib/medimade-api";
 
 const HEAL_MEDITATION_LINKS_KEY = "mm_heal_meditation_links_v1";
@@ -127,6 +128,23 @@ export function journalHref(entry: JournalEntry): string {
   return entry.kind === "gratitude"
     ? `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`
     : `/journal/my/${encodeURIComponent(entry.id)}`;
+}
+
+/** New Journal entry with a Heal item or life area already attached. */
+export function journalNewEntryHref(input: {
+  targetType: "heal_item" | "life_area";
+  targetId: string;
+  label: string;
+}): string {
+  const params = new URLSearchParams({ new: "1" });
+  if (input.targetType === "heal_item") {
+    params.set("heal", input.targetId);
+    if (input.label.trim()) params.set("healTitle", input.label.trim());
+  } else {
+    params.set("area", input.targetId);
+    if (input.label.trim()) params.set("areaTitle", input.label.trim());
+  }
+  return `/journal/my?${params.toString()}`;
 }
 
 function whenLabel(iso: string): string {
@@ -277,6 +295,30 @@ export function journalRowsForLifeArea(lifeAreaId: string): LifeAreaJournalRow[]
 
 export function reflectionsForMeditation(meditationId: string): JournalEntry[] {
   return entriesForTarget("meditation", meditationId);
+}
+
+/** Every journal entry attached to this meditation, reflections included, newest first. */
+export function journalRowsForMeditation(meditationId: string): HealJournalRow[] {
+  const id = meditationId.trim();
+  if (!id) return [];
+  return journalEntriesLinkedToMeditation(id)
+    .map((entry) => {
+      const link = entryLinks(entry).find(
+        (row) => row.targetType === "meditation" && row.targetId === id,
+      );
+      const reflection = Boolean(link?.reflecting) || (!link && entry.meditationId === id);
+      return {
+        entry,
+        mode: reflection ? ("reflection" as const) : ("journal" as const),
+        at: entry.updatedAt || entry.createdAt,
+        meditationTitle:
+          link?.label ||
+          link?.meditationSnapshot?.title ||
+          entry.meditationSnapshot?.title ||
+          null,
+      };
+    })
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
 /** Linked journal writing for Heal AI, newest first. Caller applies the word budget. */

@@ -116,7 +116,6 @@ import {
 } from "@/components/library-meditation-card";
 import {
   armReflectMeditationHandoff,
-  findReflectionEntryForMeditation,
   meditationIdFromLibraryItem,
   reflectHandoffFromLibraryItem,
   reflectMeditationJournalHref,
@@ -2454,18 +2453,6 @@ export default function LibraryView({
       armReflectMeditationHandoff(handoff);
       navigate(reflectMeditationJournalHref());
     };
-    const onOpenReflections = () => {
-      // Same entry Reflect opens — one reflection journal page per meditation.
-      const existing = findReflectionEntryForMeditation(meditationId);
-      if (existing) {
-        navigate(`/journal/my/${encodeURIComponent(existing.id)}`);
-        return;
-      }
-      navigate(
-        `/journal/my?meditationId=${encodeURIComponent(meditationId)}`,
-      );
-    };
-
     const cardKey = m.s3Key;
     const fishCostText = showFishCostTooltip ? fishCostTooltipText(m) : null;
     const shareId = m.id?.trim() || "";
@@ -2522,9 +2509,6 @@ export default function LibraryView({
         detailHref={m.isDraft ? undefined : detailHrefForItem(m)}
         onOpenDetail={rememberListScroll}
         reflectionCount={reflectionCount}
-        onOpenReflections={
-          reflectionCount > 0 ? onOpenReflections : undefined
-        }
         onArchive={() => {
           if (!m.sk) return;
           setArchiveConfirm({ sk: m.sk, title: m.title });

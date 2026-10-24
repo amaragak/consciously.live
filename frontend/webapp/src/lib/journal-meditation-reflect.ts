@@ -182,7 +182,6 @@ export function reflectionCountForMeditation(
   meditationId: string,
   entries?: JournalEntry[],
 ): number {
-  // Product model: one entry per meditation (still report linked count for legacy).
   return journalEntriesLinkedToMeditation(meditationId, entries).length;
 }
 

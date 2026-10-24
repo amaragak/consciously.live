@@ -1,6 +1,7 @@
 import { Leaf, Mail, MoreHorizontal, Pencil, PenLine, Play, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { AttachedJournalList } from "@/components/attached-journal-list";
 import { AppTopBarTrailingPortal } from "@/components/app-primary-tabs";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
@@ -21,9 +22,8 @@ import { healAfterUpdate, healLenses, healSetup, healSuggestMore } from "@/lib/h
 import { meditationIdFromLibraryItem } from "@/lib/journal-meditation-reflect";
 import {
   capWords,
-  journalFirstLine,
-  journalHref,
   journalContextForHealItem,
+  journalNewEntryHref,
   journalRowsForHealItem,
   subscribeJournalEntries,
   subscribeMeditationOrigins,
@@ -33,7 +33,7 @@ import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
 import {
   healMeditationsForItem,
 } from "@/lib/heal-meditation-links";
-import { Link, useRouter } from "@/lib/spa-nav";
+import { useRouter } from "@/lib/spa-nav";
 import { addTrackerItem, patchTrackerItem } from "@/lib/tracker-items";
 import {
   actionsForItem,
@@ -208,6 +208,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const [updateText, setUpdateText] = useState("");
   const [writingNote, setWritingNote] = useState(false);
   const [goodEdit, setGoodEdit] = useState<{ token: number; text: string } | null>(null);
+  const [editSide, setEditSide] = useState<"bad" | "good" | null>(null);
   const [lensSource, setLensSource] = useState<string | null>(null);
   const [lensesOpen, setLensesOpen] = useState(false);
   const [lens, setLens] = useState<HealSeeLens>("kind");
@@ -241,6 +242,13 @@ export function HealItemView({ itemId }: { itemId: string }) {
       stopOrigins();
     };
   }, []);
+
+  useEffect(() => {
+    if (!item) return;
+    const badNow = currentView(loadHealStore(), item.id, "bad");
+    const goodNow = currentView(loadHealStore(), item.id, "good");
+    setEditSide(goodNow ? (badNow ? null : "bad") : "good");
+  }, [item?.id]);
 
   useEffect(() => {
     if (!item || setupStarted.current) return;
@@ -278,10 +286,9 @@ export function HealItemView({ itemId }: { itemId: string }) {
   const entries = entriesForItem(store, current.id);
   void journalTick;
   const journalRows = journalRowsForHealItem(current.id);
-  const timeline = [
-    ...entries.map((entry) => ({ kind: "heal" as const, at: entry.createdAt, entry })),
-    ...journalRows.map((row) => ({ kind: "journal" as const, at: row.at, row })),
-  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const timeline = entries
+    .map((entry) => ({ at: entry.createdAt, entry }))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const actions = actionsForItem(store, current.id);
   const dreams = loadIdeateStore().dreams;
   const areaId = current.linkedLifeAreaIds[0] || current.sourceObstacleId?.split("::")[0] || "";
@@ -731,9 +738,13 @@ export function HealItemView({ itemId }: { itemId: string }) {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-5">
             <ViewBox
               label="On a bad day, I think…"
+              help="The worst way you could see it. Write it exactly as it sounds in your head."
               view={bad}
               empty="On a bad day, what do you tell yourself about it?"
               accent={false}
+              editing={editSide === "bad"}
+              onEdit={() => setEditSide("bad")}
+              onClose={() => setEditSide((side) => (side === "bad" ? null : side))}
               onSave={(text) => commit(addHealView(loadHealStore(), { itemId: current.id, side: "bad", text, source: "user" }))}
             />
             <div className="relative flex h-11 items-center justify-center lg:hidden" aria-hidden>
@@ -750,9 +761,13 @@ export function HealItemView({ itemId }: { itemId: string }) {
             </div>
             <ViewBox
               label="On a good day, I think…"
+              help="The best way you could honestly see it. Still true, just at its most hopeful."
               view={good}
               empty="Not yet. On a good day, how do you see it?"
               accent
+              editing={editSide === "good"}
+              onEdit={() => setEditSide("good")}
+              onClose={() => setEditSide((side) => (side === "good" ? null : side))}
               editRequest={goodEdit}
               onSave={(text) => {
                 saveGood(text, null, lensSource ? "lens" : "user", lensSource);
@@ -761,10 +776,14 @@ export function HealItemView({ itemId }: { itemId: string }) {
             />
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-[rgb(243_237_226_/_0.12)] pt-3.5 lg:flex-row lg:items-center">
+          <div className="flex flex-col gap-3 border-t border-[rgb(243_237_226_/_0.12)] pt-4 lg:flex-row lg:items-center lg:gap-6">
+            <p className="flex items-start gap-2 text-[13px] leading-[1.5] text-[rgb(243_237_226_/_0.7)] lg:text-[14px]">
+              <LogoMark size={16} fill="#C8A46A" className="mt-0.5 shrink-0" />
+              Hold both at once. Neither one is the whole truth; seeing them together gives you a fuller view of how things really are.
+            </p>
             <button
               type="button"
-              className={`${HERO_GHOST} w-full lg:w-auto`}
+              className={`${HERO_GHOST} w-full shrink-0 lg:ml-auto lg:w-auto`}
               onClick={() =>
                 enableAi(() => {
                   setLensesOpen(true);
@@ -775,7 +794,6 @@ export function HealItemView({ itemId }: { itemId: string }) {
               <Sparkles className="size-3.5" aria-hidden />
               Show other ways to see it
             </button>
-            <p className="hidden text-[12px] text-[rgb(243_237_226_/_0.5)] lg:block">Click either side to edit it.</p>
           </div>
 
           {lensesOpen ? (
@@ -1070,6 +1088,48 @@ export function HealItemView({ itemId }: { itemId: string }) {
 
       <section className="mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Journal entries</h2>
+          <button
+            type="button"
+            className={HEAL_OUTLINE}
+            onClick={() =>
+              router.push(
+                journalNewEntryHref({
+                  targetType: "heal_item",
+                  targetId: current.id,
+                  label: current.title,
+                }),
+              )
+            }
+          >
+            <PenLine className="size-3.5" aria-hidden />
+            New entry
+          </button>
+        </div>
+        <div className="mt-3.5 rounded-2xl border border-border bg-card px-5 pb-4 pt-5 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] sm:px-6">
+          {journalRows.length ? (
+            <>
+              <p className="pb-1 text-[13px] text-muted">
+                Entries and reflections you&apos;ve attached this to in Journal, newest first.
+              </p>
+              <AttachedJournalList
+                rows={journalRows}
+                current={{ targetType: "heal_item", targetId: current.id }}
+              />
+            </>
+          ) : (
+            <>
+              <p className="font-display text-[19px] text-foreground">Nothing from your journal yet.</p>
+              <p className="mt-1.5 text-[13px] leading-normal text-muted">
+                Attach {current.title.trim() || "this"} to an entry in Journal and it shows up here. New entry starts one with it already attached.
+              </p>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Your exercises</h2>
           <div className="flex flex-wrap gap-4">
             {(current.aiEnabled || fallbackExerciseQuestions(current.canDo).some((question) => !current.askedQuestions.includes(question))) ? (
@@ -1198,7 +1258,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
         </div>
         <div className="mt-3.5 rounded-2xl border border-border bg-card px-5 pb-1 pt-6 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] sm:px-6">
           <p className="pb-4 text-[13px] text-muted">
-            Exercise answers, notes and letters, newest first. Only you can see these.
+            Exercise answers, notes, and unsent letters, newest first. Only you can see these.
           </p>
           {writingNote ? (
             <div className="relative mb-4">
@@ -1245,23 +1305,15 @@ export function HealItemView({ itemId }: { itemId: string }) {
             </div>
           ) : null}
           <ul>
-            {timeline.map((item, index) =>
-              item.kind === "heal" ? (
-                <EntryRow
-                  key={item.entry.id}
-                  entry={item.entry}
-                  store={store}
-                  itemId={current.id}
-                  last={index === timeline.length - 1}
-                />
-              ) : (
-                <JournalTimelineRow
-                  key={`journal-${item.row.entry.id}`}
-                  row={item.row}
-                  last={index === timeline.length - 1}
-                />
-              ),
-            )}
+            {timeline.map((item, index) => (
+              <EntryRow
+                key={item.entry.id}
+                entry={item.entry}
+                store={store}
+                itemId={current.id}
+                last={index === timeline.length - 1}
+              />
+            ))}
           </ul>
         </div>
       </section>
@@ -1489,36 +1541,45 @@ function ClampedText({ text, open, onToggle }: { text: string; open: boolean; on
 
 function ViewBox({
   label,
+  help,
   view,
   empty,
   accent,
+  editing,
+  onEdit,
+  onClose,
   editRequest,
   onSave,
 }: {
   label: string;
+  help: string;
   view: HealView | null;
   empty: string;
   accent: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  onClose: () => void;
   editRequest?: { token: number; text: string } | null;
   onSave: (text: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(view?.text ?? "");
-  const lock = useRef(false);
   const seen = useRef(0);
-  const field = useRef<HTMLTextAreaElement>(null);
+  const startedEmpty = useRef(!view);
   useEffect(() => {
     if (!editRequest || editRequest.token === seen.current) return;
     seen.current = editRequest.token;
     setDraft(editRequest.text);
-    setEditing(true);
-  }, [editRequest]);
+    onEdit();
+  }, [editRequest, onEdit]);
   useEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [draft, editing]);
+    if (editing) return;
+    setDraft(view?.text ?? "");
+  }, [editing, view]);
+  useEffect(() => {
+    if (!startedEmpty.current || !view || !editing || draft.trim()) return;
+    setDraft(view.text);
+    onClose();
+  }, [view, editing, draft, onClose]);
   const meta = !view
     ? ""
     : view.side === "bad"
@@ -1528,62 +1589,81 @@ function ViewBox({
       : view.source === "setup"
         ? "Suggested from what you wrote"
         : `Your words · updated ${healRelative(view.createdAt)}`;
-  function finish(save: boolean) {
-    setEditing(false);
+  function cancel() {
+    if (!view) {
+      setDraft("");
+      return;
+    }
+    setDraft(view.text);
+    onClose();
+  }
+  function save() {
     const text = draft.trim();
-    if (save && text && text !== (view?.text ?? "")) onSave(text);
+    if (text && text !== (view?.text ?? "")) onSave(text);
+    if (!view && !text) return;
+    onClose();
   }
   const textClass = accent
     ? "font-display text-[24px] leading-[1.45] text-[#F3EDE2]"
     : "font-display text-[22px] leading-[1.45] text-[#F3EDE2]";
-  const emptyClass = accent
-    ? "font-display text-[24px] leading-[1.45] text-[rgb(243_237_226_/_0.78)]"
-    : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.82)]";
   return (
     <div
       className="relative min-w-0 flex-1 cursor-text"
       onClick={() => {
         if (editing) return;
         setDraft(view?.text ?? "");
-        setEditing(true);
+        onEdit();
       }}
     >
       <div className="flex items-center justify-between gap-3">
         <p className={`text-[11px] font-semibold uppercase tracking-[1.6px] ${accent ? "text-header-gold" : "text-[rgb(243_237_226_/_0.9)]"}`}>{label}</p>
-        <Pencil className="size-3.5 shrink-0 text-[rgb(243_237_226_/_0.45)]" aria-hidden />
+        {editing ? null : <Pencil className="size-3.5 shrink-0 text-[rgb(243_237_226_/_0.45)]" aria-hidden />}
       </div>
+      <p className="mt-1.5 text-[13px] leading-[1.45] text-[rgb(243_237_226_/_0.55)]">{help}</p>
       {editing ? (
-        <textarea
-          ref={field}
-          autoFocus
-          value={draft}
-          rows={3}
-          placeholder={empty}
-          onChange={(event) => setDraft(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onBlur={() => {
-            if (lock.current) {
-              lock.current = false;
-              return;
-            }
-            finish(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              lock.current = true;
-              setDraft(view?.text ?? "");
-              finish(false);
-            } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-              event.preventDefault();
-              lock.current = true;
-              finish(true);
-            }
-          }}
-          className={`mt-2.5 w-full resize-none border-b border-[rgb(243_237_226_/_0.55)] bg-transparent outline-none placeholder:text-[rgb(243_237_226_/_0.82)] ${textClass}`}
-        />
+        <>
+          <textarea
+            autoFocus
+            value={draft}
+            rows={3}
+            placeholder={empty}
+            onChange={(event) => setDraft(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancel();
+              }
+            }}
+            className="mt-2.5 min-h-[104px] w-full resize-y rounded-xl border-[1.5px] border-[#C8A46A] bg-[rgb(243_237_226_/_0.08)] px-4 py-3.5 font-display text-[19px] leading-[1.45] text-[#F3EDE2] outline-none placeholder:text-[rgb(243_237_226_/_0.45)]"
+          />
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              className={HEAL_PRIMARY}
+              onClick={(event) => {
+                event.stopPropagation();
+                save();
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className={HERO_GHOST}
+              onClick={(event) => {
+                event.stopPropagation();
+                cancel();
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
       ) : (
-        <p className={`mt-2.5 ${view ? textClass : emptyClass}`}>{view?.text || empty}</p>
+        <p className={`mt-2.5 ${view ? textClass : "font-display text-[22px] leading-[1.45] text-[rgb(243_237_226_/_0.55)]"}`}>
+          {view?.text || empty}
+        </p>
       )}
       {view && !editing ? <p className="mt-2.5 text-[12px] text-[rgb(243_237_226_/_0.45)]">{meta}</p> : null}
     </div>
@@ -1603,42 +1683,6 @@ function VersionColumn({ title, rows }: { title: string; rows: HealView[] }) {
         ))}
       </ul>
     </div>
-  );
-}
-
-function JournalTimelineRow({
-  row,
-  last,
-}: {
-  row: ReturnType<typeof journalRowsForHealItem>[number];
-  last: boolean;
-}) {
-  const when = healRelative(row.at);
-  const text = journalFirstLine(row.entry);
-  const title = row.entry.title.trim();
-  return (
-    <li className="grid grid-cols-[20px_minmax(0,1fr)] gap-x-3.5 lg:grid-cols-[110px_20px_minmax(0,1fr)]">
-      <p className="hidden pt-0.5 text-[12px] text-muted lg:block">{when}</p>
-      <span className="flex flex-col items-center">
-        <span className="mt-1.5 size-[9px] shrink-0 rounded-full bg-accent" />
-        {last ? null : <span className="mt-1 w-px flex-1 bg-border" />}
-      </span>
-      <div className="flex flex-col gap-1.5 pb-5">
-        <p className="text-[12px] text-muted lg:hidden">{when}</p>
-        <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">
-          {row.mode === "reflection" ? "Reflection" : "Journal entry"}
-        </p>
-        {row.mode === "reflection" && row.meditationTitle ? (
-          <p className="text-[14px] font-semibold">On {row.meditationTitle}</p>
-        ) : title ? (
-          <p className="text-[14px] font-semibold">{title}</p>
-        ) : null}
-        <p className="line-clamp-4 font-display text-[17px] leading-[1.55]">{text}</p>
-        <Link href={journalHref(row.entry)} className="text-[13px] font-semibold text-muted">
-          Open in Journal
-        </Link>
-      </div>
-    </li>
   );
 }
 
