@@ -920,7 +920,7 @@ function visionCaption(caption: string) {
 function ManifestBand() {
   const base = useId();
   const [tab, setTab] = useState(0);
-  const [level, setLevel] = useState<CeilingLevel>("audacious");
+  const [level, setLevel] = useState<CeilingLevel>("ambitious");
   const tabs = ["See it", "Hear it", "Become it"];
   const scenes = VISION_SCENES.slice(0, 5);
 
@@ -983,7 +983,8 @@ function ManifestBand() {
                     <div className="new-home-goal-top">
                       <h4 className="new-home-display">Raise the ceiling</h4>
                       <div className="new-home-segs" role="group" aria-label="Ceiling">
-                        {(["ambitious", "audacious", "delusional"] as const).map((item) => (
+                        {(["ambitious", "audacious"] as const).map((item) => (
+                          // "delusional",
                           <button
                             key={item}
                             type="button"

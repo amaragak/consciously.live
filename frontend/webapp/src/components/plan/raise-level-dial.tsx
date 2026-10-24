@@ -1,6 +1,10 @@
 import { useId, useState, type KeyboardEvent } from "react";
 import type { RaiseLevel } from "@/lib/manifesto-story-llm";
-import { RAISE_LEVELS, RAISE_LEVEL_AIM } from "@/lib/manifesto-story-llm";
+import {
+  RAISE_LEVELS,
+  RAISE_LEVEL_AIM,
+  activeRaiseLevel,
+} from "@/lib/manifesto-story-llm";
 
 const LABELS: Record<RaiseLevel, string> = {
   ambitious: "Ambitious",
@@ -32,6 +36,7 @@ export function RaiseLineDial({
 }) {
   const btn = mobile ? 30 : 26;
   const sun = mobile ? 24 : 22;
+  const shown = activeRaiseLevel(level);
   return (
     <span
       role="radiogroup"
@@ -41,7 +46,7 @@ export function RaiseLineDial({
       onKeyDown={(e) => e.stopPropagation()}
     >
       {RAISE_LEVELS.map((id) => {
-        const on = id === level;
+        const on = id === shown;
         return (
           <button
             key={id}
@@ -110,10 +115,11 @@ export function RaiseLevelDial({
   natural?: boolean;
 }) {
   const [pop, setPop] = useState<RaiseLevel | null>(null);
-  const selected = RAISE_LEVELS.indexOf(level);
+  const shown = activeRaiseLevel(level);
+  const selected = RAISE_LEVELS.indexOf(shown);
 
   function pick(next: RaiseLevel) {
-    if (next === level) return;
+    if (next === shown) return;
     setPop(next);
     onChange(next);
   }
@@ -121,7 +127,7 @@ export function RaiseLevelDial({
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     e.preventDefault();
-    const i = RAISE_LEVELS.indexOf(level);
+    const i = RAISE_LEVELS.indexOf(shown);
     const delta = e.key === "ArrowRight" ? 1 : -1;
     const next = RAISE_LEVELS[i + delta];
     if (next) pick(next);
@@ -138,7 +144,7 @@ export function RaiseLevelDial({
     >
       <style>{`@keyframes raise-sun-in{from{transform:scale(.85)}to{transform:scale(1)}}`}</style>
       {RAISE_LEVELS.map((id, i) => {
-        const on = id === level;
+        const on = id === shown;
         const below = i < selected;
         return (
           <button

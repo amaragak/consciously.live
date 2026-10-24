@@ -15,6 +15,7 @@ import {
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { formatDuration } from "@/components/library-meditation-card";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { DashboardAffirmationsCard } from "@/components/plan/daily-affirmations-card";
 import { SectionEyebrow } from "@/components/section-eyebrow";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
@@ -1099,6 +1100,8 @@ export function WelcomeDashboard() {
               onPlay={playStory}
             />
           ) : null}
+
+          <DashboardAffirmationsCard />
 
           <div className="grid grid-cols-1 gap-7 md:grid-cols-12 md:items-start">
             <div className="flex flex-col gap-2.5 md:col-span-8">

@@ -110,7 +110,7 @@ export function defaultUserSettings(): UserSettingsV1 {
     version: USER_SETTINGS_VERSION,
     account: {
       pronouns: "they_them",
-      raiseLevel: "audacious",
+      raiseLevel: "ambitious",
     },
     manifestoPage: {
       modeWide: "paged",
@@ -283,11 +283,13 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
     ACCOUNT_PRONOUNS.has(account.pronouns as AccountPronouns)
       ? (account.pronouns as AccountPronouns)
       : d.account.pronouns;
-  const raiseLevel =
+  const storedLevel =
     typeof account.raiseLevel === "string" &&
     RAISE_LEVELS.has(account.raiseLevel as RaiseLevel)
       ? (account.raiseLevel as RaiseLevel)
       : d.account.raiseLevel;
+  const raiseLevel =
+    storedLevel === "delusional" ? "audacious" : storedLevel;
   const page = isObject(raw.manifestoPage) ? raw.manifestoPage : {};
   const pageMode = (v: unknown, fallback: ManifestoPageMode): ManifestoPageMode =>
     v === "paged" || v === "pageless" ? v : fallback;

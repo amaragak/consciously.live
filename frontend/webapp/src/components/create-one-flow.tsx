@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { IconRefresh } from "@tabler/icons-react";
+import { readAffirmationMeditation } from "@/lib/daily-affirmations";
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import { CreateFlowFooterBar } from "@/components/create-flow-footer-bar";
@@ -414,7 +415,8 @@ export function CreateOneFlow({
     if (
       params.get("fromHeal") ||
       params.get("fromJournal") === "1" ||
-      params.get("fromLifeArea")
+      params.get("fromLifeArea") ||
+      params.get("fromAffirmations") === "1"
     ) {
       return;
     }
@@ -622,6 +624,28 @@ export function CreateOneFlow({
         sessionStorage.removeItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
       }, 50);
       return () => window.clearTimeout(clearJournalHandoff);
+    } else if (new URLSearchParams(window.location.search).get("fromAffirmations") === "1") {
+      const lines = readAffirmationMeditation();
+      if (lines.length) {
+        const next: CreateOneFlowState = {
+          ...stateRef.current,
+          style: { id: "Affirmation loop" },
+          prompt: lines[0] || "Today's affirmations",
+          answers: { "2": lines.join("\n") },
+          journals: lines.map((text, index) => ({
+            id: `affirmation-${index}`,
+            title: text,
+            bodyPlain: text,
+          })),
+        };
+        stateRef.current = next;
+        setState(next);
+        if (step === "shape") {
+          window.setTimeout(() => onEnterShapeStepRef.current?.(), 0);
+        } else {
+          goStep("shape");
+        }
+      }
     } else if (new URLSearchParams(window.location.search).get("fromHeal")) {
       const healId = new URLSearchParams(window.location.search).get("fromHeal") || "";
       const store = loadHealStore();

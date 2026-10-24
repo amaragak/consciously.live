@@ -3,6 +3,7 @@ import { useMvpFlags } from "@/lib/mvp-flags";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconEye, IconSparkles, IconWind } from "@tabler/icons-react";
 import { ChevronRight, Plus } from "lucide-react";
+import { DailyAffirmationsCard } from "@/components/plan/daily-affirmations-card";
 import { LifeAreaCard } from "@/components/plan/life-area-card";
 import { ManifestoFoundations } from "@/components/plan/manifesto-foundations";
 import { ManifestoHeroBento } from "@/components/plan/manifesto-hero-bento";
@@ -675,6 +676,8 @@ export function PlanHomeClient() {
           </div>
         </section>
       ) : null}
+
+      <DailyAffirmationsCard />
 
       <ManifestoFoundations
         values={values}

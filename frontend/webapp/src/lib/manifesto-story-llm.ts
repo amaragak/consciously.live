@@ -40,7 +40,7 @@ export type RaiseLevel = "ambitious" | "audacious" | "delusional";
 export const RAISE_LEVELS: readonly RaiseLevel[] = [
   "ambitious",
   "audacious",
-  "delusional",
+  // "delusional",
 ];
 
 /** Aim marker position on the ambition bar, as a percent. */
@@ -102,9 +102,17 @@ export const RAISE_LEVEL_NAME: Record<RaiseLevel, string> = {
   delusional: "Delusional",
 };
 
+/** Stored Delusional is Audacious. The dial only offers the two active levels. */
+export function activeRaiseLevel(
+  level: RaiseLevel,
+): "ambitious" | "audacious" {
+  return level === "ambitious" ? "ambitious" : "audacious";
+}
+
 export function nextRaiseLevel(level: RaiseLevel): RaiseLevel {
-  const i = RAISE_LEVELS.indexOf(level);
-  return RAISE_LEVELS[(i + 1) % RAISE_LEVELS.length] ?? "audacious";
+  const current = activeRaiseLevel(level);
+  const i = RAISE_LEVELS.indexOf(current);
+  return RAISE_LEVELS[(i + 1) % RAISE_LEVELS.length] ?? "ambitious";
 }
 
 /** The sentence that holds the span, plus one sentence either side. */
@@ -740,13 +748,15 @@ async function completeDistinctLevels(
     .join("\n");
   const prompt =
     `These life-vision rewrites used the same sentence for more than one level. ` +
-    `For each quote, return three different present-tense replacements of that quote. ` +
-    `ambitious is a really great but reasonable outcome among the people around them, not fame. ` +
-    `audacious is rarer and notable, a handful of people, still not world-class. Never stadiums, arenas as the headline rooms, or worldwide fame. ` +
-    `delusional is the only world-class tier: the biggest stages, worldwide fame, or history-making. ` +
-    `Audacious must be obviously smaller than delusional. Do not repeat a sentence across levels. ` +
+    `For each quote, return two different present-tense replacements of that quote. ` +
+    `ambitious is a clear step up that is still recognisably the user's own life and path. Tone: playing live every month, including their own headline shows, or selling out their own launch show. Not global fame or record-breaking. ` +
+    `audacious is a big but real version of the user's path, the top of what's plausible for someone like them. Not fantasy, global fame, or invented achievements. ` +
+    // `delusional is the only world-class tier: the biggest stages, worldwide fame, or history-making. ` +
+    // `Audacious must be obviously smaller than delusional. Do not repeat a sentence across levels. ` +
+    `Do not repeat a sentence across levels. ` +
     `Keep the subject, person, and specifics. ` +
-    `Reply with ONLY JSON: {"findings":[{"quote":"...","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}\n\n` +
+    `Reply with ONLY JSON: {"findings":[{"quote":"...","suggestions":{"ambitious":"...","audacious":"..."}}]}\n\n` +
+    // `Reply with ONLY JSON: {"findings":[{"quote":"...","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}\n\n` +
     `${lines}\n\nNearby:\n${draft.slice(0, 2000)}`;
   try {
     const parsed = (await askJson(prompt)) as Record<string, unknown>;
@@ -847,8 +857,8 @@ export async function raiseStoryCeiling(
     `0–24 Sensible: an average or below-average experience. Typical pay, a typical home, a local or ordinary version of the activity, “good enough”, or hedged with effort or hope. Nothing unremarkable is Ambitious. ` +
     `25–44 Modest: a decent, ordinary good outcome that plenty of people already have. ` +
     `45–64 Ambitious: a really great result a dedicated person can still reasonably reach. About a top-10% life in that field. Strong among the people around them. Not a public career and not fame. This tier starts only there. ` +
-    `65–84 Audacious: rare, far past reasonable, reached by a handful of people. Notable in the field. Not world-class. ` +
-    `85–100 Delusional: the only world-class tier. The best or most famous in the world at it, or history-making. ` +
+    `65–100 Audacious: a big but real version of their path, the top of what's plausible for someone like them. Not fantasy, global fame, or invented achievements. ` +
+    // `85–100 Delusional: the only world-class tier. The best or most famous in the world at it, or history-making. ` +
     `If a line describes an average or below-average experience, score it Sensible. Never score that line Ambitious or higher. ` +
     `Hedges (hopefully, one day, if I work hard, I'd like to) keep a line in Sensible. ` +
     `Flag a line only when its claim is under Ambitious. Never flag a line already at Ambitious or higher, ` +
@@ -872,16 +882,19 @@ export async function raiseStoryCeiling(
     `(e.g. “my friends would describe me as a massive prick”). suggestion = the positive opposite, same subject ` +
     `and specifics, same person as the text. Never flag grammar. Fair/sensible but small → other types; keep theme, raise the ceiling.\n` +
     `CALIBRATION (required): judge each rewrite by how society sees that outcome, not as a multiple of the user's number. ` +
-    `Each level is a different tier of life. Only delusional is world-class. Keep the user's subject, specifics, units, currency, and person. ` +
+    `Each level is a different step on the user's own path. Keep the user's subject, specifics, units, currency, and person. ` +
     `Present tense, already true, and concrete: a number, a place, a name, or a scene. ` +
     `Never just multiply their figure. Pick a figure that fits the tier. ` +
-    `Audacious must be obviously smaller than delusional, not the same scene with “worldwide” or “biggest” added. ` +
-    `ambitious is the strong, reasonable version: doing it well and often, a real reputation among the people around them, a finished body of work, a well-attended local room. Not tours, charts, fame, or sold-out rooms across a country. ` +
-    `audacious is rare and notable, a handful of people: a respected name and a following beyond their own city, in well-known rooms in one country. Still not world-class. ` +
-    `delusional is world-class only: the biggest stages, worldwide fame, being the best or most famous. ` +
-    `World-class imagery is delusional and must not appear on ambitious or audacious: stadiums, arenas as the headline rooms, worldwide or global charts, platinum as the identity, being known in every country, a best-selling record of the world, defining a generation. Playing stadiums is world-class. It belongs on delusional only. ` +
+    `Do not invent achievements, fame, or a life that is no longer recognisably theirs. ` +
+    `ambitious is a clear step up that is still recognisably the user's own life and path. Tone: playing live every month, including their own headline shows, or selling out their own launch show. Not global fame or record-breaking. ` +
+    `audacious is a big but real version of the user's path, the top of what's plausible for someone like them. Not fantasy, global fame, or invented achievements. ` +
+    // `Only delusional is world-class. ` +
+    // `Audacious must be obviously smaller than delusional, not the same scene with “worldwide” or “biggest” added. ` +
+    // `delusional is world-class only: the biggest stages, worldwide fame, being the best or most famous. ` +
+    // `World-class imagery is delusional and must not appear on ambitious or audacious: stadiums, arenas as the headline rooms, worldwide or global charts, platinum as the identity, being known in every country, a best-selling record of the world, defining a generation. Playing stadiums is world-class. It belongs on delusional only. ` +
     `Write original wording for this person's life. Do not recycle phrases from these instructions. ` +
-    `Which lines you flag does not depend on level — always return all three texts.\n` +
+    `Which lines you flag does not depend on level — always return both texts.\n` +
+    // `Which lines you flag does not depend on level — always return all three texts.\n` +
     `QUALITY: Mentally apply every suggestion and read the FULL sentence. It must be natural, grammatical, ` +
     `professional present-tense English — correct prepositions, articles, and verb forms. Include punctuation ` +
     `when neighbouring clauses would smash together.\n` +
@@ -902,7 +915,8 @@ export async function raiseStoryCeiling(
     `the same specific image into two answers. Bad: two findings both add “Michelin-starred feasts every night”. ` +
     `Good: one dining raise uses Michelin; another uses a different vivid detail. If the draft already has ` +
     `such a flourish, do not invent the same one again elsewhere.\n` +
-    `Reply with ONLY JSON: {"ambition":0-100,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}\n\n` +
+    `Reply with ONLY JSON: {"ambition":0-100,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestions":{"ambitious":"...","audacious":"..."}}]}\n\n` +
+    // `Reply with ONLY JSON: {"ambition":0-100,"findings":[{"quote":"exact substring","type":"hedging|future|small|settling|doubt|negative","suggestions":{"ambitious":"...","audacious":"...","delusional":"..."}}]}\n\n` +
     lockBlock +
     `DRAFT (prompt-tagged; quote must match answer text only):\n${forModel.slice(0, 12000)}`;
 
@@ -940,7 +954,11 @@ const WORD_CHAR = /[\p{L}\p{N}']/u;
 function shrinkFindingToChangedSpan(f: StoryFinding): StoryFinding {
   const quote = f.quote;
   const suggestions = f.suggestions ?? sameRaiseSuggestions(f.suggestion);
-  const levels: RaiseLevel[] = ["ambitious", "audacious", "delusional"];
+  const levels: RaiseLevel[] = [
+    "ambitious",
+    "audacious",
+    // "delusional",
+  ];
   const texts = levels.map((level) => suggestions[level]);
   if (!quote || texts.some((s) => !s || s === quote)) return { ...f, suggestions };
   if (texts.some((s) => !/\s/.test(quote) && !/\s/.test(s))) return { ...f, suggestions };
@@ -1119,13 +1137,12 @@ export async function regenerateStorySuggestion(opts: {
   const valuesCue = valuesList.length
     ? `Writer's values (soft influence only — colour tone/larger rewrites; do not force-mention): ${valuesList.join("; ")}. `
     : "";
-  const level = opts.level ?? "ambitious";
+  const level = activeRaiseLevel(opts.level ?? "ambitious");
   const levelCue =
     level === "ambitious"
-      ? "LEVEL ambitious: a really great result a dedicated person can still reasonably reach — about a top-10% outcome among the people around them. Not tours, charts, or fame. Same subject, units and currency. Do not multiply their number. "
-      : level === "audacious"
-        ? "LEVEL audacious: rare and notable, a handful of people, a respected name beyond their own city. Not world-class. Never stadiums, arenas as the headline rooms, worldwide fame, or global charts. Same subject, units and currency. Obviously smaller than delusional. "
-        : "LEVEL delusional: the only world-class tier. The best or most famous in the world, the biggest stages including stadiums, or history-making. Same subject. Not a multiple of their number. ";
+      ? "LEVEL ambitious: a clear step up that is still recognisably the user's own life and path. Tone: playing live every month, including their own headline shows, or selling out their own launch show. Not global fame, record-breaking, or invented achievements. Same subject, units and currency. Do not multiply their number. "
+      : "LEVEL audacious: a big but real version of the user's path, the top of what's plausible for someone like them. Not fantasy, global fame, or invented achievements. Same subject, units and currency. ";
+  // : "LEVEL delusional: the only world-class tier. The best or most famous in the world, the biggest stages including stadiums, or history-making. Same subject. Not a multiple of their number. ";
   const prompt =
     `Rewrite this phrase from a first-person life vision into one bolder present-tense replacement. ` +
     levelCue +
@@ -1400,8 +1417,8 @@ export function ambitionLabel(ambition: number): string {
   if (score < 25) return "Sensible";
   if (score < 45) return "Modest";
   if (score < 65) return "Ambitious";
-  if (score < 85) return "Audacious";
-  return "Delusional";
+  // return "Delusional";
+  return "Audacious";
 }
 
 /** A flagged draft is not ambitious. Raise only opens on lines below that tier. */

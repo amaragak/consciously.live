@@ -33,6 +33,7 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
     const { httpApi } = props;
     const googleAiApiKeySecret = props.config.googleAiApiKey;
     const claudeApiKeySecret = props.config.claudeApiKey;
+    const speechifyApiKeySecret = props.config.speechifyApiKey;
     const authJwtSecret = props.config.authJwtSecret;
     const algoliaSecret = props.config.algolia;
     const mediaBucket = props.media.bucket;
@@ -60,6 +61,7 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
     authJwtSecret.grantRead(role);
     googleAiApiKeySecret.grantRead(role);
     claudeApiKeySecret.grantRead(role);
+    speechifyApiKeySecret.grantRead(role);
     algoliaSecret.grantRead(role);
 
     const visionGenerate = new lambda_nodejs.NodejsFunction(
@@ -323,6 +325,37 @@ export class ConsciouslyApiManifestNestedStack extends cdk.NestedStack {
       path: "/heal/screen",
       methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
       integration: healAiIntegration,
+    });
+
+    const affirmations = new lambda_nodejs.NodejsFunction(this, "AffirmationsFunction", {
+      entry: path.join(__dirname, "../../lambdas/affirmations.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      role,
+      environment: {
+        CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
+      },
+    });
+    const affirmationsIntegration = new integrations.HttpLambdaIntegration(
+      "AffirmationsIntegration",
+      affirmations,
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "AffirmationsGenerateRoute",
+      path: "/affirmations/generate",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: affirmationsIntegration,
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AffirmationsSpeakRoute",
+      path: "/affirmations/speak",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: affirmationsIntegration,
     });
   }
 }

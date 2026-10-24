@@ -339,7 +339,10 @@ function locateFindings(
             type: f.type,
             suggestion: f.suggestion,
             suggestions: f.suggestions,
-            level: f.level ?? fallbackLevel,
+            level:
+              f.level === "delusional"
+                ? "audacious"
+                : (f.level ?? fallbackLevel),
             status: f.status ?? "open",
             pastSuggestions: f.pastSuggestions?.length
               ? f.pastSuggestions
@@ -858,7 +861,8 @@ const GUIDE_ITEMS: readonly { title: string; body: string }[] = [
   },
   {
     title: "Go further than feels sensible.",
-    body: "Delusional optimism is the point. If it sounds a bit much, you’re close. Then go bigger.",
+    // body: "Delusional optimism is the point. If it sounds a bit much, you’re close. Then go bigger.",
+    body: "Ambitious is a clear step up that still sounds like your life. Audacious is the top of what’s plausible for someone on your path.",
   },
   {
     title: "Make it specific.",
@@ -2225,7 +2229,7 @@ export function ManifestoStoryView() {
     ambition: number;
     findings: LiveFinding[];
   } | null>(null);
-  const [raiseLevel, setRaiseLevel] = useState<RaiseLevel>("audacious");
+  const [raiseLevel, setRaiseLevel] = useState<RaiseLevel>("ambitious");
   useEffect(() => {
     let cancelled = false;
     void fetchUserSettings()

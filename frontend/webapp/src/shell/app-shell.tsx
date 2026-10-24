@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AppChrome } from "@/components/app-chrome";
+import { DailyAffirmationsWarmup } from "@/components/plan/daily-affirmations-card";
 import { LibraryPlayerProvider } from "@/components/library-player-provider";
 import { ensureMedimadeSession } from "@/lib/auth-session";
 import {
@@ -67,6 +68,7 @@ export function AppShell() {
   return (
     <MvpFlagsProvider>
       <LibraryPlayerProvider>
+        <DailyAffirmationsWarmup />
         <AppChrome>
           <Outlet />
         </AppChrome>

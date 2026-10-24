@@ -13,6 +13,10 @@ import {
 } from "@/components/plan/raise-ceiling-panel";
 import { useMinWidth } from "@/hooks/use-min-width";
 import {
+  fetchUserSettings,
+  patchUserSettings,
+} from "@/lib/settings-api";
+import {
   raiseStoryCeiling,
   regenerateFindingLine,
   suggestionAt,
@@ -106,7 +110,7 @@ export function RaiseControl({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [level, setLevel] = useState<RaiseLevel>("audacious");
+  const [level, setLevel] = useState<RaiseLevel>("ambitious");
   const [ambition, setAmbition] = useState(0);
   const [findings, setFindings] = useState<Live[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -140,9 +144,27 @@ export function RaiseControl({
     return () => setRaiseSide(false);
   }, [open, setRaiseSide, side]);
 
-  function applyLevel(next: RaiseLevel, rows = findings) {
-    setLevel(next);
-    setFindings(rows.map((f) => (f.status === "open" ? { ...f, level: next } : f)));
+  useEffect(() => {
+    let cancelled = false;
+    void fetchUserSettings()
+      .then(({ settings }) => {
+        if (cancelled) return;
+        const saved = settings.account.raiseLevel;
+        setLevel(saved === "delusional" ? "audacious" : saved);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function applyLevel(next: RaiseLevel, rows = findings, persist = true) {
+    const saved = next === "delusional" ? "audacious" : next;
+    setLevel(saved);
+    setFindings(rows.map((f) => (f.status === "open" ? { ...f, level: saved } : f)));
+    if (persist) {
+      void patchUserSettings({ account: { raiseLevel: saved } }).catch(() => {});
+    }
   }
 
   async function raise() {
@@ -152,7 +174,7 @@ export function RaiseControl({
     if (hit) {
       setFailed(false);
       setAmbition(hit.ambition);
-      applyLevel(level, hit.findings);
+      applyLevel(level, hit.findings, false);
       setActiveId(hit.findings[0]?.id ?? null);
       setOpen(true);
       return;

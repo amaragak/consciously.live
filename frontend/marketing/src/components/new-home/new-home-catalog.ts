@@ -333,11 +333,11 @@ export const CEILING = {
     "sells out every collection",
     "Collectors wait for his next piece.",
   ],
-  delusional: [
-    "galleries in London, Paris and New York",
-    "becomes the most collected painter alive",
-    "Museums ask first.",
-  ],
+  // delusional: [
+  //   "galleries in London, Paris and New York",
+  //   "becomes the most collected painter alive",
+  //   "Museums ask first.",
+  // ],
 } as const;
 
 export type CeilingLevel = keyof typeof CEILING;
