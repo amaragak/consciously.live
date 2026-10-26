@@ -698,6 +698,99 @@ function Row({ title, body, children }: { title: string; body?: string; children
   );
 }
 
+function PitchGlyph({ children }: { children: ReactNode }) {
+  return (
+    <span className="new-home-pitch-icon" aria-hidden>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {children}
+      </svg>
+    </span>
+  );
+}
+
+const PITCH_PILLARS = [
+  {
+    title: "Add your goals, blocks and daily thoughts",
+    body: "Ideate on your personal vision, work through the fears and patterns holding you back, and keep a daily journal. It's all connected: a doubt you write down tonight can shape tomorrow's meditation.",
+    icon: (
+      <>
+        <path d="M4 6h6M4 12h9M4 18h6" />
+        <path d="M13 6c3 0 4 3 7 6-3 3-4 6-7 6" />
+      </>
+    ),
+  },
+  {
+    title: "Get personalised meditations that catalyse the change",
+    body: "Written from your goals, blocks and journal, in the style and voice you choose. Each one works on something real: the pitch you're dreading, the habit you're breaking, the person you're becoming.",
+    icon: (
+      <>
+        <circle cx="12" cy="6" r="2" />
+        <path d="M6 20c1-4 3-6 6-6s5 2 6 6M4 14l4-2M20 14l-4-2" />
+      </>
+    ),
+  },
+  {
+    title: "Move towards your ideal self",
+    body: "See yourself already living it on your vision board. Put who you are becoming into a manifesto. Fall asleep listening to the story of your future self, narrated to you every night.",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <circle cx="12" cy="12" r="4" />
+      </>
+    ),
+  },
+] as const;
+
+const PITCH_TOOLS = [
+  ["Meditate", "personalised guided meditation app"],
+  ["Manifest", "vision board, goal planner and personal manifesto"],
+  ["Journal", "daily journal with insights"],
+  ["Heal", "self-help workbook"],
+  ["Focus", "focus timer"],
+] as const;
+
+function PitchBand() {
+  return (
+    <section className="new-home-pitch new-home-warm" aria-label="Why Consciously">
+      <div className="new-home-wrap new-home-pitch-inner" data-hv2-reveal>
+        <h2 className="new-home-display">
+          Not just a meditation app.
+          <br />
+          Consciously helps you <em>change</em> who you are
+        </h2>
+        <div className="new-home-pitch-pillars">
+          {PITCH_PILLARS.map((pillar) => (
+            <article key={pillar.title}>
+              <PitchGlyph>{pillar.icon}</PitchGlyph>
+              <h3>{pillar.title}</h3>
+              <p>{pillar.body}</p>
+            </article>
+          ))}
+        </div>
+        <div className="new-home-pitch-foot">
+          <p>One app instead of five</p>
+          <ul className="new-home-pitch-chips">
+            {PITCH_TOOLS.map(([name, line]) => (
+              <li key={name}>
+                <em>{name}</em>
+                <b>·</b>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MeditateBand() {
   const base = useId();
   const waitlist = useWaitlist();
@@ -1551,6 +1644,7 @@ export function NewHomeSections() {
   const rootRef = useReveal();
   return (
     <div ref={rootRef}>
+      <PitchBand />
       <MeditateBand />
       <ManifestBand />
       <JournalBand />
