@@ -1,5 +1,5 @@
 import { Link } from "@/lib/spa-nav";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ensureMedimadeSession,
   getMedimadeSessionDisplayName,
@@ -14,9 +14,9 @@ import {
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { formatDuration } from "@/components/library-meditation-card";
-import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { DashboardAffirmationsCard } from "@/components/plan/daily-affirmations-card";
-import { SectionEyebrow } from "@/components/section-eyebrow";
+import { SelectChevron } from "@/components/select-chevron";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
   formatJournalEntryDate,
@@ -58,10 +58,23 @@ import {
   resolveNarratedStoryPlacement,
   isLibraryStoryItem,
 } from "@/lib/manifesto-story-placement";
+import { DashboardStoryManifestRow } from "@/components/dashboard-story-slot";
 import {
-  DashboardStoryManifestRow,
-  DashboardStoryTopSlot,
-} from "@/components/dashboard-story-slot";
+  readFocusSessionPrefs,
+  readFocusTasksList,
+  readSessionsCompletedToday,
+  writeFocusTasksList,
+  type FocusTaskItem,
+} from "@/lib/focus-timer-storage";
+import { newFocusTaskId, writeIdeateDoneFromFocus } from "@/lib/focus-ideate-link";
+import {
+  activeHealItems,
+  currentView,
+  loadHealStore,
+  type HealItem,
+  type HealStoreV1,
+} from "@/lib/heal-store";
+import { healTypeLabel } from "@/lib/heal-copy";
 
 const JOURNAL_PREVIEW_LS = "mm_home_journal_show_previews_v1";
 
@@ -422,801 +435,431 @@ export function WelcomeDashboard() {
     playItem(storyPlacement.libraryItem);
   }
 
-  function toggleJournalPreviews() {
-    setShowJournalPreviews((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(JOURNAL_PREVIEW_LS, next ? "1" : "0");
-      } catch {
-        /* */
-      }
-      return next;
-    });
+  const [todayStats, setTodayStats] = useState({ partialStreak: 0, doneCount: 0, totalCount: 3 });
+  const [focusTasks, setFocusTasks] = useState<FocusTaskItem[]>([]);
+  const [focusDraft, setFocusDraft] = useState("");
+  const [healStore, setHealStore] = useState<HealStoreV1 | null>(null);
+  const [healItems, setHealItems] = useState<HealItem[]>([]);
+
+  useEffect(() => {
+    setFocusTasks(readFocusTasksList());
+    const store = loadHealStore();
+    setHealStore(store);
+    setHealItems(activeHealItems(store));
+  }, []);
+
+  const focusTodo = focusTasks.filter((task) => !task.done);
+  const focusMinutes = readFocusSessionPrefs().focusMinutes;
+  const sessionsToday = readSessionsCompletedToday();
+  const otherRecent = recentMeditations.find((item) => item.s3Key !== ready?.s3Key) ?? null;
+
+  function addFocusGoal() {
+    const text = focusDraft.trim();
+    if (!text) {
+      document.getElementById("dashboard-focus-add")?.focus();
+      return;
+    }
+    const next = [
+      ...focusTasks.filter((task) => !task.done),
+      { id: newFocusTaskId(), text, done: false, inSession: true },
+      ...focusTasks.filter((task) => task.done),
+    ];
+    writeFocusTasksList(next);
+    setFocusTasks(next);
+    setFocusDraft("");
+  }
+
+  function tickFocusGoal(id: string) {
+    const item = focusTasks.find((task) => task.id === id);
+    if (!item) return;
+    const nextDone = !item.done;
+    if (item.ideateKind && item.ideateId) {
+      writeIdeateDoneFromFocus(item.ideateKind, item.ideateId, nextDone);
+    }
+    const next = focusTasks.map((task) =>
+      task.id === id ? { ...task, done: nextDone, inSession: false } : task,
+    );
+    const ordered = [
+      ...next.filter((task) => !task.done),
+      ...next.filter((task) => task.done),
+    ];
+    writeFocusTasksList(ordered);
+    setFocusTasks(ordered);
   }
 
   return (
-    <div className="welcome-dashboard relative w-full">
-      {/* —— Mobile (below md) —— */}
-      <div className="flex flex-col gap-[22px] pb-24 md:hidden">
-        <header className="flex flex-col gap-1.5 px-5 pb-2 pt-6">
-          <h1 className="font-display text-[28px] font-normal leading-[1.15] text-foreground">
+    <div className="welcome-dashboard relative mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
+      <section
+        aria-label="Today"
+        className="relative flex flex-col gap-5 overflow-hidden rounded-[22px] px-5 py-6 text-[#F3EDE2] shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:flex-row md:gap-7 md:px-[30px] md:py-7"
+        style={{ backgroundColor: "#0F1B2D" }}
+      >
+        <div className="navy-paisley-plate" aria-hidden />
+        <div className="relative flex min-w-0 flex-[1.2] flex-col justify-center gap-3.5">
+          <h1 className="font-display text-[32px] font-normal leading-[1.1] md:text-[40px]">
             {greeting}, {name}.
           </h1>
           {manifesto ? (
-            <p className="font-display text-[15px] italic leading-[1.45] text-muted">
+            <p className="line-clamp-2 font-display text-[17px] italic leading-[1.45] text-[rgba(243,237,226,0.82)] md:line-clamp-none md:text-[19px]">
               “{manifesto}”
             </p>
           ) : (
-            <Link
-              href="/manifest/my"
-              className="font-display text-[15px] italic leading-[1.45] text-accent-link"
-            >
+            <Link href="/manifest/my" className="font-display text-[17px] italic leading-[1.45] text-[#D9B87C] md:text-[19px]">
               Write your manifesto →
             </Link>
           )}
-          {chip ? (
-            <Link
-              href={chip.href}
-              className="mt-1 max-w-full self-start truncate rounded-full border border-border bg-card px-3 py-1.5 text-[12px] text-muted"
-            >
-              Becoming · {chip.title} →
-            </Link>
-          ) : null}
-        </header>
-
-        <div className="flex flex-col gap-[22px] px-4">
-          {topSlotKind === "story" && storyPlacement ? (
-            <DashboardStoryTopSlot
-              placement={storyPlacement}
-              firstName={storyFirstName}
-              onPlay={playStory}
-              waveform={<Waveform compact />}
-              compact
-            />
-          ) : (
-            <section
-              aria-label={
-                topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"
-              }
-              className="flex flex-col gap-3 rounded-2xl bg-[var(--deep)] p-4 text-[color-mix(in_srgb,white_92%,var(--gold))]"
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-gold">
-                {topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"}
-              </p>
-              {topSlotKind === "unplayed" && ready ? (
-                <>
-                  <div className="flex items-center gap-3.5">
-                    <PrimaryCreateButton
-                      variant="compact"
-                      leadingPlus={false}
-                      aria-label={`Play ${ready.title?.trim() || "meditation"}`}
-                      onClick={playReady}
-                      className="!rounded-full"
-                      style={{ width: 48, height: 48, borderRadius: 9999 }}
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        aria-hidden
-                      >
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </PrimaryCreateButton>
-                    <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                      <p className="font-display text-[18px] leading-[1.25]">
-                        {ready.title?.trim() || "Untitled"}
-                      </p>
-                      <p className="text-[12px] text-[color-mix(in_srgb,white_65%,transparent)]">
-                        {formatDuration(ready.durationSeconds)}
-                      </p>
-                    </div>
-                  </div>
-                  <Waveform compact />
-                </>
-              ) : (
-                <div className="flex flex-col gap-3 py-1">
-                  <p className="font-display text-[18px] leading-[1.25]">
-                    {libraryReady
-                      ? "Make something for today"
-                      : "Loading your library…"}
-                  </p>
-                  {libraryReady ? (
-                    <PrimaryCreateButton to="/meditate/create" className="w-fit">
-                      Create a meditation
-                    </PrimaryCreateButton>
-                  ) : null}
-                </div>
-              )}
-            </section>
-          )}
-
+          <div className="flex flex-wrap items-center gap-2">
+            {chip ? (
+              <Link
+                href={chip.href}
+                className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-[rgba(243,237,226,0.3)] px-3 text-[13px] text-[#F3EDE2]"
+              >
+                <span className="text-[rgba(243,237,226,0.6)]">Becoming</span>
+                <span className="truncate">· {chip.title}</span>
+                <SelectChevron direction="right" className="text-[#F3EDE2]" />
+              </Link>
+            ) : null}
+            {todayStats.partialStreak > 0 ? (
+              <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[rgba(200,164,106,0.45)] bg-[rgba(200,164,106,0.16)] px-3 text-[13px] font-semibold text-[#E6C98A]">
+                <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden>
+                  <circle cx="24" cy="24" r="8.2" fill="#C8A46A" />
+                  <g stroke="#C8A46A" strokeWidth="2" strokeLinecap="round">
+                    <line x1="36.5" y1="24" x2="45" y2="24" />
+                    <line x1="32.8" y1="32.8" x2="38.8" y2="38.8" />
+                    <line x1="24" y1="36.5" x2="24" y2="45" />
+                    <line x1="15.2" y1="32.8" x2="9.2" y2="38.8" />
+                    <line x1="11.5" y1="24" x2="3" y2="24" />
+                    <line x1="15.2" y1="15.2" x2="9.2" y2="9.2" />
+                    <line x1="24" y1="11.5" x2="24" y2="3" />
+                    <line x1="32.8" y1="15.2" x2="38.8" y2="9.2" />
+                  </g>
+                </svg>
+                {todayStats.partialStreak}-day streak
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="relative hidden w-px self-stretch bg-[rgba(243,237,226,0.15)] md:block" />
+        <div className="relative h-px bg-[rgba(243,237,226,0.15)] md:hidden" />
+        <div className="relative flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[1.6px] text-[#D9B87C]">Today</span>
+            <span className="text-[12.5px] text-[rgba(243,237,226,0.6)]">
+              {todayStats.doneCount} of {todayStats.totalCount} done
+            </span>
+          </div>
           <DailyHabitTracker
-            compact
+            embedded
+            onStats={setTodayStats}
             readyMeditationTitle={todayTryTitle}
-            onPlayReadyMeditation={
-              topSlotKind === "unplayed" && ready ? playReady : null
-            }
+            onPlayReadyMeditation={topSlotKind === "unplayed" && ready ? playReady : null}
             storyAvailable={Boolean(storyPlacement)}
             storyMinutes={storyPlacement?.minutes ?? null}
             onPlayStory={storyPlacement ? playStory : null}
             goalStep={goalStep}
           />
-
-          <section
-            aria-label="Meditate"
-            className="flex flex-col gap-2.5 rounded-[14px] border border-[#F2D6BA] bg-[#FBEBDC] px-4 py-3.5 dark:border-[color:var(--card-warm-border)] dark:bg-[color:var(--card-warm-bg)]"
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <SectionEyebrow className="text-[11px] font-semibold tracking-[1.4px]">
-                Meditate
-              </SectionEyebrow>
-              <Link
-                href="/meditate/library/creations"
-                className="text-[12px] text-muted"
-              >
-                Library ({libraryReady ? meditations.length : "…"}) →
-              </Link>
-            </div>
-            <h2 className="font-display text-[21px] font-normal leading-[1.2] text-foreground">
-              What do you need right now?
-            </h2>
-            {recentMeditations.length === 0 ? (
-              <p className="border-t border-[#F2D6BA] py-2.5 text-[14px] text-muted dark:border-[color:var(--card-warm-border)]">
-                Your first meditation is one prompt away
-              </p>
-            ) : (
-              <ul>
-                {recentMeditations.map((m, i) => {
-                  const last = i === recentMeditations.length - 1;
-                  return (
-                    <li
-                      key={m.sk || m.id || `m-${i}`}
-                      className={`flex items-baseline gap-3 py-2.5 ${
-                        last
-                          ? ""
-                          : "border-b border-[#F2D6BA] dark:border-[color:var(--card-warm-border)]"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => playItem(m)}
-                        className="flex min-w-0 flex-1 cursor-pointer flex-col gap-px text-left"
-                      >
-                        <span className="text-[14px] text-foreground">
-                          {m.title?.trim() || "Untitled"}
-                        </span>
-                        <span className="text-[12px] text-muted">Recent</span>
-                      </button>
-                      <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">
-                        {formatDuration(m.durationSeconds)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section
-            aria-label="Journal"
-            className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <SectionEyebrow className="text-[11px] font-semibold tracking-[1.4px]">
-                Journal
-              </SectionEyebrow>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={showJournalPreviews}
-                onClick={toggleJournalPreviews}
-                className="flex cursor-pointer items-center gap-2 text-[12px] text-muted"
-              >
-                Show previews
-                <span
-                  aria-hidden
-                  className={`relative h-[18px] w-[30px] rounded-full transition-colors ${
-                    showJournalPreviews ? "bg-gold" : "bg-border"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-card shadow-sm transition-[left] ${
-                      showJournalPreviews ? "left-[14px]" : "left-0.5"
-                    }`}
-                  />
-                </span>
-              </button>
-            </div>
-            <h2 className="font-display text-[21px] font-normal leading-[1.2] text-foreground">
-              How are you, really?
-            </h2>
-            {recentJournal.length === 0 ? (
-              <p className="border-t border-border-subtle py-2.5 text-[14px] text-muted">
-                Write your first entry
-              </p>
-            ) : (
-              <ul>
-                {recentJournal.map((e, i) => {
-                  const preview = stripHtmlToText(e.contentHtml).trim();
-                  const last = i === recentJournal.length - 1;
-                  return (
-                    <li
-                      key={e.id}
-                      className={`flex items-center gap-3 py-2.5 ${
-                        last ? "" : "border-b border-border"
-                      }`}
-                    >
-                      <Link
-                        href={`/journal/my/${encodeURIComponent(e.id)}`}
-                        className="flex min-w-0 flex-1 flex-col gap-px"
-                      >
-                        <span className="text-[14px] text-foreground">
-                          {e.title.trim() || "Untitled entry"}
-                        </span>
-                        <span className="text-[12px] text-muted">
-                          {formatJournalEntryDate(e.updatedAt || e.createdAt)}
-                        </span>
-                        {showJournalPreviews && preview ? (
-                          <span className="mt-0.5 line-clamp-2 text-[12px] text-muted">
-                            {preview}
-                          </span>
-                        ) : null}
-                      </Link>
-                      {!showJournalPreviews ? (
-                        <span
-                          aria-hidden
-                          className="h-1.5 w-[72px] shrink-0 rounded-full bg-border"
-                        />
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section
-            aria-label="Manifest"
-            className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5"
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <SectionEyebrow className="text-[11px] font-semibold tracking-[1.4px]">
-                Manifest
-              </SectionEyebrow>
-              <Link href="/manifest/my" className="text-[12px] text-muted">
-                Open →
-              </Link>
-            </div>
-            {showManifestStoryRow && storyPlacement ? (
-              <DashboardStoryManifestRow
-                placement={storyPlacement}
-                firstName={storyFirstName}
-                onPlay={playStory}
-                compact
-              />
-            ) : null}
-            <h2 className="font-display text-[21px] font-normal leading-[1.2] text-foreground">
-              Your life areas
-            </h2>
-
-            {visionItems.length === 0 ? (
-              <Link
-                href="/manifest/my/vision-board"
-                className="text-[14px] font-medium text-accent-link"
-              >
-                Start your vision board →
-              </Link>
-            ) : (
-              <div className="flex gap-1.5">
-                {visionItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href="/manifest/my/vision-board"
-                    className="h-10 flex-1 overflow-hidden rounded-lg"
-                    style={{
-                      background: item.color || "var(--accent-soft)",
-                    }}
-                  >
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt={item.label || ""}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {values.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {values.slice(0, 8).map((v) => (
-                  <span
-                    key={v}
-                    className="rounded-full border border-border px-2.5 py-1 text-[12px] text-muted"
-                  >
-                    {v}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="h-px bg-border" />
-
-            {visibleLifeAreas.length === 0 ? (
-              <Link
-                href="/manifest/my?new=1"
-                className="text-[14px] font-medium text-accent-link"
-              >
-                Map your life areas →
-              </Link>
-            ) : (
-              <ul>
-                {visibleLifeAreas.map((row, i) => {
-                  const pct =
-                    row.total > 0
-                      ? Math.round((row.done / row.total) * 100)
-                      : 0;
-                  const last = i === visibleLifeAreas.length - 1;
-                  return (
-                    <li
-                      key={row.dream.id}
-                      className={`flex flex-col gap-1 py-2.5 ${
-                        last ? "" : "border-b border-border"
-                      }`}
-                    >
-                      <div className="flex items-baseline justify-between gap-3">
-                        <span className="font-display text-[16px] text-foreground">
-                          {row.dream.title.trim() || "Untitled"}
-                        </span>
-                        <span className="shrink-0 text-[12px] text-muted">
-                          {row.total > 0
-                            ? `${row.done} of ${row.total} steps`
-                            : "No steps yet"}
-                        </span>
-                      </div>
-                      <span className="text-[13px] text-muted">
-                        {row.goalTitle || "No active goal yet"}
-                      </span>
-                      <div className="flex items-center gap-2.5">
-                        <span className="h-1 flex-1 overflow-hidden rounded-full bg-border">
-                          <span
-                            className="block h-1 rounded-full bg-gold"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </span>
-                        {row.nextStep ? (
-                          <Link
-                            href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`}
-                            className="shrink-0 whitespace-nowrap text-[12px] font-semibold text-accent-link"
-                          >
-                            Next: {row.nextStep} →
-                          </Link>
-                        ) : (
-                          <Link
-                            href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`}
-                            className="shrink-0 whitespace-nowrap text-[12px] font-semibold text-accent-link"
-                          >
-                            Open →
-                          </Link>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {moreLifeAreas > 0 ? (
-              <Link
-                href="/manifest/my"
-                className="text-[13px] font-medium text-accent-link"
-              >
-                + {moreLifeAreas} more →
-              </Link>
-            ) : null}
-          </section>
         </div>
-      </div>
+      </section>
 
-      {/* —— Desktop (md+) —— */}
-      <div className="relative mx-auto hidden max-w-6xl flex-col gap-8 px-4 pb-14 pt-8 sm:px-6 sm:pt-10 md:flex md:gap-8">
-        {/* Greeting + manifesto */}
-        <header className="flex flex-col gap-3.5">
-          <h1 className="font-display text-[40px] font-normal leading-none tracking-[-1px] text-foreground sm:text-[48px]">
-            {greeting}, {name}.
-          </h1>
-          <div className="flex flex-wrap items-center gap-3.5">
-            {manifesto ? (
-              <p className="font-display text-[18px] italic leading-snug text-muted sm:text-[20px]">
-                “{manifesto}”
-              </p>
-            ) : (
-              <Link
-                href="/manifest/my"
-                className="font-display text-[18px] italic text-accent-link transition-opacity hover:opacity-80 sm:text-[20px]"
-              >
-                Write your manifesto →
-              </Link>
-            )}
-            {chip ? (
-              <Link
-                href={chip.href}
-                className="inline-flex items-center rounded-full border border-border bg-card px-3 py-1.5 text-[13px] text-muted transition-colors hover:border-accent/40 hover:text-foreground"
-              >
-                Becoming · {chip.title} →
-              </Link>
-            ) : null}
-          </div>
-        </header>
-
-        {/* Ready + Today */}
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-          {topSlotKind === "story" && storyPlacement ? (
-            <DashboardStoryTopSlot
-              placement={storyPlacement}
-              firstName={storyFirstName}
-              onPlay={playStory}
-              waveform={<Waveform />}
-            />
-          ) : (
-            <section
-              aria-label={
-                topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"
-              }
-              className="flex flex-col gap-5 rounded-[22px] bg-[var(--deep)] p-7 text-[color-mix(in_srgb,white_92%,var(--gold))] lg:col-span-7"
-            >
-              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-gold">
-                {topSlotKind === "unplayed" ? "Ready when you are" : "Meditate"}
-              </p>
-              {topSlotKind === "unplayed" && ready ? (
-                <>
-                  <div className="flex items-center gap-4">
-                    <PrimaryCreateButton
-                      variant="compact"
-                      leadingPlus={false}
-                      aria-label={`Play ${ready.title?.trim() || "meditation"}`}
-                      onClick={playReady}
-                      className="!rounded-full"
-                      style={{ width: 60, height: 60, borderRadius: 9999 }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        aria-hidden
-                      >
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </PrimaryCreateButton>
-                    <div className="min-w-0 flex flex-col gap-1">
-                      <p className="font-display text-[22px] font-medium leading-snug sm:text-[24px]">
-                        {ready.title?.trim() || "Untitled"}
-                      </p>
-                      <p className="text-[14px] text-[color-mix(in_srgb,white_65%,transparent)]">
-                        {[
-                          ready.meditationStyle?.trim() || null,
-                          formatDuration(ready.durationSeconds),
-                          provenanceLine(ready),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
-                  </div>
-                  <Waveform />
-                </>
-              ) : (
-                <div className="flex flex-col gap-4 py-2">
-                  <p className="font-display text-[22px] font-medium sm:text-[24px]">
-                    {libraryReady
-                      ? "Make something for today"
-                      : "Loading your library…"}
-                  </p>
-                  {libraryReady ? (
-                    <PrimaryCreateButton to="/meditate/create" className="w-fit">
-                      Create a meditation
-                    </PrimaryCreateButton>
-                  ) : null}
-                </div>
-              )}
-            </section>
-          )}
-
-          <div className="lg:col-span-5">
-            <DailyHabitTracker
-              readyMeditationTitle={todayTryTitle}
-              onPlayReadyMeditation={
-                topSlotKind === "unplayed" && ready ? playReady : null
-              }
-              storyAvailable={Boolean(storyPlacement)}
-              storyMinutes={storyPlacement?.minutes ?? null}
-              onPlayStory={storyPlacement ? playStory : null}
-              goalStep={goalStep}
-            />
-          </div>
-        </div>
-
-        {/* Meditate + Journal */}
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          <section
-            aria-label="Meditate"
-            className="flex flex-col gap-2.5 rounded-[20px] border border-[#F2D6BA] bg-[#FBEBDC] p-6 sm:p-7 dark:border-[color:var(--card-warm-border)] dark:bg-[color:var(--card-warm-bg)]"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <SectionEyebrow>Meditate</SectionEyebrow>
-              <Link
-                href="/meditate/library/creations"
-                className="text-[14px] text-muted transition-colors hover:text-foreground"
-              >
-                Library ({libraryReady ? meditations.length : "…"}) →
-              </Link>
-            </div>
-            <h2 className="pb-1.5 font-display text-[24px] font-normal tracking-tight text-foreground sm:text-[26px]">
-              What do you need right now?
-            </h2>
-            {recentMeditations.length === 0 ? (
-              <p className="border-t border-[#F2D6BA] py-3 text-[14px] text-muted dark:border-[color:var(--card-warm-border)]">
-                Your first meditation is one prompt away
-              </p>
-            ) : (
-              <ul>
-                {recentMeditations.map((m, i) => (
-                  <li
-                    key={m.sk || m.id || `m-${i}`}
-                    className="flex items-center justify-between gap-3 border-t border-[#F2D6BA] py-3.5 first:border-t-0 first:pt-0 dark:border-[color:var(--card-warm-border)]"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => playItem(m)}
-                      className="min-w-0 flex-1 cursor-pointer text-left"
-                    >
-                      <span className="block truncate text-[15px] font-medium text-foreground">
-                        {m.title?.trim() || "Untitled"}
-                      </span>
-                      <span className="mt-0.5 block text-[13px] text-muted">
-                        Recent
-                      </span>
-                    </button>
-                    <span className="shrink-0 text-[14px] tabular-nums text-muted">
-                      {formatDuration(m.durationSeconds)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <PrimaryCreateButton
-              to="/meditate/create"
-              className="mt-2.5 w-fit"
-            >
-              Create a meditation
-            </PrimaryCreateButton>
-          </section>
-
-          <section
-            aria-label="Journal"
-            className="flex flex-col gap-2.5 rounded-[20px] border border-border bg-card p-6 sm:p-7"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <SectionEyebrow>Journal</SectionEyebrow>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={showJournalPreviews}
-                onClick={toggleJournalPreviews}
-                className="flex cursor-pointer items-center gap-2 text-[13px] text-muted"
-              >
-                Show previews
-                <span
-                  aria-hidden
-                  className={`relative h-5 w-[34px] rounded-full transition-colors ${
-                    showJournalPreviews ? "bg-gold" : "bg-border"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-card transition-transform ${
-                      showJournalPreviews ? "left-[14px]" : "left-0.5"
-                    }`}
-                  />
-                </span>
-              </button>
-            </div>
-            <h2 className="pb-1.5 font-display text-[24px] font-normal tracking-tight text-foreground sm:text-[26px]">
-              How are you, really?
-            </h2>
-            {recentJournal.length === 0 ? (
-              <p className="border-t border-border-subtle py-3 text-[14px] text-muted">
-                Write your first entry
-              </p>
-            ) : (
-              <ul>
-                {recentJournal.map((e) => {
-                  const preview = stripHtmlToText(e.contentHtml).trim();
-                  return (
-                    <li
-                      key={e.id}
-                      className="flex items-center justify-between gap-3 border-t border-border-subtle py-3.5 first:border-t-0 first:pt-0"
-                    >
-                      <Link
-                        href={`/journal/my/${encodeURIComponent(e.id)}`}
-                        className="min-w-0 flex-1"
-                      >
-                        <span className="block truncate text-[15px] font-medium text-foreground">
-                          {e.title.trim() || "Untitled entry"}
-                        </span>
-                        <span className="mt-0.5 block text-[13px] text-muted">
-                          {formatJournalEntryDate(e.updatedAt || e.createdAt)}
-                        </span>
-                        {showJournalPreviews && preview ? (
-                          <span className="mt-1 block truncate text-[13px] text-muted">
-                            {preview}
-                          </span>
-                        ) : null}
-                      </Link>
-                      {!showJournalPreviews ? (
-                        <span
-                          aria-hidden
-                          className="hidden h-2 w-[90px] shrink-0 rounded-full bg-border-subtle sm:block"
-                        />
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <PrimaryCreateButton
-              to="/journal/my?new=1"
-              tone="outline"
-              className="mt-2.5 w-fit"
-            >
-              New entry
-            </PrimaryCreateButton>
-          </section>
-        </div>
-
-        {/* Manifest */}
-        <section
-          aria-label="Manifest"
-          className="flex flex-col gap-5 rounded-[20px] border border-border bg-card p-6 sm:p-7"
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <DashCard
+          label="Meditate"
+          action={<OutlineGo href="/meditate/library/creations" label={`Library · ${libraryReady ? meditations.length : "…"}`} short="Open" />}
         >
-          <div className="flex items-center justify-between gap-3">
-            <SectionEyebrow>Manifest</SectionEyebrow>
-            <Link
-              href="/manifest/my"
-              className="text-[14px] text-muted transition-colors hover:text-foreground"
-            >
-              Open Manifest →
+          <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[26px]">What do you need right now?</h2>
+          {ready ? (
+            <button type="button" onClick={playReady} className="flex w-full cursor-pointer items-center gap-3.5 rounded-[14px] bg-[#0F1B2D] px-[18px] py-3.5 text-left text-[#F3EDE2]">
+              <span className="inline-flex size-[46px] shrink-0 items-center justify-center rounded-full border border-[#AFC2DC] text-on-accent" style={PRIMARY_ACCENT_FILL_STYLE}>
+                <PlayMark />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold uppercase tracking-[1.4px] text-[#D9B87C]">Ready when you are</span>
+                <span className="mt-0.5 block truncate font-display text-[18px] leading-tight">{ready.title?.trim() || "Untitled"}</span>
+                <span className="mt-0.5 block text-[12px] text-[rgba(243,237,226,0.65)]">
+                  {formatDuration(ready.durationSeconds)}
+                  {provenanceLine(ready) ? ` · ${provenanceLine(ready)}` : ""}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <p className="text-[14px] text-muted">
+              {libraryReady ? "Your first meditation is one prompt away" : "Loading your library…"}
+            </p>
+          )}
+          {otherRecent ? (
+            <button type="button" onClick={() => playItem(otherRecent)} className="flex w-full cursor-pointer items-baseline justify-between gap-3 border-t border-border py-2.5 text-left">
+              <span className="min-w-0 truncate text-[14px] text-foreground">{otherRecent.title?.trim() || "Untitled"}</span>
+              <span className="shrink-0 text-[12px] text-muted">{formatDuration(otherRecent.durationSeconds)}</span>
+            </button>
+          ) : null}
+          <div className="mt-auto flex flex-wrap gap-2 pt-1">
+            <MistLink href="/meditate/create">Create meditation</MistLink>
+          </div>
+        </DashCard>
+
+        <DashCard
+          label="Journal"
+          action={<OutlineGo href="/journal/my" label={`All entries · ${journalEntries.length}`} short="Open" />}
+        >
+          <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[26px]">How are you, really?</h2>
+          {recentJournal.length === 0 ? (
+            <p className="text-[14px] text-muted">Write your first entry</p>
+          ) : (
+            <ul>
+              {recentJournal.map((entry) => (
+                <li key={entry.id} className="border-t border-border py-2.5 first:border-0">
+                  <Link href={`/journal/my/${encodeURIComponent(entry.id)}`} className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-[14px] text-foreground">{entry.title.trim() || "Untitled entry"}</span>
+                    <span className="shrink-0 text-[12px] text-muted">{formatJournalEntryDate(entry.updatedAt || entry.createdAt)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-auto flex flex-wrap gap-2 pt-1">
+            <MistLink href="/journal/my?new=1">New entry</MistLink>
+            <OutlineGo href="/journal/my/gratitudes?new=1" label="Add a gratitude" plain />
+          </div>
+        </DashCard>
+
+        <DashCard
+          label="Manifest"
+          className="md:col-span-2"
+          action={<OutlineGo href="/manifest/my" label="Open Manifest" short="Open" />}
+        >
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="flex flex-col gap-2">
+              <span className="text-[13px] text-muted">Your vision board</span>
+              {visionItems.length === 0 ? (
+                <Link href="/manifest/my/vision-board" className="text-[14px] font-medium text-accent-link">Start your vision board →</Link>
+              ) : (
+                <>
+                  <div className="flex gap-2 overflow-x-auto md:grid md:grid-cols-4 md:overflow-visible">
+                    {visionItems.slice(0, 8).map((item) => (
+                      <Link key={item.id} href="/manifest/my/vision-board" className="h-[86px] w-[46%] shrink-0 overflow-hidden rounded-xl md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
+                        {item.imageUrl ? <img src={item.imageUrl} alt={item.label || ""} className="h-full w-full object-cover" /> : null}
+                      </Link>
+                    ))}
+                  </div>
+                  {visionItems.length > 2 ? <p className="text-[12px] text-muted md:hidden">Swipe for more</p> : null}
+                </>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-[13px] text-muted">Your story</span>
+              {storyPlacement ? (
+                <DashboardStoryManifestRow placement={storyPlacement} firstName={storyFirstName} onPlay={playStory} compact />
+              ) : (
+                <Link href="/manifest/story" className="text-[14px] font-medium text-accent-link">Write your story →</Link>
+              )}
+            </div>
+          </div>
+          {values.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <span className="text-[13px] text-muted">Your values</span>
+              <div className="flex flex-wrap gap-1.5">
+                {values.slice(0, 8).map((value) => (
+                  <span key={value} className="rounded-full border border-border px-2.5 py-1 text-[12px] text-muted">{value}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-2">
+            <span className="text-[13px] text-muted">Your life areas</span>
+            {lifeAreas.length === 0 ? (
+              <Link href="/manifest/my?new=1" className="text-[14px] font-medium text-accent-link">Map your life areas →</Link>
+            ) : (
+              <>
+                <div className="flex gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible">
+                  {lifeAreas.map((row) => {
+                    const pct = row.total > 0 ? Math.round((row.done / row.total) * 100) : 0;
+                    return (
+                      <Link key={row.dream.id} href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`} className="flex w-[240px] shrink-0 flex-col gap-1 rounded-2xl border border-border bg-background p-3.5 md:w-auto">
+                        <span className="font-display text-[18px] text-foreground">{row.dream.title.trim() || "Untitled"}</span>
+                        <span className="text-[13px] text-muted">{row.goalTitle || "No active goal yet"}</span>
+                        {row.nextStep ? <span className="text-[13px] text-foreground">Next: <span className="font-semibold">{row.nextStep}</span></span> : null}
+                        <span className="mt-1 h-[5px] overflow-hidden rounded-full bg-border">
+                          <span className="block h-[5px] rounded-full bg-gold" style={{ width: `${pct}%` }} />
+                        </span>
+                        <span className="text-[12px] text-muted">{row.total > 0 ? `${row.done} of ${row.total} done` : "No steps yet"}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+                {lifeAreas.length > 1 ? <p className="text-[12px] text-muted md:hidden">Swipe for more</p> : null}
+              </>
+            )}
+          </div>
+          <div className="mt-auto flex flex-wrap gap-2 pt-1">
+            <MistLink href="/manifest/tracker?add=1">Add a goal</MistLink>
+            <OutlineGo href="/manifest/my/vision-board?add=1" label="Add to vision board" plain />
+          </div>
+        </DashCard>
+
+        <DashCard
+          label="Heal"
+          action={<OutlineGo href="/heal" label={`What you’re carrying · ${healItems.length}`} short={`Carrying · ${healItems.length}`} />}
+        >
+          <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[26px]">What’s weighing on you?</h2>
+          {healItems.length === 0 ? (
+            <p className="text-[14px] text-muted">Nothing here yet. A breakup, a pattern, a thought you can’t shake.</p>
+          ) : (
+            <ul>
+              {healItems.slice(0, 2).map((item, index) => {
+                const good = healStore ? currentView(healStore, item.id, "good") : null;
+                return (
+                  <li key={item.id} className={index === 1 ? "hidden border-t border-border py-2.5 md:block" : "border-t border-border py-2.5 first:border-0"}>
+                    <Link href={`/heal/${encodeURIComponent(item.id)}`} className="flex flex-col gap-0.5">
+                      <span className="font-display text-[18px] leading-tight text-foreground">{item.title}</span>
+                      <span className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">{healTypeLabel(item.type)}</span>
+                      {good?.text ? (
+                        <span className="line-clamp-2 text-[14px] text-foreground"><span className="text-muted">On a good day: </span>{good.text}</span>
+                      ) : null}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="mt-auto flex flex-wrap gap-2 pt-1">
+            <MistLink href="/heal?describe=1">Add something</MistLink>
+          </div>
+        </DashCard>
+
+        <DashCard
+          label="Focus"
+          action={<OutlineGo href="/focus" label="Open Focus" short="Open" />}
+        >
+          <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[26px]">Today’s goals</h2>
+          {focusTodo.length === 0 ? (
+            <p className="text-[14px] text-muted">Nothing to do yet.</p>
+          ) : (
+            <ul>
+              {focusTodo.slice(0, 3).map((task) => (
+                <li key={task.id} className="flex items-center gap-2.5 border-t border-border py-2 first:border-0">
+                  <button
+                    type="button"
+                    aria-label={`Tick ${task.text}`}
+                    onClick={() => tickFocusGoal(task.id)}
+                    className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-[#E6DDCB] bg-white"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{task.text}</span>
+                  {task.lifeAreaTitle ? (
+                    <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-[#F6EEDD] px-[7px] text-[10.5px] font-bold uppercase tracking-[0.8px] text-[#8A6424]">{task.lifeAreaTitle}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center gap-3 rounded-[14px] border border-[#E6D3AE] bg-[#F6EEDD] px-3.5 py-3">
+            <span className="font-display text-[26px] tabular-nums leading-none text-foreground">{String(focusMinutes).padStart(2, "0")}:00</span>
+            <span className="min-w-0 flex-1 text-[13px] text-[#4A4652]">
+              {focusTodo.length === 1 ? "1 to do" : `${focusTodo.length} to do`}
+              {" · "}
+              {sessionsToday === 1 ? "1 session done today" : `${sessionsToday} sessions done today`}
+            </span>
+            <Link href="/focus?autoStart=1" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-4 text-[14px] font-semibold text-foreground">
+              <PlayMark />
+              Start
             </Link>
           </div>
-
-          {showManifestStoryRow && storyPlacement ? (
-            <DashboardStoryManifestRow
-              placement={storyPlacement}
-              firstName={storyFirstName}
-              onPlay={playStory}
+          <form
+            className="mt-auto flex flex-wrap items-center gap-2 pt-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addFocusGoal();
+            }}
+          >
+            <input
+              id="dashboard-focus-add"
+              value={focusDraft}
+              onChange={(event) => setFocusDraft(event.target.value)}
+              placeholder="Add a goal"
+              aria-label="Add a goal"
+              className="h-[38px] min-w-0 flex-1 rounded-full border border-border bg-card px-4 text-[14px] text-foreground outline-none placeholder:text-muted"
             />
-          ) : null}
-
-          <DashboardAffirmationsCard />
-
-          <div className="grid grid-cols-1 gap-7 md:grid-cols-12 md:items-start">
-            <div className="flex flex-col gap-2.5 md:col-span-8">
-              <span className="text-[14px] text-muted">Your vision board</span>
-              {visionItems.length === 0 ? (
-                <Link
-                  href="/manifest/my/vision-board"
-                  className="text-[15px] font-medium text-accent-link transition-opacity hover:opacity-80"
-                >
-                  Start your vision board →
-                </Link>
-              ) : (
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  {visionItems.map((item) => (
-                    <Link
-                      key={item.id}
-                      href="/manifest/my/vision-board"
-                      className="block aspect-square w-full overflow-hidden rounded-xl"
-                      style={{
-                        background: item.color || "var(--accent-soft)",
-                      }}
-                    >
-                      {item.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.imageUrl}
-                          alt={item.label || ""}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : null}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-            {values.length > 0 ? (
-              <div className="flex flex-col gap-2.5 md:col-span-4">
-                <span className="text-[14px] text-muted">Your values</span>
-                <div className="flex flex-wrap gap-2">
-                  {values.slice(0, 8).map((v) => (
-                    <span
-                      key={v}
-                      className="rounded-full border border-[color:var(--card-warm-border)] bg-[color:var(--card-warm-bg)] px-3.5 py-2 text-[14px] text-foreground"
-                    >
-                      {v}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-3 border-t border-border-subtle pt-5">
-            <span className="text-[14px] text-muted">Your life areas</span>
-            {visibleLifeAreas.length === 0 ? (
-              <Link
-                href="/manifest/my?new=1"
-                className="text-[15px] font-medium text-accent-link transition-opacity hover:opacity-80"
-              >
-                Map your life areas →
-              </Link>
-            ) : (
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-                {visibleLifeAreas.map((row) => {
-                  const pct =
-                    row.total > 0
-                      ? Math.round((row.done / row.total) * 100)
-                      : 0;
-                  return (
-                    <Link
-                      key={row.dream.id}
-                      href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`}
-                      className="flex flex-col gap-2 rounded-2xl border border-border px-5 py-4 transition-colors hover:border-accent/40"
-                    >
-                      <span className="font-display text-[20px] text-foreground">
-                        {row.dream.title.trim() || "Untitled"}
-                      </span>
-                      <span className="text-[14px] text-muted">
-                        {row.goalTitle
-                          ? `Goal · ${row.goalTitle}`
-                          : "No active goal yet"}
-                      </span>
-                      {row.nextStep ? (
-                        <span className="text-[14px] text-foreground">
-                          Next:{" "}
-                          <span className="font-semibold">{row.nextStep}</span>
-                        </span>
-                      ) : null}
-                      <span className="mt-1 h-[5px] overflow-hidden rounded-full bg-border-subtle">
-                        <span
-                          className="block h-[5px] rounded-full bg-gold"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </span>
-                      <span className="text-[12px] text-muted">
-                        {row.total > 0
-                          ? `${row.done} of ${row.total} steps`
-                          : "No steps yet"}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-            {moreLifeAreas > 0 ? (
-              <Link
-                href="/manifest/my"
-                className="text-[14px] font-medium text-accent-link"
-              >
-                + {moreLifeAreas} more →
-              </Link>
-            ) : null}
-          </div>
-        </section>
+            <button type="submit" className="inline-flex h-[38px] cursor-pointer items-center gap-2 rounded-full border border-[#AFC2DC] px-5 text-[14px] font-semibold text-on-accent" style={PRIMARY_ACCENT_FILL_STYLE}>
+              <PlusMark />
+              Add to today
+            </button>
+          </form>
+        </DashCard>
       </div>
+
+      <DashboardAffirmationsCard />
     </div>
+  );
+}
+
+function DashCard({
+  label,
+  action,
+  children,
+  className = "",
+}: {
+  label: string;
+  action: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`flex flex-col gap-3 rounded-[22px] border border-border bg-card p-5 shadow-[0_2px_12px_rgba(15,27,45,0.05)] ${className}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-[#8A6424]">{label}</p>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function OutlineGo({
+  href,
+  label,
+  short,
+  plain = false,
+}: {
+  href: string;
+  label: string;
+  short?: string;
+  plain?: boolean;
+}) {
+  return (
+    <Link href={href} className={`inline-flex items-center gap-1 rounded-full border border-border bg-card font-semibold text-foreground ${plain ? "h-[38px] px-4 text-[14px]" : "h-[34px] pl-3.5 pr-2 text-[13px]"}`}>
+      {short ? (
+        <>
+          <span className="md:hidden">{short}</span>
+          <span className="hidden md:inline">{label}</span>
+        </>
+      ) : (
+        label
+      )}
+      {plain ? <PlusMark /> : <SelectChevron direction="right" />}
+    </Link>
+  );
+}
+
+function MistLink({ href, children }: { href: string; children: string }) {
+  return (
+    <Link href={href} className="inline-flex h-[38px] items-center gap-2 rounded-full border border-[#AFC2DC] px-5 text-[14px] font-semibold text-on-accent" style={PRIMARY_ACCENT_FILL_STYLE}>
+      <PlusMark />
+      {children}
+    </Link>
+  );
+}
+
+function PlusMark() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function PlayMark() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
   );
 }

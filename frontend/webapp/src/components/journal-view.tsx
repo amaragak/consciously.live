@@ -21,13 +21,15 @@ import {
 } from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
-import { Calendar, Folder, Play, SquarePen } from "lucide-react";
+import { Calendar, Folder, Play } from "lucide-react";
+import { healScreenRisk } from "@/lib/heal-ai";
 import { journalMeditationForEntry } from "@/lib/heal-meditation-links";
 import { JournalEntryLinks } from "@/components/journal-entry-links";
 import {
   consumeReflectMeditationHandoff,
   findReflectionEntryForMeditation,
   reflectionTitleForMeditation,
+  withoutReflectionTitlePrefix,
 } from "@/lib/journal-meditation-reflect";
 import { JournalLockGate } from "@/components/journal-lock-gate";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
@@ -83,6 +85,7 @@ import {
   withoutDemoJournalEntries,
   type JournalEntry,
   type JournalFolder,
+  type JournalLink,
   type JournalGratitudeLines,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
@@ -315,6 +318,150 @@ function sidebarEntryTitle(title: string): string {
   return t || "Untitled entry";
 }
 
+function formatJournalListDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+type JournalLinkKind = "Meditation" | "Manifest" | "Heal";
+
+function linkItemName(link: JournalLink): string {
+  return (
+    link.label?.trim() ||
+    link.meditationSnapshot?.title?.trim() ||
+    (link.targetType === "meditation"
+      ? "Meditation"
+      : link.targetType === "heal_item"
+        ? "Heal"
+        : "Life area")
+  );
+}
+
+function entryLinkGroups(
+  entry: JournalEntry,
+): { kind: JournalLinkKind; items: string[] }[] {
+  const meds: string[] = [];
+  const manifest: string[] = [];
+  const heal: string[] = [];
+  for (const link of entry.links ?? []) {
+    if (link.targetType === "meditation") meds.push(linkItemName(link));
+    else if (link.targetType === "life_area") manifest.push(linkItemName(link));
+    else if (link.targetType === "heal_item") heal.push(linkItemName(link));
+  }
+  if (meds.length === 0 && entry.meditationId) {
+    meds.push(entry.meditationSnapshot?.title?.trim() || "Meditation");
+  }
+  const groups: { kind: JournalLinkKind; items: string[] }[] = [];
+  if (meds.length) groups.push({ kind: "Meditation", items: meds });
+  if (manifest.length) groups.push({ kind: "Manifest", items: manifest });
+  if (heal.length) groups.push({ kind: "Heal", items: heal });
+  return groups;
+}
+
+function entryLinkedToMeditation(entry: JournalEntry): boolean {
+  return (
+    Boolean(entry.meditationId?.trim()) ||
+    (entry.links ?? []).some((link) => link.targetType === "meditation")
+  );
+}
+
+function LinkKindIcon({ kind }: { kind: JournalLinkKind }) {
+  const props = {
+    width: 11,
+    height: 11,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+  };
+  if (kind === "Manifest") {
+    return (
+      <svg {...props}>
+        <path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
+      </svg>
+    );
+  }
+  if (kind === "Heal") {
+    return (
+      <svg {...props}>
+        <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <circle cx="12" cy="6" r="2" />
+      <path d="M6 20c1-4 3-6 6-6s5 2 6 6M4 14l4-2M20 14l-4-2" />
+    </svg>
+  );
+}
+
+function JournalLinkChip({
+  label,
+  items,
+  kind,
+}: {
+  label: string;
+  items: string[];
+  kind?: JournalLinkKind;
+}) {
+  return (
+    <span className="group/chip relative inline-flex">
+      <span className="inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-2 text-[11.5px] font-semibold text-[#8A6424]">
+        {kind ? <LinkKindIcon kind={kind} /> : null}
+        {label}
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-0 z-30 mb-1 hidden min-w-[8rem] max-w-[220px] rounded-lg border border-border bg-card px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground shadow-lg group-hover/chip:block"
+      >
+        {items.map((item, index) => (
+          <span key={`${item}-${index}`} className="block truncate">
+            {item}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+export function JournalListChips({
+  entry,
+  className = "",
+}: {
+  entry: JournalEntry;
+  className?: string;
+}) {
+  const groups = entryLinkGroups(entry);
+  if (groups.length === 0) return null;
+  const shown = groups.slice(0, 2);
+  const rest = groups.slice(2);
+  const restItems = rest.flatMap((group) => group.items);
+  return (
+    <span className={`mt-1 flex flex-nowrap gap-1 overflow-hidden border-t border-border pt-2 ${className}`}>
+      {shown.map((group) => (
+        <JournalLinkChip
+          key={group.kind}
+          kind={group.kind}
+          label={group.kind}
+          items={group.items}
+        />
+      ))}
+      {restItems.length > 0 ? (
+        <JournalLinkChip label={`+${rest.length}`} items={restItems} />
+      ) : null}
+    </span>
+  );
+}
+
 function lifeAreaForJournalEntry(
   entry: JournalEntry,
   dreams: PlanDream[],
@@ -399,6 +546,8 @@ export function JournalView() {
   >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const [draftHasText, setDraftHasText] = useState(false);
+  const [supportEntryId, setSupportEntryId] = useState<string | null>(null);
   const { pathname: pathnameRaw, search: locationSearch } = useLocation();
   const pathname = pathnameRaw || "/journal/my";
   const navigate = useNavigate();
@@ -567,9 +716,13 @@ export function JournalView() {
     const rawSignedIn = signedIn
       ? withoutDemoJournalEntries(loadJournalStoreRaw())
       : null;
-    const store = signedIn
+    const loaded = signedIn
       ? pruneEmptyJournalEntries(rawSignedIn!)
       : loadJournalStoreRaw();
+    const stripped = withoutReflectionTitlePrefix(loaded.entries);
+    const store = stripped.changed
+      ? { ...loaded, entries: stripped.entries }
+      : loaded;
     const nextActive = activeIdForJournalTab(
       store.entries,
       store.activeEntryId,
@@ -585,7 +738,8 @@ export function JournalView() {
     setGratitudeDraft(latestGratitudeRef.current);
     setHydrated(true);
     if (
-      nextActive !== store.activeEntryId ||
+      stripped.changed ||
+      nextActive !== loaded.activeEntryId ||
       (rawSignedIn && rawSignedIn.entries.length !== store.entries.length)
     ) {
       persist(store.entries, nextActive, store.folders ?? []);
@@ -707,24 +861,27 @@ export function JournalView() {
           }),
           activeIdRef.current,
         );
+        const stripped = withoutReflectionTitlePrefix(merged.entries);
+        const cleanedEntries = stripped.entries;
         const preferred =
           merged.activeEntryId &&
-          merged.entries.some((e) => e.id === merged.activeEntryId)
+          cleanedEntries.some((e) => e.id === merged.activeEntryId)
             ? merged.activeEntryId
             : null;
-        const nextActive = activeIdForJournalTab(merged.entries, preferred);
-        entriesRef.current = merged.entries;
-        setEntries(merged.entries);
+        const nextActive = activeIdForJournalTab(cleanedEntries, preferred);
+        if (stripped.changed) skipCloudPushRef.current = false;
+        entriesRef.current = cleanedEntries;
+        setEntries(cleanedEntries);
         setFolders(merged.folders ?? []);
         foldersRef.current = merged.folders ?? [];
         setActiveEntryId(nextActive);
-        const nextEntry = merged.entries.find((e) => e.id === nextActive);
+        const nextEntry = cleanedEntries.find((e) => e.id === nextActive);
         latestHtmlRef.current = nextEntry?.contentHtml ?? "<p></p>";
         latestTitleRef.current = nextEntry?.title ?? "";
         latestGratitudeRef.current =
           nextEntry?.gratitude ?? emptyGratitudeLines();
         setGratitudeDraft(latestGratitudeRef.current);
-        persist(merged.entries, nextActive, merged.folders ?? []);
+        persist(cleanedEntries, nextActive, merged.folders ?? []);
       } catch {
         /* offline — keep non-demo local cache if any */
         const cleaned = withoutDemoJournalEntries({
@@ -930,6 +1087,35 @@ export function JournalView() {
     () => entries.find((e) => e.id === activeEntryId) ?? null,
     [entries, activeEntryId],
   );
+
+  useEffect(() => {
+    setDraftHasText(
+      activeEntry ? stripHtmlToText(activeEntry.contentHtml).length > 0 : false,
+    );
+  }, [activeEntry]);
+
+  useEffect(() => {
+    if (!activeEntry || isGratitudeEntry(activeEntry)) {
+      setSupportEntryId(null);
+      return;
+    }
+    const text = stripHtmlToText(activeEntry.contentHtml);
+    if (text.length < 8) {
+      setSupportEntryId(null);
+      return;
+    }
+    const entryId = activeEntry.id;
+    let cancel = false;
+    const timer = window.setTimeout(() => {
+      void healScreenRisk(text).then((flagged) => {
+        if (!cancel) setSupportEntryId(flagged ? entryId : null);
+      });
+    }, 600);
+    return () => {
+      cancel = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeEntry]);
 
   const tabEntries = useMemo(
     () =>
@@ -1235,6 +1421,8 @@ export function JournalView() {
   const createEntry = useCallback(
     (opts?: {
       title?: string;
+      /** Plain text placed in the entry body. */
+      body?: string;
       voice?: boolean;
       meditationId?: string;
       meditationSource?: JournalEntry["meditationSource"];
@@ -1247,6 +1435,7 @@ export function JournalView() {
     }) => {
       flushSaveSync();
       const title = opts?.title?.trim() ?? "";
+      const body = opts?.body?.trim() ?? "";
       const draft = newJournalEntry({
         ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
         ...(title ? { title } : {}),
@@ -1287,7 +1476,16 @@ export function JournalView() {
             ]
           : []),
       ];
-      const e = links.length ? { ...draft, links } : draft;
+      const withLinks = links.length ? { ...draft, links } : draft;
+      const e = body
+        ? {
+            ...withLinks,
+            contentHtml: `<p>${body
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")}</p>`,
+          }
+        : withLinks;
       if (opts?.voice) {
         try {
           sessionStorage.setItem("journal-autostart-voice", "1");
@@ -1442,6 +1640,7 @@ export function JournalView() {
       return;
     }
     const title = params.get("title")?.trim() || undefined;
+    const body = params.get("body")?.trim() || undefined;
     const voice = params.get("voice") === "1";
     const heal = params.get("heal")?.trim();
     const area = params.get("area")?.trim();
@@ -1458,7 +1657,7 @@ export function JournalView() {
             label: params.get("areaTitle")?.trim() || undefined,
           }
         : undefined;
-    createEntry({ title, voice, link });
+    createEntry({ title, body, voice, link });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
   const commitImport = useCallback(
@@ -1688,12 +1887,6 @@ export function JournalView() {
             )}
           />
         </AppPrimaryTabsDesktop>
-        {/* Support link only — section tabs in header from md+ (sidebar below). */}
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 py-1.5 md:hidden">
-          {mvp.journalInsights ? (
-            <InsightsNeedSupportLink className="shrink-0" />
-          ) : null}
-        </div>
         {importBatchId ? (
           <p className="mt-2 text-sm text-muted">
             Showing just-imported pages.{" "}
@@ -1707,11 +1900,6 @@ export function JournalView() {
           </p>
         ) : null}
       </div>
-
-      {/* Desktop: float over journal/insights chrome — must not push layout or sit under rails. */}
-      {mvp.journalInsights ? (
-        <InsightsNeedSupportLink className="pointer-events-auto absolute right-4 top-3 z-20 hidden sm:right-6 md:block" />
-      ) : null}
 
       {insightsMounted ? (
         <div
@@ -2191,16 +2379,12 @@ export function JournalView() {
                     {group.entries.map((e) => {
                       const isActive = e.id === activeEntryId;
                       if (journalTab === "journal") {
-                        const lifeArea = lifeAreaForJournalEntry(e, planDreams);
-                      const metaMuted = isActive
-                          ? "text-faint"
-                        : "text-muted";
                       return (
                         <li key={e.id}>
                           <button
                             type="button"
                             onClick={() => selectEntry(e.id)}
-                              className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                              className={`flex w-full cursor-pointer flex-col gap-1 rounded-xl border px-3.5 py-3 text-left transition-colors ${
                               isActive
                                   ? "border-border border-l-[3px] border-l-selected bg-card text-foreground shadow-sm"
                                   : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
@@ -2209,33 +2393,14 @@ export function JournalView() {
                             <span className="line-clamp-2 text-sm font-semibold">
                               {sidebarEntryTitle(e.title)}
                             </span>
-                              <span className="mt-0.5 line-clamp-2 text-xs text-muted">
+                              <span className="truncate text-[12.5px] text-foreground/80">
+                                <time dateTime={e.createdAt} className="text-muted">
+                                  {formatJournalListDate(e.createdAt)}
+                                </time>
+                                <span className="text-muted"> · </span>
                                 {entryPreview(e)}
                               </span>
-                              <div
-                                className={`mt-2 flex items-center justify-between gap-2 border-t-[0.5px] border-border-subtle pt-2 text-[10px] leading-snug ${metaMuted}`}
-                              >
-                                <span>
-                                  Created{" "}
-                                  <time dateTime={e.createdAt}>
-                                    {formatJournalEntryDate(e.createdAt)}
-                                  </time>
-                                </span>
-                                {e.meditationId ? (
-                                  <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-accent-link">
-                                    <SquarePen
-                                      className="size-[11px]"
-                                      strokeWidth={2}
-                                      aria-hidden
-                                    />
-                                    Reflection
-                                  </span>
-                                ) : lifeArea ? (
-                                  <span className="min-w-0 truncate font-medium">
-                                    {lifeArea.title}
-                                  </span>
-                                ) : null}
-                              </div>
+                              <JournalListChips entry={e} />
                             </button>
                           </li>
                         );
@@ -2382,6 +2547,7 @@ export function JournalView() {
                 }
                 onHtmlChange={(html) => {
                   latestHtmlRef.current = html;
+                  setDraftHasText(stripHtmlToText(html).length > 0);
                   scheduleSave();
                 }}
                 onTitleChange={(title) => {
@@ -2426,6 +2592,9 @@ export function JournalView() {
                       onMoodChange={(mood) => patchActive({ mood })}
                       onTagsChange={(tags) => patchActive({ tags })}
                     />
+                    {supportEntryId === activeEntry.id ? (
+                      <InsightsNeedSupportLink className="ml-auto shrink-0" />
+                    ) : null}
                   </div>
                 }
                 belowHeader={
@@ -2452,13 +2621,30 @@ export function JournalView() {
                   </>
                 }
               >
-                <JournalEntryMeta
-                  variant="tags"
-                  mood={activeEntry.mood}
-                  tags={activeEntry.tags}
-                  onMoodChange={(mood) => patchActive({ mood })}
-                  onTagsChange={(tags) => patchActive({ tags })}
-                />
+                <div className="flex items-center gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <JournalEntryMeta
+                      variant="tags"
+                      mood={activeEntry.mood}
+                      tags={activeEntry.tags}
+                      onMoodChange={(mood) => patchActive({ mood })}
+                      onTagsChange={(tags) => patchActive({ tags })}
+                    />
+                  </div>
+                  {draftHasText && !entryLinkedToMeditation(activeEntry) ? (
+                    <button
+                      type="button"
+                      onClick={generateMeditationFromActive}
+                      className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-card px-4 text-[14px] font-semibold text-foreground"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <circle cx="12" cy="6" r="2" />
+                        <path d="M6 20c1-4 3-6 6-6s5 2 6 6M4 14l4-2M20 14l-4-2" />
+                      </svg>
+                      Create meditation
+                    </button>
+                  ) : null}
+                </div>
               </JournalRichEditor>
               {unlinkUndo ? (
                 <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">

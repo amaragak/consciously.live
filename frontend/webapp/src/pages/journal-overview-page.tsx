@@ -4,29 +4,28 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { BookOpen, ChevronRight, Heart, Mic, Plus, Sparkles } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { IconHeart, IconSparkles, IconSun } from "@tabler/icons-react";
-import { Link } from "@/lib/spa-nav";
+import { Link, useRouter } from "@/lib/spa-nav";
 import { useMvpFlags } from "@/lib/mvp-flags";
-import {
-  ExploreMiniCard,
-  ExploreMiniGrid,
-} from "@/components/explore-mini-card";
+import { JournalListChips } from "@/components/journal-view";
 import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
-import { OverviewGreeting } from "@/components/overview-greeting";
-import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
+import {
+  OverviewHero,
+  OverviewOutlineLink,
+  OverviewSection,
+} from "@/components/overview-hero";
 import { useGuides } from "@/content/guides";
 import {
-  JOURNAL_OVERVIEW_EMPTY_GREETING,
-  JOURNAL_OVERVIEW_GREETINGS,
-} from "@/content/overview-greetings";
+  JOURNAL_OVERVIEW_PROMPTS,
+  promptsForDay,
+} from "@/content/overview-prompts";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
 import { formatRangeWords } from "@/lib/insight-period";
 import {
-  JOURNAL_MOOD_PILL,
   JOURNAL_MOOD_WEEK_CELL,
   isJournalMoodId,
   journalMoodLabel,
@@ -37,7 +36,6 @@ import {
   emptyGratitudeLines,
   entriesForCloudPut,
   findGratitudeEntryForLocalDate,
-  formatJournalEntryDate,
   gratitudeLinesToHtml,
   gratitudeTitleForDate,
   isGratitudeEntry,
@@ -60,18 +58,8 @@ import {
   type JournalWeeklyLetterSummary,
   type JournalWeeklyReflection,
 } from "@/lib/medimade-api";
-import { journalEntriesLinkedToLifeArea } from "@/lib/plan-life-area-links";
-import { loadIdeateStore, type PlanDream } from "@/lib/plan-ideate-store";
 
 const GRATITUDE_ICONS = [IconSun, IconHeart, IconSparkles] as const;
-
-const EMPTY_PROMPTS = [
-  "What's taking up space in your head?",
-  "One thing that went well today",
-  "What would make tomorrow easier?",
-] as const;
-
-const EMPTY_HERO = "/patterns/hero/adobestock-2156039259.webp";
 
 function SectionHeading({
   title,
@@ -117,137 +105,31 @@ function entryExcerpt(e: JournalEntry): string {
   return t.length > 280 ? `${t.slice(0, 277)}…` : t;
 }
 
-function lifeAreaForEntry(
-  entry: JournalEntry,
-  dreams: PlanDream[],
-): PlanDream | null {
-  for (const dream of dreams) {
-    if (journalEntriesLinkedToLifeArea(dream, [entry]).length > 0) {
-      return dream;
-    }
+function formatOverviewEntryDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return "";
   }
-  const tags = (entry.tags ?? []).map((t) => t.trim().toLowerCase());
-  if (!tags.length) return null;
-  for (const dream of dreams) {
-    const title = dream.title.trim().toLowerCase();
-    if (title && tags.includes(title)) return dream;
-  }
-  return null;
 }
 
-function MoodTag({ mood }: { mood: JournalMoodId }) {
-  const pill = JOURNAL_MOOD_PILL[mood];
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-      style={{ background: pill.background, color: pill.color }}
-    >
-      {journalMoodLabel(mood)}
-    </span>
-  );
-}
-
-function LifeAreaTag({ label }: { label: string }) {
-  return (
-    <span className="rounded-full bg-accent-soft/50 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-accent-link">
-      {label}
-    </span>
-  );
-}
-
-function NewEntryTileDesktop() {
-  return (
-    <Link
-      href="/journal/my?new=1"
-      className="relative flex min-h-[150px] items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-accent/45 bg-accent-soft/40 px-4 py-4 text-center transition-opacity hover:opacity-90"
-    >
-      <span
-        className="flex h-12 w-12 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
-        style={PRIMARY_ACCENT_FILL_STYLE}
-        aria-hidden
-      >
-        <Plus className="size-5" strokeWidth={2.25} />
-      </span>
-      <span className="absolute top-[calc(50%+36px)] font-display text-lg text-foreground">
-        New entry
-      </span>
-    </Link>
-  );
-}
-
-function NewEntryRowMobile() {
-  return (
-    <Link
-      href="/journal/my?new=1"
-      className="flex items-center gap-3 bg-accent-soft/40 px-3.5 py-3 transition-opacity hover:opacity-90"
-    >
-      <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full accent-fill-gradient text-on-accent"
-        style={PRIMARY_ACCENT_FILL_STYLE}
-        aria-hidden
-      >
-        <Plus className="size-4" strokeWidth={2.25} />
-      </span>
-      <span className="font-display text-base text-foreground">New entry</span>
-    </Link>
-  );
-}
-
-function EntryCardDesktop({
-  entry,
-  lifeArea,
-}: {
-  entry: JournalEntry;
-  lifeArea: PlanDream | null;
-}) {
-  const mood = isJournalMoodId(entry.mood) ? entry.mood : null;
+function EntryOverviewCard({ entry }: { entry: JournalEntry }) {
+  const date = formatOverviewEntryDate(entry.createdAt);
   return (
     <Link
       href={`/journal/my/${encodeURIComponent(entry.id)}`}
-      className="flex min-h-[150px] min-w-0 flex-col gap-2 rounded-[14px] border border-border bg-card px-4 py-3.5 transition-opacity hover:opacity-95"
+      className="flex min-h-[140px] min-w-0 flex-col gap-1.5 rounded-[14px] border border-border bg-card px-4 py-3.5"
     >
-      <span className="text-[15px] font-semibold text-foreground">
+      <span className="line-clamp-2 text-[15px] font-semibold text-foreground">
         {entryTitle(entry)}
       </span>
-      <span className="line-clamp-3 text-[13px] leading-normal text-foreground/90">
+      <span className="truncate text-[13px] text-foreground/90">
+        {date ? <span className="text-muted">{date} · </span> : null}
         {entryExcerpt(entry)}
       </span>
-      <span className="mt-auto flex items-center gap-2 border-t border-border pt-2 text-xs text-muted">
-        <time dateTime={entry.createdAt}>
-          {formatJournalEntryDate(entry.createdAt)}
-        </time>
-        <span className="ml-auto flex min-w-0 items-center gap-1.5">
-          {lifeArea ? <LifeAreaTag label={lifeArea.title} /> : null}
-          {mood ? <MoodTag mood={mood} /> : null}
-        </span>
-      </span>
-    </Link>
-  );
-}
-
-function EntryRowMobile({
-  entry,
-}: {
-  entry: JournalEntry;
-}) {
-  const mood = isJournalMoodId(entry.mood) ? entry.mood : null;
-  return (
-    <Link
-      href={`/journal/my/${encodeURIComponent(entry.id)}`}
-      className="flex flex-col gap-1.5 border-t border-border px-3.5 py-3 transition-opacity hover:opacity-95"
-    >
-      <span className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-          {entryTitle(entry)}
-        </span>
-        {mood ? <MoodTag mood={mood} /> : null}
-      </span>
-      <span className="line-clamp-2 text-xs leading-normal text-foreground/90">
-        {entryExcerpt(entry)}
-      </span>
-      <time dateTime={entry.createdAt} className="text-[11px] text-muted">
-        {formatJournalEntryDate(entry.createdAt)}
-      </time>
+      <JournalListChips entry={entry} className="mt-auto" />
     </Link>
   );
 }
@@ -342,45 +224,21 @@ function TodaysGratitudesCard() {
   );
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-[18px] py-4 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] max-md:px-3.5">
-      <div className="flex items-baseline gap-2.5">
-        <h2 className="font-display text-[19px] text-foreground">
-          Today&apos;s gratitudes
-        </h2>
-        <span className="text-[13px] text-muted">{filled} of 3</span>
-        <Link
-          href="/journal/my/gratitudes"
-          className="ml-auto inline-flex items-center gap-0.5 text-sm font-semibold text-accent-link transition-opacity hover:opacity-80"
-        >
-          <span className="md:hidden">Open</span>
-          <span className="hidden md:inline">Gratitudes</span>
-          <ChevronRight
-            aria-hidden
-            className="size-[18px] shrink-0"
-            strokeWidth={2}
-          />
-        </Link>
-      </div>
-      <div className="flex flex-col gap-2 md:flex-row md:gap-2.5">
+    <OverviewSection
+      title="Today's gratitudes"
+      subtitle={`${filled} of 3 today`}
+      action={<OverviewOutlineLink href="/journal/my/gratitudes">Gratitudes</OverviewOutlineLink>}
+    >
+      <div className="flex flex-col gap-3 md:flex-row">
         {([0, 1, 2] as const).map((i) => {
           const Icon = GRATITUDE_ICONS[i]!;
           const value = lines[i] ?? "";
-          const filledSlot = value.trim().length > 0;
           return (
             <label
               key={i}
-              className={`flex min-w-0 flex-1 items-start gap-2.5 rounded-xl px-3 py-2.5 ${
-                filledSlot
-                  ? "border border-border bg-card"
-                  : "border border-dashed border-accent/45 bg-background"
-              }`}
+              className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5"
             >
-              <span
-                className="mt-0.5 flex size-[30px] shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--gold)_70%,white)] text-on-accent"
-                aria-hidden
-              >
-                <Icon size={15} stroke={1.75} />
-              </span>
+              <Icon size={16} stroke={1.75} className="shrink-0 text-accent" aria-hidden />
               <input
                 type="text"
                 value={value}
@@ -410,7 +268,7 @@ function TodaysGratitudesCard() {
           );
         })}
       </div>
-    </section>
+    </OverviewSection>
   );
 }
 
@@ -498,14 +356,11 @@ function InsightsCard({
   const href = `/journal/my/insights/${encodeURIComponent(letterIdentity(letter))}`;
 
   return (
-    <section>
-      <SectionHeading
-        title="Insights"
-        href="/journal/my/insights"
-        linkLabel="All insights"
-        linkLabelMobile="All"
-      />
-      <div className="rounded-2xl border border-border bg-card px-5 py-[18px] shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] max-md:px-3.5 max-md:py-3.5 md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:gap-6">
+    <OverviewSection
+      title="Insights"
+      action={<OverviewOutlineLink href="/journal/my/insights">All insights</OverviewOutlineLink>}
+    >
+      <div className="md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:gap-6">
         <div className="flex flex-col gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-[1.4px] text-accent-link">
             Latest insights · {formatRangeWords(start, end)}
@@ -519,20 +374,8 @@ function InsightsCard({
               ? ` and ${meditationCount} meditation${meditationCount === 1 ? "" : "s"}`
               : ""}
           </p>
-          <div className="mt-1 flex flex-wrap gap-2 max-md:mt-2">
-            <Link
-              href={href}
-              className="inline-flex h-[38px] items-center justify-center rounded-full px-4 text-sm font-semibold text-on-accent accent-fill-gradient max-md:h-10 max-md:w-full"
-              style={PRIMARY_ACCENT_FILL_STYLE}
-            >
-              Read your letter
-            </Link>
-            <Link
-              href="/journal/my/insights"
-              className="hidden h-[38px] items-center justify-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40 md:inline-flex"
-            >
-              All insights
-            </Link>
+          <div className="mt-1">
+            <OverviewOutlineLink href={href}>Read your letter</OverviewOutlineLink>
           </div>
         </div>
         <div className="mt-4 flex flex-col gap-2.5 border-border max-md:mt-3 md:mt-0 md:border-l md:pl-6">
@@ -568,78 +411,14 @@ function InsightsCard({
           ) : null}
         </div>
       </div>
-    </section>
-  );
-}
-
-function EmptyWelcomeCard() {
-  const newHref = "/journal/my?new=1";
-  const talkHref = "/journal/my?new=1&voice=1";
-  const promptHref = (prompt: string) =>
-    `/journal/my?new=1&title=${encodeURIComponent(prompt)}`;
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] md:grid md:min-h-[300px] md:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="order-2 flex flex-col justify-center gap-3.5 px-4 py-[18px] max-md:px-4 md:order-1 md:px-9 md:py-8">
-        <p className="text-[10px] font-semibold uppercase tracking-[1.4px] text-accent-link max-md:hidden">
-          Your journal
-        </p>
-        <h2 className="font-display text-[34px] leading-[1.15] text-foreground max-md:text-[26px]">
-          Start where you are.
-        </h2>
-        <p className="max-w-[520px] text-base leading-[1.55] text-foreground/90 max-md:hidden">
-          A few honest lines is plenty. Write it down, or just talk it out, and
-          it&apos;ll start shaping your insights and meditations.
-        </p>
-        <p className="text-sm leading-relaxed text-foreground/90 md:hidden">
-          A few honest lines is plenty. Write it down, or just talk it out.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={newHref}
-            className="inline-flex h-11 flex-1 items-center justify-center rounded-full px-5 text-sm font-semibold text-on-accent accent-fill-gradient md:flex-none"
-            style={PRIMARY_ACCENT_FILL_STYLE}
-          >
-            Start writing
-          </Link>
-          <Link
-            href={talkHref}
-            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
-          >
-            <Mic className="size-4" strokeWidth={2} aria-hidden />
-            <span className="md:hidden">Talk</span>
-            <span className="hidden md:inline">Talk it out</span>
-          </Link>
-        </div>
-        <div className="mt-1">
-          <p className="mb-2 text-xs text-muted">Or begin with a prompt</p>
-          <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
-            {EMPTY_PROMPTS.map((p) => (
-              <Link
-                key={p}
-                href={promptHref(p)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-[13px] text-foreground transition-colors hover:border-accent/40 max-md:w-full"
-              >
-                <span className="text-accent-link" aria-hidden>
-                  ✦
-                </span>
-                {p}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="order-1 h-[150px] overflow-hidden bg-accent-soft/40 md:order-2 md:h-auto">
-        <img src={EMPTY_HERO} alt="" className="h-full w-full object-cover" />
-      </div>
-    </section>
+    </OverviewSection>
   );
 }
 
 export function JournalOverviewPage() {
+  const router = useRouter();
   const journalInsights = useMvpFlags().journalInsights;
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [dreams, setDreams] = useState<PlanDream[]>([]);
   const [letter, setLetter] = useState<JournalWeeklyLetterSummary | null>(null);
   const [reflection, setReflection] =
     useState<JournalWeeklyReflection | null>(null);
@@ -659,11 +438,6 @@ export function JournalOverviewPage() {
           ),
         );
       setEntries(freeform);
-      try {
-        setDreams(loadIdeateStore().dreams ?? []);
-      } catch {
-        setDreams([]);
-      }
     };
     applyLocal();
     const onStore = () => applyLocal();
@@ -712,45 +486,51 @@ export function JournalOverviewPage() {
     };
   }, [journalInsights]);
 
-  const recent = entries.slice(0, 3);
-  const showEmptyWelcome = ready && entries.length === 0 && !letter;
+  const recent = entries.slice(0, 4);
   const showInsights = journalInsights && Boolean(letter);
+  const prompts = promptsForDay(JOURNAL_OVERVIEW_PROMPTS);
 
   return (
     <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
-      <div className="flex flex-col gap-7 max-md:gap-[22px]">
-        <OverviewGreeting
-          pool={JOURNAL_OVERVIEW_GREETINGS}
-          fixed={showEmptyWelcome ? JOURNAL_OVERVIEW_EMPTY_GREETING : null}
+      <div className="flex flex-col gap-5">
+        <OverviewHero
+          question="What's on your mind?"
+          actionHref="/journal/my?new=1"
+          actionLabel="New entry"
+          actionIcon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          }
+          placeholder="Write or speak, and it becomes today's entry…"
+          promptLabel="Or try a prompt"
+          prompts={prompts}
+          onPrompt={(prompt) =>
+            router.push(`/journal/my?new=1&title=${encodeURIComponent(prompt)}`)
+          }
+          onSubmit={(text) =>
+            router.push(`/journal/my?new=1&body=${encodeURIComponent(text)}`)
+          }
         />
 
-        {showEmptyWelcome ? (
-          <EmptyWelcomeCard />
-        ) : (
-          <section>
-            <SectionHeading
-              title="Recent entries"
-              href="/journal/my"
-              linkLabel="All entries"
-            />
-            <div className="hidden grid-cols-4 gap-3.5 md:grid">
-              <NewEntryTileDesktop />
-              {recent.map((e) => (
-                <EntryCardDesktop
-                  key={e.id}
-                  entry={e}
-                  lifeArea={lifeAreaForEntry(e, dreams)}
-                />
+        <OverviewSection
+          title="Recent entries"
+          action={
+            <OverviewOutlineLink href="/journal/my">
+              All entries · {entries.length}
+            </OverviewOutlineLink>
+          }
+        >
+          {recent.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {recent.map((entry) => (
+                <EntryOverviewCard key={entry.id} entry={entry} />
               ))}
             </div>
-            <div className="overflow-hidden rounded-2xl border border-border bg-card md:hidden">
-              <NewEntryRowMobile />
-              {recent.map((e) => (
-                <EntryRowMobile key={e.id} entry={e} />
-              ))}
-            </div>
-          </section>
-        )}
+          ) : ready ? (
+            <p className="text-[13px] text-muted">Your entries will appear here.</p>
+          ) : null}
+        </OverviewSection>
 
         <TodaysGratitudesCard />
 
@@ -773,36 +553,6 @@ export function JournalOverviewPage() {
             <MeditateGuidesGrid guides={guides} area="journal" />
           </section>
         ) : null}
-
-        <section>
-          <SectionHeading title="Explore" />
-          <ExploreMiniGrid>
-            <ExploreMiniCard
-              href="/journal/my"
-              title="Entries"
-              description="Write freely or talk it out. Tag how it felt and what it's about."
-              count={entries.length}
-              imageSrc={EMPTY_HERO}
-              icon={<BookOpen className="size-5" strokeWidth={1.75} />}
-            />
-            <ExploreMiniCard
-              href="/journal/my/gratitudes"
-              title="Gratitudes"
-              description="Three small good things a day. It adds up."
-              imageSrc="/patterns/hero/adobestock-2156039259.webp"
-              icon={<Heart className="size-5" strokeWidth={1.75} />}
-            />
-            {journalInsights ? (
-              <ExploreMiniCard
-                href="/journal/my/insights"
-                title="Insights"
-                description="A weekly letter on how things moved, written from your entries."
-                imageSrc="/patterns/hero/adobestock-2089052451.webp"
-                icon={<Sparkles className="size-5" strokeWidth={1.75} />}
-              />
-            ) : null}
-          </ExploreMiniGrid>
-        </section>
       </div>
     </div>
   );

@@ -21,6 +21,8 @@ export type FocusTaskItem = {
   /** Ideate entity linked for shared check state with Focus. */
   ideateKind?: FocusIdeateKind | null;
   ideateId?: string | null;
+  /** Open goal the timer is working on now. Done goals are never in the session. */
+  inSession?: boolean;
 };
 
 type SessionsToday = {
@@ -71,6 +73,7 @@ function parseFocusTaskItem(raw: unknown): FocusTaskItem | null {
     lifeAreaTitle: typeof t.lifeAreaTitle === "string" ? t.lifeAreaTitle : null,
     ideateKind,
     ideateId: typeof t.ideateId === "string" ? t.ideateId : null,
+    inSession: t.inSession === true,
   };
 }
 
@@ -81,9 +84,21 @@ export function readFocusTasksList(): FocusTaskItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
+    const explicit = parsed.some(
+      (row) => row && typeof row === "object" && "inSession" in row,
+    );
+    const items = parsed
       .map(parseFocusTaskItem)
       .filter((t): t is FocusTaskItem => Boolean(t));
+    if (explicit) return items;
+    let placed = false;
+    return items.map((task) => {
+      if (!task.done && !placed) {
+        placed = true;
+        return { ...task, inSession: true };
+      }
+      return { ...task, inSession: false };
+    });
   } catch {
     return [];
   }
@@ -111,6 +126,69 @@ export function readSessionsCompletedToday(): number {
     return Math.max(0, Math.min(12, Number(parsed.count) || 0));
   } catch {
     return 0;
+  }
+}
+
+export type FocusDisplayId = "ring" | "bar" | "sun" | "digits";
+
+export type FocusSessionPrefs = {
+  display: FocusDisplayId;
+  focusMinutes: number;
+  breakMinutes: number;
+  longBreakMinutes: number;
+  longBreakEvery: boolean;
+  autoStartBreak: boolean;
+  autoStartFocus: boolean;
+  meditateFirst: boolean;
+};
+
+const FOCUS_SESSION_PREFS_KEY = "mm_focus_session_prefs_v1";
+
+export function readFocusSessionPrefs(): FocusSessionPrefs {
+  const fallback: FocusSessionPrefs = {
+    display: "ring",
+    focusMinutes: 25,
+    breakMinutes: 5,
+    longBreakMinutes: 15,
+    longBreakEvery: true,
+    autoStartBreak: true,
+    autoStartFocus: false,
+    meditateFirst: false,
+  };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = readAccountLocalStorage(FOCUS_SESSION_PREFS_KEY);
+    if (!raw) return fallback;
+    const o = JSON.parse(raw) as Partial<FocusSessionPrefs>;
+    const display: FocusDisplayId =
+      o.display === "bar" || o.display === "sun" || o.display === "digits"
+        ? o.display
+        : "ring";
+    const mins = (value: unknown, fallbackMins: number, max: number) =>
+      typeof value === "number" && value >= 1
+        ? Math.min(max, Math.floor(value))
+        : fallbackMins;
+    return {
+      display,
+      focusMinutes: mins(o.focusMinutes, 25, 180),
+      breakMinutes: mins(o.breakMinutes, 5, 60),
+      longBreakMinutes: mins(o.longBreakMinutes, 15, 60),
+      longBreakEvery: o.longBreakEvery !== false,
+      autoStartBreak: o.autoStartBreak !== false,
+      autoStartFocus: o.autoStartFocus === true,
+      meditateFirst: o.meditateFirst === true,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeFocusSessionPrefs(prefs: FocusSessionPrefs): void {
+  if (typeof window === "undefined") return;
+  try {
+    writeAccountLocalStorage(FOCUS_SESSION_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* */
   }
 }
 

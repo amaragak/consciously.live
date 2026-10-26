@@ -128,9 +128,29 @@ export function consumeReflectMeditationHandoff(): ReflectMeditationHandoff | nu
   }
 }
 
+const REFLECTION_TITLE_PREFIX = "Reflection: ";
+
+/** Drop a stored "Reflection: " prefix. Titles are the meditation name on their own. */
+export function stripReflectionTitlePrefix(title: string): string {
+  if (!title.startsWith(REFLECTION_TITLE_PREFIX)) return title;
+  return title.slice(REFLECTION_TITLE_PREFIX.length).trim();
+}
+
+export function withoutReflectionTitlePrefix<T extends { title: string }>(
+  entries: T[],
+): { entries: T[]; changed: boolean } {
+  let changed = false;
+  const next = entries.map((entry) => {
+    const title = stripReflectionTitlePrefix(entry.title);
+    if (title === entry.title) return entry;
+    changed = true;
+    return { ...entry, title: title || "Untitled entry" };
+  });
+  return { entries: next, changed };
+}
+
 export function reflectionTitleForMeditation(title: string): string {
-  const t = title.trim() || "Meditation";
-  return `Reflection: ${t}`;
+  return stripReflectionTitlePrefix(title.trim()) || "Meditation";
 }
 
 export function journalEntriesLinkedToMeditation(

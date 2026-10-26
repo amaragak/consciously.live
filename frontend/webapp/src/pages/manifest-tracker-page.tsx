@@ -1,7 +1,7 @@
 import { ArrowUpRight, ChevronRight, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { TrackerTitleField, rowOpensOnKey, useCoarsePointer } from "@/components/plan/life-area/tracker";
 import { MIST, ProgressBar } from "@/components/plan/life-area/kit";
 import { IdeateCloudProvider, useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
@@ -79,7 +79,8 @@ function TrackerAll() {
   const [menu, setMenu] = useState<string | null>(null);
   const coarse = useCoarsePointer();
   const navigate = useNavigate();
-  const [adding, setAdding] = useState(false);
+  const [params] = useSearchParams();
+  const [adding, setAdding] = useState(() => params.get("add") === "1");
   const [areaMenu, setAreaMenu] = useState<string | null>(null);
   const [statusMenu, setStatusMenu] = useState<string | null>(null);
   const titleLock = useRef(false);

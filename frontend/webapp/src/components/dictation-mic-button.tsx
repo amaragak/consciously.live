@@ -46,8 +46,8 @@ function IconStop({ className }: { className?: string }) {
 type Props = {
   disabled?: boolean;
   onTranscript: (text: string) => void;
-  /** `composer` matches the chat send button; `inset` sits on a textarea. */
-  variant?: "composer" | "inset";
+  /** `composer` matches the chat send button; `inset` sits on a textarea; `round` is the overview hero mic. */
+  variant?: "composer" | "inset" | "round";
 };
 
 export function DictationMicButton({
@@ -62,7 +62,7 @@ export function DictationMicButton({
   if (!apiReady) return null;
 
   const size =
-    variant === "inset" ? "h-9 w-9" : "h-11 w-11";
+    variant === "round" ? "size-[42px]" : variant === "inset" ? "h-9 w-9" : "h-11 w-11";
 
   const onMicClick = async () => {
     if (disabled || busy) return;
@@ -108,7 +108,9 @@ export function DictationMicButton({
               ? "Stop and transcribe"
               : "Dictate"
         }
-        className={`${size} flex cursor-pointer items-center justify-center rounded-full border border-border bg-transparent text-foreground transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`${size} flex cursor-pointer items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-60 ${
+          variant === "round" && !recording ? "bg-white" : "bg-transparent"
+        } ${
           recording
             ? "animate-pulse border-transparent accent-fill-gradient text-on-accent hover:opacity-90"
             : ""

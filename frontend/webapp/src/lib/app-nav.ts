@@ -92,7 +92,13 @@ export const APP_NAV_MAIN: AppNavSection[] = [
     label: "Journal",
     href: "/journal",
     children: [
-      { id: "new", label: "New entry", href: "/journal/my?new=1" },
+      {
+        id: "entries",
+        label: "Journal Entries",
+        href: "/journal/my",
+        actionHref: "/journal/my?new=1",
+        actionAriaLabel: "New entry",
+      },
       {
         id: "gratitudes",
         label: "Gratitudes",
@@ -332,18 +338,6 @@ export function isSubItemActive(
   sub: AppNavSubItem,
   sectionId: string,
 ): boolean {
-  if (sectionId === "journal" && sub.id === "new") {
-    if (
-      pathname.startsWith("/journal/my/gratitudes") ||
-      pathname.startsWith("/journal/my/insights")
-    ) {
-      return false;
-    }
-    return (
-      (pathname === "/journal/my" || pathname.startsWith("/journal/my/")) &&
-      new URLSearchParams(search).get("new") === "1"
-    );
-  }
   if (sectionId === "journal" && sub.id === "gratitudes") {
     return (
       pathname === "/journal/my/gratitudes" ||

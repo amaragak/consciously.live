@@ -235,6 +235,11 @@ export function IdeateVisionBoardClient() {
   }, [items]);
 
   useEffect(() => {
+    if (boardSearch.get("add") !== "1") return;
+    boardFileInputRef.current?.click();
+  }, [boardSearch]);
+
+  useEffect(() => {
     const id = boardSearch.get("select");
     if (!id || !hydrated || pickedTile.current === id) return;
     const tile = document.getElementById(`vision-tile-${id}`);
@@ -1441,6 +1446,18 @@ export function IdeateVisionBoardClient() {
         >
           {undoMove.label}
         </button>
+      ) : null}
+      {boardSearch.get("add") === "1" ? (
+        <div className="px-4 pt-3">
+          <button
+            type="button"
+            onClick={() => boardFileInputRef.current?.click()}
+            className="inline-flex h-10 cursor-pointer items-center rounded-full border border-[#AFC2DC] px-4 text-sm font-semibold text-on-accent"
+            style={{ backgroundColor: "var(--accent-button)", backgroundImage: "var(--accent-gradient-button)" }}
+          >
+            Choose an image
+          </button>
+        </div>
       ) : null}
       {boardSearch.get("wb") ? (
         <div className="px-4 pt-3">

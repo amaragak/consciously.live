@@ -44,6 +44,7 @@ export function focusTasksFromIdeateSubtask(
       lifeAreaTitle,
       ideateKind: "todo" as const,
       ideateId: todo.id,
+      inSession: !todo.isChecked,
     }));
   }
 
@@ -56,6 +57,7 @@ export function focusTasksFromIdeateSubtask(
       lifeAreaTitle,
       ideateKind: "subtask" as const,
       ideateId: sub.id,
+      inSession: sub.status !== "done",
     },
   ];
 }
@@ -77,6 +79,7 @@ export function queueTrackerFocus(
       lifeAreaTitle: area?.title?.trim() || null,
       ideateKind: "tracker",
       ideateId: row.id,
+      inSession: !row.done,
     };
   });
   writeFocusTasksList(tasks);
@@ -94,7 +97,7 @@ export function syncFocusDoneFromIdeate(
     const done = ideateDoneForLink(store, t.ideateKind, t.ideateId);
     if (done === null || done === t.done) return t;
     changed = true;
-    return { ...t, done };
+    return { ...t, done, inSession: done ? false : t.inSession };
   });
   return changed ? next : tasks;
 }

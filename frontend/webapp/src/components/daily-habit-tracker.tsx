@@ -26,6 +26,7 @@ import {
 } from "@/lib/focus-session-handoff";
 import { writeFocusActiveIdeateSubtask } from "@/lib/focus-preflight-link";
 import { SectionEyebrow } from "@/components/section-eyebrow";
+import { SelectChevron } from "@/components/select-chevron";
 
 export type TodayGoalStep = {
   stepTitle: string;
@@ -45,6 +46,9 @@ type Props = {
   goalStep?: TodayGoalStep | null;
   /** Tighter single-column layout for the mobile dashboard. */
   compact?: boolean;
+  /** Checklist only, styled for the navy hero. */
+  embedded?: boolean;
+  onStats?: (stats: { partialStreak: number; doneCount: number; totalCount: number }) => void;
 };
 
 function emptyStatus(): DailyStatus {
@@ -100,13 +104,15 @@ function HabitCheckbox({
   onToggle,
   label,
   compact = false,
+  onDark = false,
 }: {
   checked: boolean;
   onToggle: () => void;
   label: string;
   compact?: boolean;
+  onDark?: boolean;
 }) {
-  const size = compact ? "h-[18px] w-[18px] text-[10px]" : "h-5 w-5 text-[11px]";
+  const size = compact || onDark ? "h-5 w-5 text-[11px]" : "h-5 w-5 text-[11px]";
   return (
     <button
       type="button"
@@ -116,8 +122,8 @@ function HabitCheckbox({
       onClick={onToggle}
       className={
         checked
-          ? `flex ${size} shrink-0 items-center justify-center rounded-full bg-gold font-semibold leading-none text-on-accent`
-          : `flex ${size} shrink-0 items-center justify-center rounded-full border-[1.5px] border-[color-mix(in_srgb,var(--border)_100%,var(--muted))] bg-transparent`
+          ? `flex ${size} shrink-0 items-center justify-center rounded-full font-semibold leading-none ${onDark ? "bg-[#F3EDE2] text-[#0F1B2D]" : "bg-gold text-on-accent"}`
+          : `flex ${size} shrink-0 items-center justify-center rounded-full border-[1.5px] bg-transparent ${onDark ? "border-[rgba(243,237,226,0.4)]" : "border-[color-mix(in_srgb,var(--border)_100%,var(--muted))]"}`
       }
     >
       {checked ? "✓" : null}
@@ -134,6 +140,8 @@ export function DailyHabitTracker({
   onPlayStory = null,
   goalStep = null,
   compact = false,
+  embedded = false,
+  onStats,
 }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<DailyStatus>(emptyStatus);
@@ -225,6 +233,10 @@ export function DailyHabitTracker({
     ? `${goalStep.stepTitle} · ${goalStep.goalTitle}`
     : "Complete any goal or To Do in Manifest, or add a thought";
 
+  useEffect(() => {
+    onStats?.({ partialStreak: streak, doneCount, totalCount });
+  }, [onStats, streak, doneCount, totalCount]);
+
   function openFocus() {
     if (goalStep?.subtaskId) {
       writeFocusSessionHandoff({ v: 1, subtaskId: goalStep.subtaskId });
@@ -294,6 +306,48 @@ export function DailyHabitTracker({
       onAction: openFocus,
     },
   ];
+
+  if (embedded) {
+    return (
+      <ul>
+        {rows.map((row) => {
+          const checked = status[row.pillar];
+          const action = row.actionLabel.replace(/\s*→\s*$/, "").split(" ")[0] || row.actionLabel;
+          const control = (
+            <span className="inline-flex h-[30px] shrink-0 items-center gap-0.5 rounded-full border border-[rgba(243,237,226,0.3)] px-3 text-[12.5px] font-semibold text-[#F3EDE2]">
+              {action}
+              <SelectChevron direction="right" className="text-[#F3EDE2]" />
+            </span>
+          );
+          return (
+            <li key={row.pillar} className="flex items-center gap-3 py-2">
+              <HabitCheckbox
+                checked={checked}
+                onToggle={() => toggle(row.pillar)}
+                label={row.name}
+                onDark
+              />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className={`truncate text-[14.5px] ${checked ? "text-[rgba(243,237,226,0.55)] line-through" : "text-[#F3EDE2]"}`}>
+                  {row.name}
+                </span>
+                {row.help ? (
+                  <span className="truncate text-[12px] text-[rgba(243,237,226,0.55)]">{row.help}</span>
+                ) : null}
+              </span>
+              {row.actionAsLink ? (
+                <Link href={row.actionAsLink}>{control}</Link>
+              ) : (
+                <button type="button" onClick={row.onAction} className="cursor-pointer">
+                  {control}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   if (compact) {
     return (

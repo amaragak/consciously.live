@@ -14,10 +14,6 @@ import {
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
-  getMedimadeSessionDisplayName,
-  getMedimadeSessionEmail,
-} from "@/lib/auth-session";
-import {
   FOCUS_PATTERN_OPTIONS,
   loadFocusPattern,
   saveFocusPattern,
@@ -26,10 +22,13 @@ import {
 import { loadFocusMix, saveFocusMix } from "@/lib/focus-mix-storage";
 import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
 import {
+  readFocusSessionPrefs,
   readFocusTasksList,
   readSessionsCompletedToday,
+  writeFocusSessionPrefs,
   writeFocusTasksList,
   writeSessionsCompletedToday,
+  type FocusSessionPrefs,
   type FocusTaskItem,
 } from "@/lib/focus-timer-storage";
 import {
@@ -43,9 +42,24 @@ import {
 import {
   FOCUS_PREFLIGHT_CHANGED_EVENT,
   readActiveFocusPreflightLink,
+  upsertFocusPreflightLink,
   writeFocusActiveIdeateSubtask,
   type FocusPreflightLink,
 } from "@/lib/focus-preflight-link";
+import { startFocusPreflightMeditationGeneration } from "@/lib/focus-preflight-meditation";
+import { SelectChevron } from "@/components/select-chevron";
+import { useMinWidth } from "@/hooks/use-min-width";
+import {
+  FittedTimerFace,
+  FocusStrikeTitle,
+  GoalRows,
+  GoalTick,
+  ManifestPicker,
+  SessionTimingPopover,
+  TimerFace,
+  TimerStyleMenu,
+  playSoftChime,
+} from "@/components/focus-board";
 import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
 import {
   focusTasksFromIdeateSubtask,
@@ -75,7 +89,6 @@ import {
 import type { PlanDream } from "@/lib/plan-dreams";
 import { soundDisplayName } from "@/lib/sound-taxonomy";
 import { readFocusDefaults } from "@/lib/settings-local-defaults";
-import { timeOfDayGreeting } from "@/lib/time-of-day-greeting";
 
 type TimerMode = "focus" | "shortBreak" | "longBreak";
 type DrawerTab = "session" | "ideate";
@@ -113,13 +126,6 @@ function formatDurationLabel(totalSeconds: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${String(r).padStart(2, "0")}`;
-}
-
-function firstNameFromLabel(label: string): string {
-  const trimmed = label.trim();
-  if (!trimmed) return "there";
-  const first = trimmed.split(/\s+/)[0] ?? trimmed;
-  return first;
 }
 
 function pickKey(p: IdeatePick): string {
@@ -174,13 +180,12 @@ export function FocusTimerView() {
     playingS3Key,
     toggleCurrent,
     bedVolumeApiRef,
+    playerStripHeightPx,
   } = useLibraryPlayer();
   const [searchParams] = useSearchParams();
   const fromIdeateToken = searchParams.get("fromIdeate");
   const autoStart = searchParams.get("autoStart") === "1";
   const minutesParam = searchParams.get("minutes");
-  const [name, setName] = useState("there");
-  const [greeting, setGreeting] = useState("Good morning");
   const [taskInput, setTaskInput] = useState("");
   const [mode, setMode] = useState<TimerMode>("focus");
   const [focusMinutes, setFocusMinutes] = useState<number>(25);
@@ -215,6 +220,22 @@ export function FocusTimerView() {
   const [mixCompositions, setMixCompositions] = useState<BackgroundAudioItem[]>(
     [],
   );
+  const [prefs, setPrefs] = useState<FocusSessionPrefs>(() => readFocusSessionPrefs());
+  const [epoch, setEpoch] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [timingOpen, setTimingOpen] = useState(false);
+  const [goalsSheet, setGoalsSheet] = useState(false);
+  const [sessionMenu, setSessionMenu] = useState(false);
+  const [strikingIds, setStrikingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [manifestOpen, setManifestOpen] = useState(false);
+  const [meditateGate, setMeditateGate] = useState(false);
+  const wide = useMinWidth(768);
+  const meditatePlayed = useRef(false);
+  const tasksRef = useRef(tasks);
+  const strikingRef = useRef(new Set<string>());
+  const strikeTimers = useRef<number[]>([]);
+  const meditateHeard = useRef(false);
+  const onElapsedRef = useRef<() => void>(() => {});
   const endAtRef = useRef<number | null>(null);
   const remainingRef = useRef(remainingSec);
   const ideateFlyoutRef = useRef<HTMLDivElement>(null);
@@ -235,8 +256,8 @@ export function FocusTimerView() {
     const mq = window.matchMedia("(min-width: 640px)");
 
     const sync = () => {
-      // Side shelf only on sm+; mobile stacks tasks under the timer.
-      const sideOpen = tasksShelfOpen && mq.matches;
+      // Goals are a card now, so the pattern covers the whole page.
+      const sideOpen = false && tasksShelfOpen && mq.matches;
       const value = sideOpen ? "open" : "closed";
       const width = sideOpen ? "320px" : "0px";
       if (main instanceof HTMLElement) {
@@ -266,12 +287,6 @@ export function FocusTimerView() {
   }, [tasksShelfOpen]);
 
   useEffect(() => {
-    const label =
-      getMedimadeSessionDisplayName()?.trim() ||
-      getMedimadeSessionEmail()?.trim() ||
-      "there";
-    setName(firstNameFromLabel(label));
-    setGreeting(timeOfDayGreeting());
     const store = loadIdeateStore();
     const list = syncFocusDoneFromIdeate(readFocusTasksList(), store);
     setTasks(list);
@@ -279,7 +294,15 @@ export function FocusTimerView() {
     setSessionsToday(readSessionsCompletedToday());
     setFocusPattern(loadFocusPattern());
     setFocusMix(loadFocusMix());
-  }, []);
+    const saved = readFocusSessionPrefs();
+    setPrefs(saved);
+    setFocusMinutes(saved.focusMinutes);
+    if (!autoStart) {
+      setDurationSec(saved.focusMinutes * 60);
+      setRemainingSec(saved.focusMinutes * 60);
+      remainingRef.current = saved.focusMinutes * 60;
+    }
+  }, [autoStart]);
 
   // Ideate “Start focus session” handoff (query token so repeat visits re-apply).
   useEffect(() => {
@@ -561,26 +584,21 @@ export function FocusTimerView() {
       const next = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
       setRemainingSec(next);
       if (next <= 0) {
-        setRunning(false);
         endAtRef.current = null;
-        setSessionsToday((prev) => {
-          const count = prev + 1;
-          writeSessionsCompletedToday(count);
-          return count;
-        });
         setRemainingSec(0);
+        onElapsedRef.current();
       }
     }, 250);
     return () => window.clearInterval(id);
-  }, [running]);
+  }, [running, epoch]);
 
   useEffect(() => {
-    if (!tasksOpen && !ideateFlyoutOpen) return;
+    if (!tasksOpen && !ideateFlyoutOpen && !manifestOpen) return;
     const sync = () => setIdeateStore(loadIdeateStore());
     sync();
     void pullIdeateStoreFromCloud().finally(sync);
     return subscribeIdeateCloud(sync);
-  }, [tasksOpen, ideateFlyoutOpen]);
+  }, [tasksOpen, ideateFlyoutOpen, manifestOpen]);
 
   // Keep Focus checkboxes aligned with Ideate when life-area todos change.
   useEffect(() => {
@@ -701,13 +719,22 @@ export function FocusTimerView() {
     setRunning((v) => !v);
   }
 
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => () => {
+    strikeTimers.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
   function persistTasks(next: FocusTaskItem[]) {
+    tasksRef.current = next;
     setTasks(next);
     writeFocusTasksList(next);
   }
 
   function toggleTaskDone(id: string) {
-    const item = tasks.find((t) => t.id === id);
+    const item = tasksRef.current.find((t) => t.id === id);
     if (!item) return;
     const nextDone = !item.done;
     if (item.ideateKind && item.ideateId) {
@@ -718,9 +745,53 @@ export function FocusTimerView() {
       );
       if (store) setIdeateStore(store);
     }
-    persistTasks(
-      tasks.map((t) => (t.id === id ? { ...t, done: nextDone } : t)),
+    const next = tasksRef.current.map((t) =>
+      t.id === id ? { ...t, done: nextDone, inSession: false } : t,
     );
+    persistTasks([
+      ...next.filter((task) => !task.done),
+      ...next.filter((task) => task.done),
+    ]);
+  }
+
+  function requestToggle(id: string) {
+    const item = tasksRef.current.find((task) => task.id === id);
+    if (!item || strikingRef.current.has(id)) return;
+    if (item.done || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      toggleTaskDone(id);
+      return;
+    }
+    strikingRef.current.add(id);
+    setStrikingIds(new Set(strikingRef.current));
+    const timer = window.setTimeout(() => {
+      toggleTaskDone(id);
+      strikingRef.current.delete(id);
+      setStrikingIds(new Set(strikingRef.current));
+    }, 480);
+    strikeTimers.current.push(timer);
+  }
+
+  function reorderTodo(id: string, index: number) {
+    const todo = tasksRef.current.filter((task) => !task.done);
+    const done = tasksRef.current.filter((task) => task.done);
+    const from = todo.findIndex((task) => task.id === id);
+    if (from < 0 || from === index) return;
+    const [item] = todo.splice(from, 1);
+    if (!item) return;
+    const at = from < index ? index - 1 : index;
+    todo.splice(Math.max(0, Math.min(at, todo.length)), 0, item);
+    persistTasks([...todo, ...done]);
+  }
+
+  function appendTasks(additions: FocusTaskItem[]) {
+    if (!additions.length) return;
+    const todo = tasks.filter((task) => !task.done);
+    const done = tasks.filter((task) => task.done);
+    for (const item of additions) {
+      if (item.done) done.push({ ...item, inSession: false });
+      else todo.push({ ...item, inSession: true });
+    }
+    persistTasks([...todo, ...done]);
   }
 
   function removeTask(id: string) {
@@ -730,17 +801,14 @@ export function FocusTimerView() {
   function addTaskFromMainInput() {
     const text = taskInput.trim();
     if (!text) return;
-    persistTasks([...tasks, { id: newFocusTaskId(), text, done: false }]);
+    appendTasks([{ id: newFocusTaskId(), text, done: false }]);
     setTaskInput("");
   }
 
   function addTask() {
     const text = draftTask.trim();
     if (!text) return;
-    persistTasks([
-      ...tasks,
-      { id: newFocusTaskId(), text, done: false },
-    ]);
+    appendTasks([{ id: newFocusTaskId(), text, done: false }]);
     setDraftTask("");
   }
 
@@ -813,7 +881,7 @@ export function FocusTimerView() {
         ideateId: todo.id,
       });
     }
-    if (additions.length > 0) persistTasks([...tasks, ...additions]);
+    if (additions.length > 0) appendTasks(additions);
     setIdeatePicks([]);
     setIdeateLevel("areas");
     setSelectedArea(null);
@@ -847,6 +915,179 @@ export function FocusTimerView() {
       setIdeateLevel("areas");
     }
   }
+
+  function savePrefs(next: FocusSessionPrefs) {
+    setPrefs(next);
+    writeFocusSessionPrefs(next);
+    setFocusMinutes(next.focusMinutes);
+    if (running) return;
+    if (mode === "focus" && next.focusMinutes !== prefs.focusMinutes) {
+      applyDuration(next.focusMinutes * 60);
+    }
+    if (mode !== "focus") {
+      const mins =
+        mode === "longBreak" && next.longBreakEvery
+          ? next.longBreakMinutes
+          : next.breakMinutes;
+      const prev =
+        mode === "longBreak" && prefs.longBreakEvery
+          ? prefs.longBreakMinutes
+          : prefs.breakMinutes;
+      if (mins !== prev) applyDuration(mins * 60);
+    }
+  }
+
+  function beginTimer() {
+    if (remainingSec <= 0) {
+      const mins = mode === "focus" ? prefs.focusMinutes : mode === "longBreak" ? prefs.longBreakMinutes : prefs.breakMinutes;
+      applyDuration(mins * 60);
+    }
+    setRunning(true);
+  }
+
+  onElapsedRef.current = () => {
+    playSoftChime();
+    if (mode === "focus") {
+      const count = Math.min(12, sessionsToday + 1);
+      writeSessionsCompletedToday(count);
+      setSessionsToday(count);
+      const long = prefs.longBreakEvery && count % 4 === 0;
+      const mins = long ? prefs.longBreakMinutes : prefs.breakMinutes;
+      setMode(long ? "longBreak" : "shortBreak");
+      const sec = mins * 60;
+      setDurationSec(sec);
+      setRemainingSec(sec);
+      remainingRef.current = sec;
+      if (prefs.autoStartBreak) {
+        setRunning(true);
+        setEpoch((value) => value + 1);
+      } else {
+        setRunning(false);
+      }
+      return;
+    }
+    setMode("focus");
+    const sec = prefs.focusMinutes * 60;
+    setDurationSec(sec);
+    setRemainingSec(sec);
+    remainingRef.current = sec;
+    if (prefs.autoStartFocus) {
+      setRunning(true);
+      setEpoch((value) => value + 1);
+    } else {
+      setRunning(false);
+    }
+  };
+
+  async function startSession() {
+    const session = tasks.filter((task) => !task.done);
+    if (prefs.meditateFirst && mode === "focus" && session.length > 0) {
+      const store = loadIdeateStore();
+      const areaIds = [...new Set(session.map((task) => task.lifeAreaId).filter((id): id is string => Boolean(id)))];
+      const area = areaIds.length === 1
+        ? store.dreams.find((dream) => dream.id === areaIds[0])
+        : undefined;
+      const lines = session.map((task) =>
+        task.lifeAreaTitle ? `${task.text} (${task.lifeAreaTitle})` : task.text,
+      );
+      const lead = session[0]!;
+      writeFocusActiveIdeateSubtask(lead.id);
+      upsertFocusPreflightLink({
+        subtaskId: lead.id,
+        jobId: null,
+        title: `Pre-focus · ${lines.join(", ")}`.slice(0, 80),
+        status: "starting",
+        createdAt: new Date().toISOString(),
+      });
+      setPreflight(readActiveFocusPreflightLink());
+      meditatePlayed.current = false;
+      setMeditateGate(true);
+      try {
+        await startFocusPreflightMeditationGeneration({
+          goalTitle: area?.title?.trim() || (session.length === 1 ? lead.text : "This focus session"),
+          visionText: area?.visionText?.trim() || lines.join("\n"),
+          dreamText: area?.dreamText?.trim() || undefined,
+          obstacleText: area?.obstacleText?.trim() || undefined,
+          lifeAreaId: area?.id,
+          focusSubtaskId: lead.id,
+          focusTaskContext: lines.join("\n"),
+        });
+      } catch {
+        setMeditateGate(false);
+        beginTimer();
+      }
+      return;
+    }
+    beginTimer();
+  }
+
+  useEffect(() => {
+    if (!meditateGate || !preflight) return;
+    if (preflight.status === "failed") {
+      setMeditateGate(false);
+      beginTimer();
+      return;
+    }
+    if (preflight.status !== "ready" || meditatePlayed.current) return;
+    meditatePlayed.current = true;
+    void playPreflightMeditation();
+  }, [meditateGate, preflight, playPreflightMeditation]);
+
+  useEffect(() => {
+    if (!meditateGate || preflight?.status !== "ready") return;
+    const id = window.setTimeout(() => {
+      if (meditateHeard.current || !meditateGate) return;
+      setMeditateGate(false);
+      beginTimer();
+    }, 15000);
+    return () => window.clearTimeout(id);
+    // beginTimer reads the latest idle timer when the meditation never starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meditateGate, preflight?.status]);
+
+  useEffect(() => {
+    if (!meditateGate || !meditatePlayed.current) return;
+    const key = preflight?.audioKey?.trim();
+    if (!key) return;
+    if (playingS3Key === key) {
+      meditateHeard.current = true;
+      return;
+    }
+    if (meditateHeard.current) {
+      meditateHeard.current = false;
+      setMeditateGate(false);
+      beginTimer();
+    }
+    // beginTimer closes over the latest timer state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meditateGate, playingS3Key, preflight]);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
+
+  useEffect(() => {
+    if (!sessionMenu) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-session-menu]")) return;
+      setSessionMenu(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSessionMenu(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [sessionMenu]);
 
   const modeOptions = [
     { id: "focus" as const, label: "Focus" },
@@ -1072,815 +1313,295 @@ export function FocusTimerView() {
     </div>
   ) : null;
 
-  return (
-    <div className="group/focus relative flex min-h-0 w-full flex-1 flex-col overflow-hidden sm:flex-row">
-      {/* Timer — full width on mobile; left column on sm+ */}
-      <div
-        className={`relative flex min-h-0 min-w-0 flex-1 flex-col px-4 py-8 sm:px-12 sm:py-10 ${
-          tasksShelfOpen ? "sm:border-r-[0.5px] sm:border-border" : ""
-        }`}
+  const openCount = tasks.filter((task) => !task.done).length;
+  const doneCount = tasks.length - openCount;
+  const sessionTasks = tasks.filter((task) => !task.done);
+  const leadTask = sessionTasks[0] ?? null;
+  const phaseBreak = mode !== "focus";
+  const goalCountLabel = sessionTasks.length === 1 ? "1 to do" : `${sessionTasks.length} to do`;
+
+  const focusGoalsCard = () => {
+    if (!wide) setGoalsSheet(true);
+    window.setTimeout(() => document.getElementById("focus-add-goal")?.focus(), wide ? 0 : 80);
+  };
+
+  const chipClass =
+    "inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-card px-3.5 text-[13.5px] text-[#4A4652] disabled:cursor-default";
+
+  const timingChips = (
+    <div
+      className={`relative flex max-w-full flex-wrap items-center justify-center gap-2 ${running ? "pointer-events-none opacity-45" : ""}`}
+    >
+      <button type="button" onClick={() => setTimingOpen((open) => !open)} disabled={running} className={chipClass}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8A6424" strokeWidth="1.7" aria-hidden><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+        Focus <b className="font-semibold text-foreground">{prefs.focusMinutes} min</b>
+        <SelectChevron open={timingOpen} />
+      </button>
+      <button type="button" onClick={() => setTimingOpen((open) => !open)} disabled={running} className={chipClass}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8A6424" strokeWidth="1.7" aria-hidden><path d="M5 9h11v5a5 5 0 01-5 5h-1a5 5 0 01-5-5z"/><path d="M16 11h2a2 2 0 010 4h-2"/></svg>
+        Break <b className="font-semibold text-foreground">{prefs.breakMinutes} min</b>
+        <SelectChevron open={timingOpen} />
+      </button>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={prefs.meditateFirst}
+        disabled={running}
+        onClick={() => savePrefs({ ...prefs, meditateFirst: !prefs.meditateFirst })}
+        className={chipClass}
       >
-        <div
-          ref={patternPickerRef}
-          className="absolute right-4 top-1/2 z-[20] -translate-y-1/2 sm:right-5"
-        >
-          <button
-            type="button"
-            onClick={() => setPatternPickerOpen((o) => !o)}
-            aria-label="Change focus pattern"
-            aria-expanded={patternPickerOpen}
-            title="Pattern"
-            className={`inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-card/90 text-foreground shadow-md backdrop-blur-sm transition-[opacity,colors] hover:border-accent/50 hover:bg-card ${
-              patternPickerOpen
-                ? "opacity-100"
-                : "opacity-0 group-hover/focus:opacity-100 group-focus-within/focus:opacity-100 max-md:opacity-70"
-            }`}
-          >
-            <IconPencil size={15} stroke={1.75} aria-hidden />
-          </button>
-          {patternPickerOpen ? (
-            <div
-              role="listbox"
-              aria-label="Focus edge pattern"
-              className="absolute bottom-full right-0 z-20 mb-2 grid w-[14.5rem] grid-cols-3 gap-3 rounded-xl border border-border bg-card p-3 shadow-lg"
-            >
-              {FOCUS_PATTERN_OPTIONS.map((opt) => {
-                const selected = opt.id === focusPattern;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    aria-label={opt.label}
-                    title={opt.label}
-                    onClick={() => {
-                      setFocusPattern(opt.id);
-                      saveFocusPattern(opt.id);
-                      setPatternPickerOpen(false);
-                    }}
-                    className={`mx-auto h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-full border bg-cover bg-center transition-[box-shadow] ${
-                      selected
-                        ? "border-transparent ring-2 ring-accent ring-offset-2 ring-offset-card"
-                        : "border-border hover:border-accent/50"
-                    }`}
-                    style={{
-                      backgroundColor: opt.swatch,
-                      backgroundImage: opt.swatchImage
-                        ? `url(${opt.swatchImage})`
-                        : undefined,
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-
-        <button
-          ref={soundsButtonRef}
-          type="button"
-          aria-expanded={mixPanelOpen}
-          aria-haspopup="dialog"
-          onClick={() => {
-            if (mixPanelOpen) {
-              mixCloseRef.current?.();
-              return;
-            }
-            unlockHtmlMediaPlayback();
-            setMixPanelOpen(true);
-          }}
-          className="absolute left-4 top-4 z-[20] cursor-pointer rounded-full border border-border bg-card/90 px-3.5 py-1.5 text-sm font-medium text-muted shadow-sm backdrop-blur-sm transition-colors hover:border-accent/40 hover:bg-accent-soft/40 hover:text-foreground sm:left-5 sm:top-5"
-        >
-          Sounds
-        </button>
-
-        {!tasksShelfOpen ? (
-          <button
-            type="button"
-            onClick={() => setTasksShelfOpen(true)}
-            className="absolute right-4 top-4 z-[20] cursor-pointer rounded-full border border-border bg-card/90 px-3.5 py-1.5 text-sm font-medium text-muted shadow-sm backdrop-blur-sm transition-colors hover:border-accent/40 hover:bg-accent-soft/40 hover:text-foreground sm:right-5 sm:top-5"
-          >
-            Tasks
-          </button>
-        ) : null}
-
-        {preflight ? (
-          <div className="absolute left-1/2 top-16 z-[18] w-[min(100%-2rem,22rem)] -translate-x-1/2 sm:top-[4.5rem]">
-            <div
-              className={`relative overflow-hidden rounded-2xl border px-4 py-3 text-left shadow-md backdrop-blur-sm ${
-                preflight.status === "failed"
-                  ? "border-danger/35 bg-danger/5"
-                  : preflight.status === "ready"
-                    ? "border-accent/40 bg-card/95"
-                    : "border-accent/35 bg-accent-soft/25"
-              }`}
-            >
-              {preflight.status !== "failed" &&
-              preflight.status !== "ready" ? (
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute left-0 top-0 h-1 w-full bg-accent/10"
-                >
-                  <div
-                    className="h-full w-1/3 bg-accent/60"
-                    style={{
-                      animation:
-                        "mmIndeterminateBar 1.4s ease-in-out infinite",
-                    }}
-                  />
-                </div>
-              ) : null}
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                Set the tone
-              </p>
-              <p className="mt-1 font-display text-[15px] font-medium leading-snug text-foreground">
-                {preflight.title}
-              </p>
-              {preflight.status === "failed" ? (
-                <p className="mt-1.5 text-xs text-danger">
-                  {preflight.error?.trim() || "Generation failed."}
-                </p>
-              ) : preflight.status === "ready" ? (
-                <p className="mt-1.5 text-xs text-muted">
-                  2‑min visualisation · ready to play
-                </p>
-              ) : (
-                <p className="mt-1.5 text-xs text-muted">
-                  Generating your 2‑min visualisation…
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-2">
-                {preflight.status === "ready" ? (
-                  <button
-                    type="button"
-                    disabled={preflightPlayBusy}
-                    onClick={() => void playPreflightMeditation()}
-                    className="cursor-pointer rounded-full accent-fill-gradient px-3.5 py-1.5 text-xs font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    {preflightPlayBusy
-                      ? "Opening…"
-                      : playingS3Key &&
-                          preflight.audioKey &&
-                          playingS3Key === preflight.audioKey
-                        ? "Playing"
-                        : "Play"}
-                  </button>
-                ) : preflight.status === "failed" ? null : (
-                  <span
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-selected/10 text-selected"
-                    aria-label="Generating"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="14"
-                      height="14"
-                      className="animate-spin"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      aria-hidden
-                    >
-                      <path d="M12 3a9 9 0 1 1-6.36 2.64" />
-                    </svg>
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {mixPanelOpen ? (
-          <MixEditorPanel
-            key="focus-mix"
-            title=""
-            editorKey="focus"
-            anchorEl={soundsButtonRef.current}
-            natureItems={mixNature}
-            musicItems={mixMusic}
-            drumsItems={mixDrums}
-            noiseItems={mixNoise}
-            compositionItems={mixCompositions}
-            error={null}
-            initialMix={focusMix}
-            resetMix={DEFAULT_MIX_EDITOR_VALUES}
-            onLiveVolume={(channel, gain) => {
-              if (!nowPlaying?.s3Key?.startsWith(FOCUS_AMBIENT_S3_PREFIX)) {
-                return;
-              }
-              bedVolumeApiRef.current?.setBedVolume(channel, gain);
-            }}
-            onPreview={persistFocusMix}
-            onPersist={saveFocusMixOnly}
-            onClose={closeMixPanel}
-            closeRef={mixCloseRef}
-            placement="below-start"
-            showReset={false}
-            disableLocalPreview
-            preferSoundscapeWhenEmpty
-            stripPlayingMusicKey={
-              playingS3Key?.startsWith(FOCUS_AMBIENT_S3_PREFIX)
-                ? (nowPlaying?.musicKey ?? null)
-                : null
-            }
-          />
-        ) : null}
-
-        <div className="relative mx-auto h-full w-full max-w-[28rem] min-h-0 text-center">
-          {/* Greeting + mode sit above the timer number */}
-          <div className="absolute inset-x-0 bottom-1/2 mb-[9.25rem] flex flex-col items-center gap-3">
-            <p className="font-display text-lg font-light text-muted sm:text-xl">
-              {greeting}, {name}.
-            </p>
-            <SegmentedPillTabs
-              aria-label="Timer mode"
-              options={modeOptions}
-              value={mode}
-              onChange={selectMode}
-            />
-          </div>
-
-          <div
-            className="absolute inset-x-0 bottom-1/2 mb-5 flex justify-center font-display text-[7.5rem] font-light leading-none tracking-tight text-foreground"
-            aria-live="polite"
-            aria-atomic
-            aria-label={formatMmSs(remainingSec)}
-          >
-            {/* Colon is the only in-flow glyph — fixed at the column centre. */}
-            <span className="relative inline-block">
-              <span className="invisible select-none" aria-hidden>
-                :
-              </span>
-              <span className="absolute right-full top-0 pr-[0.06em] tabular-nums">
-                {clock.mm}
-              </span>
-              <span className="absolute left-0 top-0" aria-hidden>
-                :
-              </span>
-              <span className="absolute left-full top-0 pl-[0.06em] tabular-nums">
-                {clock.ss}
-              </span>
-            </span>
-          </div>
-
-          {/* Progress bar vertically centred in the focus column */}
-          <div className="absolute inset-x-0 top-1/2 w-full -translate-y-1/2">
-            <div className="focus-progress-track w-full">
-              <div
-                className="relative h-2.5 w-full overflow-visible rounded-full bg-border"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={durationSec}
-                aria-valuenow={durationSec - remainingSec}
-                aria-label="Session progress"
-              >
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-gold transition-[width] duration-1000 ease-linear"
-                  style={{ width: `${progress * 100}%` }}
-                />
-                <span
-                  className="absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full bg-gold ring-2 ring-accent/35"
-                  style={{ left: `calc(${progress * 100}% - 7px)` }}
-                  aria-hidden
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Duration labels + controls sit below the centred bar */}
-          <div className="absolute inset-x-0 top-1/2 mt-2.5 flex w-full flex-col items-center">
-            <div className="flex w-full items-center justify-between font-display text-xs font-medium tabular-nums tracking-tight text-muted sm:text-sm">
-              <span>0:00</span>
-              <span>{formatDurationLabel(durationSec)}</span>
-            </div>
-
-            <div className="mt-6 flex items-center justify-center gap-4">
-              <button
-                type="button"
-                onClick={resetTimer}
-                aria-label="Reset timer"
-                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-nav-active"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M3 12a9 9 0 1 0 3-6.7" />
-                  <path d="M3 4v5h5" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={toggleRunning}
-                className="accent-fill-gradient inline-flex min-w-[7.5rem] cursor-pointer items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
-              >
-                {running ? "Pause" : "Start"}
-              </button>
-              <button
-                type="button"
-                onClick={skipSession}
-                aria-label="Skip session"
-                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-nav-active"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M5 4l10 8-10 8V4z" />
-                  <path d="M19 5v14" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pb-1">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Minutes
-            </p>
-            <SegmentedPillTabs
-              aria-label="Focus duration minutes"
-              options={durationOptions}
-              value={String(focusMinutes)}
-              onChange={(id) => selectFocusMinutes(Number(id))}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Tasks — under timer on mobile; right shelf on sm+ */}
-      {tasksShelfOpen ? (
-      <aside className="focus-task-shelf relative flex max-h-[min(42vh,22rem)] w-full shrink-0 flex-col border-t border-border px-4 pb-5 pt-4 sm:h-full sm:max-h-none sm:w-[320px] sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-7">
-        <div className="mb-3.5 flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Tasks
-          </p>
-          <button
-            type="button"
-            onClick={() => setTasksShelfOpen(false)}
-            aria-label="Close tasks"
-            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden
-            >
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        </div>
-
-        <input
-          id="focus-task-input"
-          type="text"
-          value={taskInput}
-          onChange={(e) => setTaskInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addTaskFromMainInput();
-            }
-          }}
-          placeholder="Add a task..."
-          className="w-full border-0 border-b border-border bg-transparent pb-2 font-display text-[15px] font-normal italic leading-snug text-foreground outline-none ring-0 placeholder:text-muted/70 focus:ring-0"
-        />
-
-        <div className="relative mt-3 self-start">
-          <button
-            ref={ideateButtonRef}
-            type="button"
-            aria-expanded={ideateFlyoutOpen}
-            aria-haspopup="dialog"
-            onClick={openIdeatePicker}
-            className="cursor-pointer rounded-full border border-border bg-background/80 px-3 py-1 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft/40 hover:text-foreground"
-          >
-            Add from Manifest →
-          </button>
-          {ideateFlyout}
-        </div>
-
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-          {tasks.length > 0 ? (
-            <ul className="flex w-full flex-col gap-0.5 text-left">
-              {tasks.map((t) => (
-                <li
-                  key={t.id}
-                  className="flex w-full items-start gap-2.5 border-b border-border/40 py-2"
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleTaskDone(t.id)}
-                    aria-pressed={t.done}
-                    aria-label={t.done ? "Mark incomplete" : "Mark complete"}
-                    className={`mt-0.5 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors ${
-                      t.done
-                        ? "border-accent bg-accent-soft text-accent-link"
-                        : "border-border bg-transparent text-transparent hover:border-accent/50"
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="12"
-                      height="12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M5 12l5 5L20 7" />
-                    </svg>
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        className={`text-[13px] leading-snug ${
-                          t.done
-                            ? "text-muted line-through"
-                            : "text-foreground"
-                        }`}
-                      >
-                        {t.text}
-                      </span>
-                      {t.lifeAreaTitle ? (
-                        <span className="rounded-full bg-accent-soft/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-link">
-                          {t.lifeAreaTitle}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeTask(t.id)}
-                    aria-label={`Remove ${t.text}`}
-                    className="mt-0.5 inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted/70 transition-colors hover:bg-nav-active hover:text-foreground"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="14"
-                      height="14"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      aria-hidden
-                    >
-                      <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      </aside>
+        <span className="relative h-6 w-10 shrink-0 rounded-full" style={{ background: prefs.meditateFirst ? "#0F1B2D" : "#D9D1C2" }} aria-hidden>
+          <span className="absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white" style={{ left: prefs.meditateFirst ? 19 : 3 }} />
+        </span>
+        2-min meditation first
+      </button>
+      {timingOpen && !running ? (
+        <SessionTimingPopover prefs={prefs} onChange={savePrefs} onClose={() => setTimingOpen(false)} />
       ) : null}
+    </div>
+  );
 
-      {tasksOpen ? (
-        <>
-          <button
-            type="button"
-            aria-label="Close tasks"
-            className="fixed inset-0 z-[140] bg-black/25 md:left-[var(--app-sidebar-w,200px)]"
-            onClick={() => setTasksOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal
-            aria-label="Tasks"
-            className="fixed inset-x-0 bottom-0 z-[150] flex max-h-[75vh] flex-col rounded-t-2xl border-t border-border bg-background/95 shadow-xl backdrop-blur-md md:left-[var(--app-sidebar-w,200px)]"
-          >
-            <div className="mx-auto flex w-full max-w-3xl flex-col overflow-hidden px-4 pb-6 pt-4 sm:px-6">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Tasks
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setTasksOpen(false)}
-                  aria-label="Close"
-                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    aria-hidden
-                  >
-                    <path d="M6 6l12 12M18 6L6 18" />
-                  </svg>
+  const transport = (
+    <div className="flex shrink-0 items-center justify-center gap-3.5">
+      <button
+        type="button"
+        aria-label="Restart"
+        disabled={!running}
+        onClick={() => { remainingRef.current = durationSec; setRemainingSec(durationSec); setEpoch((value) => value + 1); }}
+        className="inline-flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-foreground disabled:cursor-default disabled:opacity-35"
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12a8 8 0 1 0 8-8 8 8 0 0 0-6 2.7"/><path d="M4 4v4h4"/></svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => { if (running) toggleRunning(); else void startSession(); }}
+        disabled={!running && meditateGate}
+        className="inline-flex h-[52px] w-[170px] shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-full border border-[#AFC2DC] bg-accent-button text-[14px] font-semibold text-on-accent disabled:cursor-default disabled:opacity-60"
+      >
+        {running ? (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden><path d="M8 5v14M16 5v14"/></svg>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M8 5v14l11-7z"/></svg>
+        )}
+        {running ? "Pause" : meditateGate ? "Writing…" : "Start"}
+      </button>
+      <button
+        type="button"
+        aria-label="Skip"
+        disabled={!running}
+        onClick={() => onElapsedRef.current()}
+        className="inline-flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-foreground disabled:cursor-default disabled:opacity-35"
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 5l9 7-9 7z"/><path d="M18 5v14"/></svg>
+      </button>
+    </div>
+  );
+
+  const goalsBody = (scrollList: boolean) => (
+    <div className={`flex flex-col gap-2.5 ${scrollList ? "min-h-0 flex-1" : ""} ${running ? "opacity-[0.55]" : ""}`}>
+      <div className="flex items-center justify-between px-1.5">
+        <p className="text-[13px] font-semibold text-[#8A6424]">Today's goals</p>
+        <p className="text-[12.5px] font-semibold text-[#8A6424]">{doneCount} of {tasks.length} done</p>
+      </div>
+      <form
+        className="flex h-[42px] items-center gap-2 rounded-xl border border-border bg-card px-3.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addTaskFromMainInput();
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="text-muted" aria-hidden><path d="M12 5v14M5 12h14"/></svg>
+        <input
+          value={taskInput}
+          onChange={(event) => setTaskInput(event.target.value)}
+          placeholder="Add a goal"
+          aria-label="Add a goal"
+          id="focus-add-goal"
+          className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted"
+        />
+      </form>
+      <button
+        type="button"
+        onClick={() => {
+          setIdeateStore(loadIdeateStore());
+          setManifestOpen(true);
+        }}
+        className="inline-flex h-[34px] w-fit cursor-pointer items-center gap-2 rounded-full border border-border bg-card px-4 text-[14px] font-semibold text-foreground"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>
+        Add from Manifest
+      </button>
+      <div className={scrollList ? "min-h-0 flex-1 overflow-y-auto" : undefined}>
+        <GoalRows tasks={tasks} strikingIds={strikingIds} onToggle={requestToggle} onRemove={removeTask} onReorder={reorderTodo} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 pt-4 md:px-7 md:pt-5"
+      style={{ paddingBottom: Math.max(wide ? 20 : 16, playerStripHeightPx + 12) }}
+    >
+      <div className={wide ? "flex min-h-0 flex-1 items-stretch gap-[18px]" : "flex min-h-0 flex-1 flex-col gap-3"}>
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5 rounded-[18px] border border-border bg-card px-4 pb-[22px] pt-[18px] shadow-[0_2px_12px_rgba(15,27,45,0.05)] md:px-[22px]">
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className="inline-flex h-7 items-center rounded-full px-3 text-[12px] font-semibold"
+                style={phaseBreak ? { background: "rgba(6,118,71,0.12)", color: "#067647" } : { background: "#0F1B2D", color: "#F6F1E7" }}
+              >
+                {phaseBreak ? "Break" : "Focus"}
+              </span>
+              <div className="flex items-center gap-2.5">
+                <TimerStyleMenu display={prefs.display} onChange={(display) => savePrefs({ ...prefs, display })} />
+                <button type="button" aria-label="Full screen" onClick={() => setFullscreen(true)} className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-foreground">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
                 </button>
               </div>
-
-              <div className="mb-4">
-                <SegmentedPillTabs
-                  aria-label="Tasks drawer mode"
-                  options={drawerTabOptions}
-                  value={drawerTab}
-                  onChange={setDrawerTab}
-                  equalWidth
-                />
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {drawerTab === "session" ? (
-                  <>
-                    <ul className="flex flex-col gap-2">
-                      {tasks.length === 0 ? (
-                        <li className="py-2 text-sm text-muted">
-                          No tasks yet. Add one below or import from Manifest.
-                        </li>
-                      ) : (
-                        tasks.map((t) => (
-                          <li key={t.id} className="flex items-start gap-3 py-1.5">
-                            <button
-                              type="button"
-                              onClick={() => toggleTaskDone(t.id)}
-                              aria-pressed={t.done}
-                              aria-label={
-                                t.done ? "Mark incomplete" : "Mark complete"
-                              }
-                              className={`mt-0.5 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors ${
-                                t.done
-                                  ? "border-accent bg-accent-soft text-accent-link"
-                                  : "border-border bg-transparent text-transparent hover:border-accent/50"
-                              }`}
-                            >
-                              <svg
-                                viewBox="0 0 24 24"
-                                width="12"
-                                height="12"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden
-                              >
-                                <path d="M5 12l5 5L20 7" />
-                              </svg>
-                            </button>
-                            <div className="min-w-0 flex-1 text-left">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`text-[15px] leading-snug ${
-                                    t.done
-                                      ? "text-muted line-through"
-                                      : "text-foreground"
-                                  }`}
-                                >
-                                  {t.text}
-                                </span>
-                                {t.lifeAreaTitle ? (
-                                  <span className="rounded-full bg-accent-soft/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-link">
-                                    {t.lifeAreaTitle}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeTask(t.id)}
-                              aria-label={`Remove ${t.text}`}
-                              className="mt-0.5 inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted/70 transition-colors hover:bg-nav-active hover:text-foreground"
-                            >
-                              <svg
-                                viewBox="0 0 24 24"
-                                width="14"
-                                height="14"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                aria-hidden
-                              >
-                                <path d="M6 6l12 12M18 6L6 18" />
-                              </svg>
-                            </button>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-
-                    <div className="mt-4 flex items-center gap-2 border-t border-border/70 pt-4">
-                      <input
-                        type="text"
-                        value={draftTask}
-                        onChange={(e) => setDraftTask(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addTask();
-                          }
-                        }}
-                        placeholder="New task"
-                        className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm text-foreground outline-none placeholder:text-muted/70"
-                      />
-                      <button
-                        type="button"
-                        onClick={addTask}
-                        className="cursor-pointer text-sm font-medium text-accent-link underline-offset-2 hover:underline"
-                      >
-                        + Add task
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {ideateLevel !== "areas" ? (
-                      <div className="flex items-center gap-2 text-left">
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
+              <div className="relative w-full shrink-0" data-session-menu="">
+                <div className="flex h-[58px] w-full flex-col items-center justify-start gap-2 overflow-hidden">
+                  <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-muted">
+                    {phaseBreak ? "Up next after your break" : `Today's goals · ${goalCountLabel}`}
+                  </p>
+                  {leadTask ? (
+                    <div className="flex w-full min-w-0 items-center justify-center gap-2.5">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <GoalTick
+                          size={18}
+                          striking={strikingIds.has(leadTask.id)}
+                          done={false}
+                          label={`Tick ${leadTask.text}`}
+                          onClick={() => requestToggle(leadTask.id)}
+                        />
+                        <FocusStrikeTitle
+                          text={leadTask.text}
+                          striking={strikingIds.has(leadTask.id)}
+                          className="text-[15px] font-semibold"
+                        />
+                        {leadTask.lifeAreaTitle ? (
+                          <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-[#F6EEDD] px-[7px] text-[10.5px] font-bold uppercase tracking-[0.8px] text-[#8A6424]">
+                            {leadTask.lifeAreaTitle}
+                          </span>
+                        ) : null}
+                      </span>
+                      {sessionTasks.length > 1 ? (
                         <button
                           type="button"
-                          onClick={ideateBack}
-                          aria-label="Back"
-                          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-nav-active hover:text-foreground"
+                          aria-expanded={sessionMenu}
+                          onClick={() => setSessionMenu((open) => !open)}
+                          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-0.5 rounded-full border border-border bg-card px-[9px] text-[12px] font-semibold text-foreground"
                         >
-                          <ChevronLeft />
+                          +{sessionTasks.length - 1} more
+                          <SelectChevron open={sessionMenu} />
                         </button>
-                        <p className="min-w-0 truncate text-sm text-muted">
-                          {selectedArea?.title?.trim() || "Life area"}
-                          {selectedTask ? (
-                            <>
-                              <span className="mx-1.5 text-muted/60">→</span>
-                              <span className="text-foreground">
-                                {selectedTask.title}
-                              </span>
-                            </>
-                          ) : null}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {ideateLevel === "areas" ? (
-                      lifeAreas.length === 0 ? (
-                        <p className="py-2 text-sm text-muted">
-                          No life areas yet.{" "}
-                          <Link
-                            to="/manifest/my?new=1"
-                            className="font-medium text-accent-link underline-offset-2 hover:underline"
-                          >
-                            Add one in Manifest
-                          </Link>
-                          .
-                        </p>
-                      ) : (
-                        <ul className="flex flex-col gap-0.5">
-                          {lifeAreas.map((area) => {
-                            const count = taskCountForArea(area.id);
-                            return (
-                              <li key={area.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => drillIntoArea(area)}
-                                  className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-nav-active"
-                                >
-                                  <span className="min-w-0 flex-1 font-display text-[17px] font-medium tracking-tight text-foreground">
-                                    {area.title.trim() || "Untitled"}
-                                  </span>
-                                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted">
-                                    {count}
-                                  </span>
-                                  <ChevronRight className="shrink-0 text-muted" />
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )
-                    ) : null}
-
-                    {ideateLevel === "tasks" ? (
-                      areaTasks.length === 0 ? (
-                        <p className="py-2 text-sm text-muted">
-                          No goals in this life area.
-                        </p>
-                      ) : (
-                        <ul className="flex flex-col gap-0.5">
-                          {areaTasks.map((task) => {
-                            const todos = todosForTask(task);
-                            return (
-                              <li key={task.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => drillIntoTask(task)}
-                                  className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-nav-active"
-                                >
-                                  <span className="min-w-0 flex-1 text-[15px] text-foreground">
-                                    {task.title}
-                                  </span>
-                                  <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted">
-                                    {todos.length}
-                                  </span>
-                                  <ChevronRight className="shrink-0 text-muted" />
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )
-                    ) : null}
-
-                    {ideateLevel === "subtasks" ? (
-                      taskTodos.length === 0 ? (
-                        <p className="py-2 text-sm text-muted">
-                          No To Dos under this goal.
-                        </p>
-                      ) : (
-                        <ul className="flex flex-col gap-1">
-                          {taskTodos.map((todo) => {
-                            const checked = pickSet.has(
-                              pickKey({ kind: "todo", id: todo.id }),
-                            );
-                            return (
-                              <li key={todo.id}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    toggleIdeatePick({
-                                      kind: "todo",
-                                      id: todo.id,
-                                    })
-                                  }
-                                  className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-nav-active"
-                                >
-                                  <span
-                                    className={`inline-flex size-5 shrink-0 items-center justify-center rounded-full border ${
-                                      checked
-                                        ? "border-accent bg-accent-soft text-accent-link"
-                                        : "border-border text-transparent"
-                                    }`}
-                                    aria-hidden
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      width="12"
-                                      height="12"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="3"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <path d="M5 12l5 5L20 7" />
-                                    </svg>
-                                  </span>
-                                  <span className="min-w-0 flex-1 text-[15px] text-foreground">
-                                    {todo.title}
-                                  </span>
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )
-                    ) : null}
-                  </div>
-                )}
-              </div>
-
-              {drawerTab === "ideate" ? (
-                <div className="mt-4 border-t border-border/70 pt-4">
-                  <button
-                    type="button"
-                    disabled={ideatePicks.length === 0}
-                    onClick={addIdeatePicksToSession}
-                    className="accent-fill-gradient w-full cursor-pointer rounded-full px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Add to session
-                    {ideatePicks.length > 0
-                      ? ` (${ideatePicks.length})`
-                      : ""}
-                  </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <button type="button" onClick={focusGoalsCard} className="cursor-pointer text-[15px] font-semibold text-accent-link">
+                      Add a goal
+                    </button>
+                  )}
                 </div>
-              ) : null}
+                {sessionMenu && sessionTasks.length > 1 ? (
+                  <div
+                    role="dialog"
+                    aria-label="Today's goals"
+                    className="absolute left-1/2 top-[66px] z-30 w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-[18px] border border-border bg-card px-3.5 py-3 shadow-[0_18px_44px_rgba(15,27,45,0.18)]"
+                  >
+                    <p className="px-1.5 pb-2 text-[11px] font-semibold uppercase tracking-[1.4px] text-muted">
+                      Today's goals · {goalCountLabel}
+                    </p>
+                    {sessionTasks.map((task) => (
+                      <div key={task.id} className="flex items-center gap-2.5 border-t border-border px-1.5 py-2">
+                        <GoalTick
+                          size={18}
+                          striking={strikingIds.has(task.id)}
+                          done={false}
+                          label={`Tick ${task.text}`}
+                          onClick={() => requestToggle(task.id)}
+                        />
+                        <FocusStrikeTitle
+                          text={task.text}
+                          striking={strikingIds.has(task.id)}
+                          className="flex-1 text-[14px]"
+                        />
+                        {task.lifeAreaTitle ? (
+                          <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-[#F6EEDD] px-[7px] text-[10.5px] font-bold uppercase tracking-[0.8px] text-[#8A6424]">
+                            {task.lifeAreaTitle}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex min-h-0 w-full max-h-[62%] flex-1 items-center justify-center">
+                <FittedTimerFace display={prefs.display} remainingSec={remainingSec} durationSec={durationSec} progress={progress} />
+              </div>
+              {transport}
+              {timingChips}
             </div>
+          </section>
+        {wide ? (
+          <section className="flex min-h-0 w-[380px] shrink-0 flex-col overflow-hidden rounded-[18px] border border-border bg-card px-4 py-[18px] shadow-[0_2px_12px_rgba(15,27,45,0.05)]">
+            {goalsBody(true)}
+          </section>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setGoalsSheet(true)}
+            className="flex h-12 w-full shrink-0 cursor-pointer items-center justify-between rounded-[14px] border border-border bg-card px-4 text-left text-[14px] font-semibold text-foreground"
+          >
+            <span>{openCount} to do · {doneCount} done</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-muted"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        )}
+      </div>
+
+      {!wide && goalsSheet ? (
+        <div className="fixed inset-0 z-[70] flex items-end bg-black/40" onClick={() => setGoalsSheet(false)}>
+          <div className="max-h-[85vh] w-full overflow-y-auto rounded-t-[18px] bg-card px-4 py-4" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Today's goals">
+            {goalsBody(false)}
           </div>
-        </>
+        </div>
       ) : null}
+
+      {fullscreen ? (
+        <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-8 px-6" style={{ background: "#0F1B2D", color: "#F6F1E7" }}>
+          <button type="button" aria-label="Close full screen" onClick={() => setFullscreen(false)} className="absolute right-5 top-5 cursor-pointer text-[#F6F1E7]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+          <p className="text-center text-[18px] font-semibold">{leadTask?.text || "Focus"}</p>
+          <TimerFace display={prefs.display} remainingSec={remainingSec} durationSec={durationSec} progress={progress} light />
+          {transport}
+        </div>
+      ) : null}
+
+      {manifestOpen ? (
+        <ManifestPicker
+          store={ideateStore}
+          existingIds={new Set(tasks.map((task) => task.ideateId).filter((id): id is string => Boolean(id)))}
+          onClose={() => setManifestOpen(false)}
+          onAdd={(items) => {
+            const additions = items.map((item) => {
+              const area = ideateStore?.dreams.find((dream) => dream.id === item.lifeAreaId);
+              return {
+                id: newFocusTaskId(),
+                text: item.title,
+                done: false,
+                lifeAreaId: item.lifeAreaId,
+                lifeAreaTitle: area?.title?.trim() || null,
+                ideateKind: "tracker" as const,
+                ideateId: item.id,
+              };
+            });
+            if (additions.length) appendTasks(additions);
+            setManifestOpen(false);
+          }}
+        />
+      ) : null}
+
     </div>
   );
 }

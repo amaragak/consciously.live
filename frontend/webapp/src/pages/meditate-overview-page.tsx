@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, Library, Plus, Users, Waves } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Link, useRouter } from "@/lib/spa-nav";
 import { formatDuration } from "@/components/library-meditation-card";
 import {
-  ExploreMiniCard,
-  ExploreMiniGrid,
-  ExploreMiniGroupLabel,
-} from "@/components/explore-mini-card";
-import { OverviewGreeting } from "@/components/overview-greeting";
+  OverviewHero,
+  OverviewOutlineLink,
+  OverviewSection,
+} from "@/components/overview-hero";
+import { SelectChevron } from "@/components/select-chevron";
 import {
   libraryMeditationCategoryLabel,
   listBackgroundAudio,
@@ -24,17 +24,16 @@ import {
 } from "@/lib/auth-session";
 import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
 import { CREATE_MEDITATE_ROOT } from "@/lib/create-meditation-path";
+import { writeGuidePracticeBrief } from "@/lib/guide-practice-handoff";
 import { useGuides } from "@/content/guides";
-import { MEDITATE_OVERVIEW_GREETINGS } from "@/content/overview-greetings";
+import {
+  MEDITATE_OVERVIEW_PROMPTS,
+  promptsForDay,
+} from "@/content/overview-prompts";
 import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { libraryMeditationDetailHref } from "@/lib/library-meditation-detail";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
-import {
-  MEDITATION_TYPE_PILL_CLASS,
-  meditationTypePillColors,
-  meditationTypePillSurfaceFromDom,
-} from "@/lib/meditation-type-pill";
 import { SOUNDS_HREF } from "@/lib/sounds-tabs";
 
 const EXPLORE_THUMB_STAMP = "1792456353682";
@@ -115,19 +114,47 @@ function voiceInitials(name: string): string {
 }
 
 function OverviewTypePill({ label }: { label: string }) {
-  const colors = meditationTypePillColors(
-    label,
-    typeof document !== "undefined"
-      ? meditationTypePillSurfaceFromDom()
-      : "light",
-  );
   return (
-    <span
-      className={`${MEDITATION_TYPE_PILL_CLASS} !rounded-full !px-2 !py-0.5 !text-[11px] !normal-case !tracking-normal`}
-      style={{ backgroundColor: colors.bg, color: colors.fg }}
-    >
+    <span className="inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-2 text-[11.5px] font-semibold text-[#8A6424]">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="6" r="2" />
+        <path d="M6 20c1-4 3-6 6-6s5 2 6 6M4 14l4-2M20 14l-4-2" />
+      </svg>
       {label}
     </span>
+  );
+}
+
+function HubRow({
+  href,
+  title,
+  description,
+  count,
+  imageSrc,
+}: {
+  href: string;
+  title: string;
+  description: string;
+  count?: number;
+  imageSrc: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3.5 rounded-[14px] border border-border bg-card p-3"
+    >
+      <img src={imageSrc} alt="" className="size-[52px] shrink-0 rounded-[10px] object-cover" />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="font-display text-[17px] leading-tight text-foreground">
+          {title}
+          {typeof count === "number" ? (
+            <span className="ml-1.5 text-[12.5px] font-normal text-muted">{count}</span>
+          ) : null}
+        </span>
+        <span className="truncate text-[13px] text-foreground/80">{description}</span>
+      </span>
+      <SelectChevron direction="right" />
+    </Link>
   );
 }
 
@@ -236,26 +263,6 @@ function MeditationOverviewCard({
   );
 }
 
-function NewMeditationTile() {
-  return (
-    <Link
-      href={CREATE_MEDITATE_ROOT}
-      className="relative flex min-h-0 items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-accent/45 bg-accent-soft/40 px-4 py-4 text-center transition-opacity hover:opacity-90 max-md:min-h-[160px] max-md:rounded-xl"
-    >
-      <span
-        className="flex h-[52px] w-[52px] items-center justify-center rounded-full accent-fill-gradient text-on-accent max-md:h-11 max-md:w-11"
-        style={PRIMARY_ACCENT_FILL_STYLE}
-        aria-hidden
-      >
-        <Plus className="size-6 max-md:size-5" strokeWidth={2.25} />
-      </span>
-      <span className="absolute top-[calc(50%+38px)] font-display text-lg text-foreground max-md:top-[calc(50%+32px)] max-md:text-base">
-        New meditation
-      </span>
-    </Link>
-  );
-}
-
 export function MeditateOverviewPage() {
   const [meditations, setMeditations] = useState<LibraryMeditationItem[]>([]);
   const [creationsCount, setCreationsCount] = useState(0);
@@ -311,89 +318,103 @@ export function MeditateOverviewPage() {
     };
   }, []);
 
-  const recent = meditations.slice(0, 3);
+  const router = useRouter();
+  const recent = meditations.slice(0, 4);
+  const prompts = promptsForDay(MEDITATE_OVERVIEW_PROMPTS);
+  const openBrief = (brief: string) => {
+    writeGuidePracticeBrief(brief);
+    router.push(CREATE_MEDITATE_ROOT);
+  };
 
   return (
     <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
-      <div className="flex flex-col gap-7 max-md:gap-[22px]">
-        <OverviewGreeting pool={MEDITATE_OVERVIEW_GREETINGS} />
+      <div className="flex flex-col gap-5">
+        <OverviewHero
+          question="What do you need right now?"
+          actionHref={CREATE_MEDITATE_ROOT}
+          actionLabel="Create meditation"
+          actionIcon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="6" r="2" />
+              <path d="M6 20c1-4 3-6 6-6s5 2 6 6M4 14l4-2M20 14l-4-2" />
+            </svg>
+          }
+          placeholder="Calm before my big pitch, confidence for launch day, deeper sleep…"
+          promptLabel="Quick start"
+          prompts={prompts}
+          onPrompt={openBrief}
+          onSubmit={openBrief}
+        />
 
-        {/* 1. Your meditations */}
-        <section>
-          <SectionHeading
-            title="Your meditations"
-            href="/meditate/library/creations"
-            linkLabel="Library"
-          />
-          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3.5">
-            <NewMeditationTile />
-            {recent.map((m) => (
-              <MeditationOverviewCard key={m.s3Key || m.id || m.title} item={m} />
-            ))}
-            {ready && recent.length === 0 ? (
-              <p className="col-span-1 flex items-center self-center text-[13px] text-muted md:col-span-3">
-                Your meditations will appear here.
-              </p>
-            ) : null}
-          </div>
-        </section>
+        <OverviewSection
+          title="Your meditations"
+          action={
+            <OverviewOutlineLink href="/meditate/library/creations">
+              Open library · {creationsCount}
+            </OverviewOutlineLink>
+          }
+        >
+          {recent.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {recent.map((item) => (
+                <MeditationOverviewCard key={item.s3Key || item.id || item.title} item={item} />
+              ))}
+            </div>
+          ) : ready ? (
+            <p className="text-[13px] text-muted">Your meditations will appear here.</p>
+          ) : null}
+        </OverviewSection>
 
-        {/* 2. In progress — omitted: program session progress is not tracked yet. */}
-
-        {/* 3. Explore */}
-        <section>
-          <SectionHeading title="Explore" />
-          <ExploreMiniGrid>
-            <ExploreMiniGroupLabel>Library</ExploreMiniGroupLabel>
-            <ExploreMiniCard
-              href="/meditate/library/creations"
-              title="My Creations"
-              description="Everything you've made, ready to play again."
-              count={creationsCount}
-              imageSrc={exploreThumb("creations")}
-              icon={<Library className="size-5" strokeWidth={1.75} />}
-            />
-            <ExploreMiniCard
-              href="/meditate/library/community"
-              title="Community"
-              description="Meditations other people have shared."
-              imageSrc={exploreThumb("community")}
-              icon={<Users className="size-5" strokeWidth={1.75} />}
-            />
-            <ExploreMiniCard
-              href="/meditate/library/programs"
-              title="Programs"
-              description="Guided courses you can follow or make your own."
-              count={programsCount}
-              imageSrc={exploreThumb("programs")}
-              icon={<Library className="size-5" strokeWidth={1.75} />}
-            />
-            <ExploreMiniGroupLabel>Sounds</ExploreMiniGroupLabel>
-            <ExploreMiniCard
-              href={`${SOUNDS_HREF}/soundscapes`}
-              title="Soundscapes"
-              description="Just listen. Meditation music for sitting on your own."
-              count={soundscapesCount}
-              imageSrc={exploreThumb("soundscapes")}
-              icon={<Waves className="size-5" strokeWidth={1.75} />}
-            />
-            <ExploreMiniCard
-              href={`${SOUNDS_HREF}/voices`}
-              title="Voices"
-              description="Meet the guides who narrate your meditations."
-              count={voicesCount}
-              imageSrc={exploreThumb("voices")}
-              icon={<Users className="size-5" strokeWidth={1.75} />}
-            />
-            <ExploreMiniCard
-              href={SOUNDS_HREF}
-              title="Custom sounds"
-              description="Layer music, ambience and noise into a mix of your own."
-              imageSrc={exploreThumb("custom-sounds")}
-              icon={<Waves className="size-5" strokeWidth={1.75} />}
-            />
-          </ExploreMiniGrid>
-        </section>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <OverviewSection title="Library">
+            <div className="flex flex-col gap-2.5">
+              <HubRow
+                href="/meditate/library/creations"
+                title="My creations"
+                description="Everything you've made"
+                count={creationsCount}
+                imageSrc={exploreThumb("creations")}
+              />
+              <HubRow
+                href="/meditate/library/community"
+                title="Community"
+                description="Meditations other people have shared"
+                imageSrc={exploreThumb("community")}
+              />
+              <HubRow
+                href="/meditate/library/programs"
+                title="Programs"
+                description="Guided courses you can follow"
+                count={programsCount}
+                imageSrc={exploreThumb("programs")}
+              />
+            </div>
+          </OverviewSection>
+          <OverviewSection title="Sounds">
+            <div className="flex flex-col gap-2.5">
+              <HubRow
+                href={`${SOUNDS_HREF}/soundscapes`}
+                title="Soundscapes"
+                description="Meditation music for sitting on your own"
+                count={soundscapesCount}
+                imageSrc={exploreThumb("soundscapes")}
+              />
+              <HubRow
+                href={`${SOUNDS_HREF}/voices`}
+                title="Voices"
+                description="The guides who narrate your meditations"
+                count={voicesCount}
+                imageSrc={exploreThumb("voices")}
+              />
+              <HubRow
+                href={SOUNDS_HREF}
+                title="Custom sounds"
+                description="Layer music, ambience and noise"
+                imageSrc={exploreThumb("custom-sounds")}
+              />
+            </div>
+          </OverviewSection>
+        </div>
 
         {/* 4. Guides */}
         {guides.length > 0 ? (

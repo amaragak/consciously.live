@@ -243,6 +243,20 @@ body {
   color: var(--accent-link);
 }
 
+@keyframes focus-strike {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.animate-focus-strike {
+  transform-origin: left center;
+  animation: focus-strike 420ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
 @keyframes vision-board-tile-pulse {
   0%,
   100% {
@@ -881,27 +895,6 @@ main[data-app-layout="signed-in"] .page-pattern-tile {
     rgb(0 0 0 / 0.55) calc(var(--content-col-end, 72rem) + var(--content-edge, 0px) * 0.4),
     rgb(0 0 0 / 0.72) 100%
   );
-}
-
-/* Home: faint cropped paisley in the top-right corner only. */
-main[data-app-layout="signed-in"]:has(.welcome-dashboard) .page-pattern-tile {
-  opacity: 0.1;
-  -webkit-mask-image: radial-gradient(
-    ellipse 55% 45% at 100% 0%,
-    rgb(0 0 0 / 1) 0%,
-    rgb(0 0 0 / 0.55) 40%,
-    transparent 72%
-  );
-  mask-image: radial-gradient(
-    ellipse 55% 45% at 100% 0%,
-    rgb(0 0 0 / 1) 0%,
-    rgb(0 0 0 / 0.55) 40%,
-    transparent 72%
-  );
-}
-
-:root.hybrid main[data-app-layout="signed-in"]:has(.welcome-dashboard) .page-pattern-tile {
-  opacity: 0.14;
 }
 
 /*

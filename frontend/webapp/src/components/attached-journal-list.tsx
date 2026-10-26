@@ -104,7 +104,7 @@ function rowTitle(row: HealJournalRow): string {
     return title;
   }
   if (row.mode === "reflection" && row.meditationTitle) {
-    return `Reflection: ${row.meditationTitle}`;
+    return row.meditationTitle;
   }
   return title;
 }
