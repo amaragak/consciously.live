@@ -19,8 +19,8 @@ import { DashboardAffirmationsCard } from "@/components/plan/daily-affirmations-
 import { SelectChevron } from "@/components/select-chevron";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
-  formatJournalEntryDate,
   isDemoJournalEntry,
+  isGratitudeEntry,
   journalEntryHasMeaningfulContent,
   loadJournalStoreRaw,
   stripHtmlToText,
@@ -77,6 +77,8 @@ import {
 import { healTypeLabel } from "@/lib/heal-copy";
 
 const JOURNAL_PREVIEW_LS = "mm_home_journal_show_previews_v1";
+
+const LIFE_AREA_DASH_TINTS = ["#E7D3AE", "#EBDFC8", "#DCC39A", "#E3CFAA"] as const;
 
 function greetingName(): string {
   const raw = getMedimadeSessionDisplayName()?.trim();
@@ -417,11 +419,19 @@ export function WelcomeDashboard() {
   }, [chip, lifeAreas]);
 
   const recentMeditations = meditations
-    .filter((m) => !isLibraryStoryItem(m))
+    .filter((m) => !isLibraryStoryItem(m) && m.s3Key !== ready?.s3Key)
     .slice(0, 2);
-  const recentJournal = journalEntries.slice(0, 2);
-  const visibleLifeAreas = lifeAreas.slice(0, 3);
-  const moreLifeAreas = Math.max(0, lifeAreas.length - 3);
+  const recentJournal = journalEntries.filter((entry) => !isGratitudeEntry(entry)).slice(0, 3);
+  const lifeAreaTint = useMemo(() => {
+    const ordered = [...dreams].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const map = new Map<string, string>();
+    ordered.forEach((dream, index) => {
+      map.set(dream.id, LIFE_AREA_DASH_TINTS[index % LIFE_AREA_DASH_TINTS.length] ?? LIFE_AREA_DASH_TINTS[0]);
+    });
+    return map;
+  }, [dreams]);
   const showManifestStoryRow =
     Boolean(storyPlacement) && topSlotKind !== "story";
 
@@ -451,7 +461,6 @@ export function WelcomeDashboard() {
   const focusTodo = focusTasks.filter((task) => !task.done);
   const focusMinutes = readFocusSessionPrefs().focusMinutes;
   const sessionsToday = readSessionsCompletedToday();
-  const otherRecent = recentMeditations.find((item) => item.s3Key !== ready?.s3Key) ?? null;
 
   function addFocusGoal() {
     const text = focusDraft.trim();
@@ -568,30 +577,55 @@ export function WelcomeDashboard() {
         >
           <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[26px]">What do you need right now?</h2>
           {ready ? (
-            <button type="button" onClick={playReady} className="flex w-full cursor-pointer items-center gap-3.5 rounded-[14px] bg-[#0F1B2D] px-[18px] py-3.5 text-left text-[#F3EDE2]">
-              <span className="inline-flex size-[46px] shrink-0 items-center justify-center rounded-full border border-[#AFC2DC] text-on-accent" style={PRIMARY_ACCENT_FILL_STYLE}>
+            <button type="button" onClick={playReady} className="flex w-full cursor-pointer items-center gap-3.5 rounded-[14px] bg-[#0F1B2D] px-4 py-3.5 text-left text-[#F3EDE2]">
+              <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-[#AFC2DC] text-on-accent" style={PRIMARY_ACCENT_FILL_STYLE}>
                 <PlayMark />
               </span>
-              <span className="min-w-0">
-                <span className="block text-[11px] font-semibold uppercase tracking-[1.4px] text-[#D9B87C]">Ready when you are</span>
-                <span className="mt-0.5 block truncate font-display text-[18px] leading-tight">{ready.title?.trim() || "Untitled"}</span>
-                <span className="mt-0.5 block text-[12px] text-[rgba(243,237,226,0.65)]">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10.5px] font-semibold uppercase tracking-[1.4px] text-[#D9B87C]">Ready when you are</span>
+                <span className="mt-0.5 block truncate font-display text-[19px] leading-tight">{ready.title?.trim() || "Untitled"}</span>
+                <span className="mt-0.5 block text-[12px] text-[rgba(243,237,226,0.6)]">
                   {formatDuration(ready.durationSeconds)}
                   {provenanceLine(ready) ? ` · ${provenanceLine(ready)}` : ""}
                 </span>
               </span>
+              <span className="hidden shrink-0 md:block">
+                <Waveform compact />
+              </span>
             </button>
-          ) : (
-            <p className="text-[14px] text-muted">
-              {libraryReady ? "Your first meditation is one prompt away" : "Loading your library…"}
-            </p>
-          )}
-          {otherRecent ? (
-            <button type="button" onClick={() => playItem(otherRecent)} className="flex w-full cursor-pointer items-baseline justify-between gap-3 border-t border-border py-2.5 text-left">
-              <span className="min-w-0 truncate text-[14px] text-foreground">{otherRecent.title?.trim() || "Untitled"}</span>
-              <span className="shrink-0 text-[12px] text-muted">{formatDuration(otherRecent.durationSeconds)}</span>
-            </button>
+          ) : !libraryReady ? (
+            <p className="text-[14px] text-muted">Loading your library…</p>
+          ) : meditations.length === 0 ? (
+            <p className="text-[14px] text-muted">Your first meditation is one prompt away</p>
           ) : null}
+          {recentMeditations.map((item) => {
+            const voice = item.speakerName?.trim();
+            const duration = formatDuration(item.durationSeconds);
+            const meta = [voice, duration !== "—" ? duration : ""].filter(Boolean).join(" · ");
+            return (
+              <button
+                key={item.s3Key}
+                type="button"
+                onClick={() => playItem(item)}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-[14px] border border-border bg-card p-2 text-left"
+              >
+                <span className="relative size-[52px] shrink-0 overflow-hidden rounded-[10px] bg-[linear-gradient(135deg,#E9C890,#7F93AE)]">
+                  {item.coverImageUrl ? (
+                    <img src={item.coverImageUrl} alt="" className="h-full w-full object-cover" />
+                  ) : null}
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="inline-flex size-[26px] items-center justify-center rounded-full bg-white/90 text-[#0F1B2D]">
+                      <PlayMark small />
+                    </span>
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-[16px] text-foreground">{item.title?.trim() || "Untitled"}</span>
+                  {meta ? <span className="mt-0.5 block truncate text-[12px] text-muted">{meta}</span> : null}
+                </span>
+              </button>
+            );
+          })}
           <div className="mt-auto flex flex-wrap gap-2 pt-1">
             <MistLink href="/meditate/create">Create meditation</MistLink>
           </div>
@@ -605,15 +639,41 @@ export function WelcomeDashboard() {
           {recentJournal.length === 0 ? (
             <p className="text-[14px] text-muted">Write your first entry</p>
           ) : (
-            <ul>
-              {recentJournal.map((entry) => (
-                <li key={entry.id} className="border-t border-border py-2.5 first:border-0">
-                  <Link href={`/journal/my/${encodeURIComponent(entry.id)}`} className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 truncate text-[14px] text-foreground">{entry.title.trim() || "Untitled entry"}</span>
-                    <span className="shrink-0 text-[12px] text-muted">{formatJournalEntryDate(entry.updatedAt || entry.createdAt)}</span>
-                  </Link>
-                </li>
-              ))}
+            <ul className="flex flex-col gap-2">
+              {recentJournal.map((entry) => {
+                const when = journalDateParts(entry.updatedAt || entry.createdAt);
+                const excerpt = stripHtmlToText(entry.contentHtml).replace(/\s+/g, " ").trim();
+                const chips = journalDashChips(entry);
+                return (
+                  <li key={entry.id}>
+                    <Link
+                      href={`/journal/my/${encodeURIComponent(entry.id)}`}
+                      className="flex gap-3 rounded-[14px] border border-border bg-card px-3 py-2.5"
+                    >
+                      {when ? (
+                        <span className="flex w-11 shrink-0 flex-col items-center justify-center rounded-[10px] border border-[#E6D3AE] bg-[#F6EEDD] py-1.5">
+                          <span className="font-display text-[20px] leading-none text-foreground">{when.day}</span>
+                          <span className="text-[10px] font-semibold uppercase tracking-[1px] text-[#8A6424]">{when.month}</span>
+                        </span>
+                      ) : null}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14.5px] font-semibold text-foreground">{entry.title.trim() || "Untitled entry"}</span>
+                        {chips.length > 0 || excerpt ? (
+                          <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                            {chips.map((chip) => (
+                              <span key={chip.kind} className="inline-flex h-[22px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-2 text-[11.5px] font-semibold text-[#8A6424]">
+                                <JournalKindIcon kind={chip.kind} />
+                                {chip.label}
+                              </span>
+                            ))}
+                            {excerpt ? <span className="min-w-0 flex-1 truncate text-[13px] text-[#4A4652]">{excerpt}</span> : null}
+                          </span>
+                        ) : null}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
           <div className="mt-auto flex flex-wrap gap-2 pt-1">
@@ -634,14 +694,19 @@ export function WelcomeDashboard() {
                 <Link href="/manifest/my/vision-board" className="text-[14px] font-medium text-accent-link">Start your vision board →</Link>
               ) : (
                 <>
-                  <div className="flex gap-2 overflow-x-auto md:grid md:grid-cols-4 md:overflow-visible">
-                    {visionItems.slice(0, 8).map((item) => (
-                      <Link key={item.id} href="/manifest/my/vision-board" className="h-[86px] w-[46%] shrink-0 overflow-hidden rounded-xl md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
+                  <div className="-mr-5 flex gap-2.5 overflow-x-auto pr-5 md:mr-0 md:grid md:grid-cols-4 md:overflow-visible md:pr-0">
+                    {visionItems.map((item) => (
+                      <Link key={item.id} href="/manifest/my/vision-board" className="h-[90px] w-[120px] shrink-0 overflow-hidden rounded-xl md:h-[86px] md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
                         {item.imageUrl ? <img src={item.imageUrl} alt={item.label || ""} className="h-full w-full object-cover" /> : null}
                       </Link>
                     ))}
                   </div>
-                  {visionItems.length > 2 ? <p className="text-[12px] text-muted md:hidden">Swipe for more</p> : null}
+                  {visionItems.length > 2 ? (
+                    <p className="flex items-center gap-1 text-[11.5px] text-muted md:hidden">
+                      Swipe for more
+                      <SelectChevron direction="right" />
+                    </p>
+                  ) : null}
                 </>
               )}
             </div>
@@ -659,7 +724,7 @@ export function WelcomeDashboard() {
               <span className="text-[13px] text-muted">Your values</span>
               <div className="flex flex-wrap gap-1.5">
                 {values.slice(0, 8).map((value) => (
-                  <span key={value} className="rounded-full border border-border px-2.5 py-1 text-[12px] text-muted">{value}</span>
+                  <span key={value} className="rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-[13px] py-[7px] text-[13.5px] text-foreground">{value}</span>
                 ))}
               </div>
             </div>
@@ -670,23 +735,38 @@ export function WelcomeDashboard() {
               <Link href="/manifest/my?new=1" className="text-[14px] font-medium text-accent-link">Map your life areas →</Link>
             ) : (
               <>
-                <div className="flex gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible">
+                <div className={`-mr-5 flex gap-3 overflow-x-auto pb-1 pr-5 md:mr-0 md:pr-0 ${lifeAreas.length <= 4 ? "md:overflow-visible" : ""}`}>
                   {lifeAreas.map((row) => {
                     const pct = row.total > 0 ? Math.round((row.done / row.total) * 100) : 0;
                     return (
-                      <Link key={row.dream.id} href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`} className="flex w-[240px] shrink-0 flex-col gap-1 rounded-2xl border border-border bg-background p-3.5 md:w-auto">
-                        <span className="font-display text-[18px] text-foreground">{row.dream.title.trim() || "Untitled"}</span>
-                        <span className="text-[13px] text-muted">{row.goalTitle || "No active goal yet"}</span>
-                        {row.nextStep ? <span className="text-[13px] text-foreground">Next: <span className="font-semibold">{row.nextStep}</span></span> : null}
-                        <span className="mt-1 h-[5px] overflow-hidden rounded-full bg-border">
-                          <span className="block h-[5px] rounded-full bg-gold" style={{ width: `${pct}%` }} />
+                      <Link
+                        key={row.dream.id}
+                        href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`}
+                        className={`flex w-[170px] shrink-0 flex-col gap-1.5 rounded-[14px] px-3.5 py-3 ${lifeAreas.length <= 4 ? "md:w-auto md:min-w-0 md:flex-1" : "md:w-[220px]"}`}
+                        style={{ background: lifeAreaTint.get(row.dream.id) ?? LIFE_AREA_DASH_TINTS[0] }}
+                      >
+                        <span className="font-display text-[17px] text-foreground md:text-[18px]">{row.dream.title.trim() || "Untitled"}</span>
+                        {row.nextStep ? (
+                          <span className="line-clamp-2 text-[12.5px] text-foreground">
+                            <span className="text-[#4A4652]">Next:</span> <span className="font-semibold">{row.nextStep}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[12.5px] text-[#4A4652]">No next step yet</span>
+                        )}
+                        <span className="mt-auto h-1 overflow-hidden rounded-full bg-[rgba(15,27,45,0.1)]">
+                          <span className="block h-1 rounded-full bg-[#8A6424]" style={{ width: `${pct}%` }} />
                         </span>
-                        <span className="text-[12px] text-muted">{row.total > 0 ? `${row.done} of ${row.total} done` : "No steps yet"}</span>
+                        <span className="text-[11.5px] text-[#4A4652]">{row.done} of {row.total}</span>
                       </Link>
                     );
                   })}
                 </div>
-                {lifeAreas.length > 1 ? <p className="text-[12px] text-muted md:hidden">Swipe for more</p> : null}
+                {lifeAreas.length > 1 ? (
+                  <p className="flex items-center gap-1 text-[11.5px] text-muted md:hidden">
+                    Swipe for more
+                    <SelectChevron direction="right" />
+                  </p>
+                ) : null}
               </>
             )}
           </div>
@@ -704,16 +784,24 @@ export function WelcomeDashboard() {
           {healItems.length === 0 ? (
             <p className="text-[14px] text-muted">Nothing here yet. A breakup, a pattern, a thought you can’t shake.</p>
           ) : (
-            <ul>
+            <ul className="flex flex-col gap-2">
               {healItems.slice(0, 2).map((item, index) => {
                 const good = healStore ? currentView(healStore, item.id, "good") : null;
+                const since = healSinceMonth(item.since || item.createdAt);
                 return (
-                  <li key={item.id} className={index === 1 ? "hidden border-t border-border py-2.5 md:block" : "border-t border-border py-2.5 first:border-0"}>
-                    <Link href={`/heal/${encodeURIComponent(item.id)}`} className="flex flex-col gap-0.5">
-                      <span className="font-display text-[18px] leading-tight text-foreground">{item.title}</span>
-                      <span className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted">{healTypeLabel(item.type)}</span>
+                  <li key={item.id} className={index === 1 ? "hidden md:block" : ""}>
+                    <Link href={`/heal/${encodeURIComponent(item.id)}`} className="relative flex flex-col gap-2 overflow-hidden rounded-[14px] bg-[#0F1B2D] px-4 py-3.5">
+                      <span className="navy-paisley-plate" aria-hidden />
+                      <span className="relative text-[10.5px] font-semibold uppercase tracking-[1.4px] text-[rgba(243,237,226,0.55)]">
+                        {healTypeLabel(item.type)}
+                        {since ? ` · Since ${since}` : ""}
+                      </span>
+                      <span className="relative font-display text-[20px] leading-tight text-[#F3EDE2]">{item.title}</span>
                       {good?.text ? (
-                        <span className="line-clamp-2 text-[14px] text-foreground"><span className="text-muted">On a good day: </span>{good.text}</span>
+                        <span className="relative flex items-start gap-2 text-[13.5px] leading-[1.45] text-[#F3EDE2]">
+                          <SunMark />
+                          <span className="line-clamp-3">{good.text}</span>
+                        </span>
                       ) : null}
                     </Link>
                   </li>
@@ -755,8 +843,10 @@ export function WelcomeDashboard() {
             <span className="font-display text-[26px] tabular-nums leading-none text-foreground">{String(focusMinutes).padStart(2, "0")}:00</span>
             <span className="min-w-0 flex-1 text-[13px] text-[#4A4652]">
               {focusTodo.length === 1 ? "1 to do" : `${focusTodo.length} to do`}
-              {" · "}
-              {sessionsToday === 1 ? "1 session done today" : `${sessionsToday} sessions done today`}
+              <span className="hidden md:inline">
+                {" · "}
+                {sessionsToday === 1 ? "1 session done today" : `${sessionsToday} sessions done today`}
+              </span>
             </span>
             <Link href="/focus?autoStart=1" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-4 text-[14px] font-semibold text-foreground">
               <PlayMark />
@@ -825,7 +915,8 @@ function OutlineGo({
   plain?: boolean;
 }) {
   return (
-    <Link href={href} className={`inline-flex items-center gap-1 rounded-full border border-border bg-card font-semibold text-foreground ${plain ? "h-[38px] px-4 text-[14px]" : "h-[34px] pl-3.5 pr-2 text-[13px]"}`}>
+    <Link href={href} className={`inline-flex items-center gap-1 rounded-full border border-border bg-card font-semibold text-foreground ${plain ? "h-[38px] gap-2 px-4 text-[14px]" : "h-[34px] pl-3.5 pr-2 text-[13px]"}`}>
+      {plain ? <PlusMark /> : null}
       {short ? (
         <>
           <span className="md:hidden">{short}</span>
@@ -834,7 +925,7 @@ function OutlineGo({
       ) : (
         label
       )}
-      {plain ? <PlusMark /> : <SelectChevron direction="right" />}
+      {plain ? null : <SelectChevron direction="right" />}
     </Link>
   );
 }
@@ -856,10 +947,93 @@ function PlusMark() {
   );
 }
 
-function PlayMark() {
+function PlayMark({ small = false }: { small?: boolean }) {
+  const size = small ? 11 : 14;
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+function SunMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 48 48" className="mt-px shrink-0" aria-hidden>
+      <circle cx="24" cy="24" r="8.2" fill="#C8A46A" />
+      <g stroke="#C8A46A" strokeWidth="2" strokeLinecap="round">
+        <line x1="36.5" y1="24" x2="45" y2="24" />
+        <line x1="32.8" y1="32.8" x2="38.8" y2="38.8" />
+        <line x1="24" y1="36.5" x2="24" y2="45" />
+        <line x1="15.2" y1="32.8" x2="9.2" y2="38.8" />
+        <line x1="11.5" y1="24" x2="3" y2="24" />
+        <line x1="15.2" y1="15.2" x2="9.2" y2="9.2" />
+        <line x1="24" y1="11.5" x2="24" y2="3" />
+        <line x1="32.8" y1="15.2" x2="38.8" y2="9.2" />
+      </g>
+    </svg>
+  );
+}
+
+function journalDateParts(iso: string): { day: string; month: string } | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return {
+    day: String(d.getDate()),
+    month: d.toLocaleDateString("en-US", { month: "short" }),
+  };
+}
+
+function healSinceMonth(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "long" });
+}
+
+function journalDashChips(entry: JournalEntry): { kind: "Meditation" | "Manifest" | "Heal"; label: string }[] {
+  const kinds: ("Meditation" | "Manifest" | "Heal")[] = [];
+  const add = (kind: "Meditation" | "Manifest" | "Heal") => {
+    if (!kinds.includes(kind)) kinds.push(kind);
+  };
+  for (const link of entry.links ?? []) {
+    if (link.targetType === "meditation") add("Meditation");
+    else if (link.targetType === "life_area") add("Manifest");
+    else if (link.targetType === "heal_item") add("Heal");
+  }
+  if (kinds.length === 0 && entry.meditationId) add("Meditation");
+  return kinds.slice(0, 2).map((kind) => ({ kind, label: kind }));
+}
+
+function JournalKindIcon({ kind }: { kind: "Meditation" | "Manifest" | "Heal" }) {
+  const props = {
+    width: 11,
+    height: 11,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+  };
+  if (kind === "Manifest") {
+    return (
+      <svg {...props}>
+        <path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
+      </svg>
+    );
+  }
+  if (kind === "Heal") {
+    return (
+      <svg {...props}>
+        <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <circle cx="12" cy="6" r="2" />
+      <path d="M6 20c1-4 3-6 6-6s5 2 6 6M4 14l4-2M20 14l-4-2" />
     </svg>
   );
 }
