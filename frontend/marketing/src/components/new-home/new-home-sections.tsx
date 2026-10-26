@@ -40,6 +40,7 @@ import {
   HEAL_ART,
   SOUNDS,
   STYLES,
+  VISION_REFERENCE,
   VISION_SCENES,
   VOICES,
   styleImage,
@@ -246,30 +247,58 @@ function useReveal() {
       scroller = scroller.parentElement;
     }
 
+    const scrollPort = scroller instanceof HTMLElement ? scroller : null;
+    const scrollTop = () => (scrollPort ? scrollPort.scrollTop : window.scrollY);
+    // The pitch sits under the hero and is already in view on a tall screen.
+    // Hold its entrance until the page has been scrolled, then reveal the
+    // way every later strip does.
+    const SCROLL_GATE = 40;
+    const waiting = new Set<HTMLElement>();
+
+    const revealSection = (section: HTMLElement) => {
+      if (section.dataset.hv2Seen === "1") return;
+      section.dataset.hv2Seen = "1";
+      const panel = section.querySelector<HTMLElement>(".new-home-tabpanel.is-on");
+      if (panel) panel.setAttribute("data-hv2-tab-played", "1");
+      playGroup(
+        [...section.querySelectorAll<HTMLElement>("[data-hv2-reveal]")].filter(
+          (node) => !inHiddenTab(node),
+        ),
+      );
+      observer.unobserve(section);
+    };
+
+    const flush = () => {
+      if (scrollTop() <= SCROLL_GATE) return;
+      for (const section of waiting) revealSection(section);
+      waiting.clear();
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
           const section = entry.target as HTMLElement;
-          section.dataset.hv2Seen = "1";
-          const panel = section.querySelector<HTMLElement>(".new-home-tabpanel.is-on");
-          if (panel) panel.setAttribute("data-hv2-tab-played", "1");
-          playGroup(
-            [...section.querySelectorAll<HTMLElement>("[data-hv2-reveal]")].filter(
-              (node) => !inHiddenTab(node),
-            ),
-          );
-          observer.unobserve(section);
+          if (!entry.isIntersecting) {
+            waiting.delete(section);
+            return;
+          }
+          if (scrollTop() <= SCROLL_GATE) {
+            waiting.add(section);
+            return;
+          }
+          revealSection(section);
         });
       },
       {
-        root: scroller instanceof HTMLElement ? scroller : null,
+        root: scrollPort,
         rootMargin: "0px 0px 20% 0px",
         threshold: 0,
       },
     );
 
     root.querySelectorAll<HTMLElement>("section").forEach((section) => observer.observe(section));
+    const scrollTarget: HTMLElement | Window = scrollPort ?? window;
+    scrollTarget.addEventListener("scroll", flush, { passive: true });
 
     const tabs = new MutationObserver(() => {
       root.querySelectorAll<HTMLElement>(".new-home-tabpanel.is-on").forEach((panel) => {
@@ -283,6 +312,7 @@ function useReveal() {
     tabs.observe(root, { subtree: true, attributes: true, attributeFilter: ["class"] });
 
     return () => {
+      scrollTarget.removeEventListener("scroll", flush);
       observer.disconnect();
       tabs.disconnect();
     };
@@ -1010,10 +1040,33 @@ function visionCaption(caption: string) {
   return rest.charAt(0).toUpperCase() + rest.slice(1);
 }
 
+function VisionArrow({ variant }: { variant: "desktop" | "mobile" }) {
+  const desktop = variant === "desktop";
+  return (
+    <svg
+      className={`new-home-vision-arrow is-${variant}`}
+      width={desktop ? 120 : 150}
+      height={desktop ? 150 : 150}
+      viewBox={desktop ? "0 0 120 150" : "0 0 150 150"}
+      aria-hidden
+    >
+      <path
+        d={
+          desktop
+            ? "M6 104 C 18 70, 34 46, 56 44 C 74 42, 80 60, 66 66 C 52 72, 50 50, 66 38 C 82 26, 100 40, 112 58"
+            : "M6 30 C 50 10, 98 18, 104 52 C 108 76, 82 80, 84 62 C 86 42, 120 52, 122 88 C 123 108, 116 124, 108 140"
+        }
+      />
+      <path d={desktop ? "M98 54 L 113 60 L 112 44" : "M99 128 L 108 142 L 120 131"} />
+    </svg>
+  );
+}
+
 function ManifestBand() {
   const base = useId();
   const [tab, setTab] = useState(0);
   const [level, setLevel] = useState<CeilingLevel>("ambitious");
+  const [visionStyle, setVisionStyle] = useState<"illustrated" | "realistic">("illustrated");
   const tabs = ["See it", "Hear it", "Become it"];
   const scenes = VISION_SCENES.slice(0, 5);
 
@@ -1030,16 +1083,76 @@ function ManifestBand() {
           <div className="new-home-rows">
             <Row
               title="See yourself living your dreams."
-              body="AI images of you in the life you describe, from one photo. Photorealistic or illustrated."
+              body="Add one photo of yourself and describe the life you want. Consciously generates your vision board from that photo, with you in every image. Photorealistic or illustrated."
             >
-              <div className="new-home-vision-card">
-                <div className="new-home-vision is-captioned">
-                  {scenes.map((scene) => (
-                    <figure key={scene.caption}>
-                      <img src={scene.illustrated} alt="" />
-                      <figcaption>{visionCaption(scene.caption)}</figcaption>
-                    </figure>
-                  ))}
+              <div className="new-home-vision-stage">
+                <div className="new-home-vision-lead">
+                  <div className="new-home-vision-ref">
+                    <div className="new-home-vision-print">
+                      <img src={VISION_REFERENCE} alt="Your photo" />
+                    </div>
+                    <span className="new-home-kicker">Your photo</span>
+                  </div>
+                  <VisionArrow variant="mobile" />
+                </div>
+                <VisionArrow variant="desktop" />
+                <div className="new-home-vision-card">
+                  <div className="new-home-vision-tools">
+                    <div
+                      className="new-home-toggle"
+                      role="tablist"
+                      aria-label="Image style"
+                      onKeyDown={(event) => {
+                        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                        event.preventDefault();
+                        setVisionStyle((current) =>
+                          current === "illustrated" ? "realistic" : "illustrated",
+                        );
+                      }}
+                    >
+                      {(
+                        [
+                          ["illustrated", "Illustrated"],
+                          ["realistic", "Photorealistic"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="tab"
+                          aria-selected={visionStyle === value}
+                          className={visionStyle === value ? "is-on" : ""}
+                          onClick={() => setVisionStyle(value)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="new-home-vision is-captioned">
+                    {scenes.map((scene) => {
+                      const caption = visionCaption(scene.caption);
+                      return (
+                        <figure key={scene.caption}>
+                          <span className="new-home-vision-frame">
+                            <img
+                              src={scene.illustrated}
+                              alt={caption}
+                              aria-hidden={visionStyle !== "illustrated"}
+                              className={visionStyle === "illustrated" ? "is-on" : ""}
+                            />
+                            <img
+                              src={scene.photo}
+                              alt={caption}
+                              aria-hidden={visionStyle !== "realistic"}
+                              className={visionStyle === "realistic" ? "is-on" : ""}
+                            />
+                          </span>
+                          <figcaption>{caption}</figcaption>
+                        </figure>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </Row>

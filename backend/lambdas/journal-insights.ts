@@ -357,10 +357,39 @@ function linkLabelsFromUnknown(raw: unknown): string[] {
   return out;
 }
 
+function promptQuestionsFromHtml(html: string): string[] {
+  const out: string[] = [];
+  const re = /<div\b[^>]*\bdata-journal-prompt="1"[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    const tag = match[0];
+    const template = htmlAttr(tag, "data-template");
+    const name = htmlAttr(tag, "data-name");
+    const question =
+      name && template.includes("{name}")
+        ? template.replaceAll("{name}", name)
+        : template;
+    if (question.trim()) out.push(question.trim());
+  }
+  return out;
+}
+
+function htmlAttr(tag: string, name: string): string {
+  const found = tag.match(new RegExp(`\\b${name}="([^"]*)"`, "i"));
+  if (!found) return "";
+  return found[1]
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function formatEntriesForModel(entries: JournalEntry[]): string {
   const blocks: string[] = [];
   for (const e of entries) {
     const title = e.title.trim() || "Untitled entry";
+    const prompts = promptQuestionsFromHtml(e.contentHtml);
     const body = stripHtmlToText(e.contentHtml);
     blocks.push(
       [
@@ -369,6 +398,7 @@ function formatEntriesForModel(entries: JournalEntry[]): string {
         `Updated: ${e.updatedAt}`,
         `Title: ${title}`,
         ...(e.contextLabels?.length ? [`Linked: ${e.contextLabels.join("; ")}`] : []),
+        ...prompts.map((q) => `Prompt the user answered: ${q}`),
         `Body: ${body || "(empty)"}`,
       ].join("\n"),
     );

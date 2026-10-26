@@ -1,6 +1,6 @@
 import { localDateKey } from "@/lib/journal-storage";
 
-/** Journal chips. A chip opens a new entry with this line as the title. */
+/** Journal chips. A chip opens a new entry with this line as a prompt block. */
 export const JOURNAL_OVERVIEW_PROMPTS = [
   "What's weighing on you?",
   "What went well today?",

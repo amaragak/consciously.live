@@ -16,6 +16,7 @@ import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { formatDuration } from "@/components/library-meditation-card";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { DashboardAffirmationsCard } from "@/components/plan/daily-affirmations-card";
+import { JournalEntryListTitle } from "@/components/journal-prompt-question";
 import { SelectChevron } from "@/components/select-chevron";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import {
@@ -657,18 +658,19 @@ export function WelcomeDashboard() {
                         </span>
                       ) : null}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[14.5px] font-semibold text-foreground">{entry.title.trim() || "Untitled entry"}</span>
-                        {chips.length > 0 || excerpt ? (
-                          <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                        <JournalEntryListTitle
+                          entry={entry}
+                          className="block truncate text-[14.5px] font-semibold text-foreground"
+                        />
+                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
                             {chips.map((chip) => (
                               <span key={chip.kind} className="inline-flex h-[22px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-2 text-[11.5px] font-semibold text-[#8A6424]">
                                 <JournalKindIcon kind={chip.kind} />
                                 {chip.label}
                               </span>
                             ))}
-                            {excerpt ? <span className="min-w-0 flex-1 truncate text-[13px] text-[#4A4652]">{excerpt}</span> : null}
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-[#4A4652]">{excerpt || "Empty entry"}</span>
                           </span>
-                        ) : null}
                       </span>
                     </Link>
                   </li>

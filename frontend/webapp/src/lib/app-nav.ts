@@ -351,7 +351,8 @@ export function isSubItemActive(
     );
   }
   if (sectionId === "ideate" && sub.id === "manifesto") {
-    // Poster is part of Manifesto. Story, the vision board and life areas are siblings.
+    // Poster is part of Manifesto. #life-areas is the Life areas row, not Manifesto.
+    if (hash === "#life-areas") return false;
     return pathname === "/manifest/my" || pathname === "/manifest/poster";
   }
   if (sectionId === "ideate" && sub.id === "story") {
@@ -948,7 +949,12 @@ export function defaultSidebarExpandState(): Record<string, boolean> {
       if (sub.children?.length) next[sub.id] = false;
     }
   }
+  next["life-areas"] = true;
   return next;
+}
+
+export function isLifeAreaGoalPath(pathname: string): boolean {
+  return /^\/(?:manifest|ideate|dream|plan)\/goal\/[^/?#]+/.test(pathname);
 }
 
 /**
@@ -977,6 +983,8 @@ export function resolveSidebarExpandState(
   if (pathname.startsWith("/meditate/sounds")) {
     if (stored.sounds !== false) next.sounds = true;
   }
+  next["life-areas"] = stored["life-areas-open"] !== false;
+  if (isLifeAreaGoalPath(pathname)) next["life-areas"] = true;
   return next;
 }
 

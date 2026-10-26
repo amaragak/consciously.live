@@ -234,7 +234,7 @@ export function DailyAffirmationsCard() {
 
   if (!store.enabled) {
     return (
-      <section id="affirmations" aria-label="Daily affirmations" className="-mt-4 pb-8">
+      <section id="affirmations" aria-label="Daily affirmations" className="mx-auto mt-3 max-w-6xl px-4 sm:px-6">
         <StatusRow
           wide={wide}
           label="Daily affirmations"
@@ -250,7 +250,7 @@ export function DailyAffirmationsCard() {
 
   if (store.paused) {
     return (
-      <section id="affirmations" aria-label="Paused affirmations" className="-mt-4 pb-8">
+      <section id="affirmations" aria-label="Paused affirmations" className="mx-auto mt-3 max-w-6xl px-4 sm:px-6">
         <StatusRow
           wide={wide}
           label="Paused"
@@ -270,7 +270,7 @@ export function DailyAffirmationsCard() {
     <section
       id="affirmations"
       aria-label="Today's affirmations"
-      className="-mt-4 pb-8"
+      className="mx-auto mt-3 max-w-6xl px-4 sm:px-6"
     >
       <div className="rounded-2xl border border-border bg-card px-[18px] py-4 shadow-[0_2px_10px_rgba(15,27,45,0.04)]">
         {savedOpen ? (

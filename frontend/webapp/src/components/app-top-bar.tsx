@@ -47,8 +47,8 @@ import {
 } from "@/lib/create-session-storage";
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
 import {
-  deriveEntryTitle,
   formatJournalEntryDate,
+  journalEntryListTitle,
   loadJournalStoreRaw,
   localDateKey,
   localDateKeyFromIso,
@@ -240,11 +240,11 @@ function journalEntryTitleFromPath(pathname: string): string | null {
     const live = getJournalEntryLiveTitle(id);
     if (live != null) {
       const t = live.trim();
-      return t || "Untitled entry";
+      if (t) return t;
     }
     const entry = loadJournalStoreRaw().entries.find((e) => e.id === id);
-    if (!entry) return "Entry";
-    return entry.title.trim() || deriveEntryTitle(entry.contentHtml);
+    if (!entry) return live != null ? "Untitled entry" : "Entry";
+    return journalEntryListTitle(entry);
   } catch {
     return "Entry";
   }

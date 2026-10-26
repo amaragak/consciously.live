@@ -21,6 +21,12 @@ import {
   compressImageFileToJpegDataUrl,
 } from "@/components/journal-image-extension";
 import { JournalTranscribeApiContext } from "@/components/journal-transcribe-api-context";
+import { JournalPrompt } from "@/components/journal-prompt-extension";
+import {
+  JournalPromptsPanel,
+  type JournalPromptSources,
+} from "@/components/journal-prompts-panel";
+import { journalPromptMarksFromHtml } from "@/lib/journal-storage";
 
 const editorClass =
   "min-h-[8rem] w-full px-7 py-6 text-[15px] leading-[1.85] text-foreground focus:outline-none " +
@@ -29,6 +35,7 @@ const editorClass =
   "[&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:font-display [&_h3]:text-base [&_h3]:font-medium " +
   "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 " +
   "[&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic " +
+  "[&_.journal-prompt-answer_p]:my-0 " +
   "[&_sub]:align-sub [&_sub]:text-[0.75em] [&_sup]:align-super [&_sup]:text-[0.75em] " +
   "[&_img]:my-3 [&_img]:max-h-[28rem] [&_img]:max-w-full [&_img]:rounded-lg";
 
@@ -57,8 +64,10 @@ type Props = {
   headerAfter?: ReactNode;
   /** Slot under title/meta, above the toolbar (e.g. Reflect meditation card). */
   belowHeader?: ReactNode;
-  /** Prompt chips when the body is empty (Reflect). */
+  /** Prompt chips when the body is empty (Reflect). Commented out in the editor. */
   emptyBodyPrompts?: readonly string[];
+  /** Life areas, values, and Heal items for the Prompts panel. */
+  promptSources?: JournalPromptSources;
   /** Sticky bottom bar (word count + actions). */
   bottomBar?: ReactNode;
   /** Hide the created-date line when date is shown elsewhere. */
@@ -88,7 +97,8 @@ export function JournalRichEditor({
   headerBefore,
   headerAfter,
   belowHeader,
-  emptyBodyPrompts,
+  emptyBodyPrompts: _emptyBodyPrompts,
+  promptSources,
   bottomBar,
   hideCreatedDate = false,
   highlightQuote = null,
@@ -104,6 +114,8 @@ export function JournalRichEditor({
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [bodyEmpty, setBodyEmpty] = useState(true);
+  const [promptsOpen, setPromptsOpen] = useState(false);
+  const [usedPromptIds, setUsedPromptIds] = useState<string[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderMimeRef = useRef<string>("");
   const mediaChunksRef = useRef<BlobPart[]>([]);
@@ -235,11 +247,24 @@ export function JournalRichEditor({
       Superscript,
       MarkdownClipboard,
       Placeholder.configure({
-        placeholder,
+        placeholder: ({ editor: ed, pos }) => {
+          try {
+            const $pos = ed.state.doc.resolve(pos + 1);
+            for (let depth = $pos.depth; depth > 0; depth--) {
+              if ($pos.node(depth).type.name === "journalPrompt") {
+                return "Write your answer…";
+              }
+            }
+          } catch {
+            /* position can sit at the end of the doc */
+          }
+          return placeholder;
+        },
         emptyEditorClass: "is-editor-empty",
       }),
       JournalVoiceClip,
       JournalImage,
+      JournalPrompt,
     ],
     content: initialHtml,
     immediatelyRender: false,
@@ -253,11 +278,21 @@ export function JournalRichEditor({
     onUpdate: ({ editor: ed }) => {
       editorRef.current = ed;
       setBodyEmpty(ed.isEmpty);
+      setUsedPromptIds(
+        journalPromptMarksFromHtml(ed.getHTML())
+          .map((mark) => mark.id)
+          .filter(Boolean),
+      );
       onHtmlChange(ed.getHTML());
     },
     onCreate: ({ editor: ed }) => {
       editorRef.current = ed;
       setBodyEmpty(ed.isEmpty);
+      setUsedPromptIds(
+        journalPromptMarksFromHtml(ed.getHTML())
+          .map((mark) => mark.id)
+          .filter(Boolean),
+      );
     },
   });
 
@@ -274,6 +309,34 @@ export function JournalRichEditor({
     editor.commands.setContent(initialHtml, { emitUpdate: false });
     setBodyEmpty(editor.isEmpty);
   }, [entryId, initialHtml, editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const timer = window.setTimeout(() => {
+      let armed = false;
+      try {
+        armed = sessionStorage.getItem("journal-focus-prompt") === "1";
+      } catch {
+        return;
+      }
+      if (!armed) return;
+      let pos: number | null = null;
+      editor.state.doc.descendants((node, at) => {
+        if (node.type.name === "journalPrompt") {
+          pos = at + 2;
+          return false;
+        }
+      });
+      if (pos == null) return;
+      editor.commands.focus(pos);
+      try {
+        sessionStorage.removeItem("journal-focus-prompt");
+      } catch {
+        /* ignore */
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [editor, entryId]);
 
   useEffect(() => {
     if (!editor || !highlightQuote?.trim()) return;
@@ -402,7 +465,7 @@ export function JournalRichEditor({
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
       {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter. */}
-      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)]">
+      <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)]">
         <div className="flex shrink-0 flex-col border-b border-border">
           <div className="flex items-start gap-2 px-7 pb-3 pt-3">
             <div className="min-w-0 flex-1">
@@ -642,6 +705,18 @@ export function JournalRichEditor({
             >
               <Redo2 aria-hidden className="size-4" strokeWidth={2} />
             </ToolbarBtn>
+            <button
+              type="button"
+              onClick={() => setPromptsOpen((open) => !open)}
+              aria-pressed={promptsOpen}
+              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground hover:border-accent/40"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.7-2.5 2-2.5 3.5M12 17h.01" />
+              </svg>
+              Prompts
+            </button>
         </div>
         {/* Mobile: primary tools + expandable more row */}
         <div className="border-t border-border sm:hidden">
@@ -701,6 +776,14 @@ export function JournalRichEditor({
             >
               <IconDotsHorizontal />
             </ToolbarBtn>
+            <button
+              type="button"
+              onClick={() => setPromptsOpen((open) => !open)}
+              aria-pressed={promptsOpen}
+              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
+            >
+              Prompts
+            </button>
           </div>
           {toolbarMoreOpen ? (
             <div className="flex flex-nowrap items-center gap-1 overflow-x-auto border-t border-border px-3 py-2">
@@ -816,6 +899,8 @@ export function JournalRichEditor({
         <JournalTranscribeApiContext.Provider value={transcribeApiBase}>
           <EditorContent editor={editor} />
         </JournalTranscribeApiContext.Provider>
+        {/* Empty-entry suggestions stay in the tree but are not shown.
+            New entry opens blank; prompts come from the Prompts control.
         {bodyEmpty && emptyBodyPrompts && emptyBodyPrompts.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-7 pb-3 pt-1">
             {emptyBodyPrompts.map((prompt) => (
@@ -841,11 +926,42 @@ export function JournalRichEditor({
             ))}
           </div>
         ) : null}
+        */}
         {children ? <div className="px-7 pb-4">{children}</div> : null}
       </div>
       {bottomBar ? (
         <div className="shrink-0 border-t-[0.5px] border-border px-6 py-3">
           {bottomBar}
+        </div>
+      ) : null}
+      {promptsOpen ? (
+        <div className="absolute inset-y-3 right-3 z-30 w-[min(380px,calc(100%-1.5rem))]">
+          <JournalPromptsPanel
+            sources={
+              promptSources ?? {
+                areas: [],
+                values: [],
+                healItems: [],
+                linkedRefIds: [],
+                meditations: [],
+              }
+            }
+            usedIds={new Set(usedPromptIds)}
+            onClose={() => setPromptsOpen(false)}
+            onPick={(prompt) => {
+              const ed = editorRef.current ?? editor;
+              if (!ed) return;
+              if (usedPromptIds.includes(prompt.id)) {
+                ed.commands.focusJournalPrompt(prompt.id);
+                return;
+              }
+              ed.commands.insertJournalPrompt({
+                promptId: prompt.id,
+                template: prompt.template,
+                name: prompt.name,
+              });
+            }}
+          />
         </div>
       ) : null}
       </div>

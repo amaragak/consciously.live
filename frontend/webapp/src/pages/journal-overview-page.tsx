@@ -15,11 +15,13 @@ import {
   OverviewOutlineLink,
   OverviewSection,
 } from "@/components/overview-hero";
+import { promptsForDay } from "@/content/overview-prompts";
 import { useGuides } from "@/content/guides";
+import { JournalEntryListTitle } from "@/components/journal-prompt-question";
 import {
-  JOURNAL_OVERVIEW_PROMPTS,
-  promptsForDay,
-} from "@/content/overview-prompts";
+  buildJournalPromptLibrary,
+  type JournalPrompt,
+} from "@/lib/journal-prompts";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -95,10 +97,6 @@ function SectionHeading({
   );
 }
 
-function entryTitle(e: JournalEntry): string {
-  return e.title.trim() || "Untitled entry";
-}
-
 function entryExcerpt(e: JournalEntry): string {
   const t = stripHtmlToText(e.contentHtml).trim();
   if (!t) return "Empty entry";
@@ -122,9 +120,10 @@ function EntryOverviewCard({ entry }: { entry: JournalEntry }) {
       href={`/journal/my/${encodeURIComponent(entry.id)}`}
       className="flex min-h-[140px] min-w-0 flex-col gap-1.5 rounded-[14px] border border-border bg-card px-4 py-3.5"
     >
-      <span className="line-clamp-2 text-[15px] font-semibold text-foreground">
-        {entryTitle(entry)}
-      </span>
+      <JournalEntryListTitle
+        entry={entry}
+        className="line-clamp-2 text-[15px] font-semibold text-foreground"
+      />
       <span className="truncate text-[13px] text-foreground/90">
         {date ? <span className="text-muted">{date} · </span> : null}
         {entryExcerpt(entry)}
@@ -488,7 +487,18 @@ export function JournalOverviewPage() {
 
   const recent = entries.slice(0, 4);
   const showInsights = journalInsights && Boolean(letter);
-  const prompts = promptsForDay(JOURNAL_OVERVIEW_PROMPTS);
+  const promptPool: JournalPrompt[] = buildJournalPromptLibrary({
+    includeLifeAreas: false,
+    includeValues: false,
+    includeHeal: false,
+    areas: [],
+    values: [],
+    healItems: [],
+  }).filter((prompt) => prompt.bucket === "topic");
+  const promptIds = promptsForDay(promptPool.map((prompt) => prompt.id));
+  const prompts = promptIds
+    .map((id) => promptPool.find((prompt) => prompt.id === id))
+    .filter((prompt): prompt is JournalPrompt => Boolean(prompt));
 
   return (
     <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
@@ -504,10 +514,18 @@ export function JournalOverviewPage() {
           }
           placeholder="Write or speak, and it becomes today's entry…"
           promptLabel="Or try a prompt"
-          prompts={prompts}
-          onPrompt={(prompt) =>
-            router.push(`/journal/my?new=1&title=${encodeURIComponent(prompt)}`)
-          }
+          prompts={prompts.map((prompt) => prompt.text)}
+          onPrompt={(text) => {
+            const prompt = prompts.find((item) => item.text === text);
+            if (!prompt) return;
+            const params = new URLSearchParams({
+              new: "1",
+              promptId: prompt.id,
+              promptTemplate: prompt.template,
+            });
+            if (prompt.name) params.set("promptName", prompt.name);
+            router.push(`/journal/my?${params.toString()}`);
+          }}
           onSubmit={(text) =>
             router.push(`/journal/my?new=1&body=${encodeURIComponent(text)}`)
           }

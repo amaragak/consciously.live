@@ -246,14 +246,76 @@ export function parseJournalMeditationPayload(
   }
 }
 
+export type JournalPromptMark = {
+  id: string;
+  template: string;
+  name: string;
+};
+
+function decodeHtmlAttr(raw: string): string {
+  return raw
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function htmlAttr(tag: string, name: string): string {
+  const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`, "i"));
+  return m ? decodeHtmlAttr(m[1]) : "";
+}
+
+/** Prompt blocks saved on an entry. The question lives in attributes, not body text. */
+export function journalPromptMarksFromHtml(html: string): JournalPromptMark[] {
+  const out: JournalPromptMark[] = [];
+  const re = /<div\b[^>]*\bdata-journal-prompt="1"[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const tag = m[0];
+    const template = htmlAttr(tag, "data-template");
+    if (!template.trim()) continue;
+    out.push({
+      id: htmlAttr(tag, "data-prompt-id"),
+      template,
+      name: htmlAttr(tag, "data-name"),
+    });
+  }
+  return out;
+}
+
+export function journalPromptPlainText(template: string, name?: string): string {
+  const t = template.trim();
+  const n = name?.trim() ?? "";
+  if (n && t.includes("{name}")) return t.replaceAll("{name}", n).trim();
+  return t;
+}
+
+/** Card title: a typed title, otherwise the first prompt question. Display only. */
+export function journalEntryListTitle(
+  entry: { title: string; contentHtml: string },
+  fallback = "Untitled entry",
+): string {
+  const typed = entry.title.trim();
+  if (typed) return typed;
+  const first = journalPromptMarksFromHtml(entry.contentHtml)[0];
+  if (!first) return fallback;
+  return journalPromptPlainText(first.template, first.name) || fallback;
+}
+
 /**
- * Full journal body as plain text for handoff to Create / the chat API
- * (HTML stripped; long entries truncated only at a very high cap).
+ * Full journal body as plain text for handoff to Create / the chat API.
+ * Prompt questions are labelled and kept out of the body text.
  */
 export function journalEntryPlainForHandoff(html: string): string {
+  const prompts = journalPromptMarksFromHtml(html)
+    .map((mark) => journalPromptPlainText(mark.template, mark.name))
+    .filter(Boolean)
+    .map((q) => `Prompt the user answered: ${q}`);
   const t = stripHtmlToText(expandVoiceClipTranscriptsForPlainText(html));
-  if (t.length <= JOURNAL_BODY_PLAIN_MAX) return t;
-  return `${t.slice(0, JOURNAL_BODY_PLAIN_MAX)}…`;
+  const combined = [...prompts, t].filter(Boolean).join("\n\n");
+  if (combined.length <= JOURNAL_BODY_PLAIN_MAX) return combined;
+  return `${combined.slice(0, JOURNAL_BODY_PLAIN_MAX)}…`;
 }
 
 /** First user line when starting Create from Journal (shown in chat + sent to API). */
@@ -1176,6 +1238,7 @@ export function journalEntryHasMeaningfulContent(e: JournalEntry): boolean {
   // Reflect stubs are kept even before the first keystroke.
   if (e.meditationId?.trim()) return true;
   if (/<img\b/i.test(e.contentHtml)) return true;
+  if (/data-journal-prompt="1"/i.test(e.contentHtml)) return true;
   return stripHtmlToText(e.contentHtml).trim().length > 0;
 }
 

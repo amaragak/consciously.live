@@ -123,7 +123,7 @@ export function ManifestoFoundations({
 
   if (values.length === 0 && quotes.length === 0 && questions.length === 0) {
     return (
-      <section className="mx-auto mt-10 max-w-6xl px-4 sm:px-6">
+      <section className="mx-auto mt-4 max-w-6xl px-4 sm:px-6">
         <div className={CARD}>
           <h2 className="font-display text-[22px] font-normal leading-none text-foreground">
             Start your foundations
@@ -168,7 +168,7 @@ export function ManifestoFoundations({
 
   return (
     <section
-      className="mx-auto mt-10 flex max-w-6xl flex-col gap-5 px-4 sm:px-6"
+      className="mx-auto mt-8 flex max-w-6xl flex-col gap-5 px-4 sm:px-6"
       aria-labelledby="manifesto-foundations-heading"
     >
       <ManifestoSectionHeader

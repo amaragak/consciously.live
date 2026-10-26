@@ -262,42 +262,35 @@ export const VOICES = [
   },
 ] as const;
 
+/** Likeness photo exported from the homepage vision-board account. */
+export const VISION_REFERENCE = "/new-home/vision/reference.webp";
+
 /** Vision board from alexmaragakis@hotmail.co.uk, in board order. */
 export const VISION_SCENES = [
   {
     caption: "Me performing an acoustic guitar solo on stage",
-    photo:
-      "https://d30tgo2eshgnaf.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/1277cf3b-9a36-4ac4-8aa0-fbe10fe052aa.jpg",
-    illustrated:
-      "https://d3k8rq6eqba40d.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/a52dfea4-a47e-47d7-8a3d-0e955786da81.jpg",
+    photo: "/new-home/vision/guitar-photo.webp",
+    illustrated: "/new-home/vision/guitar-illustrated.webp",
   },
   {
     caption: "Me seated on a large pile of scattered cash",
-    photo:
-      "https://d30tgo2eshgnaf.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/3b060cfe-be12-4cfa-bf37-34944d934810.jpg",
-    illustrated:
-      "https://d3k8rq6eqba40d.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/d52b764e-3e1d-49a8-b3e8-7898d8db91b6.jpg",
+    photo: "/new-home/vision/cash-photo.webp",
+    illustrated: "/new-home/vision/cash-illustrated.webp",
   },
   {
     caption: "Me working at a minimalist desk in golden-hour light",
-    photo:
-      "https://d30tgo2eshgnaf.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/e12997c4-d8b6-4cc0-bbff-f98f43fe25ec.jpg",
-    illustrated:
-      "https://d3k8rq6eqba40d.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/a23951ef-a7fc-4c30-8d90-c436e92c8f87.jpg",
+    photo: "/new-home/vision/desk-photo.webp",
+    illustrated: "/new-home/vision/desk-illustrated.webp",
   },
   {
     caption: "Me standing on a sun-kissed sandy beach at golden hour",
-    photo:
-      "https://d30tgo2eshgnaf.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/94fe7cc9-8682-494d-93f7-9b352a2cd436.jpg",
-    illustrated:
-      "https://d3k8rq6eqba40d.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/193a7718-754e-45c6-8c86-85cd80b057b6.jpg",
+    photo: "/new-home/vision/beach-photo.webp",
+    illustrated: "/new-home/vision/beach-illustrated.webp",
   },
   {
     caption: "Me bench pressing with controlled form in a bright, modern gym",
-    photo:
-      "https://d30tgo2eshgnaf.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/388352e0-dbc0-4aec-ac6e-5d5898cfa7b9.jpg",
-    illustrated:
-      "https://d3k8rq6eqba40d.cloudfront.net/ideate/vision/bf93d0e7-a478-4d57-8f6c-2f874f90ea81/38304072-ea83-4862-bd83-9eef14c775a9.jpg",
+    photo: "/new-home/vision/gym-photo.webp",
+    illustrated: "/new-home/vision/gym-illustrated.webp",
   },
   {
     caption: "Me climbing a snow-covered mountain slope in bright daylight",

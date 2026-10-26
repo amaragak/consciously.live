@@ -168,7 +168,9 @@ function usePracticeAction(guide: Guide, area: GuideArea) {
       void navigate(createOneFlowHref("start"));
       return;
     }
-    void navigate(`/journal/my?new=1&title=${encodeURIComponent(title)}`);
+    void navigate(
+      `/journal/my?new=1&promptId=guide&promptTemplate=${encodeURIComponent(title)}`,
+    );
   }, [area, brief, navigate, title]);
 }
 

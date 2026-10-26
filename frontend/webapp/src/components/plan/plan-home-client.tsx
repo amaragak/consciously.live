@@ -538,7 +538,7 @@ export function PlanHomeClient() {
         {/* —— Life areas —— */}
         <section
           id="life-areas"
-          className="flex scroll-mt-20 flex-col gap-5 pb-11 pt-10"
+          className="flex scroll-mt-20 flex-col gap-5 pb-1 pt-10"
           aria-labelledby="ideate-life-areas-heading"
         >
           <ManifestoSectionHeader
@@ -622,12 +622,12 @@ export function PlanHomeClient() {
       {hasMonthStats(monthStats) ? (
         <section
           aria-label="This month"
-          className="mx-auto mt-10 max-w-6xl px-4 sm:px-6"
+          className="mx-auto mt-4 max-w-6xl px-4 sm:px-6"
         >
           <div
-            className={`flex flex-col rounded-2xl border bg-accent-soft px-6 py-5 md:flex-row md:items-center ${LIGHT_ACCENT_BORDER}`}
+            className={`flex flex-col rounded-2xl border bg-accent-soft px-5 py-2.5 md:flex-row md:items-center ${LIGHT_ACCENT_BORDER}`}
           >
-            <div className="flex flex-col gap-1 pb-4 md:min-w-[200px] md:pb-0 md:pr-5">
+            <div className="flex flex-col gap-0.5 pb-2 md:min-w-[140px] md:pb-0 md:pr-4">
               <span className="text-xs font-semibold uppercase tracking-[1.6px] text-accent-link">
                 This month
               </span>
@@ -656,12 +656,12 @@ export function PlanHomeClient() {
                 ? [
                     <div
                       key={label}
-                      className="flex min-w-0 flex-1 flex-col gap-1 border-t border-border py-3 md:border-l md:border-t-0 md:px-5 md:py-0"
+                      className="flex min-w-0 flex-1 flex-col gap-0.5 border-t border-border py-2 md:border-l md:border-t-0 md:px-5 md:py-0"
                     >
                       <span className="text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
                         {label}
                       </span>
-                      <span className="font-display text-2xl text-foreground">
+                      <span className="font-display text-xl leading-none text-foreground">
                         {stat.value}
                       </span>
                       {stat.note ? (

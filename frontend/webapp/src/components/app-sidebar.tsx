@@ -1,6 +1,7 @@
 "use client";
 
 import { Link, usePathname } from "@/lib/spa-nav";
+import { useLocation } from "react-router-dom";
 import {
   BookOpen,
   Focus,
@@ -189,13 +190,24 @@ function NavSectionBlock({
 }) {
   const subs = items ?? section.children ?? [];
   const lifeAreas = lifeAreaItems ?? [];
+  const showLifeAreas = lifeAreaItems !== undefined;
+  const lifeAreasOpen = Boolean(nestedExpanded["life-areas"]);
+  const onLifeAreaPage = subtreeHasActive(
+    lifeAreas,
+    pathname,
+    hash,
+    search,
+    section.id,
+  );
+  const lifeAreasActive = !lifeAreasOpen && onLifeAreaPage;
   const hasChildren =
-    subs.length > 0 || lifeAreas.length > 0 || Boolean(emptyAction);
+    subs.length > 0 || showLifeAreas || Boolean(emptyAction);
   const sectionActive = activeNavSectionId(pathname) === section.id;
   const sectionSelf =
     sectionActive &&
     !subtreeHasActive(subs, pathname, hash, search, section.id) &&
-    !subtreeHasActive(lifeAreas, pathname, hash, search, section.id);
+    !onLifeAreaPage &&
+    !lifeAreasActive;
   const icon = SECTION_ICONS[section.id];
 
   function childInset(depth: number) {
@@ -332,27 +344,52 @@ function NavSectionBlock({
             <GuideLine x={SECTION_GUIDE_X} />
             <ul className="relative z-[1] space-y-0.5">
               {subs.map((sub) => renderSub(sub, 0))}
-              {lifeAreas.length > 0 || emptyAction ? (
-                <li className="pt-1.5" aria-hidden={lifeAreas.length === 0}>
-                  <p
-                    className="pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted"
-                    style={{ paddingLeft: SECTION_GUIDE_X + GUIDE_TEXT_GAP }}
-                  >
-                    Your life areas
-                  </p>
-                </li>
-              ) : null}
-              {lifeAreas.map((sub) => renderSub(sub, 0))}
-              {emptyAction ? (
-                <li className="group/row">
-                  <Link
-                    href={emptyAction.href}
-                    onClick={onNavigate}
-                    className={`relative z-[1] flex min-w-0 items-center py-1.5 text-sm ${SUB_IDLE}`}
-                    style={childInset(0)}
-                  >
-                    <span className="min-w-0 truncate">{emptyAction.label}</span>
-                  </Link>
+              {showLifeAreas ? (
+                <li>
+                  <div className="group/row flex min-w-0 items-center gap-0.5">
+                    <button
+                      type="button"
+                      aria-expanded={lifeAreasOpen}
+                      aria-current={lifeAreasActive ? "page" : undefined}
+                      onClick={() => onToggleNested("life-areas")}
+                      className={`relative z-[1] flex min-w-0 flex-1 cursor-pointer items-center py-1.5 text-left text-sm ${
+                        lifeAreasActive ? NAV_SELECTED : SUB_IDLE
+                      }`}
+                      style={childInset(0)}
+                    >
+                      {lifeAreasActive ? <SelectedAccentBar /> : null}
+                      <span className="min-w-0 truncate">Life areas</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={lifeAreasOpen ? "Collapse Life areas" : "Expand Life areas"}
+                      aria-expanded={lifeAreasOpen}
+                      onClick={() => onToggleNested("life-areas")}
+                      className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center ${SUB_META} ${NAV_HOVER}`}
+                    >
+                      <SelectChevron open={lifeAreasOpen} />
+                    </button>
+                  </div>
+                  <CollapsibleNavChildren open={lifeAreasOpen && showChildren}>
+                    <div className="relative">
+                      <GuideLine x={guideX(1)} />
+                      <ul className="relative z-[1] space-y-0.5">
+                        {lifeAreas.map((sub) => renderSubLink(sub, 1))}
+                        {emptyAction ? (
+                          <li className="group/row">
+                            <Link
+                              href={emptyAction.href}
+                              onClick={onNavigate}
+                              className={`relative z-[1] flex min-w-0 items-center py-1.5 text-sm ${SUB_IDLE}`}
+                              style={childInset(1)}
+                            >
+                              <span className="min-w-0 truncate">{emptyAction.label}</span>
+                            </Link>
+                          </li>
+                        ) : null}
+                      </ul>
+                    </div>
+                  </CollapsibleNavChildren>
                 </li>
               ) : null}
             </ul>
@@ -380,10 +417,11 @@ export function AppSidebar({
   onToggleCollapsed,
 }: Props) {
   const pathname = usePathname() || "/";
+  const location = useLocation();
+  const hash = location.hash || "";
+  const search = location.search || "";
   const mvp = useMvpFlags();
   const navMain = useMemo(() => applyMvpNav(APP_NAV_MAIN, mvp), [mvp]);
-  const [hash, setHash] = useState("");
-  const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     const path =
       typeof window !== "undefined" ? window.location.pathname || "/" : "/";
@@ -445,18 +483,6 @@ export function AppSidebar({
   }, [railCollapsed, mobileOpen, isMobileLayout]);
 
   useEffect(() => {
-    setHash(window.location.hash || "");
-    setSearch(window.location.search || "");
-    const onHash = () => setHash(window.location.hash || "");
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, [pathname]);
-
-  useEffect(() => {
-    setSearch(window.location.search || "");
-  }, [pathname]);
-
-  useEffect(() => {
     const syncLifeAreas = () => {
       const dreams = loadIdeateStore().dreams.filter((d) => !isDemoIdeateDream(d));
       const ordered = [...dreams].sort(
@@ -511,17 +537,21 @@ export function AppSidebar({
 
   function toggleSection(id: string) {
     setExpanded((prev) => {
-      if (!isMobileLayout) {
-        const next = { ...prev, [id]: !prev[id] };
+      const remember = (next: Record<string, boolean>) => {
+        if (id === "life-areas") next["life-areas-open"] = next["life-areas"];
         saveSidebarExpandState(next);
         return next;
+      };
+
+      if (!isMobileLayout) {
+        const next = { ...prev, [id]: !prev[id] };
+        return remember(next);
       }
 
       const expandable = sidebarExpandableSectionIds();
       if (!expandable.includes(id)) {
         const next = { ...prev, [id]: !prev[id] };
-        saveSidebarExpandState(next);
-        return next;
+        return remember(next);
       }
 
       const active = activeNavSectionId(pathname);
@@ -553,8 +583,7 @@ export function AppSidebar({
       }
 
       const clamped = clampMobileSidebarExpandState(next, pathname);
-      saveSidebarExpandState(clamped);
-      return clamped;
+      return remember(clamped);
     });
   }
 

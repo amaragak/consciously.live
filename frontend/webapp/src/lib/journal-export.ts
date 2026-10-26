@@ -73,6 +73,16 @@ function htmlToMarkdown(html: string): string {
     if (!(node instanceof HTMLElement)) {
       return Array.from(node.childNodes).map(walk).join("");
     }
+    if (node.getAttribute("data-journal-prompt") === "1") {
+      const template = node.getAttribute("data-template") ?? "";
+      const name = node.getAttribute("data-name") ?? "";
+      const question =
+        name && template.includes("{name}")
+          ? template.replaceAll("{name}", name)
+          : template;
+      const answer = Array.from(node.childNodes).map(walk).join("").trim();
+      return `${question.trim() ? `Prompt the user answered: ${question.trim()}\n\n` : ""}${answer}\n\n`;
+    }
     const tag = node.tagName.toLowerCase();
     const inner = Array.from(node.childNodes).map(walk).join("");
     if (tag === "img") {

@@ -26,6 +26,29 @@ function gratitudeLines(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+function firstJournalPromptQuestion(html: string): string {
+  const re = /<div\b[^>]*\bdata-journal-prompt="1"[^>]*>/i;
+  const match = re.exec(html);
+  if (!match) return "";
+  const tag = match[0];
+  const attr = (name: string) => {
+    const found = tag.match(new RegExp(`\\b${name}="([^"]*)"`, "i"));
+    if (!found) return "";
+    return found[1]
+      .replace(/&quot;/g, '"')
+      .replace(/&#0*39;|&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+  };
+  const template = attr("data-template").trim();
+  const name = attr("data-name").trim();
+  if (!template) return "";
+  return name && template.includes("{name}")
+    ? template.replaceAll("{name}", name).trim()
+    : template;
+}
+
 export function journalEntriesToAlgoliaRecords(
   userId: string,
   entries: JournalEntryLike[],
@@ -52,11 +75,13 @@ export function journalEntriesToAlgoliaRecords(
     const tags = Array.isArray(e.tags)
       ? e.tags.filter((t): t is string => typeof t === "string").join(" ")
       : "";
+    const savedTitle = e.title?.trim() || "";
+    const promptTitle = savedTitle ? "" : firstJournalPromptQuestion(e.contentHtml || "");
     out.push({
       objectID: `journal:${e.id}`,
       userId: uid,
       type: "journal",
-      title: e.title?.trim() || "Journal entry",
+      title: savedTitle || promptTitle || "Journal entry",
       body: [body, e.mood, tags].filter(Boolean).join("\n").slice(0, 4000),
       href: `/journal/my/${encodeURIComponent(e.id)}`,
       updatedAt,

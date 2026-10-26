@@ -9,8 +9,8 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  deriveEntryTitle,
   formatJournalEntryDate,
+  journalEntryListTitle,
   JOURNAL_STORE_CHANGED,
   loadJournalStore,
   stripHtmlToText,
@@ -289,7 +289,7 @@ export function InsightsSourceFlyout({
           const title =
             meta?.title?.trim() ||
             full?.title?.trim() ||
-            (full ? deriveEntryTitle(full.contentHtml) : "Untitled entry");
+            (full ? journalEntryListTitle(full) : "Untitled entry");
           const iso = meta?.createdAt ?? full?.createdAt ?? "";
           const date = iso ? formatJournalEntryDate(iso) : "—";
           const moodId =

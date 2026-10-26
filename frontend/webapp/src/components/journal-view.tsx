@@ -10,6 +10,11 @@ import {
   wasJournalStorePulledThisSession,
 } from "@/lib/journal-remote-cache";
 import { JournalRichEditor } from "@/components/journal-rich-editor";
+import { JournalEntryListTitle } from "@/components/journal-prompt-question";
+import { journalPromptBlockHtml } from "@/lib/journal-prompts";
+import type { JournalPromptSources } from "@/components/journal-prompts-panel";
+import { loadIdeateValuesStore } from "@/lib/ideate-values";
+import { loadHealStore } from "@/lib/heal-store";
 import { JournalGratitudeEditor } from "@/components/journal-gratitude-editor";
 import { JournalEntryMeta } from "@/components/journal-entry-meta";
 import { JournalSettingsDialog } from "@/components/journal-settings-dialog";
@@ -67,6 +72,7 @@ import {
   isGratitudeEntry,
   journalEntryDraftChanged,
   journalEntryHasMeaningfulContent,
+  journalEntryListTitle,
   journalEntryPlainForHandoff,
   armJournalMeditationHandoffJson,
   JOURNAL_MEDITATION_PAYLOAD_KEY,
@@ -311,11 +317,6 @@ function entryPreview(entry: JournalEntry, opts?: { untruncated?: boolean }): st
   if (!t) return "Empty entry";
   if (opts?.untruncated) return t;
   return t.length > 72 ? `${t.slice(0, 69)}…` : t;
-}
-
-function sidebarEntryTitle(title: string): string {
-  const t = title.trim();
-  return t || "Untitled entry";
 }
 
 function formatJournalListDate(iso: string): string {
@@ -830,7 +831,7 @@ export function JournalView() {
               ...(foldersRef.current.length
                 ? { folders: foldersRef.current }
                 : {}),
-            });
+            }, activeIdRef.current);
             if (pruned.entries.length !== localEntries.length) {
               skipCloudPushRef.current = true;
               entriesRef.current = pruned.entries;
@@ -1183,7 +1184,7 @@ export function JournalView() {
       if (!q) return true;
       if (algoliaIds) return algoliaIds.has(e.id);
       const hay = [
-        e.title,
+        journalEntryListTitle(e, ""),
         stripHtmlToText(e.contentHtml),
         ...(e.tags ?? []),
         e.mood ?? "",
@@ -1225,6 +1226,53 @@ export function JournalView() {
   const activeLifeArea = useMemo(() => {
     if (!activeEntry || isGratitudeEntry(activeEntry)) return null;
     return lifeAreaForJournalEntry(activeEntry, planDreams);
+  }, [activeEntry, planDreams]);
+
+  const promptSources = useMemo((): JournalPromptSources => {
+    const entry = activeEntry && !isGratitudeEntry(activeEntry) ? activeEntry : null;
+    const linked = new Set<string>();
+    const meditations: { id: string; title: string }[] = [];
+    for (const link of entry?.links ?? []) {
+      if (link.targetType === "meditation") {
+        const title =
+          link.label?.trim() || link.meditationSnapshot?.title?.trim() || "";
+        if (title) meditations.push({ id: link.targetId, title });
+        linked.add(link.targetId);
+      } else {
+        linked.add(link.targetId);
+      }
+    }
+    if (entry?.meditationId) {
+      linked.add(entry.meditationId);
+      const title = entry.meditationSnapshot?.title?.trim() || "";
+      if (title && !meditations.some((m) => m.id === entry.meditationId)) {
+        meditations.push({ id: entry.meditationId, title });
+      }
+    }
+    let values: { id: string; text: string }[] = [];
+    let healItems: { id: string; title: string }[] = [];
+    try {
+      values = loadIdeateValuesStore().values.map((value) => ({
+        id: value.id,
+        text: value.text,
+      }));
+    } catch {
+      values = [];
+    }
+    try {
+      healItems = loadHealStore()
+        .items.filter((item) => item.status !== "at_peace")
+        .map((item) => ({ id: item.id, title: item.title }));
+    } catch {
+      healItems = [];
+    }
+    return {
+      areas: planDreams.map((dream) => ({ id: dream.id, title: dream.title })),
+      values,
+      healItems,
+      linkedRefIds: [...linked],
+      meditations,
+    };
   }, [activeEntry, planDreams]);
 
   const patchActive = useCallback(
@@ -1424,6 +1472,8 @@ export function JournalView() {
       /** Plain text placed in the entry body. */
       body?: string;
       voice?: boolean;
+      /** Inserts a prompt block. The title stays empty. */
+      prompt?: { id: string; template: string; name?: string };
       meditationId?: string;
       meditationSource?: JournalEntry["meditationSource"];
       meditationSnapshot?: JournalEntry["meditationSnapshot"];
@@ -1436,6 +1486,9 @@ export function JournalView() {
       flushSaveSync();
       const title = opts?.title?.trim() ?? "";
       const body = opts?.body?.trim() ?? "";
+      const promptHtml = opts?.prompt
+        ? journalPromptBlockHtml(opts.prompt)
+        : "";
       const draft = newJournalEntry({
         ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
         ...(title ? { title } : {}),
@@ -1477,7 +1530,9 @@ export function JournalView() {
           : []),
       ];
       const withLinks = links.length ? { ...draft, links } : draft;
-      const e = body
+      const e = promptHtml
+        ? { ...withLinks, contentHtml: promptHtml }
+        : body
         ? {
             ...withLinks,
             contentHtml: `<p>${body
@@ -1486,6 +1541,13 @@ export function JournalView() {
               .replace(/>/g, "&gt;")}</p>`,
           }
         : withLinks;
+      if (opts?.prompt) {
+        try {
+          sessionStorage.setItem("journal-focus-prompt", "1");
+        } catch {
+          /* ignore */
+        }
+      }
       if (opts?.voice) {
         try {
           sessionStorage.setItem("journal-autostart-voice", "1");
@@ -1639,7 +1701,10 @@ export function JournalView() {
       // re-run after the handoff was already consumed.
       return;
     }
-    const title = params.get("title")?.trim() || undefined;
+    const promptTemplate = params.get("promptTemplate")?.trim() || "";
+    const promptName = params.get("promptName")?.trim() || undefined;
+    const promptId = params.get("promptId")?.trim() || "journal-prompt";
+    const title = promptTemplate ? undefined : params.get("title")?.trim() || undefined;
     const body = params.get("body")?.trim() || undefined;
     const voice = params.get("voice") === "1";
     const heal = params.get("heal")?.trim();
@@ -1657,7 +1722,15 @@ export function JournalView() {
             label: params.get("areaTitle")?.trim() || undefined,
           }
         : undefined;
-    createEntry({ title, body, voice, link });
+    createEntry({
+      title,
+      body,
+      voice,
+      link,
+      ...(promptTemplate
+        ? { prompt: { id: promptId, template: promptTemplate, name: promptName } }
+        : {}),
+    });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
   const commitImport = useCallback(
@@ -2390,9 +2463,10 @@ export function JournalView() {
                                   : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >
-                            <span className="line-clamp-2 text-sm font-semibold">
-                              {sidebarEntryTitle(e.title)}
-                            </span>
+                            <JournalEntryListTitle
+                              entry={e}
+                              className="line-clamp-2 text-sm font-semibold"
+                            />
                               <span className="truncate text-[12.5px] text-foreground/80">
                                 <time dateTime={e.createdAt} className="text-muted">
                                   {formatJournalListDate(e.createdAt)}
@@ -2419,9 +2493,10 @@ export function JournalView() {
                                 : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >
-                            <span className="line-clamp-2 text-sm font-semibold">
-                              {sidebarEntryTitle(e.title)}
-                            </span>
+                            <JournalEntryListTitle
+                              entry={e}
+                              className="line-clamp-2 text-sm font-semibold"
+                            />
                             <span className="mt-0.5 line-clamp-2 text-xs text-muted">
                               {entryPreview(e)}
                             </span>
@@ -2570,6 +2645,7 @@ export function JournalView() {
                     ? "What came up for you?"
                     : undefined
                 }
+                promptSources={promptSources}
                 emptyBodyPrompts={
                   activeEntry.meditationId
                     ? [
