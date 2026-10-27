@@ -32,8 +32,14 @@ audio/bg-audio
 # Accidental nested unzip path (real design refs live under docs/design/)
 docs/docs/
 
-# Duplicate HomeMobile dumps — canonical copies are in docs/design/marketing/
+# Local design board dumps (useful on disk; not for the repo)
+backend/docs/
 docs/design/homepage-v2/HomeMobile*
+docs/design/marketing/HomeHero*
+docs/design/marketing/HomeLight*
+docs/design/marketing/new-home-*
+docs/design/marketing/hero-a-*
+docs/design/marketing/ref-*
 
 # Local generated images (Nano Banana and other one-off stills)
 tmp/
