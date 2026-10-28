@@ -81,11 +81,15 @@ export function scrollToSection(id: string) {
   scrollElementFlush(el);
 }
 
-/** Next band, with its top edge against the bottom of the header. Pitch sits above Meditate. */
+/** Next band, with its top edge against the bottom of the header. */
 export function scrollToNextBand() {
   const nodes = [
+    document.querySelector(".new-home-problem"),
     document.querySelector(".new-home-pitch"),
     ...BANDS.map((id) => document.getElementById(id)),
+    document.querySelector(".new-home-founder"),
+    document.querySelector(".new-home-plan"),
+    document.querySelector(".new-home-faq"),
     document.querySelector(".new-home-close"),
   ].filter((el): el is HTMLElement => el instanceof HTMLElement);
   if (!nodes.length) return;
