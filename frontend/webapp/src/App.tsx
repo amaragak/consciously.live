@@ -45,6 +45,7 @@ import { ManifestTrackerPage } from "./pages/manifest-tracker-page";
 import { ManifestVisionBoardPage } from "./pages/manifest-vision-board-page";
 import { ManifestWordsPage } from "./pages/manifest-words-page";
 import { JournalOverviewPage } from "./pages/journal-overview-page";
+import { JournalImportPage } from "./pages/journal-import-page";
 import {
   JournalGuideArticlePage,
   JournalGuidesIndexPage,
@@ -113,6 +114,7 @@ export function App() {
           <Route index element={<JournalOverviewPage />} />
           <Route path="guides" element={<JournalGuidesIndexPage />} />
           <Route path="guides/:slug" element={<JournalGuideArticlePage />} />
+          <Route path="import" element={<JournalImportPage />} />
           <Route path="entries/*" element={<JournalPage />} />
           <Route path="gratitudes/*" element={<JournalPage />} />
           <Route path="insights/*" element={<JournalPage />} />

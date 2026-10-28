@@ -40,6 +40,8 @@ docs/design/marketing/HomeLight*
 docs/design/marketing/new-home-*
 docs/design/marketing/hero-a-*
 docs/design/marketing/ref-*
+docs/design/dashboard/DashboardSetup*
+docs/design/journal/JournalImport*
 
 # Local generated images (Nano Banana and other one-off stills)
 tmp/

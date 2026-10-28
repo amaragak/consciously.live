@@ -16,6 +16,8 @@ import type { MeditateType, UserSettingsV1 } from "@/lib/user-settings";
 const MEDITATE_KEY = "mm_meditate_defaults_v1";
 const FOCUS_KEY = "mm_focus_defaults_v1";
 const PRONOUNS_KEY = "mm_account_pronouns_v1";
+/** Set when the user picks pronouns in Story setup (not just a settings default). */
+const STORY_PRONOUNS_CHOSEN_KEY = "mm_story_pronouns_chosen_v1";
 
 export type MeditateDefaults = {
   defaultVoiceId: string | null;
@@ -136,6 +138,28 @@ export function writeAccountPronounsLocal(pronouns: AccountPronouns): void {
   } catch {
     /* */
   }
+}
+
+export function readStoryPronounsChosen(): boolean {
+  try {
+    return readAccountLocalStorage(STORY_PRONOUNS_CHOSEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markStoryPronounsChosen(): void {
+  try {
+    writeAccountLocalStorage(STORY_PRONOUNS_CHOSEN_KEY, "1");
+  } catch {
+    /* */
+  }
+}
+
+/** Pronouns only after the user picks them in Story setup. */
+export function readStorySetupPronouns(): AccountPronouns | null {
+  if (!readStoryPronounsChosen()) return null;
+  return readAccountPronounsLocal();
 }
 
 export function syncAccountPronounsFromSettings(s: UserSettingsV1): void {

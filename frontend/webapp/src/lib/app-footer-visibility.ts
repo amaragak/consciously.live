@@ -31,6 +31,7 @@ export function shouldUseDocumentScroll(
     if (path.startsWith("/chat")) return false;
     if (
       path.startsWith("/journal/entries") ||
+      path.startsWith("/journal/import") ||
       path.startsWith("/journal/gratitudes") ||
       path.startsWith("/journal/insights")
     ) {

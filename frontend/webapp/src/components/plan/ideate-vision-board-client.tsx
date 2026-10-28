@@ -167,6 +167,7 @@ function StyleConfirm({
  */
 export function IdeateVisionBoardClient() {
   const [boardSearch] = useSearchParams();
+  const referencePromptHandled = useRef(false);
   const [items, setItems] = useState<VisionBoardItem[]>([]);
   const [imageStyle, setImageStyle] = useState<VisionImageStyle>("realistic");
   const [photoAsk, setPhotoAsk] = useState<VisionBoardItem | null>(null);
@@ -389,6 +390,18 @@ export function IdeateVisionBoardClient() {
       cancelAnimationFrame(id);
     };
   }, [refresh, cloudReady, revision, signedIn]);
+
+  // Get set up → Add a photo (`?reference=1`) opens the likeness picker once.
+  useEffect(() => {
+    if (!hydrated || boardSearch.get("reference") !== "1") {
+      referencePromptHandled.current = false;
+      return;
+    }
+    if (referencePromptHandled.current) return;
+    referencePromptHandled.current = true;
+    const t = window.setTimeout(() => fileInputRef.current?.click(), 200);
+    return () => window.clearTimeout(t);
+  }, [hydrated, boardSearch]);
 
   useEffect(() => {
     return () => {
@@ -1456,6 +1469,18 @@ export function IdeateVisionBoardClient() {
             style={{ backgroundColor: "var(--accent-button)", backgroundImage: "var(--accent-gradient-button)" }}
           >
             Choose an image
+          </button>
+        </div>
+      ) : null}
+      {boardSearch.get("reference") === "1" ? (
+        <div className="px-4 pt-3">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex h-10 cursor-pointer items-center rounded-full border border-[#AFC2DC] px-4 text-sm font-semibold text-on-accent"
+            style={{ backgroundColor: "var(--accent-button)", backgroundImage: "var(--accent-gradient-button)" }}
+          >
+            Add a photo of yourself
           </button>
         </div>
       ) : null}

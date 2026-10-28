@@ -2,11 +2,11 @@
  * Story / manifesto third-person pronouns from account settings.
  */
 
-export type AccountPronouns = "she_her" | "he_him" | "they_them";
+export type AccountPronouns = "she_her" | "he_him" | "they_them" | "by_name";
 
 export type StoryPronounBundle = {
   id: AccountPronouns;
-  /** she / he / they */
+  /** she / he / they (empty when by name) */
   subject: string;
   /** her / him / them */
   object: string;
@@ -16,7 +16,7 @@ export type StoryPronounBundle = {
   possessivePronoun: string;
   /** herself / himself / themselves */
   reflexive: string;
-  /** she/her */
+  /** she/her · by name */
   label: string;
 };
 
@@ -48,12 +48,30 @@ const BUNDLES: Record<AccountPronouns, StoryPronounBundle> = {
     reflexive: "themselves",
     label: "they/them",
   },
+  by_name: {
+    id: "by_name",
+    subject: "",
+    object: "",
+    possessive: "",
+    possessivePronoun: "",
+    reflexive: "",
+    label: "by name",
+  },
 };
 
 export const ACCOUNT_PRONOUNS: AccountPronouns[] = [
   "she_her",
   "he_him",
   "they_them",
+  "by_name",
+];
+
+/** Story setup choices — short spoken forms. */
+export const STORY_PRONOUN_CHOICES: { id: AccountPronouns; label: string }[] = [
+  { id: "she_her", label: "she" },
+  { id: "he_him", label: "he" },
+  { id: "they_them", label: "they" },
+  { id: "by_name", label: "by name" },
 ];
 
 export function isAccountPronouns(v: unknown): v is AccountPronouns {
@@ -77,6 +95,14 @@ export function storyPronounComposeCue(
   pronouns: AccountPronouns | null | undefined,
 ): string {
   const name = firstName.trim() || "They";
+  if (pronouns === "by_name") {
+    return (
+      `PRONOUNS (required): Refer to the person by name (“${name}”) only. ` +
+      `Repeat the name instead of she/he/they. ` +
+      `Example: “${name} wakes each morning… ${name} feels… friends describe ${name} as…”. ` +
+      `Never guess gender from the name. Never use gendered pronouns.`
+    );
+  }
   const p = storyPronounBundle(pronouns);
   return (
     `PRONOUNS (required): Refer to ${name} with ${p.label} only ` +

@@ -30,7 +30,7 @@ import {
   IconTable,
 } from "@tabler/icons-react";
 
-const STRAIGHTFORWARD: ImportKind[] = ["markdown", "day_one", "csv"];
+const STRAIGHTFORWARD: ImportKind[] = ["day_one", "markdown", "csv"];
 const AI_ASSISTED: ImportKind[] = ["pdf_annotations", "handwritten_photo"];
 
 function SourceIcon({ kind }: { kind: ImportKind }) {

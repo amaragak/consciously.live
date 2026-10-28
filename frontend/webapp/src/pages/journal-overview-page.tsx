@@ -221,10 +221,10 @@ function HeroGratitudesFields() {
           return (
             <label
               key={i}
-              className="flex h-8 min-w-0 items-center gap-2.5 border-b border-[rgb(243_237_226_/_0.18)]"
+              className="flex h-11 min-w-0 items-center gap-2.5 border-b border-[rgb(243_237_226_/_0.18)]"
             >
               <span
-                className="w-3 shrink-0 font-display text-[16px] leading-none text-[#D9B87C]"
+                className="w-3.5 shrink-0 font-display text-[18px] leading-none text-[#D9B87C]"
                 aria-hidden
               >
                 {i + 1}
@@ -252,7 +252,7 @@ function HeroGratitudesFields() {
                     (e.target as HTMLInputElement).blur();
                   }
                 }}
-                className="min-w-0 flex-1 bg-transparent text-[14.5px] text-[#F3EDE2] outline-none placeholder:text-[rgb(243_237_226_/_0.45)]"
+                className="min-w-0 flex-1 bg-transparent text-[16.5px] text-[#F3EDE2] outline-none placeholder:text-[rgb(243_237_226_/_0.45)]"
               />
             </label>
           );

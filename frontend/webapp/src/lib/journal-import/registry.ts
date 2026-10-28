@@ -22,19 +22,33 @@ export type ImportSourceOption = {
 
 export const JOURNAL_IMPORT_SOURCES: ImportSourceOption[] = [
   {
+    id: "day_one",
+    label: "Day One",
+    hint: "Its export .zip — entries, dates, tags and photos.",
+    accept: ".zip,.json",
+    multiple: false,
+  },
+  {
+    id: "pdf_annotations",
+    label: "PDF",
+    hint: "Typed PDFs read as text; scanned pages read like handwriting.",
+    accept: ".pdf,application/pdf",
+    multiple: true,
+  },
+  {
     id: "markdown",
-    label: "Markdown or text",
-    hint: "One file, a folder, or a zip of .md / .txt pages.",
-    accept: ".md,.markdown,.txt,.text,.zip",
+    label: "Text files",
+    hint: ".txt, .md or .docx — one file per entry, or split by dated sections.",
+    accept: ".md,.markdown,.txt,.text,.docx,.zip",
     multiple: true,
     directory: true,
   },
   {
-    id: "day_one",
-    label: "Day One",
-    hint: "A Day One JSON zip, or Journal.json.",
-    accept: ".zip,.json",
-    multiple: false,
+    id: "handwritten_photo",
+    label: "Photos of handwritten pages",
+    hint: "Several at once. On mobile you can use the camera.",
+    accept: "image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif",
+    multiple: true,
   },
   {
     id: "csv",
@@ -42,20 +56,6 @@ export const JOURNAL_IMPORT_SOURCES: ImportSourceOption[] = [
     hint: "A spreadsheet export. You’ll match columns next.",
     accept: ".csv,.txt",
     multiple: false,
-  },
-  {
-    id: "pdf_annotations",
-    label: "PDF annotations",
-    hint: "Highlights and notes from PDFs. We’ll try to read dates; if we can’t, you can set one for the whole batch.",
-    accept: ".pdf,application/pdf",
-    multiple: true,
-  },
-  {
-    id: "handwritten_photo",
-    label: "Handwritten photos",
-    hint: "Photos of pages. We’ll read the handwriting, then you check the words before anything is saved.",
-    accept: "image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif",
-    multiple: true,
   },
 ];
 

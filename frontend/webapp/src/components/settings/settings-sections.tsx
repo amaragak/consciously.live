@@ -971,6 +971,22 @@ function PrivacySection({ settings, onPatch }: SectionProps) {
   const card2: ReactNode[] = [];
   const card3: ReactNode[] = [];
 
+  card1.push(
+    <SettingsRow
+      key="journalImport"
+      title="Import journal entries"
+      helper="Bring in Day One, PDFs, text files, or photos of handwritten pages."
+      control={
+        <Link
+          to="/journal/import"
+          className="rounded-full border border-border px-4 py-2 text-sm font-medium"
+        >
+          Import…
+        </Link>
+      }
+    />,
+  );
+
   if (shouldShowSettingsRow("privacy.journalLock")) {
     const pinSet = journalLockIsSet();
     card1.push(

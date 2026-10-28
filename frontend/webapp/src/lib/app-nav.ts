@@ -284,6 +284,10 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
     ) {
       return false;
     }
+    // Import lives under Entries in the sidebar.
+    if (pathname === "/journal/import" || pathname.startsWith("/journal/import/")) {
+      return true;
+    }
     return pathname === "/journal/entries" || pathname.startsWith("/journal/entries/");
   }
   if (pathOnly === "/journal/gratitudes") {

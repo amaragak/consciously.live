@@ -18,12 +18,6 @@ import { loadHealStore } from "@/lib/heal-store";
 import { JournalGratitudeEditor } from "@/components/journal-gratitude-editor";
 import { JournalEntryMeta } from "@/components/journal-entry-meta";
 import { JournalSettingsDialog } from "@/components/journal-settings-dialog";
-import { JournalImportDialog } from "@/components/journal-import-dialog";
-import {
-  mergeImportedEntries,
-  previewRowsToEntries,
-  type JournalImportPreviewRow,
-} from "@/lib/journal-import";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { Calendar, Folder, Play } from "lucide-react";
@@ -445,7 +439,8 @@ export function JournalListChips({
   inline?: boolean;
 }) {
   const groups = entryLinkGroups(entry);
-  if (groups.length === 0) return null;
+  const imported = Boolean(entry.importBatchId);
+  if (groups.length === 0 && !imported) return null;
   const shown = groups.slice(0, 2);
   const rest = groups.slice(2);
   const restItems = rest.flatMap((group) => group.items);
@@ -457,6 +452,9 @@ export function JournalListChips({
           : `mt-1 flex flex-nowrap gap-1 overflow-hidden border-t border-border pt-2 ${className}`
       }
     >
+      {imported ? (
+        <JournalLinkChip label="Imported" items={["Brought in from an import"]} />
+      ) : null}
       {shown.map((group) => (
         <JournalLinkChip
           key={group.kind}
@@ -594,7 +592,6 @@ export function JournalView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [jumpDate, setJumpDate] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [importBatchId, setImportBatchId] = useState<string | null>(null);
   const prevSectionRef = useRef<JournalSection | null>(null);
   /** After first journal GET attempt (or skip if no API URL); avoids PUT before pull completes. */
@@ -1742,34 +1739,21 @@ export function JournalView() {
     });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
-  const commitImport = useCallback(
-    (rows: JournalImportPreviewRow[], batchId: string) => {
-      flushSaveSync();
-      const imported = previewRowsToEntries(rows, batchId).map((e) =>
-        selectedFolderId ? { ...e, folderId: selectedFolderId } : e,
-      );
-      if (!imported.length) return;
-      const next = mergeImportedEntries(entriesRef.current, imported);
-      entriesRef.current = next;
-      setEntries(next);
-      const first = imported[0];
-      setActiveEntryId(first.id);
-      latestHtmlRef.current = first.contentHtml;
-      latestTitleRef.current = first.title;
-      latestGratitudeRef.current = emptyGratitudeLines();
-      setGratitudeDraft(emptyGratitudeLines());
-      persist(next, first.id);
-      setImportBatchId(batchId);
-      setImportOpen(false);
-      navigate(`/journal/entries/${encodeURIComponent(first.id)}`);
-      if (getMedimadeSessionJwt() && mvpFlagsSnapshot().journalInsights) {
-        void runJournalInsightsRemote().catch(() => {
-          /* insights can catch up later */
-        });
-      }
-    },
-    [flushSaveSync, persist, selectedFolderId, navigate],
-  );
+  // Legacy `?import=1` → new Import page; `?imported=` filters just-imported.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("import") === "1") {
+      navigate("/journal/import", { replace: true });
+      return;
+    }
+    const imported = params.get("imported");
+    if (!imported || !hydrated) return;
+    setImportBatchId(imported);
+    params.delete("imported");
+    const qs = params.toString();
+    navigate(`${pathname}${qs ? `?${qs}` : ""}`, { replace: true });
+  }, [hydrated, navigate, pathname]);
 
   const addNamedFolder = useCallback(() => {
     const folder = newJournalFolder(newFolderName);
@@ -2182,7 +2166,7 @@ export function JournalView() {
                 </div>
                 <span className="sm:hidden">
                   <JournalChromeMoreMenu
-                    onImport={() => setImportOpen(true)}
+                    onImport={() => navigate("/journal/import")}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
@@ -2290,7 +2274,7 @@ export function JournalView() {
                   ) : null}
                 </div>
                 <JournalChromeMoreMenu
-                  onImport={() => setImportOpen(true)}
+                  onImport={() => navigate("/journal/import")}
                   onSettings={() => setSettingsOpen(true)}
                 />
                 </div>
@@ -2363,7 +2347,7 @@ export function JournalView() {
                 </div>
                 <span className="sm:hidden">
                   <JournalChromeMoreMenu
-                    onImport={() => setImportOpen(true)}
+                    onImport={() => navigate("/journal/import")}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
@@ -2397,7 +2381,7 @@ export function JournalView() {
                     ) : null}
                   </div>
                   <JournalChromeMoreMenu
-                    onImport={() => setImportOpen(true)}
+                    onImport={() => navigate("/journal/import")}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </div>
@@ -2777,12 +2761,6 @@ export function JournalView() {
         entries,
         ...(folders.length ? { folders } : {}),
       }}
-    />
-    <JournalImportDialog
-      open={importOpen}
-      existing={entries}
-      onClose={() => setImportOpen(false)}
-      onCommit={commitImport}
     />
     </JournalLockGate>
   );

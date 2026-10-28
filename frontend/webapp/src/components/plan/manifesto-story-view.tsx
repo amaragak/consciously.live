@@ -100,10 +100,16 @@ import {
 } from "@/lib/manifesto-story-llm";
 import { fetchUserSettings, patchUserSettings } from "@/lib/settings-api";
 import {
+  markStoryPronounsChosen,
   mergeAccountPronouns,
   readAccountPronounsLocal,
+  readStorySetupPronouns,
+  writeAccountPronounsLocal,
 } from "@/lib/settings-local-defaults";
-import type { AccountPronouns } from "@/lib/story-pronouns";
+import {
+  STORY_PRONOUN_CHOICES,
+  type AccountPronouns,
+} from "@/lib/story-pronouns";
 import {
   STORY_OPENER_PROMPT,
   STORY_PROMPT_TOPICS,
@@ -889,6 +895,8 @@ function GuidelinesPaper({
   onBack,
   recording,
   busy,
+  pronouns,
+  onPronouns,
 }: {
   wide: boolean;
   onStart: () => void;
@@ -896,8 +904,11 @@ function GuidelinesPaper({
   onBack?: () => void;
   recording: boolean;
   busy: boolean;
+  pronouns: AccountPronouns | null;
+  onPronouns: (next: AccountPronouns) => void;
 }) {
   const rule = <div aria-hidden className="h-px w-full bg-border" />;
+  const canStart = Boolean(pronouns);
   return (
     <div
       className={`${CARD} flex flex-col text-left ${
@@ -926,6 +937,35 @@ function GuidelinesPaper({
           A long, vivid description of your life as you want it, already real.
           You’ll listen to it every night until it feels familiar.
         </p>
+      </div>
+      {rule}
+      <div className="flex flex-col gap-2.5">
+        <p className="text-[14px] font-semibold text-foreground">
+          How should your story refer to you?
+        </p>
+        <p className="text-[13px] text-muted">
+          Only the narrated story is third person — we use this nowhere else.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {STORY_PRONOUN_CHOICES.map((choice) => {
+            const active = pronouns === choice.id;
+            return (
+              <button
+                key={choice.id}
+                type="button"
+                onClick={() => onPronouns(choice.id)}
+                className={`inline-flex h-10 items-center rounded-full px-4 text-[14px] font-semibold ${
+                  active
+                    ? "border border-[#AFC2DC] text-on-accent"
+                    : "border border-border bg-[#FFFDF8] text-foreground"
+                }`}
+                style={active ? { backgroundColor: "var(--accent-button)", backgroundImage: "var(--accent-gradient-button)" } : undefined}
+              >
+                {choice.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {rule}
       <ol
@@ -980,19 +1020,25 @@ function GuidelinesPaper({
             <button
               type="button"
               onClick={onStart}
-              className={`${BTN_PRIMARY} h-11 px-8`}
+              disabled={!canStart}
+              className={`${BTN_PRIMARY} h-11 px-8 disabled:cursor-not-allowed disabled:opacity-50`}
             >
               Start writing
             </button>
             <TalkButton
               height="h-11"
               recording={recording}
-              busy={busy}
+              busy={busy || !canStart}
               onClick={onTalk}
             />
           </>
         ) : null}
       </div>
+      {!canStart && !onBack ? (
+        <p className="text-[13px] text-muted">
+          Choose how your story should refer to you, then start.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -2214,6 +2260,9 @@ export function ManifestoStoryView() {
   };
 
   const [started, setStarted] = useState(false);
+  const [storyPronouns, setStoryPronouns] = useState<AccountPronouns | null>(
+    () => readStorySetupPronouns(),
+  );
   const [showGuides, setShowGuides] = useState(false);
   const [promptsSheet, setPromptsSheet] = useState(false);
   const [filter, setFilter] = useState<StoryPromptFilter>({ kind: "all" });
@@ -2724,11 +2773,20 @@ export function ManifestoStoryView() {
       if (spoken) insertSpoken(spoken);
       return;
     }
+    if (fromGuidelines && !storyPronouns) return;
     if (fromGuidelines) setStarted(true);
     await dict.start();
   };
 
+  const chooseStoryPronouns = (next: AccountPronouns) => {
+    setStoryPronouns(next);
+    writeAccountPronounsLocal(next);
+    markStoryPronounsChosen();
+    void patchUserSettings({ account: { pronouns: next } }).catch(() => {});
+  };
+
   const startWriting = () => {
+    if (!storyPronouns && !started) return;
     setStarted(true);
     setShowGuides(false);
     let cur = currentNodes();
@@ -3578,6 +3636,8 @@ export function ManifestoStoryView() {
                   onBack={() => setShowGuides(false)}
                   recording={false}
                   busy={false}
+                  pronouns={storyPronouns}
+                  onPronouns={chooseStoryPronouns}
                 />
               </div>
             </div>
@@ -3620,6 +3680,8 @@ export function ManifestoStoryView() {
           onTalk={() => void toggleDictation(true)}
           recording={dict.recording}
           busy={dict.busy}
+          pronouns={storyPronouns}
+          onPronouns={chooseStoryPronouns}
         />
         {dictError}
         {wide ? null : (
@@ -3627,14 +3689,15 @@ export function ManifestoStoryView() {
             <button
               type="button"
               onClick={startWriting}
-              className={`${BTN_PRIMARY} h-[46px] w-full`}
+              disabled={!storyPronouns}
+              className={`${BTN_PRIMARY} h-[46px] w-full disabled:cursor-not-allowed disabled:opacity-50`}
             >
               Start writing
             </button>
             <TalkButton
               height="h-[46px]"
               recording={dict.recording}
-              busy={dict.busy}
+              busy={dict.busy || !storyPronouns}
               onClick={() => void toggleDictation(true)}
               className="w-full"
             />

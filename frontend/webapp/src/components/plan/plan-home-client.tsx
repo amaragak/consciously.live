@@ -85,6 +85,7 @@ import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
   ensureIdeateManifesto,
+  loadIdeateManifestoStore,
   loadStoredManifesto,
   saveIdeateManifestoManual,
 } from "@/lib/ideate-manifesto";
@@ -225,6 +226,7 @@ export function PlanHomeClient() {
 
   // Sidebar "Add a life area" deep-link (`/manifest?new=1`).
   const newLifeAreaHandledRef = useRef(false);
+  const writeManifestoHandledRef = useRef(false);
   /** Set when "New life area" came from a guide: open a drafted goal after create. */
   const pendingGoalDraftRef = useRef<string | null>(null);
   useEffect(() => {
@@ -247,6 +249,23 @@ export function PlanHomeClient() {
     const qs = params.toString();
     navigate(`/manifest${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
   }, [hydrated, cloudReady, navigate]);
+
+  // Get set up → Your manifesto (`/manifest?write=1`).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("write") !== "1") {
+      writeManifestoHandledRef.current = false;
+      return;
+    }
+    if (!hydrated || writeManifestoHandledRef.current) return;
+    writeManifestoHandledRef.current = true;
+    setManifestoDraft(loadIdeateManifestoStore().text);
+    setEditingManifesto(true);
+    params.delete("write");
+    const qs = params.toString();
+    navigate(`/manifest${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
+  }, [hydrated, navigate]);
 
   // Guests never wait on the cloud provider — missing provider used to brick /manifest
   // on eternal "Loading…". Seed + paint from local demos immediately.

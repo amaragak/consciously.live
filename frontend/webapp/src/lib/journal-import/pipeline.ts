@@ -89,7 +89,9 @@ function tagsFromMeta(meta: Record<string, unknown>, extra?: string[]): string[]
 export function previewRowsToEntries(
   rows: JournalImportPreviewRow[],
   batchId: string,
+  opts?: { keepPhotos?: boolean },
 ): JournalEntry[] {
+  const keepPhotos = opts?.keepPhotos !== false;
   const now = new Date().toISOString();
   return rows
     .filter((r) => r.include)
@@ -103,26 +105,30 @@ export function previewRowsToEntries(
       const tags = tagsFromMeta(r.source_metadata);
       const mood = moodFromMeta(r.source_metadata);
       const handwritten = r.source === "handwritten_photo";
-      const photosHtml = handwritten
-        ? r.media_refs
-            .filter((s) => s.startsWith("data:image"))
-            .map(
-              (src) =>
-                `<img src="${src.replace(/"/g, "")}" alt="Handwritten journal page" class="my-3 max-h-[28rem] max-w-full rounded-lg" />`,
-            )
-            .join("")
-        : "";
+      const photosHtml =
+        handwritten && keepPhotos
+          ? r.media_refs
+              .filter((s) => s.startsWith("data:image"))
+              .map(
+                (src) =>
+                  `<img src="${src.replace(/"/g, "")}" alt="Handwritten journal page" class="my-3 max-h-[28rem] max-w-full rounded-lg" />`,
+              )
+              .join("")
+          : "";
       const names = Array.isArray(r.source_metadata.filenames)
         ? r.source_metadata.filenames.filter(
             (x): x is string => typeof x === "string",
           )
         : [];
-      const mediaRefs = handwritten
-        ? (names.length
-            ? names
-            : r.media_refs.map((_, i) => `handwritten-page-${i + 1}.jpg`)
-          ).map((n) => n.slice(0, 200))
-        : r.media_refs;
+      const mediaRefs =
+        handwritten && keepPhotos
+          ? (names.length
+              ? names
+              : r.media_refs.map((_, i) => `handwritten-page-${i + 1}.jpg`)
+            ).map((n) => n.slice(0, 200))
+          : handwritten
+            ? []
+            : r.media_refs;
       return newJournalEntry({
         title: (r.title ?? "").trim(),
         contentHtml: markdownToJournalHtml(r.body) + photosHtml,

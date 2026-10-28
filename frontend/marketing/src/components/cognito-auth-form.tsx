@@ -110,6 +110,7 @@ export function CognitoAuthForm({
   const [mode, setMode] = useState<CognitoAuthMode>(
     initialMode === "signup" ? "signup" : "signin",
   );
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -246,7 +247,12 @@ export function CognitoAuthForm({
         }
       }
       if (mode === "signup") {
-        const { confirmed } = await cognitoSignUp(cfg, username, password);
+        const name = displayName.trim();
+        if (!name) {
+          setError("Please enter your name.");
+          return;
+        }
+        const { confirmed } = await cognitoSignUp(cfg, username, password, name);
         if (confirmed) {
           await finishSignIn(password, true, cfg);
           return;
@@ -411,6 +417,29 @@ export function CognitoAuthForm({
         className="space-y-3.5"
         noValidate={false}
       >
+        {mode === "signup" ? (
+          <div>
+            <label
+              htmlFor="auth-name"
+              className="block text-sm font-medium text-foreground"
+            >
+              Your name
+            </label>
+            <input
+              id="auth-name"
+              name="name"
+              type="text"
+              autoComplete="name"
+              required
+              value={displayName}
+              onChange={(ev) => setDisplayName(ev.target.value)}
+              className={fieldClass}
+              placeholder="Alex"
+              aria-describedby={error ? errorId : undefined}
+            />
+          </div>
+        ) : null}
+
         {mode !== "confirm" && mode !== "reset" ? (
           <div>
             <label
