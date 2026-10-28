@@ -631,6 +631,20 @@ export function JournalImportWorkspace({ open, onClose, onImported }: Props) {
               />
             </div>
 
+            <p className="text-[13.5px] leading-snug text-muted">
+              For the right date on each page, put a clear date at the top of
+              the entry (for example{" "}
+              <span className="text-foreground/80">
+                {new Date().toLocaleDateString("en-GB", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </span>
+              ). We’ll use that when we can — you can still fix dates in
+              Review.
+            </p>
+
             {cards.length > 0 ? (
               <div className="flex gap-3.5 overflow-x-auto rounded-2xl border-[1.5px] border-dashed border-[#E6D3AE] bg-[#F6EEDD] p-[18px] [scrollbar-width:thin]">
                 {fileGrid}

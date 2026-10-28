@@ -5,9 +5,14 @@ import {
   deleteAdminBlogPost,
   fetchAdminBlog,
   generateAdminBlogAudio,
+  generateAdminBlogCoverOptions,
+  resolveAdminBlogListenSlug,
   saveAdminBlogPost,
   saveAdminBlogSettings,
   uploadAdminBlogAuthorPhoto,
+  uploadAdminBlogCoverImage,
+  type AdminBlogCoverOption,
+  type AdminBlogListenPreview,
   type AdminBlogPost,
 } from "@/lib/medimade-api";
 import { useLibraryPlayer } from "@/components/library-player-provider";
@@ -20,10 +25,30 @@ import {
   meditationTypePillColors,
 } from "@/lib/meditation-type-pill";
 import {
-  BLOG_CATEGORIES,
+  BLOG_PUBLIC_CATEGORIES,
   DEFAULT_BLOG_CATEGORY,
   normalizeBlogCategory,
 } from "@/lib/blog-categories";
+
+function blogReadMinutes(body: string): number {
+  const text = body
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return 1;
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 220));
+}
+
+function openingParagraphFromBody(body: string): string {
+  const text = body
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.slice(0, 400);
+}
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
 
@@ -82,6 +107,11 @@ function blankDraft(): BlogDraft {
     published: false,
     pinned: false,
     topPicks: false,
+    startHere: false,
+    coverImageUrl: null,
+    coverImageKey: null,
+    listenSlug: null,
+    listenCardLabel: "From Listen",
     publishedAt: null,
     audioUrl: null,
     audioStatus: "none",
@@ -109,6 +139,11 @@ function draftFromPost(post: AdminBlogPost): BlogDraft {
     published: post.published,
     pinned: post.pinned,
     topPicks: post.topPicks,
+    startHere: post.startHere,
+    coverImageUrl: post.coverImageUrl,
+    coverImageKey: post.coverImageKey,
+    listenSlug: post.listenSlug,
+    listenCardLabel: post.listenCardLabel || "From Listen",
     publishedAt: post.publishedAt,
     audioUrl: post.audioUrl,
     audioStatus: post.audioStatus,
@@ -247,6 +282,33 @@ export function AdminReadPanel() {
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioTick, setAudioTick] = useState(Date.now());
   const [status, setStatus] = useState<string | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverPrompt, setCoverPrompt] = useState("");
+  const [coverOptions, setCoverOptions] = useState<AdminBlogCoverOption[]>([]);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [listenBusy, setListenBusy] = useState(false);
+  const [listenInput, setListenInput] = useState("");
+  const [listenPreview, setListenPreview] =
+    useState<AdminBlogListenPreview | null>(null);
+  const [listenWarning, setListenWarning] = useState<string | null>(null);
+  const [listenError, setListenError] = useState<string | null>(null);
+
+  const startHereCount = useMemo(
+    () => posts.filter((p) => p.startHere && p.id !== draft.id).length,
+    [posts, draft.id],
+  );
+  const startHereTitles = useMemo(
+    () =>
+      posts
+        .filter((p) => p.startHere && p.id !== draft.id)
+        .map((p) => p.title),
+    [posts, draft.id],
+  );
+  const otherCategoryPosts = useMemo(
+    () => posts.filter((p) => p.category === "Other"),
+    [posts],
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -276,6 +338,18 @@ export function AdminReadPanel() {
     [posts, selectedId],
   );
 
+  function resetCoverListenUi(post?: AdminBlogPost | null) {
+    setCoverBusy(false);
+    setCoverPrompt("");
+    setCoverOptions([]);
+    setCoverError(null);
+    setListenBusy(false);
+    setListenInput(post?.listenSlug ?? "");
+    setListenPreview(null);
+    setListenWarning(null);
+    setListenError(null);
+  }
+
   function startNew() {
     const nextNonce = editorNonce + 1;
     liveEditorDocRef.current = editorDocKey("new", nextNonce);
@@ -285,6 +359,7 @@ export function AdminReadPanel() {
     setSlugTouched(false);
     setStatus(null);
     setEditorNonce(nextNonce);
+    resetCoverListenUi(null);
   }
 
   function selectPost(id: string) {
@@ -298,6 +373,88 @@ export function AdminReadPanel() {
     setSlugTouched(Boolean(post));
     setStatus(null);
     setEditorNonce(nextNonce);
+    resetCoverListenUi(post ?? null);
+  }
+
+  async function onGenerateCovers() {
+    setCoverBusy(true);
+    setCoverError(null);
+    try {
+      const result = await generateAdminBlogCoverOptions({
+        prompt: coverPrompt || undefined,
+        title: draft.title,
+        subheader: draft.subheader,
+        opening: openingParagraphFromBody(
+          liveBodyRef.current || draft.body,
+        ),
+      });
+      if (!coverPrompt && result.prompt) setCoverPrompt(result.prompt);
+      setCoverOptions((prev) => [...result.options, ...prev].slice(0, 12));
+    } catch (e) {
+      setCoverError(
+        e instanceof Error ? e.message : "Cover generation failed",
+      );
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  async function onUploadCover(file: File) {
+    setCoverBusy(true);
+    setCoverError(null);
+    try {
+      const { dataUrl, mimeType } = await fileToCompressedJpegDataUrl(file);
+      const uploaded = await uploadAdminBlogCoverImage({
+        imageBase64: dataUrl,
+        mimeType,
+      });
+      setDraft((d) => ({
+        ...d,
+        coverImageUrl: uploaded.url,
+        coverImageKey: uploaded.key,
+      }));
+      setStatus("Cover uploaded — Save to keep it.");
+    } catch (e) {
+      setCoverError(e instanceof Error ? e.message : "Cover upload failed");
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  async function onResolveListen() {
+    setListenBusy(true);
+    setListenError(null);
+    setListenWarning(null);
+    try {
+      const result = await resolveAdminBlogListenSlug(listenInput);
+      if (result.status === "missing" || result.status === "revoked") {
+        setListenPreview(null);
+        setListenError(
+          result.error ||
+            (result.status === "revoked"
+              ? "This Listen item is no longer shared."
+              : "No shared Listen item found."),
+        );
+        return;
+      }
+      if (!result.item) {
+        setListenPreview(null);
+        setListenError(result.error || "Could not resolve that Listen link.");
+        return;
+      }
+      setListenPreview(result.item);
+      setListenWarning(result.warning ?? null);
+      setDraft((d) => ({
+        ...d,
+        listenSlug: result.item!.slug,
+      }));
+    } catch (e) {
+      setListenError(
+        e instanceof Error ? e.message : "Could not resolve Listen link",
+      );
+    } finally {
+      setListenBusy(false);
+    }
   }
 
   function onTitleChange(title: string) {
@@ -418,6 +575,12 @@ export function AdminReadPanel() {
         published: d.published,
         pinned: d.pinned,
         topPicks: d.topPicks,
+        startHere: d.startHere,
+        coverImageUrl: d.coverImageUrl,
+        coverImageKey: d.coverImageKey,
+        listenSlug: d.listenSlug,
+        listenCardLabel: d.listenCardLabel || "From Listen",
+        publishedAt: d.publishedAt,
       };
       if (hasBody) {
         payload.body = bodyToSave;
@@ -440,6 +603,12 @@ export function AdminReadPanel() {
         published: d.published,
         pinned: d.pinned,
         topPicks: d.topPicks,
+        startHere: d.startHere,
+        coverImageUrl: d.coverImageUrl,
+        coverImageKey: d.coverImageKey,
+        listenSlug: d.listenSlug,
+        listenCardLabel: d.listenCardLabel || "From Listen",
+        publishedAt: d.publishedAt ?? saved.publishedAt,
         body: bodyHasText(saved.body)
           ? saved.body
           : hasBody
@@ -734,6 +903,8 @@ export function AdminReadPanel() {
                       }`}
                     >
                       {p.category} · {p.published ? "Published" : "Draft"}
+                      {p.startHere ? " · Start here" : ""}
+                      {p.category === "Other" ? " · needs category" : ""}
                       {p.pinned ? " · Pinned" : ""}
                       {p.topPicks ? " · Top pick" : ""} · /
                       {p.slug}
@@ -822,15 +993,30 @@ export function AdminReadPanel() {
                 }
                 className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
               >
-                {BLOG_CATEGORIES.map((c) => (
+                {BLOG_PUBLIC_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
                 ))}
+                {/* Other — kept for legacy posts; not shown on public chips. */}
+                {draft.category === "Other" ||
+                otherCategoryPosts.some((p) => p.id === draft.id) ? (
+                  <option value="Other">Other (pick a real category)</option>
+                ) : null}
               </select>
               <p className="mt-1 text-[11px] text-muted">
-                Used to filter posts on /read.
+                Used to filter posts on /read.{" "}
+                {draft.category === "Other"
+                  ? "This essay is still in Other — choose one of the three categories."
+                  : null}
               </p>
+              {otherCategoryPosts.length > 0 && draft.category !== "Other" ? (
+                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  {otherCategoryPosts.length} essay
+                  {otherCategoryPosts.length === 1 ? "" : "s"} still in Other:{" "}
+                  {otherCategoryPosts.map((p) => p.title).join(", ")}
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="block text-xs font-medium text-muted">
@@ -1080,6 +1266,242 @@ export function AdminReadPanel() {
                   }))}
               />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Cover
+              </label>
+              {draft.coverImageUrl ? (
+                <img
+                  src={draft.coverImageUrl}
+                  alt=""
+                  className="mt-2 aspect-[16/9] w-full max-w-md rounded-lg object-cover"
+                />
+              ) : (
+                <p className="mt-1 text-[11px] text-muted">
+                  No cover yet — Start here and Read next show a tinted panel.
+                </p>
+              )}
+              {draft.startHere && !draft.coverImageUrl ? (
+                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  Start here essay is missing a cover.
+                </p>
+              ) : null}
+              <div className="mt-2">
+                <label className="block text-[11px] text-muted">
+                  Generate prompt
+                </label>
+                <textarea
+                  value={coverPrompt}
+                  onChange={(e) => setCoverPrompt(e.target.value)}
+                  rows={3}
+                  placeholder="Leave blank to prefill from title, subtitle and opening…"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={coverBusy || busy}
+                  onClick={() => void onGenerateCovers()}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {coverBusy ? "Generating…" : "Generate"}
+                </button>
+                <button
+                  type="button"
+                  disabled={coverBusy || busy}
+                  onClick={() => coverInputRef.current?.click()}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  Upload
+                </button>
+                {draft.coverImageUrl ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        coverImageUrl: null,
+                        coverImageKey: null,
+                      }))
+                    }
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void onUploadCover(file);
+                  }}
+                />
+              </div>
+              {coverError ? (
+                <p className="mt-1 text-[11px] text-danger" role="alert">
+                  {coverError}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void onGenerateCovers()}
+                  >
+                    Retry
+                  </button>
+                </p>
+              ) : null}
+              {coverOptions.length > 0 ? (
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {coverOptions.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          coverImageUrl: opt.url,
+                          coverImageKey: opt.key,
+                        }))
+                      }
+                      className={`overflow-hidden rounded-lg border-2 ${
+                        draft.coverImageUrl === opt.url
+                          ? "border-accent"
+                          : "border-transparent"
+                      }`}
+                    >
+                      <img
+                        src={opt.url}
+                        alt=""
+                        className="aspect-[16/9] w-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Listen item{" "}
+                <span className="font-normal text-muted/80">(optional)</span>
+              </label>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <input
+                  value={listenInput}
+                  onChange={(e) => setListenInput(e.target.value)}
+                  placeholder="consciously.live/listen/… or slug"
+                  className="min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+                <button
+                  type="button"
+                  disabled={listenBusy || !listenInput.trim()}
+                  onClick={() => void onResolveListen()}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {listenBusy ? "Checking…" : "Resolve"}
+                </button>
+                {draft.listenSlug ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft((d) => ({ ...d, listenSlug: null }));
+                      setListenInput("");
+                      setListenPreview(null);
+                      setListenWarning(null);
+                      setListenError(null);
+                    }}
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              {listenError ? (
+                <p className="mt-1 text-[11px] text-danger">{listenError}</p>
+              ) : null}
+              {listenWarning ? (
+                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  {listenWarning}
+                </p>
+              ) : null}
+              {listenPreview ? (
+                <div className="mt-2 flex gap-3 rounded-lg border border-border p-2">
+                  {listenPreview.coverImageUrl ? (
+                    <img
+                      src={listenPreview.coverImageUrl}
+                      alt=""
+                      className="size-14 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="size-14 rounded bg-muted/30" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-sm font-medium">
+                      {listenPreview.title}
+                    </p>
+                    <p className="m-0 text-[11px] text-muted">
+                      {listenPreview.kind}
+                      {listenPreview.durationSec
+                        ? ` · ${Math.max(1, Math.round(listenPreview.durationSec / 60))} min`
+                        : ""}
+                      {listenPreview.listed ? "" : " · link only"}
+                    </p>
+                  </div>
+                </div>
+              ) : draft.listenSlug ? (
+                <p className="mt-1 text-[11px] text-muted">
+                  Linked: /listen/{draft.listenSlug}
+                </p>
+              ) : null}
+              <label className="mt-2 block text-[11px] text-muted">
+                Card label
+              </label>
+              <input
+                value={draft.listenCardLabel}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    listenCardLabel: e.target.value,
+                  }))
+                }
+                placeholder="From Listen"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted">
+                Published date
+              </label>
+              <input
+                type="date"
+                value={
+                  draft.publishedAt
+                    ? draft.publishedAt.slice(0, 10)
+                    : ""
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDraft((d) => ({
+                    ...d,
+                    publishedAt: v
+                      ? new Date(`${v}T12:00:00.000Z`).toISOString()
+                      : d.publishedAt,
+                  }));
+                }}
+                className="mt-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                Read time (calculated):{" "}
+                {blogReadMinutes(liveBodyRef.current || draft.body)} min
+              </p>
+            </div>
+
             <div className="flex flex-col gap-2">
               <label className="inline-flex items-center gap-2 text-sm text-foreground">
                 <input
@@ -1092,6 +1514,31 @@ export function AdminReadPanel() {
                 />
                 Published
               </label>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.startHere}
+                  disabled={
+                    !draft.startHere && startHereCount >= 3
+                  }
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, startHere: e.target.checked }))
+                  }
+                  className="size-4 rounded border-border"
+                />
+                <span>
+                  Start here
+                  <span className="ml-1.5 font-normal text-muted">
+                    — up to 3 essays on /read
+                  </span>
+                </span>
+              </label>
+              {!draft.startHere && startHereCount >= 3 ? (
+                <p className="text-[11px] text-muted">
+                  Already 3 marked: {startHereTitles.join(", ")}. Unmark one
+                  first.
+                </p>
+              ) : null}
               <label className="inline-flex items-center gap-2 text-sm text-foreground">
                 <input
                   type="checkbox"

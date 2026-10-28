@@ -15,6 +15,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { SelectChevron } from "@/components/select-chevron";
+import { ListenShareSheet } from "@/components/listen-share-sheet";
 import {
   type LibraryMeditationItem,
   type LibraryProgram,
@@ -27,8 +28,8 @@ import {
   patchMeditationFavourite,
   patchMeditationArchived,
   patchMeditationPublic,
-  patchMeditationShare,
   patchMeditationBackgroundMix,
+  type ListenShareSnapshot,
   patchMeditationRating,
   patchMeditationDevRefresh,
   backgroundAudioPlaybackKey,
@@ -970,6 +971,8 @@ export default function LibraryView({
   const focusHandledRef = useRef(false);
   const shareIdHandledRef = useRef(false);
   const [shareCopiedId, setShareCopiedId] = useState<string | null>(null);
+  const [listenShareItem, setListenShareItem] =
+    useState<LibraryMeditationItem | null>(null);
 
   useEffect(() => {
     setPlaybackTimeListener((_s3Key, timeSeconds) => {
@@ -2154,51 +2157,56 @@ export default function LibraryView({
   }
 
   function shareLibraryItem(m: LibraryMeditationItem, isCommunity: boolean) {
+    if (!isCommunity) {
+      setListenShareItem(m);
+      return;
+    }
     const shareId = m.id?.trim() || "";
+    if (!shareId) return;
+    const url = marketingHref(`/listen/${encodeURIComponent(shareId)}`);
     void (async () => {
       try {
-        let url: string;
-        let copiedKey: string;
-        if (isCommunity) {
-          if (!shareId) return;
-          url = marketingHref(`/library/${encodeURIComponent(shareId)}`);
-          copiedKey = shareId;
-        } else {
-          if (!m.sk) return;
-          const sk = m.sk;
-          let token =
-            typeof m.shareToken === "string" && m.shareToken.trim()
-              ? m.shareToken.trim()
-              : null;
-          if (!token) {
-            token = await patchMeditationShare(sk, "create");
-            if (token) {
-              setItems((prev) =>
-                prev.map((x) =>
-                  x.sk === sk ? { ...x, shareToken: token } : x,
-                ),
-              );
-            }
-          }
-          if (!token) throw new Error("Could not create share link");
-          url = marketingHref(`/listen/${encodeURIComponent(token)}`);
-          copiedKey = sk;
-        }
-        try {
-          await navigator.clipboard.writeText(url);
-          setShareCopiedId(copiedKey);
-          window.setTimeout(() => {
-            setShareCopiedId((cur) => (cur === copiedKey ? null : cur));
-          }, 2000);
-        } catch {
-          window.prompt("Copy this link:", url);
-        }
-      } catch (e) {
-        setError(
-          e instanceof Error ? e.message : "Could not create share link",
-        );
+        await navigator.clipboard.writeText(url);
+        setShareCopiedId(shareId);
+        window.setTimeout(() => {
+          setShareCopiedId((cur) => (cur === shareId ? null : cur));
+        }, 2000);
+      } catch {
+        window.prompt("Copy this link:", url);
       }
     })();
+  }
+
+  function applyListenShareUpdate(
+    sk: string,
+    next: {
+      listenSlug: string | null;
+      shareToken: string | null;
+      listenShare: ListenShareSnapshot | null;
+    },
+  ) {
+    setItems((prev) =>
+      prev.map((x) =>
+        x.sk === sk
+          ? {
+              ...x,
+              listenSlug: next.listenSlug,
+              shareToken: next.shareToken,
+              listenShare: next.listenShare,
+            }
+          : x,
+      ),
+    );
+    setListenShareItem((cur) =>
+      cur?.sk === sk
+        ? {
+            ...cur,
+            listenSlug: next.listenSlug,
+            shareToken: next.shareToken,
+            listenShare: next.listenShare,
+          }
+        : cur,
+    );
   }
 
   /* ---------------- Meditation detail (/meditate/library/:id) ---------------- */
@@ -3587,6 +3595,19 @@ export default function LibraryView({
       onClose={closeMixEditor}
       closeRef={mixCloseRef}
     />
+
+    {listenShareItem ? (
+      <ListenShareSheet
+        open
+        item={listenShareItem}
+        onClose={() => setListenShareItem(null)}
+        onShared={(next) => {
+          if (listenShareItem.sk) {
+            applyListenShareUpdate(listenShareItem.sk, next);
+          }
+        }}
+      />
+    ) : null}
 
     {archiveConfirm ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">

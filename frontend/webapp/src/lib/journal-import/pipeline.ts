@@ -63,7 +63,7 @@ export function flagDuplicates(
     return {
       ...d,
       key: `imp_${i}_${d.source}`,
-      include: !likelyDuplicate,
+      include: true,
       likelyDuplicate,
       duplicateHint,
     };

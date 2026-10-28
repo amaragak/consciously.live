@@ -17,6 +17,8 @@ export type OcrPhotoResult = {
   lowConfidenceCount: number;
   /** YYYY-MM-DD written on the page, when the cloud reader found one. */
   date: string | null;
+  /** Short suggested title from the page. */
+  title: string | null;
 };
 
 type TextDetectorCtor = new () => {
@@ -151,6 +153,7 @@ async function ocrPhotoFileHaiku(file: File): Promise<OcrPhotoResult> {
     engine: "haiku",
     lowConfidenceCount: countLow(words),
     date: dated.date,
+    title: dated.title,
   };
 }
 
@@ -170,6 +173,7 @@ async function ocrPhotoFileOnDevice(file: File): Promise<OcrPhotoResult> {
       engine: "text_detector",
       lowConfidenceCount: 0,
       date: null,
+      title: null,
     };
   }
 
@@ -197,6 +201,7 @@ async function ocrPhotoFileOnDevice(file: File): Promise<OcrPhotoResult> {
     engine: "tesseract",
     lowConfidenceCount: countLow(words),
     date: null,
+    title: null,
   };
 }
 

@@ -2,7 +2,7 @@
  * Typed vs scanned PDF import — page text when present, otherwise OCR page images.
  */
 
-import { parseIsoOrNull } from "@/lib/journal-import/dates";
+import { applyHaikuDateAndTitleAll } from "@/lib/journal-import/enrich";
 import { parseHandwrittenPhotoImport } from "@/lib/journal-import/parsers/handwritten-photo";
 import type { JournalImportDraft } from "@/lib/journal-import/types";
 
@@ -15,11 +15,6 @@ async function loadPdfjs() {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
   return pdfjs;
-}
-
-function fileMtimeIso(file: File): string | null {
-  if (!Number.isFinite(file.lastModified)) return null;
-  return new Date(file.lastModified).toISOString();
 }
 
 async function pageTexts(
@@ -89,7 +84,6 @@ function typedDraftsFromPages(
   file: File,
   texts: string[],
 ): JournalImportDraft[] {
-  const mtime = fileMtimeIso(file);
   const nonEmpty = texts
     .map((t, i) => ({ t: t.trim(), page: i + 1 }))
     .filter((x) => x.t.length > 0);
@@ -98,38 +92,34 @@ function typedDraftsFromPages(
   // One entry per page when pages look like separate notes; else one combined.
   const avg = nonEmpty.reduce((s, x) => s + x.t.length, 0) / nonEmpty.length;
   if (nonEmpty.length > 1 && avg < 1200) {
-    return nonEmpty.map(({ t, page }) => {
-      const first = t.split(/\n|(?<=[.?!])\s+/)[0]?.trim() ?? null;
-      return {
-        title: first && first.length < 80 ? first : `Page ${page}`,
-        body: t,
-        created_at: mtime,
-        date_uncertain: true,
-        source: "pdf_annotations" as const,
-        source_metadata: {
-          filename: file.name,
-          page,
-          pdf_mode: "typed",
-          date_source: mtime ? "file_mtime" : "none",
-        },
-        media_refs: [],
-      };
-    });
+    return nonEmpty.map(({ t, page }) => ({
+      title: null,
+      body: t,
+      created_at: null,
+      date_uncertain: true,
+      source: "pdf_annotations" as const,
+      source_metadata: {
+        filename: file.name,
+        page,
+        pdf_mode: "typed",
+        date_source: "none",
+      },
+      media_refs: [],
+    }));
   }
 
   const body = nonEmpty.map((x) => x.t).join("\n\n");
-  const first = body.split(/\n|(?<=[.?!])\s+/)[0]?.trim() ?? null;
   return [
     {
-      title: first && first.length < 80 ? first : file.name.replace(/\.pdf$/i, ""),
+      title: null,
       body,
-      created_at: mtime,
-      date_uncertain: !parseIsoOrNull(mtime),
+      created_at: null,
+      date_uncertain: true,
       source: "pdf_annotations",
       source_metadata: {
         filename: file.name,
         pdf_mode: "typed",
-        date_source: mtime ? "file_mtime" : "none",
+        date_source: "none",
       },
       media_refs: [],
     },
@@ -148,8 +138,12 @@ export async function parsePdfPagesImport(
     textChars >= 120 && pagesWithText >= Math.max(1, Math.ceil(texts.length * 0.4));
 
   if (looksTyped) {
-    const drafts = typedDraftsFromPages(file, texts);
-    if (drafts.length) return { drafts, mode: "typed" };
+    const raw = typedDraftsFromPages(file, texts);
+    if (raw.length) {
+      onProgress?.("Dating typed pages…");
+      const drafts = await applyHaikuDateAndTitleAll(raw);
+      return { drafts, mode: "typed" };
+    }
   }
 
   onProgress?.("Reading scanned pages…");

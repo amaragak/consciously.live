@@ -1,10 +1,9 @@
 import {
-  dateFromFilename,
   headingTitleAndBody,
   splitYamlFrontmatter,
-  titleFromFilename,
   parseIsoOrNull,
 } from "@/lib/journal-import/dates";
+import { applyHaikuDateAndTitle } from "@/lib/journal-import/enrich";
 import type { JournalImportDraft } from "@/lib/journal-import/types";
 import { readZipArchive } from "@/lib/zip-store";
 
@@ -21,32 +20,25 @@ function decodeUtf8(bytes: Uint8Array): string {
 function draftFromMarkdownFile(opts: {
   name: string;
   text: string;
-  lastModified?: number;
 }): JournalImportDraft {
   const fm = splitYamlFrontmatter(opts.text);
   const headed = headingTitleAndBody(fm.rest);
-  const title =
-    fm.title?.trim() ||
-    headed.title ||
-    titleFromFilename(opts.name);
+  const title = fm.title?.trim() || headed.title || null;
   const fromFm = parseIsoOrNull(fm.date ?? null);
-  const fromName = dateFromFilename(opts.name);
-  const fromFs =
-    typeof opts.lastModified === "number" && Number.isFinite(opts.lastModified)
-      ? new Date(opts.lastModified).toISOString()
-      : null;
-  const created_at = fromFm ?? fromName ?? fromFs;
-  const date_uncertain = !fromFm && !fromName;
   return {
-    title: title.trim() ? title.trim() : null,
+    title: title?.trim() ? title.trim() : null,
     body: headed.body,
-    created_at,
-    date_uncertain,
-    source: isTextName(opts.name) && /\.txt$/i.test(opts.name) ? "plaintext" : "markdown",
+    // Frontmatter date is authored metadata; never file mtime / filename.
+    created_at: fromFm,
+    date_uncertain: !fromFm,
+    source:
+      isTextName(opts.name) && /\.txt$/i.test(opts.name)
+        ? "plaintext"
+        : "markdown",
     source_metadata: {
       filename: opts.name,
       ...(fm.tags?.length ? { tags: fm.tags } : {}),
-      date_source: fromFm ? "frontmatter" : fromName ? "filename" : fromFs ? "file_mtime" : "none",
+      date_source: fromFm ? "frontmatter" : "none",
     },
     media_refs: [],
   };
@@ -75,12 +67,33 @@ export async function parseMarkdownImport(files: File[]): Promise<JournalImportD
       draftFromMarkdownFile({
         name,
         text: await file.text(),
-        lastModified: file.lastModified,
       }),
     );
   }
   if (!drafts.length) {
     throw new Error("No markdown or text files found in what you chose.");
   }
-  return drafts;
+
+  const out: JournalImportDraft[] = [];
+  for (const d of drafts) {
+    if (d.created_at && d.title?.trim()) {
+      out.push(d);
+      continue;
+    }
+    const enriched = await applyHaikuDateAndTitle(d);
+    if (d.created_at) {
+      out.push({
+        ...enriched,
+        created_at: d.created_at,
+        date_uncertain: false,
+        source_metadata: {
+          ...enriched.source_metadata,
+          date_source: "frontmatter",
+        },
+      });
+    } else {
+      out.push(enriched);
+    }
+  }
+  return out;
 }

@@ -67,10 +67,19 @@ export async function handler(
       return json(404, { error: "Share link not found or revoked" });
     }
 
+    const listenShare =
+      row.listenShare && typeof row.listenShare === "object"
+        ? (row.listenShare as Record<string, unknown>)
+        : null;
     const title =
-      (typeof row.title === "string" && row.title.trim()) || "Meditation";
+      (typeof listenShare?.title === "string" && listenShare.title.trim()) ||
+      (typeof row.title === "string" && row.title.trim()) ||
+      "Meditation";
     const description =
-      (typeof row.description === "string" && row.description.trim()) || "";
+      (typeof listenShare?.description === "string" &&
+        listenShare.description.trim()) ||
+      (typeof row.description === "string" && row.description.trim()) ||
+      "";
     const durationSec =
       typeof row.durationSec === "number" && Number.isFinite(row.durationSec)
         ? row.durationSec
@@ -79,6 +88,10 @@ export async function handler(
     const s3Key = rawKey ? meditationPlaybackS3Key(rawKey) : "";
     const audioUrl =
       s3Key && cfDomain ? `https://${cfDomain}/${s3Key}` : null;
+    const listenSlug =
+      typeof row.listenSlug === "string" && row.listenSlug.trim()
+        ? row.listenSlug.trim()
+        : null;
 
     return json(200, {
       title,
@@ -86,6 +99,7 @@ export async function handler(
       durationSec,
       audioUrl,
       shareToken: token,
+      listenSlug,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Lookup failed";

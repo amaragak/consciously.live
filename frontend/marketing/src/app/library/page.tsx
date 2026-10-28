@@ -1,3 +1,15 @@
+/**
+ * Superseded by /listen (Consciously Listen). Kept commented for reference;
+ * next.config permanently redirects /library → /listen.
+ */
+
+import { permanentRedirect } from "next/navigation";
+
+export default function CommunityLibraryPage() {
+  permanentRedirect("/listen");
+}
+
+/*
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -68,3 +80,4 @@ export default async function CommunityLibraryPage() {
     </div>
   );
 }
+*/

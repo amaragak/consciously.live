@@ -26,6 +26,11 @@ export type PublicBlogPostSummary = {
   audioUrl: string | null;
   pinned: boolean;
   topPicks: boolean;
+  startHere: boolean;
+  coverImageUrl: string | null;
+  listenSlug: string | null;
+  listenCardLabel: string;
+  readMinutes: number;
   publishedAt: string | null;
   updatedAt: string;
 };
@@ -97,6 +102,11 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
   const slug = typeof o.slug === "string" ? o.slug.trim() : "";
   const title = typeof o.title === "string" ? o.title.trim() : "";
   if (!id || !slug || !title) return null;
+  const pinned = o.pinned === true;
+  const readMinutesRaw =
+    typeof o.readMinutes === "number"
+      ? o.readMinutes
+      : Number(String(o.readMinutes ?? "").trim());
   return {
     id,
     slug,
@@ -116,8 +126,27 @@ function coerceSummary(raw: unknown): PublicBlogPostSummary | null {
       typeof o.audioUrl === "string" && o.audioUrl.trim()
         ? o.audioUrl.trim()
         : null,
-    pinned: o.pinned === true,
+    pinned,
     topPicks: o.topPicks === true,
+    startHere:
+      o.startHere === true ||
+      (o.startHere !== false && (pinned || o.topPicks === true)),
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
+    listenSlug:
+      typeof o.listenSlug === "string" && o.listenSlug.trim()
+        ? o.listenSlug.trim()
+        : null,
+    listenCardLabel:
+      typeof o.listenCardLabel === "string" && o.listenCardLabel.trim()
+        ? o.listenCardLabel.trim()
+        : "From Listen",
+    readMinutes:
+      Number.isFinite(readMinutesRaw) && readMinutesRaw >= 1
+        ? Math.round(readMinutesRaw)
+        : 1,
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()
@@ -170,9 +199,11 @@ export async function fetchPublishedBlogIndex(): Promise<PublicBlogIndex> {
       posts: (data.posts ?? [])
         .map(coerceSummary)
         .filter((p): p is PublicBlogPostSummary => p != null && p.hasBody)
-        .sort((a, b) =>
-          (b.updatedAt || "").localeCompare(a.updatedAt || ""),
-        ),
+        .sort((a, b) => {
+          const aT = a.publishedAt || a.updatedAt || "";
+          const bT = b.publishedAt || b.updatedAt || "";
+          return bT.localeCompare(aT);
+        }),
     };
   } catch {
     return {
@@ -233,4 +264,49 @@ export function formatBlogDate(iso: string | null | undefined): string {
     month: "short",
     year: "numeric",
   });
+}
+
+export function formatBlogMetaLine(
+  post: Pick<
+    PublicBlogPostSummary,
+    "category" | "series" | "part" | "publishedAt" | "updatedAt" | "readMinutes"
+  >,
+  opts?: { includeCategory?: boolean; includeSeries?: boolean },
+): string {
+  const parts: string[] = [];
+  if (opts?.includeSeries !== false) {
+    const series = formatBlogSeries(post.series, post.part);
+    if (series) parts.push(series);
+  }
+  if (opts?.includeCategory) {
+    if (post.category && post.category !== "Other") parts.push(post.category);
+  }
+  const date = formatBlogDate(post.publishedAt || post.updatedAt);
+  if (date) parts.push(date);
+  parts.push(`${post.readMinutes} min read`);
+  return parts.join(" · ");
+}
+
+/** Pick up to 3 “Read next” essays: same category first, then newest. */
+export function pickReadNext(
+  current: PublicBlogPostSummary,
+  all: PublicBlogPostSummary[],
+  limit = 3,
+): PublicBlogPostSummary[] {
+  const rest = all.filter((p) => p.id !== current.id);
+  const same = rest
+    .filter((p) => p.category === current.category)
+    .sort((a, b) =>
+      (b.publishedAt || b.updatedAt).localeCompare(
+        a.publishedAt || a.updatedAt,
+      ),
+    );
+  const other = rest
+    .filter((p) => p.category !== current.category)
+    .sort((a, b) =>
+      (b.publishedAt || b.updatedAt).localeCompare(
+        a.publishedAt || a.updatedAt,
+      ),
+    );
+  return [...same, ...other].slice(0, limit);
 }

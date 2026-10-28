@@ -25,12 +25,20 @@ export const BLOG_CATEGORIES = [
   "Philosophy & Spirituality",
   "Meditation & Psychedelics",
   "Travel & Pilgrimage",
+  /** @deprecated Kept for stored posts; not shown on public chips. */
   "Other",
+] as const;
+
+/** Categories shown on the public /read filter. */
+export const BLOG_PUBLIC_CATEGORIES = [
+  "Philosophy & Spirituality",
+  "Meditation & Psychedelics",
+  "Travel & Pilgrimage",
 ] as const;
 
 export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
 
-export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Other";
+export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Philosophy & Spirituality";
 
 /** Legacy labels still stored on older posts. */
 const BLOG_CATEGORY_ALIASES: Record<string, BlogCategory> = {
@@ -74,6 +82,16 @@ export type BlogPost = {
   pinned: boolean;
   /** Curated “top picks” / personal favourites (admin-assigned). */
   topPicks: boolean;
+  /** Up to 3 essays shown in the public “Start here” row. */
+  startHere: boolean;
+  /** CloudFront URL for the essay cover (16:9). */
+  coverImageUrl: string | null;
+  /** S3 key for the cover (admin regenerate / remove). */
+  coverImageKey: string | null;
+  /** Linked Listen slug (`/listen/<slug>`), optional. */
+  listenSlug: string | null;
+  /** Eyebrow on the linked Listen card; default “From Listen”. */
+  listenCardLabel: string;
   /** ISO timestamp when first published (sticky after unpublish). */
   publishedAt: string | null;
   /** CloudFront URL for TTS narration (no FX, no music). */
@@ -366,6 +384,32 @@ function coercePost(raw: Record<string, unknown>): BlogPost | null {
     published: raw.published === true,
     pinned: raw.pinned === true,
     topPicks: raw.topPicks === true,
+    startHere:
+      raw.startHere === true ||
+      (raw.startHere !== false &&
+        (raw.pinned === true || raw.topPicks === true)),
+    coverImageUrl:
+      typeof raw.coverImageUrl === "string" && raw.coverImageUrl.trim()
+        ? raw.coverImageUrl.trim().slice(0, 2048)
+        : null,
+    coverImageKey:
+      typeof raw.coverImageKey === "string" && raw.coverImageKey.trim()
+        ? raw.coverImageKey.trim().slice(0, 512)
+        : null,
+    listenSlug:
+      typeof raw.listenSlug === "string" && raw.listenSlug.trim()
+        ? raw.listenSlug
+            .trim()
+            .toLowerCase()
+            .replace(/^.*\/listen\//, "")
+            .replace(/[^a-z0-9-]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 80) || null
+        : null,
+    listenCardLabel:
+      typeof raw.listenCardLabel === "string" && raw.listenCardLabel.trim()
+        ? raw.listenCardLabel.trim().slice(0, 60)
+        : "From Listen",
     publishedAt:
       typeof raw.publishedAt === "string" && raw.publishedAt.trim()
         ? raw.publishedAt.trim()
@@ -543,12 +587,56 @@ export async function putBlogPost(
     typeof input.topPicks === "boolean"
       ? input.topPicks
       : (existing?.topPicks ?? false);
+  let startHere =
+    typeof input.startHere === "boolean"
+      ? input.startHere
+      : (existing?.startHere ?? pinned);
+  // Cap at 3 Start-here essays — refuse the 4th so admin can unmark one.
+  if (startHere) {
+    const others = all.filter(
+      (p) => p.id !== existingId && p.startHere,
+    );
+    if (others.length >= 3) {
+      throw new Error(
+        `Already 3 Start here essays (${others
+          .map((p) => p.title)
+          .join(", ")}). Unmark one first.`,
+      );
+    }
+  }
   let publishedAt = existing?.publishedAt ?? null;
-  if (published && !publishedAt) publishedAt = now;
+  if (
+    Object.prototype.hasOwnProperty.call(input, "publishedAt") &&
+    typeof input.publishedAt === "string" &&
+    input.publishedAt.trim()
+  ) {
+    const d = new Date(input.publishedAt.trim());
+    if (!Number.isNaN(d.getTime())) publishedAt = d.toISOString();
+  } else if (published && !publishedAt) {
+    publishedAt = now;
+  }
   if (!published) {
     // Keep publishedAt for history; only clear if never published
-    publishedAt = existing?.publishedAt ?? null;
+    publishedAt = publishedAt ?? existing?.publishedAt ?? null;
   }
+
+  const listenSlugRaw = Object.prototype.hasOwnProperty.call(
+    input,
+    "listenSlug",
+  )
+    ? input.listenSlug
+    : existing?.listenSlug;
+  const listenSlug =
+    typeof listenSlugRaw === "string" && listenSlugRaw.trim()
+      ? listenSlugRaw
+          .trim()
+          .toLowerCase()
+          .replace(/^https?:\/\/(www\.)?consciously\.live\/listen\//, "")
+          .replace(/^.*\/listen\//, "")
+          .replace(/[^a-z0-9-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 80) || null
+      : null;
 
   const post: BlogPost = {
     id: existingId || randomUUID(),
@@ -601,6 +689,27 @@ export async function putBlogPost(
     published,
     pinned,
     topPicks,
+    startHere,
+    coverImageUrl: Object.prototype.hasOwnProperty.call(input, "coverImageUrl")
+      ? typeof input.coverImageUrl === "string" && input.coverImageUrl.trim()
+        ? input.coverImageUrl.trim().slice(0, 2048)
+        : null
+      : (existing?.coverImageUrl ?? null),
+    coverImageKey: Object.prototype.hasOwnProperty.call(input, "coverImageKey")
+      ? typeof input.coverImageKey === "string" && input.coverImageKey.trim()
+        ? input.coverImageKey.trim().slice(0, 512)
+        : null
+      : (existing?.coverImageKey ?? null),
+    listenSlug,
+    listenCardLabel: Object.prototype.hasOwnProperty.call(
+      input,
+      "listenCardLabel",
+    )
+      ? typeof input.listenCardLabel === "string" &&
+        input.listenCardLabel.trim()
+        ? input.listenCardLabel.trim().slice(0, 60)
+        : "From Listen"
+      : (existing?.listenCardLabel ?? "From Listen"),
     publishedAt,
     audioUrl: existing?.audioUrl ?? null,
     audioStatus: existing?.audioStatus ?? "none",

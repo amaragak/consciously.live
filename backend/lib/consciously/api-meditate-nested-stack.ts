@@ -488,6 +488,41 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const listenPublic = new lambda_nodejs.NodejsFunction(
+      this,
+      "ListenPublicFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/listen-public.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(20),
+        memorySize: 256,
+        role,
+        environment: {
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+        },
+      },
+    );
+    addNestHttpRoutes(this, httpApi, {
+      id: "ListenPublicIndexRoute",
+      path: "/public/listen",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "ListenPublicIndexIntegration",
+        listenPublic,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "ListenPublicSlugRoute",
+      path: "/public/listen/{slug}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "ListenPublicSlugIntegration",
+        listenPublic,
+      ),
+    });
+
     const meditationMix = new lambda_nodejs.NodejsFunction(
       this,
       "MeditationMixFunction",

@@ -169,6 +169,23 @@ export class MedimadeStack extends cdk.Stack {
       partitionKey: { name: "shareToken", type: dynamodb.AttributeType.STRING },
       projectionType: dynamodb.ProjectionType.ALL,
     });
+    meditationAnalyticsTable.addGlobalSecondaryIndex({
+      indexName: "listenSlugIndex",
+      partitionKey: { name: "listenSlug", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    meditationAnalyticsTable.addGlobalSecondaryIndex({
+      indexName: "listenListedIndex",
+      partitionKey: {
+        name: "listenListed",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "listenListedAt",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
 
     /** Journal entries + META row per `ownerId` (opaque client id). Voice binaries stay in S3 via `/journal/voice`. */
     const journalTable = new dynamodb.Table(this, "JournalTable", {
@@ -1434,8 +1451,8 @@ export class MedimadeStack extends cdk.Stack {
         entry: path.join(__dirname, "../lambdas/admin-blog.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(30),
-        memorySize: 512,
+        timeout: cdk.Duration.seconds(120),
+        memorySize: 1024,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
@@ -1445,6 +1462,8 @@ export class MedimadeStack extends cdk.Stack {
           BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
           MARKETING_ORIGIN: authWebappOrigin,
           BLOG_NARRATE_FUNCTION_NAME: adminBlogNarrate.functionName,
+          GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
         },
       },
     );
@@ -1455,6 +1474,8 @@ export class MedimadeStack extends cdk.Stack {
     mediaBucket.grantRead(adminBlog);
     mediaBucket.grantDelete(adminBlog);
     adminBlogNarrate.grantInvoke(adminBlog);
+    googleAiApiKeySecret.grantRead(adminBlog);
+    meditationAnalyticsTable.grantReadData(adminBlog);
 
     httpApi.addRoutes({
       path: "/admin/blog",

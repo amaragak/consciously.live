@@ -4,12 +4,21 @@ export const BLOG_CATEGORIES = [
   "Philosophy & Spirituality",
   "Meditation & Psychedelics",
   "Travel & Pilgrimage",
+  /** @deprecated Kept for stored posts; not shown on public chips. */
   "Other",
 ] as const;
 
-export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
+/** Categories shown on the public /read filter. */
+export const BLOG_PUBLIC_CATEGORIES = [
+  "Philosophy & Spirituality",
+  "Meditation & Psychedelics",
+  "Travel & Pilgrimage",
+] as const;
 
-export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Other";
+export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
+export type BlogPublicCategory = (typeof BLOG_PUBLIC_CATEGORIES)[number];
+
+export const DEFAULT_BLOG_CATEGORY: BlogCategory = "Philosophy & Spirituality";
 
 /** Legacy labels still stored on older posts. */
 const BLOG_CATEGORY_ALIASES: Record<string, BlogCategory> = {

@@ -50,6 +50,23 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
       partitionKey: { name: "shareToken", type: dynamodb.AttributeType.STRING },
       projectionType: dynamodb.ProjectionType.ALL,
     });
+    this.meditationAnalytics.addGlobalSecondaryIndex({
+      indexName: "listenSlugIndex",
+      partitionKey: { name: "listenSlug", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    this.meditationAnalytics.addGlobalSecondaryIndex({
+      indexName: "listenListedIndex",
+      partitionKey: {
+        name: "listenListed",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "listenListedAt",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
 
     this.journal = new dynamodb.Table(this, "JournalTable", pkSk);
     this.assistantChat = new dynamodb.Table(this, "AssistantChatTable", pkSk);

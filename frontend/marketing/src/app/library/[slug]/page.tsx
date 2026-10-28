@@ -1,3 +1,18 @@
+/**
+ * Superseded by /listen/<slug>. Kept commented for reference;
+ * next.config permanently redirects /library/:id → /listen/:id.
+ */
+
+import { permanentRedirect } from "next/navigation";
+
+type Props = { params: Promise<{ slug: string }> };
+
+export default async function CommunityLibraryDetailPage({ params }: Props) {
+  const { slug } = await params;
+  permanentRedirect(`/listen/${encodeURIComponent(slug)}`);
+}
+
+/*
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -56,3 +71,4 @@ export default async function CommunityLibraryDetailPage({ params }: Props) {
     </div>
   );
 }
+*/

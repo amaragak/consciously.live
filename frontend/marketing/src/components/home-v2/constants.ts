@@ -49,8 +49,8 @@ export const HOME_V2_TOOLS: readonly {
   },
 ] as const;
 
-/** Listen → community library (no dedicated /listen index today). */
-export const HOME_V2_LISTEN_HREF = "/library";
+/** Listen → public examples + shared links. */
+export const HOME_V2_LISTEN_HREF = "/listen";
 export const HOME_V2_READ_HREF = "/read";
 export const HOME_V2_CONNECT_HREF = "/connect";
 export const HOME_V2_START_FREE_HREF = "/login?mode=signup";

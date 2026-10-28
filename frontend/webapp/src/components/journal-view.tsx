@@ -18,10 +18,7 @@ import { loadHealStore } from "@/lib/heal-store";
 import { JournalGratitudeEditor } from "@/components/journal-gratitude-editor";
 import { JournalEntryMeta } from "@/components/journal-entry-meta";
 import { JournalSettingsDialog } from "@/components/journal-settings-dialog";
-import {
-  JournalImportWorkspace,
-  type JournalImportDoneSummary,
-} from "@/components/journal-import-workspace";
+import { JournalImportWorkspace } from "@/components/journal-import-workspace";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { Calendar, Folder, Play } from "lucide-react";
@@ -444,8 +441,8 @@ export function JournalListChips({
   inline?: boolean;
 }) {
   const groups = entryLinkGroups(entry);
-  const imported = Boolean(entry.importBatchId);
-  if (groups.length === 0 && !imported) return null;
+  /** Imported chip lives on the title row — only show other link chips here. */
+  if (groups.length === 0) return null;
   const shown = groups.slice(0, 2);
   const rest = groups.slice(2);
   const restItems = rest.flatMap((group) => group.items);
@@ -457,9 +454,6 @@ export function JournalListChips({
           : `mt-1 flex flex-nowrap gap-1 overflow-hidden border-t border-border pt-2 ${className}`
       }
     >
-      {imported ? (
-        <JournalLinkChip label="Imported" items={["Brought in from an import"]} />
-      ) : null}
       {shown.map((group) => (
         <JournalLinkChip
           key={group.kind}
@@ -471,6 +465,28 @@ export function JournalListChips({
       {restItems.length > 0 ? (
         <JournalLinkChip label={`+${rest.length}`} items={restItems} />
       ) : null}
+    </span>
+  );
+}
+
+function JournalImportedTitle({
+  entry,
+  className = "",
+}: {
+  entry: JournalEntry;
+  className?: string;
+}) {
+  const imported = Boolean(entry.importBatchId);
+  if (!imported) {
+    return <JournalEntryListTitle entry={entry} className={className} />;
+  }
+  return (
+    <span className={`flex min-w-0 items-center gap-2 ${className}`}>
+      <JournalLinkChip label="Imported" items={["Brought in from an import"]} />
+      <JournalEntryListTitle
+        entry={entry}
+        className="min-w-0 truncate text-sm font-semibold"
+      />
     </span>
   );
 }
@@ -598,12 +614,14 @@ export function JournalView() {
   const [jumpDate, setJumpDate] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  /** When set, list is filtered to this import batch (chip active). Off by default after import. */
+  /** Chip + filter for the most recent import batch. */
+  const [lastImportChip, setLastImportChip] = useState<{
+    batchId: string;
+    count: number;
+  } | null>(null);
   const [importFilterBatchId, setImportFilterBatchId] = useState<string | null>(
     null,
   );
-  const [importNotice, setImportNotice] =
-    useState<JournalImportDoneSummary | null>(null);
   const listNavRef = useRef<HTMLElement | null>(null);
   const prevSectionRef = useRef<JournalSection | null>(null);
   /** After first journal GET attempt (or skip if no API URL); avoids PUT before pull completes. */
@@ -1756,12 +1774,12 @@ export function JournalView() {
     });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
-  // `?import=1` opens the import modal over Entries; `?imported=` activates the Last import filter.
+  // `?import=1` opens the import modal over Entries; `?imported=` applies the Last import filter.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("import") === "1") {
-      setImportNotice(null);
+      setLastImportChip(null);
       setImportFilterBatchId(null);
       setImportOpen(true);
       params.delete("import");
@@ -1774,13 +1792,7 @@ export function JournalView() {
     const count = entriesRef.current.filter(
       (e) => e.importBatchId === imported,
     ).length;
-    setImportNotice({
-      imported: count,
-      skippedDup: 0,
-      leftOut: 0,
-      range: null,
-      batchId: imported,
-    });
+    setLastImportChip({ batchId: imported, count });
     setImportFilterBatchId(imported);
     params.delete("imported");
     const qs = params.toString();
@@ -1940,41 +1952,39 @@ export function JournalView() {
   /** Insights: flush rail + content like journal compose (no centred page padding). */
   const journalFlushChrome = journalComposeChrome || insightsOpen;
 
-  const showLastImportChip = Boolean(importNotice);
-  const lastImportCount = importNotice?.imported ?? 0;
-
-  const applyLastImportFilter = useCallback(() => {
-    const batchId = importNotice?.batchId;
-    if (!batchId) return;
-    setImportFilterBatchId(batchId);
-    const imported = entriesRef.current
-      .filter((e) => e.importBatchId === batchId && !isGratitudeEntry(e))
-      .sort(
-        (a, b) =>
-          new Date(journalEntryDateIso(b)).getTime() -
-          new Date(journalEntryDateIso(a)).getTime(),
-      );
-    const first = imported[0];
-    if (first) selectEntry(first.id);
-    requestAnimationFrame(() => {
-      listNavRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    });
-  }, [importNotice, selectEntry]);
-
-  const clearLastImportFilter = useCallback(() => {
-    setImportFilterBatchId(null);
-  }, []);
-
-  const dismissImportNotice = useCallback(() => {
-    setImportNotice(null);
+  const dismissLastImportChip = useCallback(() => {
+    setLastImportChip(null);
     setImportFilterBatchId(null);
   }, []);
 
   const openImportModal = useCallback(() => {
-    setImportNotice(null);
+    setLastImportChip(null);
     setImportFilterBatchId(null);
     setImportOpen(true);
   }, []);
+
+  const lastImportChipEl =
+    lastImportChip != null ? (
+      <button
+        type="button"
+        aria-pressed={Boolean(importFilterBatchId)}
+        aria-label={`Last import, ${lastImportChip.count} entries. Clear filter.`}
+        onClick={dismissLastImportChip}
+        className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors ${
+          importFilterBatchId
+            ? "border-[#E6D3AE] bg-[#F6EEDD] text-[#8A6424]"
+            : "border-border bg-card text-muted hover:text-foreground"
+        }`}
+      >
+        Last import · {lastImportChip.count}
+        <span
+          aria-hidden
+          className="ml-0.5 inline-flex size-5 items-center justify-center text-[18px] font-normal leading-none"
+        >
+          ×
+        </span>
+      </button>
+    ) : null;
 
     return (
     <JournalLockGate>
@@ -1997,11 +2007,7 @@ export function JournalView() {
         className={`shrink-0 ${
           journalComposeChrome ? "px-4 sm:px-6" : ""
         } ${mobileComposeChrome ? "max-sm:hidden" : ""} ${
-          importNotice
-            ? "mb-3"
-            : journalFlushChrome
-              ? "mb-0"
-              : "mb-3 md:mb-0"
+          journalFlushChrome ? "mb-0" : "mb-3 md:mb-0"
         }`}
       >
         {/* Desktop: section tabs in the top-bar centre (same as Library). */}
@@ -2021,61 +2027,6 @@ export function JournalView() {
             )}
           />
         </AppPrimaryTabsDesktop>
-        {importNotice ? (
-          <div className="mt-3 flex items-start gap-3 rounded-[18px] border border-border bg-card px-4 py-3.5 shadow-[0_2px_14px_rgba(15,27,45,0.05)] sm:items-center sm:gap-4 sm:px-5">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E6D3AE] bg-[#F6EEDD] text-[#8A6424]">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M5 12l5 5 9-10" />
-              </svg>
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-[18px] text-foreground sm:text-[20px]">
-                {importNotice.imported}{" "}
-                {importNotice.imported === 1 ? "entry" : "entries"} imported
-              </p>
-              <p className="mt-0.5 text-[13.5px] text-muted">
-                {importNotice.range
-                  ? `${importNotice.range}, on their original dates`
-                  : "On their original dates"}
-                {importNotice.skippedDup
-                  ? ` · ${importNotice.skippedDup} left out as ${
-                      importNotice.skippedDup === 1
-                        ? "a duplicate"
-                        : "duplicates"
-                    }`
-                  : importNotice.leftOut
-                    ? ` · ${importNotice.leftOut} left out`
-                    : ""}
-                . They’re in your entries with an Imported chip.{" "}
-                <button
-                  type="button"
-                  className="cursor-pointer font-medium text-accent-link underline-offset-2 hover:underline"
-                  onClick={applyLastImportFilter}
-                >
-                  Show them
-                </button>
-              </p>
-            </div>
-            <button
-              type="button"
-              className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-sm text-muted hover:text-foreground"
-              onClick={dismissImportNotice}
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
       </div>
 
       {insightsMounted ? (
@@ -2157,35 +2108,6 @@ export function JournalView() {
                   onChange={setSearchQuery}
                   placeholder="Search entries..."
                 />
-                {showLastImportChip ? (
-                  <button
-                    type="button"
-                    aria-pressed={Boolean(importFilterBatchId)}
-                    onClick={() => {
-                      if (importFilterBatchId) clearLastImportFilter();
-                      else applyLastImportFilter();
-                    }}
-                    className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors ${
-                      importFilterBatchId
-                        ? "border-[#E6D3AE] bg-[#F6EEDD] text-[#8A6424]"
-                        : "border-border bg-card text-muted hover:text-foreground"
-                    }`}
-                  >
-                    Last import · {lastImportCount}
-                    {importFilterBatchId ? (
-                      <span
-                        role="presentation"
-                        className="ml-0.5 text-[14px] leading-none"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          clearLastImportFilter();
-                        }}
-                      >
-                        ×
-                      </span>
-                    ) : null}
-                  </button>
-                ) : null}
                 {/* Mobile: folder + date between search and New */}
                 <div ref={filtersMenuRef} className="relative shrink-0 sm:hidden">
                   <button
@@ -2318,9 +2240,10 @@ export function JournalView() {
             New
           </PrimaryCreateButton>
               </div>
-              <div className="flex items-center justify-end gap-1.5">
+              <div className="flex items-center gap-1.5">
+                {lastImportChipEl}
                 {/* sm+: folder + options */}
-                <div className="hidden items-center gap-1.5 sm:flex">
+                <div className="ml-auto hidden items-center gap-1.5 sm:flex">
                 <div ref={folderMenuRef} className="relative shrink-0">
                   <button
                     type="button"
@@ -2597,7 +2520,7 @@ export function JournalView() {
                                   : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >
-                            <JournalEntryListTitle
+                            <JournalImportedTitle
                               entry={e}
                               className="line-clamp-2 text-sm font-semibold"
                             />
@@ -2630,7 +2553,7 @@ export function JournalView() {
                                 : "border-border bg-card text-foreground hover:border-accent/40 dark:bg-background"
                             }`}
                           >
-                            <JournalEntryListTitle
+                            <JournalImportedTitle
                               entry={e}
                               className="line-clamp-2 text-sm font-semibold"
                             />
@@ -2951,9 +2874,28 @@ export function JournalView() {
       onClose={() => setImportOpen(false)}
       onImported={(summary) => {
         const store = withoutDemoJournalEntries(loadJournalStoreRaw());
+        entriesRef.current = store.entries;
         setEntries(store.entries);
-        setImportFilterBatchId(null);
-        setImportNotice(summary);
+        setLastImportChip({
+          batchId: summary.batchId,
+          count: summary.imported,
+        });
+        setImportFilterBatchId(summary.batchId);
+        const first = store.entries
+          .filter(
+            (e) =>
+              e.importBatchId === summary.batchId && !isGratitudeEntry(e),
+          )
+          .sort(
+            (a, b) =>
+              new Date(journalEntryDateIso(b)).getTime() -
+              new Date(journalEntryDateIso(a)).getTime(),
+          )[0];
+        if (first) applyEntrySelection(first.id);
+        navigate(JOURNAL_SECTION_HREF.journal);
+        requestAnimationFrame(() => {
+          listNavRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        });
       }}
     />
     </JournalLockGate>

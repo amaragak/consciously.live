@@ -123,6 +123,10 @@ type OutItem = {
   isPublic: boolean;
   /** Unlisted share link token (owner-only; omitted for community listeners). */
   shareToken: string | null;
+  /** Listen public slug when shared (owner-only). */
+  listenSlug: string | null;
+  /** Listen share sheet snapshot (owner-only). */
+  listenShare: Record<string, unknown> | null;
   description: string | null;
   speakerModelId: string | null;
   speakerName: string | null;
@@ -648,6 +652,14 @@ function buildLibraryItems(params: {
       typeof row.shareToken === "string" && row.shareToken.trim()
         ? row.shareToken.trim()
         : null;
+    const listenSlug =
+      typeof row.listenSlug === "string" && row.listenSlug.trim()
+        ? row.listenSlug.trim()
+        : null;
+    const listenShare =
+      row.listenShare && typeof row.listenShare === "object"
+        ? (row.listenShare as Record<string, unknown>)
+        : null;
     const description =
       typeof row.description === "string" && row.description.trim().length > 0
         ? row.description.trim()
@@ -680,6 +692,8 @@ function buildLibraryItems(params: {
       archived,
       isPublic,
       shareToken,
+      listenSlug,
+      listenShare,
       description,
       speakerModelId: referenceId,
       speakerName: referenceId ? speakerNames.get(referenceId) ?? null : null,
@@ -811,6 +825,8 @@ function buildLibraryItems(params: {
       archived: false,
       isPublic: false,
       shareToken: null,
+      listenSlug: null,
+      listenShare: null,
       description: null,
       speakerModelId: null,
       speakerName: null,
@@ -915,7 +931,13 @@ export async function handler(
         cfDomain,
         speakerNames,
         speakerPortraits,
-      }).map((item) => ({ ...item, creationProvenance: null }));
+      }).map((item) => ({
+        ...item,
+        creationProvenance: null,
+        listenShare: null,
+        listenSlug: null,
+        shareToken: null,
+      }));
       const mixTable = process.env.MEDITATION_LISTENER_MIX_TABLE_NAME;
       const listenerPk = mixTable
         ? mixListenerPk({

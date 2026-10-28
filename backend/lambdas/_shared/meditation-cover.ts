@@ -492,6 +492,8 @@ export async function generateAdminImageFromPrompt(params: {
   model?: AdminImageModel | string | null;
   /** Voice portraits pass false and stay photographic. */
   illustrationStyle?: boolean;
+  /** Gemini imageConfig aspect ratio (default 1:1). Use 16:9 for Read covers. */
+  aspectRatio?: "1:1" | "16:9" | "3:4" | "4:3";
 }): Promise<{
   body: Buffer;
   mime: "image/jpeg" | "image/png";
@@ -501,7 +503,11 @@ export async function generateAdminImageFromPrompt(params: {
   const model = coerceAdminImageModel(params.model);
   const illustrationStyle = params.illustrationStyle !== false;
   if (model === "nano-banana-pro") {
-    const out = await generateNanoBananaProImage(params.prompt, illustrationStyle);
+    const out = await generateNanoBananaProImage(
+      params.prompt,
+      illustrationStyle,
+      params.aspectRatio ?? "1:1",
+    );
     return { ...out, model };
   }
   const out = await generateGptImageCover(params.prompt, illustrationStyle);
@@ -573,10 +579,11 @@ async function generateGptImageCover(
   throw new Error("OpenAI image response missing image data");
 }
 
-/** Text-only Nano Banana Pro (Gemini 3 Pro Image) — square editorial still. */
+/** Text-only Nano Banana Pro (Gemini 3 Pro Image) — editorial still. */
 async function generateNanoBananaProImage(
   prompt: string,
   illustrationStyle = true,
+  aspectRatio: "1:1" | "16:9" | "3:4" | "4:3" = "1:1",
 ): Promise<{ body: Buffer; mime: "image/png" | "image/jpeg"; prompt: string }> {
   const trimmed = prompt.trim();
   if (!trimmed) throw new Error("Image prompt is empty");
@@ -585,11 +592,15 @@ async function generateNanoBananaProImage(
     process.env.ADMIN_NANO_BANANA_MODEL?.trim() || NANO_BANANA_PRO_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
+  const framing =
+    aspectRatio === "16:9"
+      ? "Landscape 16:9. Follow the brief's subject. Full-bleed illustration, no picture frame, mat, or mockup."
+      : aspectRatio === "1:1"
+        ? "Square 1:1. Follow the brief's subject. Full-bleed illustration, no picture frame, mat, or mockup."
+        : `${aspectRatio} framing. Follow the brief's subject. Full-bleed illustration, no picture frame, mat, or mockup.`;
+
   const scenePrompt = illustrationStyle
-    ? [
-        withIllustrationStyle(trimmed),
-        "Square 1:1. Follow the brief's subject. Full-bleed illustration, no picture frame, mat, or mockup.",
-      ].join("\n\n")
+    ? [withIllustrationStyle(trimmed), framing].join("\n\n")
     : trimmed;
 
   const upstream = await fetch(url, {
@@ -605,7 +616,7 @@ async function generateNanoBananaProImage(
         // Keep full covers at ~1K (same as current NB Pro default); thumbs are
         // resized separately in composition-cover-thumb.
         imageConfig: {
-          aspectRatio: "1:1",
+          aspectRatio,
           imageSize: "1K",
         },
       },

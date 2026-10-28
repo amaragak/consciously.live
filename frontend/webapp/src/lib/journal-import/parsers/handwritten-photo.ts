@@ -1,6 +1,5 @@
 import { compressImageFileToJpegDataUrl } from "@/components/journal-image-extension";
 import { dateFromJournalText, parseIsoOrNull } from "@/lib/journal-import/dates";
-import { exifCreatedAt } from "@/lib/journal-import/exif-date";
 import {
   fileToOcrBlob,
   ocrPhotoFile,
@@ -33,12 +32,10 @@ export async function parseHandwrittenPhotoImport(
   const total = photos.length;
   let done = 0;
   const ocrByFile = new Map<File, Awaited<ReturnType<typeof ocrPhotoFile>>>();
-  const exifByFile = new Map<File, string | null>();
   const storedByFile = new Map<File, string>();
 
   for (const file of photos) {
     ocrByFile.set(file, await ocrPhotoFile(file));
-    exifByFile.set(file, await exifCreatedAt(file));
     const readable = await fileToOcrBlob(file);
     const forStore =
       readable instanceof File
@@ -60,8 +57,8 @@ export async function parseHandwrittenPhotoImport(
     let low = 0;
     const media: string[] = [];
     const names: string[] = [];
-    const exifDates: Array<string | null> = [];
     const modelDates: Array<string | null> = [];
+    const modelTitles: string[] = [];
     let engine = "haiku";
 
     for (const file of g.files) {
@@ -75,24 +72,23 @@ export async function parseHandwrittenPhotoImport(
         modelDates.push(
           ocr.date ? parseIsoOrNull(`${ocr.date}T12:00:00Z`) : null,
         );
+        if (ocr.title?.trim()) modelTitles.push(ocr.title.trim());
       }
       if (stored) media.push(stored);
       names.push(file.name);
-      exifDates.push(exifByFile.get(file) ?? null);
     }
 
     const body = parts.join("\n\n");
     const fromModel = earliestIso(modelDates);
     const fromParsed = dateFromJournalText(body);
-    const fromContent = fromModel ?? fromParsed;
-    const fromExif = earliestIso(exifDates);
-    const created_at = fromContent ?? fromExif;
+    const created_at = fromModel ?? fromParsed;
+    const title = modelTitles[0] ?? null;
     return {
-      title: null,
+      title,
       body,
       created_at,
-      // Content date is trusted; photo/file date is only a fallback.
-      date_uncertain: !fromContent,
+      // Content date only — never photo EXIF / file mtime.
+      date_uncertain: !created_at,
       source: "handwritten_photo",
       source_metadata: {
         photo_count: g.files.length,
@@ -100,11 +96,16 @@ export async function parseHandwrittenPhotoImport(
         ocr_engine: engine,
         filenames: names,
         ocr_spans: words.slice(0, 4000),
-        ...(fromContent
-          ? { date_source: "content" }
-          : fromExif
-            ? { date_source: "photo" }
-            : {}),
+        ...(created_at
+          ? {
+              date_source: fromModel
+                ? "haiku"
+                : fromParsed
+                  ? "content"
+                  : "none",
+            }
+          : { date_source: "none" }),
+        ...(title ? { title_source: "haiku" } : {}),
       },
       media_refs: media,
     };

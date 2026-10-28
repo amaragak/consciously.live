@@ -500,8 +500,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       entry: path.join(__dirname, "../../lambdas/admin-blog.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
+      // Cover gen runs up to 4 Nano Banana Pro images in parallel.
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 1024,
       role,
       environment: {
         VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
@@ -512,6 +513,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
         MARKETING_ORIGIN: authWebappOrigin,
         BLOG_NARRATE_FUNCTION_NAME: adminBlogNarrate.functionName,
+        GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+        MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
       },
     });
     addNestHttpRoutes(this, httpApi, {

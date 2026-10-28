@@ -1678,12 +1678,26 @@ export type JournalOcrWord = {
   confidence: number | null;
 };
 
+function parseImportHaikuDateTitle(data: Record<string, unknown>): {
+  date: string | null;
+  title: string | null;
+} {
+  const dateRaw = typeof data.date === "string" ? data.date.trim() : "";
+  const titleRaw = typeof data.title === "string" ? data.title.trim() : "";
+  return {
+    date: /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : null,
+    title: titleRaw ? titleRaw.slice(0, 80) : null,
+  };
+}
+
 export async function ocrJournalPhoto(imageBase64: string): Promise<{
   text: string;
   words: JournalOcrWord[];
   engine: "haiku";
   /** YYYY-MM-DD when the model found a written date on the page. */
   date: string | null;
+  /** Short suggested title from the page. */
+  title: string | null;
 }> {
   const base = getMedimadeApiBase();
   if (!base) {
@@ -1721,13 +1735,49 @@ export async function ocrJournalPhoto(imageBase64: string): Promise<{
       confidence: typeof o.confidence === "number" ? o.confidence : null,
     });
   }
-  const dateRaw = typeof data.date === "string" ? data.date.trim() : "";
+  const { date, title } = parseImportHaikuDateTitle(data);
   return {
     engine: "haiku",
     text: typeof data.text === "string" ? data.text : "",
     words,
-    date: /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : null,
+    date,
+    title,
   };
+}
+
+/** Haiku date + title from already-extracted entry text (typed PDF, markdown, txt). */
+export async function enrichJournalImportText(text: string): Promise<{
+  date: string | null;
+  title: string | null;
+  engine: "haiku";
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    throw new Error("VITE_MEDIMADE_API_URL is not set");
+  }
+  const res = await medimadeFetch(`${base}/journal/import/ocr`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      text,
+      ...(sessionTokenForBody() ? { sessionToken: sessionTokenForBody() } : {}),
+    }),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+  const { date, title } = parseImportHaikuDateTitle(data);
+  return { engine: "haiku", date, title };
 }
 
 export type InsightSourceRef = {
@@ -6921,6 +6971,12 @@ export type AdminBlogPost = {
   pinned: boolean;
   /** Curated top picks / personal favourites (admin-assigned). */
   topPicks: boolean;
+  /** Up to 3 essays in the public “Start here” row. */
+  startHere: boolean;
+  coverImageUrl: string | null;
+  coverImageKey: string | null;
+  listenSlug: string | null;
+  listenCardLabel: string;
   publishedAt: string | null;
   audioUrl: string | null;
   audioStatus: AdminBlogAudioStatus;
@@ -6985,6 +7041,24 @@ function normalizeAdminBlogPost(raw: unknown): AdminBlogPost | null {
     published: o.published === true,
     pinned: o.pinned === true,
     topPicks: o.topPicks === true,
+    startHere:
+      o.startHere === true || (o.startHere !== false && o.pinned === true),
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+        ? o.coverImageUrl.trim()
+        : null,
+    coverImageKey:
+      typeof o.coverImageKey === "string" && o.coverImageKey.trim()
+        ? o.coverImageKey.trim()
+        : null,
+    listenSlug:
+      typeof o.listenSlug === "string" && o.listenSlug.trim()
+        ? o.listenSlug.trim()
+        : null,
+    listenCardLabel:
+      typeof o.listenCardLabel === "string" && o.listenCardLabel.trim()
+        ? o.listenCardLabel.trim()
+        : "From Listen",
     publishedAt:
       typeof o.publishedAt === "string" && o.publishedAt.trim()
         ? o.publishedAt.trim()
@@ -7141,6 +7215,174 @@ export async function uploadAdminBlogPostImage(params: {
     );
   }
   return { url };
+}
+
+export type AdminBlogCoverOption = { url: string; key: string };
+
+export type AdminBlogListenPreview = {
+  slug: string;
+  kind: string;
+  title: string;
+  description: string;
+  listed: boolean;
+  durationSec: number | null;
+  coverImageUrl: string | null;
+  audioUrl: string | null;
+};
+
+/** Generate up to 4 Nano Banana Pro 16:9 cover options for a Read essay. */
+export async function generateAdminBlogCoverOptions(params: {
+  prompt?: string;
+  title?: string;
+  subheader?: string;
+  opening?: string;
+  count?: number;
+}): Promise<{ prompt: string; options: AdminBlogCoverOption[] }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "generateCoverOptions",
+      prompt: params.prompt,
+      title: params.title,
+      subheader: params.subheader,
+      opening: params.opening,
+      count: params.count ?? 4,
+    }),
+  });
+  const data = (await res.json()) as {
+    prompt?: unknown;
+    options?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const options = Array.isArray(data.options)
+    ? data.options
+        .map((raw) => {
+          if (!raw || typeof raw !== "object") return null;
+          const o = raw as Record<string, unknown>;
+          const url = typeof o.url === "string" ? o.url.trim() : "";
+          const key = typeof o.key === "string" ? o.key.trim() : "";
+          return url && key ? { url, key } : null;
+        })
+        .filter((x): x is AdminBlogCoverOption => Boolean(x))
+    : [];
+  return {
+    prompt: typeof data.prompt === "string" ? data.prompt : "",
+    options,
+  };
+}
+
+export async function uploadAdminBlogCoverImage(params: {
+  imageBase64: string;
+  mimeType: string;
+}): Promise<AdminBlogCoverOption> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "uploadCoverImage",
+      imageBase64: params.imageBase64,
+      mimeType: params.mimeType,
+    }),
+  });
+  const data = (await res.json()) as {
+    url?: unknown;
+    key?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const url = typeof data.url === "string" ? data.url.trim() : "";
+  const key = typeof data.key === "string" ? data.key.trim() : "";
+  if (!url || !key) throw new Error("Server did not return a cover URL");
+  return { url, key };
+}
+
+export async function resolveAdminBlogListenSlug(
+  slugOrUrl: string,
+): Promise<{
+  status: "ok" | "unlisted" | "revoked" | "missing";
+  item?: AdminBlogListenPreview;
+  warning?: string;
+  error?: string;
+}> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "resolveListenSlug",
+      slug: slugOrUrl,
+    }),
+  });
+  const data = (await res.json()) as {
+    status?: unknown;
+    item?: unknown;
+    warning?: unknown;
+    error?: unknown;
+    detail?: string;
+  };
+  const status =
+    data.status === "ok" ||
+    data.status === "unlisted" ||
+    data.status === "revoked" ||
+    data.status === "missing"
+      ? data.status
+      : res.status === 410
+        ? "revoked"
+        : res.status === 404
+          ? "missing"
+          : "missing";
+  let item: AdminBlogListenPreview | undefined;
+  if (data.item && typeof data.item === "object") {
+    const o = data.item as Record<string, unknown>;
+    const slug = typeof o.slug === "string" ? o.slug.trim() : "";
+    const title = typeof o.title === "string" ? o.title.trim() : "";
+    if (slug && title) {
+      item = {
+        slug,
+        kind: typeof o.kind === "string" ? o.kind : "meditation",
+        title,
+        description:
+          typeof o.description === "string" ? o.description.trim() : "",
+        listed: o.listed === true,
+        durationSec:
+          typeof o.durationSec === "number" && Number.isFinite(o.durationSec)
+            ? o.durationSec
+            : null,
+        coverImageUrl:
+          typeof o.coverImageUrl === "string" && o.coverImageUrl.trim()
+            ? o.coverImageUrl.trim()
+            : null,
+        audioUrl:
+          typeof o.audioUrl === "string" && o.audioUrl.trim()
+            ? o.audioUrl.trim()
+            : null,
+      };
+    }
+  }
+  return {
+    status,
+    item,
+    warning: typeof data.warning === "string" ? data.warning : undefined,
+    error:
+      typeof data.error === "string"
+        ? data.error
+        : typeof data.detail === "string"
+          ? data.detail
+          : undefined,
+  };
 }
 
 /** Upload author photo for the Read index (JPEG/PNG/WebP, compressed client-side). */
@@ -7997,6 +8239,20 @@ export function libraryMeditationCategoryLabel(m: {
   return "—";
 }
 
+/** Snapshot written by PATCH /library/meditations/share for Consciously Listen. */
+export type ListenShareSnapshot = {
+  kind: "meditation" | "story";
+  title: string;
+  description: string;
+  shownAs: string;
+  showBrief: boolean;
+  brief: string | null;
+  listed: boolean;
+  isExample: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LibraryMeditationItem = {
   id: string | null;
   sk: string | null;
@@ -8037,6 +8293,10 @@ export type LibraryMeditationItem = {
   isPublic?: boolean;
   /** Unlisted share link (owner library only). */
   shareToken?: string | null;
+  /** Listen public slug when shared (owner library only). */
+  listenSlug?: string | null;
+  /** Listen share sheet snapshot (owner library only). */
+  listenShare?: ListenShareSnapshot | null;
   catalogued: boolean;
   mp3Bytes: number | null;
   /** Saved create-flow draft (not shown in main library list). */
@@ -8377,33 +8637,71 @@ export async function patchMeditationPublic(
   }
 }
 
-/** Create or revoke an unlisted share_token (distinct from Community publish). */
+export type PatchMeditationShareInput = {
+  sk: string;
+  action: "create" | "update" | "revoke";
+  kind?: "meditation" | "story";
+  title?: string;
+  description?: string;
+  shownAs?: string;
+  showBrief?: boolean;
+  brief?: string | null;
+  listed?: boolean;
+  isExample?: boolean;
+};
+
+export type PatchMeditationShareResult = {
+  shareToken: string | null;
+  slug: string | null;
+  url: string | null;
+  listenShare: ListenShareSnapshot | null;
+};
+
+/** Create, update, or revoke a Listen share (distinct from Community publish). */
 export async function patchMeditationShare(
-  sk: string,
-  action: "create" | "revoke",
-): Promise<string | null> {
+  input: PatchMeditationShareInput | string,
+  legacyAction?: "create" | "revoke",
+): Promise<PatchMeditationShareResult> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const body: Record<string, unknown> =
+    typeof input === "string"
+      ? { sk: input, action: legacyAction ?? "create" }
+      : { ...input };
+  if (sessionTokenForBody()) body.sessionToken = sessionTokenForBody();
   const res = await medimadeFetch(`${base}/library/meditations/share`, {
     method: "PATCH",
     headers: medimadeJsonHeaders(),
-    body: JSON.stringify({
-      sk,
-      action,
-      ...(sessionTokenForBody() ? { sessionToken: sessionTokenForBody() } : {}),
-    }),
+    body: JSON.stringify(body),
   });
   const data = (await res.json()) as {
     error?: string;
     detail?: string;
     shareToken?: string | null;
+    slug?: string | null;
+    url?: string | null;
+    listenShare?: ListenShareSnapshot | null;
   };
   if (!res.ok) {
     const msg = data.detail ?? data.error ?? res.statusText;
     throw new Error(msg);
   }
-  const tok = data.shareToken;
-  return typeof tok === "string" && tok.trim() ? tok.trim() : null;
+  const tok =
+    typeof data.shareToken === "string" && data.shareToken.trim()
+      ? data.shareToken.trim()
+      : null;
+  const slug =
+    typeof data.slug === "string" && data.slug.trim()
+      ? data.slug.trim()
+      : null;
+  const url =
+    typeof data.url === "string" && data.url.trim() ? data.url.trim() : null;
+  return {
+    shareToken: tok,
+    slug,
+    url,
+    listenShare: data.listenShare ?? null,
+  };
 }
 
 export async function patchMeditationArchived(

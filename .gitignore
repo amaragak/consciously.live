@@ -43,6 +43,8 @@ docs/design/marketing/ref-*
 docs/design/dashboard/DashboardSetup*
 docs/design/journal/JournalImport*
 docs/design/home/HomeFull*
+docs/design/listen/Listen*
+docs/design/read/Read*
 
 # Local generated images (Nano Banana and other one-off stills)
 tmp/

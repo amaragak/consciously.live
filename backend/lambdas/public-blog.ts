@@ -17,6 +17,18 @@ function json(
   return jsonAuth(statusCode, payload);
 }
 
+/** ~220 wpm; never typed in — always from body word count. */
+function blogReadMinutes(body: string): number {
+  const text = body
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return 1;
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 220));
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
@@ -48,6 +60,11 @@ export async function handler(
           published: post.published,
           pinned: post.pinned,
           topPicks: post.topPicks,
+          startHere: post.startHere,
+          coverImageUrl: post.coverImageUrl,
+          listenSlug: post.listenSlug,
+          listenCardLabel: post.listenCardLabel,
+          readMinutes: blogReadMinutes(post.body),
           publishedAt: post.publishedAt,
           audioUrl: post.audioUrl,
           audioStatus: post.audioStatus === "ready" ? "ready" : "none",
@@ -80,6 +97,11 @@ export async function handler(
           audioUrl: p.audioUrl,
           pinned: p.pinned,
           topPicks: p.topPicks,
+          startHere: p.startHere,
+          coverImageUrl: p.coverImageUrl,
+          listenSlug: p.listenSlug,
+          listenCardLabel: p.listenCardLabel,
+          readMinutes: blogReadMinutes(p.body),
           publishedAt: p.publishedAt,
           updatedAt: p.updatedAt,
         })),

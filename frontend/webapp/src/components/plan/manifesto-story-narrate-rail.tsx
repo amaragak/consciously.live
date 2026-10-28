@@ -23,6 +23,7 @@ import {
   type CreateSoundStepHandle,
 } from "@/components/create-sound-step";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
+import { ListenShareSheet } from "@/components/listen-share-sheet";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
@@ -34,6 +35,7 @@ import {
   getMeditationAudioJobStatus,
   listLibraryMeditations,
   type LibraryMeditationItem,
+  type ListenShareSnapshot,
   type MeditationTargetMinutes,
 } from "@/lib/medimade-api";
 import {
@@ -189,6 +191,7 @@ export function ManifestoStoryNarrateRail({
   const [libraryItem, setLibraryItem] = useState<LibraryMeditationItem | null>(
     null,
   );
+  const [shareOpen, setShareOpen] = useState(false);
 
   const words = version.wordCount || countWords(version.thirdPersonText);
   const spokenWords =
@@ -638,6 +641,15 @@ export function ManifestoStoryNarrateRail({
           </span>
           <StaticWaveform />
         </div>
+        {libraryItem?.sk ? (
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            className="shrink-0 rounded-full border border-border px-3 py-2 text-[13px] font-semibold text-foreground hover:border-accent/40"
+          >
+            Share
+          </button>
+        ) : null}
       </div>
     ) : null;
 
@@ -782,6 +794,30 @@ export function ManifestoStoryNarrateRail({
         {narrateCard}
         {nightCard}
       </aside>
+      {libraryItem && shareOpen ? (
+        <ListenShareSheet
+          open
+          item={libraryItem}
+          kind="story"
+          onClose={() => setShareOpen(false)}
+          onShared={(next: {
+            listenSlug: string | null;
+            shareToken: string | null;
+            listenShare: ListenShareSnapshot | null;
+          }) => {
+            setLibraryItem((cur) =>
+              cur
+                ? {
+                    ...cur,
+                    listenSlug: next.listenSlug,
+                    shareToken: next.shareToken,
+                    listenShare: next.listenShare,
+                  }
+                : cur,
+            );
+          }}
+        />
+      ) : null}
     </>
   );
 }

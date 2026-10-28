@@ -9,6 +9,7 @@ export type PublicMeditationSummary = {
   durationSec: number | null;
   audioUrl: string | null;
   shareToken?: string | null;
+  listenSlug?: string | null;
 };
 
 function apiBase(): string | null {
@@ -43,6 +44,10 @@ export async function fetchSharedMeditationByToken(
           ? data.audioUrl.trim()
           : null,
       shareToken: token,
+      listenSlug:
+        typeof data.listenSlug === "string" && data.listenSlug.trim()
+          ? data.listenSlug.trim()
+          : null,
     };
   } catch {
     return null;
