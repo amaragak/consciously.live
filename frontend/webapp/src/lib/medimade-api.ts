@@ -1681,7 +1681,9 @@ export type JournalOcrWord = {
 export async function ocrJournalPhoto(imageBase64: string): Promise<{
   text: string;
   words: JournalOcrWord[];
-  engine: "textract";
+  engine: "haiku";
+  /** YYYY-MM-DD when the model found a written date on the page. */
+  date: string | null;
 }> {
   const base = getMedimadeApiBase();
   if (!base) {
@@ -1719,10 +1721,12 @@ export async function ocrJournalPhoto(imageBase64: string): Promise<{
       confidence: typeof o.confidence === "number" ? o.confidence : null,
     });
   }
+  const dateRaw = typeof data.date === "string" ? data.date.trim() : "";
   return {
-    engine: "textract",
+    engine: "haiku",
     text: typeof data.text === "string" ? data.text : "",
     words,
+    date: /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : null,
   };
 }
 

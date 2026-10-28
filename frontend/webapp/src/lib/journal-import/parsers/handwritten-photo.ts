@@ -1,6 +1,11 @@
 import { compressImageFileToJpegDataUrl } from "@/components/journal-image-extension";
+import { dateFromJournalText, parseIsoOrNull } from "@/lib/journal-import/dates";
 import { exifCreatedAt } from "@/lib/journal-import/exif-date";
-import { fileToOcrBlob, ocrPhotoFile, type OcrWord } from "@/lib/journal-import/ocr-browser";
+import {
+  fileToOcrBlob,
+  ocrPhotoFile,
+  type OcrWord,
+} from "@/lib/journal-import/ocr-browser";
 import type { JournalImportDraft } from "@/lib/journal-import/types";
 
 export type HandwrittenGroup = {
@@ -55,8 +60,9 @@ export async function parseHandwrittenPhotoImport(
     let low = 0;
     const media: string[] = [];
     const names: string[] = [];
-    const dates: Array<string | null> = [];
-    let engine: string = "textract";
+    const exifDates: Array<string | null> = [];
+    const modelDates: Array<string | null> = [];
+    let engine = "haiku";
 
     for (const file of g.files) {
       const ocr = ocrByFile.get(file);
@@ -66,18 +72,27 @@ export async function parseHandwrittenPhotoImport(
         if (ocr.text.trim()) parts.push(ocr.text.trim());
         words.push(...ocr.words);
         low += ocr.lowConfidenceCount;
+        modelDates.push(
+          ocr.date ? parseIsoOrNull(`${ocr.date}T12:00:00Z`) : null,
+        );
       }
       if (stored) media.push(stored);
       names.push(file.name);
-      dates.push(exifByFile.get(file) ?? null);
+      exifDates.push(exifByFile.get(file) ?? null);
     }
 
-    const created_at = earliestIso(dates);
+    const body = parts.join("\n\n");
+    const fromModel = earliestIso(modelDates);
+    const fromParsed = dateFromJournalText(body);
+    const fromContent = fromModel ?? fromParsed;
+    const fromExif = earliestIso(exifDates);
+    const created_at = fromContent ?? fromExif;
     return {
       title: null,
-      body: parts.join("\n\n"),
+      body,
       created_at,
-      date_uncertain: !created_at,
+      // Content date is trusted; photo/file date is only a fallback.
+      date_uncertain: !fromContent,
       source: "handwritten_photo",
       source_metadata: {
         photo_count: g.files.length,
@@ -85,6 +100,11 @@ export async function parseHandwrittenPhotoImport(
         ocr_engine: engine,
         filenames: names,
         ocr_spans: words.slice(0, 4000),
+        ...(fromContent
+          ? { date_source: "content" }
+          : fromExif
+            ? { date_source: "photo" }
+            : {}),
       },
       media_refs: media,
     };

@@ -2234,20 +2234,16 @@ export class MedimadeStack extends cdk.Stack {
         entry: path.join(__dirname, "../lambdas/journal-import-ocr.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(30),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(90),
+        memorySize: 512,
         environment: {
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
         },
       },
     );
     authJwtSecret.grantRead(journalImportOcr);
-    journalImportOcr.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["textract:DetectDocumentText"],
-        resources: ["*"],
-      }),
-    );
+    claudeApiKeySecret.grantRead(journalImportOcr);
 
     httpApi.addRoutes({
       path: "/journal/import/ocr",

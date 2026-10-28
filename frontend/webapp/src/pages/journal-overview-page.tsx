@@ -75,7 +75,7 @@ function EntryOverviewCard({
   entry: JournalEntry;
   divider?: boolean;
 }) {
-  const date = formatOverviewEntryDate(entry.createdAt);
+  const date = formatOverviewEntryDate(entry.entryDate || entry.createdAt);
   return (
     <Link
       href={`/journal/entries/${encodeURIComponent(entry.id)}`}

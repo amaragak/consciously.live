@@ -68,6 +68,7 @@ import {
   isDemoJournalEntry,
   isDemoOnlyStore,
   isGratitudeEntry,
+  journalEntryDateIso,
   journalEntryDraftChanged,
   journalEntryHasMeaningfulContent,
   journalEntryListTitle,
@@ -597,9 +598,13 @@ export function JournalView() {
   const [jumpDate, setJumpDate] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [importBatchId, setImportBatchId] = useState<string | null>(null);
+  /** When set, list is filtered to this import batch (chip active). Off by default after import. */
+  const [importFilterBatchId, setImportFilterBatchId] = useState<string | null>(
+    null,
+  );
   const [importNotice, setImportNotice] =
     useState<JournalImportDoneSummary | null>(null);
+  const listNavRef = useRef<HTMLElement | null>(null);
   const prevSectionRef = useRef<JournalSection | null>(null);
   /** After first journal GET attempt (or skip if no API URL); avoids PUT before pull completes. */
   const [remoteJournalChecked, setRemoteJournalChecked] = useState(false);
@@ -1174,10 +1179,13 @@ export function JournalView() {
   const filteredTabEntries = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = tabEntries.filter((e) => {
-      if (jumpDate && localDateKeyFromIso(e.createdAt) !== jumpDate) {
+      if (
+        jumpDate &&
+        localDateKeyFromIso(journalEntryDateIso(e)) !== jumpDate
+      ) {
         return false;
       }
-      if (importBatchId && e.importBatchId !== importBatchId) {
+      if (importFilterBatchId && e.importBatchId !== importFilterBatchId) {
         return false;
       }
       if (
@@ -1212,7 +1220,7 @@ export function JournalView() {
     tabEntries,
     searchQuery,
     jumpDate,
-    importBatchId,
+    importFilterBatchId,
     journalTab,
     selectedFolderId,
     meditationFilterId,
@@ -1459,7 +1467,7 @@ export function JournalView() {
       if (value) setSidebarMenu(null);
       if (!value) return;
       const match = tabEntries.find((e) => {
-        if (localDateKeyFromIso(e.createdAt) !== value) return false;
+        if (localDateKeyFromIso(journalEntryDateIso(e)) !== value) return false;
         if (
           journalTab === "journal" &&
           selectedFolderId &&
@@ -1592,11 +1600,13 @@ export function JournalView() {
       segments: [
         {
           entryId: entry.id,
-          title: entry.title.trim() || "Untitled",
+          title:
+            entry.title.trim() ||
+            journalEntryListTitle(entry, "Untitled"),
           bodyPlain: journalEntryPlainForHandoff(
             latestHtmlRef.current || entry.contentHtml,
           ),
-          createdAt: entry.createdAt,
+          createdAt: journalEntryDateIso(entry),
         },
       ],
     };
@@ -1746,11 +1756,13 @@ export function JournalView() {
     });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
-  // `?import=1` opens the import modal over Entries; `?imported=` filters just-imported.
+  // `?import=1` opens the import modal over Entries; `?imported=` activates the Last import filter.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("import") === "1") {
+      setImportNotice(null);
+      setImportFilterBatchId(null);
       setImportOpen(true);
       params.delete("import");
       const qs = params.toString();
@@ -1759,7 +1771,17 @@ export function JournalView() {
     }
     const imported = params.get("imported");
     if (!imported || !hydrated) return;
-    setImportBatchId(imported);
+    const count = entriesRef.current.filter(
+      (e) => e.importBatchId === imported,
+    ).length;
+    setImportNotice({
+      imported: count,
+      skippedDup: 0,
+      leftOut: 0,
+      range: null,
+      batchId: imported,
+    });
+    setImportFilterBatchId(imported);
     params.delete("imported");
     const qs = params.toString();
     navigate(`${pathname}${qs ? `?${qs}` : ""}`, { replace: true });
@@ -1918,6 +1940,42 @@ export function JournalView() {
   /** Insights: flush rail + content like journal compose (no centred page padding). */
   const journalFlushChrome = journalComposeChrome || insightsOpen;
 
+  const showLastImportChip = Boolean(importNotice);
+  const lastImportCount = importNotice?.imported ?? 0;
+
+  const applyLastImportFilter = useCallback(() => {
+    const batchId = importNotice?.batchId;
+    if (!batchId) return;
+    setImportFilterBatchId(batchId);
+    const imported = entriesRef.current
+      .filter((e) => e.importBatchId === batchId && !isGratitudeEntry(e))
+      .sort(
+        (a, b) =>
+          new Date(journalEntryDateIso(b)).getTime() -
+          new Date(journalEntryDateIso(a)).getTime(),
+      );
+    const first = imported[0];
+    if (first) selectEntry(first.id);
+    requestAnimationFrame(() => {
+      listNavRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, [importNotice, selectEntry]);
+
+  const clearLastImportFilter = useCallback(() => {
+    setImportFilterBatchId(null);
+  }, []);
+
+  const dismissImportNotice = useCallback(() => {
+    setImportNotice(null);
+    setImportFilterBatchId(null);
+  }, []);
+
+  const openImportModal = useCallback(() => {
+    setImportNotice(null);
+    setImportFilterBatchId(null);
+    setImportOpen(true);
+  }, []);
+
     return (
     <JournalLockGate>
     {/* Match Chat: sidebar + writing stay inside max-w-6xl; pattern gutter takes the right strip. */}
@@ -1939,7 +1997,7 @@ export function JournalView() {
         className={`shrink-0 ${
           journalComposeChrome ? "px-4 sm:px-6" : ""
         } ${mobileComposeChrome ? "max-sm:hidden" : ""} ${
-          importBatchId
+          importNotice
             ? "mb-3"
             : journalFlushChrome
               ? "mb-0"
@@ -1998,30 +2056,25 @@ export function JournalView() {
                   : importNotice.leftOut
                     ? ` · ${importNotice.leftOut} left out`
                     : ""}
-                . They’re in your entries with an Imported chip.
+                . They’re in your entries with an Imported chip.{" "}
+                <button
+                  type="button"
+                  className="cursor-pointer font-medium text-accent-link underline-offset-2 hover:underline"
+                  onClick={applyLastImportFilter}
+                >
+                  Show them
+                </button>
               </p>
             </div>
             <button
               type="button"
               className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-sm text-muted hover:text-foreground"
-              onClick={() => setImportNotice(null)}
+              onClick={dismissImportNotice}
               aria-label="Dismiss"
             >
               ×
             </button>
           </div>
-        ) : null}
-        {importBatchId ? (
-          <p className="mt-2 text-sm text-muted">
-            Showing just-imported pages.{" "}
-            <button
-              type="button"
-              className="cursor-pointer font-medium text-accent-link underline-offset-2 hover:underline"
-              onClick={() => setImportBatchId(null)}
-            >
-              Show all
-            </button>
-          </p>
         ) : null}
       </div>
 
@@ -2096,7 +2149,7 @@ export function JournalView() {
               New entry
             </PrimaryCreateButton>
           </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <SearchInput
                   className="min-w-0 flex-1"
                   inputClassName="py-2"
@@ -2104,6 +2157,35 @@ export function JournalView() {
                   onChange={setSearchQuery}
                   placeholder="Search entries..."
                 />
+                {showLastImportChip ? (
+                  <button
+                    type="button"
+                    aria-pressed={Boolean(importFilterBatchId)}
+                    onClick={() => {
+                      if (importFilterBatchId) clearLastImportFilter();
+                      else applyLastImportFilter();
+                    }}
+                    className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors ${
+                      importFilterBatchId
+                        ? "border-[#E6D3AE] bg-[#F6EEDD] text-[#8A6424]"
+                        : "border-border bg-card text-muted hover:text-foreground"
+                    }`}
+                  >
+                    Last import · {lastImportCount}
+                    {importFilterBatchId ? (
+                      <span
+                        role="presentation"
+                        className="ml-0.5 text-[14px] leading-none"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearLastImportFilter();
+                        }}
+                      >
+                        ×
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
                 {/* Mobile: folder + date between search and New */}
                 <div ref={filtersMenuRef} className="relative shrink-0 sm:hidden">
                   <button
@@ -2224,7 +2306,7 @@ export function JournalView() {
                 </div>
                 <span className="sm:hidden">
                   <JournalChromeMoreMenu
-                    onImport={() => setImportOpen(true)}
+                    onImport={openImportModal}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
@@ -2332,7 +2414,7 @@ export function JournalView() {
                   ) : null}
                 </div>
                 <JournalChromeMoreMenu
-                  onImport={() => setImportOpen(true)}
+                  onImport={openImportModal}
                   onSettings={() => setSettingsOpen(true)}
                 />
                 </div>
@@ -2405,7 +2487,7 @@ export function JournalView() {
                 </div>
                 <span className="sm:hidden">
                   <JournalChromeMoreMenu
-                    onImport={() => setImportOpen(true)}
+                    onImport={openImportModal}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
@@ -2439,7 +2521,7 @@ export function JournalView() {
                     ) : null}
                   </div>
                   <JournalChromeMoreMenu
-                    onImport={() => setImportOpen(true)}
+                    onImport={openImportModal}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </div>
@@ -2447,6 +2529,7 @@ export function JournalView() {
             </div>
           )}
           <nav
+            ref={listNavRef}
             className={`relative z-[1] min-h-0 space-y-5 pr-1 [scrollbar-gutter:stable] ${
               journalTab === "journal" || journalTab === "gratitude"
                 ? "max-sm:grow-0 max-sm:overflow-visible flex-1 overflow-y-auto"
@@ -2519,8 +2602,11 @@ export function JournalView() {
                               className="line-clamp-2 text-sm font-semibold"
                             />
                               <span className="truncate text-[12.5px] text-foreground/80">
-                                <time dateTime={e.createdAt} className="text-muted">
-                                  {formatJournalListDate(e.createdAt)}
+                                <time
+                                  dateTime={journalEntryDateIso(e)}
+                                  className="text-muted"
+                                >
+                                  {formatJournalListDate(journalEntryDateIso(e))}
                                 </time>
                                 <span className="text-muted"> · </span>
                                 {entryPreview(e)}
@@ -2554,9 +2640,8 @@ export function JournalView() {
                             <div
                               className={`mt-2 border-t-[0.5px] border-border-subtle pt-2 text-[10px] leading-snug ${metaMuted}`}
                             >
-                              Created{" "}
-                              <time dateTime={e.createdAt}>
-                                {formatJournalEntryDate(e.createdAt)}
+                              <time dateTime={journalEntryDateIso(e)}>
+                                {formatJournalEntryDate(journalEntryDateIso(e))}
                               </time>
                             </div>
                           </button>
@@ -2591,7 +2676,7 @@ export function JournalView() {
           ) : showGratitudeEditor && activeEntry ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <JournalGratitudeEditor
-                createdAt={activeEntry.createdAt}
+                createdAt={journalEntryDateIso(activeEntry)}
                 lines={gratitudeDraft}
                 onChange={onGratitudeChange}
                 onDelete={
@@ -2621,7 +2706,10 @@ export function JournalView() {
                 entryId={activeEntryId}
                 initialHtml={initialHtmlForEditor}
                 initialTitle={initialTitleForEditor}
+                entryDate={journalEntryDateIso(activeEntry)}
                 createdAt={activeEntry.createdAt}
+                updatedAt={activeEntry.updatedAt}
+                onEntryDateChange={(iso) => patchActive({ entryDate: iso })}
                 highlightQuote={(() => {
                   try {
                     const q = new URLSearchParams(window.location.search).get(
@@ -2708,9 +2796,47 @@ export function JournalView() {
                 }
                 headerAfter={
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px] text-muted">
-                    <time dateTime={activeEntry.createdAt}>
-                      {formatJournalEntryDate(activeEntry.createdAt)}
-                    </time>
+                    <span className="relative inline-flex items-center">
+                      <button
+                        type="button"
+                        className="cursor-pointer text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline"
+                        onClick={(ev) => {
+                          const wrap = ev.currentTarget.parentElement;
+                          const input = wrap?.querySelector(
+                            'input[type="date"]',
+                          ) as HTMLInputElement | null;
+                          if (!input) return;
+                          try {
+                            input.showPicker?.();
+                          } catch {
+                            input.click();
+                          }
+                        }}
+                      >
+                        <time dateTime={journalEntryDateIso(activeEntry)}>
+                          {formatJournalEntryDate(
+                            journalEntryDateIso(activeEntry),
+                          )}
+                        </time>
+                      </button>
+                      <input
+                        type="date"
+                        value={localDateKeyFromIso(
+                          journalEntryDateIso(activeEntry),
+                        )}
+                        onChange={(ev) => {
+                          const v = ev.target.value;
+                          if (!v) return;
+                          const [ys, ms, ds] = v.split("-").map(Number);
+                          if (!ys || !ms || !ds) return;
+                          const d = new Date(ys, ms - 1, ds, 12, 0, 0, 0);
+                          patchActive({ entryDate: d.toISOString() });
+                        }}
+                        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+                        tabIndex={-1}
+                        aria-label="Entry date"
+                      />
+                    </span>
                     <span aria-hidden>·</span>
                     <JournalEntryMeta
                       variant="inline"
@@ -2826,7 +2952,7 @@ export function JournalView() {
       onImported={(summary) => {
         const store = withoutDemoJournalEntries(loadJournalStoreRaw());
         setEntries(store.entries);
-        setImportBatchId(summary.batchId);
+        setImportFilterBatchId(null);
         setImportNotice(summary);
       }}
     />

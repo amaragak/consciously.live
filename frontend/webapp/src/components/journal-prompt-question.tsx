@@ -1,4 +1,5 @@
 import {
+  journalEntryListTitle,
   journalPromptMarksFromHtml,
   type JournalEntry,
 } from "@/lib/journal-storage";
@@ -35,17 +36,20 @@ export function JournalEntryListTitle({
   className = "",
   fallback = "Untitled entry",
 }: {
-  entry: Pick<JournalEntry, "title" | "contentHtml">;
+  entry: Pick<JournalEntry, "title" | "contentHtml" | "entryDate" | "createdAt">;
   className?: string;
   fallback?: string;
 }) {
   const typed = entry.title.trim();
   if (typed) return <span className={className}>{typed}</span>;
   const mark = journalPromptMarksFromHtml(entry.contentHtml)[0];
-  if (!mark) return <span className={className}>{fallback}</span>;
-  return (
-    <span className={className}>
-      <JournalPromptQuestion template={mark.template} name={mark.name} />
-    </span>
-  );
+  if (mark) {
+    return (
+      <span className={className}>
+        <JournalPromptQuestion template={mark.template} name={mark.name} />
+      </span>
+    );
+  }
+  const label = journalEntryListTitle(entry, fallback);
+  return <span className={className}>{label}</span>;
 }

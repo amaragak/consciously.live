@@ -1,4 +1,10 @@
-import { isGratitudeEntry, journalEntryPlainForHandoff, type JournalEntry, type JournalStoreV2 } from "@/lib/journal-storage";
+import {
+  isGratitudeEntry,
+  journalEntryListTitle,
+  journalEntryPlainForHandoff,
+  type JournalEntry,
+  type JournalStoreV2,
+} from "@/lib/journal-storage";
 import { journalMoodLabel } from "@/lib/journal-moods";
 import { md5Hex, md5HexOfString } from "@/lib/md5";
 import { buildZipBlob } from "@/lib/zip-store";
@@ -106,9 +112,9 @@ function htmlToMarkdown(html: string): string {
 }
 
 function entryPlainBlock(e: JournalEntry): string {
-  const date = new Date(e.createdAt).toLocaleString();
+  const date = new Date(e.entryDate || e.createdAt).toLocaleString();
   const bits: string[] = [];
-  bits.push(e.title.trim() || "Untitled entry");
+  bits.push(e.title.trim() || journalEntryListTitle(e));
   bits.push(date);
   if (e.mood) {
     const label = journalMoodLabel(e.mood);
@@ -127,7 +133,9 @@ function entryPlainBlock(e: JournalEntry): string {
 
 export function journalStoreToPlainText(entries: JournalEntry[]): string {
   const sorted = [...entries].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    (a, b) =>
+      new Date(a.entryDate || a.createdAt).getTime() -
+      new Date(b.entryDate || b.createdAt).getTime(),
   );
   return sorted.map(entryPlainBlock).join("\n\n———\n\n");
 }
@@ -149,7 +157,9 @@ export function printJournalPdf(entries: JournalEntry[]): void {
   const w = window.open("", "_blank", "noopener,noreferrer");
   if (!w) return;
   const sorted = [...entries].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    (a, b) =>
+      new Date(a.entryDate || a.createdAt).getTime() -
+      new Date(b.entryDate || b.createdAt).getTime(),
   );
   const article = sorted
     .map((e) => {
@@ -225,7 +235,7 @@ function entryToDayOne(e: JournalEntry): {
 
   const json: Record<string, unknown> = {
     uuid,
-    creationDate: new Date(e.createdAt).toISOString(),
+    creationDate: new Date(e.entryDate || e.createdAt).toISOString(),
     modifiedDate: new Date(e.updatedAt).toISOString(),
     text: text.trim() || " ",
     starred: false,
@@ -240,7 +250,9 @@ function entryToDayOne(e: JournalEntry): {
 /** Day One JSON zip: `Journal.json` + `photos/{md5}.{type}`. Import via Day One Settings → Import. */
 export function downloadJournalDayOneZip(entries: JournalEntry[]): void {
   const sorted = [...entries].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    (a, b) =>
+      new Date(a.entryDate || a.createdAt).getTime() -
+      new Date(b.entryDate || b.createdAt).getTime(),
   );
   const dayOneEntries: Record<string, unknown>[] = [];
   const files: { name: string; bytes: Uint8Array }[] = [];

@@ -44,6 +44,11 @@ export type JournalLink = {
 
 export type JournalEntry = {
   id: string;
+  /**
+   * Day the entry is about (list sort/group + editor date). Distinct from
+   * `createdAt` / `updatedAt`, which are system timestamps only.
+   */
+  entryDate: string;
   createdAt: string;
   updatedAt: string;
   title: string;
@@ -194,6 +199,25 @@ export function deriveEntryTitle(html: string): string {
   return t.length > 80 ? `${t.slice(0, 77)}…` : t;
 }
 
+/** ISO used for list order, grouping, and the editor date. */
+export function journalEntryDateIso(
+  entry: Pick<JournalEntry, "entryDate" | "createdAt">,
+): string {
+  return entry.entryDate || entry.createdAt;
+}
+
+/** First line of body text for display titles (no “Untitled entry”). */
+export function journalEntryFirstLine(
+  html: string,
+  maxLen = 80,
+): string | null {
+  const t = stripHtmlToText(html);
+  if (!t) return null;
+  const line = t.split(/\n/)[0]?.trim() || t;
+  if (!line) return null;
+  return line.length > maxLen ? `${line.slice(0, maxLen - 3)}…` : line;
+}
+
 /** sessionStorage key: handoff from Journal → Create (meditation from entries). */
 export const JOURNAL_MEDITATION_PAYLOAD_KEY = "mm_journal_meditation_payload_v1";
 
@@ -291,16 +315,28 @@ export function journalPromptPlainText(template: string, name?: string): string 
   return t;
 }
 
-/** Card title: a typed title, otherwise the first prompt question. Display only. */
+/** Card title: typed title, prompt, first body line, or entry date. Display only. */
 export function journalEntryListTitle(
-  entry: { title: string; contentHtml: string },
+  entry: {
+    title: string;
+    contentHtml: string;
+    entryDate?: string;
+    createdAt?: string;
+  },
   fallback = "Untitled entry",
 ): string {
   const typed = entry.title.trim();
   if (typed) return typed;
   const first = journalPromptMarksFromHtml(entry.contentHtml)[0];
-  if (!first) return fallback;
-  return journalPromptPlainText(first.template, first.name) || fallback;
+  if (first) {
+    return journalPromptPlainText(first.template, first.name) || fallback;
+  }
+  const line = journalEntryFirstLine(entry.contentHtml);
+  if (line) return line;
+  if (entry.entryDate || entry.createdAt) {
+    return formatJournalEntryDate(entry.entryDate || entry.createdAt!);
+  }
+  return fallback;
 }
 
 /**
@@ -384,13 +420,17 @@ function newEntry(overrides?: Partial<JournalEntry>): JournalEntry {
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `e_${now}_${Math.random().toString(36).slice(2, 9)}`;
+  const createdAt = overrides?.createdAt ?? now;
+  const updatedAt = overrides?.updatedAt ?? now;
+  const entryDate = overrides?.entryDate ?? createdAt;
   return {
     id,
-    createdAt: now,
-    updatedAt: now,
     title: "",
     contentHtml: "<p></p>",
     ...overrides,
+    createdAt,
+    updatedAt,
+    entryDate,
   };
 }
 
@@ -911,8 +951,23 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
   const nextMeditationId = primary?.targetId ?? meditationId;
   const nextSource = primary?.meditationSource ?? meditationSource;
   const nextSnapshot = primary?.meditationSnapshot ?? meditationSnapshot;
+  const createdAt =
+    typeof e.createdAt === "string" && e.createdAt.trim()
+      ? e.createdAt
+      : new Date().toISOString();
+  const updatedAt =
+    typeof e.updatedAt === "string" && e.updatedAt.trim()
+      ? e.updatedAt
+      : createdAt;
+  const entryDate =
+    typeof e.entryDate === "string" && e.entryDate.trim()
+      ? e.entryDate
+      : createdAt;
   return {
     ...e,
+    createdAt,
+    updatedAt,
+    entryDate,
     title: typeof e.title === "string" ? e.title : deriveEntryTitle(e.contentHtml),
     contentHtml: e.contentHtml?.trim() ? e.contentHtml : "<p></p>",
     ...(kind ? { kind, gratitude } : { kind: undefined, gratitude: undefined }),
@@ -1158,6 +1213,21 @@ export function localDateKeyFromIso(iso: string): string {
   return localDateKey(d);
 }
 
+/** `YYYY-MM-DD` for `<input type="date">` from an entry-date ISO. */
+export function isoToDateInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return localDateKeyFromIso(iso);
+}
+
+/** Local noon ISO from a date input value. */
+export function dateInputToIso(v: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function escapeHtmlText(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -1204,7 +1274,9 @@ export function findGratitudeEntryForLocalDate(
   dateKey: string,
 ): JournalEntry | undefined {
   return entries.find(
-    (e) => isGratitudeEntry(e) && localDateKeyFromIso(e.createdAt) === dateKey,
+    (e) =>
+      isGratitudeEntry(e) &&
+      localDateKeyFromIso(journalEntryDateIso(e)) === dateKey,
   );
 }
 
@@ -1345,27 +1417,32 @@ export function shouldPreferRemoteJournalStore(
   return false;
 }
 
+function sortByEntryDateDesc(a: JournalEntry, b: JournalEntry): number {
+  return (
+    new Date(journalEntryDateIso(b)).getTime() -
+    new Date(journalEntryDateIso(a)).getTime()
+  );
+}
+
 export function groupJournalEntriesForSidebar(
   entries: JournalEntry[],
   now = new Date(),
 ): JournalSidebarGroup[] {
   const t = now.getTime();
-  const sorted = [...entries].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  );
+  const sorted = [...entries].sort(sortByEntryDateDesc);
 
   const lastWeek: JournalEntry[] = [];
   const lastMonth: JournalEntry[] = [];
   const olderByMonth = new Map<string, JournalEntry[]>();
 
   for (const e of sorted) {
-    const age = t - new Date(e.updatedAt).getTime();
+    const age = t - new Date(journalEntryDateIso(e)).getTime();
     if (age <= 7 * MS_DAY) {
       lastWeek.push(e);
     } else if (age <= 30 * MS_DAY) {
       lastMonth.push(e);
     } else {
-      const mk = monthKeyFromIso(e.updatedAt);
+      const mk = monthKeyFromIso(journalEntryDateIso(e));
       const arr = olderByMonth.get(mk) ?? [];
       arr.push(e);
       olderByMonth.set(mk, arr);
@@ -1386,10 +1463,7 @@ export function groupJournalEntriesForSidebar(
   for (const mk of monthKeys) {
     const list = olderByMonth.get(mk) ?? [];
     if (!list.length) continue;
-    list.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
+    list.sort(sortByEntryDateDesc);
     groups.push({
       id: `month-${mk}`,
       label: formatMonthHeading(mk),
@@ -1409,42 +1483,65 @@ function startOfWeekMonday(d: Date): Date {
   return x;
 }
 
-function weekGroupLabel(weekStart: Date, now: Date): string {
-  const thisWeek = startOfWeekMonday(now).getTime();
-  const start = weekStart.getTime();
-  const weeksAgo = Math.round((thisWeek - start) / (7 * MS_DAY));
-  if (weeksAgo <= 0) return "This week";
-  if (weeksAgo === 1) return "Last week";
-  if (weeksAgo < 12) return `${weeksAgo} weeks ago`;
-  return formatMonthHeading(
-    `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}`,
-  );
-}
-
-/** Group freeform journal entries by calendar week (Mon–Sun) for the entries sidebar. */
+/** Group freeform entries by entry date: This / Last / 2 weeks ago, then month+year. */
 export function groupJournalEntriesByWeek(
   entries: JournalEntry[],
   now = new Date(),
 ): JournalSidebarGroup[] {
-  const sorted = [...entries].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  );
-  const byWeek = new Map<number, JournalEntry[]>();
+  const sorted = [...entries].sort(sortByEntryDateDesc);
+  const thisWeekStart = startOfWeekMonday(now).getTime();
+  const lastWeekStart = thisWeekStart - 7 * MS_DAY;
+  const twoWeeksStart = thisWeekStart - 14 * MS_DAY;
+
+  const thisWeek: JournalEntry[] = [];
+  const lastWeek: JournalEntry[] = [];
+  const twoWeeksAgo: JournalEntry[] = [];
+  const olderByMonth = new Map<string, JournalEntry[]>();
+
   for (const e of sorted) {
-    const weekStart = startOfWeekMonday(new Date(e.updatedAt));
-    const key = weekStart.getTime();
-    const arr = byWeek.get(key) ?? [];
-    arr.push(e);
-    byWeek.set(key, arr);
+    const weekStart = startOfWeekMonday(
+      new Date(journalEntryDateIso(e)),
+    ).getTime();
+    if (weekStart >= thisWeekStart) {
+      thisWeek.push(e);
+    } else if (weekStart >= lastWeekStart) {
+      lastWeek.push(e);
+    } else if (weekStart >= twoWeeksStart) {
+      twoWeeksAgo.push(e);
+    } else {
+      const mk = monthKeyFromIso(journalEntryDateIso(e));
+      const arr = olderByMonth.get(mk) ?? [];
+      arr.push(e);
+      olderByMonth.set(mk, arr);
+    }
   }
-  const keys = Array.from(byWeek.keys()).sort((a, b) => b - a);
-  return keys.map((key) => {
-    const weekStart = new Date(key);
-    const list = byWeek.get(key) ?? [];
-    return {
-      id: `week-${key}`,
-      label: weekGroupLabel(weekStart, now),
+
+  const groups: JournalSidebarGroup[] = [];
+  if (thisWeek.length) {
+    groups.push({ id: "this-week", label: "This week", entries: thisWeek });
+  }
+  if (lastWeek.length) {
+    groups.push({ id: "last-week", label: "Last week", entries: lastWeek });
+  }
+  if (twoWeeksAgo.length) {
+    groups.push({
+      id: "two-weeks-ago",
+      label: "2 weeks ago",
+      entries: twoWeeksAgo,
+    });
+  }
+  const monthKeys = Array.from(olderByMonth.keys()).sort((a, b) =>
+    b.localeCompare(a),
+  );
+  for (const mk of monthKeys) {
+    const list = olderByMonth.get(mk) ?? [];
+    if (!list.length) continue;
+    list.sort(sortByEntryDateDesc);
+    groups.push({
+      id: `month-${mk}`,
+      label: formatMonthHeading(mk),
       entries: list,
-    };
-  });
+    });
+  }
+  return groups;
 }

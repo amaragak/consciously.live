@@ -44,7 +44,7 @@ export function flagDuplicates(
     let likelyDuplicate = false;
     let duplicateHint: string | null = null;
     for (const e of live) {
-      const et = new Date(e.createdAt).getTime();
+      const et = new Date(e.entryDate || e.createdAt).getTime();
       const closeTime =
         Number.isFinite(t) && Number.isFinite(et) && Math.abs(t - et) <= DUP_WINDOW_MS;
       const existingText = `${e.title}\n${stripHtmlToText(e.contentHtml)}`;
@@ -132,7 +132,8 @@ export function previewRowsToEntries(
       return newJournalEntry({
         title: (r.title ?? "").trim(),
         contentHtml: markdownToJournalHtml(r.body) + photosHtml,
-        createdAt: created,
+        entryDate: created,
+        createdAt: now,
         updatedAt: now,
         ...(tags.length ? { tags } : {}),
         ...(mood ? { mood } : {}),

@@ -10,7 +10,10 @@ import {
   revokeImportFileCard,
   type ImportFileCard,
 } from "@/lib/journal-import/batch";
-import { OCR_LOW_CONFIDENCE, type OcrWord } from "@/lib/journal-import/ocr-browser";
+import {
+  OCR_LOW_CONFIDENCE,
+  type OcrWord,
+} from "@/lib/journal-import/ocr-browser";
 import {
   flagDuplicates,
   mergeImportedEntries,
@@ -641,14 +644,16 @@ export function JournalImportWorkspace({ open, onClose, onImported }: Props) {
             ) : null}
 
             <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-1">
-              <p className="text-[13.5px] text-muted">
-                {readingLabel ||
-                  (readyCount
-                    ? `${readyCount} ready${
-                        queuedCount || readingCount ? " · still reading…" : ""
-                      }`
-                    : "Add files to begin")}
-              </p>
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <p className="text-[13.5px] text-muted">
+                  {readingLabel ||
+                    (readyCount
+                      ? `${readyCount} ready${
+                          queuedCount || readingCount ? " · still reading…" : ""
+                        }`
+                      : "Add files to begin")}
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className={GHOST} onClick={requestClose}>
                   Cancel
@@ -759,9 +764,12 @@ export function JournalImportWorkspace({ open, onClose, onImported }: Props) {
                     placeholder="Title"
                   />
                 </div>
-                <p className="text-[12.5px] text-muted">
-                  From {sourceFileLabel(row)} · {sourceKindLabel(row)}
-                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-[12.5px] text-muted">
+                    From {sourceFileLabel(row)} · {sourceKindLabel(row)}
+                    {row.source === "handwritten_photo" ? " · Haiku" : ""}
+                  </p>
+                </div>
 
                 <div className="flex min-h-0 flex-col gap-3.5 md:flex-row">
                   {pageImage ? (

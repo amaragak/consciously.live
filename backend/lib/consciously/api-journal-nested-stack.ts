@@ -67,12 +67,6 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     speechifyApiKeySecret.grantRead(role);
     meditationAnalyticsTable.grantReadData(role);
     meditationJobsTable.grantReadData(role);
-    role.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["textract:DetectDocumentText"],
-        resources: ["*"],
-      }),
-    );
 
     const journalTranscribe = new lambda_nodejs.NodejsFunction(
       this,
@@ -299,11 +293,13 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/journal-import-ocr.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(30),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(90),
+        memorySize: 512,
         role,
         environment: {
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
+          AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         },
       },
     );

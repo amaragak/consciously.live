@@ -148,7 +148,7 @@ export function HomeV2SiteHeader({
 
         <nav
           aria-label="Main"
-          className="hidden min-w-0 flex-1 items-center justify-center gap-7 whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] lg:flex"
+          className="hidden min-w-0 flex-1 items-center justify-center gap-5 whitespace-nowrap text-[15px] text-[var(--hv2-hero-nav)] lg:flex"
         >
           {toolLinks.map((t) => {
             const active = activeTool === t.id;
@@ -178,7 +178,7 @@ export function HomeV2SiteHeader({
             );
           })}
           <span
-            className="h-5 w-px bg-[var(--hv2-hero-divider)]"
+            className="h-5 w-[1.5px] bg-[rgba(246,241,231,0.34)]"
             aria-hidden
           />
           {secondaryLinks.map((s) => {

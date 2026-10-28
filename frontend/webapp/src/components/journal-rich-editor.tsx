@@ -10,7 +10,11 @@ import {
 } from "@/lib/tiptap-markdown-clipboard";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Image as ImageIcon, List, ListOrdered, Redo2, Undo2 } from "lucide-react";
-import { formatJournalEntryDate } from "@/lib/journal-storage";
+import {
+  formatJournalEntryDate,
+  isoToDateInput,
+  dateInputToIso,
+} from "@/lib/journal-storage";
 import {
   JournalVoiceClip,
   blobToDataUrl,
@@ -43,7 +47,12 @@ type Props = {
   entryId: string;
   initialHtml: string;
   initialTitle: string;
+  /** Day the entry is about (editable under the title). */
+  entryDate: string;
+  /** System timestamps for the ⋯ menu info line. */
   createdAt: string;
+  updatedAt: string;
+  onEntryDateChange?: (iso: string) => void;
   /** When set, shows a mic that records into the journal and enables clip transcription. */
   transcribeApiBase: string | null;
   titlePlaceholder?: string;
@@ -82,7 +91,10 @@ export function JournalRichEditor({
   entryId,
   initialHtml,
   initialTitle,
+  entryDate,
   createdAt,
+  updatedAt,
+  onEntryDateChange,
   transcribeApiBase,
   titlePlaceholder = "Title",
   placeholder = "Write freely…",
@@ -108,6 +120,7 @@ export function JournalRichEditor({
   const editorSeededForEntryRef = useRef<string | null>(null);
   const [entryTitle, setEntryTitle] = useState(initialTitle);
   const [menuOpen, setMenuOpen] = useState(false);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
   const [toolbarMoreOpen, setToolbarMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -457,10 +470,46 @@ export function JournalRichEditor({
   }
 
   const showEntryMenu = Boolean(
-    onDelete || onConnectLifeArea || onGenerateMeditation,
+    onDelete || onConnectLifeArea || onGenerateMeditation || entryMenuBefore,
   );
   const menuItemClass =
     "block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30";
+
+  const entryDateControl = onEntryDateChange ? (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        className="cursor-pointer text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline"
+        onClick={() => {
+          const el = dateInputRef.current;
+          if (!el) return;
+          try {
+            el.showPicker?.();
+          } catch {
+            el.click();
+          }
+        }}
+      >
+        <time dateTime={entryDate}>{formatJournalEntryDate(entryDate)}</time>
+      </button>
+      <input
+        ref={dateInputRef}
+        type="date"
+        value={isoToDateInput(entryDate)}
+        onChange={(ev) => {
+          const iso = dateInputToIso(ev.target.value);
+          if (iso) onEntryDateChange(iso);
+        }}
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+        tabIndex={-1}
+        aria-label="Entry date"
+      />
+    </span>
+  ) : (
+    <time dateTime={entryDate} className="text-[12px] text-muted">
+      {formatJournalEntryDate(entryDate)}
+    </time>
+  );
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
@@ -470,12 +519,7 @@ export function JournalRichEditor({
           <div className="flex items-start gap-2 px-7 pb-3 pt-3">
             <div className="min-w-0 flex-1">
               {!hideCreatedDate ? (
-                <time
-                  className="mb-1 block text-xs text-muted"
-                  dateTime={createdAt}
-                >
-                  Created {formatJournalEntryDate(createdAt)}
-                </time>
+                <div className="mb-1">{entryDateControl}</div>
               ) : null}
               <label className="block">
                 <span className="sr-only">Title</span>
@@ -546,7 +590,7 @@ export function JournalRichEditor({
                     ) : null}
                     {onDelete ? (
                       <>
-                        {onConnectLifeArea || onGenerateMeditation ? (
+                        {onConnectLifeArea || onGenerateMeditation || entryMenuBefore ? (
                           <div className="my-1 border-t border-border" />
                         ) : null}
                         <button
@@ -562,6 +606,12 @@ export function JournalRichEditor({
                         </button>
                       </>
                     ) : null}
+                    <div className="my-1 border-t border-border" />
+                    <p className="px-3 py-2 text-[11px] leading-snug text-muted">
+                      Created {formatJournalEntryDate(createdAt)}
+                      {" · "}
+                      Last edited {formatJournalEntryDate(updatedAt)}
+                    </p>
                   </div>
                 ) : null}
               </div>

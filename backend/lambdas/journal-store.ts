@@ -73,6 +73,8 @@ type JournalMeditationSnapshot = {
 
 type JournalEntry = {
   id: string;
+  /** Day the entry is about; falls back to createdAt when missing. */
+  entryDate?: string;
   createdAt: string;
   updatedAt: string;
   title: string;
@@ -336,8 +338,13 @@ function journalEntryFromItem(
       };
     }
   }
+  const entryDate =
+    typeof item.entryDate === "string" && item.entryDate.trim()
+      ? item.entryDate.trim()
+      : item.createdAt;
   return {
     id,
+    entryDate,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     title: item.title,
@@ -538,6 +545,7 @@ async function persistStoreToDdb(
       pk: ownerId,
       sk: entrySk(e.id),
       id: e.id,
+      entryDate: e.entryDate || e.createdAt,
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
       title: e.title,

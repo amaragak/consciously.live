@@ -353,8 +353,8 @@ export function HomeV2AuthActions({
 
   const mist = tone === "mist";
   const ctaClass = mist
-    ? `inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full border border-[#AFC2DC] bg-[#C9D7EA] px-[22px] text-[15px] font-semibold text-[#14203A] hover:bg-[#BDCDE4]${
-        compact ? " h-9 px-4 text-[14px]" : ""
+    ? `inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full border border-[#AFC2DC] bg-[#C9D7EA] px-4 text-[15px] font-semibold text-[#14203A] hover:bg-[#BDCDE4]${
+        compact ? " h-9 px-3.5 text-[14px]" : ""
       }`
     : `home-v2-header-cta accent-fill-gradient inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-center font-semibold transition-opacity hover:opacity-90${
         compact ? " is-compact" : ""

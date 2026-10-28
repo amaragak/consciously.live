@@ -262,10 +262,10 @@ function gratitudeEntryLabelFromPath(pathname: string): string | null {
   try {
     const entry = loadJournalStoreRaw().entries.find((e) => e.id === id);
     if (!entry) return "Gratitude";
-    if (localDateKeyFromIso(entry.createdAt) === localDateKey()) {
+    if (localDateKeyFromIso(entry.entryDate || entry.createdAt) === localDateKey()) {
       return "Today";
     }
-    return formatJournalEntryDate(entry.createdAt);
+    return formatJournalEntryDate(entry.entryDate || entry.createdAt);
   } catch {
     return "Gratitude";
   }

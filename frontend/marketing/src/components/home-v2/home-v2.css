@@ -497,7 +497,7 @@
 }
 
 .home-v2-header-cta {
-  padding: 0.75rem 1.375rem;
+  padding: 0.7rem 1rem;
   font-size: 15px;
   line-height: 1.25;
   transition:
@@ -507,7 +507,7 @@
 }
 
 .home-v2-header-cta.is-compact {
-  padding: 0.4rem 1.05rem;
+  padding: 0.4rem 0.85rem;
   font-size: 14px;
 }
 

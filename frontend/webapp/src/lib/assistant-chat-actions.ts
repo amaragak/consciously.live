@@ -241,7 +241,7 @@ function gratitudeResultItem(entry: JournalEntry): AssistantActionResultItem {
   return {
     id: entry.id,
     title: "Gratitudes",
-    meta: formatJournalEntryDate(entry.createdAt),
+    meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
     lines: lines.length ? lines : ["Empty"],
     href: `/journal/gratitudes/${encodeURIComponent(entry.id)}`,
   };
@@ -544,7 +544,7 @@ function applyJournalEntry(
       {
         id: entry.id,
         title: "Journal",
-        meta: formatJournalEntryDate(entry.createdAt),
+        meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
         subtitle: title.slice(0, 120),
         body: stripHtmlToText(contentHtml).trim() || undefined,
         href: `/journal/entries/${encodeURIComponent(entry.id)}`,
@@ -644,7 +644,7 @@ function applyJournalUpdate(
       {
         id: entry.id,
         title: "Journal",
-        meta: formatJournalEntryDate(entry.createdAt),
+        meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
         subtitle: entry.title || "Untitled",
         body: stripHtmlToText(entry.contentHtml).trim() || undefined,
         href: `/journal/entries/${encodeURIComponent(entry.id)}`,
@@ -849,7 +849,7 @@ function applyGetJournalEntry(
       {
         id: entry.id,
         title: "Journal",
-        meta: formatJournalEntryDate(entry.createdAt),
+        meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
         subtitle: entry.title || "Untitled",
         body: stripHtmlToText(entry.contentHtml).trim() || undefined,
         href: `/journal/entries/${encodeURIComponent(entry.id)}`,

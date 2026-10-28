@@ -1,6 +1,6 @@
 import { ocrJournalPhoto } from "@/lib/medimade-api";
 
-/** Flip to `true` to use in-browser Text Detector / Tesseract instead of Textract. */
+/** Flip to `true` to use in-browser Text Detector / Tesseract instead of Haiku. */
 export const USE_DEVICE_OCR = false;
 
 export const OCR_LOW_CONFIDENCE = 70;
@@ -13,8 +13,10 @@ export type OcrWord = {
 export type OcrPhotoResult = {
   text: string;
   words: OcrWord[];
-  engine: "text_detector" | "tesseract" | "textract";
+  engine: "text_detector" | "tesseract" | "haiku";
   lowConfidenceCount: number;
+  /** YYYY-MM-DD written on the page, when the cloud reader found one. */
+  date: string | null;
 };
 
 type TextDetectorCtor = new () => {
@@ -56,9 +58,7 @@ export async function terminateOcrWorker(): Promise<void> {
 }
 
 function isHeicName(file: File): boolean {
-  return (
-    /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name)
-  );
+  return /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
 }
 
 export async function fileToOcrBlob(file: File): Promise<Blob> {
@@ -134,7 +134,7 @@ function canvasToJpegBase64(canvas: HTMLCanvasElement, quality: number): string 
   return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
 }
 
-async function ocrPhotoFileTextract(file: File): Promise<OcrPhotoResult> {
+async function ocrPhotoFileHaiku(file: File): Promise<OcrPhotoResult> {
   const blob = await fileToOcrBlob(file);
   const canvas = await blobToCanvas(blob);
   let quality = 0.82;
@@ -148,8 +148,9 @@ async function ocrPhotoFileTextract(file: File): Promise<OcrPhotoResult> {
   return {
     text: dated.text.trim(),
     words,
-    engine: "textract",
+    engine: "haiku",
     lowConfidenceCount: countLow(words),
+    date: dated.date,
   };
 }
 
@@ -168,6 +169,7 @@ async function ocrPhotoFileOnDevice(file: File): Promise<OcrPhotoResult> {
       words,
       engine: "text_detector",
       lowConfidenceCount: 0,
+      date: null,
     };
   }
 
@@ -194,10 +196,11 @@ async function ocrPhotoFileOnDevice(file: File): Promise<OcrPhotoResult> {
     words,
     engine: "tesseract",
     lowConfidenceCount: countLow(words),
+    date: null,
   };
 }
 
 export async function ocrPhotoFile(file: File): Promise<OcrPhotoResult> {
   if (USE_DEVICE_OCR) return ocrPhotoFileOnDevice(file);
-  return ocrPhotoFileTextract(file);
+  return ocrPhotoFileHaiku(file);
 }

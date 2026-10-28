@@ -112,7 +112,7 @@ main:has(.new-home) {
   flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 20px;
   font-size: 15px;
   color: var(--hv2-hero-nav);
   white-space: nowrap;
@@ -130,9 +130,9 @@ main:has(.new-home) {
 }
 
 .new-home-sep {
-  width: 1px;
+  width: 1.5px;
   height: 20px;
-  background: var(--hv2-hero-divider);
+  background: rgba(246, 241, 231, 0.34);
 }
 
 .new-home-nav-end {
