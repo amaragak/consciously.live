@@ -239,7 +239,7 @@ export function getSetUpItemDefs(lifeAreaTitle: string | null): GetSetUpItemDef[
       chip: "Journal",
       body: "From Day One, PDF, text files or photos of handwritten pages.",
       action: "Import",
-      href: "/journal/import",
+      href: "/journal/entries?import=1",
     },
   ];
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import {
@@ -29,12 +29,28 @@ import {
 } from "@/lib/journal-storage";
 import { putJournalStoreRemote } from "@/lib/medimade-api";
 
-type Step = "add" | "review" | "done";
+type Step = "add" | "review";
+
+export type JournalImportDoneSummary = {
+  imported: number;
+  skippedDup: number;
+  leftOut: number;
+  range: string | null;
+  batchId: string;
+};
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  onImported: (summary: JournalImportDoneSummary) => void;
+};
 
 const MIST =
-  "inline-flex h-10 items-center justify-center rounded-full border border-[#AFC2DC] px-5 text-[14px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-11 items-center justify-center rounded-full border border-[#AFC2DC] px-5 text-[14px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-50";
 const OUTLINE =
   "inline-flex h-10 items-center justify-center rounded-full border border-border bg-card px-4 text-[14px] font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50";
+const GHOST =
+  "inline-flex h-10 items-center justify-center rounded-full px-3 text-[14px] font-medium text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50";
 
 function isoToDateInput(iso: string | null): string {
   if (!iso) return "";
@@ -94,7 +110,71 @@ function sourceKindLabel(row: JournalImportPreviewRow): string {
   return "Text file";
 }
 
-export function JournalImportWorkspace() {
+function StepIndicator({ step }: { step: Step }) {
+  const addActive = step === "add";
+  const reviewActive = step === "review";
+  return (
+    <div className="flex items-center gap-3">
+      <span className="inline-flex items-center gap-2">
+        <span
+          className={`flex size-6 items-center justify-center rounded-full text-[12px] font-semibold ${
+            addActive
+              ? "bg-[#C8A46A] text-[#0F1B2D]"
+              : "border border-[#E6D3AE] bg-[#F6EEDD] text-[#8A6424]"
+          }`}
+        >
+          {addActive ? (
+            "1"
+          ) : (
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M5 12l5 5 9-10" />
+            </svg>
+          )}
+        </span>
+        <span
+          className={`text-[14px] ${
+            addActive ? "font-semibold text-foreground" : "font-medium text-muted"
+          }`}
+        >
+          Add files
+        </span>
+      </span>
+      <span className="h-px w-10 bg-border" aria-hidden />
+      <span className="inline-flex items-center gap-2">
+        <span
+          className={`flex size-6 items-center justify-center rounded-full text-[12px] font-semibold ${
+            reviewActive
+              ? "bg-[#C8A46A] text-[#0F1B2D]"
+              : "border border-border text-muted"
+          }`}
+        >
+          2
+        </span>
+        <span
+          className={`text-[14px] ${
+            reviewActive
+              ? "font-semibold text-foreground"
+              : "font-medium text-muted"
+          }`}
+        >
+          Review
+        </span>
+      </span>
+    </div>
+  );
+}
+
+export function JournalImportWorkspace({ open, onClose, onImported }: Props) {
   const [step, setStep] = useState<Step>("add");
   const [cards, setCards] = useState<ImportFileCard[]>([]);
   const [rows, setRows] = useState<JournalImportPreviewRow[]>([]);
@@ -104,13 +184,6 @@ export function JournalImportWorkspace() {
   const [readingLabel, setReadingLabel] = useState<string | null>(null);
   const [keepPhotos, setKeepPhotos] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [doneSummary, setDoneSummary] = useState<{
-    imported: number;
-    skippedDup: number;
-    leftOut: number;
-    range: string | null;
-    batchId: string;
-  } | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -118,15 +191,57 @@ export function JournalImportWorkspace() {
   const draftsByFileId = useRef(new Map<string, JournalImportDraft[]>());
   const processingRef = useRef(false);
   const cardsRef = useRef(cards);
+  const importedRef = useRef(false);
   cardsRef.current = cards;
 
-  useEffect(() => {
-    setExisting(withoutDemoJournalEntries(loadJournalStoreRaw()).entries);
-    return () => {
-      cancelRef.current.cancelled = true;
-      for (const c of cardsRef.current) revokeImportFileCard(c);
-    };
+  const reset = useCallback(() => {
+    cancelRef.current.cancelled = true;
+    for (const c of cardsRef.current) revokeImportFileCard(c);
+    setStep("add");
+    setCards([]);
+    setRows([]);
+    setActive(0);
+    setBusy(false);
+    setReadingLabel(null);
+    setKeepPhotos(true);
+    setError(null);
+    draftsByFileId.current.clear();
+    processingRef.current = false;
+    importedRef.current = false;
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      reset();
+      return;
+    }
+    cancelRef.current = { cancelled: false };
+    setExisting(withoutDemoJournalEntries(loadJournalStoreRaw()).entries);
+  }, [open, reset]);
+
+  const requestClose = useCallback(() => {
+    const dirty = cardsRef.current.length > 0 && !importedRef.current;
+    if (
+      dirty &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Leave without importing? Nothing has been saved yet.",
+      )
+    ) {
+      return;
+    }
+    cancelRef.current.cancelled = true;
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") requestClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, requestClose]);
 
   const readyCount = cards.filter((c) => c.status === "ready").length;
   const readingCount = cards.filter((c) => c.status === "reading").length;
@@ -144,6 +259,7 @@ export function JournalImportWorkspace() {
   }, []);
 
   useEffect(() => {
+    if (!open) return;
     if (processingRef.current) return;
     if (!cards.some((c) => c.status === "queued")) return;
 
@@ -173,7 +289,6 @@ export function JournalImportWorkspace() {
       cancelRef.current,
     )
       .then((final) => {
-        // final.drafts only includes files processed in this pass (were queued).
         let offset = 0;
         for (const card of final.cards) {
           if (knownReady.has(card.id)) continue;
@@ -193,10 +308,9 @@ export function JournalImportWorkspace() {
         processingRef.current = false;
         setBusy(false);
         setReadingLabel(null);
-        // Nudge a re-render so a mid-pass queue can start.
         setCards((prev) => prev.slice());
       });
-  }, [cards]);
+  }, [cards, open]);
 
   function goReview() {
     const drafts = [...draftsByFileId.current.values()].flat();
@@ -302,14 +416,16 @@ export function JournalImportWorkspace() {
         });
         range = a === b ? a : `${a} – ${b}`;
       }
-      setDoneSummary({
+      const summary: JournalImportDoneSummary = {
         imported: imported.length,
         skippedDup,
         leftOut,
         range,
         batchId,
-      });
-      setStep("done");
+      };
+      importedRef.current = true;
+      onImported(summary);
+      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t save those entries.");
     } finally {
@@ -327,9 +443,9 @@ export function JournalImportWorkspace() {
       cards.map((card) => (
         <div
           key={card.id}
-          className="flex w-[140px] shrink-0 flex-col gap-1.5 sm:w-[152px]"
+          className="flex w-[140px] shrink-0 flex-col gap-1.5 sm:w-[150px]"
         >
-          <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-[#F6F1E7]">
+          <div className="relative h-[110px] overflow-hidden rounded-[10px] border border-border bg-[#F6F1E7]">
             {card.previewUrl ? (
               <img
                 src={card.previewUrl}
@@ -341,26 +457,37 @@ export function JournalImportWorkspace() {
                 {card.file.name}
               </div>
             )}
-            {card.status === "ready" ? (
-              <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-[#E7F0E4] px-2 py-0.5 text-[11px] font-semibold text-[#2F6B3A]">
-                ✓ Ready
-              </span>
-            ) : null}
-            {card.status === "reading" ? (
-              <span className="absolute bottom-2 left-2 rounded-full bg-card/95 px-2 py-0.5 text-[11px] font-semibold text-foreground">
-                Reading…
-              </span>
-            ) : null}
-            {card.status === "error" ? (
-              <span className="absolute bottom-2 left-2 rounded-full bg-[#F8E8E4] px-2 py-0.5 text-[11px] font-semibold text-[#9B3B2E]">
-                Error
-              </span>
-            ) : null}
           </div>
-          <p className="truncate text-[12.5px] font-medium text-foreground">
-            {card.file.name}
-          </p>
-          <p className="text-[12px] text-muted">{card.label}</p>
+          <p className="truncate text-[12.5px] text-foreground">{card.file.name}</p>
+          <p className="text-[11.5px] font-semibold text-[#8A6424]">{card.label}</p>
+          {card.status === "ready" ? (
+            <p className="inline-flex items-center gap-1 text-[12px] text-[#5F7350]">
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M5 12l5 5 9-10" />
+              </svg>
+              Read
+            </p>
+          ) : null}
+          {card.status === "reading" || card.status === "queued" ? (
+            <span className="h-1 overflow-hidden rounded bg-border">
+              <span
+                className="block h-full bg-[#C8A46A] transition-[width]"
+                style={{
+                  width: card.status === "reading" ? "60%" : "20%",
+                }}
+              />
+            </span>
+          ) : null}
           {card.error ? (
             <p className="text-[11.5px] leading-snug text-[#9B3B2E]">{card.error}</p>
           ) : null}
@@ -369,203 +496,249 @@ export function JournalImportWorkspace() {
     [cards],
   );
 
-  return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-            Journal
-          </p>
-          <h1 className="font-display text-[28px] font-normal text-foreground md:text-[32px]">
-            Import
-          </h1>
-        </div>
-        <Link to="/journal/entries" className="text-[13px] font-semibold text-muted">
-          Close
-        </Link>
-      </div>
+  if (!open || typeof document === "undefined") return null;
 
-      {step === "add" ? (
-        <section className="rounded-[22px] border border-border bg-card p-5 shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:p-6">
-          <h2 className="font-display text-[22px] text-foreground">
-            Bring in your old journal
-          </h2>
-          <p className="mt-1 max-w-xl text-[14px] text-muted">
-            Nothing is saved until you’ve checked it in the next step.
-          </p>
+  const panelWidth =
+    step === "review"
+      ? "w-full max-w-[min(1120px,calc(100vw-2rem))]"
+      : "w-full max-w-[760px]";
 
-          <div
-            className="mt-5 rounded-2xl border border-dashed border-border bg-[#FFFDF8] px-4 py-10 text-center"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              addFiles(Array.from(e.dataTransfer.files));
-            }}
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-stretch justify-center bg-[rgba(15,27,45,0.45)] p-0 sm:items-center sm:p-6"
+      role="presentation"
+      onClick={requestClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="journal-import-modal-title"
+        className={`flex h-full max-h-none flex-col overflow-hidden rounded-none border-0 bg-[#F6F1E7] shadow-[0_30px_80px_rgba(15,27,45,0.35)] sm:h-auto sm:max-h-[min(900px,calc(100vh-3rem))] sm:rounded-[22px] sm:border sm:border-border ${panelWidth}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 px-5 pb-1 pt-5 sm:px-6">
+          <StepIndicator step={step} />
+          <button
+            type="button"
+            onClick={requestClose}
+            className="inline-flex size-9 items-center justify-center rounded-full text-muted hover:bg-black/5 hover:text-foreground"
+            aria-label="Close"
           >
-            <p className="text-[15px] text-foreground">
-              Drop files here, or choose them
-            </p>
-            <p className="mt-1 text-[13px] text-muted">
-              Day One, PDF, text, or photos of handwritten pages — mixed is fine.
-            </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <button
-                type="button"
-                className={MIST}
-                style={PRIMARY_ACCENT_FILL_STYLE}
-                onClick={() => fileRef.current?.click()}
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+
+        {step === "add" ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-3 sm:px-6 sm:pb-6">
+            <div>
+              <h2
+                id="journal-import-modal-title"
+                className="font-display text-[26px] font-normal text-foreground"
               >
-                Choose files
-              </button>
-              <button
-                type="button"
-                className={OUTLINE}
-                onClick={() => cameraRef.current?.click()}
-              >
-                Take photos
-              </button>
+                Bring in your old journal
+              </h2>
+              <p className="mt-1 text-[15px] text-muted">
+                Nothing is saved until you’ve checked it in the next step.
+              </p>
             </div>
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept=".zip,.json,.pdf,.md,.markdown,.txt,.text,.docx,image/*,.heic,.heif"
-              className="hidden"
-              onChange={(e) => {
-                addFiles(Array.from(e.target.files ?? []));
-                e.target.value = "";
+
+            <div
+              className="flex flex-col gap-3 rounded-2xl border-[1.5px] border-dashed border-[#E6D3AE] bg-white px-4 py-4 sm:flex-row sm:items-center sm:gap-3.5 sm:px-[18px]"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                addFiles(Array.from(e.dataTransfer.files));
               }}
-            />
-            <input
-              ref={cameraRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                addFiles(Array.from(e.target.files ?? []));
-                e.target.value = "";
-              }}
-            />
-          </div>
-
-          {cards.length > 0 ? (
-            <div className="mt-5 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:thin]">
-              {fileGrid}
-            </div>
-          ) : null}
-
-          {error ? (
-            <p className="mt-3 text-[13px] text-[#9B3B2E]" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-[13px] text-muted">
-              {readingLabel ||
-                (readyCount
-                  ? `${readyCount} ready${queuedCount || readingCount ? " · still reading…" : ""}`
-                  : "Add files to begin")}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {busy ? (
+            >
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#F6EEDD] text-[#8A6424]">
+                <svg
+                  width="21"
+                  height="21"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 16V5M7 10l5-5 5 5M5 20h14" />
+                </svg>
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15.5px] font-semibold text-foreground">
+                  Drop files here, or choose them
+                </p>
+                <p className="mt-0.5 text-[13.5px] text-muted">
+                  Photos of handwritten pages, PDFs (typed or scanned), text
+                  files (.txt, .md, .docx) or a Day One export (.zip). We work
+                  out which is which.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:shrink-0">
                 <button
                   type="button"
                   className={OUTLINE}
-                  onClick={() => {
-                    cancelRef.current.cancelled = true;
-                  }}
+                  onClick={() => fileRef.current?.click()}
                 >
+                  Choose files
+                </button>
+                <button
+                  type="button"
+                  className={OUTLINE}
+                  onClick={() => cameraRef.current?.click()}
+                >
+                  Take photos
+                </button>
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept=".zip,.json,.pdf,.md,.markdown,.txt,.text,.docx,image/*,.heic,.heif"
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            {cards.length > 0 ? (
+              <div className="flex gap-3.5 overflow-x-auto rounded-2xl border-[1.5px] border-dashed border-[#E6D3AE] bg-[#F6EEDD] p-[18px] [scrollbar-width:thin]">
+                {fileGrid}
+              </div>
+            ) : null}
+
+            {error ? (
+              <p className="text-[13px] text-[#9B3B2E]" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-1">
+              <p className="text-[13.5px] text-muted">
+                {readingLabel ||
+                  (readyCount
+                    ? `${readyCount} ready${
+                        queuedCount || readingCount ? " · still reading…" : ""
+                      }`
+                    : "Add files to begin")}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className={GHOST} onClick={requestClose}>
                   Cancel
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className={MIST}
-                style={PRIMARY_ACCENT_FILL_STYLE}
-                disabled={draftCount === 0 && readyCount === 0}
-                onClick={goReview}
-              >
-                Review what’s ready
-              </button>
+                <button
+                  type="button"
+                  className={MIST}
+                  style={PRIMARY_ACCENT_FILL_STYLE}
+                  disabled={draftCount === 0 && readyCount === 0}
+                  onClick={goReview}
+                >
+                  Review what’s ready
+                </button>
+              </div>
             </div>
           </div>
-        </section>
-      ) : null}
+        ) : null}
 
-      {step === "review" && row ? (
-        <section className="flex min-h-0 flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              className="text-[13px] font-semibold text-accent-link"
-              onClick={() => setStep("add")}
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              className={MIST}
-              style={PRIMARY_ACCENT_FILL_STYLE}
-              disabled={busy || includedCount === 0}
-              onClick={() => void commit()}
-            >
-              Import {includedCount} {includedCount === 1 ? "entry" : "entries"}
-            </button>
-          </div>
-
-          <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,280px)_1fr]">
-            <ul className="max-h-[70vh] space-y-1 overflow-y-auto rounded-[18px] border border-border bg-card p-2">
-              {rows.map((r, i) => (
-                <li key={r.key}>
-                  <button
-                    type="button"
-                    onClick={() => setActive(i)}
-                    className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left ${
-                      i === active ? "bg-accent-soft" : "hover:bg-background"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={r.include}
-                      onChange={(e) => updateRow(i, { include: e.target.checked })}
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-1"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[12px] text-muted">
-                        {r.created_at
-                          ? formatJournalEntryDate(r.created_at)
-                          : "No date found"}
-                      </span>
-                      <span className="block truncate text-[13.5px] font-semibold text-foreground">
-                        {r.title?.trim() || firstLine(r.body) || "Untitled"}
-                      </span>
-                      <span className="mt-0.5 line-clamp-1 text-[12.5px] text-muted">
-                        {firstLine(r.body)}
-                      </span>
-                      {r.date_uncertain || !r.created_at ? (
-                        <span className="mt-0.5 block text-[12px] text-[#9B3B2E]">
-                          Using the file’s date
+        {step === "review" && row ? (
+          <div className="flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 sm:px-6">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row lg:gap-3.5">
+              <div className="flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden border-b border-border pb-3 lg:max-h-none lg:w-[380px] lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3.5">
+                <div className="mb-2 flex items-baseline justify-between px-1">
+                  <span className="text-[14px] font-semibold text-foreground">
+                    {rows.length} {rows.length === 1 ? "entry" : "entries"} found
+                  </span>
+                  <span className="text-[12.5px] text-muted">
+                    {includedCount} selected
+                  </span>
+                </div>
+                <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
+                  {rows.map((r, i) => (
+                    <li key={r.key}>
+                      <button
+                        type="button"
+                        onClick={() => setActive(i)}
+                        className={`flex w-full items-start gap-3 rounded-xl px-3.5 py-3 text-left ${
+                          i === active
+                            ? "border border-[#E6D3AE] bg-[#FFFDF8] shadow-[inset_3px_0_0_#C8A46A]"
+                            : "border border-transparent hover:bg-[#FFFDF8]/60"
+                        } ${!r.include ? "opacity-55" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={r.include}
+                          onChange={(e) =>
+                            updateRow(i, { include: e.target.checked })
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`text-[12.5px] font-semibold ${
+                                !r.created_at || r.date_uncertain
+                                  ? "text-[#9A4B2E]"
+                                  : "text-[#8A6424]"
+                              }`}
+                            >
+                              {r.created_at
+                                ? formatJournalEntryDate(r.created_at)
+                                : "No date found"}
+                            </span>
+                            {!r.created_at || r.date_uncertain ? (
+                              <span className="inline-flex h-[22px] items-center rounded-full bg-[#F6E7DD] px-2 text-[11.5px] font-semibold text-[#9A4B2E]">
+                                Using the photo’s date
+                              </span>
+                            ) : null}
+                            {r.likelyDuplicate ? (
+                              <span className="inline-flex h-[22px] items-center rounded-full bg-[#F6E7DD] px-2 text-[11.5px] font-semibold text-[#9A4B2E]">
+                                Possible duplicate
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[14.5px] font-semibold text-foreground">
+                            {r.title?.trim() || firstLine(r.body) || "Untitled"}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] text-muted">
+                            {firstLine(r.body)}
+                          </span>
                         </span>
-                      ) : null}
-                      {r.likelyDuplicate ? (
-                        <span className="mt-0.5 block text-[12px] text-muted">
-                          Possible duplicate
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            <div className="rounded-[18px] border border-border bg-card p-4 md:p-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-[13px]">
-                  <span className="font-semibold text-foreground">Date</span>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto pb-3 pl-0.5">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
                   <input
                     type="date"
                     value={isoToDateInput(row.created_at)}
@@ -576,156 +749,158 @@ export function JournalImportWorkspace() {
                         date_uncertain: !iso,
                       });
                     }}
-                    className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                    className="h-9 shrink-0 rounded-[10px] border border-border bg-white px-3 text-[14px] text-foreground"
                   />
-                </label>
-                <label className="block text-[13px]">
-                  <span className="font-semibold text-foreground">Title</span>
                   <input
                     type="text"
                     value={row.title ?? ""}
                     onChange={(e) => updateRow(active, { title: e.target.value })}
-                    className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                    className="h-9 min-w-0 flex-1 rounded-[10px] border border-border bg-white px-3 text-[14px] font-semibold text-foreground"
+                    placeholder="Title"
                   />
-                </label>
-              </div>
-              <p className="mt-2 text-[12.5px] text-muted">
-                From {sourceFileLabel(row)} · {sourceKindLabel(row)}
-              </p>
-
-              {pageImage ? (
-                <img
-                  src={pageImage}
-                  alt="Source page"
-                  className="mt-3 max-h-56 w-full rounded-xl border border-border object-contain bg-[#F6F1E7]"
-                />
-              ) : null}
-
-              <label className="mt-3 block text-[13px]">
-                <span className="font-semibold text-foreground">Entry</span>
-                <textarea
-                  value={row.body}
-                  onChange={(e) => updateRow(active, { body: e.target.value })}
-                  rows={10}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-[14.5px] leading-relaxed text-foreground"
-                />
-              </label>
-
-              {ocrSpans.some(
-                (w) =>
-                  w.confidence != null && w.confidence < OCR_LOW_CONFIDENCE,
-              ) ? (
-                <p className="mt-2 text-[12.5px] text-[#9B3B2E]">
-                  Some words were read with low confidence — edit anything that
-                  looks off.{" "}
-                  <span className="text-muted">
-                    (
-                    {ocrSpans
-                      .filter(
-                        (w) =>
-                          w.confidence != null &&
-                          w.confidence < OCR_LOW_CONFIDENCE,
-                      )
-                      .slice(0, 8)
-                      .map((w) => w.text)
-                      .join(", ")}
-                    )
-                  </span>
+                </div>
+                <p className="text-[12.5px] text-muted">
+                  From {sourceFileLabel(row)} · {sourceKindLabel(row)}
                 </p>
-              ) : null}
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={OUTLINE}
-                  disabled={active >= rows.length - 1}
-                  onClick={() => mergeWithNext(active)}
-                >
-                  Merge with next
-                </button>
-                <button
-                  type="button"
-                  className={OUTLINE}
-                  onClick={() => splitHere(active)}
-                >
-                  Split here
-                </button>
-                <button
-                  type="button"
-                  className={OUTLINE}
-                  onClick={() => updateRow(active, { include: false })}
-                >
-                  Leave out
-                </button>
+                <div className="flex min-h-0 flex-col gap-3.5 md:flex-row">
+                  {pageImage ? (
+                    <div className="relative w-full shrink-0 overflow-hidden rounded-xl border border-border bg-[#F7EFDF] md:w-[44%]">
+                      <img
+                        src={pageImage}
+                        alt="Source page"
+                        className="max-h-64 w-full object-contain md:max-h-[min(420px,50vh)]"
+                      />
+                      <span className="absolute bottom-2.5 left-2.5 inline-flex h-6 items-center rounded-full bg-[rgba(15,27,45,0.7)] px-2 text-[11.5px] text-white">
+                        {sourceFileLabel(row)}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <textarea
+                      value={row.body}
+                      onChange={(e) => updateRow(active, { body: e.target.value })}
+                      rows={pageImage ? 12 : 16}
+                      className="h-full min-h-[180px] w-full rounded-xl border border-border bg-white px-4 py-3.5 text-[15px] leading-[1.65] text-foreground"
+                    />
+                  </div>
+                </div>
+
+                {ocrSpans.some(
+                  (w) =>
+                    w.confidence != null && w.confidence < OCR_LOW_CONFIDENCE,
+                ) ? (
+                  <p className="flex flex-wrap items-center gap-3.5 text-[13px] text-muted">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-3.5 bg-[#F6E7DD] [border-bottom:1.5px_dotted_#9A4B2E]" />
+                      Not sure of this word: tap to fix
+                    </span>
+                    <span className="text-[#9A4B2E]">
+                      (
+                      {ocrSpans
+                        .filter(
+                          (w) =>
+                            w.confidence != null &&
+                            w.confidence < OCR_LOW_CONFIDENCE,
+                        )
+                        .slice(0, 8)
+                        .map((w) => w.text)
+                        .join(", ")}
+                      )
+                    </span>
+                  </p>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-3.5 text-[13px] font-semibold text-foreground">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 disabled:opacity-40"
+                    disabled={active >= rows.length - 1}
+                    onClick={() => mergeWithNext(active)}
+                  >
+                    Merge with next
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5"
+                    onClick={() => splitHere(active)}
+                  >
+                    Split here
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-auto font-medium text-muted"
+                    onClick={() => updateRow(active, { include: false })}
+                  >
+                    Leave out
+                  </button>
+                </div>
+
+                {error ? (
+                  <p className="text-[13px] text-[#9B3B2E]" role="alert">
+                    {error}
+                  </p>
+                ) : null}
               </div>
+            </div>
 
-              <label className="mt-4 flex items-center gap-2 text-[13.5px] text-foreground">
+            <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-border py-3.5">
+              <label className="inline-flex items-center gap-2.5 text-[14px] text-foreground">
                 <input
                   type="checkbox"
+                  className="sr-only"
                   checked={keepPhotos}
                   onChange={(e) => setKeepPhotos(e.target.checked)}
                 />
+                <span
+                  className={`relative inline-block h-[22px] w-[38px] shrink-0 rounded-full ${
+                    keepPhotos ? "bg-[#0F1B2D]" : "bg-border"
+                  }`}
+                  aria-hidden
+                >
+                  <span
+                    className={`absolute top-[3px] size-4 rounded-full bg-white transition-[left] ${
+                      keepPhotos ? "left-[18px]" : "left-[3px]"
+                    }`}
+                  />
+                </span>
                 Keep the page photos with their entries
               </label>
-
-              {error ? (
-                <p className="mt-3 text-[13px] text-[#9B3B2E]" role="alert">
-                  {error}
-                </p>
-              ) : null}
-
-              <p className="mt-4 text-[12.5px] text-muted md:hidden">
-                {active + 1} of {rows.length}
-              </p>
+              <button
+                type="button"
+                className={`${GHOST} ml-auto`}
+                onClick={() => setStep("add")}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className={MIST}
+                style={PRIMARY_ACCENT_FILL_STYLE}
+                disabled={busy || includedCount === 0}
+                onClick={() => void commit()}
+              >
+                Import {includedCount}{" "}
+                {includedCount === 1 ? "entry" : "entries"}
+              </button>
             </div>
           </div>
-        </section>
-      ) : null}
+        ) : null}
 
-      {step === "done" && doneSummary ? (
-        <section className="rounded-[22px] border border-border bg-card px-5 py-8 text-center shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:px-8">
-          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#E7F0E4] text-[#2F6B3A]">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
+        {step === "review" && !row ? (
+          <div className="px-6 py-10 text-center text-[14px] text-muted">
+            No entries to review.{" "}
+            <button
+              type="button"
+              className="font-semibold text-accent-link"
+              onClick={() => setStep("add")}
             >
-              <path d="M5 12l5 5 9-10" />
-            </svg>
+              Add files
+            </button>
           </div>
-          <h2 className="mt-4 font-display text-[24px] text-foreground">
-            {doneSummary.imported}{" "}
-            {doneSummary.imported === 1 ? "entry" : "entries"} imported
-            {doneSummary.range ? `. ${doneSummary.range}` : ""}, on their
-            original dates
-            {doneSummary.skippedDup
-              ? ` · ${doneSummary.skippedDup} left out as ${
-                  doneSummary.skippedDup === 1 ? "a duplicate" : "duplicates"
-                }`
-              : doneSummary.leftOut
-                ? ` · ${doneSummary.leftOut} left out`
-                : ""}
-            .
-          </h2>
-          <p className="mx-auto mt-2 max-w-lg text-[14px] text-muted">
-            They’re in your entries with an Imported chip, and Insights will
-            include them.
-          </p>
-          <Link
-            to={`/journal/entries?imported=${encodeURIComponent(doneSummary.batchId)}`}
-            className={`${MIST} mt-6 inline-flex`}
-            style={PRIMARY_ACCENT_FILL_STYLE}
-          >
-            See them in Entries
-          </Link>
-        </section>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
   );
 }

@@ -284,7 +284,7 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
     ) {
       return false;
     }
-    // Import lives under Entries in the sidebar.
+    // Legacy `/journal/import` redirects to Entries + modal.
     if (pathname === "/journal/import" || pathname.startsWith("/journal/import/")) {
       return true;
     }

@@ -18,6 +18,10 @@ import { loadHealStore } from "@/lib/heal-store";
 import { JournalGratitudeEditor } from "@/components/journal-gratitude-editor";
 import { JournalEntryMeta } from "@/components/journal-entry-meta";
 import { JournalSettingsDialog } from "@/components/journal-settings-dialog";
+import {
+  JournalImportWorkspace,
+  type JournalImportDoneSummary,
+} from "@/components/journal-import-workspace";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { Calendar, Folder, Play } from "lucide-react";
@@ -265,7 +269,7 @@ function JournalChromeMoreMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-1 min-w-[9rem] rounded-xl border border-border bg-card py-1 shadow-lg"
+          className="absolute right-0 z-50 mt-1 min-w-[9rem] rounded-xl border border-border bg-card py-1 shadow-lg"
         >
           <button
             type="button"
@@ -592,7 +596,10 @@ export function JournalView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [jumpDate, setJumpDate] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [importBatchId, setImportBatchId] = useState<string | null>(null);
+  const [importNotice, setImportNotice] =
+    useState<JournalImportDoneSummary | null>(null);
   const prevSectionRef = useRef<JournalSection | null>(null);
   /** After first journal GET attempt (or skip if no API URL); avoids PUT before pull completes. */
   const [remoteJournalChecked, setRemoteJournalChecked] = useState(false);
@@ -1739,12 +1746,15 @@ export function JournalView() {
     });
   }, [pathname, hydrated, createEntry, createGratitudeEntry]);
 
-  // Legacy `?import=1` → new Import page; `?imported=` filters just-imported.
+  // `?import=1` opens the import modal over Entries; `?imported=` filters just-imported.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("import") === "1") {
-      navigate("/journal/import", { replace: true });
+      setImportOpen(true);
+      params.delete("import");
+      const qs = params.toString();
+      navigate(`${pathname}${qs ? `?${qs}` : ""}`, { replace: true });
       return;
     }
     const imported = params.get("imported");
@@ -1953,6 +1963,54 @@ export function JournalView() {
             )}
           />
         </AppPrimaryTabsDesktop>
+        {importNotice ? (
+          <div className="mt-3 flex items-start gap-3 rounded-[18px] border border-border bg-card px-4 py-3.5 shadow-[0_2px_14px_rgba(15,27,45,0.05)] sm:items-center sm:gap-4 sm:px-5">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E6D3AE] bg-[#F6EEDD] text-[#8A6424]">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M5 12l5 5 9-10" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[18px] text-foreground sm:text-[20px]">
+                {importNotice.imported}{" "}
+                {importNotice.imported === 1 ? "entry" : "entries"} imported
+              </p>
+              <p className="mt-0.5 text-[13.5px] text-muted">
+                {importNotice.range
+                  ? `${importNotice.range}, on their original dates`
+                  : "On their original dates"}
+                {importNotice.skippedDup
+                  ? ` · ${importNotice.skippedDup} left out as ${
+                      importNotice.skippedDup === 1
+                        ? "a duplicate"
+                        : "duplicates"
+                    }`
+                  : importNotice.leftOut
+                    ? ` · ${importNotice.leftOut} left out`
+                    : ""}
+                . They’re in your entries with an Imported chip.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-sm text-muted hover:text-foreground"
+              onClick={() => setImportNotice(null)}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
         {importBatchId ? (
           <p className="mt-2 text-sm text-muted">
             Showing just-imported pages.{" "}
@@ -2010,7 +2068,7 @@ export function JournalView() {
         <aside
           className={`flex shrink-0 flex-col ${
             journalTab === "journal" || journalTab === "gratitude"
-              ? `relative z-[1] min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+              ? `relative z-10 min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                   mobileComposeChrome
                     ? "max-sm:hidden"
                     : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-md"
@@ -2021,7 +2079,7 @@ export function JournalView() {
           }`}
         >
           {journalTab === "journal" ? (
-            <div className="relative z-[1] flex flex-col gap-2">
+            <div className="relative z-20 flex flex-col gap-2">
               <div className="hidden items-center gap-2 sm:flex">
                 <button
                   type="button"
@@ -2070,7 +2128,7 @@ export function JournalView() {
                   {sidebarMenu === "filters" ? (
                     <div
                       role="menu"
-                      className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-border bg-card py-1 shadow-lg"
+                      className="absolute right-0 z-50 mt-1 w-56 rounded-xl border border-border bg-card py-1 shadow-lg"
                     >
                       <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                         Folder
@@ -2166,7 +2224,7 @@ export function JournalView() {
                 </div>
                 <span className="sm:hidden">
                   <JournalChromeMoreMenu
-                    onImport={() => navigate("/journal/import")}
+                    onImport={() => setImportOpen(true)}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
@@ -2202,7 +2260,7 @@ export function JournalView() {
                   {sidebarMenu === "folder" ? (
                     <div
                       role="menu"
-                      className="absolute left-0 z-30 mt-1 w-52 rounded-xl border border-border bg-card py-1 shadow-lg"
+                      className="absolute left-0 z-50 mt-1 w-52 rounded-xl border border-border bg-card py-1 shadow-lg"
                     >
                       <button
                         type="button"
@@ -2274,14 +2332,14 @@ export function JournalView() {
                   ) : null}
                 </div>
                 <JournalChromeMoreMenu
-                  onImport={() => navigate("/journal/import")}
+                  onImport={() => setImportOpen(true)}
                   onSettings={() => setSettingsOpen(true)}
                 />
                 </div>
               </div>
             </div>
           ) : (
-            <div className="relative z-[1] flex flex-col gap-2">
+            <div className="relative z-20 flex flex-col gap-2">
               <PrimaryCreateButton
                 onClick={openTodayGratitudeCompose}
                 className="w-full"
@@ -2317,7 +2375,7 @@ export function JournalView() {
                   </button>
                   {sidebarMenu === "filters" ? (
                     <div
-                      className="absolute right-0 z-30 mt-1 w-52 rounded-xl border border-border bg-card p-2 shadow-lg"
+                      className="absolute right-0 z-50 mt-1 w-52 rounded-xl border border-border bg-card p-2 shadow-lg"
                       role="dialog"
                       aria-label="Jump to a day"
                     >
@@ -2347,7 +2405,7 @@ export function JournalView() {
                 </div>
                 <span className="sm:hidden">
                   <JournalChromeMoreMenu
-                    onImport={() => navigate("/journal/import")}
+                    onImport={() => setImportOpen(true)}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </span>
@@ -2381,7 +2439,7 @@ export function JournalView() {
                     ) : null}
                   </div>
                   <JournalChromeMoreMenu
-                    onImport={() => navigate("/journal/import")}
+                    onImport={() => setImportOpen(true)}
                     onSettings={() => setSettingsOpen(true)}
                   />
                 </div>
@@ -2760,6 +2818,16 @@ export function JournalView() {
         activeEntryId,
         entries,
         ...(folders.length ? { folders } : {}),
+      }}
+    />
+    <JournalImportWorkspace
+      open={importOpen}
+      onClose={() => setImportOpen(false)}
+      onImported={(summary) => {
+        const store = withoutDemoJournalEntries(loadJournalStoreRaw());
+        setEntries(store.entries);
+        setImportBatchId(summary.batchId);
+        setImportNotice(summary);
       }}
     />
     </JournalLockGate>

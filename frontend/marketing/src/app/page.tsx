@@ -8,6 +8,7 @@ import {
   isPhoneUserAgent,
 } from "@/components/new-home/new-home-hero-art";
 import { NewHomePage } from "@/components/new-home/new-home-page";
+import { HOME_FAQ_ITEMS } from "@/components/new-home/new-home-faq-data";
 
 export const metadata: Metadata = {
   title: {
@@ -17,10 +18,27 @@ export const metadata: Metadata = {
     "Get clear on the life you want, quiet the doubt in the way, and spend your days building it.",
 };
 
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: HOME_FAQ_ITEMS.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.a,
+    },
+  })),
+};
+
 export default async function HomePage() {
   const phone = isPhoneUserAgent((await headers()).get("user-agent"));
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       {phone ? (
         <link
           rel="preload"

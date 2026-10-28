@@ -1,9 +1,6 @@
-import { JournalImportWorkspace } from "@/components/journal-import-workspace";
+import { Navigate } from "react-router-dom";
 
+/** Legacy `/journal/import` → Entries with the import modal open. */
 export function JournalImportPage() {
-  return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto">
-      <JournalImportWorkspace />
-    </div>
-  );
+  return <Navigate to="/journal/entries?import=1" replace />;
 }

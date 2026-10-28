@@ -978,7 +978,7 @@ function PrivacySection({ settings, onPatch }: SectionProps) {
       helper="Bring in Day One, PDFs, text files, or photos of handwritten pages."
       control={
         <Link
-          to="/journal/import"
+          to="/journal/entries?import=1"
           className="rounded-full border border-border px-4 py-2 text-sm font-medium"
         >
           Import…

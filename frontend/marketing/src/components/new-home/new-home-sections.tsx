@@ -49,6 +49,12 @@ import {
 import { SelectChevron } from "@/components/select-chevron";
 import { PlayMark, PreviewButton } from "./new-home-preview";
 import { useWaitlist, WaitlistAppLink, WaitlistInlineForm } from "./waitlist-modal";
+import {
+  FaqBand,
+  FounderBand,
+  PlanBand,
+  ProblemBand,
+} from "./new-home-story-sections";
 
 const IMPORT_CHIPS = [
   "Day One",
@@ -249,15 +255,23 @@ function useReveal() {
 
     const scrollPort = scroller instanceof HTMLElement ? scroller : null;
     const scrollTop = () => (scrollPort ? scrollPort.scrollTop : window.scrollY);
-    // The pitch sits under the hero and is already in view on a tall screen.
-    // Hold its entrance until the page has been scrolled, then reveal the
-    // way every later strip does.
+    const viewHeight = () =>
+      scrollPort ? scrollPort.clientHeight : window.innerHeight;
+    // First bands can sit under the hero on a tall screen. Hold until the
+    // page has been scrolled, then reveal each section only when that
+    // section itself has entered the viewport (not every waiting peer).
     const SCROLL_GATE = 40;
     const waiting = new Set<HTMLElement>();
+
+    const sectionReached = (section: HTMLElement) => {
+      const top = section.getBoundingClientRect().top;
+      return top < viewHeight() * 0.82;
+    };
 
     const revealSection = (section: HTMLElement) => {
       if (section.dataset.hv2Seen === "1") return;
       section.dataset.hv2Seen = "1";
+      waiting.delete(section);
       const panel = section.querySelector<HTMLElement>(".new-home-tabpanel.is-on");
       if (panel) panel.setAttribute("data-hv2-tab-played", "1");
       playGroup(
@@ -268,10 +282,18 @@ function useReveal() {
       observer.unobserve(section);
     };
 
+    const tryReveal = (section: HTMLElement) => {
+      if (section.dataset.hv2Seen === "1") return;
+      if (scrollTop() <= SCROLL_GATE || !sectionReached(section)) {
+        waiting.add(section);
+        return;
+      }
+      revealSection(section);
+    };
+
     const flush = () => {
       if (scrollTop() <= SCROLL_GATE) return;
-      for (const section of waiting) revealSection(section);
-      waiting.clear();
+      for (const section of [...waiting]) tryReveal(section);
     };
 
     const observer = new IntersectionObserver(
@@ -282,17 +304,14 @@ function useReveal() {
             waiting.delete(section);
             return;
           }
-          if (scrollTop() <= SCROLL_GATE) {
-            waiting.add(section);
-            return;
-          }
-          revealSection(section);
+          tryReveal(section);
         });
       },
       {
         root: scrollPort,
-        rootMargin: "0px 0px 20% 0px",
-        threshold: 0,
+        // Slight lead only — avoid pulling in the next band early.
+        rootMargin: "0px 0px 8% 0px",
+        threshold: [0, 0.08, 0.16],
       },
     );
 
@@ -1757,12 +1776,16 @@ export function NewHomeSections() {
   const rootRef = useReveal();
   return (
     <div ref={rootRef}>
+      <ProblemBand />
       <PitchBand />
       <MeditateBand />
       <ManifestBand />
       <JournalBand />
       <HealBand />
       <FocusBand />
+      <FounderBand />
+      <PlanBand />
+      <FaqBand />
       <CloseBand />
     </div>
   );
