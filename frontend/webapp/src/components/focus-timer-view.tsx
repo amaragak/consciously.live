@@ -13,12 +13,6 @@ import {
 } from "@/components/library-audio-strip";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
-import {
-  FOCUS_PATTERN_OPTIONS,
-  loadFocusPattern,
-  saveFocusPattern,
-  type FocusPatternId,
-} from "@/lib/focus-pattern";
 import { loadFocusMix, saveFocusMix } from "@/lib/focus-mix-storage";
 import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
 import {
@@ -31,6 +25,16 @@ import {
   type FocusSessionPrefs,
   type FocusTaskItem,
 } from "@/lib/focus-timer-storage";
+import {
+  addGoalToOpenFocusSession,
+  completeFocusRound,
+  endFocusSession,
+  getOpenFocusSession,
+  pauseFocusSession,
+  startOrResumeFocusSession,
+  syncOpenFocusSession,
+  type FocusSessionRecord,
+} from "@/lib/focus-session-history";
 import {
   clearFocusSessionHandoff,
   readFocusSessionHandoff,
@@ -207,8 +211,6 @@ export function FocusTimerView() {
   const [ideatePicks, setIdeatePicks] = useState<IdeatePick[]>([]);
   const [preflight, setPreflight] = useState<FocusPreflightLink | null>(null);
   const [preflightPlayBusy, setPreflightPlayBusy] = useState(false);
-  const [focusPattern, setFocusPattern] = useState<FocusPatternId>("default");
-  const [patternPickerOpen, setPatternPickerOpen] = useState(false);
   const [focusMix, setFocusMix] = useState<MixEditorValues>({
     ...DEFAULT_MIX_EDITOR_VALUES,
   });
@@ -237,10 +239,12 @@ export function FocusTimerView() {
   const meditateHeard = useRef(false);
   const onElapsedRef = useRef<() => void>(() => {});
   const endAtRef = useRef<number | null>(null);
+  const sittingRef = useRef<FocusSessionRecord | null>(null);
+  const focusRoundStartedAtRef = useRef<string | null>(null);
+  const durationSecRef = useRef(durationSec);
   const remainingRef = useRef(remainingSec);
   const ideateFlyoutRef = useRef<HTMLDivElement>(null);
   const ideateButtonRef = useRef<HTMLButtonElement>(null);
-  const patternPickerRef = useRef<HTMLDivElement>(null);
   const soundsButtonRef = useRef<HTMLButtonElement>(null);
   const mixCloseRef = useRef<(() => void) | null>(null);
   const mixCompositionsRef = useRef(mixCompositions);
@@ -249,37 +253,6 @@ export function FocusTimerView() {
   useEffect(() => {
     remainingRef.current = remainingSec;
   }, [remainingSec]);
-
-  useEffect(() => {
-    const main = document.querySelector("main[data-app-layout='focus']");
-    const root = document.documentElement;
-    const mq = window.matchMedia("(min-width: 640px)");
-
-    const sync = () => {
-      // Goals are a card now, so the pattern covers the whole page.
-      const sideOpen = false && tasksShelfOpen && mq.matches;
-      const value = sideOpen ? "open" : "closed";
-      const width = sideOpen ? "320px" : "0px";
-      if (main instanceof HTMLElement) {
-        main.dataset.focusTasks = value;
-        main.style.setProperty("--focus-tasks-w", width);
-      }
-      root.dataset.focusTasks = value;
-      root.style.setProperty("--focus-tasks-w", width);
-    };
-
-    sync();
-    mq.addEventListener("change", sync);
-    return () => {
-      mq.removeEventListener("change", sync);
-      if (main instanceof HTMLElement) {
-        delete main.dataset.focusTasks;
-        main.style.removeProperty("--focus-tasks-w");
-      }
-      delete root.dataset.focusTasks;
-      root.style.removeProperty("--focus-tasks-w");
-    };
-  }, [tasksShelfOpen]);
 
   useEffect(() => {
     if (!tasksShelfOpen && ideateFlyoutOpen) closeIdeateFlyout();
@@ -292,7 +265,6 @@ export function FocusTimerView() {
     setTasks(list);
     writeFocusTasksList(list);
     setSessionsToday(readSessionsCompletedToday());
-    setFocusPattern(loadFocusPattern());
     setFocusMix(loadFocusMix());
     const saved = readFocusSessionPrefs();
     setPrefs(saved);
@@ -554,25 +526,6 @@ export function FocusTimerView() {
   }, []);
 
   useEffect(() => {
-    if (!patternPickerOpen) return;
-    const onPointer = (e: PointerEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (patternPickerRef.current?.contains(t)) return;
-      setPatternPickerOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPatternPickerOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointer);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onPointer);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [patternPickerOpen]);
-
-  useEffect(() => {
     if (!running) {
       endAtRef.current = null;
       return;
@@ -591,6 +544,28 @@ export function FocusTimerView() {
     }, 250);
     return () => window.clearInterval(id);
   }, [running, epoch]);
+
+  // Persist live focus time; auto-close long pauses / midnight crossings.
+  useEffect(() => {
+    const beat = () => {
+      const next = syncOpenFocusSession({
+        running: running && mode === "focus",
+        plannedSec: mode === "focus" ? durationSec : undefined,
+      });
+      if (next) sittingRef.current = next;
+      else if (sittingRef.current && sittingRef.current.status !== "ended") {
+        sittingRef.current = getOpenFocusSession();
+      }
+    };
+    beat();
+    const id = window.setInterval(beat, 15_000);
+    const onVis = () => beat();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [running, mode, durationSec]);
 
   useEffect(() => {
     if (!tasksOpen && !ideateFlyoutOpen && !manifestOpen) return;
@@ -678,6 +653,13 @@ export function FocusTimerView() {
 
   function selectMode(next: TimerMode) {
     if (next === mode) return;
+    if (mode === "focus") {
+      endFocusSession({
+        reason: "stop",
+        midRound: remainingSec < durationSec && remainingSec > 0,
+      });
+      sittingRef.current = null;
+    }
     setMode(next);
     const mins =
       next === "focus" ? focusMinutes : MODE_DEFAULT_MINUTES[next];
@@ -690,12 +672,22 @@ export function FocusTimerView() {
   }
 
   function resetTimer() {
+    // Reset closes the sitting even if we're on a break between focus rounds.
+    endFocusSession({
+      reason: "reset",
+      midRound: mode === "focus" && remainingSec < durationSec,
+    });
+    sittingRef.current = null;
     applyDuration(durationSec);
   }
 
   function skipSession() {
     setRunning(false);
     endAtRef.current = null;
+    const midRound =
+      mode === "focus" && remainingSec < durationSec && remainingSec > 0;
+    endFocusSession({ reason: "stop", midRound });
+    sittingRef.current = null;
     if (mode === "focus" && remainingSec < durationSec) {
       setSessionsToday((prev) => {
         const count = prev + 1;
@@ -713,19 +705,63 @@ export function FocusTimerView() {
       const mins =
         mode === "focus" ? focusMinutes : MODE_DEFAULT_MINUTES[mode];
       applyDuration(mins * 60);
+      if (mode === "focus") ensureSitting();
       setRunning(true);
       return;
     }
-    setRunning((v) => !v);
+    setRunning((v) => {
+      const next = !v;
+      if (mode === "focus") {
+        if (next) {
+          sittingRef.current = startOrResumeFocusSession({
+            plannedSec: Math.max(60, durationSec),
+            meditateFirst: meditatePlayed.current || prefs.meditateFirst,
+          });
+        } else {
+          sittingRef.current = pauseFocusSession();
+        }
+      }
+      return next;
+    });
   }
 
   useEffect(() => {
     tasksRef.current = tasks;
   }, [tasks]);
 
+  useEffect(() => {
+    durationSecRef.current = durationSec;
+  }, [durationSec]);
+
   useEffect(() => () => {
     strikeTimers.current.forEach((timer) => window.clearTimeout(timer));
+    // Commit any running segment so a tab close doesn't lose focused time.
+    const open = getOpenFocusSession();
+    if (open?.status === "running") pauseFocusSession();
   }, []);
+
+  function ensureSitting(meditateFirst = false) {
+    const plannedSec =
+      mode === "focus" ? Math.max(60, durationSecRef.current || focusMinutes * 60) : focusMinutes * 60;
+    const sitting = startOrResumeFocusSession({
+      plannedSec,
+      meditateFirst: meditateFirst || meditatePlayed.current || prefs.meditateFirst,
+    });
+    sittingRef.current = sitting;
+    return sitting;
+  }
+
+  function noteGoalDone(item: FocusTaskItem) {
+    const goal = {
+      id: item.id,
+      text: item.text,
+      lifeAreaId: item.lifeAreaId ?? null,
+      lifeAreaTitle: item.lifeAreaTitle ?? null,
+    };
+    // Open sitting (running or paused) absorbs the tick; otherwise “outside a session”.
+    const next = addGoalToOpenFocusSession(goal);
+    if ("startedAt" in next) sittingRef.current = next;
+  }
 
   function persistTasks(next: FocusTaskItem[]) {
     tasksRef.current = next;
@@ -745,6 +781,7 @@ export function FocusTimerView() {
       );
       if (store) setIdeateStore(store);
     }
+    if (nextDone) noteGoalDone(item);
     const next = tasksRef.current.map((t) =>
       t.id === id ? { ...t, done: nextDone, inSession: false } : t,
     );
@@ -942,6 +979,13 @@ export function FocusTimerView() {
       const mins = mode === "focus" ? prefs.focusMinutes : mode === "longBreak" ? prefs.longBreakMinutes : prefs.breakMinutes;
       applyDuration(mins * 60);
     }
+    if (mode === "focus") {
+      sittingRef.current = startOrResumeFocusSession({
+        plannedSec: Math.max(60, (remainingSec > 0 ? durationSec : prefs.focusMinutes * 60)),
+        meditateFirst: meditatePlayed.current || prefs.meditateFirst,
+      });
+      focusRoundStartedAtRef.current = new Date().toISOString();
+    }
     setRunning(true);
   }
 
@@ -951,6 +995,11 @@ export function FocusTimerView() {
       const count = Math.min(12, sessionsToday + 1);
       writeSessionsCompletedToday(count);
       setSessionsToday(count);
+      const roundSec = Math.max(1, durationSecRef.current);
+      sittingRef.current = completeFocusRound({
+        plannedSec: roundSec,
+        meditateFirst: meditatePlayed.current || prefs.meditateFirst,
+      });
       const long = prefs.longBreakEvery && count % 4 === 0;
       const mins = long ? prefs.longBreakMinutes : prefs.breakMinutes;
       setMode(long ? "longBreak" : "shortBreak");
@@ -972,6 +1021,11 @@ export function FocusTimerView() {
     setRemainingSec(sec);
     remainingRef.current = sec;
     if (prefs.autoStartFocus) {
+      focusRoundStartedAtRef.current = new Date().toISOString();
+      sittingRef.current = startOrResumeFocusSession({
+        plannedSec: Math.max(60, sec),
+        meditateFirst: meditatePlayed.current || prefs.meditateFirst,
+      });
       setRunning(true);
       setEpoch((value) => value + 1);
     } else {
@@ -982,6 +1036,7 @@ export function FocusTimerView() {
   async function startSession() {
     const session = tasks.filter((task) => !task.done);
     if (prefs.meditateFirst && mode === "focus" && session.length > 0) {
+      ensureSitting(true);
       const store = loadIdeateStore();
       const areaIds = [...new Set(session.map((task) => task.lifeAreaId).filter((id): id is string => Boolean(id)))];
       const area = areaIds.length === 1
@@ -1179,7 +1234,7 @@ export function FocusTimerView() {
             <p className="px-2 py-3 text-sm text-muted">
               No life areas yet.{" "}
               <Link
-                to="/manifest/my?new=1"
+                to="/manifest?new=1"
                 className="font-medium text-accent-link underline-offset-2 hover:underline"
               >
                 Add one in Manifest

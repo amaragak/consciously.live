@@ -242,7 +242,7 @@ function gratitudeResultItem(entry: JournalEntry): AssistantActionResultItem {
     title: "Gratitudes",
     meta: formatJournalEntryDate(entry.createdAt),
     lines: lines.length ? lines : ["Empty"],
-    href: `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`,
+    href: `/journal/gratitudes/${encodeURIComponent(entry.id)}`,
   };
 }
 
@@ -546,7 +546,7 @@ function applyJournalEntry(
         meta: formatJournalEntryDate(entry.createdAt),
         subtitle: title.slice(0, 120),
         body: stripHtmlToText(contentHtml).trim() || undefined,
-        href: `/journal/my/${encodeURIComponent(entry.id)}`,
+        href: `/journal/entries/${encodeURIComponent(entry.id)}`,
       },
     ],
   };
@@ -646,7 +646,7 @@ function applyJournalUpdate(
         meta: formatJournalEntryDate(entry.createdAt),
         subtitle: entry.title || "Untitled",
         body: stripHtmlToText(entry.contentHtml).trim() || undefined,
-        href: `/journal/my/${encodeURIComponent(entry.id)}`,
+        href: `/journal/entries/${encodeURIComponent(entry.id)}`,
       },
     ],
   };
@@ -766,7 +766,7 @@ function applyListGratitudes(
     return {
       ok: true,
       label: "No gratitudes yet",
-      href: "/journal/my/gratitudes",
+      href: "/journal/gratitudes",
       linkLabel: "Open journal",
     };
   }
@@ -815,7 +815,7 @@ function applyListJournalEntries(
     return {
       ok: true,
       label: "No journal entries yet",
-      href: "/journal/my",
+      href: "/journal/entries",
       linkLabel: "Open journal",
     };
   }
@@ -828,7 +828,7 @@ function applyListJournalEntries(
       meta: formatJournalEntryDate(e.createdAt),
       subtitle: e.title || "Untitled",
       body: stripHtmlToText(e.contentHtml).trim() || undefined,
-      href: `/journal/my/${encodeURIComponent(e.id)}`,
+      href: `/journal/entries/${encodeURIComponent(e.id)}`,
     })),
   };
 }
@@ -851,7 +851,7 @@ function applyGetJournalEntry(
         meta: formatJournalEntryDate(entry.createdAt),
         subtitle: entry.title || "Untitled",
         body: stripHtmlToText(entry.contentHtml).trim() || undefined,
-        href: `/journal/my/${encodeURIComponent(entry.id)}`,
+        href: `/journal/entries/${encodeURIComponent(entry.id)}`,
       },
     ],
   };
@@ -864,7 +864,7 @@ async function applyGetJournalInsights(): Promise<AssistantActionResult> {
       return {
         ok: true,
         label: "No journal insights yet",
-        href: "/journal/my/insights",
+        href: "/journal/insights",
         linkLabel: "Open insights",
       };
     }
@@ -876,7 +876,7 @@ async function applyGetJournalInsights(): Promise<AssistantActionResult> {
         title: t.topicId.replace(/_/g, " "),
         meta: "Insight",
         body: stripHtmlToText(t.summaryMarkdown).replace(/[#*_`]/g, "").trim(),
-        href: "/journal/my/insights",
+        href: "/journal/insights",
       })),
     };
   } catch (e) {
@@ -894,7 +894,7 @@ async function applyRunJournalInsights(): Promise<AssistantActionResult> {
       return {
         ok: true,
         label: "Refreshed journal insights",
-        href: "/journal/my/insights",
+        href: "/journal/insights",
         linkLabel: "Open insights",
       };
     }
@@ -906,7 +906,7 @@ async function applyRunJournalInsights(): Promise<AssistantActionResult> {
         title: t.topicId.replace(/_/g, " "),
         meta: "Insight",
         body: stripHtmlToText(t.summaryMarkdown).replace(/[#*_`]/g, "").trim(),
-        href: "/journal/my/insights",
+        href: "/journal/insights",
       })),
     };
   } catch (e) {
@@ -924,7 +924,7 @@ async function applyListWeeklyLetters(): Promise<AssistantActionResult> {
       return {
         ok: true,
         label: "No weekly letters yet",
-        href: "/journal/my/insights",
+        href: "/journal/insights",
         linkLabel: "Open weekly",
       };
     }
@@ -939,7 +939,7 @@ async function applyListWeeklyLetters(): Promise<AssistantActionResult> {
           l.weekStart && l.weekEnd
             ? `${l.weekStart} → ${l.weekEnd}`
             : undefined,
-        href: `/journal/my/insights/${encodeURIComponent(l.weekKey)}`,
+        href: `/journal/insights/${encodeURIComponent(l.weekKey)}`,
       })),
     };
   } catch (e) {
@@ -961,13 +961,13 @@ async function applyGetWeeklyReflection(
       return {
         ok: true,
         label: "No weekly reflection for that week",
-        href: "/journal/my/insights",
+        href: "/journal/insights",
         linkLabel: "Open weekly",
       };
     }
     const href = res.weekKey
-      ? `/journal/my/insights/${encodeURIComponent(res.weekKey)}`
-      : "/journal/my/insights";
+      ? `/journal/insights/${encodeURIComponent(res.weekKey)}`
+      : "/journal/insights";
     return {
       ok: true,
       label: "Weekly reflection",
@@ -1028,7 +1028,7 @@ function applyListLifeAreas(): AssistantActionResult {
     return {
       ok: true,
       label: "No life areas yet",
-      href: "/manifest/my",
+      href: "/manifest",
       linkLabel: "Open Manifest",
     };
   }
@@ -1154,7 +1154,7 @@ function applyListTodos(
       label: "No To Dos found",
       href: area
         ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
-        : "/manifest/my",
+        : "/manifest",
       linkLabel: "Open Manifest",
     };
   }
@@ -1174,7 +1174,7 @@ function applyListTodos(
           ? lifeAreaTasksHref(parent.projectId, parent.id)
           : area
             ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
-            : "/manifest/my",
+            : "/manifest",
       };
     }),
   };
@@ -1289,7 +1289,7 @@ function applyPutTodo(
     detail: previewSnippet(next.title),
     href: parent
       ? lifeAreaTasksHref(parent.projectId, parent.id)
-      : "/manifest/my",
+      : "/manifest",
     linkLabel: "Open",
   };
 }
@@ -1316,7 +1316,7 @@ function applyDeleteTodo(
     detail: previewSnippet(title),
     href: parent
       ? lifeAreaTasksHref(parent.projectId, parent.id)
-      : "/manifest/my",
+      : "/manifest",
     linkLabel: "Open",
   };
 }
@@ -1333,7 +1333,7 @@ function applyGetIdeateStore(): AssistantActionResult {
         title: "Manifest",
         meta: "Snapshot",
         body: `${areas.length} areas · ${store.subtasks.length} goals · ${openTodos} open To Dos`,
-        href: "/manifest/my",
+        href: "/manifest",
       },
       ...areas.slice(0, 6).map((d) => ({
         id: d.id,
@@ -1358,7 +1358,7 @@ async function applyPutIdeateStore(): Promise<AssistantActionResult> {
     return {
       ok: true,
       label: "Syncing Manifest to cloud",
-      href: "/manifest/my",
+      href: "/manifest",
       linkLabel: "Open Manifest",
     };
   } catch (e) {
@@ -1376,7 +1376,7 @@ function applyListVisionBoard(): AssistantActionResult {
     return {
       ok: true,
       label: "Vision board is empty",
-      href: "/manifest/my/vision-board",
+      href: "/manifest/vision-board",
       linkLabel: "Open vision board",
     };
   }
@@ -1388,7 +1388,7 @@ function applyListVisionBoard(): AssistantActionResult {
       title: i.label?.trim() || "Vision item",
       meta: "Vision board",
       body: i.prompt?.trim() || undefined,
-      href: "/manifest/my/vision-board",
+      href: "/manifest/vision-board",
     })),
   };
 }
@@ -1713,7 +1713,7 @@ function applyGetFocusSession(): AssistantActionResult {
         title: hint.task || "Focus",
         meta: "Focus",
         body: `${hint.sessionsToday} session${hint.sessionsToday === 1 ? "" : "s"} today`,
-        href: "/focus/my",
+        href: "/focus",
       },
     ],
   };
@@ -1736,8 +1736,8 @@ function applyStartFocus(
   const href = action.todoId?.trim()
     ? focusMyHrefFromIdeate()
     : minutes != null
-      ? `/focus/my?minutes=${minutes}&autoStart=1`
-      : "/focus/my?autoStart=1";
+      ? `/focus?minutes=${minutes}&autoStart=1`
+      : "/focus?autoStart=1";
   return {
     ok: true,
     label: minutes != null ? `Start ${minutes}-min Focus` : "Start Focus",
@@ -1751,7 +1751,7 @@ function applyPauseFocus(): AssistantActionResult {
   return {
     ok: true,
     label: "Pause Focus",
-    href: "/focus/my",
+    href: "/focus",
     linkLabel: "Open Focus",
   };
 }
@@ -1761,7 +1761,7 @@ function applyStopFocus(): AssistantActionResult {
   return {
     ok: true,
     label: "Stop Focus",
-    href: "/focus/my",
+    href: "/focus",
     linkLabel: "Open Focus",
   };
 }

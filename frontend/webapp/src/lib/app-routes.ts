@@ -67,21 +67,29 @@ type PrefixRule = {
 };
 
 const PROTECTED_PREFIXES: PrefixRule[] = [
-  { prefix: "/chat/my", marketing: "/chat" },
+  { prefix: "/chat", marketing: "/chat" },
   { prefix: "/meditate/create", marketing: "/meditate" },
   { prefix: "/meditate/library", marketing: "/meditate" },
   { prefix: "/meditate/sounds", marketing: "/meditate" },
   { prefix: "/create", marketing: "/meditate" },
-  { prefix: "/journal/my", marketing: "/journal" },
-  { prefix: "/manifest/my", marketing: "/manifest" },
+  { prefix: "/journal/entries", marketing: "/journal" },
+  { prefix: "/journal/gratitudes", marketing: "/journal" },
+  { prefix: "/journal/insights", marketing: "/journal" },
   { prefix: "/manifest/goal", marketing: "/manifest" },
+  { prefix: "/manifest/vision-board", marketing: "/manifest" },
+  { prefix: "/manifest/insights", marketing: "/manifest" },
+  { prefix: "/manifest/story", marketing: "/manifest" },
+  { prefix: "/manifest/poster", marketing: "/manifest" },
+  { prefix: "/manifest/tracker", marketing: "/manifest" },
+  { prefix: "/manifest/words", marketing: "/manifest" },
+  { prefix: "/manifest/questions", marketing: "/manifest" },
   { prefix: "/ideate/my", marketing: "/manifest" },
   { prefix: "/ideate/goal", marketing: "/manifest" },
   { prefix: "/dream/my", marketing: "/manifest" },
   { prefix: "/dream/goal", marketing: "/manifest" },
   { prefix: "/plan/goal", marketing: "/manifest" },
   { prefix: "/plan/my", marketing: "/manifest" },
-  { prefix: "/focus/my", marketing: "/focus" },
+  { prefix: "/focus", marketing: "/focus" },
   { prefix: "/admin", marketing: "/" },
   { prefix: "/schedule", marketing: "/" },
   { prefix: "/analytics", marketing: "/" },
@@ -93,13 +101,16 @@ function matchesPrefix(pathname: string, prefix: string): boolean {
 
 export function isProtectedAppPath(pathname: string): boolean {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  // Exact Manifest home (not public `/manifest/guides`).
+  if (path === "/manifest") return true;
   return PROTECTED_PREFIXES.some((r) => matchesPrefix(path, r.prefix));
 }
 
 /** Protected Manifest (and legacy ideate/dream/plan) routes — own their loading UI. */
 const MANIFEST_APP_PREFIXES = [
-  "/manifest/my",
   "/manifest/goal",
+  "/manifest/vision-board",
+  "/manifest/insights",
   "/ideate/my",
   "/ideate/goal",
   "/dream/my",
@@ -110,11 +121,13 @@ const MANIFEST_APP_PREFIXES = [
 
 export function isManifestAppPath(pathname: string): boolean {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  if (path === "/manifest") return true;
   return MANIFEST_APP_PREFIXES.some((prefix) => matchesPrefix(path, prefix));
 }
 
 export function marketingFallbackForPath(pathname: string): string {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  if (path === "/manifest") return "/manifest";
   for (const r of PROTECTED_PREFIXES) {
     if (matchesPrefix(path, r.prefix)) return r.marketing;
   }
@@ -153,12 +166,12 @@ export function isPublicAuthPath(pathname: string): boolean {
 const MARKETING_ROOT_APP_DESTINATIONS: Record<string, string> = {
   "/meditate": "__SPA__/meditate",
   "/journal": "__SPA__/journal",
-  "/manifest": "__SPA__/manifest/my",
-  "/ideate": "__SPA__/manifest/my",
-  "/dream": "__SPA__/manifest/my",
-  "/plan": "__SPA__/manifest/my",
+  "/manifest": "__SPA__/manifest",
+  "/ideate": "__SPA__/manifest",
+  "/dream": "__SPA__/manifest",
+  "/plan": "__SPA__/manifest",
   "/focus": "__SPA__/focus",
-  "/chat": "__SPA__/chat/my",
+  "/chat": "__SPA__/chat",
 };
 
 /** Normalize pathname (no query/hash, no trailing slash except `/`). */

@@ -1401,7 +1401,7 @@ export function AdminProgramsPanel() {
                           className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
                         >
                           {coverBusyKeys.has("program")
-                            ? "Working…"
+                            ? "Generating…"
                             : "Generate"}
                         </button>
                         <button
@@ -1876,7 +1876,7 @@ export function AdminProgramsPanel() {
                                 className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:border-accent/40 disabled:opacity-40"
                               >
                                 {coverBusyKeys.has(day.id)
-                                  ? "Working…"
+                                  ? "Generating…"
                                   : "Generate"}
                               </button>
                               <button

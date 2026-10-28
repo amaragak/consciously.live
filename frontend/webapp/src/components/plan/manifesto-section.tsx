@@ -79,7 +79,7 @@ export function ManifestoSubpageHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        <Link to="/manifest/my" className={LINK_ROW_CLASS}>
+        <Link to="/manifest" className={LINK_ROW_CLASS}>
           <ChevronLeft aria-hidden className="size-4" strokeWidth={1.8} />
           Manifesto
         </Link>

@@ -472,7 +472,7 @@ export function PlanHomeClient() {
   const { ready: cloudReady, revision, signedIn } = useIdeateCloud();
   const sessionActive = signedIn;
 
-  // Sidebar "Add a life area" deep-link (`/manifest/my?new=1`).
+  // Sidebar "Add a life area" deep-link (`/manifest?new=1`).
   const newLifeAreaHandledRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -486,10 +486,10 @@ export function PlanHomeClient() {
     setModalOpen(true);
     params.delete("new");
     const qs = params.toString();
-    router.replace(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`);
+    router.replace(`/manifest${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [hydrated, cloudReady, router]);
 
-  // Guests never wait on the cloud provider — missing provider used to brick /manifest/my
+  // Guests never wait on the cloud provider — missing provider used to brick /manifest
   // on eternal "Loading…". Seed + paint from local demos immediately.
   useEffect(() => {
     if (sessionActive) return;
@@ -1187,7 +1187,7 @@ export function PlanHomeClient() {
           )}
 
           <Link
-            href="/manifest/my/vision-board"
+            href="/manifest/vision-board"
             className="mx-auto mt-3 flex w-fit items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             Open vision board →
@@ -1358,7 +1358,7 @@ export function PlanHomeClient() {
               )}
 
               <Link
-                href="/manifest/my/vision-board"
+                href="/manifest/vision-board"
                 className="mt-6 inline-flex items-center justify-center rounded-full border border-white bg-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
               >
                 Open vision board →

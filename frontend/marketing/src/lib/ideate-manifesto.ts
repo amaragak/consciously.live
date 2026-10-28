@@ -13,7 +13,10 @@ import { CLAUDE_HAIKU_45_MODEL_ID } from "@/lib/claude-pricing";
 import { streamMedimadeChat } from "@/lib/medimade-api";
 
 const LS_KEY = "mm_ideate_manifesto_v1";
+/** Soft word target for the model; hard limit is {@link MANIFESTO_MAX_CHARS}. */
 const MAX_WORDS = 25;
+/** Hard cap for manifesto sentence (manual edit + AI). Fits ~2 dashboard lines. */
+export const MANIFESTO_MAX_CHARS = 160;
 
 export type IdeateManifestoStoreV1 = {
   v: 1;
@@ -51,7 +54,7 @@ function normalizeStore(x: unknown): IdeateManifestoStoreV1 | null {
   if (!x || typeof x !== "object") return null;
   const o = x as LegacyManifestoCacheV1;
   if (o.v !== 1 || typeof o.text !== "string") return null;
-  const text = sanitizeManifesto(o.text);
+  const text = clipManifestoChars(sanitizeManifesto(o.text));
   return {
     v: 1,
     text,
@@ -152,6 +155,24 @@ function clipWords(text: string, maxWords: number): string {
   return `${words.slice(0, maxWords).join(" ").replace(/[.,;:!?]*$/, "")}.`;
 }
 
+/** Clip to a character budget, preferring a word boundary. */
+export function clipManifestoChars(
+  text: string,
+  maxChars = MANIFESTO_MAX_CHARS,
+): string {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (t.length <= maxChars) return t;
+  const sliced = t.slice(0, maxChars);
+  const lastSpace = sliced.lastIndexOf(" ");
+  const base =
+    lastSpace > Math.floor(maxChars * 0.55)
+      ? sliced.slice(0, lastSpace)
+      : sliced;
+  const trimmed = base.replace(/[.,;:!?…]*$/u, "").trim();
+  if (!trimmed) return t.slice(0, maxChars).trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 /** Strip quotes / markdown italic markers models sometimes wrap around the sentence. */
 export function sanitizeManifesto(text: string): string {
   let t = text.trim().replace(/\s+/g, " ");
@@ -185,14 +206,16 @@ function buildPrompt(values: string[], lifeAreaTitles: string[]): string {
       : "";
   return (
     `These are the user's personal values: ${valueList}.${areasLine} ` +
-    `Write a single sentence (max ${MAX_WORDS} words) that distils what they stand for into a personal statement. ` +
+    `Write a single sentence (max ${MAX_WORDS} words, under ${MANIFESTO_MAX_CHARS} characters) that distils what they stand for into a personal statement. ` +
     `First person. Specific to their actual values, not generic. Write something worth reading in italic. ` +
     `Reply with only the sentence — no quotes, no markdown, no asterisks, no preamble.`
   );
 }
 
 function persistText(text: string): string {
-  const cleaned = clipWords(sanitizeManifesto(text), MAX_WORDS);
+  const cleaned = clipManifestoChars(
+    clipWords(sanitizeManifesto(text), MAX_WORDS),
+  );
   if (!cleaned) return loadStoredManifesto() ?? "";
   saveIdeateManifestoStore({
     v: 1,
@@ -238,9 +261,8 @@ export async function ensureIdeateManifesto(opts: {
     text = "";
   }
 
-  text = clipWords(
-    sanitizeManifesto(text || localFallback(values)),
-    MAX_WORDS,
+  text = clipManifestoChars(
+    clipWords(sanitizeManifesto(text || localFallback(values)), MAX_WORDS),
   );
   if (!text) text = localFallback(values);
   return persistText(text);
@@ -252,7 +274,6 @@ export function saveIdeateManifestoManual(opts: {
   lifeAreaTitles: string[];
   text: string;
 }): string {
-  const values = opts.values.map((t) => t.trim()).filter(Boolean);
-  if (values.length === 0) return "";
+  // Works without values too: the empty Manifesto lets people write their own sentence.
   return persistText(opts.text);
 }

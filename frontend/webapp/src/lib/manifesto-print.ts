@@ -283,7 +283,7 @@ export function packManifestoPages(
 export function manifestoViewHref(view: ManifestoView): string {
   if (view === "manifesto") return "/manifest/poster";
   if (view === "story") return "/manifest/story";
-  return "/manifest/my";
+  return "/manifest";
 }
 
 /* ------------------------------------------------------------- numerals */

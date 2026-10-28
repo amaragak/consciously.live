@@ -522,7 +522,7 @@ function WhatLiftsYouCard({
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted">{model.emptyMessage}</p>
           <Link
-            to="/journal/my"
+            to="/journal/entries"
             className="inline-flex h-10 w-fit cursor-pointer items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:border-accent/40"
           >
             Write an entry

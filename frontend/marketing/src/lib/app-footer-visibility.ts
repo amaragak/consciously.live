@@ -15,15 +15,15 @@ export function shouldShowAppFooter(
   if (path.startsWith("/meditate/create") || path.startsWith("/create")) {
     return false;
   }
-  if (path === "/focus/my" || path.startsWith("/focus/my/")) return false;
+  if (path === "/focus" || path.startsWith("/focus/")) return false;
   if (path.startsWith("/admin")) return false;
 
   // Immersive in-app workspaces — footer would fight flex fill / overflow shells.
   if (layout === "app") {
-    if (path.startsWith("/chat/my")) return false;
-    if (path.startsWith("/journal/my")) return false;
+    if (path.startsWith("/chat")) return false;
+    if (path.startsWith("/journal/entries")) return false;
     if (path.startsWith("/meditate/sounds")) return false;
-    if (path.startsWith("/manifest/my") || path.startsWith("/manifest/goal")) {
+    if (path.startsWith("/manifest") || path.startsWith("/manifest/goal")) {
       return false;
     }
     if (

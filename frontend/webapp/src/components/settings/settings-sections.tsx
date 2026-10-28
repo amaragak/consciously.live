@@ -686,7 +686,9 @@ function AccountPasswordPanel({
             className="rounded-full accent-fill-gradient px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-50"
           >
             {busy
-              ? "Working…"
+              ? mode === "forgot"
+                ? "Sending code…"
+                : "Saving password…"
               : mode === "forgot"
                 ? "Send code"
                 : "Save password"}

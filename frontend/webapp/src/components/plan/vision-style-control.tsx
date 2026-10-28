@@ -193,7 +193,7 @@ export function VisionBoardImagesSetting() {
             value={style}
             showHelp={false}
             onAddPhoto={() => {
-              navigate("/manifest/my/vision-board?refs=1");
+              navigate("/manifest/vision-board?refs=1");
             }}
             onCommit={(next, redraw, skipLikeness) => {
               void (async () => {

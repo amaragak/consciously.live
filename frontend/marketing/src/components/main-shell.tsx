@@ -67,7 +67,7 @@ export function MainShell({
     layout !== "app" && isMarketingHeroRoute(pathname);
   const isFocusApp =
     layout === "app" &&
-    (pathname === "/focus/my" || pathname.startsWith("/focus/my/"));
+    (pathname === "/focus" || pathname.startsWith("/focus/"));
   const showFooter = shouldShowAppFooter(pathname, layout);
   const contentRef = useRef<HTMLDivElement>(null);
   const patternTileActive = !isHeroPage && !isAuthPage;

@@ -30,7 +30,7 @@ const cards = [
 ] as const;
 
 /**
- * Journal marketing page at `/journal`. App lives at `/journal/my`.
+ * Journal marketing page at `/journal`. App lives at `/journal/entries`.
  */
 export function EnhancedJournalPage() {
   return (
@@ -84,7 +84,7 @@ export function EnhancedJournalPage() {
           </h2>
           <div className="mt-8">
             <Link
-              href="/journal/my"
+              href="/journal/entries"
               className="inline-flex items-center justify-center rounded-full accent-fill-gradient px-7 py-3 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >
               Journal

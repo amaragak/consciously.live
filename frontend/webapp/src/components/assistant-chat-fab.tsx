@@ -36,7 +36,7 @@ import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
 
 /** Hide only when main content already hosts a chat UI. */
 function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
-  if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) return true;
+  if (pathname === "/chat" || pathname.startsWith("/chat/")) return true;
   const onCreate =
     pathname === "/meditate/create" ||
     pathname.startsWith("/meditate/create/") ||
@@ -75,7 +75,7 @@ export function AssistantChatHeaderButton() {
 
 /**
  * Logged-in floating mini-chat.
- * Hidden only when full Chat (`/chat/my`) or Create’s chat pane is already on screen.
+ * Hidden only when full Chat (`/chat`) or Create’s chat pane is already on screen.
  */
 export function AssistantChatFab() {
   const chatOn = useMvpFlags().chat;
@@ -217,8 +217,8 @@ export function AssistantChatFab() {
   if (!chatOn || !enabled || hidden || !open || typeof document === "undefined") return null;
 
   const fullHref = chat.activeId
-    ? `/chat/my/${encodeURIComponent(chat.activeId)}`
-    : "/chat/my";
+    ? `/chat/${encodeURIComponent(chat.activeId)}`
+    : "/chat";
 
   return createPortal(
     <>

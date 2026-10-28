@@ -169,7 +169,7 @@ function usePracticeAction(guide: Guide, area: GuideArea) {
       return;
     }
     void navigate(
-      `/journal/my?new=1&promptId=guide&promptTemplate=${encodeURIComponent(title)}`,
+      `/journal/entries?new=1&promptId=guide&promptTemplate=${encodeURIComponent(title)}`,
     );
   }, [area, brief, navigate, title]);
 }

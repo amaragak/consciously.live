@@ -96,7 +96,7 @@ export function sourceCardTarget(
   }
   if (kind === "image" && ref) {
     return {
-      href: `/manifest/my/vision-board?wb=${encodeURIComponent(areaId)}&select=${encodeURIComponent(ref)}#vision-tile-${ref}`,
+      href: `/manifest/vision-board?wb=${encodeURIComponent(areaId)}&select=${encodeURIComponent(ref)}#vision-tile-${ref}`,
       place: "Vision",
     };
   }

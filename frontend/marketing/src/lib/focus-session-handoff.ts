@@ -73,5 +73,5 @@ export function consumeReturnToFocusAfterCreate(): boolean {
 }
 
 export function focusMyHrefFromIdeate(): string {
-  return `/focus/my?fromIdeate=${Date.now()}`;
+  return `/focus?fromIdeate=${Date.now()}`;
 }

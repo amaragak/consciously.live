@@ -33,7 +33,7 @@ import { useLibraryPlayer } from "@/components/library-player-provider";
 
 /** Hide only when main content already hosts a chat UI. */
 function hideFabOnPath(pathname: string, createChatVisible: boolean): boolean {
-  if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) return true;
+  if (pathname === "/chat" || pathname.startsWith("/chat/")) return true;
   const onCreate =
     pathname === "/meditate/create" ||
     pathname.startsWith("/meditate/create/") ||
@@ -119,7 +119,7 @@ function IconExpand({ className }: { className?: string }) {
 
 /**
  * Logged-in floating mini-chat.
- * Hidden only when full Chat (`/chat/my`) or Create’s chat pane is already on screen.
+ * Hidden only when full Chat (`/chat`) or Create’s chat pane is already on screen.
  */
 export function AssistantChatFab() {
   const pathname = usePathname() || "/";
@@ -249,8 +249,8 @@ export function AssistantChatFab() {
   if (!enabled || hidden) return null;
 
   const fullHref = chat.activeId
-    ? `/chat/my/${encodeURIComponent(chat.activeId)}`
-    : "/chat/my";
+    ? `/chat/${encodeURIComponent(chat.activeId)}`
+    : "/chat";
 
   return (
     <>

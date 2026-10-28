@@ -5310,7 +5310,7 @@ export function CreateWorkspace({
                 </p>
               ) : !hasPlanGoals ? (
                 <Link
-                  to="/manifest/my"
+                  to="/manifest"
                   onClick={(e) => e.stopPropagation()}
                   className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >
@@ -5347,7 +5347,7 @@ export function CreateWorkspace({
                 </p>
               ) : !hasReflectableJournal ? (
                 <Link
-                  to="/journal/my"
+                  to="/journal/entries"
                   onClick={(e) => e.stopPropagation()}
                   className="mt-1 text-[12px] font-medium text-accent-link underline-offset-2 hover:underline sm:mt-2.5 sm:text-[13px]"
                 >

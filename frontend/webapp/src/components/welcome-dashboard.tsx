@@ -446,7 +446,7 @@ export function WelcomeDashboard() {
     playItem(storyPlacement.libraryItem);
   }
 
-  const [todayStats, setTodayStats] = useState({ partialStreak: 0, doneCount: 0, totalCount: 3 });
+  const [todayStats, setTodayStats] = useState({ partialStreak: 0, doneCount: 0, totalCount: 4 });
   const [focusTasks, setFocusTasks] = useState<FocusTaskItem[]>([]);
   const [focusDraft, setFocusDraft] = useState("");
   const [healStore, setHealStore] = useState<HealStoreV1 | null>(null);
@@ -509,15 +509,21 @@ export function WelcomeDashboard() {
           <h1 className="font-display text-[32px] font-normal leading-[1.1] md:text-[40px]">
             {greeting}, {name}.
           </h1>
-          {manifesto ? (
-            <p className="line-clamp-2 font-display text-[17px] italic leading-[1.45] text-[rgba(243,237,226,0.82)] md:line-clamp-none md:text-[19px]">
-              “{manifesto}”
-            </p>
-          ) : (
-            <Link href="/manifest/my" className="font-display text-[17px] italic leading-[1.45] text-[#D9B87C] md:text-[19px]">
-              Write your manifesto →
-            </Link>
-          )}
+          {/* Reserved 2-line block so cloud manifesto load doesn’t grow the hero. */}
+          <div className="min-h-[calc(1.45em*2)] font-display text-[17px] italic leading-[1.45] md:min-h-[calc(1.45em*2)] md:text-[19px]">
+            {manifesto ? (
+              <p className="line-clamp-2 text-[rgba(243,237,226,0.82)]">
+                “{manifesto}”
+              </p>
+            ) : (
+              <Link
+                href="/manifest"
+                className="line-clamp-2 text-[#D9B87C]"
+              >
+                Write your manifesto →
+              </Link>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {chip ? (
               <Link
@@ -634,7 +640,7 @@ export function WelcomeDashboard() {
 
         <DashCard
           label="Journal"
-          action={<OutlineGo href="/journal/my" label={`All entries · ${journalEntries.length}`} short="Open" />}
+          action={<OutlineGo href="/journal/entries" label={`All entries · ${journalEntries.length}`} short="Open" />}
         >
           <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[26px]">How are you, really?</h2>
           {recentJournal.length === 0 ? (
@@ -648,7 +654,7 @@ export function WelcomeDashboard() {
                 return (
                   <li key={entry.id}>
                     <Link
-                      href={`/journal/my/${encodeURIComponent(entry.id)}`}
+                      href={`/journal/entries/${encodeURIComponent(entry.id)}`}
                       className="flex gap-3 rounded-[14px] border border-border bg-card px-3 py-2.5"
                     >
                       {when ? (
@@ -679,26 +685,26 @@ export function WelcomeDashboard() {
             </ul>
           )}
           <div className="mt-auto flex flex-wrap gap-2 pt-1">
-            <MistLink href="/journal/my?new=1">New entry</MistLink>
-            <OutlineGo href="/journal/my/gratitudes?new=1" label="Add a gratitude" plain />
+            <MistLink href="/journal/entries?new=1">New entry</MistLink>
+            <OutlineGo href="/journal/gratitudes?new=1" label="Add a gratitude" plain />
           </div>
         </DashCard>
 
         <DashCard
           label="Manifest"
           className="md:col-span-2"
-          action={<OutlineGo href="/manifest/my" label="Open Manifest" short="Open" />}
+          action={<OutlineGo href="/manifest" label="Open Manifest" short="Open" />}
         >
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <div className="flex flex-col gap-2">
               <span className="text-[13px] text-muted">Your vision board</span>
               {visionItems.length === 0 ? (
-                <Link href="/manifest/my/vision-board" className="text-[14px] font-medium text-accent-link">Start your vision board →</Link>
+                <Link href="/manifest/vision-board" className="text-[14px] font-medium text-accent-link">Start your vision board →</Link>
               ) : (
                 <>
                   <div className="-mr-5 flex gap-2.5 overflow-x-auto pr-5 md:mr-0 md:grid md:grid-cols-4 md:overflow-visible md:pr-0">
                     {visionItems.map((item) => (
-                      <Link key={item.id} href="/manifest/my/vision-board" className="h-[90px] w-[120px] shrink-0 overflow-hidden rounded-xl md:h-[86px] md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
+                      <Link key={item.id} href="/manifest/vision-board" className="h-[90px] w-[120px] shrink-0 overflow-hidden rounded-xl md:h-[86px] md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
                         {item.imageUrl ? <img src={item.imageUrl} alt={item.label || ""} className="h-full w-full object-cover" /> : null}
                       </Link>
                     ))}
@@ -734,7 +740,7 @@ export function WelcomeDashboard() {
           <div className="flex flex-col gap-2">
             <span className="text-[13px] text-muted">Your life areas</span>
             {lifeAreas.length === 0 ? (
-              <Link href="/manifest/my?new=1" className="text-[14px] font-medium text-accent-link">Map your life areas →</Link>
+              <Link href="/manifest?new=1" className="text-[14px] font-medium text-accent-link">Map your life areas →</Link>
             ) : (
               <>
                 <div className={`-mr-5 flex gap-3 overflow-x-auto pb-1 pr-5 md:mr-0 md:pr-0 ${lifeAreas.length <= 4 ? "md:overflow-visible" : ""}`}>
@@ -774,7 +780,7 @@ export function WelcomeDashboard() {
           </div>
           <div className="mt-auto flex flex-wrap gap-2 pt-1">
             <MistLink href="/manifest/tracker?add=1">Add a goal</MistLink>
-            <OutlineGo href="/manifest/my/vision-board?add=1" label="Add to vision board" plain />
+            <OutlineGo href="/manifest/vision-board?add=1" label="Add to vision board" plain />
           </div>
         </DashCard>
 

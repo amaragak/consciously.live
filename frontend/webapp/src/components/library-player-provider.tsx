@@ -155,7 +155,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   const reflectActive = useMemo(() => {
     void journalTick;
     if (!nowPlaying || !isLibraryMeditationTrack(nowPlaying)) return false;
-    const m = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+    const m = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
     if (!m?.[1]) return false;
     let entryId: string;
     try {

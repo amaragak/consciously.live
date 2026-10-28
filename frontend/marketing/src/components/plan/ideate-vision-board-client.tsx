@@ -1297,7 +1297,7 @@ export function IdeateVisionBoardClient() {
                                   onClick={() => void onRefineTile(item)}
                                 >
                                   {refiningId === item.id
-                                    ? "Working…"
+                                    ? "Regenerating…"
                                     : "Regenerate"}
                                 </button>
                               </div>

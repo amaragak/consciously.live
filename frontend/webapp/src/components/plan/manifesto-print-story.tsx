@@ -587,7 +587,7 @@ function RegenerateBtn({
         className={`h-3 w-3 ${busy ? "animate-pulse" : ""}`}
         aria-hidden
       />
-      {busy ? "Working…" : label}
+      {busy ? "Regenerating…" : label}
     </button>
   );
 }

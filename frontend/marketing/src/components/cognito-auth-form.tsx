@@ -341,6 +341,17 @@ export function CognitoAuthForm({
             ? "Save new password"
             : "Sign in";
 
+  const busyLabel =
+    mode === "signup"
+      ? "Creating account…"
+      : mode === "confirm"
+        ? "Confirming…"
+        : mode === "forgot"
+          ? "Sending code…"
+          : mode === "reset"
+            ? "Saving password…"
+            : "Signing in…";
+
   const heading =
     mode === "signup"
       ? "Create your account"
@@ -507,7 +518,7 @@ export function CognitoAuthForm({
               : "mt-1 flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-full accent-fill-gradient px-4 text-base font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
           }
         >
-          {busy ? "Working…" : submitLabel}
+          {busy ? busyLabel : submitLabel}
         </button>
       </form>
 

@@ -39,7 +39,7 @@ export function ManifestHomePage() {
     const next = new URLSearchParams(params);
     next.delete("view");
     const q = next.toString();
-    return <Navigate to={q ? `/manifest/my?${q}` : "/manifest/my"} replace />;
+    return <Navigate to={q ? `/manifest?${q}` : "/manifest"} replace />;
   }
 
   return (

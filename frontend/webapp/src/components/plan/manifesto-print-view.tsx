@@ -44,6 +44,7 @@ import {
 import {
   ensureIdeateManifesto,
   loadStoredManifesto,
+  MANIFESTO_MAX_CHARS,
   saveIdeateManifestoManual,
 } from "@/lib/ideate-manifesto";
 import {
@@ -775,6 +776,7 @@ export function ManifestoPrintView() {
           title="Your manifesto"
           value={statement}
           multiline
+          maxLength={MANIFESTO_MAX_CHARS}
           placeholder="Write the sentence you want to grow into."
           onClose={closePopover}
           onSave={(text) => {

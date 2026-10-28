@@ -104,7 +104,7 @@ export function PlanGoalWorkspace({ dreamId }: Props) {
             This project isn’t here anymore—or the link is old.
           </p>
           <Link
-            to="/manifest/my"
+            to="/manifest"
             className="mt-6 inline-block text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
           >
             Back to Manifest

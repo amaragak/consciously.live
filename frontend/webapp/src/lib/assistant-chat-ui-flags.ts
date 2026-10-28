@@ -1,5 +1,5 @@
 /**
- * Full Chat (`/chat/my`) + Create coach chat.
+ * Full Chat (`/chat`) + Create coach chat.
  * Panel chrome: `ChatPanelShell`. Message chrome: `ChatThreadMessage`.
  * When `true`: warm fill + tile; classic bubbles both sides.
  * When `false` (default): transparent panel; user bubbles only, assistant plain text.

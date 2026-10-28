@@ -4,7 +4,7 @@ import { JournalView } from "@/components/journal-view";
 /**
  * Journal / Gratitudes / Insights share one mounted JournalView so tab switches
  * only change the URL + local section state (no remount / re-fetch).
- * Nested routes under `/journal/my/*` all render this same shell; pathname
+ * Nested routes under `/journal/entries/*` all render this same shell; pathname
  * parsing inside JournalView drives section + entry selection.
  */
 export function JournalPage() {

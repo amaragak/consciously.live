@@ -82,7 +82,7 @@ import {
   readSoundsLastOpen,
   writeSoundsLastOpen,
 } from "@/lib/sounds-recent-mixes";
-import { SOUNDS_HREF } from "@/lib/sounds-tabs";
+import { SOUNDS_CUSTOM_HREF, SOUNDS_HREF } from "@/lib/sounds-tabs";
 
 type SoundsRoute =
   | { kind: "list" }
@@ -91,7 +91,12 @@ type SoundsRoute =
   | { kind: "preset"; id: string };
 
 function soundsRouteFromPath(pathname: string): SoundsRoute {
-  if (pathname === SOUNDS_HREF || pathname === `${SOUNDS_HREF}/`) {
+  if (
+    pathname === SOUNDS_CUSTOM_HREF ||
+    pathname === `${SOUNDS_CUSTOM_HREF}/` ||
+    pathname === SOUNDS_HREF ||
+    pathname === `${SOUNDS_HREF}/`
+  ) {
     return { kind: "list" };
   }
   if (pathname === `${SOUNDS_HREF}/new` || pathname === `${SOUNDS_HREF}/new/`) {
@@ -521,7 +526,7 @@ export function MixerSoundsStudio({
       if (!p) {
         // createNew sets appliedRouteKey before presets state commits.
         if (appliedRouteKeyRef.current === routeKey) return;
-        navigate(SOUNDS_HREF, { replace: true });
+        navigate(SOUNDS_CUSTOM_HREF, { replace: true });
         return;
       }
       appliedRouteKeyRef.current = routeKey;
@@ -540,7 +545,7 @@ export function MixerSoundsStudio({
       if (appliedRouteKeyRef.current === routeKey) return;
       const p = factoryPresets.find((x) => x.id === route.id);
       if (!p) {
-        navigate(SOUNDS_HREF, { replace: true });
+        navigate(SOUNDS_CUSTOM_HREF, { replace: true });
         return;
       }
       appliedRouteKeyRef.current = routeKey;
@@ -1078,7 +1083,7 @@ export function MixerSoundsStudio({
   }
 
   function openSoundsList() {
-    navigate(SOUNDS_HREF);
+    navigate(SOUNDS_CUSTOM_HREF);
   }
 
   async function saveCurrent() {
@@ -1211,7 +1216,7 @@ export function MixerSoundsStudio({
           setNameDraft("Untitled mix");
           setMix(emptyMixerMix());
           // Stay on the mixer with an empty mix (no separate list page).
-          navigate(SOUNDS_HREF, { replace: true });
+          navigate(SOUNDS_CUSTOM_HREF, { replace: true });
         }
       },
     });

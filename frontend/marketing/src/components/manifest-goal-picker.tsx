@@ -199,7 +199,7 @@ export function ManifestGoalPicker({
               <>
                 Add a life area in{" "}
                 <Link
-                  href="/manifest/my"
+                  href="/manifest"
                   className="font-semibold text-accent-link underline-offset-2 hover:underline"
                 >
                   Manifest

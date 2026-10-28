@@ -68,7 +68,7 @@ function resolveSources(
 }
 
 function entryHref(id: string, quote?: string): string {
-  const base = `/journal/my/${encodeURIComponent(id)}`;
+  const base = `/journal/entries/${encodeURIComponent(id)}`;
   if (!quote?.trim()) return base;
   return `${base}?highlight=${encodeURIComponent(quote.trim())}`;
 }

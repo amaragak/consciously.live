@@ -54,12 +54,25 @@ function pathMatches(path: string, exactOrPrefix: string): boolean {
 /** Routes already moved to frontend/webapp — post-auth and nav should cross-origin. */
 export function isSpaAppPath(pathname: string): boolean {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
-  if (pathMatches(path, "/focus") || path === "/focus/my") return true;
-  if (pathMatches(path, "/journal/my")) return true;
+  if (pathMatches(path, "/focus")) return true;
   if (
-    pathMatches(path, "/manifest/my") ||
+    pathMatches(path, "/journal/entries") ||
+    pathMatches(path, "/journal/gratitudes") ||
+    pathMatches(path, "/journal/insights")
+  ) {
+    return true;
+  }
+  if (
+    path === "/manifest" ||
     pathMatches(path, "/manifest/goal") ||
-    pathMatches(path, "/manifest/guides")
+    pathMatches(path, "/manifest/guides") ||
+    pathMatches(path, "/manifest/vision-board") ||
+    pathMatches(path, "/manifest/insights") ||
+    pathMatches(path, "/manifest/story") ||
+    pathMatches(path, "/manifest/poster") ||
+    pathMatches(path, "/manifest/tracker") ||
+    pathMatches(path, "/manifest/words") ||
+    pathMatches(path, "/manifest/questions")
   ) {
     return true;
   }
@@ -88,24 +101,45 @@ export function isSpaAppPath(pathname: string): boolean {
   if (path === "/journal" || pathMatches(path, "/journal/guides")) return true;
   // Public marketing Community library: `/library`, `/library/[slug]` stay here.
   // Logged-in library is `/meditate/library/*` on the SPA.
-  if (pathMatches(path, "/chat/my")) return true;
+  if (pathMatches(path, "/chat")) return true;
   if (pathMatches(path, "/admin")) return true;
   if (pathMatches(path, "/settings")) return true;
   if (pathMatches(path, "/schedule")) return true;
   if (pathMatches(path, "/analytics")) return true;
+  if (pathMatches(path, "/heal")) return true;
+  if (pathMatches(path, "/pricing")) return true;
   // `/` stays on marketing for logged-out landing; signed-in home redirects in page.tsx.
   return false;
 }
 
 /**
  * Map a marketing path onto the SPA equivalent.
- * Focus: `/focus/my` → `/focus`. Journal/Manifest/Create keep shapes (or map legacy → manifest).
+ * Focus: `/focus` → `/focus`. Journal/Manifest/Create keep shapes (or map legacy → manifest).
  */
 export function spaPathForAppPath(pathname: string): string {
   const [path, qs] = pathname.split("?");
   let base = path || "/";
-  if (base === "/focus/my" || base.startsWith("/focus/my/")) {
-    base = base.replace(/^\/focus\/my/, "/focus");
+  // Drop legacy `/my` segments from the marketing↔SPA split era.
+  if (base === "/journal/my" || base === "/journal/my/") {
+    base = "/journal/entries";
+  } else if (base.startsWith("/journal/my/gratitudes")) {
+    base = base.replace(/^\/journal\/my\/gratitudes/, "/journal/gratitudes");
+  } else if (base.startsWith("/journal/my/insights")) {
+    base = base.replace(/^\/journal\/my\/insights/, "/journal/insights");
+  } else if (base.startsWith("/journal/my/")) {
+    base = base.replace(/^\/journal\/my\//, "/journal/entries/");
+  } else if (base === "/manifest/my" || base === "/manifest/my/") {
+    base = "/manifest";
+  } else if (base.startsWith("/manifest/my/")) {
+    base = base.replace(/^\/manifest\/my\//, "/manifest/");
+  } else if (base === "/chat/my" || base === "/chat/my/") {
+    base = "/chat";
+  } else if (base.startsWith("/chat/my/")) {
+    base = base.replace(/^\/chat\/my\//, "/chat/");
+  } else if (base === "/focus/my" || base === "/focus/my/") {
+    base = "/focus";
+  } else if (base.startsWith("/focus/my/")) {
+    base = base.replace(/^\/focus\/my\//, "/focus/");
   } else if (base.startsWith("/ideate/")) {
     base = base.replace(/^\/ideate/, "/manifest");
   } else if (base.startsWith("/dream/")) {

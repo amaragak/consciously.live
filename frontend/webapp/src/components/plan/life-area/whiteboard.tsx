@@ -923,7 +923,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
                 <span className="truncate">{item.label || "Image"}</span>
               </button>
             ))}
-            <button type="button" className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-accent-link" onClick={() => navigate(`/manifest/my/vision-board?createArea=${encodeURIComponent(dream.id)}`)}>
+            <button type="button" className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-accent-link" onClick={() => navigate(`/manifest/vision-board?createArea=${encodeURIComponent(dream.id)}`)}>
               ✦ Create one
             </button>
           </div>

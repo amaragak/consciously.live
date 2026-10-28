@@ -28,7 +28,7 @@ export function EnhancedPricingPage() {
         variant="marketing"
         autoCheckout={autoCheckout}
         onEssentials={() => {
-          window.location.href = "/journal/my";
+          window.location.href = "/journal/entries";
         }}
         loginHrefBuilder={(priceKey) =>
           `/login?next=${encodeURIComponent(`/pricing?checkout=${priceKey}`)}`

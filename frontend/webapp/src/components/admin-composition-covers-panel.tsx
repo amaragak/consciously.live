@@ -1836,7 +1836,7 @@ export function AdminCompositionCoversPanel() {
             title="Draw an illustration from each photograph that does not have one yet. Uses the crop already set."
           >
             {bulkBusy
-              ? "Working…"
+              ? "Generating…"
               : `Generate illustration version (${counts.missingIllustration})`}
           </button>
           <button
@@ -3087,7 +3087,9 @@ export function AdminCompositionCoversPanel() {
                             title="Redraw the current photograph as a second cover"
                           >
                             {state.busy
-                              ? "Working…"
+                              ? item.coverIllustrationUrl
+                                ? "Regenerating…"
+                                : "Generating…"
                               : item.coverIllustrationUrl
                                 ? "Regenerate illustration"
                                 : "Generate illustration alternative"}

@@ -126,8 +126,8 @@ export function journalFirstLine(entry: JournalEntry): string {
 
 export function journalHref(entry: JournalEntry): string {
   return entry.kind === "gratitude"
-    ? `/journal/my/gratitudes/${encodeURIComponent(entry.id)}`
-    : `/journal/my/${encodeURIComponent(entry.id)}`;
+    ? `/journal/gratitudes/${encodeURIComponent(entry.id)}`
+    : `/journal/entries/${encodeURIComponent(entry.id)}`;
 }
 
 /** New Journal entry with a Heal item or life area already attached. */
@@ -144,7 +144,7 @@ export function journalNewEntryHref(input: {
     params.set("area", input.targetId);
     if (input.label.trim()) params.set("areaTitle", input.label.trim());
   }
-  return `/journal/my?${params.toString()}`;
+  return `/journal/entries?${params.toString()}`;
 }
 
 function whenLabel(iso: string): string {

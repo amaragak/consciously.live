@@ -122,7 +122,7 @@ export function ManifestPracticeButton({
     setOpen(false);
     const params = new URLSearchParams({ new: "1", then: "goal" });
     if (title) params.set("goalTitle", title);
-    void navigate(`/manifest/my?${params.toString()}`);
+    void navigate(`/manifest?${params.toString()}`);
   };
 
   return (

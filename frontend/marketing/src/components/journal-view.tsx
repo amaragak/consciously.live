@@ -132,9 +132,9 @@ type JournalMainTab = "journal" | "gratitude";
 type JournalSection = JournalMainTab | "insights";
 
 const JOURNAL_SECTION_HREF = {
-  journal: "/journal/my",
-  gratitude: "/journal/my/gratitudes",
-  insights: "/journal/my/insights",
+  journal: "/journal/entries",
+  gratitude: "/journal/gratitudes",
+  insights: "/journal/insights",
 } as const;
 
 const JOURNAL_SECTION_TABS = [
@@ -145,14 +145,14 @@ const JOURNAL_SECTION_TABS = [
 
 function journalSectionFromPath(pathname: string): JournalSection {
   if (
-    pathname === "/journal/my/insights" ||
-    pathname.startsWith("/journal/my/insights/")
+    pathname === "/journal/insights" ||
+    pathname.startsWith("/journal/insights/")
   ) {
     return "insights";
   }
   if (
-    pathname === "/journal/my/gratitudes" ||
-    pathname.startsWith("/journal/my/gratitudes/")
+    pathname === "/journal/gratitudes" ||
+    pathname.startsWith("/journal/gratitudes/")
   ) {
     return "gratitude";
   }
@@ -162,14 +162,14 @@ function journalSectionFromPath(pathname: string): JournalSection {
 /** Entry id from `/journal/:entryId` (not gratitudes/insights). */
 function journalEntryIdFromPath(pathname: string): string | null {
   if (
-    pathname === "/journal/my" ||
-    pathname === "/journal/my/" ||
-    pathname.startsWith("/journal/my/gratitudes") ||
-    pathname.startsWith("/journal/my/insights")
+    pathname === "/journal/entries" ||
+    pathname === "/journal/entries/" ||
+    pathname.startsWith("/journal/gratitudes") ||
+    pathname.startsWith("/journal/insights")
   ) {
     return null;
   }
-  const m = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   try {
     return decodeURIComponent(m[1]);
@@ -178,9 +178,9 @@ function journalEntryIdFromPath(pathname: string): string | null {
   }
 }
 
-/** Entry id from `/journal/my/gratitudes/:entryId`. */
+/** Entry id from `/journal/gratitudes/:entryId`. */
 function gratitudeEntryIdFromPath(pathname: string): string | null {
-  const m = /^\/journal\/my\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   try {
     return decodeURIComponent(m[1]);
@@ -385,7 +385,7 @@ export function JournalView() {
   >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
-  const pathname = usePathname() || "/journal/my";
+  const pathname = usePathname() || "/journal/entries";
   const router = useRouter();
   const section = journalSectionFromPath(pathname);
   const routeEntryId = journalEntryIdFromPath(pathname);
@@ -393,10 +393,10 @@ export function JournalView() {
   /** Mobile journal: editor is its own full-screen route (`/journal/:id`). */
   const mobileJournalEditor =
     section === "journal" && Boolean(routeEntryId);
-  /** Mobile gratitudes: compose is `/journal/my/gratitudes/:id`. */
+  /** Mobile gratitudes: compose is `/journal/gratitudes/:id`. */
   const mobileGratitudeCompose =
     section === "gratitude" && Boolean(routeGratitudeId);
-  /** Mobile insights: letter detail is `/journal/my/insights/:weekKey`. */
+  /** Mobile insights: letter detail is `/journal/insights/:weekKey`. */
   const mobileInsightsLetter =
     section === "insights" &&
     Boolean(/^\/journal\/insights\/[^/]+\/?$/.test(pathname));
@@ -1013,7 +1013,7 @@ export function JournalView() {
     if (journalTab === "journal" && journalEntryIdFromPath(pathname)) {
       router.push(
         nextId
-          ? `/journal/my/${encodeURIComponent(nextId)}`
+          ? `/journal/entries/${encodeURIComponent(nextId)}`
           : JOURNAL_SECTION_HREF.journal,
       );
     } else if (
@@ -1022,7 +1022,7 @@ export function JournalView() {
     ) {
       router.push(
         nextId
-          ? `/journal/my/gratitudes/${encodeURIComponent(nextId)}`
+          ? `/journal/gratitudes/${encodeURIComponent(nextId)}`
           : JOURNAL_SECTION_HREF.gratitude,
       );
     }
@@ -1061,14 +1061,14 @@ export function JournalView() {
       if (journalTab === "journal") {
         if (isGratitudeEntry(entry)) return;
         if (journalEntryIdFromPath(pathname) === nextId) return;
-        router.push(`/journal/my/${encodeURIComponent(nextId)}`);
+        router.push(`/journal/entries/${encodeURIComponent(nextId)}`);
         return;
       }
       if (journalTab === "gratitude") {
         if (!isGratitudeEntry(entry)) return;
         if (gratitudeEntryIdFromPath(pathname) === nextId) return;
         router.push(
-          `/journal/my/gratitudes/${encodeURIComponent(nextId)}`,
+          `/journal/gratitudes/${encodeURIComponent(nextId)}`,
         );
       }
     },
@@ -1091,7 +1091,7 @@ export function JournalView() {
     }
   }, [hydrated, section, routeEntryId, entries, applyEntrySelection, router]);
 
-  /** Deep-link / browser back: sync from `/journal/my/gratitudes/:id`. */
+  /** Deep-link / browser back: sync from `/journal/gratitudes/:id`. */
   useEffect(() => {
     if (!hydrated || section !== "gratitude") return;
     if (!routeGratitudeId) return;
@@ -1179,7 +1179,7 @@ export function JournalView() {
     latestTitleRef.current = e.title;
     latestGratitudeRef.current = emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
-    router.push(`/journal/my/${encodeURIComponent(e.id)}`);
+    router.push(`/journal/entries/${encodeURIComponent(e.id)}`);
   }, [flushSaveSync, persist, selectedFolderId, router]);
 
   const generateMeditationFromActive = useCallback(() => {
@@ -1215,7 +1215,7 @@ export function JournalView() {
       router.push(`/manifest/goal/${encodeURIComponent(activeLifeArea.id)}`);
       return;
     }
-    router.push("/manifest/my");
+    router.push("/manifest");
   }, [activeLifeArea, router]);
 
   const createGratitudeEntry = useCallback(() => {
@@ -1230,10 +1230,10 @@ export function JournalView() {
     latestTitleRef.current = e.title;
     latestGratitudeRef.current = e.gratitude ?? emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
-    router.push(`/journal/my/gratitudes/${encodeURIComponent(e.id)}`);
+    router.push(`/journal/gratitudes/${encodeURIComponent(e.id)}`);
   }, [flushSaveSync, persist, router]);
 
-  // Sidebar deep-links: `/journal/my?new=1` and `/journal/my/gratitudes?new=1`.
+  // Sidebar deep-links: `/journal/entries?new=1` and `/journal/gratitudes?new=1`.
   const newEntryHandledRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1245,8 +1245,8 @@ export function JournalView() {
     if (!hydrated || newEntryHandledRef.current) return;
     newEntryHandledRef.current = true;
     if (
-      pathname === "/journal/my/gratitudes" ||
-      pathname.startsWith("/journal/my/gratitudes/")
+      pathname === "/journal/gratitudes" ||
+      pathname.startsWith("/journal/gratitudes/")
     ) {
       createGratitudeEntry();
       return;
@@ -1273,7 +1273,7 @@ export function JournalView() {
       persist(next, first.id);
       setImportBatchId(batchId);
       setImportOpen(false);
-      router.push(`/journal/my/${encodeURIComponent(first.id)}`);
+      router.push(`/journal/entries/${encodeURIComponent(first.id)}`);
       if (getMedimadeSessionJwt()) {
         void runJournalInsightsRemote().catch(() => {
           /* insights can catch up later */
@@ -1346,7 +1346,7 @@ export function JournalView() {
     const id = openTodayGratitude();
     if (!id) return;
     if (gratitudeEntryIdFromPath(pathname) === id) return;
-    router.push(`/journal/my/gratitudes/${encodeURIComponent(id)}`);
+    router.push(`/journal/gratitudes/${encodeURIComponent(id)}`);
   }, [openTodayGratitude, pathname, router]);
 
   const activateJournalList = useCallback(() => {
@@ -1383,7 +1383,7 @@ export function JournalView() {
       ) {
         return;
       }
-      // Bare `/journal/my/gratitudes` (breadcrumb, tab, sidebar): last ?24h or new.
+      // Bare `/journal/gratitudes` (breadcrumb, tab, sidebar): last ?24h or new.
       openTodayGratitudeCompose();
       return;
     }

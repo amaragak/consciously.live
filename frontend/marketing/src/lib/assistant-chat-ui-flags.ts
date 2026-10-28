@@ -1,5 +1,5 @@
 /**
- * Full Chat (`/chat/my`) surface styling.
+ * Full Chat (`/chat`) surface styling.
  * When `true`, keeps warm panel fill + bubbles for both speakers.
  * When `false` (default), transparent panel + user-only bubbles (modern).
  * FAB mini-chat always uses the classic bubble treatment via `compact`.

@@ -11,6 +11,7 @@ import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
+import { MANIFESTO_MAX_CHARS } from "@/lib/ideate-manifesto";
 import {
   boardVisionItems,
   visionBoardPhotoFilter,
@@ -185,8 +186,8 @@ function ImageTile({
     <Link
       to={
         scrim
-          ? "/manifest/my/vision-board"
-          : `/manifest/my/vision-board#vision-tile-${image.id}`
+          ? "/manifest/vision-board"
+          : `/manifest/vision-board#vision-tile-${image.id}`
       }
       className={`${TILE} group ${className ?? ""}`}
     >
@@ -449,8 +450,11 @@ export function ManifestoHeroBento({
                 id="ideate-manifesto-edit"
                 autoFocus
                 rows={4}
+                maxLength={MANIFESTO_MAX_CHARS}
                 value={draft}
-                onChange={(e) => onDraft(e.target.value)}
+                onChange={(e) =>
+                  onDraft(e.target.value.slice(0, MANIFESTO_MAX_CHARS))
+                }
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
@@ -460,6 +464,15 @@ export function ManifestoHeroBento({
                 className="w-full resize-none rounded-xl border border-white/35 bg-black/35 px-3 py-2.5 text-left font-display text-[20px] font-normal italic leading-[1.38] text-white outline-none ring-white/25 focus:ring-2 md:text-[24px]"
               />
               <div className="flex items-center gap-2">
+                <span
+                  className={`mr-auto text-[11px] tabular-nums ${
+                    draft.length >= MANIFESTO_MAX_CHARS
+                      ? "text-[#E6C98A]"
+                      : "text-white/50"
+                  }`}
+                >
+                  {draft.length}/{MANIFESTO_MAX_CHARS}
+                </span>
                 <button
                   type="button"
                   onClick={onCancelEdit}
@@ -500,7 +513,7 @@ export function ManifestoHeroBento({
                 View as poster
               </Link>
               <Link
-                to="/manifest/my/vision-board"
+                to="/manifest/vision-board"
                 className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-full border border-white/70 px-4 text-sm font-semibold text-white md:w-auto"
               >
                 Vision board →

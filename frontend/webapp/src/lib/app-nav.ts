@@ -66,7 +66,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
       {
         id: "sounds",
         label: "Sounds",
-        href: "/meditate/sounds",
+        href: "/meditate/sounds/soundscapes",
         children: [
           {
             id: "sounds-soundscapes",
@@ -81,7 +81,7 @@ export const APP_NAV_MAIN: AppNavSection[] = [
           {
             id: "sounds-custom",
             label: "Custom sounds",
-            href: "/meditate/sounds",
+            href: "/meditate/sounds/custom",
           },
         ],
       },
@@ -95,28 +95,28 @@ export const APP_NAV_MAIN: AppNavSection[] = [
       {
         id: "entries",
         label: "Journal Entries",
-        href: "/journal/my",
-        actionHref: "/journal/my?new=1",
+        href: "/journal/entries",
+        actionHref: "/journal/entries?new=1",
         actionAriaLabel: "New entry",
       },
       {
         id: "gratitudes",
         label: "Gratitudes",
-        href: "/journal/my/gratitudes",
-        actionHref: "/journal/my/gratitudes?new=1",
+        href: "/journal/gratitudes",
+        actionHref: "/journal/gratitudes?new=1",
         actionAriaLabel: "New gratitude",
       },
-      { id: "insights", label: "Insights", href: "/journal/my/insights" },
+      { id: "insights", label: "Insights", href: "/journal/insights" },
     ],
   },
   {
     id: "ideate",
     label: "Manifest",
-    href: "/manifest/my",
+    href: "/manifest",
     children: [
-      { id: "manifesto", label: "Manifesto", href: "/manifest/my" },
+      { id: "manifesto", label: "Manifesto", href: "/manifest" },
       { id: "story", label: "Story", href: "/manifest/story" },
-      { id: "vision-board", label: "Vision board", href: "/manifest/my/vision-board" },
+      { id: "vision-board", label: "Vision board", href: "/manifest/vision-board" },
       { id: "tracker", label: "Tracker", href: "/manifest/tracker" },
       // Life areas are injected dynamically in AppSidebar (not static nav).
     ],
@@ -133,11 +133,16 @@ export const APP_NAV_MAIN: AppNavSection[] = [
     id: "focus",
     label: "Focus",
     href: "/focus",
+    children: [
+      { id: "timer", label: "Timer", href: "/focus" },
+      { id: "history", label: "History", href: "/focus/history" },
+      { id: "insights", label: "Insights", href: "/focus/insights" },
+    ],
   },
   {
     id: "chat",
     label: "Chat",
-    href: "/chat/my",
+    href: "/chat",
   },
 ];
 
@@ -231,7 +236,7 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
   if (pathOnly === "/meditate/create") {
     return pathname === "/meditate/create" || pathname.startsWith("/meditate/create/");
   }
-  // Sounds hub tabs — Custom is the bare /sounds root (not soundscapes/voices).
+  // Sounds hub tabs — parent Sounds lands on Soundscapes; Custom is /sounds/custom (+ editors).
   if (pathOnly === "/meditate/sounds/soundscapes") {
     return (
       pathname === "/meditate/sounds/soundscapes" ||
@@ -244,13 +249,23 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
       pathname.startsWith("/meditate/sounds/voices/")
     );
   }
-  if (pathOnly === "/meditate/sounds") {
+  if (pathOnly === "/meditate/sounds/custom") {
     if (
       pathname.startsWith("/meditate/sounds/soundscapes") ||
       pathname.startsWith("/meditate/sounds/voices")
     ) {
       return false;
     }
+    return (
+      pathname === "/meditate/sounds/custom" ||
+      pathname.startsWith("/meditate/sounds/custom/") ||
+      pathname === "/meditate/sounds/new" ||
+      pathname.startsWith("/meditate/sounds/new/") ||
+      pathname.startsWith("/meditate/sounds/mix/") ||
+      pathname.startsWith("/meditate/sounds/preset/")
+    );
+  }
+  if (pathOnly === "/meditate/sounds") {
     return (
       pathname === "/meditate/sounds" || pathname.startsWith("/meditate/sounds/")
     );
@@ -259,45 +274,56 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
   if (pathOnly === "/journal") {
     return pathname === "/journal";
   }
-  if (pathOnly === "/journal/my") {
+  if (pathOnly === "/journal/entries") {
     // Exact journal list / freeform entries — not gratitudes or insights.
     if (
-      pathname === "/journal/my/gratitudes" ||
-      pathname.startsWith("/journal/my/gratitudes/") ||
-      pathname === "/journal/my/insights" ||
-      pathname.startsWith("/journal/my/insights/")
+      pathname === "/journal/gratitudes" ||
+      pathname.startsWith("/journal/gratitudes/") ||
+      pathname === "/journal/insights" ||
+      pathname.startsWith("/journal/insights/")
     ) {
       return false;
     }
-    return pathname === "/journal/my" || pathname.startsWith("/journal/my/");
+    return pathname === "/journal/entries" || pathname.startsWith("/journal/entries/");
   }
-  if (pathOnly === "/journal/my/gratitudes") {
+  if (pathOnly === "/journal/gratitudes") {
     return (
-      pathname === "/journal/my/gratitudes" ||
-      pathname.startsWith("/journal/my/gratitudes/")
+      pathname === "/journal/gratitudes" ||
+      pathname.startsWith("/journal/gratitudes/")
     );
   }
-  if (pathOnly === "/journal/my/insights") {
+  if (pathOnly === "/journal/insights") {
     return (
-      pathname === "/journal/my/insights" ||
-      pathname.startsWith("/journal/my/insights/")
+      pathname === "/journal/insights" ||
+      pathname.startsWith("/journal/insights/")
     );
   }
-  if (pathOnly === "/manifest/my") {
-    // Exact overview only — `/manifest/my/vision-board` is a sibling link.
-    return pathname === "/manifest/my";
+  if (pathOnly === "/manifest") {
+    // Exact overview only — `/manifest/vision-board` is a sibling link.
+    return pathname === "/manifest";
   }
-  if (pathOnly === "/manifest/my/vision-board") {
+  if (pathOnly === "/manifest/vision-board") {
     return (
-      pathname === "/manifest/my/vision-board" ||
-      pathname.startsWith("/manifest/my/vision-board/")
+      pathname === "/manifest/vision-board" ||
+      pathname.startsWith("/manifest/vision-board/")
     );
   }
-  if (pathOnly === "/chat/my") {
-    return pathname === "/chat/my" || pathname.startsWith("/chat/my/");
+  if (pathOnly === "/chat") {
+    return pathname === "/chat" || pathname.startsWith("/chat/");
   }
-  if (pathOnly === "/focus/my") {
-    return pathname === "/focus/my" || pathname.startsWith("/focus/my/");
+  if (pathOnly === "/focus") {
+    // Timer only — History / Insights are sibling links.
+    return pathname === "/focus" || pathname === "/focus/";
+  }
+  if (pathOnly === "/focus/history") {
+    return (
+      pathname === "/focus/history" || pathname.startsWith("/focus/history/")
+    );
+  }
+  if (pathOnly === "/focus/insights") {
+    return (
+      pathname === "/focus/insights" || pathname.startsWith("/focus/insights/")
+    );
   }
   if (pathOnly === "/admin") {
     return pathname === "/admin" || pathname.startsWith("/admin/");
@@ -306,7 +332,7 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
 }
 
 export function activeNavSectionId(pathname: string): string | null {
-  if (pathname === "/chat/my" || pathname.startsWith("/chat/my/")) {
+  if (pathname === "/chat" || pathname.startsWith("/chat/")) {
     return "chat";
   }
   if (
@@ -340,20 +366,20 @@ export function isSubItemActive(
 ): boolean {
   if (sectionId === "journal" && sub.id === "gratitudes") {
     return (
-      pathname === "/journal/my/gratitudes" ||
-      pathname.startsWith("/journal/my/gratitudes/")
+      pathname === "/journal/gratitudes" ||
+      pathname.startsWith("/journal/gratitudes/")
     );
   }
   if (sectionId === "journal" && sub.id === "insights") {
     return (
-      pathname === "/journal/my/insights" ||
-      pathname.startsWith("/journal/my/insights/")
+      pathname === "/journal/insights" ||
+      pathname.startsWith("/journal/insights/")
     );
   }
   if (sectionId === "ideate" && sub.id === "manifesto") {
     // Poster is part of Manifesto. #life-areas is the Life areas row, not Manifesto.
     if (hash === "#life-areas") return false;
-    return pathname === "/manifest/my" || pathname === "/manifest/poster";
+    return pathname === "/manifest" || pathname === "/manifest/poster";
   }
   if (sectionId === "ideate" && sub.id === "story") {
     return pathname === "/manifest/story" || pathname.startsWith("/manifest/story/");
@@ -424,11 +450,11 @@ export type AppBreadcrumbOpts = {
   createRandomScript?: boolean;
   /** Selected program title on By Program chat / audio. */
   createProgramTitle?: string | null;
-  /** Title for `/journal/my/[entryId]` (mobile entry editor). */
+  /** Title for `/journal/entries/[entryId]` (mobile entry editor). */
   journalEntryTitle?: string | null;
   /** Tab leaf for meditation detail (My Creations / Community / Programs). */
   meditationFromCrumb?: { label: string; href: string } | null;
-  /** Label for `/journal/my/gratitudes/[entryId]` — Today or entry date. */
+  /** Label for `/journal/gratitudes/[entryId]` — Today or entry date. */
   gratitudeEntryLabel?: string | null;
   hash?: string;
   search?: string;
@@ -522,11 +548,11 @@ export function buildAppBreadcrumbs(
 ): AppBreadcrumbCrumb[] {
   const search = opts?.search ?? "";
 
-  if (pathname === "/chat/my" || pathname === "/chat/my/") {
+  if (pathname === "/chat" || pathname === "/chat/") {
     return [{ label: "Chat", href: null }];
   }
-  if (pathname.startsWith("/chat/my/")) {
-    const id = pathname.slice("/chat/my/".length).split("/")[0] ?? "";
+  if (pathname.startsWith("/chat/")) {
+    const id = pathname.slice("/chat/".length).split("/")[0] ?? "";
     let title = "New chat";
     if (typeof window !== "undefined" && id) {
       try {
@@ -539,7 +565,7 @@ export function buildAppBreadcrumbs(
       }
     }
     return [
-      { label: "Chat", href: "/chat/my" },
+      { label: "Chat", href: "/chat" },
       { label: title, href: null },
     ];
   }
@@ -730,17 +756,17 @@ export function buildAppBreadcrumbs(
       return [{ label: "Journal", href: "/journal" }];
     }
     if (
-      pathname === "/journal/my/gratitudes" ||
-      pathname.startsWith("/journal/my/gratitudes/")
+      pathname === "/journal/gratitudes" ||
+      pathname.startsWith("/journal/gratitudes/")
     ) {
       const isNew = new URLSearchParams(search).get("new") === "1";
       const gratitudeEntryMatch =
-        /^\/journal\/my\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+        /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
       if (gratitudeEntryMatch?.[1]) {
         const label = opts?.gratitudeEntryLabel?.trim() || "Gratitude";
         return [
           { label: "Journal", href: "/journal" },
-          { label: "Gratitudes", href: "/journal/my/gratitudes" },
+          { label: "Gratitudes", href: "/journal/gratitudes" },
           { label, href: null },
         ];
       }
@@ -750,8 +776,8 @@ export function buildAppBreadcrumbs(
       ];
     }
     if (
-      pathname === "/journal/my/insights" ||
-      pathname.startsWith("/journal/my/insights/")
+      pathname === "/journal/insights" ||
+      pathname.startsWith("/journal/insights/")
     ) {
       return [
         { label: "Journal", href: "/journal" },
@@ -764,7 +790,7 @@ export function buildAppBreadcrumbs(
         { label: "New entry", href: null },
       ];
     }
-    const entryMatch = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+    const entryMatch = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
     if (entryMatch?.[1]) {
       const title = opts?.journalEntryTitle?.trim() || "Entry";
       return [
@@ -772,7 +798,7 @@ export function buildAppBreadcrumbs(
         { label: title, href: null },
       ];
     }
-    if (pathname === "/journal/my" || pathname.startsWith("/journal/my/")) {
+    if (pathname === "/journal/entries" || pathname.startsWith("/journal/entries/")) {
       return [
         { label: "Journal", href: "/journal" },
         { label: "Entries", href: null },
@@ -784,7 +810,7 @@ export function buildAppBreadcrumbs(
   if (pathname.startsWith("/manifest/goal/")) {
     const title = opts?.lifeAreaTitle?.trim() || "Life area";
     return [
-      { label: "Manifest", href: "/manifest/my" },
+      { label: "Manifest", href: "/manifest" },
       { label: title, href: null },
     ];
   }
@@ -798,56 +824,68 @@ export function buildAppBreadcrumbs(
         const slug = decodeURIComponent(slugMatch[1]);
         const title = peekGuideTitle(slug, "manifest");
         return [
-          { label: "Manifest", href: "/manifest/my" },
+          { label: "Manifest", href: "/manifest" },
           { label: "Guides", href: "/manifest/guides" },
           { label: title, href: null },
         ];
       }
       return [
-        { label: "Manifest", href: "/manifest/my" },
+        { label: "Manifest", href: "/manifest" },
         { label: "Guides", href: null },
       ];
     }
     if (pathname === "/manifest/tracker" || pathname.startsWith("/manifest/tracker/")) {
       return [
-        { label: "Manifest", href: "/manifest/my" },
+        { label: "Manifest", href: "/manifest" },
         { label: "Tracker", href: null },
       ];
     }
-    if (pathname.startsWith("/manifest/my/vision-board")) {
+    if (pathname.startsWith("/manifest/vision-board")) {
       return [
-        { label: "Manifest", href: "/manifest/my" },
+        { label: "Manifest", href: "/manifest" },
         { label: "Vision board", href: null },
       ];
     }
     if (pathname === "/manifest/story" || pathname.startsWith("/manifest/story/")) {
       return [
-        { label: "Manifest", href: "/manifest/my" },
+        { label: "Manifest", href: "/manifest" },
         { label: "Story", href: null },
       ];
     }
     if (pathname === "/manifest/poster" || pathname.startsWith("/manifest/poster/")) {
       return [
-        { label: "Manifest", href: "/manifest/my" },
+        { label: "Manifest", href: "/manifest" },
         { label: "Poster", href: null },
       ];
     }
     if (
-      pathname === "/manifest/my/insights" ||
-      pathname.startsWith("/manifest/my/insights/")
+      pathname === "/manifest/insights" ||
+      pathname.startsWith("/manifest/insights/")
     ) {
       return [
-        { label: "Manifest", href: "/manifest/my" },
+        { label: "Manifest", href: "/manifest" },
         { label: "Insights", href: null },
       ];
     }
-    if (pathname.startsWith("/manifest/my")) {
-      return [{ label: "Manifest", href: "/manifest/my" }];
+    if (pathname.startsWith("/manifest")) {
+      return [{ label: "Manifest", href: "/manifest" }];
     }
     return [{ label: "Manifest", href: null }];
   }
 
   if (pathname.startsWith("/focus")) {
+    if (pathname.startsWith("/focus/history")) {
+      return [
+        { label: "Focus", href: "/focus" },
+        { label: "History", href: null },
+      ];
+    }
+    if (pathname.startsWith("/focus/insights")) {
+      return [
+        { label: "Focus", href: "/focus" },
+        { label: "Insights", href: null },
+      ];
+    }
     return [{ label: "Focus", href: null }];
   }
   if (pathname.startsWith("/heal")) {

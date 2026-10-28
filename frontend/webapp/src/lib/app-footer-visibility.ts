@@ -24,21 +24,22 @@ export function shouldUseDocumentScroll(
   if (path.startsWith("/meditate/create") || path.startsWith("/create")) {
     return false;
   }
-  if (path === "/focus/my" || path.startsWith("/focus/my/")) return false;
   if (path === "/focus" || path.startsWith("/focus/")) return false;
   if (path.startsWith("/admin")) return false;
 
   if (layout === "app") {
-    if (path.startsWith("/chat/my")) return false;
-    if (path.startsWith("/journal/my")) return false;
+    if (path.startsWith("/chat")) return false;
+    if (
+      path.startsWith("/journal/entries") ||
+      path.startsWith("/journal/gratitudes") ||
+      path.startsWith("/journal/insights")
+    ) {
+      return false;
+    }
     if (path.startsWith("/meditate/sounds")) return false;
     if (
-      path.startsWith("/manifest/my") ||
-      path.startsWith("/manifest/story") ||
-      path.startsWith("/manifest/poster") ||
-      path.startsWith("/manifest/goal") ||
-      path.startsWith("/manifest/words") ||
-      path.startsWith("/manifest/questions")
+      path === "/manifest" ||
+      path.startsWith("/manifest/")
     ) {
       return false;
     }

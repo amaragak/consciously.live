@@ -907,7 +907,7 @@ function MoodDayCell({
         header={`${day.dayLabel} ${day.dateNum}`}
         className="mood-day-trigger"
         triggerLabel={label}
-        clickHref={`/journal/my/${encodeURIComponent(only.id)}`}
+        clickHref={`/journal/entries/${encodeURIComponent(only.id)}`}
       >
         {cell}
       </InsightsSourceLink>
@@ -919,7 +919,7 @@ function MoodDayCell({
       entryIds={day.entries.map((e) => e.id)}
       entries={flyoutEntries}
       header={`${day.dayLabel} ${day.dateNum} · ${day.entries.length} entries`}
-      footerHref={`/journal/my?day=${encodeURIComponent(day.key)}`}
+      footerHref={`/journal/entries?day=${encodeURIComponent(day.key)}`}
       footerLabel={`Open ${day.dayLabel} in Journal →`}
       className="mood-day-trigger"
       triggerLabel={label}
@@ -1203,7 +1203,7 @@ export function JournalWeeklyReflectionCard({
         }
         onLetterChanged?.();
         if (got.rangeKey && got.rangeKey !== weekKey) {
-          navigate(`/journal/my/insights/${encodeURIComponent(got.rangeKey)}`, {
+          navigate(`/journal/insights/${encodeURIComponent(got.rangeKey)}`, {
             replace: true,
           });
         }
@@ -1258,7 +1258,7 @@ export function JournalWeeklyReflectionCard({
             onLetterChanged?.();
             if (recovered.rangeKey && recovered.rangeKey !== weekKey) {
               navigate(
-                `/journal/my/insights/${encodeURIComponent(recovered.rangeKey)}`,
+                `/journal/insights/${encodeURIComponent(recovered.rangeKey)}`,
                 { replace: true },
               );
             }
@@ -1870,7 +1870,7 @@ export function JournalWeeklyReflectionCard({
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Link
-              to="/journal/my"
+              to="/journal/entries"
               className="inline-flex h-12 cursor-pointer items-center rounded-full border border-border bg-card px-5 text-[15px] font-semibold text-foreground transition-colors hover:border-accent/40"
             >
               Write an entry

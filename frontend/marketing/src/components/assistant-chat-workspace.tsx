@@ -33,7 +33,7 @@ import {
 import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
 
 function threadIdFromPath(pathname: string): string | null {
-  const m = /^\/chat\/my\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/chat\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1] || m[1] === "my") return null;
   try {
     return decodeURIComponent(m[1]);
@@ -72,7 +72,7 @@ function IconChevron({
 }
 
 export function AssistantChatWorkspace() {
-  const pathname = usePathname() || "/chat/my";
+  const pathname = usePathname() || "/chat";
   const router = useRouter();
   const searchParams = useSearchParams();
   const routeThreadId = threadIdFromPath(pathname);
@@ -153,7 +153,7 @@ export function AssistantChatWorkspace() {
 
   const newHandledRef = useRef(false);
 
-  // Landing on /chat/my (breadcrumb, sidebar Chat, or direct URL) → always a fresh thread.
+  // Landing on /chat (breadcrumb, sidebar Chat, or direct URL) → always a fresh thread.
   // Also handles ?new=1.
   useEffect(() => {
     if (!cloudReady || !chat.hydrated) return;
@@ -161,7 +161,7 @@ export function AssistantChatWorkspace() {
       newHandledRef.current = false;
       return;
     }
-    if (pathname !== "/chat/my" && pathname !== "/chat/my/") return;
+    if (pathname !== "/chat" && pathname !== "/chat/") return;
     if (newHandledRef.current) return;
     newHandledRef.current = true;
     let cancelled = false;
@@ -171,7 +171,7 @@ export function AssistantChatWorkspace() {
         newHandledRef.current = false;
         return;
       }
-      router.replace(`/chat/my/${encodeURIComponent(id)}`);
+      router.replace(`/chat/${encodeURIComponent(id)}`);
     })();
     return () => {
       cancelled = true;
@@ -188,7 +188,7 @@ export function AssistantChatWorkspace() {
       void (async () => {
         const id = await chat.createNewThread();
         router.replace(
-          id ? `/chat/my/${encodeURIComponent(id)}` : "/chat/my",
+          id ? `/chat/${encodeURIComponent(id)}` : "/chat",
         );
       })();
     }
@@ -201,13 +201,13 @@ export function AssistantChatWorkspace() {
 
   const onNewChat = useCallback(async () => {
     const id = await chat.createNewThread();
-    if (id) router.push(`/chat/my/${encodeURIComponent(id)}`);
+    if (id) router.push(`/chat/${encodeURIComponent(id)}`);
   }, [chat, router]);
 
   const onSelect = useCallback(
     (id: string) => {
       chat.selectThread(id);
-      router.push(`/chat/my/${encodeURIComponent(id)}`);
+      router.push(`/chat/${encodeURIComponent(id)}`);
     },
     [chat, router],
   );
@@ -222,7 +222,7 @@ export function AssistantChatWorkspace() {
         const fallback = next.activeThreadId;
         if (fallback) {
           chat.selectThread(fallback);
-          router.push(`/chat/my/${encodeURIComponent(fallback)}`);
+          router.push(`/chat/${encodeURIComponent(fallback)}`);
         } else {
           void onNewChat();
         }

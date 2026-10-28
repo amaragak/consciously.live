@@ -3,7 +3,11 @@ import { Outlet, useLocation } from "react-router-dom";
 import { AppChrome } from "@/components/app-chrome";
 import { DailyAffirmationsWarmup } from "@/components/plan/daily-affirmations-card";
 import { LibraryPlayerProvider } from "@/components/library-player-provider";
-import { ensureMedimadeSession } from "@/lib/auth-session";
+import {
+  ensureMedimadeSession,
+  getMedimadeSessionJwt,
+  isMedimadeAccessJwtUsable,
+} from "@/lib/auth-session";
 import {
   consumeAuthHandoffFromUrl,
   hasPendingAuthHandoff,
@@ -32,7 +36,9 @@ export function AppShell() {
         return;
       }
       const valid = await ensureMedimadeSession();
-      if (!cancelled) setAuthState(valid ? "in" : "out");
+      const inApp =
+        valid && isMedimadeAccessJwtUsable(getMedimadeSessionJwt());
+      if (!cancelled) setAuthState(inApp ? "in" : "out");
     })();
     return () => {
       cancelled = true;
@@ -44,7 +50,9 @@ export function AppShell() {
       // Don't flip to "out" while a handoff redeem is still finishing.
       if (hasPendingAuthHandoff()) return;
       void ensureMedimadeSession().then((valid) => {
-        setAuthState(valid ? "in" : "out");
+        const inApp =
+          valid && isMedimadeAccessJwtUsable(getMedimadeSessionJwt());
+        setAuthState(inApp ? "in" : "out");
       });
     };
     window.addEventListener("medimade-session-changed", sync);

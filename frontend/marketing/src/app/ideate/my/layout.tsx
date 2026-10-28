@@ -1,4 +1,4 @@
-/** Legacy layout — pages redirect to /manifest/my. */
+/** Legacy layout — pages redirect to /manifest. */
 export default function IdeateMyLayout({
   children,
 }: {

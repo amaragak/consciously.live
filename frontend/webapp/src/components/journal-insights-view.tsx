@@ -40,7 +40,7 @@ import {
 } from "@/lib/insight-period";
 import { recentCorrectionGuidance } from "@/lib/insight-corrections";
 
-const INSIGHTS_HREF = "/journal/my/insights";
+const INSIGHTS_HREF = "/journal/insights";
 
 /**
  * Collapsed “more insights” sections. Ordered to match the Insights assembly
@@ -65,7 +65,7 @@ const MORE_INSIGHTS_TOPICS: Array<{ id: JournalInsightsTopicId; label: string }>
 ];
 
 function insightsWeekKeyFromPath(pathname: string): string | null {
-  const m = /^\/journal\/my\/insights\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/insights\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   try {
     return decodeURIComponent(m[1]);
@@ -319,7 +319,7 @@ function InsightsEmptyContent(props: {
       <p className="text-sm text-muted">
         Prefer to write first?{" "}
         <Link
-          to="/journal/my"
+          to="/journal/entries"
           className="font-medium text-accent-link underline-offset-2 hover:underline"
         >
           Open your journal

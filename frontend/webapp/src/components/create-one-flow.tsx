@@ -64,6 +64,10 @@ import {
   MANIFESTO_CONTEXT_ID,
 } from "@/lib/guide-practice-handoff";
 import {
+  consumeMeditateOverviewCreateHandoff,
+  peekMeditateOverviewCreateHandoff,
+} from "@/lib/meditate-overview-create-handoff";
+import {
   categoryImageUrlForTile,
   createContextCoverFallbacks,
   peekLibraryCategoryImageMap,
@@ -351,8 +355,16 @@ export function CreateOneFlow({
   const [searchParams, setSearchParams] = useSearchParams();
   const step = parseCreateOneFlowStep(searchParams.get("step"));
 
+  const overviewCreateHandoffRef = useRef(
+    typeof window !== "undefined"
+      ? consumeMeditateOverviewCreateHandoff()
+      : null,
+  );
+
   const [state, setState] = useState<CreateOneFlowState>(() => {
     clearCreateOneFlowState();
+    const overview = overviewCreateHandoffRef.current;
+    if (overview) return overview.state;
     return emptyCreateOneFlowState(5);
   });
 
@@ -410,13 +422,23 @@ export function CreateOneFlow({
 
   // Fresh mount has no draft — don't keep a mid-flow ?step= from a prior visit.
   // Heal and journal handoffs open on Shape with the token already attached.
+  // Meditate overview hero can land on Shape or Sound with a full draft.
   useEffect(() => {
+    const overview = overviewCreateHandoffRef.current;
+    if (overview) {
+      overviewCreateHandoffRef.current = null;
+      if (step !== overview.step) {
+        navigate(createOneFlowHref(overview.step), { replace: true });
+      }
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     if (
       params.get("fromHeal") ||
       params.get("fromJournal") === "1" ||
       params.get("fromLifeArea") ||
-      params.get("fromAffirmations") === "1"
+      params.get("fromAffirmations") === "1" ||
+      peekMeditateOverviewCreateHandoff()
     ) {
       return;
     }
@@ -2696,7 +2718,9 @@ export function CreateOneFlow({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {/* Random removed from Start brief bar (overview Format/Context pack).
                     {renderSurpriseMe()}
+                    */}
                     <div className="mr-1">{renderLengthChip()}</div>
                     <DictationMicButton
                       variant="composer"

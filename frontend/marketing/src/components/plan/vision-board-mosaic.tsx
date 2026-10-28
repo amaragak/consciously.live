@@ -1,7 +1,7 @@
 /**
  * Vision board preview mosaic.
  * `asymmetric` — marketing pitch collage.
- * `grid` — straight 4×2 square grid (/manifest/my).
+ * `grid` — straight 4×2 square grid (/manifest).
  * Slots prefer images when provided; remaining slots use color fills.
  */
 

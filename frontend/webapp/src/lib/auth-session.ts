@@ -3,9 +3,11 @@
  * HttpOnly cookies are still set when the browser allows them; body refresh is the
  * durable fallback so cross-origin / localhost cookie blocks cannot sign you out.
  *
- * Explicit Log out ONLY: clearMedimadeSession().
- * Never auto-clear ACTIVE_KEY / refresh / access on a failed refresh — parallel
- * tab rotation and stale cookies routinely return one-off "invalid" responses.
+ * Explicit Log out: clearMedimadeSession() (wipes identity + local stores).
+ * Definitive refresh failure with no usable access JWT: demoteUnusableAccessSession()
+ * drops access + ACTIVE (and refresh when expired/missing/invalid) so the shell
+ * offers login instead of "Signed in as …" with empty cloud data. Parallel-tab
+ * rotation is handled by retries + adopting a live JWT from storage first.
  */
 
 import { HAS_SESSION_HINT_COOKIE } from "@/lib/auth-hint-cookie";
@@ -116,10 +118,19 @@ function readJwtExpMs(jwt: string): number | null {
   }
 }
 
+/** Access JWT is present and not expired (with a small skew). */
+export function isMedimadeAccessJwtUsable(jwt: string | null | undefined): boolean {
+  if (!jwt?.trim()) return false;
+  const expMs = readJwtExpMs(jwt);
+  // Unparseable tokens are not "usable" — force a refresh rather than shipping 401s.
+  if (!expMs) return false;
+  return expMs - Date.now() > 30_000;
+}
+
 function accessJwtNeedsRefresh(jwt: string | null): boolean {
   if (!jwt) return true;
   const expMs = readJwtExpMs(jwt);
-  if (!expMs) return false; // unparseable — keep using until API 401s
+  if (!expMs) return true; // unparseable — refresh before trusting it
   return expMs - Date.now() <= ACCESS_REFRESH_LEAD_MS;
 }
 
@@ -380,18 +391,48 @@ export function clearMedimadeSession(): void {
 }
 
 /**
+ * Drop dead access credentials so the shell stops looking "signed in".
+ * Keeps email/displayName for login copy. Does not wipe local product data
+ * (unlike clearMedimadeSession / Log out).
+ */
+function demoteUnusableAccessSession(opts?: {
+  /** Definitive refresh failure — also drop the refresh token. */
+  clearRefresh?: boolean;
+}): void {
+  if (typeof window === "undefined") return;
+  memoryAccessJwt = null;
+  clearAccessRefreshTimer();
+  writeStorage(ACCESS_JWT_KEY, null);
+  writeStorage(LEGACY_JWT_KEY, null);
+  writeStorage(ACTIVE_KEY, null);
+  if (opts?.clearRefresh) writeStorage(REFRESH_TOKEN_KEY, null);
+  clearHasSessionHintCookie();
+  try {
+    window.dispatchEvent(new Event("medimade-session-changed"));
+  } catch {
+    /* */
+  }
+}
+
+/**
  * Restore / rotate access JWT from refresh cookie or durable local refresh token.
  * Safe to call often — coalesces concurrent calls (including across HMR).
  *
- * Never clears the session here. Failed refresh keeps sticky signed-in state;
- * only clearMedimadeSession() (Log out) may wipe credentials.
+ * Returns true only when a usable (non-expired) access JWT is available.
+ * On definitive refresh failure with no live access token, demotes sticky
+ * "signed in" chrome so the shell offers login — not an empty middle state.
+ * Explicit Log out (clearMedimadeSession) still wipes identity + local stores.
  */
 export async function ensureMedimadeSession(opts?: {
   force?: boolean;
 }): Promise<boolean> {
   if (typeof window === "undefined") return false;
   hydrateAccessJwtFromStorage();
-  if (!opts?.force && !accessJwtNeedsRefresh(memoryAccessJwt)) {
+  if (
+    !opts?.force &&
+    isMedimadeAccessJwtUsable(memoryAccessJwt) &&
+    !accessJwtNeedsRefresh(memoryAccessJwt)
+  ) {
     scheduleAccessRefresh();
     return true;
   }
@@ -419,39 +460,37 @@ export async function ensureMedimadeSession(opts?: {
 
       // Another tab may have rotated — adopt newer access JWT / refresh from storage.
       hydrateAccessJwtFromStorage();
-      const adopted = memoryAccessJwt;
-      const adoptedExp = adopted ? readJwtExpMs(adopted) : null;
-      const adoptedLive =
-        Boolean(adopted) &&
-        (!adoptedExp || adoptedExp - Date.now() > 30_000);
-
-      if (adoptedLive) {
+      if (isMedimadeAccessJwtUsable(memoryAccessJwt)) {
         scheduleAccessRefresh();
         return true;
       }
 
-      if (previousJwt) {
-        const prevExp = readJwtExpMs(previousJwt);
-        const prevLive = !prevExp || prevExp - Date.now() > 30_000;
-        if (prevLive) {
-          memoryAccessJwt = previousJwt;
-          writeStorage(ACCESS_JWT_KEY, previousJwt);
-          scheduleAccessRefresh();
-          return true;
-        }
-      }
-
-      // Keep sticky session + refresh token. One-off invalid/expired is usually a
-      // race (another tab rotated) or a stale cookie — wiping signs people out.
-      scheduleAccessRefresh();
-      return Boolean(memoryAccessJwt);
-    } catch {
-      if (previousJwt) {
+      if (previousJwt && isMedimadeAccessJwtUsable(previousJwt)) {
         memoryAccessJwt = previousJwt;
         writeStorage(ACCESS_JWT_KEY, previousJwt);
+        scheduleAccessRefresh();
+        return true;
       }
-      scheduleAccessRefresh();
-      return Boolean(memoryAccessJwt);
+
+      // No usable access JWT. Definitive refresh failures (and network errors with
+      // an already-dead access token) must not keep "Signed in as …" chrome while
+      // cloud fetches 401 — demote to logged-out shell.
+      const definitive =
+        result.status === "expired" ||
+        result.status === "missing" ||
+        result.status === "invalid";
+      demoteUnusableAccessSession({ clearRefresh: definitive });
+      return false;
+    } catch {
+      if (previousJwt && isMedimadeAccessJwtUsable(previousJwt)) {
+        memoryAccessJwt = previousJwt;
+        writeStorage(ACCESS_JWT_KEY, previousJwt);
+        scheduleAccessRefresh();
+        return true;
+      }
+      // Transient network with a dead access JWT — still leave the empty chrome.
+      demoteUnusableAccessSession({ clearRefresh: false });
+      return false;
     } finally {
       refreshInFlight = null;
       setRefreshLock(null);

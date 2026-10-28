@@ -708,7 +708,7 @@ export function AppSidebar({
               emptyAction={
                 section.id === "ideate" && lifeAreas.length === 0
                   ? {
-                      href: "/manifest/my?new=1",
+                      href: "/manifest?new=1",
                       label: "Add a life area",
                     }
                   : undefined

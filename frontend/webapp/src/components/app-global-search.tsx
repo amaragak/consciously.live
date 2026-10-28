@@ -66,7 +66,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     id: "add-journal",
     title: "New journal entry",
     body: "Journal.",
-    href: "/journal/my?new=1",
+    href: "/journal/entries?new=1",
     keywords: ["journal", "entry", "write", "new", "add", "note"],
     shortcut: "J",
     primary: true,
@@ -76,7 +76,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     id: "new-gratitude",
     title: "Add a gratitude",
     body: "Journal.",
-    href: "/journal/my/gratitudes?new=1",
+    href: "/journal/gratitudes?new=1",
     keywords: ["gratitude", "grateful", "thanks"],
     shortcut: "G",
     primary: true,
@@ -86,7 +86,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     id: "vision-board",
     title: "Open vision board",
     body: "Manifest.",
-    href: "/manifest/my/vision-board",
+    href: "/manifest/vision-board",
     keywords: ["vision", "board", "manifest", "ideate", "dream"],
     primary: true,
     icon: "grid",
@@ -95,7 +95,7 @@ const EMPTY_QUICK_ACTIONS: QuickAction[] = [
     id: "insights",
     title: "Open insights",
     body: "Journal · letters and patterns.",
-    href: "/journal/my/insights",
+    href: "/journal/insights",
     keywords: ["insights", "letter", "patterns", "reflect"],
     primary: true,
     icon: "sparkles",
@@ -467,7 +467,7 @@ export function AppGlobalSearch({
               id: `j-${e.id}`,
               title: journalEntryListTitle(e, "Journal entry"),
               body: `Journal entry · ${formatRelativeDay(e.updatedAt || e.createdAt)}`,
-              href: `/journal/my?entry=${encodeURIComponent(e.id)}`,
+              href: `/journal/entries?entry=${encodeURIComponent(e.id)}`,
             }));
         } catch {
           /* ignore */
@@ -489,7 +489,7 @@ export function AppGlobalSearch({
                 id: `j-${e.id}`,
                 title: journalEntryListTitle(e, "Journal entry"),
                 body: `Journal entry · ${formatRelativeDay(e.updatedAt || e.createdAt)}`,
-                href: `/journal/my?entry=${encodeURIComponent(e.id)}`,
+                href: `/journal/entries?entry=${encodeURIComponent(e.id)}`,
               })),
           );
         } catch {
@@ -633,7 +633,7 @@ export function AppGlobalSearch({
               id: "ask-chat",
               title: `Ask Chat about ${quoted}`,
               body: "Chat.",
-              href: "/chat/my",
+              href: "/chat",
               icon: "chat" as const,
               primary: true,
             },
@@ -722,13 +722,13 @@ export function AppGlobalSearch({
         if (key === "j") {
           e.preventDefault();
           close();
-          router.push("/journal/my?new=1");
+          router.push("/journal/entries?new=1");
           return;
         }
         if (key === "g") {
           e.preventDefault();
           close();
-          router.push("/journal/my/gratitudes?new=1");
+          router.push("/journal/gratitudes?new=1");
         }
       }
     };

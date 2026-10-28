@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
 import {
   HEADER_SECTION_TABS_IDLE,
@@ -10,6 +10,7 @@ import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import { SoundsSoundscapesBrowse } from "@/components/sounds-soundscapes-browse";
 import { SoundsVoicesBrowse } from "@/components/sounds-voices-browse";
 import {
+  SOUNDS_HREF,
   SOUNDS_HUB_TABS,
   soundsHubHref,
   soundsHubTabFromPath,
@@ -17,13 +18,17 @@ import {
 } from "@/lib/sounds-tabs";
 
 /**
- * Sounds hub: Custom Sounds (mixer studio) + Soundscapes + Voices browse.
- * Studio stays mounted across `/meditate/sounds`, `/new`, `/mix/:id`, `/preset/:id`
- * so URL changes do not remount or re-fetch.
+ * Sounds hub: Soundscapes + Voices + Custom Sounds (mixer studio).
+ * Bare `/meditate/sounds` lands on Soundscapes. Studio stays mounted across
+ * `/meditate/sounds/custom`, `/new`, `/mix/:id`, `/preset/:id`.
  */
 export function SoundsPage() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const normalized = pathname.replace(/\/$/, "") || SOUNDS_HREF;
+  if (normalized === SOUNDS_HREF) {
+    return <Navigate to={`${SOUNDS_HREF}/soundscapes`} replace />;
+  }
   const tab = soundsHubTabFromPath(pathname);
 
   function goToTab(id: SoundsHubTab) {

@@ -207,5 +207,5 @@ export function reflectionCountForMeditation(
 
 /** Journal route that creates or reopens the reflection entry for a meditation. */
 export function reflectMeditationJournalHref(): string {
-  return "/journal/my?new=1&reflect=1";
+  return "/journal/entries?new=1&reflect=1";
 }

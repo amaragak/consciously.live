@@ -271,7 +271,7 @@ export function useAssistantChatThread(opts: {
       id = threadId;
       thread = store.threads.find((t) => t.id === id);
     } else {
-      // Full Chat at /chat/my with no id — workspace creates a fresh thread.
+      // Full Chat at /chat with no id — workspace creates a fresh thread.
       // Do not resume the last active chat.
       setHydrated(true);
       loadThreadById(null);
@@ -347,7 +347,7 @@ export function useAssistantChatThread(opts: {
     setOpening(false);
     const thread = newAssistantChatThread();
     let store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
-    // Avoid stacking blank “New chat” rows from repeated /chat/my entries.
+    // Avoid stacking blank “New chat” rows from repeated /chat entries.
     store = {
       ...store,
       threads: store.threads.filter(

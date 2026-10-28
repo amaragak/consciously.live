@@ -182,6 +182,7 @@ export function TextEditPopover({
   multiline = false,
   submitLabel = "Save",
   allowEmpty = false,
+  maxLength,
   onSave,
   onClose,
 }: {
@@ -193,11 +194,18 @@ export function TextEditPopover({
   submitLabel?: string;
   /** Allow saving an empty string (clears an optional field). */
   allowEmpty?: boolean;
+  /** Hard character cap (shows a counter when set). */
+  maxLength?: number;
   onSave: (text: string) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(value);
   const canSave = allowEmpty || draft.trim().length > 0;
+  const setCapped = (next: string) => {
+    setDraft(
+      typeof maxLength === "number" ? next.slice(0, maxLength) : next,
+    );
+  };
   const submit = () => {
     if (!canSave) return;
     onSave(draft);
@@ -217,9 +225,10 @@ export function TextEditPopover({
             <textarea
               autoFocus
               rows={4}
+              maxLength={maxLength}
               value={draft}
               placeholder={placeholder}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => setCapped(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
@@ -231,14 +240,24 @@ export function TextEditPopover({
           ) : (
             <input
               autoFocus
+              maxLength={maxLength}
               value={draft}
               placeholder={placeholder}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => setCapped(e.target.value)}
               className={FIELD_CLASS}
             />
           )}
         </label>
         <div className="flex items-center justify-end gap-1">
+          {typeof maxLength === "number" ? (
+            <span
+              className={`mr-auto text-[11px] tabular-nums ${
+                draft.length >= maxLength ? "text-accent" : "text-muted"
+              }`}
+            >
+              {draft.length}/{maxLength}
+            </span>
+          ) : null}
           <GhostButton onClick={onClose}>Cancel</GhostButton>
           <PrimaryButton type="submit" disabled={!canSave}>
             {submitLabel}

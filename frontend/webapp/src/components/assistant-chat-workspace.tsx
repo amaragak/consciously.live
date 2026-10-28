@@ -36,7 +36,7 @@ import { useAssistantChatThread } from "@/lib/use-assistant-chat-thread";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 
 function threadIdFromPath(pathname: string): string | null {
-  const m = /^\/chat\/my\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/chat\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1] || m[1] === "my") return null;
   try {
     return decodeURIComponent(m[1]);
@@ -78,7 +78,7 @@ export function AssistantChatWorkspace() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const routeThreadId = threadIdFromPath(pathname || "/chat/my");
+  const routeThreadId = threadIdFromPath(pathname || "/chat");
   const mobileComposeChrome = Boolean(routeThreadId);
 
   const [storeThreads, setStoreThreads] = useState<AssistantChatThread[]>([]);
@@ -166,7 +166,7 @@ export function AssistantChatWorkspace() {
 
   const newHandledRef = useRef(false);
 
-  // Landing on /chat/my (breadcrumb, sidebar Chat, or direct URL) → always a fresh thread.
+  // Landing on /chat (breadcrumb, sidebar Chat, or direct URL) → always a fresh thread.
   // Also handles ?new=1.
   useEffect(() => {
     if (!cloudReady || !chat.hydrated) return;
@@ -174,7 +174,7 @@ export function AssistantChatWorkspace() {
       newHandledRef.current = false;
       return;
     }
-    if (pathname !== "/chat/my" && pathname !== "/chat/my/") return;
+    if (pathname !== "/chat" && pathname !== "/chat/") return;
     if (newHandledRef.current) return;
     newHandledRef.current = true;
     let cancelled = false;
@@ -184,7 +184,7 @@ export function AssistantChatWorkspace() {
         newHandledRef.current = false;
         return;
       }
-      navigate(`/chat/my/${encodeURIComponent(id)}`, { replace: true });
+      navigate(`/chat/${encodeURIComponent(id)}`, { replace: true });
     })();
     return () => {
       cancelled = true;
@@ -200,7 +200,7 @@ export function AssistantChatWorkspace() {
     if (!store.threads.some((t) => t.id === routeThreadId)) {
       void (async () => {
         const id = await chat.createNewThread();
-        navigate(id ? `/chat/my/${encodeURIComponent(id)}` : "/chat/my", {
+        navigate(id ? `/chat/${encodeURIComponent(id)}` : "/chat", {
           replace: true,
         });
       })();
@@ -214,13 +214,13 @@ export function AssistantChatWorkspace() {
 
   const onNewChat = useCallback(async () => {
     const id = await chat.createNewThread();
-    if (id) navigate(`/chat/my/${encodeURIComponent(id)}`);
+    if (id) navigate(`/chat/${encodeURIComponent(id)}`);
   }, [chat, navigate]);
 
   const onSelect = useCallback(
     (id: string) => {
       chat.selectThread(id);
-      navigate(`/chat/my/${encodeURIComponent(id)}`);
+      navigate(`/chat/${encodeURIComponent(id)}`);
     },
     [chat, navigate],
   );
@@ -235,7 +235,7 @@ export function AssistantChatWorkspace() {
         const fallback = next.activeThreadId;
         if (fallback) {
           chat.selectThread(fallback);
-          navigate(`/chat/my/${encodeURIComponent(fallback)}`);
+          navigate(`/chat/${encodeURIComponent(fallback)}`);
         } else {
           void onNewChat();
         }

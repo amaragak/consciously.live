@@ -8,7 +8,7 @@ import { useMvpFlags } from "@/lib/mvp-flags";
  */
 export function ManifestInsightsPage() {
   const flags = useMvpFlags();
-  if (!flags.manifestInsights) return <Navigate to="/manifest/my" replace />;
+  if (!flags.manifestInsights) return <Navigate to="/manifest" replace />;
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
       <p className="text-[10px] font-semibold uppercase tracking-[1.4px] text-accent-link">
@@ -23,7 +23,7 @@ export function ManifestInsightsPage() {
         aggregates.
       </p>
       <Link
-        href="/manifest/my"
+        href="/manifest"
         className="mt-8 inline-flex text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
       >
         Back to Manifesto

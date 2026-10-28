@@ -1,27 +1,20 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type KeyboardEvent,
 } from "react";
-import { ChevronRight } from "lucide-react";
-import { IconHeart, IconSparkles, IconSun } from "@tabler/icons-react";
-import { Link, useRouter } from "@/lib/spa-nav";
-import { useMvpFlags } from "@/lib/mvp-flags";
+import { Link } from "@/lib/spa-nav";
 import { JournalListChips } from "@/components/journal-view";
 import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
 import {
-  OverviewHero,
   OverviewOutlineLink,
   OverviewSection,
 } from "@/components/overview-hero";
-import { promptsForDay } from "@/content/overview-prompts";
+import { OverviewSubpagesPanel } from "@/components/overview-subpages-panel";
 import { useGuides } from "@/content/guides";
 import { JournalEntryListTitle } from "@/components/journal-prompt-question";
-import {
-  buildJournalPromptLibrary,
-  type JournalPrompt,
-} from "@/lib/journal-prompts";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -54,48 +47,10 @@ import {
   type JournalGratitudeLines,
 } from "@/lib/journal-storage";
 import {
-  fetchJournalWeeklyReflectionRemote,
-  listJournalWeeklyLettersRemote,
   putJournalStoreRemote,
   type JournalWeeklyLetterSummary,
   type JournalWeeklyReflection,
 } from "@/lib/medimade-api";
-
-const GRATITUDE_ICONS = [IconSun, IconHeart, IconSparkles] as const;
-
-function SectionHeading({
-  title,
-  href,
-  linkLabel,
-  linkLabelMobile,
-}: {
-  title: string;
-  href?: string;
-  linkLabel?: string;
-  linkLabelMobile?: string;
-}) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between gap-3 max-md:mb-2.5">
-      <h2 className="font-display text-[22px] text-foreground max-md:text-xl">
-        {title}
-      </h2>
-      {href && linkLabel ? (
-        <Link
-          href={href}
-          className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-accent-link transition-opacity hover:opacity-80"
-        >
-          <span className="md:hidden">{linkLabelMobile ?? linkLabel}</span>
-          <span className="hidden md:inline">{linkLabel}</span>
-          <ChevronRight
-            aria-hidden
-            className="size-[18px] shrink-0"
-            strokeWidth={2}
-          />
-        </Link>
-      ) : null}
-    </div>
-  );
-}
 
 function entryExcerpt(e: JournalEntry): string {
   const t = stripHtmlToText(e.contentHtml).trim();
@@ -113,22 +68,32 @@ function formatOverviewEntryDate(iso: string): string {
   }
 }
 
-function EntryOverviewCard({ entry }: { entry: JournalEntry }) {
+function EntryOverviewCard({
+  entry,
+  divider,
+}: {
+  entry: JournalEntry;
+  divider?: boolean;
+}) {
   const date = formatOverviewEntryDate(entry.createdAt);
   return (
     <Link
-      href={`/journal/my/${encodeURIComponent(entry.id)}`}
-      className="flex min-h-[140px] min-w-0 flex-col gap-1.5 rounded-[14px] border border-border bg-card px-4 py-3.5"
+      href={`/journal/entries/${encodeURIComponent(entry.id)}`}
+      className={`flex min-w-0 flex-col gap-1 rounded-[14px] border border-border bg-card px-4 py-3.5 max-md:rounded-none max-md:border-0 max-md:border-border max-md:bg-transparent max-md:px-0 max-md:py-2.5 ${
+        divider ? "max-md:border-t" : ""
+      }`}
     >
       <JournalEntryListTitle
         entry={entry}
-        className="line-clamp-2 text-[15px] font-semibold text-foreground"
+        className="truncate text-[15px] font-semibold text-foreground"
       />
-      <span className="truncate text-[13px] text-foreground/90">
-        {date ? <span className="text-muted">{date} · </span> : null}
-        {entryExcerpt(entry)}
+      <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground/90">
+        <JournalListChips entry={entry} inline />
+        <span className="min-w-0 flex-1 truncate">
+          {date ? <span className="text-muted">{date} · </span> : null}
+          {entryExcerpt(entry)}
+        </span>
       </span>
-      <JournalListChips entry={entry} className="mt-auto" />
     </Link>
   );
 }
@@ -175,7 +140,7 @@ function persistTodayGratitudes(lines: JournalGratitudeLines) {
   }
 }
 
-function TodaysGratitudesCard() {
+function useTodayGratitudes() {
   const [lines, setLines] = useState<JournalGratitudeLines>(() => {
     const store = readJournalStoreSnapshot({
       signedIn: isMedimadeSessionActive(),
@@ -222,22 +187,48 @@ function TodaysGratitudesCard() {
     [lines],
   );
 
+  return { lines, setLines, filled, commitLine };
+}
+
+function todayDateTitle(): string {
+  const now = new Date();
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+  const day = now.getDate();
+  const month = now.toLocaleDateString("en-US", { month: "long" });
+  return `${weekday} ${day} ${month}`;
+}
+
+function entryFirstLine(entry: JournalEntry): string {
+  const text = stripHtmlToText(entry.contentHtml).trim().replace(/\s+/g, " ");
+  return text;
+}
+
+function HeroGratitudesFields() {
+  const { lines, setLines, filled, commitLine } = useTodayGratitudes();
   return (
-    <OverviewSection
-      title="Today's gratitudes"
-      subtitle={`${filled} of 3 today`}
-      action={<OverviewOutlineLink href="/journal/my/gratitudes">Gratitudes</OverviewOutlineLink>}
-    >
-      <div className="flex flex-col gap-3 md:flex-row">
+    <div className="flex flex-col gap-0.5">
+      <div className="mb-0.5 flex items-baseline justify-between gap-3">
+        <span className="text-[11.5px] font-semibold uppercase tracking-[1.4px] text-[#D9B87C]">
+          Today&apos;s gratitudes
+        </span>
+        <span className="text-[12.5px] text-[rgb(243_237_226_/_0.55)]">
+          {filled} of 3
+        </span>
+      </div>
+      <div className="flex flex-col">
         {([0, 1, 2] as const).map((i) => {
-          const Icon = GRATITUDE_ICONS[i]!;
           const value = lines[i] ?? "";
           return (
             <label
               key={i}
-              className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5"
+              className="flex h-8 min-w-0 items-center gap-2.5 border-b border-[rgb(243_237_226_/_0.18)]"
             >
-              <Icon size={16} stroke={1.75} className="shrink-0 text-accent" aria-hidden />
+              <span
+                className="w-3 shrink-0 font-display text-[16px] leading-none text-[#D9B87C]"
+                aria-hidden
+              >
+                {i + 1}
+              </span>
               <input
                 type="text"
                 value={value}
@@ -261,15 +252,120 @@ function TodaysGratitudesCard() {
                     (e.target as HTMLInputElement).blur();
                   }
                 }}
-                className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+                className="min-w-0 flex-1 bg-transparent text-[14.5px] text-[#F3EDE2] outline-none placeholder:text-[rgb(243_237_226_/_0.45)]"
               />
             </label>
           );
         })}
       </div>
-    </OverviewSection>
+    </div>
   );
 }
+
+function JournalTodayHero({
+  todayEntry,
+}: {
+  todayEntry: JournalEntry | null;
+}) {
+  const started = Boolean(todayEntry);
+  const entryTitle = started
+    ? todayEntry!.title?.trim() || "Untitled"
+    : null;
+  const firstLine = started ? entryFirstLine(todayEntry!) : "";
+  const href = started
+    ? `/journal/entries/${encodeURIComponent(todayEntry!.id)}`
+    : "/journal/entries?new=1";
+  const cta = started ? "Continue writing" : "New entry";
+
+  const mistCta = (
+    <Link
+      href={href}
+      className="inline-flex h-9 w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#AFC2DC] bg-accent-button px-4 text-[13.5px] font-semibold text-on-accent"
+    >
+      {started ? (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M4 20h4L19 9l-4-4L4 16z" />
+        </svg>
+      ) : (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          aria-hidden
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      )}
+      {cta}
+    </Link>
+  );
+
+  const leftColumn = (
+    <div className="flex min-w-0 flex-col gap-1">
+      <p className="text-[11.5px] font-semibold uppercase tracking-[1.4px] text-[#D9B87C]">
+        Today
+      </p>
+      <h1 className="font-display text-[24px] leading-[1.1] text-[#F3EDE2] md:text-[28px]">
+        {todayDateTitle()}
+      </h1>
+      {started ? (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="truncate text-[14px] font-semibold text-[#F3EDE2]">
+            {entryTitle}
+          </p>
+          {firstLine ? (
+            <p className="truncate text-[13.5px] text-[rgb(243_237_226_/_0.65)]">
+              {firstLine}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-[13.5px] text-[rgb(243_237_226_/_0.65)]">
+          Nothing written yet today.
+        </p>
+      )}
+      <div className="pt-0.5">{mistCta}</div>
+    </div>
+  );
+
+  return (
+    <section
+      className="relative overflow-hidden rounded-[22px] px-5 pb-5 pt-4 shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:px-5 md:pb-5 md:pt-4"
+      style={{ backgroundColor: "#0F1B2D" }}
+    >
+      <div className="navy-paisley-plate" aria-hidden />
+      {/* Mobile: stacked. Desktop: two columns + vertical hairline. */}
+      <div className="relative flex flex-col gap-3.5 md:flex-row md:items-start md:gap-8">
+        <div className="min-w-0 md:flex-1">{leftColumn}</div>
+        <div
+          className="hidden w-px shrink-0 self-stretch bg-[rgb(243_237_226_/_0.14)] md:block"
+          aria-hidden
+        />
+        <div className="min-w-0 md:w-[46%] md:shrink-0">
+          <HeroGratitudesFields />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Separate Today's gratitudes panel — replaced by in-hero fields.
+function TodaysGratitudesCard() { ... }
+*/
 
 function moodDaysForLetter(
   entries: JournalEntry[],
@@ -352,12 +448,12 @@ function InsightsCard({
       ? `${letter.emotions[0].name} showed up most this stretch.`
       : "");
   const days = moodDaysForLetter(entries, start, end);
-  const href = `/journal/my/insights/${encodeURIComponent(letterIdentity(letter))}`;
+  const href = `/journal/insights/${encodeURIComponent(letterIdentity(letter))}`;
 
   return (
     <OverviewSection
       title="Insights"
-      action={<OverviewOutlineLink href="/journal/my/insights">All insights</OverviewOutlineLink>}
+      action={<OverviewOutlineLink href="/journal/insights">All insights</OverviewOutlineLink>}
     >
       <div className="md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:gap-6">
         <div className="flex flex-col gap-2">
@@ -415,28 +511,29 @@ function InsightsCard({
 }
 
 export function JournalOverviewPage() {
-  const router = useRouter();
-  const journalInsights = useMvpFlags().journalInsights;
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [letter, setLetter] = useState<JournalWeeklyLetterSummary | null>(null);
-  const [reflection, setReflection] =
-    useState<JournalWeeklyReflection | null>(null);
   const [ready, setReady] = useState(false);
-  const guides = useGuides("journal").guides.slice(0, 4);
+  const { guides: journalGuides, loading: guidesLoading } = useGuides("journal");
+  const guides = journalGuides.slice(0, 4);
+
+  const [gratitudeCount, setGratitudeCount] = useState(0);
 
   useEffect(() => {
     const applyLocal = () => {
       const store = readJournalStoreSnapshot({
         signedIn: isMedimadeSessionActive(),
       });
-      const freeform = withoutDemoJournalEntries(store)
-        .entries.filter((e) => !isGratitudeEntry(e))
+      const cleaned = withoutDemoJournalEntries(store);
+      const freeform = cleaned.entries
+        .filter((e) => !isGratitudeEntry(e))
         .sort((a, b) =>
           (b.updatedAt || b.createdAt).localeCompare(
             a.updatedAt || a.createdAt,
           ),
         );
       setEntries(freeform);
+      setGratitudeCount(cleaned.entries.filter((e) => isGratitudeEntry(e)).length);
+      setReady(true);
     };
     applyLocal();
     const onStore = () => applyLocal();
@@ -444,132 +541,115 @@ export function JournalOverviewPage() {
     return () => window.removeEventListener(JOURNAL_STORE_CHANGED, onStore);
   }, []);
 
-  useEffect(() => {
-    if (!journalInsights) {
-      setLetter(null);
-      setReflection(null);
-      setReady(true);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        if (!getMedimadeSessionJwt()) {
-          if (!cancelled) setReady(true);
-          return;
-        }
-        const { letters } = await listJournalWeeklyLettersRemote();
-        if (cancelled) return;
-        const latest = letters[0] ?? null;
-        setLetter(latest);
-        if (latest) {
-          const got = await fetchJournalWeeklyReflectionRemote({
-            week: latest.weekKey,
-            startDate: latest.startDate,
-            endDate: latest.endDate,
-            periodType: latest.periodType,
-          });
-          if (!cancelled) setReflection(got.reflection);
-        }
-      } catch {
-        if (!cancelled) {
-          setLetter(null);
-          setReflection(null);
-        }
-      } finally {
-        if (!cancelled) setReady(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [journalInsights]);
+  /* Insights letter fetch — panel commented out; Insights is a sub-page tile.
+  const journalInsights = useMvpFlags().journalInsights;
+  ...
+  */
 
-  const recent = entries.slice(0, 4);
-  const showInsights = journalInsights && Boolean(letter);
-  const promptPool: JournalPrompt[] = buildJournalPromptLibrary({
-    includeLifeAreas: false,
-    includeValues: false,
-    includeHeal: false,
-    areas: [],
-    values: [],
-    healItems: [],
-  }).filter((prompt) => prompt.bucket === "topic");
-  const promptIds = promptsForDay(promptPool.map((prompt) => prompt.id));
-  const prompts = promptIds
-    .map((id) => promptPool.find((prompt) => prompt.id === id))
-    .filter((prompt): prompt is JournalPrompt => Boolean(prompt));
+  const todayKey = localDateKey();
+  const todayEntry = useMemo(
+    () =>
+      entries.find(
+        (e) => localDateKeyFromIso(e.createdAt) === todayKey,
+      ) ?? null,
+    [entries, todayKey],
+  );
+  const recent = entries.slice(0, 3);
 
   return (
     <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
       <div className="flex flex-col gap-5">
-        <OverviewHero
-          question="What's on your mind?"
-          actionHref="/journal/my?new=1"
-          actionLabel="New entry"
-          actionIcon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          }
-          placeholder="Write or speak, and it becomes today's entry…"
-          promptLabel="Or try a prompt"
-          prompts={prompts.map((prompt) => prompt.text)}
-          onPrompt={(text) => {
-            const prompt = prompts.find((item) => item.text === text);
-            if (!prompt) return;
-            const params = new URLSearchParams({
-              new: "1",
-              promptId: prompt.id,
-              promptTemplate: prompt.template,
-            });
-            if (prompt.name) params.set("promptName", prompt.name);
-            router.push(`/journal/my?${params.toString()}`);
-          }}
-          onSubmit={(text) =>
-            router.push(`/journal/my?new=1&body=${encodeURIComponent(text)}`)
-          }
+        {/*
+        Previous OverviewHero (input + prompts + sub-page links) — replaced by today hero.
+        */}
+        <JournalTodayHero todayEntry={todayEntry} />
+
+        <OverviewSubpagesPanel
+          loading={!ready}
+          groups={[
+            {
+              tiles: [
+                {
+                  href: "/journal/entries",
+                  label: "Entries",
+                  count: ready ? entries.length : null,
+                  // Create Start “Journal entry” cover (also under public/overview-thumbs).
+                  imageSrc: "/overview-thumbs/entries.jpg",
+                },
+                {
+                  href: "/journal/gratitudes",
+                  label: "Gratitudes",
+                  count: ready ? gratitudeCount : null,
+                  imageSrc: "/overview-thumbs/gratitudes.jpg",
+                },
+                {
+                  href: "/journal/insights",
+                  label: "Insights",
+                  imageSrc: "/overview-thumbs/insights.jpg",
+                },
+              ],
+            },
+          ]}
         />
 
         <OverviewSection
           title="Recent entries"
           action={
-            <OverviewOutlineLink href="/journal/my">
-              All entries · {entries.length}
+            <OverviewOutlineLink href="/journal/entries">
+              All entries
             </OverviewOutlineLink>
           }
         >
-          {recent.length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {recent.map((entry) => (
-                <EntryOverviewCard key={entry.id} entry={entry} />
+          {!ready ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 md:gap-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="mm-skeleton h-[72px] rounded-[14px] max-md:h-14 max-md:rounded-none"
+                />
               ))}
             </div>
-          ) : ready ? (
+          ) : recent.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 md:gap-3">
+              {recent.map((entry, index) => (
+                <EntryOverviewCard
+                  key={entry.id}
+                  entry={entry}
+                  divider={index > 0}
+                />
+              ))}
+            </div>
+          ) : (
             <p className="text-[13px] text-muted">Your entries will appear here.</p>
-          ) : null}
+          )}
         </OverviewSection>
 
-        <TodaysGratitudesCard />
-
-        {showInsights && letter ? (
-          <InsightsCard
-            letter={letter}
-            reflection={reflection}
-            entries={entries}
-          />
+        {/* <TodaysGratitudesCard /> — moved into hero */}
+        {/* Insights letter panel — Insights is a sub-page tile now.
+        {journalInsights && letter ? (
+          <InsightsCard letter={letter} reflection={reflection} entries={entries} />
         ) : null}
+        */}
 
-        {guides.length > 0 ? (
-          <section>
-            <SectionHeading
-              title="Guides"
-              href="/journal/guides"
-              linkLabel="All guides"
-              linkLabelMobile="All"
-            />
-            <MeditateGuidesGrid guides={guides} area="journal" />
-          </section>
+        {guidesLoading || guides.length > 0 ? (
+          <OverviewSection
+            title="Guides"
+            action={
+              <OverviewOutlineLink href="/journal/guides">
+                All guides
+              </OverviewOutlineLink>
+            }
+          >
+            {guidesLoading && guides.length === 0 ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="mm-skeleton h-[160px] rounded-[14px]" />
+                ))}
+              </div>
+            ) : (
+              <MeditateGuidesGrid guides={guides} area="journal" />
+            )}
+          </OverviewSection>
         ) : null}
       </div>
     </div>

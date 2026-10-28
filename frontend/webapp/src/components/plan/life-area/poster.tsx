@@ -459,7 +459,7 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
           onUpload={() => fileRef.current?.click()}
           onCreate={() =>
             navigate(
-              `/manifest/my/vision-board?createArea=${encodeURIComponent(dream.id)}`,
+              `/manifest/vision-board?createArea=${encodeURIComponent(dream.id)}`,
             )
           }
         />

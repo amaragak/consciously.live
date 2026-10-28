@@ -122,8 +122,8 @@ export function journalEntriesLinkedToLifeArea(
     title: e.title.trim() || "Untitled",
     href:
       e.kind === "gratitude"
-        ? `/journal/my/gratitudes/${encodeURIComponent(e.id)}`
-        : `/journal/my/${encodeURIComponent(e.id)}`,
+        ? `/journal/gratitudes/${encodeURIComponent(e.id)}`
+        : `/journal/entries/${encodeURIComponent(e.id)}`,
   }));
 }
 

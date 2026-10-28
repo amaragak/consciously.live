@@ -4,11 +4,14 @@
 
 import {
   appHref,
+  getAppOrigin,
   isSpaAppPath,
   spaPathForAppPath,
 } from "@/lib/app-origins";
 
 const AUTH_NEXT_STORAGE_KEY = "mm_auth_next_v1";
+/** Absolute SPA URL after login (from Vite when origins differ). */
+const AUTH_APP_RETURN_STORAGE_KEY = "mm_auth_app_return_v1";
 
 /** Same-origin path only (no protocol-relative URLs). */
 export function safeAuthNext(raw: string | null | undefined, fallback = "/"): string {
@@ -26,12 +29,48 @@ export function safeAuthNext(raw: string | null | undefined, fallback = "/"): st
   return t;
 }
 
+/**
+ * Absolute return URL onto the Vite SPA only (must match getAppOrigin()).
+ * Rejects open redirects to other hosts.
+ */
+export function safeAppReturn(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  try {
+    const u = new URL(raw.trim());
+    const appOrigin = new URL(getAppOrigin()).origin;
+    if (u.origin !== appOrigin) return null;
+    const path = `${u.pathname}${u.search}${u.hash}` || "/";
+    if (!path.startsWith("/") || path.startsWith("//")) return null;
+    if (
+      path === "/login" ||
+      path.startsWith("/login?") ||
+      path.startsWith("/auth/")
+    ) {
+      return null;
+    }
+    return `${u.origin}${path}`;
+  } catch {
+    return null;
+  }
+}
+
 export function rememberAuthNext(path: string): void {
   if (typeof window === "undefined") return;
   const next = safeAuthNext(path, "");
   if (!next) return;
   try {
     window.sessionStorage.setItem(AUTH_NEXT_STORAGE_KEY, next);
+  } catch {
+    /* */
+  }
+}
+
+export function rememberAuthAppReturn(url: string | null | undefined): void {
+  if (typeof window === "undefined") return;
+  const safe = safeAppReturn(url);
+  try {
+    if (safe) window.sessionStorage.setItem(AUTH_APP_RETURN_STORAGE_KEY, safe);
+    else window.sessionStorage.removeItem(AUTH_APP_RETURN_STORAGE_KEY);
   } catch {
     /* */
   }
@@ -45,6 +84,17 @@ export function consumeAuthNext(fallback = "/"): string {
     return safeAuthNext(raw, fallback);
   } catch {
     return fallback;
+  }
+}
+
+function consumeAuthAppReturn(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(AUTH_APP_RETURN_STORAGE_KEY);
+    window.sessionStorage.removeItem(AUTH_APP_RETURN_STORAGE_KEY);
+    return safeAppReturn(raw);
+  } catch {
+    return null;
   }
 }
 
@@ -67,21 +117,29 @@ type PrefixRule = {
 };
 
 const PROTECTED_PREFIXES: PrefixRule[] = [
-  { prefix: "/chat/my", marketing: "/chat" },
+  { prefix: "/chat", marketing: "/chat" },
   { prefix: "/meditate/create", marketing: "/meditate" },
   { prefix: "/meditate/library", marketing: "/meditate" },
   { prefix: "/meditate/sounds", marketing: "/meditate" },
   { prefix: "/create", marketing: "/meditate" },
-  { prefix: "/journal/my", marketing: "/journal" },
-  { prefix: "/manifest/my", marketing: "/manifest" },
+  { prefix: "/journal/entries", marketing: "/journal" },
+  { prefix: "/journal/gratitudes", marketing: "/journal" },
+  { prefix: "/journal/insights", marketing: "/journal" },
   { prefix: "/manifest/goal", marketing: "/manifest" },
+  { prefix: "/manifest/vision-board", marketing: "/manifest" },
+  { prefix: "/manifest/insights", marketing: "/manifest" },
+  { prefix: "/manifest/story", marketing: "/manifest" },
+  { prefix: "/manifest/poster", marketing: "/manifest" },
+  { prefix: "/manifest/tracker", marketing: "/manifest" },
+  { prefix: "/manifest/words", marketing: "/manifest" },
+  { prefix: "/manifest/questions", marketing: "/manifest" },
   { prefix: "/ideate/my", marketing: "/manifest" },
   { prefix: "/ideate/goal", marketing: "/manifest" },
   { prefix: "/dream/my", marketing: "/manifest" },
   { prefix: "/dream/goal", marketing: "/manifest" },
   { prefix: "/plan/goal", marketing: "/manifest" },
   { prefix: "/plan/my", marketing: "/manifest" },
-  { prefix: "/focus/my", marketing: "/focus" },
+  { prefix: "/focus", marketing: "/focus" },
   { prefix: "/admin", marketing: "/" },
   { prefix: "/schedule", marketing: "/" },
   { prefix: "/analytics", marketing: "/" },
@@ -93,13 +151,16 @@ function matchesPrefix(pathname: string, prefix: string): boolean {
 
 export function isProtectedAppPath(pathname: string): boolean {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  // Exact Manifest home (not public `/manifest/guides`).
+  if (path === "/manifest") return true;
   return PROTECTED_PREFIXES.some((r) => matchesPrefix(path, r.prefix));
 }
 
 /** Protected Manifest (and legacy ideate/dream/plan) routes — own their loading UI. */
 const MANIFEST_APP_PREFIXES = [
-  "/manifest/my",
   "/manifest/goal",
+  "/manifest/vision-board",
+  "/manifest/insights",
   "/ideate/my",
   "/ideate/goal",
   "/dream/my",
@@ -110,11 +171,13 @@ const MANIFEST_APP_PREFIXES = [
 
 export function isManifestAppPath(pathname: string): boolean {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  if (path === "/manifest") return true;
   return MANIFEST_APP_PREFIXES.some((prefix) => matchesPrefix(path, prefix));
 }
 
 export function marketingFallbackForPath(pathname: string): string {
   const path = pathname.split("?")[0]?.split("#")[0] || pathname;
+  if (path === "/manifest") return "/manifest";
   for (const r of PROTECTED_PREFIXES) {
     if (matchesPrefix(path, r.prefix)) return r.marketing;
   }
@@ -153,12 +216,12 @@ export function isPublicAuthPath(pathname: string): boolean {
 const MARKETING_ROOT_APP_DESTINATIONS: Record<string, string> = {
   "/meditate": "__SPA__/meditate",
   "/journal": "__SPA__/journal",
-  "/manifest": "__SPA__/manifest/my",
-  "/ideate": "__SPA__/manifest/my",
-  "/dream": "__SPA__/manifest/my",
-  "/plan": "__SPA__/manifest/my",
+  "/manifest": "__SPA__/manifest",
+  "/ideate": "__SPA__/manifest",
+  "/dream": "__SPA__/manifest",
+  "/plan": "__SPA__/manifest",
   "/focus": "__SPA__/focus",
-  "/chat": "__SPA__/chat/my",
+  "/chat": "__SPA__/chat",
 };
 
 /** Normalize pathname (no query/hash, no trailing slash except `/`). */
@@ -188,8 +251,12 @@ export function signedInDestinationForMarketingRoot(
 /**
  * After auth: open the SPA for `/` (dashboard), marketing section roots, and
  * SPA-moved paths. Other marketing pages stay on marketing.
+ * Prefer an explicit `appReturn` (absolute SPA URL) when the Vite shell sent one.
  */
 export function postAuthDestination(fallback = "/"): string {
+  const appReturn = consumeAuthAppReturn();
+  if (appReturn) return appReturn;
+
   const next = consumeAuthNext(fallback);
   const path = normalizeAppPathname(next);
 

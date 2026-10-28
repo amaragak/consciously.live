@@ -30,7 +30,7 @@ const cards = [
 ] as const;
 
 /**
- * Chat marketing page at `/chat`. App lives at `/chat/my`.
+ * Chat marketing page at `/chat`. App lives at `/chat`.
  */
 export function EnhancedChatPage() {
   return (
@@ -94,7 +94,7 @@ export function EnhancedChatPage() {
           </p>
           <div className="mt-8">
             <Link
-              href="/chat/my"
+              href="/chat"
               className="inline-flex items-center justify-center rounded-full accent-fill-gradient px-7 py-3 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >
               Chat

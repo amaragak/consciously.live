@@ -25,10 +25,10 @@ function maxUpdatedAtIso(): string | null {
 }
 
 function isJournalEditorPath(p: string): boolean {
-  if (p === "/journal/my/insights" || p.startsWith("/journal/my/insights/")) {
+  if (p === "/journal/insights" || p.startsWith("/journal/insights/")) {
     return false;
   }
-  return p === "/journal/my" || p.startsWith("/journal/my/");
+  return p === "/journal/entries" || p.startsWith("/journal/entries/");
 }
 
 const inFlightRef = { current: false };

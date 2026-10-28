@@ -63,7 +63,7 @@ const LIFE_AREA_BREAKDOWN = [
 ] as const;
 
 /**
- * Manifest marketing page at `/manifest`. App lives at `/manifest/my`.
+ * Manifest marketing page at `/manifest`. App lives at `/manifest`.
  */
 export function EnhancedIdeatePage() {
   return (
@@ -111,7 +111,7 @@ export function EnhancedIdeatePage() {
               pull the threads together.
             </p>
             <Link
-              href="/manifest/my"
+              href="/manifest"
               className="mt-6 inline-flex items-center rounded-full bg-[#1E2530] px-5 py-2.5 text-sm font-semibold text-[#FAF8F3] transition-opacity hover:opacity-90 dark:bg-marketing-ink dark:text-home-hero-bg"
             >
               Open life areas →
@@ -172,7 +172,7 @@ export function EnhancedIdeatePage() {
               quiet mosaic beside your goals.
             </p>
             <Link
-              href="/manifest/my/vision-board"
+              href="/manifest/vision-board"
               className="mt-6 inline-flex items-center rounded-full bg-[#1E2530] px-5 py-2.5 text-sm font-semibold text-[#FAF8F3] transition-opacity hover:opacity-90 dark:bg-marketing-ink dark:text-home-hero-bg"
             >
               Open vision board →
@@ -211,7 +211,7 @@ export function EnhancedIdeatePage() {
           </h2>
           <div className="mt-8">
             <Link
-              href="/manifest/my"
+              href="/manifest"
               className="inline-flex items-center justify-center rounded-full accent-fill-gradient px-7 py-3 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90"
             >Manifest</Link>
           </div>

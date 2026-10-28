@@ -938,7 +938,7 @@ export function FocusTimerView() {
             <p className="px-2 py-3 text-sm text-muted">
               No life areas yet.{" "}
               <Link
-                href="/manifest/my?new=1"
+                href="/manifest?new=1"
                 className="font-medium text-accent-link underline-offset-2 hover:underline"
               >
                 Add one in Manifest
@@ -1740,7 +1740,7 @@ export function FocusTimerView() {
                         <p className="py-2 text-sm text-muted">
                           No life areas yet.{" "}
                           <Link
-                            href="/manifest/my?new=1"
+                            href="/manifest?new=1"
                             className="font-medium text-accent-link underline-offset-2 hover:underline"
                           >
                             Add one in Manifest

@@ -5,7 +5,7 @@ import { useMvpFlags } from "@/lib/mvp-flags";
 
 /**
  * Chat threads share one mounted workspace so route changes only swap the
- * active thread (no remount / re-open). Nested `/chat/my/*` routes all render
+ * active thread (no remount / re-open). Nested `/chat/*` routes all render
  * this same shell; pathname parsing inside AssistantChatWorkspace drives
  * thread selection.
  */

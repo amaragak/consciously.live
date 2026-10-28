@@ -1,14 +1,9 @@
 "use client";
 
 import { usePathname } from "@/lib/spa-nav";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { AppFooter } from "@/components/app-footer";
 import { shouldShowAppFooter, shouldUseDocumentScroll } from "@/lib/app-footer-visibility";
-import {
-  FOCUS_PATTERN_CHANGED_EVENT,
-  loadFocusPattern,
-  type FocusPatternId,
-} from "@/lib/focus-pattern";
 import { isMarketingHeroRoute } from "@/lib/marketing-hero-routes";
 
 function usePatternTileHeight(
@@ -63,18 +58,11 @@ export function MainShell({
   const pathname = usePathname() || "/";
   const isHeroPage =
     layout !== "app" && isMarketingHeroRoute(pathname);
-  const isFocusApp =
-    layout === "app" &&
-    (pathname === "/focus" ||
-      pathname.startsWith("/focus/") ||
-      pathname === "/focus/my" ||
-      pathname.startsWith("/focus/my/"));
   const showFooter = shouldShowAppFooter(pathname, layout);
   const documentScroll = shouldUseDocumentScroll(pathname, layout);
   const contentRef = useRef<HTMLDivElement>(null);
   const patternTileActive = !isHeroPage;
   const tileHeightPx = usePatternTileHeight(contentRef, patternTileActive);
-  const [focusPattern, setFocusPattern] = useState<FocusPatternId>("default");
 
   /**
    * Document scroll: content grows with the page.
@@ -82,19 +70,8 @@ export function MainShell({
    * (create / journal / chat / focus).
    * The floating library strip is fixed overlay only — never pad <main> for it
    * (that was stretching the page background under the strip).
+   * Focus uses the same signed-in page pattern fade as dashboard / journal / etc.
    */
-
-  useEffect(() => {
-    if (!isFocusApp) return;
-    const sync = () => setFocusPattern(loadFocusPattern());
-    sync();
-    window.addEventListener(FOCUS_PATTERN_CHANGED_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(FOCUS_PATTERN_CHANGED_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, [isFocusApp]);
 
   return (
     <main
@@ -105,10 +82,7 @@ export function MainShell({
           : undefined
       }
       data-page-kind={isHeroPage ? "hero" : "standard"}
-      data-app-layout={
-        layout === "app" ? (isFocusApp ? "focus" : "signed-in") : undefined
-      }
-      data-focus-pattern={isFocusApp ? focusPattern : undefined}
+      data-app-layout={layout === "app" ? "signed-in" : undefined}
     >
       {patternTileActive && tileHeightPx > 0 ? (
         <div

@@ -275,7 +275,7 @@ function LifeAreaCards({
   if (dreams.length === 0) {
     return (
       <Link
-        href="/manifest/my?new=1"
+        href="/manifest?new=1"
         aria-label="Add new life area"
         className="flex min-h-[72px] w-full items-center justify-center rounded-[4px] border-2 border-dashed bg-transparent transition-[border-color] duration-200"
         style={{ borderColor: "rgba(180,140,80,0.35)" }}
@@ -589,7 +589,7 @@ export function WelcomeDashboard() {
 
   const journalRecent: RecentRow[] = journalEntries.slice(0, 3).map((e) => ({
     key: e.id,
-    href: `/journal/my/${encodeURIComponent(e.id)}`,
+    href: `/journal/entries/${encodeURIComponent(e.id)}`,
     title: e.title.trim() || "Untitled entry",
     meta: journalEntryExcerpt(e),
     trailing: formatJournalEntryDate(e.updatedAt || e.createdAt),
@@ -643,17 +643,17 @@ export function WelcomeDashboard() {
           nav={
             <>
               <span className="md:hidden">
-                <NavGhost href="/journal/my">Open Journal</NavGhost>
+                <NavGhost href="/journal/entries">Open Journal</NavGhost>
               </span>
               <span className="hidden md:contents">
-                <NavGhost href="/journal/my">Entries</NavGhost>
-                <NavGhost href="/journal/my/gratitudes">Gratitudes</NavGhost>
-                <NavGhost href="/journal/my/insights">Insights</NavGhost>
+                <NavGhost href="/journal/entries">Entries</NavGhost>
+                <NavGhost href="/journal/gratitudes">Gratitudes</NavGhost>
+                <NavGhost href="/journal/insights">Insights</NavGhost>
               </span>
             </>
           }
           create={
-            <NavPrimary href="/journal/my?new=1">+ New entry</NavPrimary>
+            <NavPrimary href="/journal/entries?new=1">+ New entry</NavPrimary>
           }
           aside={<RecentColumn rows={journalRecent} />}
         />
@@ -662,11 +662,11 @@ export function WelcomeDashboard() {
           nav={
             <>
               <span className="md:hidden">
-                <NavGhost href="/manifest/my">Open Manifest</NavGhost>
+                <NavGhost href="/manifest">Open Manifest</NavGhost>
               </span>
               <span className="hidden md:contents">
-                <NavGhost href="/manifest/my">Overview</NavGhost>
-                <NavGhost href="/manifest/my/vision-board">Vision board</NavGhost>
+                <NavGhost href="/manifest">Overview</NavGhost>
+                <NavGhost href="/manifest/vision-board">Vision board</NavGhost>
               </span>
             </>
           }

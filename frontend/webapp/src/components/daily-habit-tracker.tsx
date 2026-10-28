@@ -38,7 +38,10 @@ type Props = {
   /** Meditation suggested on the “Ready when you are” card. */
   readyMeditationTitle?: string | null;
   onPlayReadyMeditation?: (() => void) | null;
-  /** When a narrated Story exists, show a fourth daily check. */
+  /**
+   * When a narrated Story exists, the fourth daily is “Listen to your story”.
+   * Otherwise it is “Create your story” — always four checklist items.
+   */
   storyAvailable?: boolean;
   storyMinutes?: number | null;
   onPlayStory?: (() => void) | null;
@@ -188,12 +191,12 @@ export function DailyHabitTracker({
     };
   }, [dateKey]);
 
-  const totalCount = storyAvailable ? 4 : 3;
+  const totalCount = 4;
   const doneCount =
     (status.gratitude ? 1 : 0) +
     (status.meditation ? 1 : 0) +
     (status.lifeArea ? 1 : 0) +
-    (storyAvailable && status.story ? 1 : 0);
+    (status.story ? 1 : 0);
 
   const toggle = (pillar: DailyHabitPillar) => {
     const next = !status[pillar];
@@ -244,7 +247,7 @@ export function DailyHabitTracker({
       router.push(focusMyHrefFromIdeate());
       return;
     }
-    router.push("/focus/my");
+    router.push("/focus");
   }
 
   const rows: {
@@ -261,7 +264,7 @@ export function DailyHabitTracker({
       help: null,
       actionLabel: "Add →",
       onAction: () => {},
-      actionAsLink: "/journal/my/gratitudes?new=1",
+      actionAsLink: "/journal/gratitudes?new=1",
     },
     {
       pillar: "meditation",
@@ -278,26 +281,31 @@ export function DailyHabitTracker({
         router.push("/meditate/library/creations");
       },
     },
-    ...(storyAvailable
-      ? [
-          {
-            pillar: "story" as const,
-            name: "Listen to your story",
-            help:
-              typeof storyMinutes === "number" && storyMinutes > 0
-                ? `About ${storyMinutes} min`
-                : null,
-            actionLabel: onPlayStory ? "Listen →" : "Open →",
-            onAction: () => {
-              if (onPlayStory) {
-                onPlayStory();
-                return;
-              }
-              router.push("/manifest/story?tab=narration");
-            },
+    storyAvailable
+      ? {
+          pillar: "story" as const,
+          name: "Listen to your story",
+          help:
+            typeof storyMinutes === "number" && storyMinutes > 0
+              ? `About ${storyMinutes} min`
+              : "Your narrated story",
+          actionLabel: onPlayStory ? "Listen →" : "Open →",
+          onAction: () => {
+            if (onPlayStory) {
+              onPlayStory();
+              return;
+            }
+            router.push("/manifest/story?tab=narration");
           },
-        ]
-      : []),
+        }
+      : {
+          pillar: "story" as const,
+          name: "Create your story",
+          help: "Write the story of who you’re becoming",
+          actionLabel: "Write →",
+          onAction: () => {},
+          actionAsLink: "/manifest/story",
+        },
     {
       pillar: "lifeArea",
       name: lifeAreaName,
@@ -331,9 +339,10 @@ export function DailyHabitTracker({
                 <span className={`truncate text-[14.5px] ${checked ? "text-[rgba(243,237,226,0.55)] line-through" : "text-[#F3EDE2]"}`}>
                   {row.name}
                 </span>
-                {row.help ? (
-                  <span className="truncate text-[12px] text-[rgba(243,237,226,0.55)]">{row.help}</span>
-                ) : null}
+                {/* Always reserve the help line so 3→4 / missing subtitle doesn’t resize the hero. */}
+                <span className="truncate text-[12px] text-[rgba(243,237,226,0.55)]">
+                  {row.help || "\u00a0"}
+                </span>
               </span>
               {row.actionAsLink ? (
                 <Link href={row.actionAsLink}>{control}</Link>

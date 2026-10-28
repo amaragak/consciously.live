@@ -223,7 +223,7 @@ export function PlanHomeClient() {
   const { ready: cloudReady, revision, signedIn } = useIdeateCloud();
   const sessionActive = signedIn;
 
-  // Sidebar "Add a life area" deep-link (`/manifest/my?new=1`).
+  // Sidebar "Add a life area" deep-link (`/manifest?new=1`).
   const newLifeAreaHandledRef = useRef(false);
   /** Set when "New life area" came from a guide: open a drafted goal after create. */
   const pendingGoalDraftRef = useRef<string | null>(null);
@@ -245,10 +245,10 @@ export function PlanHomeClient() {
     params.delete("then");
     params.delete("goalTitle");
     const qs = params.toString();
-    navigate(`/manifest/my${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
+    navigate(`/manifest${qs ? `?${qs}` : ""}${window.location.hash}`, { replace: true });
   }, [hydrated, cloudReady, navigate]);
 
-  // Guests never wait on the cloud provider — missing provider used to brick /manifest/my
+  // Guests never wait on the cloud provider — missing provider used to brick /manifest
   // on eternal "Loading…". Seed + paint from local demos immediately.
   useEffect(() => {
     if (sessionActive) return;
@@ -633,7 +633,7 @@ export function PlanHomeClient() {
               </span>
               {manifestInsights ? (
               <Link
-                to="/manifest/my/insights"
+                to="/manifest/insights"
                 className="inline-flex items-center gap-0.5 text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
               >
                 See insights

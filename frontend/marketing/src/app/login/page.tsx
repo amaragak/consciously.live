@@ -28,7 +28,13 @@ import {
   establishCognitoSession,
 } from "@/lib/cognito-auth";
 import { asCognitoAuthTokens } from "@/lib/cognito-direct-auth";
-import { rememberAuthNext, safeAuthNext, postAuthDestination } from "@/lib/app-routes";
+import {
+  rememberAuthAppReturn,
+  rememberAuthNext,
+  safeAppReturn,
+  safeAuthNext,
+  postAuthDestination,
+} from "@/lib/app-routes";
 import { applyColorScheme, resolveAuthColorScheme } from "@/lib/color-scheme";
 import { exitMarketingPreviewMode } from "@/lib/marketing-preview";
 import { navigateAuthDestination } from "@/lib/spa-handoff";
@@ -165,6 +171,7 @@ function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeAuthNext(searchParams.get("next"), "/");
+  const appReturn = safeAppReturn(searchParams.get("appReturn"));
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [cognitoBusy, setCognitoBusy] = useState(false);
@@ -220,7 +227,8 @@ function LoginInner() {
 
   useEffect(() => {
     rememberAuthNext(next);
-  }, [next]);
+    rememberAuthAppReturn(appReturn);
+  }, [next, appReturn]);
 
   useEffect(() => {
     let cancelled = false;

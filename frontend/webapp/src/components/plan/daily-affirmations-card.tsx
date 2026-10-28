@@ -101,7 +101,7 @@ export function DashboardAffirmationsCard() {
         <Headphones className="h-4 w-4" aria-hidden />
       </button>
       <Link
-        href="/manifest/my?affirmations=open"
+        href="/manifest?affirmations=open"
         onClick={() => noteAffirmationEngagement()}
         className="shrink-0 text-[13px] font-semibold text-muted"
       >

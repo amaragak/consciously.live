@@ -155,9 +155,9 @@ type JournalMainTab = "journal" | "gratitude";
 type JournalSection = JournalMainTab | "insights";
 
 const JOURNAL_SECTION_HREF = {
-  journal: "/journal/my",
-  gratitude: "/journal/my/gratitudes",
-  insights: "/journal/my/insights",
+  journal: "/journal/entries",
+  gratitude: "/journal/gratitudes",
+  insights: "/journal/insights",
 } as const;
 
 const JOURNAL_SECTION_TABS = [
@@ -168,14 +168,14 @@ const JOURNAL_SECTION_TABS = [
 
 function journalSectionFromPath(pathname: string): JournalSection {
   if (
-    pathname === "/journal/my/insights" ||
-    pathname.startsWith("/journal/my/insights/")
+    pathname === "/journal/insights" ||
+    pathname.startsWith("/journal/insights/")
   ) {
     return "insights";
   }
   if (
-    pathname === "/journal/my/gratitudes" ||
-    pathname.startsWith("/journal/my/gratitudes/")
+    pathname === "/journal/gratitudes" ||
+    pathname.startsWith("/journal/gratitudes/")
   ) {
     return "gratitude";
   }
@@ -185,14 +185,14 @@ function journalSectionFromPath(pathname: string): JournalSection {
 /** Entry id from `/journal/:entryId` (not gratitudes/insights). */
 function journalEntryIdFromPath(pathname: string): string | null {
   if (
-    pathname === "/journal/my" ||
-    pathname === "/journal/my/" ||
-    pathname.startsWith("/journal/my/gratitudes") ||
-    pathname.startsWith("/journal/my/insights")
+    pathname === "/journal/entries" ||
+    pathname === "/journal/entries/" ||
+    pathname.startsWith("/journal/gratitudes") ||
+    pathname.startsWith("/journal/insights")
   ) {
     return null;
   }
-  const m = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   try {
     return decodeURIComponent(m[1]);
@@ -201,9 +201,9 @@ function journalEntryIdFromPath(pathname: string): string | null {
   }
 }
 
-/** Entry id from `/journal/my/gratitudes/:entryId`. */
+/** Entry id from `/journal/gratitudes/:entryId`. */
 function gratitudeEntryIdFromPath(pathname: string): string | null {
-  const m = /^\/journal\/my\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   try {
     return decodeURIComponent(m[1]);
@@ -437,9 +437,12 @@ function JournalLinkChip({
 export function JournalListChips({
   entry,
   className = "",
+  inline = false,
 }: {
   entry: JournalEntry;
   className?: string;
+  /** Chips sit on the same line as meta text (no top border). */
+  inline?: boolean;
 }) {
   const groups = entryLinkGroups(entry);
   if (groups.length === 0) return null;
@@ -447,7 +450,13 @@ export function JournalListChips({
   const rest = groups.slice(2);
   const restItems = rest.flatMap((group) => group.items);
   return (
-    <span className={`mt-1 flex flex-nowrap gap-1 overflow-hidden border-t border-border pt-2 ${className}`}>
+    <span
+      className={
+        inline
+          ? `inline-flex shrink-0 flex-nowrap gap-1 overflow-hidden ${className}`
+          : `mt-1 flex flex-nowrap gap-1 overflow-hidden border-t border-border pt-2 ${className}`
+      }
+    >
       {shown.map((group) => (
         <JournalLinkChip
           key={group.kind}
@@ -550,7 +559,7 @@ export function JournalView() {
   const [draftHasText, setDraftHasText] = useState(false);
   const [supportEntryId, setSupportEntryId] = useState<string | null>(null);
   const { pathname: pathnameRaw, search: locationSearch } = useLocation();
-  const pathname = pathnameRaw || "/journal/my";
+  const pathname = pathnameRaw || "/journal/entries";
   const navigate = useNavigate();
   const section = journalSectionFromPath(pathname);
   const routeEntryId = journalEntryIdFromPath(pathname);
@@ -558,10 +567,10 @@ export function JournalView() {
   /** Mobile journal: editor is its own full-screen route (`/journal/:id`). */
   const mobileJournalEditor =
     section === "journal" && Boolean(routeEntryId);
-  /** Mobile gratitudes: compose is `/journal/my/gratitudes/:id`. */
+  /** Mobile gratitudes: compose is `/journal/gratitudes/:id`. */
   const mobileGratitudeCompose =
     section === "gratitude" && Boolean(routeGratitudeId);
-  /** Mobile insights: letter detail is `/journal/my/insights/:weekKey`. */
+  /** Mobile insights: letter detail is `/journal/insights/:weekKey`. */
   const mobileInsightsLetter =
     section === "insights" &&
     Boolean(/^\/journal\/insights\/[^/]+\/?$/.test(pathname));
@@ -612,7 +621,7 @@ export function JournalView() {
     }
     if (section === "insights") {
       if (!mvp.journalInsights) {
-        navigate("/journal/my", { replace: true });
+        navigate("/journal/entries", { replace: true });
         return;
       }
       setInsightsMounted(true);
@@ -1314,7 +1323,7 @@ export function JournalView() {
     if (journalTab === "journal" && journalEntryIdFromPath(pathname)) {
       navigate(
         nextId
-          ? `/journal/my/${encodeURIComponent(nextId)}`
+          ? `/journal/entries/${encodeURIComponent(nextId)}`
           : JOURNAL_SECTION_HREF.journal,
       );
     } else if (
@@ -1323,7 +1332,7 @@ export function JournalView() {
     ) {
       navigate(
         nextId
-          ? `/journal/my/gratitudes/${encodeURIComponent(nextId)}`
+          ? `/journal/gratitudes/${encodeURIComponent(nextId)}`
           : JOURNAL_SECTION_HREF.gratitude,
       );
     }
@@ -1362,14 +1371,14 @@ export function JournalView() {
       if (journalTab === "journal") {
         if (isGratitudeEntry(entry)) return;
         if (journalEntryIdFromPath(pathname) === nextId) return;
-        navigate(`/journal/my/${encodeURIComponent(nextId)}`);
+        navigate(`/journal/entries/${encodeURIComponent(nextId)}`);
         return;
       }
       if (journalTab === "gratitude") {
         if (!isGratitudeEntry(entry)) return;
         if (gratitudeEntryIdFromPath(pathname) === nextId) return;
         navigate(
-          `/journal/my/gratitudes/${encodeURIComponent(nextId)}`,
+          `/journal/gratitudes/${encodeURIComponent(nextId)}`,
         );
       }
     },
@@ -1392,7 +1401,7 @@ export function JournalView() {
     }
   }, [hydrated, section, routeEntryId, entries, applyEntrySelection, navigate]);
 
-  /** Deep-link / browser back: sync from `/journal/my/gratitudes/:id`. */
+  /** Deep-link / browser back: sync from `/journal/gratitudes/:id`. */
   useEffect(() => {
     if (!hydrated || section !== "gratitude") return;
     if (!routeGratitudeId) return;
@@ -1564,7 +1573,7 @@ export function JournalView() {
       latestTitleRef.current = e.title;
       latestGratitudeRef.current = emptyGratitudeLines();
       setGratitudeDraft(latestGratitudeRef.current);
-      navigate(`/journal/my/${encodeURIComponent(e.id)}`);
+      navigate(`/journal/entries/${encodeURIComponent(e.id)}`);
     },
     [flushSaveSync, persist, selectedFolderId, navigate],
   );
@@ -1602,7 +1611,7 @@ export function JournalView() {
       navigate(`/manifest/goal/${encodeURIComponent(activeLifeArea.id)}`);
       return;
     }
-    navigate("/manifest/my");
+    navigate("/manifest");
   }, [activeLifeArea, navigate]);
 
   const createGratitudeEntry = useCallback(() => {
@@ -1617,7 +1626,7 @@ export function JournalView() {
     latestTitleRef.current = e.title;
     latestGratitudeRef.current = e.gratitude ?? emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
-    navigate(`/journal/my/gratitudes/${encodeURIComponent(e.id)}`);
+    navigate(`/journal/gratitudes/${encodeURIComponent(e.id)}`);
   }, [flushSaveSync, persist, navigate]);
 
   // Sidebar / overview deep-links: `?new=1`, optional `title=` + `voice=1`.
@@ -1632,8 +1641,8 @@ export function JournalView() {
     if (!hydrated || newEntryHandledRef.current) return;
     newEntryHandledRef.current = true;
     if (
-      pathname === "/journal/my/gratitudes" ||
-      pathname.startsWith("/journal/my/gratitudes/")
+      pathname === "/journal/gratitudes" ||
+      pathname.startsWith("/journal/gratitudes/")
     ) {
       createGratitudeEntry();
       return;
@@ -1685,7 +1694,7 @@ export function JournalView() {
           latestTitleRef.current = existing.title;
           latestGratitudeRef.current = emptyGratitudeLines();
           setGratitudeDraft(latestGratitudeRef.current);
-          navigate(`/journal/my/${encodeURIComponent(existing.id)}`, {
+          navigate(`/journal/entries/${encodeURIComponent(existing.id)}`, {
             replace: true,
           });
         } else {
@@ -1752,7 +1761,7 @@ export function JournalView() {
       persist(next, first.id);
       setImportBatchId(batchId);
       setImportOpen(false);
-      navigate(`/journal/my/${encodeURIComponent(first.id)}`);
+      navigate(`/journal/entries/${encodeURIComponent(first.id)}`);
       if (getMedimadeSessionJwt() && mvpFlagsSnapshot().journalInsights) {
         void runJournalInsightsRemote().catch(() => {
           /* insights can catch up later */
@@ -1825,7 +1834,7 @@ export function JournalView() {
     const id = openTodayGratitude();
     if (!id) return;
     if (gratitudeEntryIdFromPath(pathname) === id) return;
-    navigate(`/journal/my/gratitudes/${encodeURIComponent(id)}`);
+    navigate(`/journal/gratitudes/${encodeURIComponent(id)}`);
   }, [openTodayGratitude, pathname, navigate]);
 
   const activateJournalList = useCallback(() => {
@@ -1862,7 +1871,7 @@ export function JournalView() {
       ) {
         return;
       }
-      // Bare `/journal/my/gratitudes` (breadcrumb, tab, sidebar): last ≤24h or new.
+      // Bare `/journal/gratitudes` (breadcrumb, tab, sidebar): last ≤24h or new.
       openTodayGratitudeCompose();
       return;
     }

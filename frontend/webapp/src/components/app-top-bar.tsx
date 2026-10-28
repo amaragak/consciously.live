@@ -221,14 +221,14 @@ function createProgramTitleFromSession(pathname: string): string | null {
 
 function journalEntryTitleFromPath(pathname: string): string | null {
   if (
-    pathname === "/journal/my" ||
-    pathname === "/journal/my/" ||
-    pathname.startsWith("/journal/my/gratitudes") ||
-    pathname.startsWith("/journal/my/insights")
+    pathname === "/journal/entries" ||
+    pathname === "/journal/entries/" ||
+    pathname.startsWith("/journal/gratitudes") ||
+    pathname.startsWith("/journal/insights")
   ) {
     return null;
   }
-  const m = /^\/journal\/my\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   let id: string;
   try {
@@ -251,7 +251,7 @@ function journalEntryTitleFromPath(pathname: string): string | null {
 }
 
 function gratitudeEntryLabelFromPath(pathname: string): string | null {
-  const m = /^\/journal\/my\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   let id: string;
   try {
