@@ -7636,6 +7636,152 @@ export async function saveAdminBlogPost(
   return saved;
 }
 
+export type AdminListenPreview = {
+  slotId: string;
+  ownerPk: string;
+  ownerSk: string;
+  kind: "meditation" | "story";
+  sort: number;
+  published: boolean;
+  title: string;
+  description: string;
+  style: string | null;
+  durationSec: number | null;
+  coverImageUrl: string | null;
+  audioUrl: string | null;
+  listenSlug: string | null;
+  href: string | null;
+  missing: boolean;
+};
+
+export type AdminListenState = {
+  includeCommunity: boolean;
+  previews: AdminListenPreview[];
+};
+
+function normalizeAdminListenPreview(raw: unknown): AdminListenPreview | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const slotId = typeof o.slotId === "string" ? o.slotId.trim() : "";
+  const ownerPk = typeof o.ownerPk === "string" ? o.ownerPk.trim() : "";
+  const ownerSk = typeof o.ownerSk === "string" ? o.ownerSk.trim() : "";
+  if (!slotId || !ownerPk || !ownerSk) return null;
+  return {
+    slotId,
+    ownerPk,
+    ownerSk,
+    kind: o.kind === "story" ? "story" : "meditation",
+    sort: typeof o.sort === "number" ? o.sort : 0,
+    published: o.published !== false,
+    title: typeof o.title === "string" ? o.title : "Untitled",
+    description: typeof o.description === "string" ? o.description : "",
+    style: typeof o.style === "string" ? o.style : null,
+    durationSec:
+      typeof o.durationSec === "number" && Number.isFinite(o.durationSec)
+        ? o.durationSec
+        : null,
+    coverImageUrl:
+      typeof o.coverImageUrl === "string" ? o.coverImageUrl : null,
+    audioUrl: typeof o.audioUrl === "string" ? o.audioUrl : null,
+    listenSlug: typeof o.listenSlug === "string" ? o.listenSlug : null,
+    href: typeof o.href === "string" ? o.href : null,
+    missing: o.missing === true,
+  };
+}
+
+function normalizeAdminListenState(data: {
+  includeCommunity?: unknown;
+  previews?: unknown;
+}): AdminListenState {
+  const previews = Array.isArray(data.previews)
+    ? data.previews
+        .map(normalizeAdminListenPreview)
+        .filter((p): p is AdminListenPreview => Boolean(p))
+        .sort((a, b) => a.sort - b.sort)
+    : [];
+  return {
+    includeCommunity: data.includeCommunity === true,
+    previews,
+  };
+}
+
+export async function fetchAdminListen(): Promise<AdminListenState> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/listen`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  const data = (await res.json()) as {
+    includeCommunity?: unknown;
+    previews?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return normalizeAdminListenState(data);
+}
+
+async function postAdminListen(
+  body: Record<string, unknown>,
+): Promise<AdminListenState> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/listen`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as {
+    includeCommunity?: unknown;
+    previews?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return normalizeAdminListenState(data);
+}
+
+export async function pinAdminListenItem(params: {
+  ref: string;
+  kind?: "meditation" | "story";
+}): Promise<AdminListenState> {
+  return postAdminListen({
+    action: "pin",
+    ref: params.ref,
+    ...(params.kind ? { kind: params.kind } : {}),
+  });
+}
+
+export async function unpinAdminListenSlot(
+  slotId: string,
+): Promise<AdminListenState> {
+  return postAdminListen({ action: "unpin", slotId });
+}
+
+export async function moveAdminListenSlot(
+  slotId: string,
+  dir: "up" | "down",
+): Promise<AdminListenState> {
+  return postAdminListen({ action: "move", slotId, dir });
+}
+
+export async function setAdminListenSlotPublished(
+  slotId: string,
+  published: boolean,
+): Promise<AdminListenState> {
+  return postAdminListen({ action: "setPublished", slotId, published });
+}
+
+export async function setAdminListenIncludeCommunity(
+  includeCommunity: boolean,
+): Promise<AdminListenState> {
+  return postAdminListen({ action: "setIncludeCommunity", includeCommunity });
+}
+
 export async function generateAdminBlogAudio(
   id: string,
   ttsProvider: "fish" | "speechify" = "speechify",

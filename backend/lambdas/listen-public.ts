@@ -16,6 +16,7 @@ import {
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { meditationPlaybackS3Key } from "./_shared/playback-keys";
+import { getListenCuratorSettings } from "./_shared/listen-curator";
 import {
   LISTEN_LISTED_PK,
   LISTEN_PATH_PK,
@@ -232,6 +233,76 @@ async function resolvePath(
   return { status: "missing" };
 }
 
+async function listCurated(
+  tableName: string,
+  cfDomain: string | undefined,
+): Promise<ListenPublicItem[]> {
+  const settings = await getListenCuratorSettings();
+  const items: ListenPublicItem[] = [];
+  const seen = new Set<string>();
+  for (const slot of settings.slots) {
+    if (!slot.published) continue;
+    const key = `${slot.ownerPk}\0${slot.ownerSk}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const got = await ddb.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: slot.ownerPk, sk: slot.ownerSk },
+      }),
+    );
+    if (!got.Item) continue;
+    const row = got.Item as Record<string, unknown>;
+    if (row.archived === true || row.isDraft === true) continue;
+    // Ensure parseListenShare succeeds even for unshared library rows.
+    if (!parseListenShare(row.listenShare)) {
+      const title =
+        slot.title ||
+        (typeof row.title === "string" && row.title.trim()
+          ? row.title.trim()
+          : "Untitled");
+      row.listenShare = {
+        kind: slot.kind,
+        title,
+        description: slot.description || "",
+        shownAs: "Consciously",
+        showBrief: false,
+        brief: null,
+        listed: true,
+        isExample: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    } else if (slot.title || slot.description || slot.kind) {
+      const share = parseListenShare(row.listenShare)!;
+      row.listenShare = {
+        ...share,
+        kind: slot.kind || share.kind,
+        title: slot.title || share.title,
+        description: slot.description ?? share.description,
+        shownAs: share.shownAs || "Consciously",
+        listed: true,
+        isExample: true,
+      };
+    }
+    const slug =
+      typeof row.listenSlug === "string" && row.listenSlug.trim()
+        ? row.listenSlug.trim()
+        : `curated-${slot.id.slice(0, 8)}`;
+    if (!row.listenUsername) row.listenUsername = HOUSE_USERNAME;
+    const item = toPublicItem(slug, row, cfDomain);
+    if (!item) continue;
+    items.push({
+      ...item,
+      kind: slot.kind,
+      isExample: true,
+      listed: true,
+      shownAs: item.shownAs || "Consciously",
+    });
+  }
+  return items;
+}
+
 async function listListed(
   tableName: string,
   cfDomain: string | undefined,
@@ -432,21 +503,30 @@ export async function handler(
       return json(404, { error: "Not found" });
     }
 
-    // Index
-    const listed = await listListed(tableName, cfDomain);
-    const house = listed.filter((x) => x.username === HOUSE_USERNAME || x.isExample);
-    const community = listed.filter(
-      (x) => x.username !== HOUSE_USERNAME && !x.isExample,
-    );
-    const meditations = [
-      ...house.filter((x) => x.kind === "meditation"),
-      ...community.filter((x) => x.kind === "meditation"),
-    ];
-    const stories = [
-      ...house.filter((x) => x.kind === "story"),
-      ...community.filter((x) => x.kind === "story"),
-    ];
-    return json(200, { meditations, stories });
+    // Index — admin curator first; community only when includeCommunity is on.
+    const curated = await listCurated(tableName, cfDomain);
+    const settings = await getListenCuratorSettings();
+    let meditations = curated.filter((x) => x.kind === "meditation");
+    let stories = curated.filter((x) => x.kind === "story");
+    if (settings.includeCommunity) {
+      const listed = await listListed(tableName, cfDomain);
+      const curatedKeys = new Set(
+        curated.map((x) => `${x.username ?? ""}/${x.slug}`),
+      );
+      const community = listed.filter((x) => {
+        if (x.isExample || x.username === HOUSE_USERNAME) return false;
+        return !curatedKeys.has(`${x.username ?? ""}/${x.slug}`);
+      });
+      meditations = [
+        ...meditations,
+        ...community.filter((x) => x.kind === "meditation"),
+      ];
+      stories = [
+        ...stories,
+        ...community.filter((x) => x.kind === "story"),
+      ];
+    }
+    return json(200, { meditations, stories, curatedOnly: !settings.includeCommunity });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Lookup failed";
     return json(500, { error: msg });

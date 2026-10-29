@@ -534,6 +534,41 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
+    const adminListen = new lambda_nodejs.NodejsFunction(
+      this,
+      "AdminListenFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/admin-listen.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
+        role,
+        environment: {
+          VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          ADMIN_EMAILS: adminEmails,
+          MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          MEDITATION_JOBS_TABLE_NAME: props.database.meditationJobs.tableName,
+        },
+      },
+    );
+    props.database.meditationJobs.grantReadData(role);
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminListenRoute",
+      path: "/admin/listen",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminListenIntegration",
+        adminListen,
+      ),
+    });
+
     const publicBlog = new lambda_nodejs.NodejsFunction(this, "PublicBlogFunction", {
       entry: path.join(__dirname, "../../lambdas/public-blog.ts"),
       handler: "handler",
