@@ -173,26 +173,30 @@ CloudFormation 500-resource limit, and is not instantiated by CDK unless
 
 ### MeditationAnalytics GSIs (multi-index create)
 
-DynamoDB allows only **one** GSI create or delete per `UpdateTable`. New regions therefore create `shareTokenIndex`, `listenSlugIndex`, and `listenListedIndex` through the `EnsureDynamoDbGsis` custom resource (sequential create + wait for `ACTIVE`), not via `Table.addGlobalSecondaryIndex`.
+DynamoDB allows only **one** GSI create or delete per `UpdateTable`. `EnsureDynamoDbGsis` creates missing indexes sequentially (wait for `ACTIVE` between each).
 
-Greenfield: omit any `analyticsCdkGsis` context (custom resource owns all three).
+**Default (CI / live eu-west-2):** all three stay on the Table resource so CFN does not try to delete them. The custom resource is still installed (empty index list) and is ready for cutover / greenfield.
 
-Existing stacks that still declare these GSIs on the Table must cut over one index per deploy (`analyticsCdkGsis` is the shrinking allow-list still owned by CDK). Each name dropped from the list is deleted by the Table update, then immediately recreated by the custom resource (which only manages indexes **not** in that list):
+**Greenfield / new region:** custom resource owns all three:
 
 ```bash
-# 1) Install custom resource; keep all three on the Table resource
 ./scripts/deploy-back --require-approval never --profile mm \
-  -c analyticsCdkGsis=shareTokenIndex,listenSlugIndex,listenListedIndex
+  -c analyticsGsisViaCr=1
+```
 
-# 2–4) Drop one name from the list each deploy until the flag is omitted
+**Existing stack cutover** (drop Table-declared GSIs one deploy at a time — CFN deletes the dropped index, then the custom resource recreates it):
+
+```bash
 ./scripts/deploy-back --require-approval never --profile mm \
   -c analyticsCdkGsis=shareTokenIndex,listenSlugIndex
 ./scripts/deploy-back --require-approval never --profile mm \
   -c analyticsCdkGsis=shareTokenIndex
-./scripts/deploy-back --require-approval never --profile mm
+# Final: CR owns all three permanently
+./scripts/deploy-back --require-approval never --profile mm \
+  -c analyticsGsisViaCr=1
 ```
 
-**Do not** deploy an existing stack without `analyticsCdkGsis` while CFN still thinks the Table owns all three — that would try to delete multiple GSIs in one update and fail.
+Do **not** pass `-c analyticsGsisViaCr=1` (or an empty `analyticsCdkGsis`) while CFN still thinks the Table owns multiple GSIs — that deletes more than one GSI in one update and fails.
 
 ### Repo deploy helper (`scripts/deploy-back`)
 

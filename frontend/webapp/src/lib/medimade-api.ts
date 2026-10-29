@@ -7340,6 +7340,51 @@ export type AdminBlogListenPreview = {
 };
 
 /**
+ * Write or revise the cover image prompt (Haiku) without generating images.
+ * Pass `previousPrompt` + `revisionNotes` to iterate on an existing prompt.
+ */
+export async function generateAdminBlogCoverPrompt(params: {
+  title?: string;
+  subheader?: string;
+  /** Full essay plain text — used to summarise the whole piece for the cover prompt. */
+  bodyText?: string;
+  /** @deprecated Prefer bodyText; kept for older clients. */
+  opening?: string;
+  /** Current prompt to revise (with revisionNotes). */
+  previousPrompt?: string;
+  /** What to change about the previous prompt. */
+  revisionNotes?: string;
+}): Promise<{ prompt: string }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/blog`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({
+      action: "generateCoverPrompt",
+      title: params.title,
+      subheader: params.subheader,
+      bodyText: params.bodyText,
+      opening: params.opening,
+      previousPrompt: params.previousPrompt,
+      revisionNotes: params.revisionNotes,
+    }),
+  });
+  let data: { prompt?: unknown; error?: string; detail?: string } = {};
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    /* non-JSON */
+  }
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  const prompt = typeof data.prompt === "string" ? data.prompt.trim() : "";
+  if (!prompt) throw new Error("No cover prompt came back");
+  return { prompt };
+}
+
+/**
  * Generate Nano Banana Pro 16:9 cover option(s) for a Read essay.
  * Prefer `count: 1` (default) — API Gateway times out around 30s, so a batch
  * of several images in one call usually never reaches the browser.

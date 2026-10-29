@@ -6,6 +6,7 @@ import {
   fetchAdminBlog,
   generateAdminBlogAudio,
   generateAdminBlogCoverOptions,
+  generateAdminBlogCoverPrompt,
   resolveAdminBlogListenSlug,
   saveAdminBlogPost,
   saveAdminBlogSettings,
@@ -283,9 +284,10 @@ export function AdminReadPanel() {
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioTick, setAudioTick] = useState(Date.now());
   const [status, setStatus] = useState<string | null>(null);
-  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverBusy, setCoverBusy] = useState<"prompt" | "image" | null>(null);
   const [coverProgress, setCoverProgress] = useState<string | null>(null);
   const [coverPrompt, setCoverPrompt] = useState("");
+  const [coverPromptNotes, setCoverPromptNotes] = useState("");
   const [coverOptions, setCoverOptions] = useState<AdminBlogCoverOption[]>([]);
   const [coverError, setCoverError] = useState<string | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
@@ -342,8 +344,9 @@ export function AdminReadPanel() {
 
   function resetCoverListenUi(post?: AdminBlogPost | null) {
     setCoverProgress(null);
-    setCoverBusy(false);
+    setCoverBusy(null);
     setCoverPrompt("");
+    setCoverPromptNotes("");
     setCoverOptions([]);
     setCoverError(null);
     setListenBusy(false);
@@ -379,38 +382,66 @@ export function AdminReadPanel() {
     resetCoverListenUi(post ?? null);
   }
 
-  async function onGenerateCovers() {
-    setCoverBusy(true);
+  async function onGenerateCoverPrompt() {
+    setCoverBusy("prompt");
+    setCoverError(null);
+    setCoverProgress(
+      coverPrompt.trim() && coverPromptNotes.trim()
+        ? "Revising prompt…"
+        : "Writing cover prompt…",
+    );
+    const bodyText = essayPlainTextFromBody(
+      liveBodyRef.current || draft.body,
+    );
+    const previous = coverPrompt.trim();
+    const notes = coverPromptNotes.trim();
+    try {
+      const { prompt } = await generateAdminBlogCoverPrompt({
+        title: draft.title,
+        subheader: draft.subheader,
+        bodyText,
+        ...(previous ? { previousPrompt: previous } : {}),
+        ...(notes ? { revisionNotes: notes } : {}),
+      });
+      setCoverPrompt(prompt);
+      if (notes) setCoverPromptNotes("");
+      setStatus(
+        previous && notes
+          ? "Cover prompt revised — Generate image when ready."
+          : "Cover prompt ready — Generate image when ready.",
+      );
+    } catch (e) {
+      setCoverError(
+        e instanceof Error ? e.message : "Cover prompt generation failed",
+      );
+    } finally {
+      setCoverProgress(null);
+      setCoverBusy(null);
+    }
+  }
+
+  async function onGenerateCoverImages() {
+    const prompt = coverPrompt.trim();
+    if (!prompt) {
+      setCoverError("Generate or write a prompt first, then generate images.");
+      return;
+    }
+    setCoverBusy("image");
     setCoverError(null);
     setCoverProgress(null);
     // One image per request — API Gateway HTTP APIs time out at 30s; four
     // Nano Banana Pro gens in one Lambda never make it back to the browser.
     const total = 4;
-    const bodyText = essayPlainTextFromBody(
-      liveBodyRef.current || draft.body,
-    );
-    let prompt = coverPrompt.trim() || undefined;
     let gotAny = false;
     try {
       for (let i = 0; i < total; i += 1) {
-        setCoverProgress(
-          prompt
-            ? `Generating ${i + 1} of ${total}…`
-            : i === 0
-              ? "Summarising essay for cover prompt…"
-              : `Generating ${i + 1} of ${total}…`,
-        );
+        setCoverProgress(`Generating ${i + 1} of ${total}…`);
         const result = await generateAdminBlogCoverOptions({
           prompt,
           title: draft.title,
           subheader: draft.subheader,
-          bodyText,
           count: 1,
         });
-        if (!prompt && result.prompt) {
-          prompt = result.prompt;
-          setCoverPrompt(result.prompt);
-        }
         if (result.options.length) {
           gotAny = true;
           setCoverOptions((prev) =>
@@ -427,12 +458,12 @@ export function AdminReadPanel() {
       );
     } finally {
       setCoverProgress(null);
-      setCoverBusy(false);
+      setCoverBusy(null);
     }
   }
 
   async function onUploadCover(file: File) {
-    setCoverBusy(true);
+    setCoverBusy("image");
     setCoverError(null);
     try {
       const { dataUrl, mimeType } = await fileToCompressedJpegDataUrl(file);
@@ -449,7 +480,7 @@ export function AdminReadPanel() {
     } catch (e) {
       setCoverError(e instanceof Error ? e.message : "Cover upload failed");
     } finally {
-      setCoverBusy(false);
+      setCoverBusy(null);
     }
   }
 
@@ -1320,30 +1351,57 @@ export function AdminReadPanel() {
               ) : null}
               <div className="mt-2">
                 <label className="block text-[11px] text-muted">
-                  Generate prompt
+                  Image prompt
                 </label>
                 <textarea
                   value={coverPrompt}
                   onChange={(e) => setCoverPrompt(e.target.value)}
                   rows={3}
-                  placeholder="Leave blank to prefill from title, subtitle and a summary of the whole essay…"
+                  placeholder="Generate from the essay, or write your own…"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </div>
+              <div className="mt-2">
+                <label className="block text-[11px] text-muted">
+                  Prompt changes{" "}
+                  <span className="font-normal text-muted/80">
+                    (optional — used when regenerating the prompt)
+                  </span>
+                </label>
+                <textarea
+                  value={coverPromptNotes}
+                  onChange={(e) => setCoverPromptNotes(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. less water, warmer light, show a figure from behind…"
                   className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                 />
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={coverBusy || busy}
-                  onClick={() => void onGenerateCovers()}
+                  disabled={Boolean(coverBusy) || busy}
+                  onClick={() => void onGenerateCoverPrompt()}
                   className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
                 >
-                  {coverBusy
-                    ? coverProgress || "Generating…"
-                    : "Generate"}
+                  {coverBusy === "prompt"
+                    ? coverProgress || "Writing prompt…"
+                    : coverPrompt.trim()
+                      ? "Generate prompt again"
+                      : "Generate prompt"}
                 </button>
                 <button
                   type="button"
-                  disabled={coverBusy || busy}
+                  disabled={Boolean(coverBusy) || busy}
+                  onClick={() => void onGenerateCoverImages()}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {coverBusy === "image"
+                    ? coverProgress || "Generating…"
+                    : "Generate image"}
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(coverBusy) || busy}
                   onClick={() => coverInputRef.current?.click()}
                   className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
                 >
@@ -1383,7 +1441,11 @@ export function AdminReadPanel() {
                   <button
                     type="button"
                     className="underline"
-                    onClick={() => void onGenerateCovers()}
+                    onClick={() =>
+                      void (coverPrompt.trim()
+                        ? onGenerateCoverImages()
+                        : onGenerateCoverPrompt())
+                    }
                   >
                     Retry
                   </button>

@@ -46,13 +46,14 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
       "MeditationAnalyticsTable",
       pkSk,
     );
-    // GSIs via EnsureDynamoDbGsis (sequential UpdateTable + ACTIVE waiters).
-    // Do not add them with Table.addGlobalSecondaryIndex on greenfield — CFN
-    // rejects more than one GSI create/delete per update.
+    // MeditationAnalytics GSIs: DynamoDB allows only one GSI create/delete per
+    // UpdateTable. EnsureDynamoDbGsis creates missing indexes sequentially.
     //
-    // Existing stacks that still declare these on the Table resource must drop
-    // them one per deploy. Pass `-c analyticsCdkGsis=name1,name2` to keep a
-    // shrinking allow-list on the Table during cutover (omit for CR-only).
+    // Default (no context): keep all three on the Table resource — safe for the
+    // live eu-west-2 stack / CI, which already declare them in CFN.
+    // Greenfield / post-cutover: `-c analyticsGsisViaCr=1` (CR owns all).
+    // Cutover: `-c analyticsCdkGsis=name1,name2` shrinking allow-list (one
+    // drop per deploy); CR recreates each dropped index after the Table update.
     const analyticsGsis: Array<{
       indexName: string;
       partitionKey: { name: string; type: dynamodb.AttributeType };
@@ -89,16 +90,25 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
       },
     ];
 
+    const allAnalyticsGsiNames = analyticsGsis.map((g) => g.indexName);
     const cdkGsiCsv = this.node.tryGetContext("analyticsCdkGsis");
+    const viaCrRaw = this.node.tryGetContext("analyticsGsisViaCr");
+    const viaCr =
+      viaCrRaw === true ||
+      viaCrRaw === 1 ||
+      viaCrRaw === "1" ||
+      viaCrRaw === "true";
     const cdkGsiNames =
-      typeof cdkGsiCsv === "string" && cdkGsiCsv.trim()
+      typeof cdkGsiCsv === "string"
         ? new Set(
             cdkGsiCsv
               .split(",")
               .map((s: string) => s.trim())
               .filter(Boolean),
           )
-        : new Set<string>();
+        : viaCr
+          ? new Set<string>()
+          : new Set(allAnalyticsGsiNames);
 
     for (const gsi of analyticsGsis) {
       if (!cdkGsiNames.has(gsi.indexName)) continue;

@@ -260,6 +260,7 @@ function fallbackCoverPrompt(body: Record<string, unknown>): string {
 /**
  * Write an image-gen prompt from the essay as a whole — title, subtitle, and
  * an overall summary of the piece (not just the opening paragraph).
+ * When `previousPrompt` + `revisionNotes` are set, revise that prompt instead.
  */
 async function buildCoverPromptFromEssay(
   body: Record<string, unknown>,
@@ -273,29 +274,71 @@ async function buildCoverPromptFromEssay(
       ? body.subheader.trim()
       : "";
   const essay = essayTextFromBody(body);
-  if (!essay) return fallbackCoverPrompt(body);
+  const previousPrompt =
+    typeof body.previousPrompt === "string" && body.previousPrompt.trim()
+      ? body.previousPrompt.trim().slice(0, 2000)
+      : typeof body.prompt === "string" && body.prompt.trim()
+        ? body.prompt.trim().slice(0, 2000)
+        : "";
+  const revisionNotes =
+    typeof body.revisionNotes === "string" && body.revisionNotes.trim()
+      ? body.revisionNotes.trim().slice(0, 1000)
+      : "";
+  const revise = Boolean(previousPrompt && revisionNotes);
+
+  if (!essay && !revise) return fallbackCoverPrompt(body);
 
   try {
     const apiKey = await getClaudeApiKey();
-    const system = [
-      "You write image-generation prompts for 16:9 editorial illustration covers for Consciously essays.",
-      "You are given the essay title, optional subtitle, and the essay text.",
-      "First infer the overall topic, argument, and emotional arc of the WHOLE piece — do not lean only on the opening.",
-      "Then write ONE complete image prompt that visually expresses that overall subject.",
-      "Keep: quiet, contemplative mood; full-bleed illustration; landscape 16:9; no overlaid text, logos, watermarks, or UI.",
-      "Do not ask for a photograph. Reply with ONLY the image prompt — no quotes, labels, or explanation.",
-    ].join("\n");
-    const user = [
-      `Title: ${title}`,
-      sub ? `Subtitle: ${sub}` : "",
-      "",
-      "Essay:",
-      essay,
-      "",
-      "Write the image prompt now.",
-    ]
-      .filter((line) => line !== "")
-      .join("\n");
+    const system = revise
+      ? [
+          "You revise image-generation prompts for 16:9 editorial illustration covers for Consciously essays.",
+          "You are given a previous image prompt and notes describing what to change.",
+          "Rewrite ONE complete image prompt that keeps what still works and applies the notes.",
+          "Stay faithful to the essay's overall subject when essay text is provided.",
+          "Keep: quiet, contemplative mood; full-bleed illustration; landscape 16:9; no overlaid text, logos, watermarks, or UI.",
+          "Do not ask for a photograph. Reply with ONLY the revised image prompt — no quotes, labels, or explanation.",
+        ].join("\n")
+      : [
+          "You write image-generation prompts for 16:9 editorial illustration covers for Consciously essays.",
+          "You are given the essay title, optional subtitle, and the essay text.",
+          "First infer the overall topic, argument, and emotional arc of the WHOLE piece — do not lean only on the opening.",
+          "Then write ONE complete image prompt that visually expresses that overall subject.",
+          "Keep: quiet, contemplative mood; full-bleed illustration; landscape 16:9; no overlaid text, logos, watermarks, or UI.",
+          "Do not ask for a photograph. Reply with ONLY the image prompt — no quotes, labels, or explanation.",
+        ].join("\n");
+    const user = revise
+      ? [
+          `Title: ${title}`,
+          sub ? `Subtitle: ${sub}` : "",
+          essay ? "" : null,
+          essay ? "Essay (for context):" : null,
+          essay || null,
+          "",
+          "Previous image prompt:",
+          previousPrompt,
+          "",
+          "What to change:",
+          revisionNotes,
+          "",
+          "Write the revised image prompt now.",
+        ]
+          .filter((line) => line != null && line !== "")
+          .join("\n")
+      : [
+          `Title: ${title}`,
+          sub ? `Subtitle: ${sub}` : "",
+          "",
+          "Essay:",
+          essay,
+          revisionNotes ? "" : null,
+          revisionNotes ? "Direction notes to honour in the prompt:" : null,
+          revisionNotes || null,
+          "",
+          "Write the image prompt now.",
+        ]
+          .filter((line) => line != null && line !== "")
+          .join("\n");
 
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
@@ -308,7 +351,7 @@ async function buildCoverPromptFromEssay(
         withClaudeThinkingOff({
           model: CLAUDE_HAIKU_45_MODEL_ID,
           max_tokens: 500,
-          temperature: 0.4,
+          temperature: revise ? 0.5 : 0.4,
           system,
           messages: [{ role: "user", content: user }],
         }),
@@ -321,7 +364,7 @@ async function buildCoverPromptFromEssay(
     void recordClaudeUsageFromResponseText({
       responseText: raw,
       model: CLAUDE_HAIKU_45_MODEL_ID,
-      feature: "blog-cover-prompt",
+      feature: revise ? "blog-cover-prompt-revise" : "blog-cover-prompt",
     });
     let text = "";
     try {
@@ -349,6 +392,9 @@ async function buildCoverPromptFromEssay(
       "buildCoverPromptFromEssay fallback:",
       e instanceof Error ? e.message : e,
     );
+    if (revise && previousPrompt) {
+      return `${previousPrompt} ${revisionNotes}`.trim().slice(0, 2000);
+    }
     return fallbackCoverPrompt(body);
   }
 }
@@ -640,6 +686,10 @@ export async function handler(
       if (action === "uploadPostImage") {
         const url = await uploadPostImage(body);
         return json(200, { url });
+      }
+      if (action === "generateCoverPrompt") {
+        const prompt = await buildCoverPromptFromEssay(body);
+        return json(200, { prompt });
       }
       if (action === "generateCoverOptions") {
         const result = await generateCoverOptions(body);
