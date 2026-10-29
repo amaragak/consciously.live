@@ -171,6 +171,29 @@ CloudFormation 500-resource limit, and is not instantiated by CDK unless
 `LEGACY_MEDIMADE_STACK=1` is set. Put new API/admin changes under
 `lib/consciously/` instead.
 
+### MeditationAnalytics GSIs (multi-index create)
+
+DynamoDB allows only **one** GSI create or delete per `UpdateTable`. New regions therefore create `shareTokenIndex`, `listenSlugIndex`, and `listenListedIndex` through the `EnsureDynamoDbGsis` custom resource (sequential create + wait for `ACTIVE`), not via `Table.addGlobalSecondaryIndex`.
+
+Greenfield: omit any `analyticsCdkGsis` context (custom resource owns all three).
+
+Existing stacks that still declare these GSIs on the Table must cut over one index per deploy (`analyticsCdkGsis` is the shrinking allow-list still owned by CDK). Each name dropped from the list is deleted by the Table update, then immediately recreated by the custom resource (which only manages indexes **not** in that list):
+
+```bash
+# 1) Install custom resource; keep all three on the Table resource
+./scripts/deploy-back --require-approval never --profile mm \
+  -c analyticsCdkGsis=shareTokenIndex,listenSlugIndex,listenListedIndex
+
+# 2–4) Drop one name from the list each deploy until the flag is omitted
+./scripts/deploy-back --require-approval never --profile mm \
+  -c analyticsCdkGsis=shareTokenIndex,listenSlugIndex
+./scripts/deploy-back --require-approval never --profile mm \
+  -c analyticsCdkGsis=shareTokenIndex
+./scripts/deploy-back --require-approval never --profile mm
+```
+
+**Do not** deploy an existing stack without `analyticsCdkGsis` while CFN still thinks the Table owns all three — that would try to delete multiple GSIs in one update and fail.
+
 ### Repo deploy helper (`scripts/deploy-back`)
 
 From the repo, `backend/scripts/deploy-back` runs CDK deploy and refreshes web/mobile `.env` files. It **defaults to `ConsciouslyBackend`** and **`AWS_PROFILE=mm`** when you have not set `AWS_PROFILE` and you did not pass `--profile` on the command line. Override with `--profile other` or by exporting `AWS_PROFILE` first.

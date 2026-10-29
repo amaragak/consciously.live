@@ -118,7 +118,8 @@ export default async function ReadPostPage({ params }: Props) {
     <div className="home-v2 min-h-full bg-[var(--hv2-page)] text-[var(--hv2-ink)]">
       <article className="px-5 pb-4 pt-10 md:px-6 md:pt-14">
         <div className="mx-auto w-full max-w-[1100px]">
-          <div className="mx-auto w-full max-w-[680px]">
+          {/* Reading column ~slightly under cover (900) so edges nearly align. */}
+          <div className="mx-auto w-full max-w-[860px]">
             <Link
               href="/read"
               className="inline-flex items-center gap-1 text-[14.5px] font-medium text-[var(--hv2-body)] transition-colors hover:text-[var(--hv2-tan-text)]"
@@ -166,13 +167,13 @@ export default async function ReadPostPage({ params }: Props) {
 
           <div
             id="read-article-body"
-            className="mx-auto mt-8 w-full max-w-[680px] text-[var(--hv2-ink)] [&_.read-prose_p]:text-[18.5px] [&_.read-prose_p]:leading-[1.7] [&_.read-prose_a]:text-[var(--hv2-tan-text)] [&_.read-prose_a]:underline [&_.read-prose_a]:underline-offset-2"
+            className="mx-auto mt-8 w-full max-w-[860px] text-[var(--hv2-ink)] [&_.read-prose_p]:text-[18.5px] [&_.read-prose_p]:leading-[1.7] [&_.read-prose_a]:text-[var(--hv2-tan-text)] [&_.read-prose_a]:underline [&_.read-prose_a]:underline-offset-2"
           >
             <ReadBody source={post.body} />
           </div>
 
           {listenItem ? (
-            <div className="mx-auto mt-12 w-full max-w-[680px]">
+            <div className="mx-auto mt-12 w-full max-w-[860px]">
               <ReadListenEmbed
                 item={listenItem}
                 cardLabel={post.listenCardLabel}

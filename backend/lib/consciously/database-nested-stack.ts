@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import type { Construct } from "constructs";
+import { EnsureDynamoDbGsis } from "./ensure-dynamodb-gsis";
 
 /**
  * All DynamoDB tables for ConsciouslyBackend.
@@ -45,27 +46,76 @@ export class ConsciouslyDatabaseNestedStack extends cdk.NestedStack {
       "MeditationAnalyticsTable",
       pkSk,
     );
-    this.meditationAnalytics.addGlobalSecondaryIndex({
-      indexName: "shareTokenIndex",
-      partitionKey: { name: "shareToken", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-    this.meditationAnalytics.addGlobalSecondaryIndex({
-      indexName: "listenSlugIndex",
-      partitionKey: { name: "listenSlug", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-    this.meditationAnalytics.addGlobalSecondaryIndex({
-      indexName: "listenListedIndex",
-      partitionKey: {
-        name: "listenListed",
-        type: dynamodb.AttributeType.STRING,
+    // GSIs via EnsureDynamoDbGsis (sequential UpdateTable + ACTIVE waiters).
+    // Do not add them with Table.addGlobalSecondaryIndex on greenfield — CFN
+    // rejects more than one GSI create/delete per update.
+    //
+    // Existing stacks that still declare these on the Table resource must drop
+    // them one per deploy. Pass `-c analyticsCdkGsis=name1,name2` to keep a
+    // shrinking allow-list on the Table during cutover (omit for CR-only).
+    const analyticsGsis: Array<{
+      indexName: string;
+      partitionKey: { name: string; type: dynamodb.AttributeType };
+      sortKey?: { name: string; type: dynamodb.AttributeType };
+      projectionType: dynamodb.ProjectionType;
+    }> = [
+      {
+        indexName: "shareTokenIndex",
+        partitionKey: {
+          name: "shareToken",
+          type: dynamodb.AttributeType.STRING,
+        },
+        projectionType: dynamodb.ProjectionType.ALL,
       },
-      sortKey: {
-        name: "listenListedAt",
-        type: dynamodb.AttributeType.STRING,
+      {
+        indexName: "listenSlugIndex",
+        partitionKey: {
+          name: "listenSlug",
+          type: dynamodb.AttributeType.STRING,
+        },
+        projectionType: dynamodb.ProjectionType.ALL,
       },
-      projectionType: dynamodb.ProjectionType.ALL,
+      {
+        indexName: "listenListedIndex",
+        partitionKey: {
+          name: "listenListed",
+          type: dynamodb.AttributeType.STRING,
+        },
+        sortKey: {
+          name: "listenListedAt",
+          type: dynamodb.AttributeType.STRING,
+        },
+        projectionType: dynamodb.ProjectionType.ALL,
+      },
+    ];
+
+    const cdkGsiCsv = this.node.tryGetContext("analyticsCdkGsis");
+    const cdkGsiNames =
+      typeof cdkGsiCsv === "string" && cdkGsiCsv.trim()
+        ? new Set(
+            cdkGsiCsv
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean),
+          )
+        : new Set<string>();
+
+    for (const gsi of analyticsGsis) {
+      if (!cdkGsiNames.has(gsi.indexName)) continue;
+      this.meditationAnalytics.addGlobalSecondaryIndex({
+        indexName: gsi.indexName,
+        partitionKey: gsi.partitionKey,
+        ...(gsi.sortKey ? { sortKey: gsi.sortKey } : {}),
+        projectionType: gsi.projectionType,
+      });
+    }
+
+    // CR owns only indexes not still declared on the Table. Dropping a name
+    // from analyticsCdkGsis changes IndexFingerprint so CFN re-invokes the
+    // handler after the Table update (which deletes that GSI) and recreates it.
+    new EnsureDynamoDbGsis(this, "MeditationAnalyticsGsis", {
+      table: this.meditationAnalytics,
+      indexes: analyticsGsis.filter((gsi) => !cdkGsiNames.has(gsi.indexName)),
     });
 
     this.journal = new dynamodb.Table(this, "JournalTable", pkSk);
