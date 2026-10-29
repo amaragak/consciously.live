@@ -15,6 +15,7 @@ import {
 } from "@/lib/focus-session-handoff";
 import { loadIdeateVisionBoardStore } from "@/lib/ideate-vision-board";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { lifeAreaHref, lifeAreaHrefById } from "@/lib/entity-href";
 import {
   deriveEntryTitle,
   entriesForCloudPut,
@@ -23,6 +24,7 @@ import {
   gratitudeLinesToHtml,
   gratitudeTitleForDate,
   isGratitudeEntry,
+  journalEntryHref,
   loadJournalStore,
   localDateKey,
   newGratitudeJournalEntry,
@@ -178,7 +180,7 @@ function resolveParentTask(
 }
 
 function lifeAreaTasksHref(lifeAreaId: string, taskId: string): string {
-  return `/manifest/goal/${encodeURIComponent(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
+  return `${lifeAreaHrefById(lifeAreaId)}?tab=steps&task=${encodeURIComponent(taskId)}`;
 }
 
 /** Resolve a checklist To Do by id or title (optional parent / life-area scope). */
@@ -243,7 +245,7 @@ function gratitudeResultItem(entry: JournalEntry): AssistantActionResultItem {
     title: "Gratitudes",
     meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
     lines: lines.length ? lines : ["Empty"],
-    href: `/journal/gratitudes/${encodeURIComponent(entry.id)}`,
+    href: journalEntryHref(entry),
   };
 }
 
@@ -547,7 +549,7 @@ function applyJournalEntry(
         meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
         subtitle: title.slice(0, 120),
         body: stripHtmlToText(contentHtml).trim() || undefined,
-        href: `/journal/entries/${encodeURIComponent(entry.id)}`,
+        href: journalEntryHref(entry),
       },
     ],
   };
@@ -647,7 +649,7 @@ function applyJournalUpdate(
         meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
         subtitle: entry.title || "Untitled",
         body: stripHtmlToText(entry.contentHtml).trim() || undefined,
-        href: `/journal/entries/${encodeURIComponent(entry.id)}`,
+        href: journalEntryHref(entry),
       },
     ],
   };
@@ -829,7 +831,7 @@ function applyListJournalEntries(
       meta: formatJournalEntryDate(e.createdAt),
       subtitle: e.title || "Untitled",
       body: stripHtmlToText(e.contentHtml).trim() || undefined,
-      href: `/journal/entries/${encodeURIComponent(e.id)}`,
+      href: journalEntryHref(e),
     })),
   };
 }
@@ -852,7 +854,7 @@ function applyGetJournalEntry(
         meta: formatJournalEntryDate(entry.entryDate || entry.createdAt),
         subtitle: entry.title || "Untitled",
         body: stripHtmlToText(entry.contentHtml).trim() || undefined,
-        href: `/journal/entries/${encodeURIComponent(entry.id)}`,
+        href: journalEntryHref(entry),
       },
     ],
   };
@@ -1042,7 +1044,7 @@ function applyListLifeAreas(): AssistantActionResult {
         title: d.title.trim() || "Untitled",
         meta: "Life area",
         body: `${goals.length} goal${goals.length === 1 ? "" : "s"} · ${openTodos.length} open To Do${openTodos.length === 1 ? "" : "s"}`,
-        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+        href: lifeAreaHref(d),
       };
     }),
   };
@@ -1074,7 +1076,7 @@ function applyGetLifeArea(
         ]
           .filter(Boolean)
           .join("\n\n"),
-        href: `/manifest/goal/${encodeURIComponent(area.id)}`,
+        href: lifeAreaHref(area),
       },
     ],
   };
@@ -1098,7 +1100,7 @@ function applyCreateLifeArea(
     ok: true,
     label: "Created life area",
     detail: previewSnippet(title),
-    href: `/manifest/goal/${encodeURIComponent(dream.id)}`,
+    href: lifeAreaHref(dream),
     linkLabel: "Open",
   };
 }
@@ -1126,7 +1128,7 @@ function applyPutLifeArea(
     ok: true,
     label: "Updated life area",
     detail: previewSnippet(next.title),
-    href: `/manifest/goal/${encodeURIComponent(next.id)}`,
+    href: lifeAreaHref(next),
     linkLabel: "Open",
   };
 }
@@ -1150,7 +1152,7 @@ function applyListTodos(
       ok: true,
       label: "No To Dos found",
       href: area
-        ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
+        ? `${lifeAreaHref(area)}?tab=steps`
         : "/manifest",
       linkLabel: "Open Manifest",
     };
@@ -1170,7 +1172,7 @@ function applyListTodos(
         href: parent
           ? lifeAreaTasksHref(parent.projectId, parent.id)
           : area
-            ? `/manifest/goal/${encodeURIComponent(area.id)}?tab=steps`
+            ? `${lifeAreaHref(area)}?tab=steps`
             : "/manifest",
       };
     }),
@@ -1336,7 +1338,7 @@ function applyGetIdeateStore(): AssistantActionResult {
         id: d.id,
         title: d.title.trim() || "Untitled",
         meta: "Life area",
-        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+        href: lifeAreaHref(d),
       })),
     ],
   };

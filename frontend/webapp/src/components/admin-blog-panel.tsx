@@ -41,13 +41,14 @@ function blogReadMinutes(body: string): number {
   return Math.max(1, Math.round(words / 220));
 }
 
-function openingParagraphFromBody(body: string): string {
-  const text = body
+/** Plain essay text for cover-prompt generation (whole piece, not just the lede). */
+function essayPlainTextFromBody(body: string): string {
+  return body
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
-    .trim();
-  return text.slice(0, 400);
+    .trim()
+    .slice(0, 8000);
 }
 
 const DEFAULT_INDEX_SUMMARY = "Essays and updates from Consciously.";
@@ -283,6 +284,7 @@ export function AdminReadPanel() {
   const [audioTick, setAudioTick] = useState(Date.now());
   const [status, setStatus] = useState<string | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [coverProgress, setCoverProgress] = useState<string | null>(null);
   const [coverPrompt, setCoverPrompt] = useState("");
   const [coverOptions, setCoverOptions] = useState<AdminBlogCoverOption[]>([]);
   const [coverError, setCoverError] = useState<string | null>(null);
@@ -339,6 +341,7 @@ export function AdminReadPanel() {
   );
 
   function resetCoverListenUi(post?: AdminBlogPost | null) {
+    setCoverProgress(null);
     setCoverBusy(false);
     setCoverPrompt("");
     setCoverOptions([]);
@@ -379,22 +382,51 @@ export function AdminReadPanel() {
   async function onGenerateCovers() {
     setCoverBusy(true);
     setCoverError(null);
+    setCoverProgress(null);
+    // One image per request — API Gateway HTTP APIs time out at 30s; four
+    // Nano Banana Pro gens in one Lambda never make it back to the browser.
+    const total = 4;
+    const bodyText = essayPlainTextFromBody(
+      liveBodyRef.current || draft.body,
+    );
+    let prompt = coverPrompt.trim() || undefined;
+    let gotAny = false;
     try {
-      const result = await generateAdminBlogCoverOptions({
-        prompt: coverPrompt || undefined,
-        title: draft.title,
-        subheader: draft.subheader,
-        opening: openingParagraphFromBody(
-          liveBodyRef.current || draft.body,
-        ),
-      });
-      if (!coverPrompt && result.prompt) setCoverPrompt(result.prompt);
-      setCoverOptions((prev) => [...result.options, ...prev].slice(0, 12));
+      for (let i = 0; i < total; i += 1) {
+        setCoverProgress(
+          prompt
+            ? `Generating ${i + 1} of ${total}…`
+            : i === 0
+              ? "Summarising essay for cover prompt…"
+              : `Generating ${i + 1} of ${total}…`,
+        );
+        const result = await generateAdminBlogCoverOptions({
+          prompt,
+          title: draft.title,
+          subheader: draft.subheader,
+          bodyText,
+          count: 1,
+        });
+        if (!prompt && result.prompt) {
+          prompt = result.prompt;
+          setCoverPrompt(result.prompt);
+        }
+        if (result.options.length) {
+          gotAny = true;
+          setCoverOptions((prev) =>
+            [...result.options, ...prev].slice(0, 12),
+          );
+        }
+      }
+      if (!gotAny) {
+        setCoverError("No covers came back. Try again.");
+      }
     } catch (e) {
       setCoverError(
         e instanceof Error ? e.message : "Cover generation failed",
       );
     } finally {
+      setCoverProgress(null);
       setCoverBusy(false);
     }
   }
@@ -1294,7 +1326,7 @@ export function AdminReadPanel() {
                   value={coverPrompt}
                   onChange={(e) => setCoverPrompt(e.target.value)}
                   rows={3}
-                  placeholder="Leave blank to prefill from title, subtitle and opening…"
+                  placeholder="Leave blank to prefill from title, subtitle and a summary of the whole essay…"
                   className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                 />
               </div>
@@ -1305,7 +1337,9 @@ export function AdminReadPanel() {
                   onClick={() => void onGenerateCovers()}
                   className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-50"
                 >
-                  {coverBusy ? "Generating…" : "Generate"}
+                  {coverBusy
+                    ? coverProgress || "Generating…"
+                    : "Generate"}
                 </button>
                 <button
                   type="button"

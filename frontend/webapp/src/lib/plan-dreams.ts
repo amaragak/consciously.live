@@ -10,6 +10,7 @@ import {
   loadIdeateStore,
   saveIdeateStore,
 } from "@/lib/plan-ideate-store";
+import { contentTitleSlug, uniquifySlug } from "@/lib/readable-url";
 
 export type DreamState =
   | "germinating"
@@ -188,6 +189,9 @@ export const MAX_INSIGHT_TEXT_CHARS = 8000;
 export type PlanDream = {
   id: string;
   title: string;
+  /** Readable URL slug for `/manifest/<slug>`; history for redirects. */
+  urlSlug?: string;
+  urlSlugHistory?: string[];
   state: DreamState;
   createdAt: string;
   /** Last local edit — used for quiet “Last touched …” momentum. */
@@ -302,9 +306,15 @@ export function createPlanDream(input: {
   const dreamText = (input.dreamText ?? first).trim();
   const title = (input.title ?? "").trim() || "Untitled";
   const now = safeIso();
+  const taken = new Set(
+    loadPlanDreamsStore()
+      .dreams.flatMap((d) => [d.urlSlug, ...(d.urlSlugHistory ?? [])])
+      .filter((x): x is string => Boolean(x)),
+  );
   return {
     id: newDreamId(),
     title,
+    urlSlug: uniquifySlug(contentTitleSlug(title), taken),
     state: "germinating",
     createdAt: now,
     updatedAt: now,

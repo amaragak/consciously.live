@@ -68,6 +68,7 @@ import {
   type HealStoreV1,
   type HealView,
 } from "@/lib/heal-store";
+import { healItemHref, lifeAreaHrefById } from "@/lib/entity-href";
 
 const SEE_LENSES: { id: HealSeeLens; label: string }[] = [
   { id: "kind", label: "Be kind to myself" },
@@ -580,7 +581,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
 
   function createMeditation() {
     router.push(
-      `/meditate/create?step=shape&fromHeal=${encodeURIComponent(current.id)}`,
+      `/meditate/create?step=shape&fromHeal=${encodeURIComponent(current.urlSlug || current.id)}`,
     );
   }
 
@@ -714,7 +715,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
                         key={`${link.lifeAreaId}::${link.label}`}
                         type="button"
                         className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-full border border-[rgb(243_237_226_/_0.25)] px-2.5 text-xs text-[rgb(243_237_226_/_0.85)]"
-                        onClick={() => router.push(`/manifest/goal/${encodeURIComponent(link.lifeAreaId)}`)}
+                        onClick={() => router.push(lifeAreaHrefById(link.lifeAreaId))}
                       >
                         {link.label}
                         <span className="text-[rgb(243_237_226_/_0.5)]">· {area}</span>
@@ -1250,7 +1251,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
               <PenLine className="size-3.5" aria-hidden />
               Write a note
             </button>
-            <button type="button" className={HEAL_OUTLINE} onClick={() => router.push(`/heal/${current.id}/letter`)}>
+            <button type="button" className={HEAL_OUTLINE} onClick={() => router.push(`${healItemHref(current)}/letter`)}>
               <Mail className="size-3.5" aria-hidden />
               Write a letter you won&apos;t send
             </button>

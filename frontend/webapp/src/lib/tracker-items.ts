@@ -12,6 +12,11 @@ import {
   type IdeateTodo,
 } from "@/lib/plan-ideate-store";
 import type { PlanDream } from "@/lib/plan-dreams";
+import {
+  contentTitleSlug,
+  looksLikeUuid,
+  uniquifySlug,
+} from "@/lib/readable-url";
 
 export type TrackerKind = "goal" | "project" | "feature" | "task";
 export type TrackerStatus = "not_started" | "doing" | "waiting" | "done";
@@ -22,6 +27,9 @@ export type TrackerItem = {
   parentId: string | null;
   sortKey: string;
   title: string;
+  /** Readable `/manifest/<area>/tracker/<slug>` segment. */
+  urlSlug?: string;
+  urlSlugHistory?: string[];
   kind: TrackerKind | null;
   status: TrackerStatus | null;
   waitingOn: string | null;
@@ -52,12 +60,24 @@ export function parseTrackerItems(raw: unknown): TrackerItem[] {
     const status = STATUSES.includes(o.status as TrackerStatus)
       ? (o.status as TrackerStatus)
       : null;
+    const urlSlug =
+      typeof o.urlSlug === "string" && o.urlSlug.trim()
+        ? o.urlSlug.trim().slice(0, 80)
+        : undefined;
+    const urlSlugHistory = Array.isArray(o.urlSlugHistory)
+      ? o.urlSlugHistory
+          .filter((h): h is string => typeof h === "string" && Boolean(h.trim()))
+          .map((h) => h.trim().slice(0, 80))
+          .slice(0, 24)
+      : undefined;
     out.push({
       id: o.id,
       lifeAreaId: o.lifeAreaId,
       parentId: typeof o.parentId === "string" ? o.parentId : null,
       sortKey: typeof o.sortKey === "string" ? o.sortKey : "1024",
       title,
+      ...(urlSlug ? { urlSlug } : {}),
+      ...(urlSlugHistory?.length ? { urlSlugHistory } : {}),
       kind,
       status,
       waitingOn: typeof o.waitingOn === "string" ? o.waitingOn : null,
@@ -74,6 +94,67 @@ export function parseTrackerItems(raw: unknown): TrackerItem[] {
   return out.slice(0, 4000);
 }
 
+function takenTrackerSlugs(
+  items: TrackerItem[],
+  lifeAreaId: string,
+  parentId: string | null,
+  exceptId?: string,
+): Set<string> {
+  const taken = new Set<string>();
+  for (const it of items) {
+    if (it.lifeAreaId !== lifeAreaId) continue;
+    if (it.parentId !== parentId) continue;
+    if (exceptId && it.id === exceptId) continue;
+    if (it.urlSlug) taken.add(it.urlSlug);
+    for (const h of it.urlSlugHistory ?? []) taken.add(h);
+  }
+  return taken;
+}
+
+export function trackerPathSlug(
+  item: Pick<TrackerItem, "id" | "title" | "urlSlug">,
+): string {
+  return item.urlSlug || contentTitleSlug(item.title) || item.id;
+}
+
+export function findTrackerByPathSlug(
+  items: TrackerItem[],
+  raw: string,
+): TrackerItem | null {
+  const key = decodeURIComponent(raw).trim().toLowerCase();
+  if (!key) return null;
+  if (looksLikeUuid(key) || key.startsWith("item_") || key.startsWith("todo_")) {
+    return items.find((x) => x.id === key || x.id.toLowerCase() === key) ?? null;
+  }
+  return (
+    items.find((x) => x.urlSlug?.toLowerCase() === key) ??
+    items.find((x) =>
+      (x.urlSlugHistory ?? []).some((h) => h.toLowerCase() === key),
+    ) ??
+    items.find((x) => x.id === raw || x.id.toLowerCase() === key) ??
+    null
+  );
+}
+
+function assignTrackerUrlSlug(
+  item: TrackerItem,
+  siblings: TrackerItem[],
+): TrackerItem {
+  const nextSlug = uniquifySlug(
+    contentTitleSlug(item.title),
+    takenTrackerSlugs(siblings, item.lifeAreaId, item.parentId, item.id),
+    item.urlSlug,
+  );
+  if (item.urlSlug === nextSlug) return item;
+  const history = [...(item.urlSlugHistory ?? [])];
+  if (item.urlSlug && !history.includes(item.urlSlug)) history.unshift(item.urlSlug);
+  return {
+    ...item,
+    urlSlug: nextSlug,
+    urlSlugHistory: history.slice(0, 24),
+  };
+}
+
 function statusFromSubtask(status: IdeateSubtask["status"]): TrackerStatus {
   if (status === "done") return "done";
   if (status === "in_progress") return "doing";
@@ -86,7 +167,7 @@ export function migrateTrackerItems(store: IdeateStoreV2): TrackerItem[] {
   const dreams = new Map(store.dreams.map((d) => [d.id, d]));
   store.subtasks.forEach((sub, index) => {
     const dream = dreams.get(sub.projectId);
-    items.push({
+    const goal: TrackerItem = {
       id: sub.id,
       lifeAreaId: sub.projectId,
       parentId: null,
@@ -102,12 +183,13 @@ export function migrateTrackerItems(store: IdeateStoreV2): TrackerItem[] {
       createdAt: sub.createdAt,
       updatedAt: sub.updatedAt,
       lastTouchedAt: sub.updatedAt,
-    });
+    };
+    items.push(assignTrackerUrlSlug(goal, items));
     const todos = store.todos
       .filter((t) => t.subtaskId === sub.id)
       .sort((a, b) => a.order - b.order);
     todos.forEach((todo, i) => {
-      items.push({
+      const step: TrackerItem = {
         id: todo.id,
         lifeAreaId: sub.projectId,
         parentId: sub.id,
@@ -123,15 +205,29 @@ export function migrateTrackerItems(store: IdeateStoreV2): TrackerItem[] {
         createdAt: sub.createdAt,
         updatedAt: sub.updatedAt,
         lastTouchedAt: todo.checkedAt ?? sub.updatedAt,
-      });
+      };
+      items.push(assignTrackerUrlSlug(step, items));
     });
   });
   return items;
 }
 
 export function ensureTracker(store: IdeateStoreV2): IdeateStoreV2 {
-  if (Array.isArray(store.trackerItems)) return store;
-  return { ...store, trackerItems: migrateTrackerItems(store) };
+  if (!Array.isArray(store.trackerItems)) {
+    return { ...store, trackerItems: migrateTrackerItems(store) };
+  }
+  let changed = false;
+  const items = store.trackerItems.slice();
+  for (let i = 0; i < items.length; i += 1) {
+    const row = items[i]!;
+    if (row.urlSlug) continue;
+    const next = assignTrackerUrlSlug(row, items);
+    if (next !== row) {
+      items[i] = next;
+      changed = true;
+    }
+  }
+  return changed ? { ...store, trackerItems: items } : store;
 }
 
 export function itemsForArea(store: IdeateStoreV2, lifeAreaId: string): TrackerItem[] {
@@ -287,6 +383,11 @@ export function patchTrackerItem(
   const current = items.find((item) => item.id === id);
   if (!current) return store;
   let next = touch(current, patch);
+  if (patch.title !== undefined && patch.title !== current.title) {
+    next = assignTrackerUrlSlug(next, items);
+  } else if (!next.urlSlug) {
+    next = assignTrackerUrlSlug(next, items);
+  }
   if (patch.status === "done" && current.status !== "done") {
     next = { ...next, completedAt: nowIso() };
   }
@@ -341,7 +442,7 @@ export function addTrackerItem(
         : sortBetween(before, after);
   const now = nowIso();
   const id = newTrackerId();
-  const item: TrackerItem = {
+  const draft: TrackerItem = {
     id,
     lifeAreaId: input.lifeAreaId,
     parentId: input.parentId,
@@ -359,6 +460,7 @@ export function addTrackerItem(
     lastTouchedAt: now,
     sourceThoughtId: input.sourceThoughtId ?? null,
   };
+  const item = assignTrackerUrlSlug(draft, items);
   return { store: writeItems(store, [...items, item]), id };
 }
 

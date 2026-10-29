@@ -1,4 +1,5 @@
 import { ChevronRight, Pin } from "lucide-react";
+import { lifeAreaHref, lifeAreaTrackerItemHref } from "@/lib/entity-href";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
@@ -418,7 +419,7 @@ function Feed({
                   ) : null}
                   {linked.get(row.id) ? (
                     <Link
-                      to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(linked.get(row.id)!.id)}`}
+                      to={lifeAreaTrackerItemHref(dream, linked.get(row.id)!)}
                       onClick={() => rememberTrackerDetail(dream.id)}
                       className="mt-1 inline-flex items-center gap-0.5 text-xs text-muted"
                     >
@@ -524,7 +525,7 @@ function Feed({
                             if (item) {
                               rememberTrackerDetail(dream.id);
                               navigate(
-                                `/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(item.id)}`,
+                                lifeAreaTrackerItemHref(dream, item),
                               );
                             } else {
                               const params = new URLSearchParams({
@@ -532,7 +533,7 @@ function Feed({
                                 addTitle: thoughtTrackerTitle(row.text),
                               });
                               navigate(
-                                `/manifest/goal/${encodeURIComponent(dream.id)}/tracker?${params.toString()}`,
+                                `${lifeAreaHref(dream, "tracker")}?${params.toString()}`,
                               );
                             }
                             setMenu(null);

@@ -21,7 +21,13 @@ import {
   toggleAssistantChatPanel,
   type AssistantChatOpenDetail,
 } from "@/lib/assistant-chat-launch";
-import { clearLegacyAssistantChatKeys, assistantChatThreadActivityMs, loadAssistantChatStore, pickAssistantChatFabResumeThread } from "@/lib/assistant-chat-storage";
+import {
+  clearLegacyAssistantChatKeys,
+  assistantChatThreadActivityMs,
+  chatThreadHref,
+  loadAssistantChatStore,
+  pickAssistantChatFabResumeThread,
+} from "@/lib/assistant-chat-storage";
 import {
   consumeCreateChatShownAtMs,
   isCreateMainChatVisible,
@@ -216,9 +222,13 @@ export function AssistantChatFab() {
 
   if (!chatOn || !enabled || hidden || !open || typeof document === "undefined") return null;
 
-  const fullHref = chat.activeId
-    ? `/chat/${encodeURIComponent(chat.activeId)}`
-    : "/chat";
+  const fullHref = (() => {
+    if (!chat.activeId) return "/chat";
+    const thread = loadAssistantChatStore().threads.find(
+      (t) => t.id === chat.activeId,
+    );
+    return thread ? chatThreadHref(thread) : "/chat";
+  })();
 
   return createPortal(
     <>

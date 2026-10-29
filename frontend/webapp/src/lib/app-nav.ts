@@ -6,7 +6,14 @@ import {
 import { loadAssistantChatStore } from "@/lib/assistant-chat-storage";
 import { peekGuideTitle } from "@/content/guides";
 import { libraryDetailIdFromPathname } from "@/lib/library-meditation-detail";
+import {
+  findEntityByPathSlug,
+  healItemHref,
+  healItemHrefById,
+} from "@/lib/entity-href";
 import { healItemById, loadHealStore } from "@/lib/heal-store";
+import { loadPlanDreamsStore } from "@/lib/plan-dreams";
+import { looksLikeUuid } from "@/lib/readable-url";
 
 /**
  * Logged-in sidebar navigation tree + breadcrumb helpers.
@@ -396,17 +403,30 @@ export function isSubItemActive(
   }
   if (sectionId === "heal" && sub.id.startsWith("heal-item:")) {
     const id = sub.id.slice("heal-item:".length);
-    return pathname === `/heal/${id}` || pathname.startsWith(`/heal/${id}/`);
+    const item = healItemById(loadHealStore(), id);
+    const href = item ? healItemHref(item) : `/heal/${encodeURIComponent(id)}`;
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
   if (sectionId === "ideate" && sub.id.startsWith("life-area:")) {
     const dreamId = sub.id.slice("life-area:".length);
-    const m = pathname.match(/^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/);
+    const dream = loadPlanDreamsStore().dreams.find((d) => d.id === dreamId);
+    const m =
+      pathname.match(/^\/manifest\/goal\/([^/?#]+)/) ||
+      pathname.match(/^\/manifest\/([^/?#]+)/);
     if (!m?.[1]) return false;
+    let seg = m[1];
     try {
-      return decodeURIComponent(m[1]) === dreamId;
+      seg = decodeURIComponent(seg);
     } catch {
-      return m[1] === dreamId;
+      /* keep */
     }
+    if (seg === dreamId) return true;
+    if (!dream) return false;
+    const key = seg.toLowerCase();
+    return (
+      dream.urlSlug?.toLowerCase() === key ||
+      (dream.urlSlugHistory ?? []).some((h) => h.toLowerCase() === key)
+    );
   }
   return pathMatchesHref(pathname, sub.href);
 }
@@ -818,6 +838,28 @@ export function buildAppBreadcrumbs(
       { label: title, href: null },
     ];
   }
+  {
+    const areaMatch = /^\/manifest\/([^/]+)(?:\/|$)/.exec(pathname);
+    const reserved = new Set([
+      "story",
+      "poster",
+      "guides",
+      "vision-board",
+      "tracker",
+      "insights",
+      "words",
+      "questions",
+      "goal",
+      "my",
+    ]);
+    if (areaMatch?.[1] && !reserved.has(areaMatch[1].toLowerCase())) {
+      const title = opts?.lifeAreaTitle?.trim() || "Life area";
+      return [
+        { label: "Manifest", href: "/manifest" },
+        { label: title, href: null },
+      ];
+    }
+  }
   if (pathname.startsWith("/manifest")) {
     if (
       pathname === "/manifest/guides" ||
@@ -948,16 +990,24 @@ function healBreadcrumbs(pathname: string): AppBreadcrumbCrumb[] {
     return [home, { label: "Laid to rest", href: null }];
   }
   const parts = pathname.split("/").filter(Boolean);
-  const itemId = parts[1] ?? "";
+  const itemSeg = parts[1] ?? "";
   let title = "Heal";
-  if (typeof window !== "undefined" && itemId) {
-    const item = healItemById(loadHealStore(), itemId);
+  let itemHref: string | null = null;
+  if (typeof window !== "undefined" && itemSeg) {
+    const store = loadHealStore();
+    const item =
+      findEntityByPathSlug(store.items, itemSeg) ??
+      (looksLikeUuid(itemSeg) || itemSeg.startsWith("heal_")
+        ? healItemById(store, itemSeg)
+        : null);
     if (item?.title.trim()) title = item.title.trim();
+    if (item) itemHref = healItemHref(item);
+    else itemHref = healItemHrefById(itemSeg);
   }
   if (parts[2] === "letter") {
     return [
       home,
-      { label: title, href: itemId ? `/heal/${itemId}` : "/heal" },
+      { label: title, href: itemHref ?? "/heal" },
       { label: "Letter", href: null },
     ];
   }

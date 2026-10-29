@@ -17,6 +17,7 @@ import {
   type HealItem,
   type HealStoreV1,
 } from "@/lib/heal-store";
+import { healItemHref, healItemHrefById } from "@/lib/entity-href";
 
 export function openHealForObstacle(lifeAreaId: string, label: string) {
   const params = new URLSearchParams({
@@ -68,7 +69,7 @@ function announceLinked(toast: { id: string; title: string }) {
   const label = document.createElement("span");
   label.textContent = `Linked to ${toast.title}`;
   const open = document.createElement("a");
-  open.href = `/heal/${encodeURIComponent(toast.id)}`;
+  open.href = healItemHrefById(toast.id);
   open.textContent = "Open";
   open.className = "font-semibold underline";
   open.addEventListener("click", (event) => {
@@ -272,7 +273,7 @@ export function ObstacleHealMenu({
                 {item ? (
                   <>
                     <a
-                      href={`/heal/${encodeURIComponent(item.id)}`}
+                      href={healItemHref(item)}
                       className="block px-3 py-2 text-sm font-semibold text-foreground"
                     >
                       Open in Heal

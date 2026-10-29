@@ -9,6 +9,7 @@ import { ListenCoverArt } from "@/components/listen/listen-cover";
 import {
   formatListenClock,
   formatListenDuration,
+  listenItemHref,
   type ListenPublicItem,
 } from "@/lib/public-listen";
 
@@ -22,9 +23,14 @@ function parseFilter(raw: string | null): Filter {
 export function ListenIndexClient({
   meditations,
   stories,
+  headline,
+  subhead,
 }: {
   meditations: ListenPublicItem[];
   stories: ListenPublicItem[];
+  /** User page: display name. Index uses the default Listen headline. */
+  headline?: string;
+  subhead?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -106,12 +112,19 @@ export function ListenIndexClient({
       <section className="px-5 pb-2 pt-10 md:px-6 md:pt-16">
         <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
           <h1 className="home-v2-display m-0 text-[2.5rem] font-normal leading-[1.05] tracking-[-1px] md:text-[3.75rem]">
-            Made with{" "}
-            <em className="italic text-[var(--hv2-tan-text)]">Consciously</em>.
+            {headline ? (
+              headline
+            ) : (
+              <>
+                Made with{" "}
+                <em className="italic text-[var(--hv2-tan-text)]">Consciously</em>
+                .
+              </>
+            )}
           </h1>
           <p className="m-0 max-w-[680px] text-[17px] leading-[1.5] text-[var(--hv2-body)] md:text-[19px]">
-            Meditations and Stories, each made from a few words about what
-            someone needed. Press play on any of them, no account needed.
+            {subhead ??
+              "Meditations and Stories, each made from a few words about what someone needed. Press play on any of them, no account needed."}
           </p>
           <div className="pt-3">
             <div className="inline-flex gap-0.5 rounded-full border border-[rgba(62,52,66,.12)] bg-[#FFFBF3] p-1">
@@ -299,7 +312,7 @@ export function ListenIndexClient({
               />
             </button>
             <Link
-              href={`/listen/${encodeURIComponent(playing.slug)}`}
+              href={listenItemHref(playing)}
               className="shrink-0 text-[14px] font-semibold text-[var(--hv2-tan-text)]"
             >
               Open
@@ -359,7 +372,7 @@ function MeditationCard({
       <div className="flex flex-col gap-3 px-1.5">
         <div>
           <Link
-            href={`/listen/${encodeURIComponent(item.slug)}`}
+            href={listenItemHref(item)}
             className="text-[17px] font-semibold leading-snug text-[var(--hv2-ink)] hover:underline"
           >
             {item.title}
@@ -413,7 +426,7 @@ function StoryCard({
           </span>
         ) : null}
         <Link
-          href={`/listen/${encodeURIComponent(item.slug)}`}
+          href={listenItemHref(item)}
           className="text-[18px] font-semibold leading-snug text-[var(--hv2-ink)] hover:underline"
         >
           {item.title}

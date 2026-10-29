@@ -2,6 +2,11 @@ import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
+import {
+  contentTitleSlug,
+  newUntitledSlugId,
+  uniquifySlug,
+} from "@/lib/readable-url";
 
 export type MixerPresetMix = {
   musicKey: string;
@@ -24,6 +29,9 @@ export type MixerPresetMix = {
 export type MixerPreset = MixerPresetMix & {
   id: string;
   name: string;
+  /** Readable `/meditate/sounds/mix/<slug>` segment. */
+  urlSlug?: string;
+  urlSlugHistory?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -87,9 +95,21 @@ function normalizePreset(raw: unknown): MixerPreset | null {
   const natureKey = typeof o.natureKey === "string" ? o.natureKey : "";
   const drumsKey = typeof o.drumsKey === "string" ? o.drumsKey : "";
   const noiseKey = typeof o.noiseKey === "string" ? o.noiseKey : "";
+  const urlSlug =
+    typeof o.urlSlug === "string" && o.urlSlug.trim()
+      ? o.urlSlug.trim().slice(0, 80)
+      : undefined;
+  const urlSlugHistory = Array.isArray(o.urlSlugHistory)
+    ? o.urlSlugHistory
+        .filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
+        .map((x) => x.trim().slice(0, 80))
+        .slice(0, 24)
+    : undefined;
   return {
     id: o.id,
     name,
+    ...(urlSlug ? { urlSlug } : {}),
+    ...(urlSlugHistory?.length ? { urlSlugHistory } : {}),
     createdAt,
     updatedAt,
     musicKey,
@@ -108,6 +128,47 @@ function normalizePreset(raw: unknown): MixerPreset | null {
       typeof o.masterVolume === "number" ? o.masterVolume : 100,
     ),
   };
+}
+
+function mixerSlugFromName(name: string): string {
+  return contentTitleSlug(name) || newUntitledSlugId();
+}
+
+function takenMixerSlugs(
+  presets: MixerPreset[],
+  exceptId?: string,
+): Set<string> {
+  const taken = new Set<string>();
+  for (const p of presets) {
+    if (exceptId && p.id === exceptId) continue;
+    if (p.urlSlug) taken.add(p.urlSlug);
+    for (const h of p.urlSlugHistory ?? []) taken.add(h);
+  }
+  return taken;
+}
+
+export function mixerPresetHref(
+  preset: Pick<MixerPreset, "id" | "name" | "urlSlug">,
+  kind: "mix" | "preset" = "mix",
+): string {
+  const slug = preset.urlSlug || mixerSlugFromName(preset.name);
+  return `/meditate/sounds/${kind}/${encodeURIComponent(slug)}`;
+}
+
+export function findMixerPresetByPathSlug(
+  presets: MixerPreset[],
+  raw: string,
+): MixerPreset | null {
+  const key = decodeURIComponent(raw).trim().toLowerCase();
+  if (!key) return null;
+  return (
+    presets.find((p) => p.id === key || p.id.toLowerCase() === key) ??
+    presets.find((p) => p.urlSlug?.toLowerCase() === key) ??
+    presets.find((p) =>
+      (p.urlSlugHistory ?? []).some((h) => h.toLowerCase() === key),
+    ) ??
+    null
+  );
 }
 
 export function loadMixerPresetStore(): MixerPresetStoreV1 {
@@ -140,11 +201,16 @@ export function saveMixerPresetStore(store: MixerPresetStoreV1): void {
   writeAccountLocalStorage(STORE_KEY, JSON.stringify(store));
 }
 
-export function newMixerPreset(name?: string): MixerPreset {
+export function newMixerPreset(
+  name?: string,
+  siblings: MixerPreset[] = [],
+): MixerPreset {
   const now = new Date().toISOString();
+  const resolvedName = name?.trim() || "Untitled mix";
   return {
     id: newId(),
-    name: name?.trim() || "Untitled mix",
+    name: resolvedName,
+    urlSlug: uniquifySlug(mixerSlugFromName(resolvedName), takenMixerSlugs(siblings)),
     createdAt: now,
     updatedAt: now,
     ...emptyMixerMix(),

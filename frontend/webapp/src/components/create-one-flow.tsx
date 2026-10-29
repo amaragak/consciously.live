@@ -58,6 +58,7 @@ import {
   healShapeOpeningLine,
   rememberHealMeditationLink,
 } from "@/lib/heal-meditation-links";
+import { findEntityByPathSlug } from "@/lib/entity-href";
 import { currentView, loadHealStore } from "@/lib/heal-store";
 import {
   consumeGuidePracticeHandoff,
@@ -669,9 +670,13 @@ export function CreateOneFlow({
         }
       }
     } else if (new URLSearchParams(window.location.search).get("fromHeal")) {
-      const healId = new URLSearchParams(window.location.search).get("fromHeal") || "";
+      const healKey = new URLSearchParams(window.location.search).get("fromHeal") || "";
       const store = loadHealStore();
-      const item = store.items.find((row) => row.id === healId && row.status !== "at_peace");
+      const resolved = findEntityByPathSlug(store.items, healKey);
+      const item =
+        resolved && resolved.status !== "at_peace"
+          ? resolved
+          : store.items.find((row) => row.id === healKey && row.status !== "at_peace");
       if (item) {
         const attachment = healCreateAttachment(item, store);
         const next: CreateOneFlowState = {
@@ -689,9 +694,12 @@ export function CreateOneFlow({
         }
       }
     } else if (new URLSearchParams(window.location.search).get("fromLifeArea")) {
-      const areaId =
+      const areaKey =
         new URLSearchParams(window.location.search).get("fromLifeArea") || "";
-      const dream = loadIdeateStore().dreams.find((row) => row.id === areaId);
+      const dreams = loadIdeateStore().dreams;
+      const dream =
+        findEntityByPathSlug(dreams, areaKey) ??
+        dreams.find((row) => row.id === areaKey);
       if (dream) {
         const next: CreateOneFlowState = {
           ...stateRef.current,
@@ -1842,17 +1850,25 @@ export function CreateOneFlow({
             ? `${baseTranscript}\n\nProgram session: ${sessionTitle} (target ${minutes} min)`
             : baseTranscript;
 
+        const asHouse = searchParams.get("as") === "consciously";
         const { jobId } = await createMeditationAudioJob({
           meditationStyle: styleForJob ?? "General",
-          journalMode:
-            !state.style ||
-            Boolean(state.journals.length || state.goal || state.program || state.heal),
+          journalMode: asHouse
+            ? false
+            : !state.style ||
+              Boolean(
+                state.journals.length ||
+                  state.goal ||
+                  state.program ||
+                  state.heal,
+              ),
           meditationTargetMinutes: minutes,
           transcript,
           reference_id: soundExtras.reference_id,
           ttsProvider: "speechify",
           fishTtsModel: "s2.1-pro-free",
-          creationProvenance: provenance,
+          creationProvenance: asHouse ? null : provenance,
+          asHouse: asHouse || undefined,
           voiceFxPreset: soundExtras.voiceFxPreset,
           voiceFxDial: soundExtras.voiceFxDial,
           leadInSeconds: soundExtras.leadInSeconds,

@@ -8,6 +8,11 @@ import {
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
 import { deriveAssistantChatTitleProvisional } from "@/lib/assistant-chat-title";
+import {
+  contentTitleSlug,
+  newUntitledSlugId,
+  uniquifySlug,
+} from "@/lib/readable-url";
 
 export type AssistantChatActionResultItem = {
   id?: string;
@@ -54,6 +59,9 @@ export type AssistantChatThread = {
   createdAt: string;
   updatedAt: string;
   title: string;
+  /** Readable `/chat/<slug>` segment; UUID stays as `id`. */
+  urlSlug?: string;
+  urlSlugHistory?: string[];
   /** When true, auto-rename from first message is skipped. */
   titleManual?: boolean;
   /**
@@ -154,17 +162,47 @@ function normalizeThread(raw: unknown): AssistantChatThread | null {
       mode = { type: "life_area_ideate", lifeAreaId: m.lifeAreaId.trim() };
     }
   }
+  const urlSlug =
+    typeof o.urlSlug === "string" && o.urlSlug.trim()
+      ? o.urlSlug.trim().slice(0, 80)
+      : undefined;
+  const urlSlugHistory = Array.isArray(o.urlSlugHistory)
+    ? o.urlSlugHistory
+        .filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
+        .map((x) => x.trim().slice(0, 80))
+        .slice(0, 24)
+    : undefined;
   return {
     id: o.id,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
     title: o.title.trim().slice(0, 120) || "New chat",
+    ...(urlSlug ? { urlSlug } : {}),
+    ...(urlSlugHistory?.length ? { urlSlugHistory } : {}),
     ...(o.titleManual === true ? { titleManual: true } : {}),
     ...(o.excludeFromFabResume === true ? { excludeFromFabResume: true } : {}),
     messages,
     apiThread,
     ...(mode ? { mode } : {}),
   };
+}
+
+function chatSlugFromTitle(title: string): string {
+  const base = contentTitleSlug(title);
+  return base || newUntitledSlugId();
+}
+
+function takenChatSlugs(
+  threads: AssistantChatThread[],
+  exceptId?: string,
+): Set<string> {
+  const taken = new Set<string>();
+  for (const t of threads) {
+    if (exceptId && t.id === exceptId) continue;
+    if (t.urlSlug) taken.add(t.urlSlug);
+    for (const h of t.urlSlugHistory ?? []) taken.add(h);
+  }
+  return taken;
 }
 
 export function normalizeAssistantChatStore(raw: unknown): AssistantChatStoreV1 {
@@ -225,18 +263,81 @@ export function saveAssistantChatStore(store: AssistantChatStoreV1): void {
 
 export function newAssistantChatThread(
   now = new Date(),
-  opts?: { title?: string; mode?: AssistantChatThreadMode },
+  opts?: {
+    title?: string;
+    mode?: AssistantChatThreadMode;
+    /** Existing threads — used to uniquify the readable slug. */
+    siblings?: AssistantChatThread[];
+  },
 ): AssistantChatThread {
   const iso = now.toISOString();
+  const title = opts?.title?.trim().slice(0, 120) || "New chat";
+  const urlSlug = uniquifySlug(
+    chatSlugFromTitle(title),
+    takenChatSlugs(opts?.siblings ?? []),
+  );
   return {
     id: newId(),
     createdAt: iso,
     updatedAt: iso,
-    title: opts?.title?.trim().slice(0, 120) || "New chat",
+    title,
+    urlSlug,
     messages: [],
     apiThread: [],
     ...(opts?.mode ? { mode: opts.mode } : {}),
   };
+}
+
+export function chatThreadHref(
+  thread: Pick<AssistantChatThread, "id" | "title" | "urlSlug">,
+): string {
+  const slug = thread.urlSlug || chatSlugFromTitle(thread.title);
+  return `/chat/${encodeURIComponent(slug)}`;
+}
+
+export function findChatThreadByPathSlug(
+  threads: AssistantChatThread[],
+  raw: string,
+): AssistantChatThread | null {
+  const key = decodeURIComponent(raw).trim().toLowerCase();
+  if (!key) return null;
+  const byId = threads.find((t) => t.id === key || t.id.toLowerCase() === key);
+  if (byId) return byId;
+  return (
+    threads.find((t) => t.urlSlug?.toLowerCase() === key) ??
+    threads.find((t) =>
+      (t.urlSlugHistory ?? []).some((h) => h.toLowerCase() === key),
+    ) ??
+    null
+  );
+}
+
+/** Ensure slug exists; refresh when title changes. */
+export function ensureChatThreadUrlSlug(
+  store: AssistantChatStoreV1,
+  threadId: string,
+): AssistantChatStoreV1 {
+  const idx = store.threads.findIndex((t) => t.id === threadId);
+  if (idx < 0) return store;
+  const thread = store.threads[idx]!;
+  const desired = chatSlugFromTitle(thread.title);
+  const nextSlug = uniquifySlug(
+    desired,
+    takenChatSlugs(store.threads, thread.id),
+    thread.urlSlug,
+  );
+  if (thread.urlSlug === nextSlug) return store;
+  const history = [...(thread.urlSlugHistory ?? [])];
+  if (thread.urlSlug && !history.includes(thread.urlSlug)) {
+    history.unshift(thread.urlSlug);
+  }
+  const threads = store.threads.slice();
+  threads[idx] = {
+    ...thread,
+    urlSlug: nextSlug,
+    urlSlugHistory: history.slice(0, 24),
+  };
+  return { ...store, threads };
 }
 
 export function upsertAssistantChatThread(
@@ -337,16 +438,27 @@ export function renameAssistantChatThread(
   title: string,
 ): AssistantChatStoreV1 {
   const nextTitle = title.trim().slice(0, 120) || "New chat";
-  const threads = store.threads.map((t) =>
-    t.id === threadId
-      ? {
-          ...t,
-          title: nextTitle,
-          titleManual: true,
-          updatedAt: new Date().toISOString(),
-        }
-      : t,
-  );
+  const threads = store.threads.map((t) => {
+    if (t.id !== threadId) return t;
+    const desired = chatSlugFromTitle(nextTitle);
+    const nextSlug = uniquifySlug(
+      desired,
+      takenChatSlugs(store.threads, t.id),
+      t.urlSlug,
+    );
+    const history = [...(t.urlSlugHistory ?? [])];
+    if (t.urlSlug && t.urlSlug !== nextSlug && !history.includes(t.urlSlug)) {
+      history.unshift(t.urlSlug);
+    }
+    return {
+      ...t,
+      title: nextTitle,
+      titleManual: true,
+      urlSlug: nextSlug,
+      urlSlugHistory: history.slice(0, 24),
+      updatedAt: new Date().toISOString(),
+    };
+  });
   return { ...store, threads };
 }
 

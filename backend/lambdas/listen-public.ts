@@ -1,7 +1,8 @@
 /**
  * Public Listen endpoints (no auth):
- *   GET /public/listen          — index (examples + listed)
- *   GET /public/listen/{slug}   — shared item (200 / 410 / 404)
+ *   GET /public/listen                     — index (house listed + community)
+ *   GET /public/listen/{username}          — user listed page / legacy slug redirect
+ *   GET /public/listen/{username}/{path}   — shared item (200 / 410 / 404)
  */
 
 import type {
@@ -17,19 +18,21 @@ import {
 import { meditationPlaybackS3Key } from "./_shared/playback-keys";
 import {
   LISTEN_LISTED_PK,
+  LISTEN_PATH_PK,
   LISTEN_SLUG_PK,
   coverUrlFromRow,
   parseListenShare,
   styleFromMeditationRow,
   type ListenPublicItem,
 } from "./_shared/listen-share";
+import { resolvePublicUsername } from "./_shared/username-registry";
+import { HOUSE_USERNAME, listenPublicPath } from "./_shared/usernames";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 function json(
   statusCode: number,
   payload: Record<string, unknown>,
-  extraHeaders?: Record<string, string>,
 ): APIGatewayProxyStructuredResultV2 {
   return {
     statusCode,
@@ -37,10 +40,27 @@ function json(
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": "public, max-age=60",
-      ...extraHeaders,
     },
     body: JSON.stringify(payload),
   };
+}
+
+function publicHref(item: {
+  username: string | null;
+  pathSlug: string | null;
+  listed: boolean;
+  linkToken: string | null;
+  slug: string;
+}): string {
+  if (item.username && item.pathSlug) {
+    return listenPublicPath({
+      username: item.username,
+      pathSlug: item.pathSlug,
+      listed: item.listed,
+      linkToken: item.linkToken,
+    });
+  }
+  return `/listen/${encodeURIComponent(item.slug)}`;
 }
 
 function toPublicItem(
@@ -67,25 +87,54 @@ function toPublicItem(
     row.scriptText.trim()
       ? row.scriptText.trim()
       : null;
+  const username =
+    typeof row.listenUsername === "string" && row.listenUsername.trim()
+      ? row.listenUsername.trim().toLowerCase()
+      : null;
+  const pathSlug =
+    typeof row.listenPathSlug === "string" && row.listenPathSlug.trim()
+      ? row.listenPathSlug.trim()
+      : null;
+  const linkToken =
+    typeof row.listenLinkToken === "string" && row.listenLinkToken.trim()
+      ? row.listenLinkToken.trim()
+      : null;
+  const isExample =
+    share.isExample ||
+    (share.listed && username === HOUSE_USERNAME);
   return {
     slug,
+    username,
+    pathSlug,
     kind: share.kind,
     title: share.title,
     description: share.description,
-    shownAs: share.shownAs.trim() ? share.shownAs.trim() : null,
+    shownAs:
+      isExample && !share.shownAs.trim()
+        ? "Consciously"
+        : share.shownAs.trim()
+          ? share.shownAs.trim()
+          : null,
     showBrief: share.showBrief,
     brief: share.showBrief ? share.brief : null,
-    listed: share.listed || share.isExample,
-    isExample: share.isExample,
+    listed: share.listed || isExample,
+    isExample,
     style: styleFromMeditationRow(row),
     durationSec,
     audioUrl,
     coverImageUrl: coverUrlFromRow(row, cfDomain),
     storyText,
+    href: publicHref({
+      username,
+      pathSlug,
+      listed: share.listed || isExample,
+      linkToken,
+      slug,
+    }),
   };
 }
 
-async function resolveSlug(
+async function resolveLegacySlug(
   tableName: string,
   slug: string,
 ): Promise<
@@ -134,9 +183,59 @@ async function resolveSlug(
   return { status: "missing" };
 }
 
+async function resolvePath(
+  tableName: string,
+  username: string,
+  pathKey: string,
+): Promise<
+  | { status: "active"; row: Record<string, unknown>; pathKey: string }
+  | { status: "revoked" }
+  | { status: "redirect"; to: string }
+  | { status: "missing" }
+> {
+  const sk = `${username}/${pathKey}`;
+  const reg = await ddb.send(
+    new GetCommand({
+      TableName: tableName,
+      Key: { pk: LISTEN_PATH_PK, sk },
+    }),
+  );
+  if (!reg.Item) return { status: "missing" };
+  if (
+    reg.Item.status === "revoked" &&
+    typeof reg.Item.redirectTo === "string" &&
+    reg.Item.redirectTo.trim()
+  ) {
+    return { status: "redirect", to: `/listen/${reg.Item.redirectTo.trim()}` };
+  }
+  if (reg.Item.status === "revoked") return { status: "revoked" };
+  if (
+    reg.Item.status === "active" &&
+    typeof reg.Item.ownerPk === "string" &&
+    typeof reg.Item.ownerSk === "string"
+  ) {
+    const got = await ddb.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: reg.Item.ownerPk, sk: reg.Item.ownerSk },
+      }),
+    );
+    if (got.Item && parseListenShare(got.Item.listenShare)) {
+      return {
+        status: "active",
+        row: got.Item as Record<string, unknown>,
+        pathKey,
+      };
+    }
+    return { status: "revoked" };
+  }
+  return { status: "missing" };
+}
+
 async function listListed(
   tableName: string,
   cfDomain: string | undefined,
+  opts?: { username?: string },
 ): Promise<ListenPublicItem[]> {
   const items: ListenPublicItem[] = [];
   let lek: Record<string, unknown> | undefined;
@@ -159,12 +258,32 @@ async function listListed(
           : "";
       if (!slug) continue;
       if (row.archived === true || row.isDraft === true) continue;
+      if (opts?.username) {
+        const u =
+          typeof row.listenUsername === "string"
+            ? row.listenUsername.trim().toLowerCase()
+            : "";
+        if (u !== opts.username) continue;
+      }
       const item = toPublicItem(slug, row, cfDomain);
       if (item) items.push(item);
     }
     lek = out.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (lek);
   return items;
+}
+
+function itemRedirectPath(item: ListenPublicItem): string | null {
+  if (item.href) return item.href;
+  if (item.username && item.pathSlug) {
+    return listenPublicPath({
+      username: item.username,
+      pathSlug: item.pathSlug,
+      listed: item.listed,
+      linkToken: null,
+    });
+  }
+  return null;
 }
 
 export async function handler(
@@ -180,27 +299,75 @@ export async function handler(
     return json(500, { error: "MEDITATION_ANALYTICS_TABLE_NAME is not set" });
   }
 
-  const slugParam =
-    event.pathParameters?.slug?.trim() ||
-    event.queryStringParameters?.slug?.trim() ||
+  const usernameParam =
+    event.pathParameters?.username?.trim().toLowerCase() ||
+    event.pathParameters?.slug?.trim().toLowerCase() ||
+    "";
+  const pathParam =
+    event.pathParameters?.path?.trim() ||
+    event.queryStringParameters?.path?.trim() ||
     "";
 
   try {
-    if (slugParam) {
-      if (slugParam.length < 2 || slugParam.length > 80) {
-        return json(400, { error: "Invalid slug" });
+    // Item: /public/listen/{username}/{path}
+    if (usernameParam && pathParam) {
+      if (usernameParam.length < 2 || usernameParam.length > 40) {
+        return json(400, { error: "Invalid username" });
       }
-      const resolved = await resolveSlug(tableName, slugParam);
+      if (pathParam.length < 2 || pathParam.length > 80) {
+        return json(400, { error: "Invalid path" });
+      }
+
+      const userRes = await resolvePublicUsername(usernameParam);
+      if (userRes.status === "redirect") {
+        return json(200, {
+          status: "redirect",
+          redirectTo: `/listen/${encodeURIComponent(userRes.to)}/${encodeURIComponent(pathParam)}`,
+        });
+      }
+      if (userRes.status === "missing") {
+        return json(404, { error: "Not found" });
+      }
+
+      const resolved = await resolvePath(tableName, userRes.username, pathParam);
+      if (resolved.status === "redirect") {
+        return json(200, { status: "redirect", redirectTo: resolved.to });
+      }
       if (resolved.status === "revoked") {
-        return json(410, { error: "This link isn't shared any more", status: "revoked" });
+        return json(410, {
+          error: "This link isn't shared any more",
+          status: "revoked",
+        });
       }
       if (resolved.status === "missing") {
         return json(404, { error: "Not found" });
       }
-      const item = toPublicItem(slugParam, resolved.row, cfDomain);
+
+      const slug =
+        typeof resolved.row.listenSlug === "string"
+          ? resolved.row.listenSlug
+          : pathParam;
+      const item = toPublicItem(slug, resolved.row, cfDomain);
       if (!item) return json(404, { error: "Not found" });
 
-      // Related: up to 3 other listed meditations.
+      // Unlisted items must use the token path; clean path without token → 410.
+      const share = parseListenShare(resolved.row.listenShare);
+      if (share && !share.listed) {
+        const token =
+          typeof resolved.row.listenLinkToken === "string"
+            ? resolved.row.listenLinkToken
+            : "";
+        const expected = token
+          ? `${resolved.row.listenPathSlug}-${token}`
+          : "";
+        if (expected && pathParam !== expected) {
+          return json(410, {
+            error: "This link isn't shared any more",
+            status: "revoked",
+          });
+        }
+      }
+
       const listed = await listListed(tableName, cfDomain);
       const more = listed
         .filter((x) => x.slug !== item.slug && x.kind === "meditation")
@@ -209,15 +376,74 @@ export async function handler(
       return json(200, { item, more });
     }
 
+    // Single segment: username page OR legacy flat slug
+    if (usernameParam) {
+      if (usernameParam.length < 2 || usernameParam.length > 80) {
+        return json(400, { error: "Invalid slug" });
+      }
+
+      const userRes = await resolvePublicUsername(usernameParam);
+      if (userRes.status === "redirect") {
+        return json(200, {
+          status: "redirect",
+          redirectTo: `/listen/${encodeURIComponent(userRes.to)}`,
+        });
+      }
+      if (userRes.status === "ok") {
+        const listed = await listListed(tableName, cfDomain, {
+          username: userRes.username,
+        });
+        if (!listed.length) {
+          return json(404, { error: "Not found" });
+        }
+        const displayName =
+          userRes.username === HOUSE_USERNAME
+            ? "Consciously"
+            : listed.find((x) => x.shownAs)?.shownAs || userRes.username;
+        return json(200, {
+          username: userRes.username,
+          displayName,
+          meditations: listed.filter((x) => x.kind === "meditation"),
+          stories: listed.filter((x) => x.kind === "story"),
+        });
+      }
+
+      // Legacy flat slug → redirect payload when possible.
+      const legacy = await resolveLegacySlug(tableName, usernameParam);
+      if (legacy.status === "revoked") {
+        return json(410, {
+          error: "This link isn't shared any more",
+          status: "revoked",
+        });
+      }
+      if (legacy.status === "active") {
+        const item = toPublicItem(usernameParam, legacy.row, cfDomain);
+        if (!item) return json(404, { error: "Not found" });
+        const redirectTo = itemRedirectPath(item);
+        if (redirectTo && redirectTo !== `/listen/${usernameParam}`) {
+          return json(200, { status: "redirect", redirectTo, item });
+        }
+        const listed = await listListed(tableName, cfDomain);
+        const more = listed
+          .filter((x) => x.slug !== item.slug && x.kind === "meditation")
+          .slice(0, 3);
+        return json(200, { item, more });
+      }
+      return json(404, { error: "Not found" });
+    }
+
+    // Index
     const listed = await listListed(tableName, cfDomain);
-    const examples = listed.filter((x) => x.isExample);
-    const community = listed.filter((x) => !x.isExample);
+    const house = listed.filter((x) => x.username === HOUSE_USERNAME || x.isExample);
+    const community = listed.filter(
+      (x) => x.username !== HOUSE_USERNAME && !x.isExample,
+    );
     const meditations = [
-      ...examples.filter((x) => x.kind === "meditation"),
+      ...house.filter((x) => x.kind === "meditation"),
       ...community.filter((x) => x.kind === "meditation"),
     ];
     const stories = [
-      ...examples.filter((x) => x.kind === "story"),
+      ...house.filter((x) => x.kind === "story"),
       ...community.filter((x) => x.kind === "story"),
     ];
     return json(200, { meditations, stories });

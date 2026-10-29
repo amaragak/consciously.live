@@ -11,6 +11,7 @@ import {
 import type { PlanDream } from "@/lib/plan-dreams";
 import {
   isDemoJournalEntry,
+  journalEntryHref,
   loadJournalStoreRaw,
   stripHtmlToText,
   type JournalEntry,
@@ -120,10 +121,7 @@ export function journalEntriesLinkedToLifeArea(
     id: e.id,
     date: e.updatedAt || e.createdAt,
     title: e.title.trim() || "Untitled",
-    href:
-      e.kind === "gratitude"
-        ? `/journal/gratitudes/${encodeURIComponent(e.id)}`
-        : `/journal/entries/${encodeURIComponent(e.id)}`,
+    href: journalEntryHref(e),
   }));
 }
 

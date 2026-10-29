@@ -5,6 +5,12 @@ import {
 } from "@/lib/account-scoped-storage";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import { isJournalMoodId } from "@/lib/journal-moods";
+import {
+  gratitudeEntryPathSlug,
+  journalEntryPathSlug,
+  looksLikeUuid,
+  uniquifySlug,
+} from "@/lib/readable-url";
 
 export type JournalEntryKind = "freeform" | "gratitude";
 
@@ -84,6 +90,12 @@ export type JournalEntry = {
   meditationSnapshot?: JournalMeditationSnapshot;
   /** Links to meditations, life areas, and Heal items. */
   links?: JournalLink[];
+  /**
+   * Readable URL segment (e.g. `2026-10-29-morning-pages`). Stable until
+   * title/date change; previous values live in `urlSlugHistory` for redirects.
+   */
+  urlSlug?: string;
+  urlSlugHistory?: string[];
 };
 
 export type JournalFolder = {
@@ -423,7 +435,7 @@ function newEntry(overrides?: Partial<JournalEntry>): JournalEntry {
   const createdAt = overrides?.createdAt ?? now;
   const updatedAt = overrides?.updatedAt ?? now;
   const entryDate = overrides?.entryDate ?? createdAt;
-  return {
+  const draft: JournalEntry = {
     id,
     title: "",
     contentHtml: "<p></p>",
@@ -432,6 +444,26 @@ function newEntry(overrides?: Partial<JournalEntry>): JournalEntry {
     updatedAt,
     entryDate,
   };
+  // Readable URL from day one — never put the UUID in the address bar for new rows.
+  if (!draft.urlSlug?.trim()) {
+    const base =
+      draft.kind === "gratitude"
+        ? gratitudeEntryPathSlug(draft)
+        : journalEntryPathSlug(draft);
+    try {
+      const peers = loadJournalStoreRaw().entries;
+      draft.urlSlug = uniquifySlug(
+        base,
+        takenJournalSlugs(
+          peers,
+          draft.kind === "gratitude" ? "gratitude" : "freeform",
+        ),
+      );
+    } catch {
+      draft.urlSlug = base;
+    }
+  }
+  return draft;
 }
 
 function daysAgoIso(days: number, hour = 9): string {
@@ -963,6 +995,16 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
     typeof e.entryDate === "string" && e.entryDate.trim()
       ? e.entryDate
       : createdAt;
+  const urlSlug =
+    typeof e.urlSlug === "string" && e.urlSlug.trim()
+      ? e.urlSlug.trim().slice(0, 80)
+      : undefined;
+  const urlSlugHistory = Array.isArray(e.urlSlugHistory)
+    ? e.urlSlugHistory
+        .filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
+        .map((x) => x.trim().slice(0, 80))
+        .slice(0, 24)
+    : undefined;
   return {
     ...e,
     createdAt,
@@ -983,6 +1025,8 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
     ...(nextSource ? { meditationSource: nextSource } : { meditationSource: undefined }),
     ...(nextSnapshot ? { meditationSnapshot: nextSnapshot } : { meditationSnapshot: undefined }),
     ...(links ? { links } : { links: undefined }),
+    ...(urlSlug ? { urlSlug } : { urlSlug: undefined }),
+    ...(urlSlugHistory?.length ? { urlSlugHistory } : { urlSlugHistory: undefined }),
   };
 }
 
@@ -1544,4 +1588,92 @@ export function groupJournalEntriesByWeek(
     });
   }
   return groups;
+}
+
+function takenJournalSlugs(
+  entries: JournalEntry[],
+  kind: JournalEntryKind | "freeform",
+  exceptId?: string,
+): Set<string> {
+  const taken = new Set<string>();
+  for (const e of entries) {
+    if (exceptId && e.id === exceptId) continue;
+    const isGrat = e.kind === "gratitude";
+    if (kind === "gratitude" ? !isGrat : isGrat) continue;
+    if (e.urlSlug) taken.add(e.urlSlug);
+    for (const h of e.urlSlugHistory ?? []) taken.add(h);
+  }
+  return taken;
+}
+
+/** Assign or refresh a readable urlSlug; records prior slug in history. */
+export function ensureJournalEntryUrlSlug(
+  entries: JournalEntry[],
+  entryId: string,
+): { entries: JournalEntry[]; entry: JournalEntry | null } {
+  const idx = entries.findIndex((e) => e.id === entryId);
+  if (idx < 0) return { entries, entry: null };
+  const entry = entries[idx]!;
+  const isGrat = entry.kind === "gratitude";
+  const desiredBase = isGrat
+    ? gratitudeEntryPathSlug(entry)
+    : journalEntryPathSlug({ ...entry, urlSlug: undefined });
+  const taken = takenJournalSlugs(
+    entries,
+    isGrat ? "gratitude" : "freeform",
+    entry.id,
+  );
+  const nextSlug = uniquifySlug(desiredBase, taken, entry.urlSlug);
+  if (entry.urlSlug === nextSlug) {
+    return { entries, entry };
+  }
+  const history = [...(entry.urlSlugHistory ?? [])];
+  if (entry.urlSlug && !history.includes(entry.urlSlug)) {
+    history.unshift(entry.urlSlug);
+  }
+  const updated: JournalEntry = {
+    ...entry,
+    urlSlug: nextSlug,
+    urlSlugHistory: history.slice(0, 24),
+  };
+  const next = entries.slice();
+  next[idx] = updated;
+  return { entries: next, entry: updated };
+}
+
+export function findJournalEntryByPathSlug(
+  entries: JournalEntry[],
+  raw: string,
+  kind: "journal" | "gratitude",
+): JournalEntry | null {
+  const key = decodeURIComponent(raw).trim().toLowerCase();
+  if (!key) return null;
+  const list = entries.filter((e) =>
+    kind === "gratitude" ? e.kind === "gratitude" : e.kind !== "gratitude",
+  );
+  if (looksLikeUuid(key)) {
+    return list.find((e) => e.id === key) ?? null;
+  }
+  return (
+    list.find((e) => e.urlSlug?.toLowerCase() === key) ??
+    list.find((e) =>
+      (e.urlSlugHistory ?? []).some((h) => h.toLowerCase() === key),
+    ) ??
+    null
+  );
+}
+
+export function journalEntryHref(entry: JournalEntry): string {
+  if (entry.kind === "gratitude") {
+    const slug = entry.urlSlug || gratitudeEntryPathSlug(entry);
+    return `/journal/gratitude/${encodeURIComponent(slug)}`;
+  }
+  const slug = entry.urlSlug || journalEntryPathSlug(entry);
+  return `/journal/${encodeURIComponent(slug)}`;
+}
+
+export function journalEntryHrefById(entryId: string): string {
+  const entry = loadJournalStore().entries.find((e) => e.id === entryId);
+  if (entry) return journalEntryHref(entry);
+  return `/journal/entries/${encodeURIComponent(entryId)}`;
 }

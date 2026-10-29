@@ -478,6 +478,112 @@ export async function exchangeCognitoIdToken(
   };
 }
 
+export type UsernameProfile = {
+  username: string | null;
+  isDefault: boolean;
+  chosen: boolean;
+  changedAt: string | null;
+  canChange: boolean;
+  nextAllowedAt: string | null;
+  prefill: string;
+  helper: string;
+};
+
+export async function fetchUsernameProfile(): Promise<UsernameProfile> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/me/username`, {
+    method: "GET",
+    headers: medimadeJsonHeaders(),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.detail === "string" && data.detail) ||
+        (typeof data.error === "string" && data.error) ||
+        res.statusText,
+    );
+  }
+  return {
+    username:
+      typeof data.username === "string" && data.username.trim()
+        ? data.username.trim()
+        : null,
+    isDefault: data.isDefault === true,
+    chosen: data.chosen === true,
+    changedAt:
+      typeof data.changedAt === "string" && data.changedAt.trim()
+        ? data.changedAt.trim()
+        : null,
+    canChange: data.canChange !== false,
+    nextAllowedAt:
+      typeof data.nextAllowedAt === "string" && data.nextAllowedAt.trim()
+        ? data.nextAllowedAt.trim()
+        : null,
+    prefill: typeof data.prefill === "string" ? data.prefill : "",
+    helper:
+      typeof data.helper === "string" && data.helper.trim()
+        ? data.helper.trim()
+        : "Your public links use this: consciously.live/listen/<username>. You can change it in Settings.",
+  };
+}
+
+export async function checkUsernameAvailable(
+  username: string,
+): Promise<{ available: boolean; error?: string; username?: string }> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(
+    `${base}/me/username/check?u=${encodeURIComponent(username)}`,
+    { method: "GET", headers: medimadeJsonHeaders() },
+  );
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return {
+    available: data.available === true,
+    error: typeof data.error === "string" ? data.error : undefined,
+    username: typeof data.username === "string" ? data.username : undefined,
+  };
+}
+
+export async function saveUsername(
+  username: string,
+): Promise<UsernameProfile> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/me/username`, {
+    method: "PATCH",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify({ username }),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.detail === "string" && data.detail) ||
+        (typeof data.error === "string" && data.error) ||
+        res.statusText,
+    );
+  }
+  return {
+    username:
+      typeof data.username === "string" && data.username.trim()
+        ? data.username.trim()
+        : username,
+    isDefault: false,
+    chosen: true,
+    changedAt: new Date().toISOString(),
+    canChange: false,
+    nextAllowedAt:
+      typeof data.nextAllowedAt === "string" && data.nextAllowedAt.trim()
+        ? data.nextAllowedAt.trim()
+        : null,
+    prefill: "",
+    helper:
+      typeof data.helper === "string" && data.helper.trim()
+        ? data.helper.trim()
+        : "Your public links use this: consciously.live/listen/<username>. You can change it in Settings.",
+  };
+}
+
 /** Saves display name for the signed-in user and returns a fresh session JWT. */
 export async function saveMedimadeProfileDisplayName(
   displayName: string,
@@ -3706,6 +3812,8 @@ export async function createMeditationAudioJob(params: {
   leadInSeconds?: number;
   /** Fade beds after voice ends (default true). */
   fadeOut?: boolean;
+  /** Admin: create under the Consciously house account. */
+  asHouse?: boolean;
   /** @deprecated use layered background keys + gains */
   backgroundSoundKey?: string | null;
   backgroundNatureKey?: string | null;
@@ -3779,6 +3887,7 @@ export async function createMeditationAudioJob(params: {
     ...(params.creationProvenance
       ? { creationProvenance: params.creationProvenance }
       : {}),
+    ...(params.asHouse === true ? { asHouse: true } : {}),
     ...(params.voiceFxPreset ? { voiceFxPreset: params.voiceFxPreset } : {}),
     ...(typeof params.voiceFxDial === "number" ? { voiceFxDial: params.voiceFxDial } : {}),
     ...(typeof params.leadInSeconds === "number" &&
@@ -7230,11 +7339,18 @@ export type AdminBlogListenPreview = {
   audioUrl: string | null;
 };
 
-/** Generate up to 4 Nano Banana Pro 16:9 cover options for a Read essay. */
+/**
+ * Generate Nano Banana Pro 16:9 cover option(s) for a Read essay.
+ * Prefer `count: 1` (default) — API Gateway times out around 30s, so a batch
+ * of several images in one call usually never reaches the browser.
+ */
 export async function generateAdminBlogCoverOptions(params: {
   prompt?: string;
   title?: string;
   subheader?: string;
+  /** Full essay plain text — used to summarise the whole piece for the cover prompt. */
+  bodyText?: string;
+  /** @deprecated Prefer bodyText; kept for older clients. */
   opening?: string;
   count?: number;
 }): Promise<{ prompt: string; options: AdminBlogCoverOption[] }> {
@@ -7248,17 +7364,28 @@ export async function generateAdminBlogCoverOptions(params: {
       prompt: params.prompt,
       title: params.title,
       subheader: params.subheader,
+      bodyText: params.bodyText,
       opening: params.opening,
-      count: params.count ?? 4,
+      count: params.count ?? 1,
     }),
   });
-  const data = (await res.json()) as {
+  let data: {
     prompt?: unknown;
     options?: unknown;
     error?: string;
     detail?: string;
-  };
+  } = {};
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    /* non-JSON (e.g. API Gateway HTML timeout page) */
+  }
   if (!res.ok) {
+    if (res.status === 503 || res.status === 504 || res.status === 502) {
+      throw new Error(
+        "Cover generation timed out. Try again — each cover is generated separately.",
+      );
+    }
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
   const options = Array.isArray(data.options)
@@ -8515,19 +8642,24 @@ export async function getMeditationDraft(sk: string): Promise<{
 /** Lists `meditations/*.mp3` in the media bucket merged with DynamoDB library metadata. */
 export async function listLibraryMeditations(opts?: {
   community?: boolean;
+  /** Admin: list the Consciously house account library. */
+  asHouse?: boolean;
 }): Promise<LibraryMeditationItem[]> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const qs = opts?.community
-    ? (() => {
-        const p = new URLSearchParams({ community: "1" });
-        if (!getMedimadeSessionJwt()) {
-          const listenerId = getOrCreateMixListenerId();
-          if (listenerId) p.set("listenerId", listenerId);
-        }
-        return `?${p.toString()}`;
-      })()
-    : "";
+  const qs = (() => {
+    const p = new URLSearchParams();
+    if (opts?.community) {
+      p.set("community", "1");
+      if (!getMedimadeSessionJwt()) {
+        const listenerId = getOrCreateMixListenerId();
+        if (listenerId) p.set("listenerId", listenerId);
+      }
+    }
+    if (opts?.asHouse) p.set("as", "consciously");
+    const s = p.toString();
+    return s ? `?${s}` : "";
+  })();
   const res = await medimadeFetch(`${base}/library/meditations${qs}`, {
     headers: medimadeApiAuthHeaders(),
   });
@@ -8648,6 +8780,8 @@ export type PatchMeditationShareInput = {
   brief?: string | null;
   listed?: boolean;
   isExample?: boolean;
+  /** Admin: share under the Consciously house account. */
+  asHouse?: boolean;
 };
 
 export type PatchMeditationShareResult = {

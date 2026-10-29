@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { writePlanCreateHandoff } from "@/lib/plan-create-handoff";
 import type { ResistanceTheme } from "@/lib/plan-resistance-threads";
+import { lifeAreaHrefById } from "@/lib/entity-href";
 
 type Props = {
   theme: ResistanceTheme;
@@ -55,7 +56,7 @@ export function PlanResistanceThreadBanner({
         </button>
         {projectId ? (
           <Link
-            to={`/manifest/goal/${encodeURIComponent(projectId)}`}
+            to={lifeAreaHrefById(projectId)}
             className="rounded-full px-4 py-2 text-sm text-muted hover:text-foreground"
           >
             View project

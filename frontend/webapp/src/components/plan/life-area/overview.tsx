@@ -1,4 +1,10 @@
 import { Heart, Timer } from "lucide-react";
+import {
+  healItemHref,
+  lifeAreaHref,
+  lifeAreaHrefById,
+  lifeAreaTrackerItemHref,
+} from "@/lib/entity-href";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HealNameChip } from "@/components/heal/heal-name-chip";
@@ -34,6 +40,7 @@ import {
   inFocusItem,
   itemsForArea,
   rollup,
+  trackerPathSlug,
   type TrackerItem,
 } from "@/lib/tracker-items";
 import {
@@ -169,7 +176,7 @@ function HealLine({ item }: { item: HealItem }) {
   const store = loadHealStore();
   return (
     <Link
-      to={`/heal/${encodeURIComponent(item.id)}`}
+      to={healItemHref(item)}
       className="flex items-center gap-2 rounded-[14px] bg-card px-4 py-3 text-sm text-foreground"
     >
       <Heart className="size-4 shrink-0 text-heal-accent" strokeWidth={1.75} />
@@ -242,7 +249,7 @@ function ActiveGoalCard({
           </h2>
         </div>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker`}
+          to={lifeAreaHref(dream, "tracker")}
           className="shrink-0 text-[13px] font-semibold text-accent-link"
         >
           All items →
@@ -280,7 +287,7 @@ function ActiveGoalCard({
           {extra > 0 ? (
             <li>
               <Link
-                to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(item.id)}`}
+                to={lifeAreaTrackerItemHref(dream, item)}
                 className="text-[13px] text-muted"
               >
                 + {extra} more
@@ -292,7 +299,7 @@ function ActiveGoalCard({
         <div className="flex flex-col items-start gap-2">
           <p className="text-sm text-muted">Nothing marked Doing</p>
           <Link
-            to={`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(item.id)}`}
+            to={lifeAreaTrackerItemHref(dream, item)}
             className={`${OUTLINE} h-10 px-4 text-sm`}
           >
             Choose what you're on
@@ -311,7 +318,7 @@ function GoalsEmpty({ dreamId }: { dreamId: string }) {
     <section className="flex h-full flex-col gap-3 rounded-2xl border border-border bg-card px-5 py-[18px]">
       <p className="text-[15px] text-foreground">No goals here yet</p>
       <Link
-        to={`/manifest/goal/${encodeURIComponent(dreamId)}/tracker`}
+        to={lifeAreaHrefById(dreamId, "tracker")}
         className="text-[13px] font-semibold text-accent-link"
       >
         New goal
@@ -330,6 +337,7 @@ function OtherGoalsCard({
   className?: string;
 }) {
   const store = loadIdeateStore();
+  const tracker = itemsForArea(ensureTracker(store), dreamId);
   const rows = goalIds
     .map((id) => store.subtasks.find((s) => s.id === id))
     .filter((goal): goal is NonNullable<typeof goal> => Boolean(goal));
@@ -341,7 +349,7 @@ function OtherGoalsCard({
       <div className="flex items-baseline justify-between gap-3">
         <p className={AREA_LABEL}>Other goals</p>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dreamId)}/tracker`}
+          to={lifeAreaHrefById(dreamId, "tracker")}
           className="text-[13px] text-muted"
         >
           New goal
@@ -350,10 +358,14 @@ function OtherGoalsCard({
       <div className="mt-1">
         {rows.map((goal) => {
           const { done, total } = progressFor(store, goal);
+          const item = tracker.find((t) => t.id === goal.id);
           return (
             <Link
               key={goal.id}
-              to={`/manifest/goal/${encodeURIComponent(dreamId)}/tracker/${encodeURIComponent(goal.id)}`}
+              to={lifeAreaHrefById(
+                dreamId,
+                `tracker/${encodeURIComponent(item ? trackerPathSlug(item) : goal.id)}`,
+              )}
               className="flex items-center gap-3.5 border-t border-border py-2.5"
             >
               <span className="min-w-0 flex-1">
@@ -410,7 +422,7 @@ function MeditationsCard({
       <div className="flex items-center justify-between">
         <p className={AREA_LABEL}>Meditations</p>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(lifeAreaId)}/meditations`}
+          to={lifeAreaHrefById(lifeAreaId, "meditations")}
           className="text-[13px] text-muted"
         >
           See all
@@ -506,7 +518,7 @@ function InsightCard({
           Insight · {formatShortDate(latest.createdAt)}
         </p>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dream.id)}/insights`}
+          to={lifeAreaHref(dream, "insights")}
           className="text-xs text-muted"
           aria-label="Refresh on the Insights tab"
         >
@@ -533,7 +545,7 @@ function InsightCard({
       ) : null}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3 text-[13px]">
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dream.id)}/insights`}
+          to={lifeAreaHref(dream, "insights")}
           className="font-semibold text-accent-link"
         >
           Full insights →
@@ -589,7 +601,7 @@ function ThoughtsCapture({
       <div className="flex items-center justify-between">
         <p className={AREA_LABEL}>Thoughts</p>
         <Link
-          to={`/manifest/goal/${encodeURIComponent(dream.id)}/thoughts`}
+          to={lifeAreaHref(dream, "thoughts")}
           className="text-[13px] font-semibold text-accent-link"
         >
           See all

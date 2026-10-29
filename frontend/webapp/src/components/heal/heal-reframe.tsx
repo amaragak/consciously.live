@@ -22,6 +22,7 @@ import {
   type HealManifestLink,
   type HealStoreV1,
 } from "@/lib/heal-store";
+import { healItemHref, lifeAreaHref } from "@/lib/entity-href";
 
 export function ReframeEnd({
   summary,
@@ -526,7 +527,7 @@ export function ManifestDialog({
     } else {
       onStore(next);
     }
-    onToast(`Added to ${area.title}`, `/manifest/goal/${encodeURIComponent(area.id)}`);
+    onToast(`Added to ${area.title}`, lifeAreaHref(area));
     onClose();
   }
   function remove() {
@@ -669,7 +670,7 @@ export function HealObstacleNote({
     <div className="mt-2 flex items-center gap-1">
       {item ? (
         <a
-          href={`/heal/${encodeURIComponent(item.id)}`}
+          href={healItemHref(item)}
           className="flex min-w-0 flex-1 items-center gap-2 border-t border-border pt-2 text-[13px] text-foreground"
         >
           <Heart className="size-3.5 shrink-0 text-heal-accent" aria-hidden />
@@ -721,7 +722,7 @@ export function HealObstacleHeart({
         onClick={(event) => {
           event.stopPropagation();
           if (item) {
-            window.location.assign(`/heal/${encodeURIComponent(item.id)}`);
+            window.location.assign(healItemHref(item));
             return;
           }
           setPicker(true);

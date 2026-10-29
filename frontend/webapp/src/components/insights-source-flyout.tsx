@@ -10,6 +10,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import {
   formatJournalEntryDate,
+  journalEntryHrefById,
   journalEntryListTitle,
   JOURNAL_STORE_CHANGED,
   loadJournalStore,
@@ -68,7 +69,7 @@ function resolveSources(
 }
 
 function entryHref(id: string, quote?: string): string {
-  const base = `/journal/entries/${encodeURIComponent(id)}`;
+  const base = journalEntryHrefById(id);
   if (!quote?.trim()) return base;
   return `${base}?highlight=${encodeURIComponent(quote.trim())}`;
 }

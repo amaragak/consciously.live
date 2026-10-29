@@ -1,4 +1,5 @@
 import { MessageSquare, Pin, Sparkles, Timer } from "lucide-react";
+import { lifeAreaHref } from "@/lib/entity-href";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { openAssistantChatFab } from "@/lib/assistant-chat-launch";
@@ -71,7 +72,7 @@ export function LifeAreaGoals({ dream, goalId, onPatch, onRefresh }: Props) {
     goals.find((g) => g.id === goalId) ??
     null;
   const desktopSelected = selected ?? shown[0] ?? null;
-  const base = `/manifest/goal/${encodeURIComponent(dream.id)}/goals`;
+  const base = lifeAreaHref(dream, "goals");
   const pillRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const stripRef = useRef<HTMLDivElement | null>(null);
   const [stripFade, setStripFade] = useState(false);

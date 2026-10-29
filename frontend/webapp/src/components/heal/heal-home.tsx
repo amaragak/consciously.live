@@ -4,6 +4,7 @@ import { Link, useRouter, useSearchParams } from "@/lib/spa-nav";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
 import { healTypeLabel } from "@/lib/heal-copy";
+import { healItemHref } from "@/lib/entity-href";
 import { SelectChevron } from "@/components/select-chevron";
 import {
   activeHealItems,
@@ -125,7 +126,7 @@ export function HealHome() {
             {rested.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={`/heal/${encodeURIComponent(item.id)}`}
+                  href={healItemHref(item)}
                   className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5"
                 >
                   <HealAvatar item={item} store={store} size={36} />
@@ -165,9 +166,11 @@ export function HealHome() {
           obstacleId={describe.obstacleId}
           onClose={() => setDescribe(null)}
           onSaved={(id) => {
-            setStore(loadHealStore());
+            const next = loadHealStore();
+            setStore(next);
             setDescribe(null);
-            router.push(`/heal/${encodeURIComponent(id)}`);
+            const item = next.items.find((x) => x.id === id);
+            router.push(item ? healItemHref(item) : `/heal/${encodeURIComponent(id)}`);
           }}
         />
       ) : null}
@@ -181,7 +184,7 @@ function CarryCard({ item, store }: { item: HealItem; store: HealStoreV1 }) {
   return (
     <li>
       <Link
-        href={`/heal/${encodeURIComponent(item.id)}`}
+        href={healItemHref(item)}
         className="block rounded-2xl border border-border bg-card px-3 py-3 sm:px-4"
       >
         <span className="flex items-center gap-3">
@@ -329,7 +332,7 @@ export function HealRested() {
           {rested.map((item) => (
             <li key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5">
               <HealAvatar item={item} store={store} size={36} />
-              <Link href={`/heal/${encodeURIComponent(item.id)}`} className="min-w-0 flex-1">
+              <Link href={healItemHref(item)} className="min-w-0 flex-1">
                 <span className="block text-[11px] font-semibold uppercase tracking-[1.2px] text-heal-accent">
                   {healTypeLabel(item.type)}
                 </span>

@@ -138,6 +138,12 @@ export async function getOrCreateUserByEmail(
     }
     const user = fromItem(email, existing, incoming);
     await linkWaitlistToUser(email, user.userId);
+    try {
+      const { ensureDefaultUsername } = await import("./username-registry");
+      await ensureDefaultUsername({ email, userId: user.userId });
+    } catch (err) {
+      console.error("ensureDefaultUsername", err);
+    }
     return user;
   }
 
@@ -170,6 +176,12 @@ export async function getOrCreateUserByEmail(
       createdAt: now,
     };
     await linkWaitlistToUser(email, userId);
+    try {
+      const { ensureDefaultUsername } = await import("./username-registry");
+      await ensureDefaultUsername({ email, userId });
+    } catch (err) {
+      console.error("ensureDefaultUsername", err);
+    }
     return user;
   } catch (e: unknown) {
     const name =

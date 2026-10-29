@@ -8,6 +8,8 @@ import { randomBytes } from "crypto";
 import { createPromptFromProvenance } from "./meditation-cover";
 
 export const LISTEN_SLUG_PK = "LISTEN_SLUG";
+/** Per-user path registry: sk = `<username>/<pathSlug>` or `<username>/<pathSlug>-<token>`. */
+export const LISTEN_PATH_PK = "LISTEN_PATH";
 export const LISTEN_LISTED_PK = "1";
 
 export type ListenShareKind = "meditation" | "story";
@@ -29,6 +31,11 @@ export type ListenShareSnapshot = {
 
 export type ListenPublicItem = {
   slug: string;
+  /** Owner username when using /listen/<user>/<slug> paths. */
+  username: string | null;
+  pathSlug: string | null;
+  /** Prefer this path over `/listen/${slug}` when present. */
+  href: string | null;
   kind: ListenShareKind;
   title: string;
   description: string;

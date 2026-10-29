@@ -45,6 +45,7 @@ import {
   withoutDemoJournalEntries,
   type JournalEntry,
   type JournalGratitudeLines,
+  journalEntryHref,
 } from "@/lib/journal-storage";
 import {
   putJournalStoreRemote,
@@ -78,7 +79,7 @@ function EntryOverviewCard({
   const date = formatOverviewEntryDate(entry.entryDate || entry.createdAt);
   return (
     <Link
-      href={`/journal/entries/${encodeURIComponent(entry.id)}`}
+      href={journalEntryHref(entry)}
       className={`flex min-w-0 flex-col gap-1 rounded-[14px] border border-border bg-card px-4 py-3.5 max-md:rounded-none max-md:border-0 max-md:border-border max-md:bg-transparent max-md:px-0 max-md:py-2.5 ${
         divider ? "max-md:border-t" : ""
       }`}
@@ -273,7 +274,7 @@ function JournalTodayHero({
     : null;
   const firstLine = started ? entryFirstLine(todayEntry!) : "";
   const href = started
-    ? `/journal/entries/${encodeURIComponent(todayEntry!.id)}`
+    ? journalEntryHref(todayEntry!)
     : "/journal/entries?new=1";
   const cta = started ? "Continue writing" : "New entry";
 
@@ -315,7 +316,7 @@ function JournalTodayHero({
   );
 
   const leftColumn = (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className="flex min-w-0 flex-col justify-between gap-3 md:h-full md:gap-0">
       <p className="text-[11.5px] font-semibold uppercase tracking-[1.4px] text-[#D9B87C]">
         Today
       </p>
@@ -338,7 +339,7 @@ function JournalTodayHero({
           Nothing written yet today.
         </p>
       )}
-      <div className="pt-0.5">{mistCta}</div>
+      <div>{mistCta}</div>
     </div>
   );
 
@@ -348,14 +349,16 @@ function JournalTodayHero({
       style={{ backgroundColor: "#0F1B2D" }}
     >
       <div className="navy-paisley-plate" aria-hidden />
-      {/* Mobile: stacked. Desktop: two columns + vertical hairline. */}
-      <div className="relative flex flex-col gap-3.5 md:flex-row md:items-start md:gap-8">
-        <div className="min-w-0 md:flex-1">{leftColumn}</div>
+      {/* Mobile: stacked. Desktop: stretch so left fills the gratitudes height. */}
+      <div className="relative flex flex-col gap-3.5 md:flex-row md:items-stretch md:gap-8">
+        <div className="min-w-0 md:flex md:flex-1 md:flex-col">
+          {leftColumn}
+        </div>
         <div
           className="hidden w-px shrink-0 self-stretch bg-[rgb(243_237_226_/_0.14)] md:block"
           aria-hidden
         />
-        <div className="min-w-0 md:w-[46%] md:shrink-0">
+        <div className="min-w-0 md:flex md:w-[46%] md:shrink-0 md:flex-col md:justify-center">
           <HeroGratitudesFields />
         </div>
       </div>

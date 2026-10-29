@@ -4,6 +4,7 @@
  * Everything derives from the Ideate store — nothing is persisted here.
  */
 
+import { lifeAreaHrefById } from "@/lib/entity-href";
 import type { PlanDream } from "@/lib/plan-dreams";
 import {
   subtasksForProject,
@@ -114,16 +115,16 @@ export function lifeAreaActivityMeta(
   return { text, quiet: false };
 }
 
-/** Deep link helpers for the life area workspace (`/manifest/goal/:id`). */
+/** Deep link helpers for the life area workspace (readable `/manifest/<slug>`). */
 export function lifeAreaHref(lifeAreaId: string): string {
-  return `/manifest/goal/${encodeURIComponent(lifeAreaId)}`;
+  return lifeAreaHrefById(lifeAreaId);
 }
 
 export function lifeAreaStepHref(
   lifeAreaId: string,
   subtaskId: string,
 ): string {
-  return `${lifeAreaHref(lifeAreaId)}?tab=steps&task=${encodeURIComponent(subtaskId)}`;
+  return `${lifeAreaHrefById(lifeAreaId)}?tab=steps&task=${encodeURIComponent(subtaskId)}`;
 }
 
 /**

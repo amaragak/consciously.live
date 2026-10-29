@@ -19,6 +19,14 @@ const SECTIONS = [
   { href: "/admin/preprompts", label: "Pre-prompts" },
   { href: "/admin/category-images", label: "Category images" },
   { href: "/admin/composition-covers", label: "Compositions" },
+  {
+    href: "/meditate/create?as=consciously",
+    label: "Create as Consciously",
+  },
+  {
+    href: "/meditate/library/creations?as=consciously",
+    label: "Consciously library",
+  },
 ] as const;
 
 function AdminSectionTabs({ pathname }: { pathname: string }) {

@@ -989,8 +989,21 @@ export async function handler(
       });
     }
 
-    const userPk = meditationUserPk(user.sub);
-    const userMp3Prefix = `meditations/${user.sub}/`;
+    let listUserId = user.sub;
+    const asHouse =
+      event.queryStringParameters?.as === "consciously" ||
+      event.queryStringParameters?.asHouse === "1";
+    if (asHouse) {
+      if (user.role !== "admin") {
+        return json(403, { error: "Admin only" });
+      }
+      const { ensureHouseAccount } = await import("./_shared/username-registry");
+      const house = await ensureHouseAccount();
+      listUserId = house.userId;
+    }
+
+    const userPk = meditationUserPk(listUserId);
+    const userMp3Prefix = `meditations/${listUserId}/`;
 
     const [userRows, userS3] = await Promise.all([
       queryAllMeditationItems(tableName, userPk),
@@ -1002,11 +1015,12 @@ export async function handler(
         ddbItems: userRows,
         s3Objects: userS3.filter((o) => isLibraryCatalogMp3Key(o.key)),
         cfDomain,
-        draftUserFallback: user.sub,
+        draftUserFallback: listUserId,
         speakerNames,
         speakerPortraits,
         excludeS3Keys: programAudioKeys,
       }),
+      ...(asHouse ? { asHouse: true } : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Library list failed";

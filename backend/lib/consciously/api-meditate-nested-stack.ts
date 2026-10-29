@@ -62,6 +62,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     meditationAnalyticsTable.grantReadWriteData(role);
     meditationJobsTable.grantReadWriteData(role);
     meditationListenerMixTable.grantReadWriteData(role);
+    props.database.users.grantReadWriteData(role);
     soundCatalogTable.grantReadData(role);
     voiceAdminTable.grantReadData(role);
     aiUsageTable.grantReadWriteData(role);
@@ -152,6 +153,11 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
           MEDITATION_JOBS_TABLE_NAME: meditationJobsTable.tableName,
           WORKER_FUNCTION_NAME: meditationAudioWorker.functionName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          USERS_TABLE_NAME: props.database.users.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+        },
+        bundling: {
+          nodeModules: ["bad-words"],
         },
       },
     );
@@ -236,6 +242,10 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
+          USERS_TABLE_NAME: props.database.users.tableName,
+        },
+        bundling: {
+          nodeModules: ["bad-words"],
         },
       },
     );
@@ -422,7 +432,11 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
         role,
         environment: {
           MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
+          USERS_TABLE_NAME: props.database.users.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        },
+        bundling: {
+          nodeModules: ["bad-words"],
         },
       },
     );
@@ -519,6 +533,15 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
       methods: [apigwv2.HttpMethod.GET],
       integration: new integrations.HttpLambdaIntegration(
         "ListenPublicSlugIntegration",
+        listenPublic,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "ListenPublicPathRoute",
+      path: "/public/listen/{username}/{path}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "ListenPublicPathIntegration",
         listenPublic,
       ),
     });

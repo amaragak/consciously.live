@@ -1,21 +1,80 @@
-import { Suspense } from "react";
-import { useParams } from "react-router-dom";
+import { Suspense, useEffect, useMemo } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
 import { PlanGoalWorkspace } from "@/components/plan/plan-goal-workspace";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ensureEntityUrlSlug,
+  findEntityByPathSlug,
+  lifeAreaHref,
+} from "@/lib/entity-href";
+import { loadPlanDreamsStore, savePlanDreamsStore } from "@/lib/plan-dreams";
+import { looksLikeUuid } from "@/lib/readable-url";
+
+const MANIFEST_RESERVED = new Set([
+  "story",
+  "poster",
+  "guides",
+  "vision-board",
+  "tracker",
+  "insights",
+  "words",
+  "questions",
+  "goal",
+  "my",
+]);
 
 function ManifestGoalPageInner() {
   const params = useParams();
-  const raw = params.id;
-  const id = typeof raw === "string" ? decodeURIComponent(raw) : "";
+  const navigate = useNavigate();
+  const rawId = typeof params.id === "string" ? decodeURIComponent(params.id) : "";
+  const areaSlug =
+    typeof params.areaSlug === "string" ? decodeURIComponent(params.areaSlug) : "";
+  const key = rawId || areaSlug;
 
-  if (!id) {
+  const dreamId = useMemo(() => {
+    if (!key || MANIFEST_RESERVED.has(key.toLowerCase())) return "";
+    const store = loadPlanDreamsStore();
+    const found = findEntityByPathSlug(store.dreams, key);
+    return found?.id ?? (looksLikeUuid(key) || key.startsWith("dream_") ? key : "");
+  }, [key]);
+
+  useEffect(() => {
+    if (!dreamId) return;
+    const store = loadPlanDreamsStore();
+    const ensured = ensureEntityUrlSlug(store.dreams, dreamId);
+    if (ensured.items !== store.dreams) {
+      savePlanDreamsStore({ ...store, dreams: ensured.items });
+    }
+    const dream = ensured.item ?? store.dreams.find((d) => d.id === dreamId);
+    if (!dream) return;
+
+    const tab = params.tab ? String(params.tab) : "";
+    const itemSlug = params.itemSlug || params.itemId || params.goalSlug || params.goalId;
+    let rest = "";
+    if (itemSlug && (tab === "tracker" || params.itemSlug || params.itemId || params.goalSlug || params.goalId)) {
+      rest = `tracker/${encodeURIComponent(String(itemSlug))}`;
+    } else if (tab && tab !== "overview") {
+      rest = tab;
+    }
+    const href = lifeAreaHref(dream, rest);
+    const current = window.location.pathname.replace(/\/$/, "");
+    if (current !== href && (rawId || looksLikeUuid(key) || key.startsWith("dream_"))) {
+      navigate(href, { replace: true });
+    }
+  }, [dreamId, key, navigate, params, rawId]);
+
+  if (!key || MANIFEST_RESERVED.has(key.toLowerCase())) {
+    return <Navigate to="/manifest" replace />;
+  }
+
+  if (!dreamId) {
     return (
       <div className="px-4 py-16 text-muted">Missing goal link.</div>
     );
   }
 
-  return <PlanGoalWorkspace dreamId={id} />;
+  return <PlanGoalWorkspace dreamId={dreamId} />;
 }
 
 function GoalPageFallback() {

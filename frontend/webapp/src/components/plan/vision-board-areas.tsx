@@ -35,6 +35,7 @@ import {
   visionRedrawingIds,
   visionStyleProgress,
 } from "@/lib/vision-image-jobs";
+import { lifeAreaHref } from "@/lib/entity-href";
 
 export type VisionBoardArea = { id: string; title: string; visionText: string };
 
@@ -447,7 +448,7 @@ function AreaSection({
             </div>
           ) : null}
           <Link
-            href={`/manifest/goal/${encodeURIComponent(area.id)}`}
+            href={lifeAreaHref(area)}
             className="inline-flex items-center gap-0.5 text-[12px] font-bold uppercase tracking-[1.6px] text-accent-link"
           >
             {area.title}

@@ -46,6 +46,7 @@ import {
   subscribeIdeateCloud,
 } from "@/lib/ideate-cloud";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { healItemHref, lifeAreaHref } from "@/lib/entity-href";
 
 function accountLabelFromSession(): string {
   return (
@@ -599,7 +600,7 @@ export function AppSidebar({
       ...healItems.map((item) => ({
         id: `heal-item:${item.id}`,
         label: item.title,
-        href: `/heal/${encodeURIComponent(item.id)}`,
+        href: healItemHref(item),
       })),
       ...(healHasRested
         ? [{ id: "heal-rested", label: "Laid to rest", href: "/heal/rested" }]
@@ -611,7 +612,7 @@ export function AppSidebar({
     return lifeAreas.map((d) => ({
       id: `life-area:${d.id}`,
       label: d.title,
-      href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+      href: lifeAreaHref(d),
     }));
   }, [lifeAreas]);
 

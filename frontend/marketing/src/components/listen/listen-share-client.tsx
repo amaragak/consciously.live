@@ -8,6 +8,7 @@ import { ListenCoverArt } from "@/components/listen/listen-cover";
 import {
   formatListenClock,
   formatListenDuration,
+  listenItemHref,
   type ListenPublicItem,
 } from "@/lib/public-listen";
 
@@ -48,7 +49,7 @@ export function ListenShareClient({
     const url =
       typeof window !== "undefined"
         ? window.location.href
-        : `https://consciously.live/listen/${encodeURIComponent(item.slug)}`;
+        : `https://consciously.live${listenItemHref(item)}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -58,13 +59,17 @@ export function ListenShareClient({
     }
   }
 
-  const madeBy = item.shownAs
-    ? `Made by ${item.shownAs} with Consciously`
-    : "Made with Consciously";
+  const madeBy = item.isExample
+    ? "Made by Consciously"
+    : item.shownAs
+      ? `Made by ${item.shownAs} with Consciously`
+      : "Made with Consciously";
 
-  const bandBody = item.shownAs
-    ? `${item.shownAs} wrote one line and got this. Write yours, and Consciously writes and narrates a meditation for it. Your first one is free.`
-    : "Write yours, and Consciously writes and narrates a meditation for it. Your first one is free.";
+  const bandBody = item.isExample
+    ? "Write yours, and Consciously writes and narrates a meditation for it. Your first one is free."
+    : item.shownAs
+      ? `${item.shownAs} wrote one line and got this. Write yours, and Consciously writes and narrates a meditation for it. Your first one is free.`
+      : "Write yours, and Consciously writes and narrates a meditation for it. Your first one is free.";
 
   return (
     <div className="home-v2 min-h-full bg-[var(--hv2-page)] text-[var(--hv2-ink)]">
@@ -205,7 +210,7 @@ export function ListenShareClient({
               {more.map((m) => (
                 <Link
                   key={m.slug}
-                  href={`/listen/${encodeURIComponent(m.slug)}`}
+                  href={listenItemHref(m)}
                   className="overflow-hidden rounded-[18px] border border-[rgba(62,52,66,.12)] bg-[#FFFBF3]"
                 >
                   <div className="relative h-36 w-full">

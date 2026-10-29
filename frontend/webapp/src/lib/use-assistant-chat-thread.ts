@@ -15,6 +15,8 @@ import { parseAssistantDisplayText } from "@/lib/assistant-chat-protocol";
 import {
   ASSISTANT_CHAT_STORE_CHANGED,
   deriveAssistantChatTitle,
+  ensureChatThreadUrlSlug,
+  findChatThreadByPathSlug,
   loadAssistantChatStore,
   newAssistantChatThread,
   pickAssistantChatFabResumeThread,
@@ -62,6 +64,9 @@ async function healProvisionalThreadTitle(
     title: cleaned,
     updatedAt: new Date().toISOString(),
   });
+  const withSlug = ensureChatThreadUrlSlug(loadAssistantChatStore(), threadId);
+  saveAssistantChatStore(withSlug);
+  scheduleAssistantChatCloudPush(withSlug);
 }
 
 function resolveSystemSupplement(
@@ -268,8 +273,8 @@ export function useAssistantChatThread(opts: {
       thread = resume ?? undefined;
       id = resume?.id;
     } else if (threadId) {
-      id = threadId;
-      thread = store.threads.find((t) => t.id === id);
+      thread = findChatThreadByPathSlug(store.threads, threadId) ?? undefined;
+      id = thread?.id;
     } else {
       // Full Chat at /chat with no id — workspace creates a fresh thread.
       // Do not resume the last active chat.
@@ -345,8 +350,11 @@ export function useAssistantChatThread(opts: {
     if (busyRef.current) return null;
     openNonceRef.current += 1;
     setOpening(false);
-    const thread = newAssistantChatThread();
-    let store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
+    const prior = loadAssistantChatStore();
+    const thread = newAssistantChatThread(new Date(), {
+      siblings: prior.threads,
+    });
+    let store = upsertAssistantChatThread(prior, thread);
     // Avoid stacking blank “New chat” rows from repeated /chat entries.
     store = {
       ...store,
@@ -380,11 +388,13 @@ export function useAssistantChatThread(opts: {
         type: "life_area_ideate",
         lifeAreaId,
       };
+      const prior = loadAssistantChatStore();
       const thread = newAssistantChatThread(new Date(), {
         title: lifeAreaIdeateThreadTitle(lifeAreaId),
         mode,
+        siblings: prior.threads,
       });
-      const store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
+      const store = upsertAssistantChatThread(prior, thread);
       saveAssistantChatStore(store);
       scheduleAssistantChatCloudPush(store);
       setActiveId(thread.id);
@@ -434,8 +444,11 @@ export function useAssistantChatThread(opts: {
     let priorApi: AssistantChatApiTurn[] = apiThread;
 
     if (!id) {
-      const thread = newAssistantChatThread();
-      const store = upsertAssistantChatThread(loadAssistantChatStore(), thread);
+      const prior = loadAssistantChatStore();
+      const thread = newAssistantChatThread(new Date(), {
+        siblings: prior.threads,
+      });
+      const store = upsertAssistantChatThread(prior, thread);
       saveAssistantChatStore(store);
       scheduleAssistantChatCloudPush();
       id = thread.id;

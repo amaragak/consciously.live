@@ -102,11 +102,31 @@ export async function handler(
     event,
     typeof body.sessionToken === "string" ? body.sessionToken : null,
   );
-  const userId = auth?.sub?.trim() || GLOBAL_MEDITATION_USER_ID;
-  const userEmail =
+  let userId = auth?.sub?.trim() || GLOBAL_MEDITATION_USER_ID;
+  let userEmail =
     typeof auth?.email === "string" && auth.email.trim()
       ? auth.email.trim().toLowerCase()
       : "";
+
+  // Admin-only: create under the Consciously house account (Listen examples).
+  if (body.asHouse === true || body.as === "consciously") {
+    if (auth?.role !== "admin") {
+      return json(403, { error: "Admin only for Create as Consciously" });
+    }
+    const { ensureHouseAccount } = await import("./_shared/username-registry");
+    const house = await ensureHouseAccount();
+    userId = house.userId;
+    userEmail = house.email;
+    // Strip personal context so examples don't inherit the admin's journal/goals.
+    delete body.lifeAreaId;
+    if (body.creationProvenance && typeof body.creationProvenance === "object") {
+      const p = { ...(body.creationProvenance as Record<string, unknown>) };
+      delete p.journalGuidance;
+      delete p.manifest;
+      delete p.heal;
+      body.creationProvenance = p;
+    }
+  }
 
   const tableName = process.env.MEDITATION_JOBS_TABLE_NAME;
   const workerFn = process.env.WORKER_FUNCTION_NAME;

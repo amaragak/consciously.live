@@ -20,10 +20,13 @@ import {
   saveAssistantChatStore,
 } from "@/lib/assistant-chat-storage";
 import {
+  checkUsernameAvailable,
   fetchCognitoAuthConfig,
+  fetchUsernameProfile,
   listLibraryMeditations,
   putAssistantChatStoreRemote,
   saveMedimadeProfileDisplayName,
+  saveUsername,
   type CognitoAuthConfig,
 } from "@/lib/medimade-api";
 import {
@@ -160,6 +163,17 @@ function AccountSection({ settings, onPatch }: SectionProps) {
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSaved, setNameSaved] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameHelper, setUsernameHelper] = useState(
+    "Your public links use this: consciously.live/listen/<username>. You can change it in Settings.",
+  );
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSaved, setUsernameSaved] = useState(false);
+  const [usernameCanChange, setUsernameCanChange] = useState(true);
+  const [usernameNextAllowed, setUsernameNextAllowed] = useState<string | null>(
+    null,
+  );
+  const [usernameLoaded, setUsernameLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +183,29 @@ function AccountSection({ settings, onPatch }: SectionProps) {
       })
       .catch(() => {
         if (!cancelled) setCognito(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchUsernameProfile()
+      .then((p) => {
+        if (cancelled) return;
+        setUsernameDraft(
+          p.chosen || !p.isDefault
+            ? p.username ?? p.prefill
+            : p.prefill || p.username || "",
+        );
+        setUsernameHelper(p.helper);
+        setUsernameCanChange(p.canChange);
+        setUsernameNextAllowed(p.nextAllowedAt);
+        setUsernameLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setUsernameLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -213,6 +250,36 @@ function AccountSection({ settings, onPatch }: SectionProps) {
     void commitName(v);
   });
 
+  const commitUsername = useCallback(async (raw: string) => {
+    const trimmed = raw.trim().toLowerCase();
+    if (!trimmed || !usernameLoaded) return;
+    if (!usernameCanChange) return;
+    setUsernameError(null);
+    setUsernameSaved(false);
+    try {
+      const check = await checkUsernameAvailable(trimmed);
+      if (!check.available) {
+        setUsernameError(check.error || "That username isn't available.");
+        return;
+      }
+      const saved = await saveUsername(trimmed);
+      setUsernameDraft(saved.username ?? trimmed);
+      setUsernameHelper(saved.helper);
+      setUsernameCanChange(saved.canChange);
+      setUsernameNextAllowed(saved.nextAllowedAt);
+      setUsernameSaved(true);
+      window.setTimeout(() => setUsernameSaved(false), 2000);
+    } catch (e) {
+      setUsernameError(
+        e instanceof Error ? e.message : "That username isn't available.",
+      );
+    }
+  }, [usernameCanChange, usernameLoaded]);
+
+  useDebouncedCommit(usernameDraft, (v) => {
+    void commitUsername(v);
+  });
+
   const methodLabels: string[] = [];
   if (cognito?.methods.password) methodLabels.push("Password");
   if (cognito?.methods.passkey) methodLabels.push("Passkey");
@@ -252,6 +319,50 @@ function AccountSection({ settings, onPatch }: SectionProps) {
             }}
             onBlur={() => void commitName(nameDraft)}
             className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+          />
+        }
+      />,
+    );
+  }
+
+  if (shouldShowSettingsRow("account.username")) {
+    const cooldownNote =
+      !usernameCanChange && usernameNextAllowed
+        ? ` You can change it again after ${usernameNextAllowed.slice(0, 10)}.`
+        : !usernameCanChange
+          ? " You can change it once every 30 days."
+          : usernameSaved
+            ? " You can change it once every 30 days."
+            : "";
+    rows.push(
+      <SettingsRow
+        key="username"
+        settingsKey="account.username"
+        title="Username"
+        helper={
+          usernameError
+            ? usernameError
+            : usernameSaved
+              ? `Saved.${cooldownNote}`
+              : `${usernameHelper}${cooldownNote}`
+        }
+        control={
+          <input
+            type="text"
+            value={usernameDraft}
+            maxLength={30}
+            autoComplete="username"
+            spellCheck={false}
+            disabled={!usernameCanChange && usernameLoaded}
+            aria-label="Username"
+            aria-invalid={usernameError ? true : undefined}
+            onChange={(e) => {
+              setUsernameError(null);
+              setUsernameSaved(false);
+              setUsernameDraft(e.target.value.toLowerCase());
+            }}
+            onBlur={() => void commitUsername(usernameDraft)}
+            className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-60"
           />
         }
       />,

@@ -61,9 +61,11 @@ import {
 } from "@/lib/sound-favorites";
 import {
   emptyMixerMix,
+  findMixerPresetByPathSlug,
   loadMixerPresetStore,
   mixEquals,
   mixForPlayback,
+  mixerPresetHref,
   mixerPresetToMix,
   newMixerPreset,
   normalizeFaderGains,
@@ -441,9 +443,7 @@ export function MixerSoundsStudio({
               mix: mixerPresetToMix(p),
               savedId: p.id,
             });
-            navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`, {
-              replace: true,
-            });
+            navigate(mixerPresetHref(p, "mix"), { replace: true });
             return;
           }
         }
@@ -503,7 +503,7 @@ export function MixerSoundsStudio({
     if (route.kind === "new") {
       if (handledNewRouteRef.current) return;
       handledNewRouteRef.current = true;
-      const p = newMixerPreset();
+      const p = newMixerPreset(undefined, presets);
       appliedRouteKeyRef.current = `mix:${p.id}`;
       setPresets((prev) => [p, ...prev]);
       setActiveId(p.id);
@@ -511,18 +511,18 @@ export function MixerSoundsStudio({
       setNameDraft(p.name);
       setMix(emptyMixerMix());
       setSaveError(null);
-      navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`, {
-        replace: true,
-      });
+      navigate(mixerPresetHref(p, "mix"), { replace: true });
       return;
     }
 
     handledNewRouteRef.current = false;
 
     if (route.kind === "mix") {
-      const routeKey = `mix:${route.id}`;
+      const p =
+        findMixerPresetByPathSlug(presets, route.id) ??
+        presets.find((x) => x.id === route.id);
+      const routeKey = p ? `mix:${p.id}` : `mix:${route.id}`;
       if (appliedRouteKeyRef.current === routeKey) return;
-      const p = presets.find((x) => x.id === route.id);
       if (!p) {
         // createNew sets appliedRouteKey before presets state commits.
         if (appliedRouteKeyRef.current === routeKey) return;
@@ -536,6 +536,8 @@ export function MixerSoundsStudio({
         savedId: p.id,
       });
       writeSoundsLastOpen({ kind: "mix", id: p.id });
+      const canonical = mixerPresetHref(p, "mix");
+      if (pathname !== canonical) navigate(canonical, { replace: true });
       return;
     }
 
@@ -955,7 +957,7 @@ export function MixerSoundsStudio({
     });
     if (!isAdmin) writeSoundsLastOpen({ kind: "mix", id: p.id });
     if (!isAdmin && opts?.navigate !== false) {
-      navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+      navigate(mixerPresetHref(p, "mix"));
     }
   }
 
@@ -1071,7 +1073,7 @@ export function MixerSoundsStudio({
       });
       return;
     }
-    const p = newMixerPreset();
+    const p = newMixerPreset(undefined, presets);
     appliedRouteKeyRef.current = `mix:${p.id}`;
     setPresets((prev) => [p, ...prev]);
     setActiveId(p.id);
@@ -1079,7 +1081,7 @@ export function MixerSoundsStudio({
     setNameDraft(p.name);
     setMix(emptyMixerMix());
     writeSoundsLastOpen({ kind: "mix", id: p.id });
-    navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+    navigate(mixerPresetHref(p, "mix"));
   }
 
   function openSoundsList() {
@@ -1120,7 +1122,7 @@ export function MixerSoundsStudio({
     const now = new Date().toISOString();
     if (!activeId) {
       const p: MixerPreset = {
-        ...newMixerPreset(name),
+        ...newMixerPreset(name, presets),
         ...normalized,
         name,
         updatedAt: now,
@@ -1128,7 +1130,7 @@ export function MixerSoundsStudio({
       setPresets((prev) => [p, ...prev]);
       setActiveId(p.id);
       setLoadedFactoryId(null);
-      navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+      navigate(mixerPresetHref(p, "mix"));
       return;
     }
     setPresets((prev) =>
@@ -1149,7 +1151,7 @@ export function MixerSoundsStudio({
     const now = new Date().toISOString();
     const normalized = normalizeFaderGains(mix);
     const p: MixerPreset = {
-      ...newMixerPreset(name),
+      ...newMixerPreset(name, presets),
       ...normalized,
       name,
       updatedAt: now,
@@ -1160,7 +1162,7 @@ export function MixerSoundsStudio({
     setNameDraft(name);
     setSaveError(null);
     writeSoundsLastOpen({ kind: "mix", id: p.id });
-    navigate(`${SOUNDS_HREF}/mix/${encodeURIComponent(p.id)}`);
+    navigate(mixerPresetHref(p, "mix"));
   }
 
   function resetFactoryPreset() {

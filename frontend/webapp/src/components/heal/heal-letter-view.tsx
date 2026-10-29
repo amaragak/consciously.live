@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { appendSpokenText } from "@/hooks/use-whisper-dictation";
 import { Link, useRouter } from "@/lib/spa-nav";
+import { healItemHref } from "@/lib/entity-href";
 import {
   addHealEntry,
   deleteHealEntry,
@@ -82,7 +83,7 @@ export function HealLetterView({
 
   function keep() {
     if (existing) {
-      router.push(`/heal/${item!.id}`);
+      router.push(healItemHref(item!));
       return;
     }
     const added = addHealEntry(loadHealStore(), {
@@ -93,14 +94,14 @@ export function HealLetterView({
     });
     commit(added.store);
     void rememberRisk(item!.id, text, commit);
-    router.push(`/heal/${item!.id}`);
+    router.push(healItemHref(item!));
   }
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-6xl lg:px-6 lg:py-6">
       <div className="flex min-h-[calc(100dvh-4rem-48px)] flex-col border border-heal-border bg-card shadow-[0_2px_10px_rgb(15_27_45_/_0.04)] max-lg:rounded-t-2xl lg:rounded-2xl">
         <div className="flex items-center justify-between gap-3 px-4 pt-4">
-          <Link href={`/heal/${item.id}`} className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-foreground">
+          <Link href={healItemHref(item)} className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-foreground">
             <ChevronLeft className="size-4 shrink-0" aria-hidden />
             <span className="truncate">{item.title}</span>
           </Link>
@@ -134,7 +135,7 @@ export function HealLetterView({
                 className={HEAL_PRIMARY}
                 onClick={() => {
                   if (existing) commit(deleteHealEntry(loadHealStore(), existing.id));
-                  router.push(`/heal/${item.id}`);
+                  router.push(healItemHref(item));
                 }}
               >
                 <Leaf className="size-3.5" aria-hidden />

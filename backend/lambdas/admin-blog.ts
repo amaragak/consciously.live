@@ -28,17 +28,88 @@ import {
 import { invalidateBlogCache } from "./_shared/blog-revalidate";
 import {
   coverUrlFromRow,
+  LISTEN_PATH_PK,
   LISTEN_SLUG_PK,
   parseListenShare,
 } from "./_shared/listen-share";
+import {
+  CLAUDE_HAIKU_45_MODEL_ID,
+  withClaudeThinkingOff,
+} from "./_shared/anthropic-pricing";
+import { recordClaudeUsageFromResponseText } from "./_shared/ai-usage";
 import { generateAdminImageFromPrompt } from "./_shared/meditation-cover";
 import { meditationPlaybackS3Key } from "./_shared/playback-keys";
+import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
 
 const s3 = new S3Client({});
 const lambda = new LambdaClient({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const secrets = new SecretsManagerClient({});
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 const MAX_COVER_BYTES = 4 * 1024 * 1024;
+const MAX_ESSAY_CHARS_FOR_PROMPT = 7000;
+
+let cachedClaudeKey: string | undefined;
+
+async function getClaudeApiKey(): Promise<string> {
+  if (cachedClaudeKey) return cachedClaudeKey;
+  const arn = process.env.CLAUDE_SECRET_ARN?.trim();
+  if (!arn) throw new Error("CLAUDE_SECRET_ARN is not set");
+  const out = await secrets.send(new GetSecretValueCommand({ SecretId: arn }));
+  const s = out.SecretString?.trim();
+  if (!s) throw new Error("Claude API key secret is empty");
+  cachedClaudeKey = s;
+  return cachedClaudeKey;
+}
+
+/** Prefer full essay plain text; fall back to legacy `opening` field. */
+function essayTextFromBody(body: Record<string, unknown>): string {
+  const full =
+    typeof body.bodyText === "string"
+      ? body.bodyText
+      : typeof body.essay === "string"
+        ? body.essay
+        : "";
+  const opening =
+    typeof body.opening === "string" ? body.opening : "";
+  const raw = (full.trim() || opening.trim()).replace(/\s+/g, " ");
+  if (raw.length <= MAX_ESSAY_CHARS_FOR_PROMPT) return raw;
+  // Keep head + middle + tail so the topic isn't only the lede.
+  const head = Math.floor(MAX_ESSAY_CHARS_FOR_PROMPT * 0.45);
+  const mid = Math.floor(MAX_ESSAY_CHARS_FOR_PROMPT * 0.25);
+  const tail = MAX_ESSAY_CHARS_FOR_PROMPT - head - mid - 30;
+  const midStart = Math.max(
+    head,
+    Math.floor((raw.length - mid) / 2),
+  );
+  return [
+    raw.slice(0, head).trim(),
+    "…",
+    raw.slice(midStart, midStart + mid).trim(),
+    "…",
+    raw.slice(-tail).trim(),
+  ].join(" ");
+}
+
+/** Crude overview when Haiku is unavailable — not just the opening lines. */
+function heuristicEssayOverview(essay: string): string {
+  if (!essay) return "";
+  if (essay.length <= 500) return essay;
+  const parts = essay.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (parts.length <= 4) return essay.slice(0, 500);
+  const take = (idxs: number[]) =>
+    idxs
+      .map((i) => parts[i])
+      .filter(Boolean)
+      .join(" ");
+  const last = parts.length - 1;
+  const mid = Math.floor(parts.length / 2);
+  return take([0, 1, mid, last - 1, last]).slice(0, 700);
+}
 
 /** Extract `blog/author-photo…` key from a media URL (ignores query string). */
 function authorPhotoKeyFromUrl(url: string | null | undefined): string | null {
@@ -164,7 +235,7 @@ async function uploadPostImage(body: Record<string, unknown>): Promise<string> {
   return putBlogMediaObject({ key, body: buf, mime });
 }
 
-function defaultCoverPrompt(body: Record<string, unknown>): string {
+function fallbackCoverPrompt(body: Record<string, unknown>): string {
   const title =
     typeof body.title === "string" && body.title.trim()
       ? body.title.trim()
@@ -173,18 +244,113 @@ function defaultCoverPrompt(body: Record<string, unknown>): string {
     typeof body.subheader === "string" && body.subheader.trim()
       ? body.subheader.trim()
       : "";
-  const opening =
-    typeof body.opening === "string" && body.opening.trim()
-      ? body.opening.trim().slice(0, 400)
-      : "";
+  const overview = heuristicEssayOverview(essayTextFromBody(body));
   return [
     `Editorial cover illustration for a Consciously essay titled "${title}".`,
     sub ? `Subtitle: ${sub}.` : "",
-    opening ? `Opening: ${opening}` : "",
+    overview
+      ? `Overall subject and arc (not only the opening): ${overview}`
+      : "",
     "Quiet, contemplative atmosphere. No text, logos, or watermarks in the image.",
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+/**
+ * Write an image-gen prompt from the essay as a whole — title, subtitle, and
+ * an overall summary of the piece (not just the opening paragraph).
+ */
+async function buildCoverPromptFromEssay(
+  body: Record<string, unknown>,
+): Promise<string> {
+  const title =
+    typeof body.title === "string" && body.title.trim()
+      ? body.title.trim()
+      : "Untitled essay";
+  const sub =
+    typeof body.subheader === "string" && body.subheader.trim()
+      ? body.subheader.trim()
+      : "";
+  const essay = essayTextFromBody(body);
+  if (!essay) return fallbackCoverPrompt(body);
+
+  try {
+    const apiKey = await getClaudeApiKey();
+    const system = [
+      "You write image-generation prompts for 16:9 editorial illustration covers for Consciously essays.",
+      "You are given the essay title, optional subtitle, and the essay text.",
+      "First infer the overall topic, argument, and emotional arc of the WHOLE piece — do not lean only on the opening.",
+      "Then write ONE complete image prompt that visually expresses that overall subject.",
+      "Keep: quiet, contemplative mood; full-bleed illustration; landscape 16:9; no overlaid text, logos, watermarks, or UI.",
+      "Do not ask for a photograph. Reply with ONLY the image prompt — no quotes, labels, or explanation.",
+    ].join("\n");
+    const user = [
+      `Title: ${title}`,
+      sub ? `Subtitle: ${sub}` : "",
+      "",
+      "Essay:",
+      essay,
+      "",
+      "Write the image prompt now.",
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
+
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(
+        withClaudeThinkingOff({
+          model: CLAUDE_HAIKU_45_MODEL_ID,
+          max_tokens: 500,
+          temperature: 0.4,
+          system,
+          messages: [{ role: "user", content: user }],
+        }),
+      ),
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(`Haiku blog cover prompt failed: ${raw.slice(0, 400)}`);
+    }
+    void recordClaudeUsageFromResponseText({
+      responseText: raw,
+      model: CLAUDE_HAIKU_45_MODEL_ID,
+      feature: "blog-cover-prompt",
+    });
+    let text = "";
+    try {
+      const parsed = JSON.parse(raw) as {
+        content?: Array<{ type?: string; text?: string }>;
+      };
+      text = (parsed.content ?? [])
+        .filter((c) => c.type === "text" && typeof c.text === "string")
+        .map((c) => c.text!.trim())
+        .join("\n")
+        .trim();
+    } catch {
+      throw new Error("Haiku returned invalid JSON");
+    }
+    text = text
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/^(image\s+)?prompt\s*:\s*/i, "")
+      .trim();
+    if (text.length < 40) {
+      throw new Error("Haiku returned an empty cover prompt");
+    }
+    return text.slice(0, 2000);
+  } catch (e) {
+    console.warn(
+      "buildCoverPromptFromEssay fallback:",
+      e instanceof Error ? e.message : e,
+    );
+    return fallbackCoverPrompt(body);
+  }
 }
 
 async function generateCoverOptions(body: Record<string, unknown>): Promise<{
@@ -194,29 +360,30 @@ async function generateCoverOptions(body: Record<string, unknown>): Promise<{
   const prompt =
     typeof body.prompt === "string" && body.prompt.trim()
       ? body.prompt.trim().slice(0, 2000)
-      : defaultCoverPrompt(body);
+      : await buildCoverPromptFromEssay(body);
+  // Default 1: API Gateway HTTP APIs hard-cap at 30s. Callers that want a
+  // grid of options should request count:1 repeatedly from the client.
   const countRaw =
-    typeof body.count === "number" ? body.count : Number(body.count ?? 4);
-  const count = Math.min(4, Math.max(1, Number.isFinite(countRaw) ? countRaw : 4));
+    typeof body.count === "number" ? body.count : Number(body.count ?? 1);
+  const count = Math.min(2, Math.max(1, Number.isFinite(countRaw) ? countRaw : 1));
 
-  const results = await Promise.all(
-    Array.from({ length: count }, async () => {
-      const out = await generateAdminImageFromPrompt({
-        prompt,
-        model: "nano-banana-pro",
-        illustrationStyle: true,
-        aspectRatio: "16:9",
-      });
-      const mime = out.mime === "image/png" ? "image/png" : "image/jpeg";
-      const key = `blog/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${imageExt(mime)}`;
-      const url = await putBlogMediaObject({
-        key,
-        body: out.body,
-        mime,
-      });
-      return { url, key };
-    }),
-  );
+  const results: Array<{ url: string; key: string }> = [];
+  for (let i = 0; i < count; i += 1) {
+    const out = await generateAdminImageFromPrompt({
+      prompt,
+      model: "nano-banana-pro",
+      illustrationStyle: true,
+      aspectRatio: "16:9",
+    });
+    const mime = out.mime === "image/png" ? "image/png" : "image/jpeg";
+    const key = `blog/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${imageExt(mime)}`;
+    const url = await putBlogMediaObject({
+      key,
+      body: out.body,
+      mime,
+    });
+    results.push({ url, key });
+  }
   return { prompt, options: results };
 }
 
@@ -244,9 +411,8 @@ function normalizeListenSlugInput(raw: unknown): string {
     .toLowerCase()
     .replace(/^https?:\/\/(www\.)?consciously\.live\/listen\//, "")
     .replace(/^.*\/listen\//, "")
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+    .replace(/\/+$/, "")
+    .slice(0, 120);
 }
 
 async function resolveListenLink(body: Record<string, unknown>): Promise<{
@@ -264,8 +430,10 @@ async function resolveListenLink(body: Record<string, unknown>): Promise<{
   warning?: string;
   error?: string;
 }> {
-  const slug = normalizeListenSlugInput(body.slug ?? body.listenSlug ?? body.url);
-  if (!slug) {
+  const rawPath = normalizeListenSlugInput(
+    body.slug ?? body.listenSlug ?? body.url,
+  );
+  if (!rawPath) {
     return { status: "missing", error: "Paste a Listen link or slug." };
   }
   const tableName = process.env.MEDITATION_ANALYTICS_TABLE_NAME?.trim();
@@ -274,44 +442,90 @@ async function resolveListenLink(body: Record<string, unknown>): Promise<{
   }
   const cfDomain = process.env.MEDIA_CLOUDFRONT_DOMAIN?.trim();
 
-  const reg = await ddb.send(
-    new GetCommand({
-      TableName: tableName,
-      Key: { pk: LISTEN_SLUG_PK, sk: slug },
-    }),
-  );
-  if (reg.Item?.status === "revoked") {
-    return {
-      status: "revoked",
-      error: "This Listen item is no longer shared.",
-    };
-  }
-
   let row: Record<string, unknown> | null = null;
-  if (
-    reg.Item?.status === "active" &&
-    typeof reg.Item.ownerPk === "string" &&
-    typeof reg.Item.ownerSk === "string"
-  ) {
-    const got = await ddb.send(
+  let slug = rawPath;
+
+  // New format: <username>/<pathSlug> or <username>/<pathSlug>-<token>
+  const slash = rawPath.indexOf("/");
+  if (slash > 0) {
+    const username = rawPath.slice(0, slash);
+    const pathKey = rawPath.slice(slash + 1);
+    const pathReg = await ddb.send(
       new GetCommand({
         TableName: tableName,
-        Key: { pk: reg.Item.ownerPk, sk: reg.Item.ownerSk },
+        Key: { pk: LISTEN_PATH_PK, sk: `${username}/${pathKey}` },
       }),
     );
-    if (got.Item) row = got.Item as Record<string, unknown>;
+    if (pathReg.Item?.status === "revoked") {
+      return {
+        status: "revoked",
+        error: "This Listen item is no longer shared.",
+      };
+    }
+    if (
+      pathReg.Item?.status === "active" &&
+      typeof pathReg.Item.ownerPk === "string" &&
+      typeof pathReg.Item.ownerSk === "string"
+    ) {
+      const got = await ddb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: pathReg.Item.ownerPk, sk: pathReg.Item.ownerSk },
+        }),
+      );
+      if (got.Item) {
+        row = got.Item as Record<string, unknown>;
+        slug =
+          typeof row.listenSlug === "string" && row.listenSlug.trim()
+            ? row.listenSlug.trim()
+            : pathKey;
+      }
+    }
   }
+
   if (!row) {
-    const q = await ddb.send(
-      new QueryCommand({
+    const flatSlug = rawPath
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    slug = flatSlug;
+    const reg = await ddb.send(
+      new GetCommand({
         TableName: tableName,
-        IndexName: "listenSlugIndex",
-        KeyConditionExpression: "listenSlug = :s",
-        ExpressionAttributeValues: { ":s": slug },
-        Limit: 1,
+        Key: { pk: LISTEN_SLUG_PK, sk: flatSlug },
       }),
     );
-    row = (q.Items?.[0] as Record<string, unknown> | undefined) ?? null;
+    if (reg.Item?.status === "revoked") {
+      return {
+        status: "revoked",
+        error: "This Listen item is no longer shared.",
+      };
+    }
+    if (
+      reg.Item?.status === "active" &&
+      typeof reg.Item.ownerPk === "string" &&
+      typeof reg.Item.ownerSk === "string"
+    ) {
+      const got = await ddb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: reg.Item.ownerPk, sk: reg.Item.ownerSk },
+        }),
+      );
+      if (got.Item) row = got.Item as Record<string, unknown>;
+    }
+    if (!row) {
+      const q = await ddb.send(
+        new QueryCommand({
+          TableName: tableName,
+          IndexName: "listenSlugIndex",
+          KeyConditionExpression: "listenSlug = :s",
+          ExpressionAttributeValues: { ":s": flatSlug },
+          Limit: 1,
+        }),
+      );
+      row = (q.Items?.[0] as Record<string, unknown> | undefined) ?? null;
+    }
   }
   const share = row ? parseListenShare(row.listenShare) : null;
   if (!row || !share) {

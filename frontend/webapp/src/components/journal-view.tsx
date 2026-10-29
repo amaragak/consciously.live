@@ -55,7 +55,9 @@ import {
 } from "@/lib/use-user-content-search";
 import {
   emptyGratitudeLines,
+  ensureJournalEntryUrlSlug,
   entriesForCloudPut,
+  findJournalEntryByPathSlug,
   findRecentGratitudeWithinHours,
   formatJournalEntryDate,
   gratitudeLinesToHtml,
@@ -68,6 +70,7 @@ import {
   journalEntryDateIso,
   journalEntryDraftChanged,
   journalEntryHasMeaningfulContent,
+  journalEntryHref,
   journalEntryListTitle,
   journalEntryPlainForHandoff,
   armJournalMeditationHandoffJson,
@@ -91,6 +94,7 @@ import {
   type JournalGratitudeLines,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
+import { looksLikeUuid } from "@/lib/readable-url";
 import {
   clearJournalEntryLiveTitle,
   setJournalEntryLiveTitle,
@@ -101,6 +105,7 @@ import {
 import { newJournalLink } from "@/lib/journal-links";
 import { journalEntriesLinkedToLifeArea } from "@/lib/plan-life-area-links";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
+import { lifeAreaHref } from "@/lib/entity-href";
 
 const JOURNAL_SIDEBAR_COLLAPSED_KEY = "mm_journal_sidebar_collapsed";
 
@@ -152,7 +157,7 @@ type JournalSection = JournalMainTab | "insights";
 
 const JOURNAL_SECTION_HREF = {
   journal: "/journal/entries",
-  gratitude: "/journal/gratitudes",
+  gratitude: "/journal/gratitude",
   insights: "/journal/insights",
 } as const;
 
@@ -171,24 +176,54 @@ function journalSectionFromPath(pathname: string): JournalSection {
   }
   if (
     pathname === "/journal/gratitudes" ||
-    pathname.startsWith("/journal/gratitudes/")
+    pathname.startsWith("/journal/gratitudes/") ||
+    pathname === "/journal/gratitude" ||
+    pathname.startsWith("/journal/gratitude/")
   ) {
     return "gratitude";
   }
   return "journal";
 }
 
-/** Entry id from `/journal/:entryId` (not gratitudes/insights). */
-function journalEntryIdFromPath(pathname: string): string | null {
+const JOURNAL_RESERVED = new Set([
+  "entries",
+  "gratitudes",
+  "gratitude",
+  "insights",
+  "guides",
+  "import",
+  "my",
+]);
+
+/** Path slug (or legacy UUID) for a freeform journal entry. */
+function journalEntrySlugFromPath(pathname: string): string | null {
   if (
     pathname === "/journal/entries" ||
     pathname === "/journal/entries/" ||
-    pathname.startsWith("/journal/gratitudes") ||
-    pathname.startsWith("/journal/insights")
+    pathname.startsWith("/journal/gratitude") ||
+    pathname.startsWith("/journal/insights") ||
+    pathname.startsWith("/journal/guides") ||
+    pathname.startsWith("/journal/import")
   ) {
     return null;
   }
-  const m = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
+  const viaEntries = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
+  const viaRoot = /^\/journal\/([^/]+)\/?$/.exec(pathname);
+  const raw = viaEntries?.[1] ?? viaRoot?.[1] ?? null;
+  if (!raw) return null;
+  if (!viaEntries && JOURNAL_RESERVED.has(raw.toLowerCase())) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/** Path slug (or legacy UUID) for a gratitude entry. */
+function gratitudeEntrySlugFromPath(pathname: string): string | null {
+  const m =
+    /^\/journal\/gratitude(?:s)?\/([^/]+)\/?$/.exec(pathname) ??
+    /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   try {
     return decodeURIComponent(m[1]);
@@ -197,15 +232,13 @@ function journalEntryIdFromPath(pathname: string): string | null {
   }
 }
 
-/** Entry id from `/journal/gratitudes/:entryId`. */
+/** @deprecated Prefer slug helpers — kept for call sites that still compare ids. */
+function journalEntryIdFromPath(pathname: string): string | null {
+  return journalEntrySlugFromPath(pathname);
+}
+
 function gratitudeEntryIdFromPath(pathname: string): string | null {
-  const m = /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
-  if (!m?.[1]) return null;
-  try {
-    return decodeURIComponent(m[1]);
-  } catch {
-    return m[1];
-  }
+  return gratitudeEntrySlugFromPath(pathname);
 }
 
 function IconEntryMore({ className }: { className?: string }) {
@@ -1350,21 +1383,29 @@ export function JournalView() {
     latestGratitudeRef.current = next?.gratitude ?? emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
     persist(remaining, nextId);
-    if (journalTab === "journal" && journalEntryIdFromPath(pathname)) {
-      navigate(
-        nextId
-          ? `/journal/entries/${encodeURIComponent(nextId)}`
-          : JOURNAL_SECTION_HREF.journal,
-      );
+    if (journalTab === "journal" && journalEntrySlugFromPath(pathname)) {
+      if (!nextId) {
+        navigate(JOURNAL_SECTION_HREF.journal);
+      } else {
+        const ensured = ensureJournalEntryUrlSlug(remaining, nextId);
+        const entry = ensured.entry;
+        navigate(
+          entry ? journalEntryHref(entry) : JOURNAL_SECTION_HREF.journal,
+        );
+      }
     } else if (
       journalTab === "gratitude" &&
-      gratitudeEntryIdFromPath(pathname)
+      gratitudeEntrySlugFromPath(pathname)
     ) {
-      navigate(
-        nextId
-          ? `/journal/gratitudes/${encodeURIComponent(nextId)}`
-          : JOURNAL_SECTION_HREF.gratitude,
-      );
+      if (!nextId) {
+        navigate(JOURNAL_SECTION_HREF.gratitude);
+      } else {
+        const ensured = ensureJournalEntryUrlSlug(remaining, nextId);
+        const entry = ensured.entry;
+        navigate(
+          entry ? journalEntryHref(entry) : JOURNAL_SECTION_HREF.gratitude,
+        );
+      }
     }
   }, [journalTab, persist, pathname, navigate]);
 
@@ -1393,6 +1434,30 @@ export function JournalView() {
     [flushSaveSync, persist],
   );
 
+  const navigateToEntry = useCallback(
+    (entryId: string, opts?: { replace?: boolean }) => {
+      const ensured = ensureJournalEntryUrlSlug(entriesRef.current, entryId);
+      if (ensured.entries !== entriesRef.current) {
+        entriesRef.current = ensured.entries;
+        setEntries(ensured.entries);
+        persist(ensured.entries, entryId);
+      }
+      const entry = ensured.entry;
+      if (!entry) return;
+      const href = journalEntryHref(entry);
+      if (pathname === href) return;
+      // Legacy UUID /entries paths → permanent-style replace to readable URL.
+      const replace =
+        opts?.replace === true ||
+        Boolean(journalEntrySlugFromPath(pathname) && looksLikeUuid(journalEntrySlugFromPath(pathname)!)) ||
+        Boolean(gratitudeEntrySlugFromPath(pathname) && looksLikeUuid(gratitudeEntrySlugFromPath(pathname)!)) ||
+        pathname.startsWith("/journal/entries/") ||
+        pathname.startsWith("/journal/gratitudes/");
+      navigate(href, { replace });
+    },
+    [navigate, pathname, persist],
+  );
+
   const selectEntry = useCallback(
     (nextId: string) => {
       applyEntrySelection(nextId);
@@ -1400,50 +1465,71 @@ export function JournalView() {
       if (!entry) return;
       if (journalTab === "journal") {
         if (isGratitudeEntry(entry)) return;
-        if (journalEntryIdFromPath(pathname) === nextId) return;
-        navigate(`/journal/entries/${encodeURIComponent(nextId)}`);
+        navigateToEntry(nextId);
         return;
       }
       if (journalTab === "gratitude") {
         if (!isGratitudeEntry(entry)) return;
-        if (gratitudeEntryIdFromPath(pathname) === nextId) return;
-        navigate(
-          `/journal/gratitudes/${encodeURIComponent(nextId)}`,
-        );
+        navigateToEntry(nextId);
       }
     },
-    [applyEntrySelection, journalTab, pathname, navigate],
+    [applyEntrySelection, journalTab, navigateToEntry],
   );
 
-  /** Deep-link / browser back: sync active entry from `/journal/:id`. */
+  /** Deep-link / browser back: sync active entry from readable (or legacy) path. */
   useEffect(() => {
     if (!hydrated || section !== "journal") return;
     if (!routeEntryId) return;
-    const found = entriesRef.current.find(
-      (e) => e.id === routeEntryId && !isGratitudeEntry(e),
+    const found = findJournalEntryByPathSlug(
+      entriesRef.current,
+      routeEntryId,
+      "journal",
     );
-    if (!found) {
+    if (!found || isGratitudeEntry(found)) {
       navigate(JOURNAL_SECTION_HREF.journal, { replace: true });
       return;
     }
-    if (activeIdRef.current !== routeEntryId) {
-      applyEntrySelection(routeEntryId);
+    if (activeIdRef.current !== found.id) {
+      applyEntrySelection(found.id);
     }
-  }, [hydrated, section, routeEntryId, entries, applyEntrySelection, navigate]);
+    const canonical = journalEntryHref(
+      ensureJournalEntryUrlSlug(entriesRef.current, found.id).entry ?? found,
+    );
+    if (pathname !== canonical) {
+      navigateToEntry(found.id, { replace: true });
+    }
+  }, [
+    hydrated,
+    section,
+    routeEntryId,
+    entries,
+    applyEntrySelection,
+    navigate,
+    navigateToEntry,
+    pathname,
+  ]);
 
-  /** Deep-link / browser back: sync from `/journal/gratitudes/:id`. */
+  /** Deep-link / browser back: sync from gratitude path. */
   useEffect(() => {
     if (!hydrated || section !== "gratitude") return;
     if (!routeGratitudeId) return;
-    const found = entriesRef.current.find(
-      (e) => e.id === routeGratitudeId && isGratitudeEntry(e),
+    const found = findJournalEntryByPathSlug(
+      entriesRef.current,
+      routeGratitudeId,
+      "gratitude",
     );
-    if (!found) {
+    if (!found || !isGratitudeEntry(found)) {
       navigate(JOURNAL_SECTION_HREF.gratitude, { replace: true });
       return;
     }
-    if (activeIdRef.current !== routeGratitudeId) {
-      applyEntrySelection(routeGratitudeId);
+    if (activeIdRef.current !== found.id) {
+      applyEntrySelection(found.id);
+    }
+    const canonical = journalEntryHref(
+      ensureJournalEntryUrlSlug(entriesRef.current, found.id).entry ?? found,
+    );
+    if (pathname !== canonical) {
+      navigateToEntry(found.id, { replace: true });
     }
   }, [
     hydrated,
@@ -1452,6 +1538,8 @@ export function JournalView() {
     entries,
     applyEntrySelection,
     navigate,
+    navigateToEntry,
+    pathname,
   ]);
 
   useEffect(() => {
@@ -1459,13 +1547,18 @@ export function JournalView() {
       clearJournalEntryLiveTitle();
       return;
     }
-    const entry = entriesRef.current.find((e) => e.id === routeEntryId);
+    const found = findJournalEntryByPathSlug(
+      entriesRef.current,
+      routeEntryId,
+      "journal",
+    );
+    if (!found) return;
     const title =
-      entry?.title?.trim() ||
-      (entry ? deriveEntryTitle(entry.contentHtml) : "") ||
+      found.title?.trim() ||
+      deriveEntryTitle(found.contentHtml) ||
       "";
-    setJournalEntryLiveTitle(routeEntryId, title);
-    return () => clearJournalEntryLiveTitle(routeEntryId);
+    setJournalEntryLiveTitle(found.id, title);
+    return () => clearJournalEntryLiveTitle(found.id);
   }, [section, routeEntryId]);
 
   const moveActiveToFolder = useCallback(
@@ -1603,9 +1696,9 @@ export function JournalView() {
       latestTitleRef.current = e.title;
       latestGratitudeRef.current = emptyGratitudeLines();
       setGratitudeDraft(latestGratitudeRef.current);
-      navigate(`/journal/entries/${encodeURIComponent(e.id)}`);
+      navigateToEntry(e.id);
     },
-    [flushSaveSync, persist, selectedFolderId, navigate],
+    [flushSaveSync, persist, selectedFolderId, navigateToEntry],
   );
 
   const generateMeditationFromActive = useCallback(() => {
@@ -1640,7 +1733,7 @@ export function JournalView() {
 
   const openLifeAreaFromActive = useCallback(() => {
     if (activeLifeArea) {
-      navigate(`/manifest/goal/${encodeURIComponent(activeLifeArea.id)}`);
+      navigate(lifeAreaHref(activeLifeArea));
       return;
     }
     navigate("/manifest");
@@ -1658,8 +1751,8 @@ export function JournalView() {
     latestTitleRef.current = e.title;
     latestGratitudeRef.current = e.gratitude ?? emptyGratitudeLines();
     setGratitudeDraft(latestGratitudeRef.current);
-    navigate(`/journal/gratitudes/${encodeURIComponent(e.id)}`);
-  }, [flushSaveSync, persist, navigate]);
+    navigateToEntry(e.id);
+  }, [flushSaveSync, persist, navigateToEntry]);
 
   // Sidebar / overview deep-links: `?new=1`, optional `title=` + `voice=1`.
   const newEntryHandledRef = useRef(false);
@@ -1674,7 +1767,9 @@ export function JournalView() {
     newEntryHandledRef.current = true;
     if (
       pathname === "/journal/gratitudes" ||
-      pathname.startsWith("/journal/gratitudes/")
+      pathname.startsWith("/journal/gratitudes/") ||
+      pathname === "/journal/gratitude" ||
+      pathname.startsWith("/journal/gratitude/")
     ) {
       createGratitudeEntry();
       return;
@@ -1726,9 +1821,7 @@ export function JournalView() {
           latestTitleRef.current = existing.title;
           latestGratitudeRef.current = emptyGratitudeLines();
           setGratitudeDraft(latestGratitudeRef.current);
-          navigate(`/journal/entries/${encodeURIComponent(existing.id)}`, {
-            replace: true,
-          });
+          navigateToEntry(existing.id, { replace: true });
         } else {
           createEntry({
             title: reflectionTitleForMeditation(handoff.snapshot.title),
@@ -1861,9 +1954,8 @@ export function JournalView() {
   const openTodayGratitudeCompose = useCallback(() => {
     const id = openTodayGratitude();
     if (!id) return;
-    if (gratitudeEntryIdFromPath(pathname) === id) return;
-    navigate(`/journal/gratitudes/${encodeURIComponent(id)}`);
-  }, [openTodayGratitude, pathname, navigate]);
+    navigateToEntry(id);
+  }, [openTodayGratitude, navigateToEntry]);
 
   const activateJournalList = useCallback(() => {
     const free = entriesRef.current.filter((e) => !isGratitudeEntry(e));

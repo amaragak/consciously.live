@@ -13,6 +13,7 @@ export type SettingsStatus =
 /** Stable keys used by the UI and the checklist. */
 export type SettingsKey =
   | "account.displayName"
+  | "account.username"
   | "account.pronouns"
   | "account.email"
   | "account.changeEmail"
@@ -68,6 +69,7 @@ export type SettingsKey =
 
 export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "account.displayName": "wired",
+  "account.username": "wired",
   "account.pronouns": "wired",
   "account.email": "wired",
   "account.changeEmail": "not_available",

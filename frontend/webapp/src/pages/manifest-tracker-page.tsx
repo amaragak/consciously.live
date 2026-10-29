@@ -19,10 +19,12 @@ import {
   relativeTouched,
   rollup,
   toggleTrackerDone,
+  trackerPathSlug,
   type TrackerItem,
   type TrackerKind,
   type TrackerStatus,
 } from "@/lib/tracker-items";
+import { lifeAreaHrefById } from "@/lib/entity-href";
 
 /** Items with no life area use an empty id so they stay out of every area tracker. */
 const NO_AREA = "";
@@ -164,7 +166,7 @@ function TrackerAll() {
       top = parent;
     }
     navigate(
-      `/manifest/goal/${encodeURIComponent(item.lifeAreaId)}/tracker/${encodeURIComponent(top.id)}`,
+      lifeAreaHrefById(item.lifeAreaId, `tracker/${encodeURIComponent(trackerPathSlug(top))}`),
     );
   }
 

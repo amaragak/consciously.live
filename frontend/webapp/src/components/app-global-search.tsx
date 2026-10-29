@@ -37,7 +37,11 @@ import {
   type LibraryProgram,
   type UserContentSearchHit,
 } from "@/lib/medimade-api";
-import { journalEntryListTitle, loadJournalStore } from "@/lib/journal-storage";
+import {
+  journalEntryHref,
+  journalEntryListTitle,
+  loadJournalStore,
+} from "@/lib/journal-storage";
 
 type QuickAction = {
   id: string;
@@ -467,7 +471,7 @@ export function AppGlobalSearch({
               id: `j-${e.id}`,
               title: journalEntryListTitle(e, "Journal entry"),
               body: `Journal entry · ${formatRelativeDay(e.updatedAt || e.createdAt)}`,
-              href: `/journal/entries?entry=${encodeURIComponent(e.id)}`,
+              href: journalEntryHref(e),
             }));
         } catch {
           /* ignore */
@@ -489,7 +493,7 @@ export function AppGlobalSearch({
                 id: `j-${e.id}`,
                 title: journalEntryListTitle(e, "Journal entry"),
                 body: `Journal entry · ${formatRelativeDay(e.updatedAt || e.createdAt)}`,
-                href: `/journal/entries?entry=${encodeURIComponent(e.id)}`,
+                href: journalEntryHref(e),
               })),
           );
         } catch {

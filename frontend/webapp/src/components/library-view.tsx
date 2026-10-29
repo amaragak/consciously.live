@@ -1505,12 +1505,14 @@ export default function LibraryView({
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [sortDropdownOpen]);
 
+  const asHouseLibrary = searchParams.get("as") === "consciously";
+
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const [list, community] = await Promise.all([
-        listLibraryMeditations(),
+        listLibraryMeditations(asHouseLibrary ? { asHouse: true } : undefined),
         listLibraryMeditations({ community: true }),
       ]);
       const merged = applyLocalMixOverlay(list, localMixByKeyRef.current);
@@ -1531,7 +1533,7 @@ export default function LibraryView({
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, []);
+  }, [asHouseLibrary]);
 
   useEffect(() => {
     // If we already have SSR-prefetched items, avoid flashing a loading state;

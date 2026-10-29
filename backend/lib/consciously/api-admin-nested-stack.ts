@@ -500,8 +500,9 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       entry: path.join(__dirname, "../../lambdas/admin-blog.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
-      // Cover gen runs up to 4 Nano Banana Pro images in parallel.
-      timeout: cdk.Duration.seconds(120),
+      // Cover gen is 1–2 Nano Banana Pro images per request (client loops for a grid).
+      // API Gateway HTTP APIs still hard-cap at 30s regardless of this value.
+      timeout: cdk.Duration.seconds(60),
       memorySize: 1024,
       role,
       environment: {
@@ -514,6 +515,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         MARKETING_ORIGIN: authWebappOrigin,
         BLOG_NARRATE_FUNCTION_NAME: adminBlogNarrate.functionName,
         GOOGLE_AI_SECRET_ARN: googleAiApiKeySecret.secretArn,
+        CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
         MEDITATION_ANALYTICS_TABLE_NAME: meditationAnalyticsTable.tableName,
         AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
       },

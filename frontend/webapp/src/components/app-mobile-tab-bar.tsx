@@ -33,6 +33,7 @@ import {
   subscribeHealStore,
 } from "@/lib/heal-store";
 import { Link, usePathname, useRouter } from "@/lib/spa-nav";
+import { healItemHref } from "@/lib/entity-href";
 
 const LONG_PRESS_MS = 400;
 const LONG_PRESS_SLOP_PX = 10;
@@ -326,7 +327,7 @@ export function AppMobileTabBar() {
         ...items.map((item) => ({
           id: `heal-item:${item.id}`,
           label: item.title.trim() || "Untitled",
-          href: `/heal/${encodeURIComponent(item.id)}`,
+          href: healItemHref(item),
         })),
         ...(rested.length > 0
           ? [{ id: "heal-rested", label: "Laid to rest", href: "/heal/rested" }]

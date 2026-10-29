@@ -18,6 +18,7 @@ import {
   ZoomIn,
   ArrowUpRight,
 } from "lucide-react";
+import { lifeAreaHref, lifeAreaTrackerItemHref } from "@/lib/entity-href";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -482,7 +483,7 @@ export function LifeAreaTracker({
     const top = topOf(id);
     writeView(dream.id, "detail");
     setView("detail");
-    if (top) navigate(`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(top.id)}`);
+    if (top) navigate(lifeAreaTrackerItemHref(dream, top));
   }
 
   function addItem(parentId: string | null, afterId?: string | null) {
@@ -866,7 +867,14 @@ export function LifeAreaTracker({
           indent={indent}
           indentCap={indentCap}
           onHideDone={() => setHideDone((value) => !value)}
-          onSelectTop={(id) => navigate(`/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(id)}`)}
+          onSelectTop={(id) => {
+            const hit = areaItems.find((item) => item.id === id);
+            navigate(
+              hit
+                ? lifeAreaTrackerItemHref(dream, hit)
+                : lifeAreaHref(dream, `tracker/${encodeURIComponent(id)}`),
+            );
+          }}
           onSuggest={() => {
             setSuggesting(true);
             void streamPlanCoachReply(

@@ -102,9 +102,9 @@ export function App() {
         <Route path="heal" element={<HealHomePage />} />
         <Route path="heal/rested" element={<HealRestedPage />} />
         <Route path="heal/support" element={<HealSupportPage />} />
-        <Route path="heal/:itemId/letter" element={<HealLetterPage />} />
-        <Route path="heal/:itemId/letter/:entryId" element={<HealLetterPage />} />
-        <Route path="heal/:itemId" element={<HealItemPage />} />
+        <Route path="heal/:itemSlug/letter" element={<HealLetterPage />} />
+        <Route path="heal/:itemSlug/letter/:entrySlug" element={<HealLetterPage />} />
+        <Route path="heal/:itemSlug" element={<HealItemPage />} />
         <Route path="focus" element={<FocusPage />} />
         <Route path="focus/history" element={<FocusHistoryPage />} />
         <Route path="focus/insights" element={<FocusInsightsPage />} />
@@ -115,11 +115,18 @@ export function App() {
           <Route path="guides" element={<JournalGuidesIndexPage />} />
           <Route path="guides/:slug" element={<JournalGuideArticlePage />} />
           <Route path="import" element={<JournalImportPage />} />
-          <Route path="entries/*" element={<JournalPage />} />
-          <Route path="gratitudes/*" element={<JournalPage />} />
+          <Route path="entries" element={<JournalPage />} />
+          {/* Legacy UUID paths → readable slugs (handled inside JournalPage). */}
+          <Route path="entries/:entrySlug" element={<JournalPage />} />
+          <Route path="gratitudes" element={<JournalPage />} />
+          <Route path="gratitudes/:entrySlug" element={<JournalPage />} />
+          <Route path="gratitude" element={<JournalPage />} />
+          <Route path="gratitude/:entrySlug" element={<JournalPage />} />
           <Route path="insights/*" element={<JournalPage />} />
           {/* Legacy `/journal/my/*` */}
           <Route path="my/*" element={<LegacyJournalMyRedirect />} />
+          {/* Readable entry: `/journal/2026-10-29-morning-pages` */}
+          <Route path=":entrySlug" element={<JournalPage />} />
         </Route>
         {/* Legacy `/chat/my/*` before `/chat/*` so RR ranks the old prefix. */}
         <Route path="chat/my/*" element={<LegacyChatMyRedirect />} />
@@ -138,6 +145,8 @@ export function App() {
         />
         <Route path="manifest/tracker" element={<ManifestTrackerPage />} />
         <Route path="manifest/insights" element={<ManifestInsightsPage />} />
+        <Route path="manifest/words" element={<ManifestWordsPage />} />
+        <Route path="manifest/questions" element={<ManifestQuestionsPage />} />
         {/* Legacy `/manifest/my/*` */}
         <Route path="manifest/my" element={<Navigate to="/manifest" replace />} />
         <Route
@@ -148,12 +157,16 @@ export function App() {
           path="manifest/my/insights"
           element={<Navigate to="/manifest/insights" replace />}
         />
+        {/* Legacy UUID life-area paths — page redirects to `/manifest/<slug>`. */}
         <Route path="manifest/goal/:id" element={<ManifestGoalPage />} />
         <Route path="manifest/goal/:id/goals/:goalId" element={<ManifestGoalPage />} />
         <Route path="manifest/goal/:id/tracker/:itemId" element={<ManifestGoalPage />} />
         <Route path="manifest/goal/:id/:tab" element={<ManifestGoalPage />} />
-        <Route path="manifest/words" element={<ManifestWordsPage />} />
-        <Route path="manifest/questions" element={<ManifestQuestionsPage />} />
+        {/* Readable: `/manifest/career`, `/manifest/career/tracker/...` */}
+        <Route path="manifest/:areaSlug" element={<ManifestGoalPage />} />
+        <Route path="manifest/:areaSlug/goals/:goalSlug" element={<ManifestGoalPage />} />
+        <Route path="manifest/:areaSlug/tracker/:itemSlug" element={<ManifestGoalPage />} />
+        <Route path="manifest/:areaSlug/:tab" element={<ManifestGoalPage />} />
         <Route path="meditate">
           <Route index element={<MeditateOverviewPage />} />
           <Route path="guides" element={<MeditateGuidesIndexPage />} />

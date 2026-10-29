@@ -61,6 +61,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
     usersTable.grantReadWriteData(role);
     refreshTable.grantReadWriteData(role);
     props.database.waitlist.grantReadWriteData(role);
+    props.database.meditationAnalytics.grantReadWriteData(role);
     authJwtSecret.grantRead(role);
     brevoApiKeySecret.grantRead(role);
     role.addToPolicy(
@@ -107,6 +108,8 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
           WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME:
+            props.database.meditationAnalytics.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
         },
@@ -123,6 +126,8 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       environment: {
         USERS_TABLE_NAME: usersTable.tableName,
         REFRESH_TABLE_NAME: refreshTable.tableName,
+        MEDITATION_ANALYTICS_TABLE_NAME:
+          props.database.meditationAnalytics.tableName,
         AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
         AUTH_WEBAPP_ORIGIN: authWebappOrigin,
       },
@@ -161,6 +166,8 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
           WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME:
+            props.database.meditationAnalytics.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
         },
@@ -275,6 +282,8 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
           USERS_TABLE_NAME: usersTable.tableName,
           REFRESH_TABLE_NAME: refreshTable.tableName,
           WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME:
+            props.database.meditationAnalytics.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
           COGNITO_USER_POOL_ID: userPool.userPoolId,
@@ -282,6 +291,51 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
         },
       },
     );
+
+    const usernameApi = new lambda_nodejs.NodejsFunction(
+      this,
+      "UsernameApiFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/username-api.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 256,
+        role,
+        environment: {
+          USERS_TABLE_NAME: usersTable.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME:
+            props.database.meditationAnalytics.tableName,
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        },
+        bundling: {
+          nodeModules: ["bad-words"],
+        },
+      },
+    );
+
+    addNestHttpRoutes(this, httpApi, {
+      id: "UsernameMeRoute",
+      path: "/me/username",
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
+      integration: new integrations.HttpLambdaIntegration(
+        "UsernameMeIntegration",
+        usernameApi,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "UsernameCheckRoute",
+      path: "/me/username/check",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "UsernameCheckIntegration",
+        usernameApi,
+      ),
+    });
 
     addNestHttpRoutes(this, httpApi, {
       id: "AuthMagicRequestRoute",

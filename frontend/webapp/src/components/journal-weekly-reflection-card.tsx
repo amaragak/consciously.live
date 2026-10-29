@@ -33,7 +33,11 @@ import {
   JOURNAL_MOOD_WEEK_CELL,
   type JournalMoodId,
 } from "@/lib/journal-moods";
-import { loadJournalStore, type JournalEntry } from "@/lib/journal-storage";
+import {
+  journalEntryHrefById,
+  loadJournalStore,
+  type JournalEntry,
+} from "@/lib/journal-storage";
 import { JOURNAL_STORE_CHANGED } from "@/lib/journal-storage";
 import {
   buildInsightsMeditationPrompt,
@@ -907,7 +911,7 @@ function MoodDayCell({
         header={`${day.dayLabel} ${day.dateNum}`}
         className="mood-day-trigger"
         triggerLabel={label}
-        clickHref={`/journal/entries/${encodeURIComponent(only.id)}`}
+        clickHref={journalEntryHrefById(only.id)}
       >
         {cell}
       </InsightsSourceLink>

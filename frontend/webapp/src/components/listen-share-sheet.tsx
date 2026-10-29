@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
-  getMedimadeSessionDisplayName,
-  getMedimadeSessionEmail,
+  fetchUsernameProfile,
   patchMeditationShare,
+  saveUsername,
   type LibraryMeditationItem,
   type ListenShareSnapshot,
 } from "@/lib/medimade-api";
+import {
+  getMedimadeSessionDisplayName,
+  getMedimadeSessionEmail,
+} from "@/lib/auth-session";
 import { firstNameFromAccount } from "@/lib/manifesto-print";
 import { parseMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import { marketingHref } from "@/lib/origins";
@@ -92,7 +96,13 @@ export function ListenShareSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [slug, setSlug] = useState(item.listenSlug ?? null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [needsUsername, setNeedsUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameHelper, setUsernameHelper] = useState(
+    "Your public links use this: consciously.live/listen/<username>. You can change it in Settings.",
+  );
+  const [wasListed, setWasListed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -110,34 +120,63 @@ export function ListenShareSheet({
     );
     setShowBrief(share?.showBrief === true);
     setListed(kind === "story" ? false : share?.listed === true);
-    setSlug(item.listenSlug ?? null);
+    setWasListed(share?.listed === true);
+    setShareUrl(
+      item.listenSlug
+        ? marketingHref(`/listen/${encodeURIComponent(item.listenSlug)}`)
+        : null,
+    );
     setError(null);
     setCopied(false);
+    void fetchUsernameProfile()
+      .then((p) => {
+        setNeedsUsername(!p.chosen);
+        setUsernameDraft(p.prefill || "");
+        setUsernameHelper(p.helper);
+      })
+      .catch(() => {
+        setNeedsUsername(true);
+      });
   }, [open, item, kind]);
 
   if (!open) return null;
-
-  const shareUrl = slug
-    ? marketingHref(`/listen/${encodeURIComponent(slug)}`)
-    : null;
 
   async function createOrUpdate(action: "create" | "update") {
     if (!item.sk) return;
     setBusy(true);
     setError(null);
     try {
+      if (needsUsername) {
+        const trimmed = usernameDraft.trim().toLowerCase();
+        if (!trimmed) {
+          setError("Choose a username before sharing");
+          setBusy(false);
+          return;
+        }
+        await saveUsername(trimmed);
+        setNeedsUsername(false);
+      }
+      const asHouse =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("as") === "consciously";
       const result = await patchMeditationShare({
         sk: item.sk,
         action,
         kind,
         title: title.trim(),
         description: description.trim(),
-        shownAs: shownAs.trim(),
+        shownAs: asHouse ? "Consciously" : shownAs.trim(),
         showBrief: kind === "meditation" ? showBrief : false,
         brief,
-        listed: kind === "story" ? false : listed,
+        listed: kind === "story" && !asHouse ? false : listed,
+        asHouse: asHouse || undefined,
       });
-      setSlug(result.slug);
+      setShareUrl(
+        result.url ||
+          (result.slug
+            ? marketingHref(`/listen/${encodeURIComponent(result.slug)}`)
+            : null),
+      );
       onShared({
         listenSlug: result.slug,
         shareToken: result.shareToken,
@@ -158,7 +197,9 @@ export function ListenShareSheet({
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not share");
+      const msg = e instanceof Error ? e.message : "Could not share";
+      if (/username/i.test(msg)) setNeedsUsername(true);
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -169,7 +210,14 @@ export function ListenShareSheet({
     setBusy(true);
     setError(null);
     try {
-      await patchMeditationShare({ sk: item.sk, action: "revoke" });
+      const asHouse =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("as") === "consciously";
+      await patchMeditationShare({
+        sk: item.sk,
+        action: "revoke",
+        asHouse: asHouse || undefined,
+      });
       onShared({ listenSlug: null, shareToken: null, listenShare: null });
       onClose();
     } catch (e) {
@@ -276,6 +324,26 @@ export function ListenShareSheet({
               </span>
             </label>
 
+            {needsUsername ? (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-medium text-foreground">
+                  Username
+                </span>
+                <input
+                  value={usernameDraft}
+                  onChange={(e) =>
+                    setUsernameDraft(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                    )
+                  }
+                  autoComplete="username"
+                  spellCheck={false}
+                  className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[15px] outline-none focus:border-[var(--header-gold,#d9b87c)]"
+                />
+                <span className="text-[12.5px] text-muted">{usernameHelper}</span>
+              </label>
+            ) : null}
+
             {kind === "meditation" ? (
               <div className="rounded-xl border border-[var(--border)] px-3.5 py-3">
                 <label className="flex items-start justify-between gap-3">
@@ -360,6 +428,12 @@ export function ListenShareSheet({
               </label>
             </fieldset>
 
+            {wasListed && !listed ? (
+              <p className="m-0 text-[13px] leading-snug text-[#9B3B2E]">
+                Your old link will stop working.
+              </p>
+            ) : null}
+
             {error ? (
               <p className="m-0 text-[13px] text-[#9B3B2E]" role="alert">
                 {error}
@@ -368,7 +442,12 @@ export function ListenShareSheet({
 
             <button
               type="button"
-              disabled={busy || !title.trim() || !item.sk}
+              disabled={
+                busy ||
+                !title.trim() ||
+                !item.sk ||
+                (needsUsername && !usernameDraft.trim())
+              }
               onClick={() =>
                 void createOrUpdate(alreadyShared ? "update" : "create")
               }

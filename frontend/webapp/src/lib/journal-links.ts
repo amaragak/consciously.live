@@ -6,6 +6,7 @@
 import { readAccountLocalStorage } from "@/lib/account-scoped-storage";
 import { healRelative } from "@/lib/heal-store";
 import {
+  journalEntryHref,
   loadJournalStoreRaw,
   stripHtmlToText,
   subscribeJournalStore,
@@ -125,9 +126,7 @@ export function journalFirstLine(entry: JournalEntry): string {
 }
 
 export function journalHref(entry: JournalEntry): string {
-  return entry.kind === "gratitude"
-    ? `/journal/gratitudes/${encodeURIComponent(entry.id)}`
-    : `/journal/entries/${encodeURIComponent(entry.id)}`;
+  return journalEntryHref(entry);
 }
 
 /** New Journal entry with a Heal item or life area already attached. */

@@ -27,6 +27,7 @@ import {
   loadJournalStoreRaw,
   stripHtmlToText,
   withoutDemoJournalEntries,
+  journalEntryHref,
   type JournalEntry,
 } from "@/lib/journal-storage";
 import {
@@ -77,6 +78,7 @@ import {
   type HealStoreV1,
 } from "@/lib/heal-store";
 import { healTypeLabel } from "@/lib/heal-copy";
+import { healItemHref, lifeAreaHref } from "@/lib/entity-href";
 
 const JOURNAL_PREVIEW_LS = "mm_home_journal_show_previews_v1";
 
@@ -169,7 +171,7 @@ function focusGoalChip(
     if (g) {
       return {
         title: g.goalTitle,
-        href: `/manifest/goal/${encodeURIComponent(d.id)}`,
+        href: lifeAreaHref(d),
         subtaskId: g.subtaskId,
       };
     }
@@ -657,7 +659,7 @@ export function WelcomeDashboard() {
                 return (
                   <li key={entry.id}>
                     <Link
-                      href={`/journal/entries/${encodeURIComponent(entry.id)}`}
+                      href={journalEntryHref(entry)}
                       className="flex gap-3 rounded-[14px] border border-border bg-card px-3 py-2.5"
                     >
                       {when ? (
@@ -752,7 +754,7 @@ export function WelcomeDashboard() {
                     return (
                       <Link
                         key={row.dream.id}
-                        href={`/manifest/goal/${encodeURIComponent(row.dream.id)}`}
+                        href={lifeAreaHref(row.dream)}
                         className={`flex w-[170px] shrink-0 flex-col gap-1.5 rounded-[14px] px-3.5 py-3 ${lifeAreas.length <= 4 ? "md:w-auto md:min-w-0 md:flex-1" : "md:w-[220px]"}`}
                         style={{ background: lifeAreaTint.get(row.dream.id) ?? LIFE_AREA_DASH_TINTS[0] }}
                       >
@@ -801,7 +803,7 @@ export function WelcomeDashboard() {
                 const since = healSinceMonth(item.since || item.createdAt);
                 return (
                   <li key={item.id} className={index === 1 ? "hidden md:block" : ""}>
-                    <Link href={`/heal/${encodeURIComponent(item.id)}`} className="relative flex flex-col gap-2 overflow-hidden rounded-[14px] bg-[#0F1B2D] px-4 py-3.5">
+                    <Link href={healItemHref(item)} className="relative flex flex-col gap-2 overflow-hidden rounded-[14px] bg-[#0F1B2D] px-4 py-3.5">
                       <span className="navy-paisley-plate" aria-hidden />
                       <span className="relative text-[10.5px] font-semibold uppercase tracking-[1.4px] text-[rgba(243,237,226,0.55)]">
                         {healTypeLabel(item.type)}

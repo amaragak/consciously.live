@@ -15,6 +15,7 @@ import {
 import { MeditateIcon } from "@/components/meditate-icon";
 import { PlanLifeAreaVisionSections } from "@/components/plan/plan-life-area-reflect-sections";
 import { HealObstacleHeart } from "@/components/heal/heal-reframe";
+import { lifeAreaTrackerItemHref } from "@/lib/entity-href";
 import { loadHealStore, pruneObstacleLinks, saveHealStore } from "@/lib/heal-store";
 import { flushIdeateCloudNow, subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import {
@@ -240,14 +241,12 @@ export function DreamPoster({ dream, onPatch, onCheckIn }: Props) {
       progress={progress}
       onOpenGoal={() => {
         if (!progress) return;
-        navigate(
-          `/manifest/goal/${encodeURIComponent(dream.id)}/tracker/${encodeURIComponent(progress.goal.id)}`,
-        );
+        navigate(lifeAreaTrackerItemHref(dream, progress.goal));
       }}
       onLabel={(label) => setDetail(label)}
       onCreate={() =>
         navigate(
-          `/meditate/create?step=shape&fromLifeArea=${encodeURIComponent(dream.id)}`,
+          `/meditate/create?step=shape&fromLifeArea=${encodeURIComponent(dream.urlSlug || dream.id)}`,
         )
       }
       onCheckIn={onCheckIn}

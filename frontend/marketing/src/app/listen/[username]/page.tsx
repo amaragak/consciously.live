@@ -1,28 +1,44 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
   ListenLinkOff,
   ListenShareClient,
 } from "@/components/listen/listen-share-client";
+import { ListenIndexClient } from "@/components/listen/listen-index-client";
 import {
   fetchListenBySlug,
+  fetchListenUserPage,
+  listenItemHref,
   type ListenPublicItem,
 } from "@/lib/public-listen";
 import { fetchSharedMeditationByToken } from "@/lib/public-meditations";
 
-type Props = { params: Promise<{ token: string }> };
+type Props = { params: Promise<{ username: string }> };
 
 function looksLikeOpaqueToken(value: string): boolean {
-  // Legacy share tokens are base64url from randomBytes (16–64 chars).
   return /^[A-Za-z0-9_-]{16,64}$/.test(value);
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { token: raw } = await params;
-  const slugOrToken = decodeURIComponent(raw || "").trim();
-  if (!slugOrToken) return { title: "Listen", robots: { index: false } };
+  const { username: raw } = await params;
+  const key = decodeURIComponent(raw || "").trim();
+  if (!key) return { title: "Listen", robots: { index: false } };
 
-  const bySlug = await fetchListenBySlug(slugOrToken);
+  const userPage = await fetchListenUserPage(key);
+  if (userPage.status === "ok") {
+    return {
+      title: userPage.displayName,
+      description: `Listen to ${userPage.displayName}'s listed meditations and Stories on Consciously.`,
+      openGraph: {
+        title: `${userPage.displayName} · Listen · Consciously`,
+        url: `https://consciously.live/listen/${encodeURIComponent(userPage.username)}`,
+        type: "website",
+      },
+    };
+  }
+
+  const bySlug = await fetchListenBySlug(key);
   if (bySlug.status === "ok") {
     const item = bySlug.item;
     const desc =
@@ -35,15 +51,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         title: `${item.title} · Consciously`,
         description: desc,
         type: "website",
-        url: `https://consciously.live/listen/${encodeURIComponent(item.slug)}`,
+        url: `https://consciously.live${listenItemHref(item)}`,
         ...(item.coverImageUrl
           ? { images: [{ url: item.coverImageUrl }] }
           : {}),
-      },
-      twitter: {
-        card: item.coverImageUrl ? "summary_large_image" : "summary",
-        title: `${item.title} · Consciously`,
-        description: desc,
       },
       robots: item.listed
         ? { index: true, follow: true }
@@ -57,48 +68,66 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  if (looksLikeOpaqueToken(slugOrToken)) {
-    const legacy = await fetchSharedMeditationByToken(slugOrToken);
-    if (legacy) {
-      return {
-        title: legacy.title,
-        description: legacy.description || undefined,
-        robots: { index: false, follow: false },
-      };
-    }
-  }
-
   return { title: "Not found", robots: { index: false } };
 }
 
-export default async function ListenSharePage({ params }: Props) {
-  const { token: raw } = await params;
-  const slugOrToken = decodeURIComponent(raw || "").trim();
-  if (!slugOrToken) notFound();
+export default async function ListenUsernamePage({ params }: Props) {
+  const { username: raw } = await params;
+  const key = decodeURIComponent(raw || "").trim();
+  if (!key) notFound();
 
-  const bySlug = await fetchListenBySlug(slugOrToken);
+  const userPage = await fetchListenUserPage(key);
+  if (userPage.status === "redirect") {
+    permanentRedirect(userPage.redirectTo);
+  }
+  if (userPage.status === "ok") {
+    const isHouse = userPage.username === "consciously";
+    return (
+      <Suspense fallback={null}>
+        <ListenIndexClient
+          meditations={userPage.meditations}
+          stories={userPage.stories}
+          headline={userPage.displayName}
+          subhead={
+            isHouse
+              ? "Examples made by Consciously. Press play — no account needed."
+              : `Listed meditations and Stories from ${userPage.displayName}.`
+          }
+        />
+      </Suspense>
+    );
+  }
+
+  const bySlug = await fetchListenBySlug(key);
+  if (bySlug.status === "redirect") {
+    permanentRedirect(bySlug.redirectTo);
+  }
   if (bySlug.status === "revoked") {
     return <ListenLinkOff />;
   }
   if (bySlug.status === "ok") {
+    const href = listenItemHref(bySlug.item);
+    if (href !== `/listen/${encodeURIComponent(key)}`) {
+      permanentRedirect(href);
+    }
     return <ListenShareClient item={bySlug.item} more={bySlug.more} />;
   }
 
-  // Legacy opaque token → prefer redirect to slug when Listen share exists.
-  if (looksLikeOpaqueToken(slugOrToken)) {
-    const legacy = await fetchSharedMeditationByToken(slugOrToken);
+  if (looksLikeOpaqueToken(key)) {
+    const legacy = await fetchSharedMeditationByToken(key);
     if (!legacy) notFound();
     const listenSlug =
       typeof (legacy as { listenSlug?: unknown }).listenSlug === "string"
         ? String((legacy as { listenSlug?: string }).listenSlug).trim()
         : "";
-    // fetchSharedMeditationByToken may not yet surface listenSlug — re-check API shape.
     if (listenSlug) {
       permanentRedirect(`/listen/${encodeURIComponent(listenSlug)}`);
     }
-    // Fall back: render a minimal Listen item from the legacy payload.
     const item: ListenPublicItem = {
-      slug: slugOrToken,
+      slug: key,
+      username: null,
+      pathSlug: null,
+      href: null,
       kind: "meditation",
       title: legacy.title,
       description: legacy.description,

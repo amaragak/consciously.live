@@ -1,8 +1,13 @@
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  lifeAreaHrefById,
+  lifeAreaTrackerItemHref,
+} from "@/lib/entity-href";
 import { libraryMeditationDetailHrefById } from "@/lib/library-meditation-detail";
 import { useMvpFlags } from "@/lib/mvp-flags";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
+import { loadPlanDreamsStore } from "@/lib/plan-dreams";
 import { ensureTracker, itemsForArea } from "@/lib/tracker-items";
 
 export type WhiteboardReturnView = {
@@ -68,9 +73,19 @@ export function sourceCardTarget(
       top = current.parentId;
       current = items.find((item) => item.id === current!.parentId) ?? null;
     }
+    const topItem = items.find((item) => item.id === top);
+    const dream =
+      loadPlanDreamsStore().dreams.find((d) => d.id === areaId) ?? {
+        id: areaId,
+        title: "",
+        urlSlug: undefined,
+      };
     const q = new URLSearchParams({ wb: "1", focus: ref });
+    const base = topItem
+      ? lifeAreaTrackerItemHref(dream, topItem)
+      : lifeAreaHrefById(areaId, `tracker/${encodeURIComponent(top)}`);
     return {
-      href: `/manifest/goal/${encodeURIComponent(areaId)}/tracker/${encodeURIComponent(top)}?${q}`,
+      href: `${base}?${q}`,
       place: "Tracker",
     };
   }
@@ -78,14 +93,14 @@ export function sourceCardTarget(
     const q = new URLSearchParams({ wb: "1", edit: kind === "plan" ? "dream" : kind });
     if (kind === "obstacle") q.set("label", card.label);
     return {
-      href: `/manifest/goal/${encodeURIComponent(areaId)}?${q}`,
+      href: `${lifeAreaHrefById(areaId)}?${q}`,
       place: "Vision",
     };
   }
   if (kind === "thought" && ref) {
     const q = new URLSearchParams({ wb: "1", thought: ref });
     return {
-      href: `/manifest/goal/${encodeURIComponent(areaId)}/thoughts?${q}`,
+      href: `${lifeAreaHrefById(areaId, "thoughts")}?${q}`,
       place: "Thoughts",
     };
   }
@@ -102,7 +117,7 @@ export function sourceCardTarget(
   }
   if (kind === "insight") {
     return {
-      href: `/manifest/goal/${encodeURIComponent(areaId)}/insights?wb=1`,
+      href: `${lifeAreaHrefById(areaId, "insights")}?wb=1`,
       place: "Insights",
     };
   }
@@ -120,7 +135,7 @@ export function WhiteboardBackChip({ areaId }: { areaId: string }) {
     <button
       type="button"
       className="mb-3 inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground"
-      onClick={() => navigate(`/manifest/goal/${encodeURIComponent(areaId)}/whiteboard`)}
+      onClick={() => navigate(lifeAreaHrefById(areaId, "whiteboard"))}
     >
       <ChevronLeft className="size-4" aria-hidden />
       Back to {title} whiteboard

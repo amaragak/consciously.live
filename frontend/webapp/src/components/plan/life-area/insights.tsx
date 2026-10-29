@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { lifeAreaHref } from "@/lib/entity-href";
 import { HealObstacleNote } from "@/components/heal/heal-reframe";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -631,7 +632,7 @@ function NeedsYou({
               ) : null}
               {card.kind === "Talk vs action" ? (
                 <>
-                  <button type="button" className={`${MIST} h-9 px-3 text-sm`} onClick={() => navigate(`/manifest/goal/${encodeURIComponent(dream.id)}/tracker`)}>Start 30 min</button>
+                  <button type="button" className={`${MIST} h-9 px-3 text-sm`} onClick={() => navigate(lifeAreaHref(dream, "tracker"))}>Start 30 min</button>
                   <button type="button" className={`${OUTLINE} h-9 px-3 text-sm`} onClick={() => { dismiss(card.key); onChange(); }}>Dismiss</button>
                 </>
               ) : null}

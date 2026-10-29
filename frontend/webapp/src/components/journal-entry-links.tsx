@@ -22,6 +22,7 @@ import {
   peekMeditationOrigins,
 } from "@/lib/journal-links";
 import type { JournalEntry, JournalLink } from "@/lib/journal-storage";
+import { healItemHrefById, lifeAreaHrefById } from "@/lib/entity-href";
 
 type Props = {
   entry: JournalEntry;
@@ -81,8 +82,7 @@ export function JournalEntryLinks({ entry, onChange }: Props) {
               onClick={() =>
                 navigate(
                   link.targetType === "heal_item"
-                    ? `/heal/${encodeURIComponent(link.targetId)}`
-                    : `/manifest/goal/${encodeURIComponent(link.targetId)}`,
+                    ? healItemHrefById(link.targetId) : lifeAreaHrefById(link.targetId),
                 )
               }
             >

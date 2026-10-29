@@ -16,8 +16,11 @@ import {
 import { consumeAssistantChatPendingLaunch } from "@/lib/assistant-chat-launch";
 import {
   ASSISTANT_CHAT_STORE_CHANGED,
+  chatThreadHref,
   clearLegacyAssistantChatKeys,
   deleteAssistantChatThread,
+  ensureChatThreadUrlSlug,
+  findChatThreadByPathSlug,
   formatAssistantChatThreadDate,
   groupAssistantChatThreadsForSidebar,
   loadAssistantChatStore,
@@ -184,7 +187,10 @@ export function AssistantChatWorkspace() {
         newHandledRef.current = false;
         return;
       }
-      navigate(`/chat/${encodeURIComponent(id)}`, { replace: true });
+      const ensured = ensureChatThreadUrlSlug(loadAssistantChatStore(), id);
+      saveAssistantChatStore(ensured);
+      const thread = ensured.threads.find((t) => t.id === id);
+      navigate(thread ? chatThreadHref(thread) : "/chat", { replace: true });
     })();
     return () => {
       cancelled = true;
@@ -192,20 +198,32 @@ export function AssistantChatWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudReady, chat.hydrated, pathname, routeThreadId, searchParams]);
 
-  // Invalid thread id in URL → start a fresh chat
+  // Invalid / legacy UUID path → canonical slug or fresh chat
   useEffect(() => {
     if (!chat.hydrated || !routeThreadId) return;
-    if (chat.activeId === routeThreadId) return;
     const store = loadAssistantChatStore();
-    if (!store.threads.some((t) => t.id === routeThreadId)) {
+    const found = findChatThreadByPathSlug(store.threads, routeThreadId);
+    if (!found) {
       void (async () => {
         const id = await chat.createNewThread();
-        navigate(id ? `/chat/${encodeURIComponent(id)}` : "/chat", {
-          replace: true,
-        });
+        if (!id) {
+          navigate("/chat", { replace: true });
+          return;
+        }
+        const ensured = ensureChatThreadUrlSlug(loadAssistantChatStore(), id);
+        saveAssistantChatStore(ensured);
+        const thread = ensured.threads.find((t) => t.id === id);
+        navigate(thread ? chatThreadHref(thread) : "/chat", { replace: true });
       })();
+      return;
     }
-  }, [chat, chat.hydrated, chat.activeId, routeThreadId, navigate]);
+    if (chat.activeId !== found.id) chat.selectThread(found.id);
+    const ensured = ensureChatThreadUrlSlug(store, found.id);
+    const thread = ensured.threads.find((t) => t.id === found.id) ?? found;
+    if (ensured !== store) saveAssistantChatStore(ensured);
+    const href = chatThreadHref(thread);
+    if (pathname !== href) navigate(href, { replace: true });
+  }, [chat, chat.hydrated, chat.activeId, routeThreadId, navigate, pathname]);
 
   const groups = useMemo(
     () => groupAssistantChatThreadsForSidebar(storeThreads),
@@ -214,13 +232,20 @@ export function AssistantChatWorkspace() {
 
   const onNewChat = useCallback(async () => {
     const id = await chat.createNewThread();
-    if (id) navigate(`/chat/${encodeURIComponent(id)}`);
+    if (!id) return;
+    const ensured = ensureChatThreadUrlSlug(loadAssistantChatStore(), id);
+    saveAssistantChatStore(ensured);
+    const thread = ensured.threads.find((t) => t.id === id);
+    if (thread) navigate(chatThreadHref(thread));
   }, [chat, navigate]);
 
   const onSelect = useCallback(
     (id: string) => {
       chat.selectThread(id);
-      navigate(`/chat/${encodeURIComponent(id)}`);
+      const ensured = ensureChatThreadUrlSlug(loadAssistantChatStore(), id);
+      saveAssistantChatStore(ensured);
+      const thread = ensured.threads.find((t) => t.id === id);
+      if (thread) navigate(chatThreadHref(thread));
     },
     [chat, navigate],
   );
@@ -235,7 +260,10 @@ export function AssistantChatWorkspace() {
         const fallback = next.activeThreadId;
         if (fallback) {
           chat.selectThread(fallback);
-          navigate(`/chat/${encodeURIComponent(fallback)}`);
+          const ensured = ensureChatThreadUrlSlug(next, fallback);
+          saveAssistantChatStore(ensured);
+          const thread = ensured.threads.find((t) => t.id === fallback);
+          if (thread) navigate(chatThreadHref(thread));
         } else {
           void onNewChat();
         }

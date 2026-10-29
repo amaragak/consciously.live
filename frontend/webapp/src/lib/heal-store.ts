@@ -8,6 +8,7 @@ import {
   readAccountLocalStorage,
   writeAccountLocalStorage,
 } from "@/lib/account-scoped-storage";
+import { contentTitleSlug, uniquifySlug } from "@/lib/readable-url";
 
 export type HealType =
   | "grief"
@@ -124,6 +125,9 @@ export type HealItem = {
   id: string;
   type: HealType;
   title: string;
+  /** Readable URL slug (title-based); history keeps prior slugs for redirects. */
+  urlSlug?: string;
+  urlSlugHistory?: string[];
   since: string | null;
   photoId: string | null;
   aboutText: string;
@@ -693,10 +697,18 @@ export function createHealItem(
     photoId = newHealId("photo");
     photos[photoId] = input.photoDataUrl;
   }
+  const title = input.title.trim() || "Untitled";
+  const taken = new Set(
+    store.items
+      .flatMap((x) => [x.urlSlug, ...(x.urlSlugHistory ?? [])])
+      .filter((x): x is string => Boolean(x)),
+  );
+  const urlSlug = uniquifySlug(contentTitleSlug(title), taken);
   const item: HealItem = {
     id,
     type: input.type,
-    title: input.title.trim() || "Untitled",
+    title,
+    urlSlug,
     since: input.since,
     photoId,
     aboutText: input.aboutText.trim(),

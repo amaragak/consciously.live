@@ -36,6 +36,15 @@ import { PlanLifeAreaMeditationsPanel } from "@/components/plan/plan-life-area-m
 import type { PlanDream } from "@/lib/plan-dreams";
 import { listLibraryMeditations } from "@/lib/medimade-api";
 import { useMvpFlags } from "@/lib/mvp-flags";
+import { lifeAreaHref } from "@/lib/entity-href";
+import {
+  ensureTracker,
+  findTrackerByPathSlug,
+  itemsForArea,
+  trackerPathSlug,
+} from "@/lib/tracker-items";
+import { loadIdeateStore } from "@/lib/plan-ideate-store";
+import { looksLikeUuid } from "@/lib/readable-url";
 
 const TABS = [
   "overview",
@@ -83,24 +92,56 @@ export function LifeAreaShell({
   );
   const [meditations, setMeditations] = useState(0);
   const [journalCount, setJournalCount] = useState(0);
-  const tab = resolveTab(params.tab, params.goalId, params.itemId, search.get("tab"));
+  const nestedItemParam =
+    params.itemSlug || params.itemId || params.goalSlug || params.goalId;
+  const tab = resolveTab(
+    params.tab,
+    params.goalId || params.goalSlug,
+    params.itemId || params.itemSlug,
+    search.get("tab"),
+  );
   const mvp = useMvpFlags();
   const tabs = TABS.filter((id) => {
     if (id === "insights") return mvp.manifestInsights;
     if (id === "whiteboard") return mvp.whiteboard;
     return true;
   });
-  const itemId = params.itemId
-    ? decodeURIComponent(params.itemId)
-    : params.goalId
-      ? decodeURIComponent(params.goalId)
-      : null;
+  const nestedRaw = nestedItemParam
+    ? decodeURIComponent(String(nestedItemParam))
+    : null;
+  const resolvedTracker = nestedRaw
+    ? findTrackerByPathSlug(
+        itemsForArea(ensureTracker(loadIdeateStore()), dream.id),
+        nestedRaw,
+      )
+    : null;
+  const itemId = resolvedTracker?.id ?? null;
   const activeRef = useRef<HTMLButtonElement | null>(null);
-  const base = `/manifest/goal/${encodeURIComponent(dream.id)}`;
+  const base = lifeAreaHref(dream);
+
+  useEffect(() => {
+    if (!resolvedTracker || !nestedRaw) return;
+    const canonical = trackerPathSlug(resolvedTracker);
+    if (
+      nestedRaw !== canonical &&
+      (looksLikeUuid(nestedRaw) ||
+        nestedRaw.startsWith("item_") ||
+        nestedRaw.startsWith("todo_") ||
+        nestedRaw === resolvedTracker.id)
+    ) {
+      navigate(
+        lifeAreaHref(
+          dream,
+          `tracker/${encodeURIComponent(canonical)}`,
+        ),
+        { replace: true },
+      );
+    }
+  }, [dream, navigate, nestedRaw, resolvedTracker]);
 
   useEffect(() => {
     const legacy = search.get("tab");
-    if (legacy && !params.tab && !params.goalId && !params.itemId) {
+    if (legacy && !params.tab && !nestedItemParam) {
       const next = LEGACY[legacy] ?? "overview";
       const hidden =
         (next === "insights" && !mvp.manifestInsights) ||
@@ -114,8 +155,7 @@ export function LifeAreaShell({
     mvp.manifestInsights,
     mvp.whiteboard,
     navigate,
-    params.goalId,
-    params.itemId,
+    nestedItemParam,
     params.tab,
     search,
   ]);
@@ -125,10 +165,16 @@ export function LifeAreaShell({
       navigate(`${base}/tracker`, { replace: true });
       return;
     }
-    if (params.goalId) {
-      navigate(`${base}/tracker/${encodeURIComponent(params.goalId)}`, { replace: true });
+    if (params.goalId || params.goalSlug) {
+      const gid = String(params.goalId || params.goalSlug);
+      const hit = findTrackerByPathSlug(
+        itemsForArea(ensureTracker(loadIdeateStore()), dream.id),
+        gid,
+      );
+      const slug = hit ? trackerPathSlug(hit) : gid;
+      navigate(`${base}/tracker/${encodeURIComponent(slug)}`, { replace: true });
     }
-  }, [base, navigate, params.goalId, params.tab]);
+  }, [base, dream.id, navigate, params.goalId, params.goalSlug, params.tab]);
 
   useEffect(() => {
     if (tab === "insights" && !mvp.manifestInsights) {

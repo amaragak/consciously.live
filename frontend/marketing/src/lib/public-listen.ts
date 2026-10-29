@@ -4,6 +4,9 @@
 
 export type ListenPublicItem = {
   slug: string;
+  username: string | null;
+  pathSlug: string | null;
+  href: string | null;
   kind: "meditation" | "story";
   title: string;
   description: string;
@@ -30,8 +33,27 @@ function parseItem(raw: unknown): ListenPublicItem | null {
   const slug = typeof o.slug === "string" ? o.slug.trim() : "";
   const title = typeof o.title === "string" ? o.title.trim() : "";
   if (!slug || !title) return null;
+  const username =
+    typeof o.username === "string" && o.username.trim()
+      ? o.username.trim().toLowerCase()
+      : null;
+  const pathSlug =
+    typeof o.pathSlug === "string" && o.pathSlug.trim()
+      ? o.pathSlug.trim()
+      : null;
+  const href =
+    typeof o.href === "string" && o.href.trim()
+      ? o.href.trim()
+      : username && pathSlug
+        ? `/listen/${encodeURIComponent(username)}/${encodeURIComponent(pathSlug)}`
+        : slug
+          ? `/listen/${encodeURIComponent(slug)}`
+          : null;
   return {
     slug,
+    username,
+    pathSlug,
+    href,
     kind: o.kind === "story" ? "story" : "meditation",
     title,
     description:
@@ -65,6 +87,10 @@ function parseItem(raw: unknown): ListenPublicItem | null {
   };
 }
 
+export function listenItemHref(item: ListenPublicItem): string {
+  return item.href || `/listen/${encodeURIComponent(item.slug)}`;
+}
+
 export async function fetchListenIndex(): Promise<{
   meditations: ListenPublicItem[];
   stories: ListenPublicItem[];
@@ -95,6 +121,7 @@ export async function fetchListenIndex(): Promise<{
 
 export type ListenSlugResult =
   | { status: "ok"; item: ListenPublicItem; more: ListenPublicItem[] }
+  | { status: "redirect"; redirectTo: string }
   | { status: "revoked" }
   | { status: "missing" };
 
@@ -111,9 +138,121 @@ export async function fetchListenBySlug(
     if (res.status === 410) return { status: "revoked" };
     if (!res.ok) return { status: "missing" };
     const data = (await res.json()) as {
+      status?: string;
+      redirectTo?: string;
+      item?: unknown;
+      more?: unknown[];
+      username?: string;
+      displayName?: string;
+      meditations?: unknown[];
+      stories?: unknown[];
+    };
+    if (data.status === "redirect" && typeof data.redirectTo === "string") {
+      return { status: "redirect", redirectTo: data.redirectTo };
+    }
+    // User page payload (listed items) — not a single item.
+    if (Array.isArray(data.meditations) || Array.isArray(data.stories)) {
+      return { status: "missing" };
+    }
+    const item = parseItem(data.item);
+    if (!item) return { status: "missing" };
+    return {
+      status: "ok",
+      item,
+      more: (data.more ?? [])
+        .map(parseItem)
+        .filter((x): x is ListenPublicItem => Boolean(x)),
+    };
+  } catch {
+    return { status: "missing" };
+  }
+}
+
+export type ListenUserPageResult =
+  | {
+      status: "ok";
+      username: string;
+      displayName: string;
+      meditations: ListenPublicItem[];
+      stories: ListenPublicItem[];
+    }
+  | { status: "redirect"; redirectTo: string }
+  | { status: "missing" };
+
+export async function fetchListenUserPage(
+  username: string,
+): Promise<ListenUserPageResult> {
+  const base = apiBase();
+  if (!base || !username) return { status: "missing" };
+  try {
+    const res = await fetch(
+      `${base}/public/listen/${encodeURIComponent(username)}`,
+      { next: { revalidate: 60 } },
+    );
+    if (!res.ok) return { status: "missing" };
+    const data = (await res.json()) as {
+      status?: string;
+      redirectTo?: string;
+      username?: string;
+      displayName?: string;
+      meditations?: unknown[];
+      stories?: unknown[];
+      item?: unknown;
+    };
+    if (data.status === "redirect" && typeof data.redirectTo === "string") {
+      return { status: "redirect", redirectTo: data.redirectTo };
+    }
+    if (data.item && !Array.isArray(data.meditations)) {
+      // Legacy single-item response — caller should redirect via fetchListenBySlug.
+      return { status: "missing" };
+    }
+    const meditations = (data.meditations ?? [])
+      .map(parseItem)
+      .filter((x): x is ListenPublicItem => Boolean(x));
+    const stories = (data.stories ?? [])
+      .map(parseItem)
+      .filter((x): x is ListenPublicItem => Boolean(x));
+    if (!meditations.length && !stories.length) return { status: "missing" };
+    return {
+      status: "ok",
+      username:
+        typeof data.username === "string" && data.username.trim()
+          ? data.username.trim()
+          : username,
+      displayName:
+        typeof data.displayName === "string" && data.displayName.trim()
+          ? data.displayName.trim()
+          : username,
+      meditations,
+      stories,
+    };
+  } catch {
+    return { status: "missing" };
+  }
+}
+
+export async function fetchListenByPath(
+  username: string,
+  pathKey: string,
+): Promise<ListenSlugResult> {
+  const base = apiBase();
+  if (!base || !username || !pathKey) return { status: "missing" };
+  try {
+    const res = await fetch(
+      `${base}/public/listen/${encodeURIComponent(username)}/${encodeURIComponent(pathKey)}`,
+      { next: { revalidate: 60 } },
+    );
+    if (res.status === 410) return { status: "revoked" };
+    if (!res.ok) return { status: "missing" };
+    const data = (await res.json()) as {
+      status?: string;
+      redirectTo?: string;
       item?: unknown;
       more?: unknown[];
     };
+    if (data.status === "redirect" && typeof data.redirectTo === "string") {
+      return { status: "redirect", redirectTo: data.redirectTo };
+    }
     const item = parseItem(data.item);
     if (!item) return { status: "missing" };
     return {

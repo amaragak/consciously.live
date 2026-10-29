@@ -48,3 +48,7 @@ docs/design/read/Read*
 
 # Local generated images (Nano Banana and other one-off stills)
 tmp/
+
+# Local design packs
+docs/design/usernames/
+

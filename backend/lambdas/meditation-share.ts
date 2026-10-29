@@ -32,6 +32,7 @@ import {
 } from "./_shared/meditation-user-pk";
 import {
   LISTEN_LISTED_PK,
+  LISTEN_PATH_PK,
   LISTEN_SLUG_PK,
   briefFromMeditationRow,
   newSlugSuffix,
@@ -40,6 +41,13 @@ import {
   type ListenShareKind,
   type ListenShareSnapshot,
 } from "./_shared/listen-share";
+import {
+  getUserUsernameFields,
+} from "./_shared/username-registry";
+import {
+  listenPublicUrl,
+  newListenLinkToken,
+} from "./_shared/usernames";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -139,22 +147,89 @@ async function putSlugRegistry(params: {
   );
 }
 
-function publicUrl(slug: string): string {
-  return `https://consciously.live/listen/${encodeURIComponent(slug)}`;
-}
-
-function shareResponse(
-  slug: string,
-  share: ListenShareSnapshot,
-  shareToken: string | null,
-) {
+function shareResponse(params: {
+  slug: string;
+  username: string;
+  pathSlug: string;
+  linkToken: string | null;
+  share: ListenShareSnapshot;
+  shareToken: string | null;
+}) {
+  const url = listenPublicUrl({
+    username: params.username,
+    pathSlug: params.pathSlug,
+    listed: params.share.listed,
+    linkToken: params.linkToken,
+  });
   return {
     ok: true,
-    slug,
-    url: publicUrl(slug),
-    shareToken,
-    listenShare: share,
+    slug: params.slug,
+    username: params.username,
+    pathSlug: params.pathSlug,
+    linkToken: params.linkToken,
+    url,
+    shareToken: params.shareToken,
+    listenShare: params.share,
   };
+}
+
+async function pathTaken(
+  tableName: string,
+  username: string,
+  pathKey: string,
+): Promise<boolean> {
+  const sk = `${username}/${pathKey}`;
+  const got = await ddb.send(
+    new GetCommand({
+      TableName: tableName,
+      Key: { pk: LISTEN_PATH_PK, sk },
+    }),
+  );
+  return Boolean(got.Item && got.Item.status === "active");
+}
+
+async function mintUniquePathSlug(
+  tableName: string,
+  username: string,
+  title: string,
+): Promise<string> {
+  const base = slugifyTitle(title);
+  for (let i = 0; i < 12; i += 1) {
+    const candidate = i === 0 ? base : i === 1 ? `${base}-2` : `${base}-${i + 1}`;
+    const taken = await pathTaken(tableName, username, candidate);
+    if (!taken) return candidate;
+  }
+  return `${base}-${newSlugSuffix()}`;
+}
+
+async function putPathRegistry(params: {
+  tableName: string;
+  username: string;
+  pathKey: string;
+  status: "active" | "revoked";
+  ownerPk?: string;
+  ownerSk?: string;
+  redirectTo?: string | null;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  await ddb.send(
+    new PutCommand({
+      TableName: params.tableName,
+      Item: {
+        pk: LISTEN_PATH_PK,
+        sk: `${params.username}/${params.pathKey}`,
+        status: params.status,
+        username: params.username,
+        pathKey: params.pathKey,
+        ...(params.status === "active" && params.ownerPk && params.ownerSk
+          ? { ownerPk: params.ownerPk, ownerSk: params.ownerSk }
+          : {}),
+        redirectTo: params.redirectTo ?? null,
+        updatedAt: now,
+        ...(params.status === "revoked" ? { revokedAt: now } : {}),
+      },
+    }),
+  );
 }
 
 export async function handler(
@@ -179,8 +254,25 @@ export async function handler(
     return json(401, { error: "Sign in required" });
   }
 
+  const asHouse =
+    body.asHouse === true ||
+    body.as === "consciously" ||
+    (typeof body.username === "string" &&
+      body.username.trim().toLowerCase() === "consciously");
+  let actingUserId = auth.sub;
+  let houseUsername: string | null = null;
+  if (asHouse) {
+    if (auth.role !== "admin") {
+      return json(403, { error: "Admin only for Consciously library shares" });
+    }
+    const { ensureHouseAccount } = await import("./_shared/username-registry");
+    const house = await ensureHouseAccount();
+    actingUserId = house.userId;
+    houseUsername = house.username;
+  }
+
   const partitionKeys = [
-    meditationUserPk(auth.sub),
+    meditationUserPk(actingUserId),
     meditationGlobalUserPk(),
     LEGACY_MEDITATION_PARTITION_PK,
   ];
@@ -201,8 +293,6 @@ export async function handler(
       error: '`action` must be "create", "update", or "revoke"',
     });
   }
-
-  const isAdmin = auth.role === "admin";
 
   try {
     if (action === "revoke") {
@@ -275,6 +365,21 @@ export async function handler(
       return json(200, { ok: true, shareToken });
     }
 
+    if (!auth.email) {
+      return json(401, { error: "Sign in required" });
+    }
+    let username = houseUsername;
+    if (!username) {
+      const usernameFields = await getUserUsernameFields(auth.email);
+      if (!usernameFields.chosen || !usernameFields.username) {
+        return json(400, {
+          error: "Choose a username before sharing",
+          code: "username_required",
+        });
+      }
+      username = usernameFields.username;
+    }
+
     const found = await getMeditationRow(tableName, partitionKeys, sk);
     if (!found) return json(404, { error: "Meditation not found" });
 
@@ -282,6 +387,16 @@ export async function handler(
     const existingSlug =
       typeof found.row.listenSlug === "string" && found.row.listenSlug.trim()
         ? found.row.listenSlug.trim()
+        : null;
+    const existingPathSlug =
+      typeof found.row.listenPathSlug === "string" &&
+      found.row.listenPathSlug.trim()
+        ? found.row.listenPathSlug.trim()
+        : null;
+    const existingLinkToken =
+      typeof found.row.listenLinkToken === "string" &&
+      found.row.listenLinkToken.trim()
+        ? found.row.listenLinkToken.trim()
         : null;
 
     if (action === "update" && (!prev || !existingSlug)) {
@@ -326,19 +441,16 @@ export async function handler(
     if (kind === "story") brief = null;
 
     const listed =
-      kind === "story"
+      kind === "story" && username !== "consciously"
         ? false
         : typeof body.listed === "boolean"
           ? body.listed
           : (prev?.listed ?? false);
 
-    let isExample = prev?.isExample === true;
-    if (typeof body.isExample === "boolean") {
-      if (!isAdmin) {
-        return json(403, { error: "Admin only for isExample" });
-      }
-      isExample = body.isExample;
-    }
+    // Listen examples are the house account (`consciously`) listed items.
+    // The old admin `isExample` flag is retired — preserve existing true values only.
+    const isExample = prev?.isExample === true;
+    // if (typeof body.isExample === "boolean") { … } — commented out; use Create as Consciously instead.
 
     const now = new Date().toISOString();
     const share: ListenShareSnapshot = {
@@ -354,31 +466,77 @@ export async function handler(
       updatedAt: now,
     };
 
-    // Re-sharing after revoke (or first create): mint a new slug.
-    // Updates keep the existing slug stable even if the title changes.
+    // Flat listenSlug kept for legacy /listen/<slug> redirects.
+    // pathSlug is stable per share; title edits do not change it.
     let slug = existingSlug;
+    let pathSlug = existingPathSlug;
     if (action === "create") {
-      if (existingSlug && prev) {
-        // Already shared — treat create as update (idempotent reopen).
+      if (existingSlug && prev && pathSlug) {
         slug = existingSlug;
       } else {
+        pathSlug = await mintUniquePathSlug(tableName, username, share.title);
         slug = await mintUniqueSlug(tableName, share.title);
       }
+    } else if (!pathSlug) {
+      pathSlug = await mintUniquePathSlug(tableName, username, share.title);
     }
-    if (!slug) return json(500, { error: "Could not mint slug" });
+    if (!slug || !pathSlug) {
+      return json(500, { error: "Could not mint slug" });
+    }
+
+    const wasListed = prev?.listed === true;
+    let linkToken: string | null = existingLinkToken;
+    if (share.listed) {
+      // Link-only → listed: clean URL works; old token path redirects.
+      if (!wasListed && existingLinkToken) {
+        await putPathRegistry({
+          tableName,
+          username,
+          pathKey: `${pathSlug}-${existingLinkToken}`,
+          status: "revoked",
+          redirectTo: `${username}/${pathSlug}`,
+        });
+      }
+      linkToken = null;
+    } else {
+      // Listed → link only (or first unlisted): new token; clean URL dies.
+      if (wasListed || !linkToken || action === "create") {
+        if (wasListed) {
+          await putPathRegistry({
+            tableName,
+            username,
+            pathKey: pathSlug,
+            status: "revoked",
+          });
+        }
+        linkToken = newListenLinkToken();
+      }
+    }
 
     // Keep opaque shareToken for legacy /listen/{token} redirects.
     let shareToken =
       typeof found.row.shareToken === "string" && found.row.shareToken.trim()
         ? found.row.shareToken.trim()
         : null;
-    if (!shareToken) shareToken = newShareToken();
+    if (!shareToken || action === "create") shareToken = newShareToken();
 
     const listedAt = share.listed ? now : null;
+    const pathKey = share.listed
+      ? pathSlug
+      : `${pathSlug}-${linkToken ?? newListenLinkToken()}`;
+    if (!share.listed && !linkToken) linkToken = pathKey.slice(pathSlug.length + 1);
 
     await putSlugRegistry({
       tableName,
       slug,
+      status: "active",
+      ownerPk: found.pk,
+      ownerSk: sk,
+    });
+    await putPathRegistry({
+      tableName,
+      username,
+      pathKey,
       status: "active",
       ownerPk: found.pk,
       ownerSk: sk,
@@ -392,11 +550,13 @@ export async function handler(
       update: share.listed
         ? {
             UpdateExpression:
-              "SET shareToken = :tok, listenSlug = :slug, listenShare = :share, listenListed = :listed, listenListedAt = :listedAt",
+              "SET shareToken = :tok, listenSlug = :slug, listenShare = :share, listenUsername = :user, listenPathSlug = :ps, listenListed = :listed, listenListedAt = :listedAt REMOVE listenLinkToken",
             ExpressionAttributeValues: {
               ":tok": shareToken,
               ":slug": slug,
               ":share": share,
+              ":user": username,
+              ":ps": pathSlug,
               ":listed": LISTEN_LISTED_PK,
               ":listedAt": listedAt,
             },
@@ -404,21 +564,31 @@ export async function handler(
           }
         : {
             UpdateExpression:
-              "SET shareToken = :tok, listenSlug = :slug, listenShare = :share REMOVE listenListed, listenListedAt",
+              "SET shareToken = :tok, listenSlug = :slug, listenShare = :share, listenUsername = :user, listenPathSlug = :ps, listenLinkToken = :lt REMOVE listenListed, listenListedAt",
             ExpressionAttributeValues: {
               ":tok": shareToken,
               ":slug": slug,
               ":share": share,
+              ":user": username,
+              ":ps": pathSlug,
+              ":lt": linkToken,
             },
             ConditionExpression: "attribute_exists(pk)",
           },
     });
     if (!ok) return json(404, { error: "Meditation not found" });
 
-    // If create minted a new slug after a previous revoke of a different slug,
-    // leave the old registry tombstone alone (already revoked).
-
-    return json(200, shareResponse(slug, share, shareToken));
+    return json(
+      200,
+      shareResponse({
+        slug,
+        username,
+        pathSlug,
+        linkToken,
+        share,
+        shareToken,
+      }),
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Update failed";
     return json(500, { error: msg });

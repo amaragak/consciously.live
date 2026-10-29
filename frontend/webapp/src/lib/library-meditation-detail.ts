@@ -12,6 +12,11 @@ import {
   type LibraryMeditationItem,
 } from "@/lib/medimade-api";
 import { parseMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
+import {
+  contentTitleSlug,
+  newUntitledSlugId,
+  uniquifySlug,
+} from "@/lib/readable-url";
 
 /* ------------------------------------------------------------------ */
 /* Routing                                                             */
@@ -44,30 +49,64 @@ function detailIdFromItem(
   return (item.s3Key || item.sk || item.id || "").trim();
 }
 
+function shortIdSuffix(id: string): string {
+  const compact = id.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  return compact.slice(-6) || newUntitledSlugId().slice(0, 6);
+}
+
+/** Readable path segment for a library item (title slug; stable on title clashes). */
+export function libraryMeditationPathSlug(
+  item: Pick<LibraryMeditationItem, "title" | "s3Key" | "id" | "sk">,
+  siblings: readonly Pick<
+    LibraryMeditationItem,
+    "title" | "s3Key" | "id" | "sk"
+  >[] = [],
+): string {
+  const base = contentTitleSlug(item.title?.trim() || "") || "meditation";
+  const selfId = detailIdFromItem(item);
+  const taken = new Set<string>();
+  for (const s of siblings) {
+    const sid = detailIdFromItem(s);
+    if (!sid || sid === selfId) continue;
+    const b = contentTitleSlug(s.title?.trim() || "") || "meditation";
+    taken.add(b);
+    taken.add(`${b}-${shortIdSuffix(sid)}`);
+  }
+  if (!taken.has(base)) return base;
+  return uniquifySlug(`${base}-${shortIdSuffix(selfId)}`, taken);
+}
+
 export type LibraryDetailHrefOpts = {
   /** Tab the user came from; default creations. */
   from?: LibraryDetailFrom;
   /** Program URL slug — lets Back return to the open program. */
   program?: string | null;
+  /** Sibling list for unique title slugs (pass library when available). */
+  siblings?: readonly LibraryMeditationItem[];
 };
 
-export function libraryMeditationDetailHrefById(
-  id: string,
-  opts?: LibraryDetailHrefOpts,
-): string {
+function detailQs(opts?: LibraryDetailHrefOpts): string {
   const params = new URLSearchParams();
   const from = opts?.from ?? "creations";
   if (from !== "creations") params.set("from", from);
   if (from === "programs" && opts?.program) params.set("program", opts.program);
   const qs = params.toString();
-  return `/meditate/library/${encodeURIComponent(id.trim())}${qs ? `?${qs}` : ""}`;
+  return qs ? `?${qs}` : "";
+}
+
+export function libraryMeditationDetailHrefById(
+  id: string,
+  opts?: LibraryDetailHrefOpts,
+): string {
+  return `/meditate/library/${encodeURIComponent(id.trim())}${detailQs(opts)}`;
 }
 
 export function libraryMeditationDetailHref(
-  item: Pick<LibraryMeditationItem, "s3Key" | "id" | "sk">,
+  item: Pick<LibraryMeditationItem, "title" | "s3Key" | "id" | "sk">,
   opts?: LibraryDetailHrefOpts,
 ): string {
-  return libraryMeditationDetailHrefById(detailIdFromItem(item), opts);
+  const slug = libraryMeditationPathSlug(item, opts?.siblings ?? []);
+  return `/meditate/library/${encodeURIComponent(slug)}${detailQs(opts)}`;
 }
 
 /** Decoded `:id` when the path is a detail URL, else null. */
@@ -87,7 +126,7 @@ export function libraryDetailIdFromPathname(
   }
 }
 
-/** Match `id`, `sk` or `s3Key` (raw segment first, then decoded). */
+/** Match `id`, `sk`, `s3Key`, or readable title slug. */
 export function findLibraryItemByDetailId<T extends LibraryMeditationItem>(
   list: readonly T[],
   rawId: string,
@@ -111,6 +150,12 @@ export function findLibraryItemByDetailId<T extends LibraryMeditationItem>(
     ) {
       return x;
     }
+  }
+  const key = [...candidates][0]?.toLowerCase() ?? "";
+  if (!key) return null;
+  const active = list.filter((x) => x.isDraft !== true);
+  for (const x of active) {
+    if (libraryMeditationPathSlug(x, active).toLowerCase() === key) return x;
   }
   return null;
 }
