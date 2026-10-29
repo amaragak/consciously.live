@@ -201,11 +201,14 @@ export async function getUserUsernameFields(emailRaw: string): Promise<{
 /**
  * Claim a chosen username. Retires the previous one (redirects forever).
  * Defaults may be replaced freely; chosen names are limited to once / 30 days.
+ * Admins may claim reserved names and take `consciously` from the synthetic
+ * house account (not from another human account).
  */
 export async function setChosenUsername(params: {
   email: string;
   userId: string;
   desired: string;
+  isAdmin?: boolean;
 }): Promise<
   | {
       ok: true;
@@ -215,7 +218,10 @@ export async function setChosenUsername(params: {
   | { ok: false; error: string; nextAllowedAt?: string | null }
 > {
   const email = params.email.trim().toLowerCase();
-  const validated = validateChosenUsername(params.desired);
+  const isAdmin = params.isAdmin === true;
+  const validated = validateChosenUsername(params.desired, {
+    allowReserved: isAdmin,
+  });
   if (!validated.ok) return { ok: false, error: validated.error };
 
   const desired = validated.username;
@@ -225,7 +231,16 @@ export async function setChosenUsername(params: {
     return { ok: true, username: desired, nextAllowedAt: null };
   }
 
-  if (current.chosen) {
+  const existingReg = await getUsernameRegistry(desired);
+  const takeFromHouse =
+    isAdmin &&
+    existingReg?.status === "active" &&
+    existingReg.email === HOUSE_EMAIL &&
+    existingReg.email !== email;
+  // Admins adopting the house brand skip the 30-day change cooldown.
+  const skipCooldown = takeFromHouse || (isAdmin && desired === HOUSE_USERNAME);
+
+  if (current.chosen && !skipCooldown) {
     const gate = usernameChangeAllowed(current.changedAt);
     if (!gate.ok) {
       return {
@@ -236,7 +251,6 @@ export async function setChosenUsername(params: {
     }
   }
 
-  const existingReg = await getUsernameRegistry(desired);
   if (existingReg) {
     if (
       existingReg.status === "active" &&
@@ -244,6 +258,10 @@ export async function setChosenUsername(params: {
       existingReg.userId === params.userId
     ) {
       // Same user reclaiming — fine.
+    } else if (takeFromHouse) {
+      // Admin adopting the house brand username.
+    } else if (existingReg.status === "retired") {
+      // Free to reclaim.
     } else {
       return { ok: false, error: USERNAME_UNAVAILABLE_MESSAGE };
     }
@@ -263,9 +281,18 @@ export async function setChosenUsername(params: {
           redirectTo: null,
           updatedAt: new Date().toISOString(),
         },
-        ConditionExpression:
-          "attribute_not_exists(pk) OR (email = :e AND userId = :id)",
-        ExpressionAttributeValues: { ":e": email, ":id": params.userId },
+        ...(takeFromHouse
+          ? {}
+          : {
+              ConditionExpression:
+                "attribute_not_exists(pk) OR (email = :e AND userId = :id) OR #st = :retired",
+              ExpressionAttributeNames: { "#st": "status" },
+              ExpressionAttributeValues: {
+                ":e": email,
+                ":id": params.userId,
+                ":retired": "retired",
+              },
+            }),
       }),
     );
   } catch (e: unknown) {
@@ -277,6 +304,22 @@ export async function setChosenUsername(params: {
       return { ok: false, error: USERNAME_UNAVAILABLE_MESSAGE };
     }
     throw e;
+  }
+
+  if (takeFromHouse) {
+    // Detach the synthetic house user so ensureHouseAccount won't fight the admin.
+    await ddb.send(
+      new UpdateCommand({
+        TableName: usersTable(),
+        Key: { email: HOUSE_EMAIL },
+        UpdateExpression:
+          "SET usernameIsDefault = :d, usernameChosen = :c REMOVE username",
+        ExpressionAttributeValues: {
+          ":d": true,
+          ":c": false,
+        },
+      }),
+    );
   }
 
   // Retire previous.
@@ -349,12 +392,28 @@ export async function ensureHouseUsernameRegistry(params: {
 /**
  * Ensure the Consciously house account exists (users row + username registry).
  * Idempotent. Used for Listen examples and "Create as Consciously".
+ * If an admin has claimed `consciously`, do not steal the registry back —
+ * Create-as-Consciously then writes into that admin's library.
  */
 export async function ensureHouseAccount(): Promise<{
   email: string;
   userId: string;
   username: string;
 }> {
+  const held = await getUsernameRegistry(HOUSE_USERNAME);
+  if (
+    held?.status === "active" &&
+    held.email &&
+    held.userId &&
+    held.email !== HOUSE_EMAIL
+  ) {
+    return {
+      email: held.email,
+      userId: held.userId,
+      username: HOUSE_USERNAME,
+    };
+  }
+
   const { randomUUID } = await import("crypto");
   const users = usersTable();
   const got = await ddb.send(

@@ -18,6 +18,7 @@ import {
   getUsernameRegistry,
 } from "./_shared/username-registry";
 import {
+  HOUSE_EMAIL,
   USERNAME_UNAVAILABLE_MESSAGE,
   usernameChangeAllowed,
   usernamePrefillFromDisplayName,
@@ -41,6 +42,7 @@ export async function handler(
   if (!auth?.sub || !auth.email) {
     return json(401, { error: "Sign in required" });
   }
+  const isAdmin = auth.role === "admin";
 
   try {
     if (method === "GET") {
@@ -50,12 +52,25 @@ export async function handler(
           event.queryStringParameters?.u ??
           event.queryStringParameters?.username ??
           "";
-        const validated = validateChosenUsername(raw);
+        const validated = validateChosenUsername(raw, {
+          allowReserved: isAdmin,
+        });
         if (!validated.ok) {
           return json(200, { available: false, error: validated.error });
         }
         const reg = await getUsernameRegistry(validated.username);
-        if (reg && !(reg.status === "active" && reg.email === auth.email)) {
+        if (reg?.status === "active" && reg.email === auth.email) {
+          return json(200, { available: true, username: validated.username });
+        }
+        // Admins may adopt the synthetic house username.
+        if (
+          isAdmin &&
+          reg?.status === "active" &&
+          reg.email === HOUSE_EMAIL
+        ) {
+          return json(200, { available: true, username: validated.username });
+        }
+        if (reg && reg.status === "active") {
           return json(200, {
             available: false,
             error: USERNAME_UNAVAILABLE_MESSAGE,
@@ -111,6 +126,7 @@ export async function handler(
         email: auth.email,
         userId: auth.sub,
         desired,
+        isAdmin,
       });
       if (!result.ok) {
         return json(400, {

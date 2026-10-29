@@ -86,8 +86,13 @@ export type UsernameValidation =
 /**
  * Validate a chosen (non-default) username.
  * Rejects all-digit names — those are reserved for auto-assigned defaults.
+ * Admins may pass `allowReserved` to claim reserved / house-brand names
+ * (still subject to uniqueness in the registry).
  */
-export function validateChosenUsername(raw: unknown): UsernameValidation {
+export function validateChosenUsername(
+  raw: unknown,
+  opts?: { allowReserved?: boolean },
+): UsernameValidation {
   if (typeof raw !== "string") {
     return { ok: false, error: UNAVAILABLE };
   }
@@ -101,11 +106,12 @@ export function validateChosenUsername(raw: unknown): UsernameValidation {
   if (isAllDigitUsername(username)) {
     return { ok: false, error: UNAVAILABLE };
   }
-  if (loadReserved().has(username)) {
+  const allowReserved = opts?.allowReserved === true;
+  if (!allowReserved && loadReserved().has(username)) {
     return { ok: false, error: UNAVAILABLE };
   }
   const banNorm = normalizeUsernameForBanCheck(username);
-  if (banNorm.includes("consciously")) {
+  if (!allowReserved && banNorm.includes("consciously")) {
     return { ok: false, error: UNAVAILABLE };
   }
   try {
