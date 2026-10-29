@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { SiteFooterV2 } from "@/components/home-v2/site-footer-v2";
 import { ListenBriefBand } from "@/components/listen/listen-brief-band";
 import { ListenCoverArt } from "@/components/listen/listen-cover";
 import {
@@ -235,8 +234,6 @@ export function ListenShareClient({
           </div>
         </section>
       ) : null}
-
-      <SiteFooterV2 />
     </div>
   );
 }

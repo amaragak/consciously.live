@@ -175,10 +175,25 @@ export function ReadPostIndex({ posts }: { posts: PublicBlogPostSummary[] }) {
                 <li key={post.id}>
                   <Link
                     href={`/read/${encodeURIComponent(post.slug)}`}
-                    className={`group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[rgba(62,52,66,.04)] md:px-6 md:py-5 ${
+                    className={`group flex items-center gap-3.5 px-5 py-4 transition-colors hover:bg-[rgba(62,52,66,.04)] md:gap-5 md:px-6 md:py-5 ${
                       i > 0 ? "border-t border-[rgba(62,52,66,.1)]" : ""
                     }`}
                   >
+                    <div className="relative size-[3.25rem] shrink-0 overflow-hidden rounded-lg md:size-[4.25rem]">
+                      {post.coverImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={post.coverImageUrl}
+                          alt=""
+                          className="absolute inset-0 size-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="size-full bg-[color-mix(in_srgb,var(--hv2-sticky-bg)_12%,#E8DFD0)]"
+                          aria-hidden
+                        />
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="home-v2-display m-0 text-[1.125rem] font-normal leading-snug tracking-[-0.2px] text-[var(--hv2-ink)] transition-colors group-hover:text-[var(--hv2-tan-text)] md:text-[1.25rem]">
                         {post.title}

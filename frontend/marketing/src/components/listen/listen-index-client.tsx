@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { SiteFooterV2 } from "@/components/home-v2/site-footer-v2";
 import { ListenBriefBand } from "@/components/listen/listen-brief-band";
 import { ListenCoverArt } from "@/components/listen/listen-cover";
 import {
@@ -259,7 +258,6 @@ export function ListenIndexClient({
         headline="Make one from your own words."
         body="Write one line about what you need. Consciously writes and narrates a meditation for it. Your first one is free."
       />
-      <SiteFooterV2 />
 
       {playing ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-5 md:pb-7">

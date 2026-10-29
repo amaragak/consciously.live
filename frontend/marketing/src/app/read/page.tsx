@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { ListenBriefBand } from "@/components/listen/listen-brief-band";
-import { SiteFooterV2 } from "@/components/home-v2/site-footer-v2";
 import { ReadPostIndex } from "@/components/read-post-index";
 import { fetchPublishedBlogIndex } from "@/lib/public-blog";
 
@@ -72,10 +71,9 @@ export default async function ReadIndexPage() {
       </Suspense>
 
       <ListenBriefBand
-        headline="Make one from your own words."
-        body="A few words about what you need is enough. Consciously writes the rest."
+        headline="Make a meditation from your own words."
+        body="A few words about what you need is enough. Consciously writes a guided meditation for you."
       />
-      <SiteFooterV2 />
     </div>
   );
 }

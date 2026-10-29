@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ReadBody } from "@/components/blog-markdown";
-import { SiteFooterV2 } from "@/components/home-v2/site-footer-v2";
 import { ListenBriefBand } from "@/components/listen/listen-brief-band";
 import { ReadListenEmbed } from "@/components/read-listen-embed";
 import {
@@ -184,8 +183,8 @@ export default async function ReadPostPage({ params }: Props) {
       </article>
 
       <ListenBriefBand
-        headline="Make one from your own words."
-        body="A few words about what you need is enough. Consciously writes the rest."
+        headline="Make a meditation from your own words."
+        body="A few words about what you need is enough. Consciously writes a guided meditation for you."
       />
 
       {readNext.length > 0 ? (
@@ -210,8 +209,6 @@ export default async function ReadPostPage({ params }: Props) {
           </div>
         </section>
       ) : null}
-
-      <SiteFooterV2 />
     </div>
   );
 }
