@@ -110,7 +110,7 @@ export function ListenIndexClient({
 
       <section className="px-5 pb-2 pt-10 md:px-6 md:pt-16">
         <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
-          <h1 className="home-v2-display m-0 text-[2.5rem] font-normal leading-[1.05] tracking-[-1px] md:text-[3.75rem]">
+          <h1 className="home-v2-display m-0 text-[1.75rem] font-normal leading-relaxed tracking-[-0.4px] sm:text-[2.125rem] md:text-[2.5rem]">
             {headline ? (
               headline
             ) : (
@@ -375,6 +375,11 @@ function MeditationCard({
           >
             {item.title}
           </Link>
+          {item.exampleFor ? (
+            <p className="m-0 mt-1 text-[13.5px] font-medium text-[var(--hv2-body)]">
+              {item.exampleFor}
+            </p>
+          ) : null}
           <p className="m-0 mt-1 text-[13.5px] text-[var(--hv2-muted)]">
             {[item.style, dur].filter(Boolean).join(" · ")}
           </p>
@@ -429,6 +434,11 @@ function StoryCard({
         >
           {item.title}
         </Link>
+        {item.exampleFor ? (
+          <p className="m-0 text-[13.5px] font-medium text-[var(--hv2-body)]">
+            {item.exampleFor}
+          </p>
+        ) : null}
         {excerpt ? (
           <p className="m-0 line-clamp-3 text-[14.5px] leading-[1.55] text-[var(--hv2-body)]">
             {excerpt}

@@ -118,6 +118,7 @@ function toPublicItem(
           : null,
     showBrief: share.showBrief,
     brief: share.showBrief ? share.brief : null,
+    exampleFor: null,
     listed: share.listed || isExample,
     isExample,
     style: styleFromMeditationRow(row),
@@ -255,6 +256,8 @@ async function listCurated(
     const row = got.Item as Record<string, unknown>;
     if (row.archived === true || row.isDraft === true) continue;
     // Ensure parseListenShare succeeds even for unshared library rows.
+    const promptLine = slot.promptLine?.trim() || null;
+    const exampleFor = slot.exampleFor?.trim() || null;
     if (!parseListenShare(row.listenShare)) {
       const title =
         slot.title ||
@@ -266,14 +269,14 @@ async function listCurated(
         title,
         description: slot.description || "",
         shownAs: "Consciously",
-        showBrief: false,
-        brief: null,
+        showBrief: Boolean(promptLine),
+        brief: promptLine,
         listed: true,
         isExample: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-    } else if (slot.title || slot.description || slot.kind) {
+    } else {
       const share = parseListenShare(row.listenShare)!;
       row.listenShare = {
         ...share,
@@ -283,6 +286,9 @@ async function listCurated(
         shownAs: share.shownAs || "Consciously",
         listed: true,
         isExample: true,
+        ...(promptLine
+          ? { showBrief: true, brief: promptLine }
+          : {}),
       };
     }
     const slug =
@@ -298,6 +304,10 @@ async function listCurated(
       isExample: true,
       listed: true,
       shownAs: item.shownAs || "Consciously",
+      exampleFor,
+      ...(promptLine
+        ? { showBrief: true, brief: promptLine }
+        : {}),
     });
   }
   return items;

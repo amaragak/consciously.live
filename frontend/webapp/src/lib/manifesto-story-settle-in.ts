@@ -1,8 +1,11 @@
 /**
- * Fixed ~2 min breathing intro prepended when “Settle in first” is on.
- * ~280 words at ~118 wpm.
+ * Story narration script builder.
+ *
+ * Spoken title + pause is applied by the generate worker
+ * (`withSpokenMeditationTitleIntro`) — do not prepend a meditation settle-in.
  */
 
+/** @deprecated Kept for older stored prefs; never prepended to TTS anymore. */
 export const STORY_SETTLE_IN_SCRIPT = [
   "Before the story, settle in.",
   "Find a comfortable position. Let your shoulders drop. Soften your jaw.",
@@ -17,13 +20,15 @@ export const STORY_SETTLE_IN_SCRIPT = [
   "When you’re ready, the story begins.",
 ].join("\n\n");
 
-/** Build the script sent to TTS for a Manifesto Story narration. */
+/**
+ * Body sent to TTS for a Story narration.
+ * Title (sentence-case + period) and the break before the body are added by
+ * the audio worker — pass only the third-person narration here.
+ */
 export function buildStoryNarrationScript(opts: {
   thirdPersonText: string;
-  settleInFirst: boolean;
+  /** Ignored — settle-in intros are not used for stories. */
+  settleInFirst?: boolean;
 }): string {
-  const body = opts.thirdPersonText.trim();
-  if (!body) return "";
-  if (!opts.settleInFirst) return body;
-  return `${STORY_SETTLE_IN_SCRIPT}\n\n${body}`;
+  return opts.thirdPersonText.trim();
 }

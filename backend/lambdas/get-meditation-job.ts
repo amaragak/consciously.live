@@ -65,9 +65,11 @@ export async function handler(
   const isGlobalJob =
     !jobUserId ||
     jobUserId === GLOBAL_MEDITATION_USER_ID;
+  const isAdmin = auth?.role === "admin";
   // Unauthenticated poll is allowed for now (guest generate). Signed-in
-  // callers still cannot read another user's non-global job.
-  if (!isGlobalJob && callerId && jobUserId !== callerId) {
+  // callers still cannot read another user's non-global job — except admins
+  // (house-account / Listen example jobs).
+  if (!isGlobalJob && callerId && jobUserId !== callerId && !isAdmin) {
     return json(404, { error: "Job not found" });
   }
 
@@ -82,6 +84,8 @@ export async function handler(
     createdAt,
     updatedAt,
     durationSeconds,
+    meditationPk,
+    meditationSk,
   } =
     out.Item as {
       status?: string;
@@ -94,6 +98,8 @@ export async function handler(
       createdAt?: string;
       updatedAt?: string;
       durationSeconds?: number | null;
+      meditationPk?: string;
+      meditationSk?: string;
     };
 
   const playbackKey =
@@ -122,6 +128,12 @@ export async function handler(
     createdAt,
     updatedAt,
     durationSeconds: duration,
+    ...(typeof meditationPk === "string" && meditationPk.trim()
+      ? { meditationPk: meditationPk.trim() }
+      : {}),
+    ...(typeof meditationSk === "string" && meditationSk.trim()
+      ? { meditationSk: meditationSk.trim() }
+      : {}),
   });
 }
 

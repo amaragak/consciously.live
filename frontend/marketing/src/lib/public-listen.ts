@@ -13,6 +13,8 @@ export type ListenPublicItem = {
   shownAs: string | null;
   showBrief: boolean;
   brief: string | null;
+  /** Curator line — e.g. “Meditation for Bob”. */
+  exampleFor: string | null;
   listed: boolean;
   isExample: boolean;
   style: string | null;
@@ -65,6 +67,10 @@ function parseItem(raw: unknown): ListenPublicItem | null {
     showBrief: o.showBrief === true,
     brief:
       typeof o.brief === "string" && o.brief.trim() ? o.brief.trim() : null,
+    exampleFor:
+      typeof o.exampleFor === "string" && o.exampleFor.trim()
+        ? o.exampleFor.trim()
+        : null,
     listed: o.listed === true,
     isExample: o.isExample === true,
     style: typeof o.style === "string" && o.style.trim() ? o.style.trim() : null,

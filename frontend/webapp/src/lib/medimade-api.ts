@@ -3098,6 +3098,9 @@ export type MeditationAudioJobStatus = {
   error?: string;
   /** Measured MP3 length when the job completed. */
   durationSeconds?: number | null;
+  /** Library row keys when the job wrote a meditation (for Listen curator pin). */
+  meditationPk?: string;
+  meditationSk?: string;
 };
 
 export type BackgroundAudioItem = {
@@ -3812,6 +3815,11 @@ export async function createMeditationAudioJob(params: {
   leadInSeconds?: number;
   /** Fade beds after voice ends (default true). */
   fadeOut?: boolean;
+  /**
+   * Optional library + spoken title override (Story narrations).
+   * When set, the worker skips Claude title derivation for this field.
+   */
+  title?: string;
   /** Admin: create under the Consciously house account. */
   asHouse?: boolean;
   /** @deprecated use layered background keys + gains */
@@ -3896,6 +3904,9 @@ export async function createMeditationAudioJob(params: {
       ? { leadInSeconds: params.leadInSeconds }
       : {}),
     ...(typeof params.fadeOut === "boolean" ? { fadeOut: params.fadeOut } : {}),
+    ...(typeof params.title === "string" && params.title.trim()
+      ? { title: params.title.trim().slice(0, 120) }
+      : {}),
     ...(sessionTokenForBody() ? { sessionToken: sessionTokenForBody() } : {}),
     ...(speed === undefined ? {} : { speed }),
     ...(backgroundSoundKey === undefined ? {} : { backgroundSoundKey }),
@@ -7645,6 +7656,10 @@ export type AdminListenPreview = {
   published: boolean;
   title: string;
   description: string;
+  /** Hand-written “Made from” line on /listen. */
+  promptLine: string | null;
+  /** Who this example was for (e.g. Meditation for Bob). */
+  exampleFor: string | null;
   style: string | null;
   durationSec: number | null;
   coverImageUrl: string | null;
@@ -7675,6 +7690,14 @@ function normalizeAdminListenPreview(raw: unknown): AdminListenPreview | null {
     published: o.published !== false,
     title: typeof o.title === "string" ? o.title : "Untitled",
     description: typeof o.description === "string" ? o.description : "",
+    promptLine:
+      typeof o.promptLine === "string" && o.promptLine.trim()
+        ? o.promptLine.trim()
+        : null,
+    exampleFor:
+      typeof o.exampleFor === "string" && o.exampleFor.trim()
+        ? o.exampleFor.trim()
+        : null,
     style: typeof o.style === "string" ? o.style : null,
     durationSec:
       typeof o.durationSec === "number" && Number.isFinite(o.durationSec)
@@ -7748,12 +7771,58 @@ async function postAdminListen(
 export async function pinAdminListenItem(params: {
   ref: string;
   kind?: "meditation" | "story";
+  /** Hand-written “Made from” line shown on /listen. */
+  promptLine?: string;
 }): Promise<AdminListenState> {
   return postAdminListen({
     action: "pin",
     ref: params.ref,
     ...(params.kind ? { kind: params.kind } : {}),
+    ...(params.promptLine != null ? { promptLine: params.promptLine } : {}),
   });
+}
+
+export async function setAdminListenPromptLine(
+  slotId: string,
+  promptLine: string,
+): Promise<AdminListenState> {
+  return postAdminListen({ action: "setPromptLine", slotId, promptLine });
+}
+
+export async function setAdminListenExampleFor(
+  slotId: string,
+  exampleFor: string,
+): Promise<AdminListenState> {
+  return postAdminListen({ action: "setExampleFor", slotId, exampleFor });
+}
+
+/** Mark a library meditation as a /listen example (admin; max 6 meditations). */
+export async function setAdminListenAsExample(params: {
+  sk: string;
+  s3Key?: string;
+  kind?: "meditation" | "story";
+  asHouse?: boolean;
+}): Promise<AdminListenState & { isExample?: boolean }> {
+  return postAdminListen({
+    action: "setAsExample",
+    sk: params.sk,
+    ...(params.s3Key ? { s3Key: params.s3Key } : {}),
+    ...(params.kind ? { kind: params.kind } : {}),
+    ...(params.asHouse ? { asHouse: true } : {}),
+  }) as Promise<AdminListenState & { isExample?: boolean }>;
+}
+
+export async function unsetAdminListenAsExample(params: {
+  sk: string;
+  s3Key?: string;
+  asHouse?: boolean;
+}): Promise<AdminListenState & { isExample?: boolean }> {
+  return postAdminListen({
+    action: "unsetAsExample",
+    sk: params.sk,
+    ...(params.s3Key ? { s3Key: params.s3Key } : {}),
+    ...(params.asHouse ? { asHouse: true } : {}),
+  }) as Promise<AdminListenState & { isExample?: boolean }>;
 }
 
 export async function unpinAdminListenSlot(

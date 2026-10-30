@@ -251,7 +251,7 @@ function stripStory(story: unknown): unknown {
       promptsDone: [],
       versions: [],
       activeVersionId: null,
-      settleInFirst: true,
+      settleInFirst: false,
       fadeOutAtEnd: true,
       reminderEnabled: false,
       reminderTime: "22:30",
@@ -314,7 +314,7 @@ function stripStory(story: unknown): unknown {
       typeof o.activeVersionId === "string"
         ? o.activeVersionId.slice(0, 80)
         : null,
-    settleInFirst: o.settleInFirst !== false,
+    settleInFirst: o.settleInFirst === true,
     fadeOutAtEnd: o.fadeOutAtEnd !== false,
     reminderEnabled: o.reminderEnabled === true,
     reminderTime:

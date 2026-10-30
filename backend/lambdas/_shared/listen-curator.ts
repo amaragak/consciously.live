@@ -19,6 +19,9 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 export const LISTEN_CURATOR_PK = "LISTEN_CURATOR";
 export const LISTEN_CURATOR_SK = "SETTINGS";
 
+/** Max curated meditation examples on /listen (stories are uncapped). */
+export const LISTEN_CURATOR_MAX_MEDITATIONS = 6;
+
 export type ListenCuratorSlot = {
   id: string;
   ownerPk: string;
@@ -29,6 +32,15 @@ export type ListenCuratorSlot = {
   /** Optional display overrides (empty = use meditation share / title). */
   title: string | null;
   description: string | null;
+  /**
+   * Hand-written “Made from” line shown on /listen (cheeky stand-in for the
+   * one-shot prompt that could have produced the piece).
+   */
+  promptLine: string | null;
+  /**
+   * Who this example was for — shown on /listen (e.g. “Meditation for Bob”).
+   */
+  exampleFor: string | null;
 };
 
 export type ListenCuratorSettings = {
@@ -69,6 +81,14 @@ function coerceSlot(raw: unknown, index: number): ListenCuratorSlot | null {
     description:
       typeof o.description === "string" && o.description.trim()
         ? o.description.trim()
+        : null,
+    promptLine:
+      typeof o.promptLine === "string" && o.promptLine.trim()
+        ? o.promptLine.trim().slice(0, 500)
+        : null,
+    exampleFor:
+      typeof o.exampleFor === "string" && o.exampleFor.trim()
+        ? o.exampleFor.trim().slice(0, 120)
         : null,
   };
 }
@@ -148,6 +168,8 @@ export function newListenCuratorSlot(params: {
   sort: number;
   title?: string | null;
   description?: string | null;
+  promptLine?: string | null;
+  exampleFor?: string | null;
   published?: boolean;
 }): ListenCuratorSlot {
   return {
@@ -159,5 +181,13 @@ export function newListenCuratorSlot(params: {
     published: params.published !== false,
     title: params.title?.trim() || null,
     description: params.description?.trim() || null,
+    promptLine: params.promptLine?.trim().slice(0, 500) || null,
+    exampleFor: params.exampleFor?.trim().slice(0, 120) || null,
   };
+}
+
+export function countCuratorMeditations(
+  slots: readonly ListenCuratorSlot[],
+): number {
+  return slots.filter((s) => s.kind === "meditation").length;
 }

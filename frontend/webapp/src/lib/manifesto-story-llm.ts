@@ -96,6 +96,43 @@ export function suggestionAt(
   return f.suggestion;
 }
 
+/**
+ * Apply every finding’s suggestion at `level` to plain first-person text
+ * (end→start so offsets stay valid). Empty suggestions remove the quote.
+ */
+export function applyRaiseFindingsAtLevel(
+  plainText: string,
+  findings: readonly StoryFinding[],
+  level: RaiseLevel,
+): string {
+  let text = plainText;
+  const ordered = [...findings].sort((a, b) => b.start - a.start || b.end - a.end);
+  for (const f of ordered) {
+    const replacement = suggestionAt(f, level);
+    let start = f.start;
+    let end = f.end;
+    if (text.slice(start, end) !== f.quote) {
+      const idx = text.indexOf(f.quote);
+      if (idx < 0) continue;
+      start = idx;
+      end = idx + f.quote.length;
+    }
+    text = text.slice(0, start) + replacement + text.slice(end);
+  }
+  return text.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Ambitious + audacious full drafts from one raise pass. */
+export function raisedDraftsFromFindings(
+  plainText: string,
+  findings: readonly StoryFinding[],
+): { ambitious: string; audacious: string } {
+  return {
+    ambitious: applyRaiseFindingsAtLevel(plainText, findings, "ambitious"),
+    audacious: applyRaiseFindingsAtLevel(plainText, findings, "audacious"),
+  };
+}
+
 export const RAISE_LEVEL_NAME: Record<RaiseLevel, string> = {
   ambitious: "Ambitious",
   audacious: "Audacious",

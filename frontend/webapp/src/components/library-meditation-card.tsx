@@ -380,6 +380,10 @@ export type LibraryMeditationCardProps = {
   onFavourite?: (favourite: boolean) => void;
   onArchive?: () => void;
   onPublicChange?: (isPublic: boolean) => void;
+  /** Admin: pin/unpin as a /listen marketing example (not SPA Community Public). */
+  isListenExample?: boolean;
+  onListenExampleChange?: (asExample: boolean) => void;
+  listenExampleBusy?: boolean;
   onOpenMix?: (anchorEl: HTMLElement) => void;
   mixEditorSk?: string | null;
   onCloseMix?: () => void;
@@ -430,6 +434,9 @@ export function LibraryMeditationCard({
   onFavourite,
   onArchive,
   onPublicChange,
+  isListenExample = false,
+  onListenExampleChange,
+  listenExampleBusy = false,
   onOpenMix,
   mixEditorSk = null,
   onCloseMix,
@@ -766,6 +773,11 @@ export function LibraryMeditationCard({
   const canArchive = !hideOwnerActions && Boolean(onArchive);
   const canPublic =
     !hideOwnerActions && Boolean(m.sk) && !m.isDraft && Boolean(onPublicChange);
+  const canListenExample =
+    !hideOwnerActions &&
+    Boolean(m.sk) &&
+    !m.isDraft &&
+    Boolean(onListenExampleChange);
   const canScript = Boolean(m.scriptText && m.sk != null && onToggleScript);
   const canHowMade = !isPendingRow(item) && !hideOwnerActions;
   const canDevRefresh =
@@ -790,6 +802,7 @@ export function LibraryMeditationCard({
     canFavourite ||
     (canEditMix && Boolean(onOpenMix)) ||
     canPublic ||
+    canListenExample ||
     canArchive ||
     canShare ||
     canScript ||
@@ -1051,6 +1064,34 @@ export function LibraryMeditationCard({
                 disabled={publicDisabled}
                 aria-label={
                   m.isPublic ? "Remove from community library" : "Make public"
+                }
+                className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed"
+              >
+                <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+              </Switch.Root>
+            </div>
+          ) : null}
+          {canListenExample ? (
+            <div
+              role="menuitem"
+              className="flex items-center justify-between gap-3 px-3 py-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span
+                className={`text-sm ${
+                  isListenExample ? "text-accent-link" : "text-foreground"
+                }`}
+              >
+                Set as example
+              </span>
+              <Switch.Root
+                checked={isListenExample}
+                onCheckedChange={(v) => onListenExampleChange?.(Boolean(v))}
+                disabled={!m.sk || listenExampleBusy}
+                aria-label={
+                  isListenExample
+                    ? "Remove from Listen examples"
+                    : "Set as Listen example"
                 }
                 className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed"
               >

@@ -42,6 +42,8 @@ export type ListenPublicItem = {
   shownAs: string | null;
   showBrief: boolean;
   brief: string | null;
+  /** Curator “for whom” line (e.g. Meditation for Bob). */
+  exampleFor: string | null;
   listed: boolean;
   isExample: boolean;
   style: string | null;

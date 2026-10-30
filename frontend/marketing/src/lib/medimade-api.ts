@@ -4246,7 +4246,7 @@ export type AdminBlogSettings = {
 };
 
 const DEFAULT_ADMIN_INDEX_SUMMARY =
-  "Essays on consciousness, travel and practice, written by hand.";
+  "Essays on consciousness, travel and practice.";
 
 function normalizeAdminBlogTags(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];

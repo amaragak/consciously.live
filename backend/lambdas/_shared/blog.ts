@@ -16,7 +16,7 @@ export const BLOG_PK = "BLOG";
 const BLOG_SETTINGS_SK = "SETTINGS";
 
 export const DEFAULT_BLOG_INDEX_SUMMARY =
-  "Essays on consciousness, travel and practice, written by hand.";
+  "Essays on consciousness, travel and practice.";
 
 export type BlogAudioStatus = "none" | "generating" | "ready" | "failed";
 

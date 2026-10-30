@@ -63,7 +63,7 @@ export function blogPostTag(slug: string): string {
 }
 
 const DEFAULT_INDEX_SUMMARY =
-  "Essays on consciousness, travel and practice, written by hand.";
+  "Essays on consciousness, travel and practice.";
 
 function apiBase(): string | null {
   const u = process.env.NEXT_PUBLIC_MEDIMADE_API_URL?.trim().replace(/\/$/, "");

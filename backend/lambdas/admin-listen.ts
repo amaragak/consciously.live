@@ -18,11 +18,14 @@ import {
 import { requireAdminJson } from "./_shared/admin-auth";
 import { jsonAuth } from "./_shared/consciously-auth-http";
 import {
+  countCuratorMeditations,
   getListenCuratorSettings,
+  LISTEN_CURATOR_MAX_MEDITATIONS,
   newListenCuratorSlot,
   putListenCuratorSettings,
   type ListenCuratorSlot,
 } from "./_shared/listen-curator";
+import type { ConsciouslyAuthUser } from "./_shared/consciously-auth-http";
 import {
   LISTEN_PATH_PK,
   LISTEN_SLUG_PK,
@@ -31,6 +34,7 @@ import {
   styleFromMeditationRow,
   type ListenShareKind,
 } from "./_shared/listen-share";
+import { meditationUserPk } from "./_shared/meditation-user-pk";
 import { meditationPlaybackS3Key } from "./_shared/playback-keys";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -62,6 +66,10 @@ export type ListenCuratorPreview = {
   published: boolean;
   title: string;
   description: string;
+  /** Hand-written “Made from” line for /listen. */
+  promptLine: string | null;
+  /** Who this example was for (e.g. Meditation for Bob). */
+  exampleFor: string | null;
   style: string | null;
   durationSec: number | null;
   coverImageUrl: string | null;
@@ -176,17 +184,40 @@ async function resolveViaJobId(
         : typeof item.librarySk === "string" && item.librarySk.trim()
           ? item.librarySk.trim()
           : "";
-  const pk =
-    typeof item.userEmail === "string" && item.userEmail.trim()
-      ? item.userEmail.trim().toLowerCase()
-      : typeof item.email === "string" && item.email.trim()
-        ? item.email.trim().toLowerCase()
-        : typeof item.userId === "string" && item.userId.trim()
-          ? item.userId.trim()
-          : "";
-  if (!pk || !sk) return null;
-  const row = await getRow(pk, sk);
-  if (row) return { ownerPk: pk, ownerSk: sk };
+  const pkFromJob =
+    typeof item.meditationPk === "string" && item.meditationPk.trim()
+      ? item.meditationPk.trim()
+      : "";
+  if (pkFromJob && sk) {
+    const row = await getRow(pkFromJob, sk);
+    if (row) return { ownerPk: pkFromJob, ownerSk: sk };
+  }
+
+  // Fallback: find the library row that stamped this jobId (works before
+  // meditationPk/Sk were written onto the job).
+  const userId =
+    typeof item.userId === "string" && item.userId.trim()
+      ? item.userId.trim()
+      : "";
+  if (!userId) return null;
+  const ownerPk = meditationUserPk(userId);
+  let lek: Record<string, unknown> | undefined;
+  do {
+    const q = await ddb.send(
+      new QueryCommand({
+        TableName: analyticsTable(),
+        KeyConditionExpression: "pk = :pk",
+        FilterExpression: "jobId = :j",
+        ExpressionAttributeValues: { ":pk": ownerPk, ":j": jobId },
+        ExclusiveStartKey: lek,
+      }),
+    );
+    const hit = (q.Items ?? [])[0] as Record<string, unknown> | undefined;
+    if (hit && typeof hit.sk === "string" && hit.sk.trim()) {
+      return { ownerPk, ownerSk: hit.sk.trim() };
+    }
+    lek = q.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lek);
   return null;
 }
 
@@ -264,6 +295,8 @@ function previewFromRow(
       published: slot.published,
       title: slot.title || "(missing meditation)",
       description: slot.description || "",
+      promptLine: slot.promptLine,
+      exampleFor: slot.exampleFor,
       style: null,
       durationSec: null,
       coverImageUrl: null,
@@ -325,6 +358,8 @@ function previewFromRow(
     published: slot.published,
     title,
     description,
+    promptLine: slot.promptLine,
+    exampleFor: slot.exampleFor,
     style: styleFromMeditationRow(row),
     durationSec,
     coverImageUrl: coverUrlFromRow(row, cfDomain),
@@ -333,6 +368,49 @@ function previewFromRow(
     href,
     missing: false,
   };
+}
+
+/** Resolve a library row the admin owns (or house), from sk + optional s3Key. */
+async function resolveLibrarySkForAdmin(
+  auth: ConsciouslyAuthUser,
+  body: Record<string, unknown>,
+): Promise<{
+  ownerPk: string;
+  ownerSk: string;
+  row: Record<string, unknown>;
+} | null> {
+  const sk = typeof body.sk === "string" ? body.sk.trim() : "";
+  if (!sk) return null;
+
+  const tryPk = async (pk: string) => {
+    const row = await getRow(pk, sk);
+    return row ? { ownerPk: pk, ownerSk: sk, row } : null;
+  };
+
+  if (auth.sub && auth.sub !== "admin-open") {
+    const hit = await tryPk(meditationUserPk(auth.sub));
+    if (hit) return hit;
+  }
+
+  if (body.asHouse === true || body.as === "consciously") {
+    const { ensureHouseAccount } = await import("./_shared/username-registry");
+    const house = await ensureHouseAccount();
+    const hit = await tryPk(meditationUserPk(house.userId));
+    if (hit) return hit;
+  }
+
+  const s3Key = typeof body.s3Key === "string" ? body.s3Key.trim() : "";
+  const fromKey = /^meditations\/([^/]+)\//.exec(s3Key);
+  if (fromKey?.[1]) {
+    const hit = await tryPk(meditationUserPk(fromKey[1]));
+    if (hit) return hit;
+  }
+
+  // Last resort: paste-style ref already supports pk|sk.
+  if (typeof body.ref === "string" && body.ref.trim()) {
+    return resolveMeditationRef(body.ref);
+  }
+  return null;
 }
 
 async function resolveSlots(
@@ -477,6 +555,18 @@ export async function handler(
           event,
         );
       }
+      if (
+        kind === "meditation" &&
+        countCuratorMeditations(settings.slots) >= LISTEN_CURATOR_MAX_MEDITATIONS
+      ) {
+        return json(
+          400,
+          {
+            error: `At most ${LISTEN_CURATOR_MAX_MEDITATIONS} meditation examples. Remove one in Admin › Listen first.`,
+          },
+          event,
+        );
+      }
       const slot = newListenCuratorSlot({
         ownerPk: found.ownerPk,
         ownerSk: found.ownerSk,
@@ -485,6 +575,10 @@ export async function handler(
         title: typeof body.title === "string" ? body.title : null,
         description:
           typeof body.description === "string" ? body.description : null,
+        promptLine:
+          typeof body.promptLine === "string" ? body.promptLine : null,
+        exampleFor:
+          typeof body.exampleFor === "string" ? body.exampleFor : null,
         published: body.published !== false,
       });
       const next = await putListenCuratorSettings({
@@ -498,6 +592,169 @@ export async function handler(
           slots: next.slots,
           previews,
           pinned: slot,
+        },
+        event,
+      );
+    }
+
+    if (action === "setAsExample" || action === "unsetAsExample") {
+      const found = await resolveLibrarySkForAdmin(auth, body);
+      if (!found) {
+        return json(
+          404,
+          { error: "Could not find that library meditation." },
+          event,
+        );
+      }
+      const share = parseListenShare(found.row.listenShare);
+      const inferred: ListenShareKind =
+        share?.kind === "story" ||
+        (typeof found.row.meditationType === "string" &&
+          found.row.meditationType.trim().toLowerCase() === "story") ||
+        (typeof found.row.meditationStyle === "string" &&
+          found.row.meditationStyle.trim().toLowerCase() === "story")
+          ? "story"
+          : "meditation";
+      const kind = kindFromBody(body, inferred);
+      const settings = await getListenCuratorSettings();
+      const existing = settings.slots.find(
+        (s) =>
+          s.ownerPk === found.ownerPk && s.ownerSk === found.ownerSk,
+      );
+
+      if (action === "unsetAsExample") {
+        if (!existing) {
+          const previews = await resolveSlots(settings.slots);
+          return json(
+            200,
+            {
+              includeCommunity: settings.includeCommunity,
+              slots: settings.slots,
+              previews,
+              isExample: false,
+            },
+            event,
+          );
+        }
+        const next = await putListenCuratorSettings({
+          slots: settings.slots
+            .filter((s) => s.id !== existing.id)
+            .map((s, i) => ({ ...s, sort: i })),
+        });
+        const previews = await resolveSlots(next.slots);
+        return json(
+          200,
+          {
+            includeCommunity: next.includeCommunity,
+            slots: next.slots,
+            previews,
+            isExample: false,
+          },
+          event,
+        );
+      }
+
+      if (existing) {
+        const previews = await resolveSlots(settings.slots);
+        return json(
+          200,
+          {
+            includeCommunity: settings.includeCommunity,
+            slots: settings.slots,
+            previews,
+            isExample: true,
+            pinned: existing,
+          },
+          event,
+        );
+      }
+      if (
+        kind === "meditation" &&
+        countCuratorMeditations(settings.slots) >= LISTEN_CURATOR_MAX_MEDITATIONS
+      ) {
+        return json(
+          400,
+          {
+            error: `At most ${LISTEN_CURATOR_MAX_MEDITATIONS} meditation examples. Remove one in Admin › Listen first.`,
+          },
+          event,
+        );
+      }
+      const slot = newListenCuratorSlot({
+        ownerPk: found.ownerPk,
+        ownerSk: found.ownerSk,
+        kind,
+        sort: settings.slots.length,
+        published: true,
+      });
+      const next = await putListenCuratorSettings({
+        slots: [...settings.slots, slot],
+      });
+      const previews = await resolveSlots(next.slots);
+      return json(
+        200,
+        {
+          includeCommunity: next.includeCommunity,
+          slots: next.slots,
+          previews,
+          isExample: true,
+          pinned: slot,
+        },
+        event,
+      );
+    }
+
+    if (action === "setPromptLine") {
+      const slotId = typeof body.slotId === "string" ? body.slotId.trim() : "";
+      if (!slotId) return json(400, { error: "slotId is required" }, event);
+      const promptLine =
+        typeof body.promptLine === "string"
+          ? body.promptLine.trim().slice(0, 500) || null
+          : null;
+      const settings = await getListenCuratorSettings();
+      if (!settings.slots.some((s) => s.id === slotId)) {
+        return json(404, { error: "Slot not found" }, event);
+      }
+      const next = await putListenCuratorSettings({
+        slots: settings.slots.map((s) =>
+          s.id === slotId ? { ...s, promptLine } : s,
+        ),
+      });
+      const previews = await resolveSlots(next.slots);
+      return json(
+        200,
+        {
+          includeCommunity: next.includeCommunity,
+          slots: next.slots,
+          previews,
+        },
+        event,
+      );
+    }
+
+    if (action === "setExampleFor") {
+      const slotId = typeof body.slotId === "string" ? body.slotId.trim() : "";
+      if (!slotId) return json(400, { error: "slotId is required" }, event);
+      const exampleFor =
+        typeof body.exampleFor === "string"
+          ? body.exampleFor.trim().slice(0, 120) || null
+          : null;
+      const settings = await getListenCuratorSettings();
+      if (!settings.slots.some((s) => s.id === slotId)) {
+        return json(404, { error: "Slot not found" }, event);
+      }
+      const next = await putListenCuratorSettings({
+        slots: settings.slots.map((s) =>
+          s.id === slotId ? { ...s, exampleFor } : s,
+        ),
+      });
+      const previews = await resolveSlots(next.slots);
+      return json(
+        200,
+        {
+          includeCommunity: next.includeCommunity,
+          slots: next.slots,
+          previews,
         },
         event,
       );

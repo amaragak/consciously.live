@@ -30,6 +30,9 @@ import {
   patchMeditationPublic,
   patchMeditationBackgroundMix,
   type ListenShareSnapshot,
+  fetchAdminListen,
+  setAdminListenAsExample,
+  unsetAdminListenAsExample,
   patchMeditationRating,
   patchMeditationDevRefresh,
   backgroundAudioPlaybackKey,
@@ -63,6 +66,7 @@ import {
 } from "@/lib/claude-pricing";
 import { communityLibraryAsItems, itemMatchesLibraryCategory } from "@/lib/community-library";
 import { marketingHref } from "@/lib/origins";
+import { currentUserIsAdmin } from "@/lib/mvp-flags";
 import {
   loadPendingGenerations,
   pendingHasCataloguedItem,
@@ -973,6 +977,34 @@ export default function LibraryView({
   const [shareCopiedId, setShareCopiedId] = useState<string | null>(null);
   const [listenShareItem, setListenShareItem] =
     useState<LibraryMeditationItem | null>(null);
+  /** Admin Listen curator — library sks currently set as /listen examples. */
+  const [listenExampleSks, setListenExampleSks] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [listenExampleBusySk, setListenExampleBusySk] = useState<string | null>(
+    null,
+  );
+  const isAdminUser = currentUserIsAdmin();
+
+  useEffect(() => {
+    if (!isAdminUser) return;
+    let cancelled = false;
+    void fetchAdminListen()
+      .then((st) => {
+        if (cancelled) return;
+        setListenExampleSks(
+          new Set(
+            st.previews.filter((p) => !p.missing).map((p) => p.ownerSk),
+          ),
+        );
+      })
+      .catch(() => {
+        /* admin listen unavailable — menu stays off until load works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminUser]);
 
   useEffect(() => {
     setPlaybackTimeListener((_s3Key, timeSeconds) => {
@@ -1964,6 +1996,56 @@ export default function LibraryView({
     }
   }
 
+  async function setListenExample(
+    item: LibraryMeditationItem,
+    asExample: boolean,
+  ) {
+    if (!item.sk || !isAdminUser) return;
+    const sk = item.sk;
+    const prev = listenExampleSks.has(sk);
+    setListenExampleSks((cur) => {
+      const next = new Set(cur);
+      if (asExample) next.add(sk);
+      else next.delete(sk);
+      return next;
+    });
+    setListenExampleBusySk(sk);
+    try {
+      const kind =
+        item.meditationType?.trim().toLowerCase() === "story" ||
+        item.meditationStyle?.trim().toLowerCase() === "story"
+          ? "story"
+          : "meditation";
+      const st = asExample
+        ? await setAdminListenAsExample({
+            sk,
+            s3Key: item.s3Key,
+            kind,
+            asHouse: asHouseLibrary || undefined,
+          })
+        : await unsetAdminListenAsExample({
+            sk,
+            s3Key: item.s3Key,
+            asHouse: asHouseLibrary || undefined,
+          });
+      setListenExampleSks(
+        new Set(st.previews.filter((p) => !p.missing).map((p) => p.ownerSk)),
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not update Listen example",
+      );
+      setListenExampleSks((cur) => {
+        const next = new Set(cur);
+        if (prev) next.add(sk);
+        else next.delete(sk);
+        return next;
+      });
+    } finally {
+      setListenExampleBusySk(null);
+    }
+  }
+
   async function setPublic(item: LibraryMeditationItem, isPublic: boolean) {
     if (!item.sk) return;
     const sk = item.sk;
@@ -2528,6 +2610,13 @@ export default function LibraryView({
             ? undefined
             : (isPublic) => void setPublic(m, isPublic)
         }
+        isListenExample={Boolean(m.sk && listenExampleSks.has(m.sk))}
+        onListenExampleChange={
+          isAdminUser && !hideOwnerActions && !isHealLinkedJob(m.jobId)
+            ? (asExample) => void setListenExample(m, asExample)
+            : undefined
+        }
+        listenExampleBusy={m.sk != null && listenExampleBusySk === m.sk}
         onOpenMix={(anchorEl) => {
           setMixAnchorEl(anchorEl);
           openMixEditor(m);

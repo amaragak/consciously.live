@@ -25,18 +25,15 @@ import {
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { ListenShareSheet } from "@/components/listen-share-sheet";
 import { useLibraryPlayer } from "@/components/library-player-provider";
-import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
 import {
   onMeditationGenerationFailed,
   onMeditationGenerationReady,
 } from "@/lib/library-generation-surface";
 import {
-  createMeditationAudioJob,
   getMeditationAudioJobStatus,
   listLibraryMeditations,
   type LibraryMeditationItem,
   type ListenShareSnapshot,
-  type MeditationTargetMinutes,
 } from "@/lib/medimade-api";
 import {
   clearVersionNarrationPending,
@@ -54,11 +51,12 @@ import {
   type StoryVersion,
 } from "@/lib/manifesto-story";
 import { buildStoryNarrationScript } from "@/lib/manifesto-story-settle-in";
+import {
+  startStoryNarrationJob,
+  storyLibraryTitle,
+} from "@/lib/start-story-narration-job";
 import { appendPendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { ensurePendingMeditationJobPoller } from "@/lib/poll-pending-meditation-jobs";
-
-/** Bed-only seconds before voice starts (story is not a meditation settle-in). */
-const STORY_LEAD_IN_SECONDS = 2;
 
 const LABEL =
   "text-[10px] font-semibold uppercase tracking-[1.4px] text-muted";
@@ -73,14 +71,6 @@ const WAVE_HEIGHTS = [
   8, 14, 10, 18, 12, 20, 9, 16, 11, 7, 15, 10, 19, 12, 8, 14, 17, 9, 13, 18, 10,
   6, 14, 11,
 ];
-
-function coerceTargetMinutes(words: number): MeditationTargetMinutes {
-  const mins = listeningMinutes(words) || 10;
-  if (mins <= 3) return 2;
-  if (mins <= 7) return 5;
-  if (mins <= 15) return 10;
-  return 20;
-}
 
 function formatNarratedDate(iso: string | undefined): string {
   if (!iso) return "recently";
@@ -198,11 +188,10 @@ export function ManifestoStoryNarrateRail({
     countWords(
       buildStoryNarrationScript({
         thirdPersonText: version.thirdPersonText,
-        settleInFirst: store.settleInFirst,
       }),
     ) || words;
   const narrateMin =
-    listeningMinutes(spokenWords, { fadeOut: store.fadeOutAtEnd }) || 1;
+    listeningMinutes(spokenWords, { fadeOut: true }) || 1;
   // A fresh prepare is a new version with no audio. The recording still lives
   // on the version that was narrated.
   const recording =
@@ -224,19 +213,10 @@ export function ManifestoStoryNarrateRail({
       soundName: soundLabel === "Choose sound" ? "" : soundLabel,
       pace: pacingPercent,
       paceLabel: paceLabel || storyPaceLabel(pacingPercent),
-      settleIn: store.settleInFirst,
-      fadeOut: store.fadeOutAtEnd,
+      settleIn: false,
+      fadeOut: true,
     }),
-    [
-      voiceId,
-      voiceLabel,
-      soundKey,
-      soundLabel,
-      pacingPercent,
-      paceLabel,
-      store.settleInFirst,
-      store.fadeOutAtEnd,
-    ],
+    [voiceId, voiceLabel, soundKey, soundLabel, pacingPercent, paceLabel],
   );
 
   const settingsDiff = diffStoryNarrationSettings(
@@ -417,12 +397,6 @@ export function ManifestoStoryNarrateRail({
       const extras = await soundRef.current?.getJobExtras();
       if (!extras?.reference_id) throw new Error("Choose a voice first");
 
-      const script = buildStoryNarrationScript({
-        thirdPersonText: version.thirdPersonText,
-        settleInFirst: store.settleInFirst,
-      });
-      if (!script.trim()) throw new Error("Nothing to narrate yet");
-
       const settingsSnapshot: StoryNarrationSettings = {
         voiceId: extras.reference_id,
         voiceName: extras.speakerName?.trim() || voiceLabel,
@@ -433,70 +407,22 @@ export function ManifestoStoryNarrateRail({
         soundName: soundLabel === "Choose sound" ? "" : soundLabel,
         pace: pacingPercent,
         paceLabel: paceLabel || storyPaceLabel(pacingPercent),
-        settleIn: store.settleInFirst,
-        fadeOut: store.fadeOutAtEnd,
+        settleIn: false,
+        fadeOut: true,
       };
       pendingSettingsRef.current = settingsSnapshot;
 
-      const title = firstName.trim()
-        ? `${firstName.trim()}'s life vision`
-        : "My life vision";
-      const provenance = buildMeditationCreationProvenance({
-        creationPath: "oneShot",
-        meditationStyle: "Story",
-        directPrompt: "Manifesto Story — narrated life vision",
-      });
-
-      const { jobId } = await createMeditationAudioJob({
-        meditationStyle: "Story",
-        journalMode: true,
-        meditationTargetMinutes: coerceTargetMinutes(countWords(script)),
-        transcript: script,
-        scriptText: script,
-        reference_id: extras.reference_id,
-        ttsProvider: "speechify",
-        fishTtsModel: "s2.1-pro-free",
-        creationProvenance: provenance,
-        voiceFxPreset: extras.voiceFxPreset,
-        voiceFxDial: extras.voiceFxDial,
-        leadInSeconds: STORY_LEAD_IN_SECONDS,
-        fadeOut: store.fadeOutAtEnd,
-        speed: extras.speed,
-        ...(typeof extras.speechifyRate === "number"
-          ? { speechifyRate: extras.speechifyRate }
-          : {}),
-        ...(extras.longerBreaks ? { longerBreaks: true } : {}),
-        ...(extras.backgroundNatureKey
-          ? {
-              backgroundNatureKey: extras.backgroundNatureKey,
-              backgroundNatureGain: extras.backgroundNatureGain,
-            }
-          : {}),
-        ...(extras.backgroundMusicKey
-          ? {
-              backgroundMusicKey: extras.backgroundMusicKey,
-              backgroundMusicGain: extras.backgroundMusicGain,
-            }
-          : {}),
-        ...(extras.backgroundDrumsKey
-          ? {
-              backgroundDrumsKey: extras.backgroundDrumsKey,
-              backgroundDrumsGain: extras.backgroundDrumsGain,
-            }
-          : {}),
-        ...(extras.backgroundNoiseKey
-          ? {
-              backgroundNoiseKey: extras.backgroundNoiseKey,
-              backgroundNoiseGain: extras.backgroundNoiseGain,
-            }
-          : {}),
+      const { jobId, title } = await startStoryNarrationJob({
+        thirdPersonText: version.thirdPersonText,
+        firstName,
+        extras,
       });
 
       onStoreChange((s) => markVersionNarrationPending(s, version.id, jobId));
       appendPendingLibraryGeneration({
         jobId,
         createdAt: new Date().toISOString(),
-        title,
+        title: title || storyLibraryTitle(firstName),
         description: null,
         meditationStyle: "Story",
         speakerName: extras.speakerName,
@@ -587,7 +513,7 @@ export function ManifestoStoryNarrateRail({
     .join(" · ");
 
   const fadeOn =
-    (recording?.narrationSettings?.fadeOut ?? store.fadeOutAtEnd) !== false;
+    (recording?.narrationSettings?.fadeOut ?? true) !== false;
   const voiceSec =
     recording?.narrationDurationSec && recording.narrationDurationSec > 0
       ? recording.narrationDurationSec

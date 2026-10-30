@@ -91,6 +91,8 @@ export async function handler(
     leadInSeconds?: number;
     /** Fade beds after voice ends. */
     fadeOut?: boolean;
+    /** Optional library + spoken title override (e.g. Story narrations). */
+    title?: string;
   };
   try {
     body = JSON.parse(event.body || "{}");
@@ -277,6 +279,9 @@ export async function handler(
           ? { leadInSeconds: body.leadInSeconds }
           : {}),
         ...(typeof body.fadeOut === "boolean" ? { fadeOut: body.fadeOut } : {}),
+        ...(typeof body.title === "string" && body.title.trim()
+          ? { title: body.title.trim().slice(0, 120) }
+          : {}),
         backgroundSoundKey,
         ...(backgroundNatureKey ? { backgroundNatureKey } : {}),
         ...(backgroundMusicKey ? { backgroundMusicKey } : {}),

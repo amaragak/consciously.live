@@ -1603,6 +1603,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     skipSpeechifyLoudnorm?: boolean;
     /** Dev override for Speechify SSML rate percent (admin voice when omitted). */
     speechifyRate?: number;
+    leadInSeconds?: number;
+    fadeOut?: boolean;
+    /** Optional library + spoken title override. */
+    title?: string;
   };
 
   let jobItem: JobItem | null = null;
@@ -1667,6 +1671,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     skipVoiceFx?: boolean;
     skipSpeechifyLoudnorm?: boolean;
     speechifyRate?: number;
+    leadInSeconds?: number;
+    fadeOut?: boolean;
+    title?: string;
   } = {
     transcript: jobItem.transcript,
     meditationStyle: jobItem.meditationStyle,
@@ -1704,6 +1711,17 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
             Math.min(50, Math.round(jobItem.speechifyRate)),
           ),
         }
+      : {}),
+    ...(typeof jobItem.leadInSeconds === "number" &&
+    Number.isFinite(jobItem.leadInSeconds) &&
+    jobItem.leadInSeconds >= 0
+      ? { leadInSeconds: jobItem.leadInSeconds }
+      : {}),
+    ...(typeof jobItem.fadeOut === "boolean"
+      ? { fadeOut: jobItem.fadeOut }
+      : {}),
+    ...(typeof jobItem.title === "string" && jobItem.title.trim()
+      ? { title: jobItem.title.trim().slice(0, 120) }
       : {}),
   };
 
@@ -1933,6 +1951,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
 
   // Derive library metadata as early as possible (script is ready; audio may take much longer).
   // This is best-effort and must not fail the job.
+  const titleOverride =
+    typeof body.title === "string" && body.title.trim()
+      ? body.title.trim().slice(0, 120)
+      : "";
+  const isStoryStyle = styleTrimmed.toLowerCase() === "story";
   let libraryTitle: string;
   let libraryMeditationType: string;
   let libraryDescription: string;
@@ -1950,8 +1973,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       createIntent,
     });
     generationTimings.phases.metadataMs = elapsedMs(metadataStarted);
-    libraryTitle = derived.title;
-    libraryMeditationType = derived.meditationType;
+    libraryTitle = titleOverride || derived.title;
+    libraryMeditationType = isStoryStyle ? "Story" : derived.meditationType;
     libraryDescription = derived.description;
     if (derived.claudeUsage) {
       claudeWorkerInputTokens += derived.claudeUsage.input_tokens;
@@ -1967,8 +1990,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       journalMode: isJournalCatalog,
       createIntent: createPromptFromProvenance(creationProvenance),
     });
-    libraryTitle = fb.title;
-    libraryMeditationType = fb.meditationType;
+    libraryTitle = titleOverride || fb.title;
+    libraryMeditationType = isStoryStyle ? "Story" : fb.meditationType;
     libraryDescription = fb.description;
   }
 
@@ -2674,6 +2697,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
 
   // Best-effort analytics / library index write (don’t fail the main job if this fails).
   // Program shelf audio stays off the personal library index.
+  let libraryMeditationPk: string | null = null;
+  let libraryMeditationSk: string | null = null;
   if (!excludeFromLibrary) {
   try {
     const createdAt = new Date().toISOString();
@@ -2692,6 +2717,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       coverImageKey,
     });
     const librarySk = `${createdAt}#${id}`;
+    libraryMeditationPk = meditationUserPk(jobUserId);
+    libraryMeditationSk = librarySk;
     finalizeGenerationTimings(generationTimings, workerStarted);
     const devToggles = buildDevToggleLabels({
       speechifyEmotionVariants: body.speechifyEmotionVariants === true,
@@ -2874,12 +2901,15 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
 
   // Update job record.
   try {
+    const setLibraryKeys =
+      Boolean(libraryMeditationPk) && Boolean(libraryMeditationSk);
     await ddb.send(
       new UpdateCommand({
         TableName: jobsTableName,
         Key: { jobId: event.jobId },
-        UpdateExpression:
-          "SET #status = :s, audioUrl = :a, scriptTextUsed = :t, audioKey = :k, updatedAt = :u, durationSeconds = :d",
+        UpdateExpression: setLibraryKeys
+          ? "SET #status = :s, audioUrl = :a, scriptTextUsed = :t, audioKey = :k, updatedAt = :u, durationSeconds = :d, meditationPk = :mpk, meditationSk = :msk"
+          : "SET #status = :s, audioUrl = :a, scriptTextUsed = :t, audioKey = :k, updatedAt = :u, durationSeconds = :d",
         ExpressionAttributeNames: {
           "#status": "status",
         },
@@ -2890,6 +2920,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           ":k": key,
           ":u": new Date().toISOString(),
           ":d": durationSeconds ?? null,
+          ...(setLibraryKeys
+            ? {
+                ":mpk": libraryMeditationPk,
+                ":msk": libraryMeditationSk,
+              }
+            : {}),
         },
       }),
     );
