@@ -2630,7 +2630,9 @@ export default function LibraryView({
           else itemElsRef.current.delete(m.s3Key);
         }}
         onDevRegenCover={
-          showLibraryDevActions && m.sk && !hideOwnerActions
+          (showLibraryDevActions || isAdminUser) &&
+          m.sk &&
+          !hideOwnerActions
             ? () => {
                 const sk = m.sk!;
                 setDevRefreshBusySk(sk);

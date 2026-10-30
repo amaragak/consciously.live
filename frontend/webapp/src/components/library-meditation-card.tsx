@@ -971,7 +971,9 @@ export function LibraryMeditationCard({
               }}
               className={menuItemClass}
             >
-              {devRefreshBusy === "cover" ? "Regenerating image…" : "Regen image"}
+              {devRefreshBusy === "cover"
+                ? "Regenerating artwork…"
+                : "Regenerate artwork"}
             </button>
           ) : null}
           {onDevRederiveTitle ? (
