@@ -50,7 +50,10 @@ import {
   type CreateOneFlowStep,
   type MeditationLengthMinutes,
 } from "@/lib/create-one-flow-state";
-import { CREATE_MEDITATE_ROOT } from "@/lib/create-meditation-path";
+import {
+  CREATE_MEDITATE_ROOT,
+  takeCreateBriefHandoff,
+} from "@/lib/create-meditation-path";
 import { HealAvatar, useHealStore } from "@/components/heal/heal-bits";
 import { healTypeLabel } from "@/lib/heal-copy";
 import {
@@ -439,6 +442,7 @@ export function CreateOneFlow({
       params.get("fromJournal") === "1" ||
       params.get("fromLifeArea") ||
       params.get("fromAffirmations") === "1" ||
+      params.get("fromBrief") === "1" ||
       peekMeditateOverviewCreateHandoff()
     ) {
       return;
@@ -647,6 +651,18 @@ export function CreateOneFlow({
         sessionStorage.removeItem(JOURNAL_MEDITATION_PAYLOAD_KEY);
       }, 50);
       return () => window.clearTimeout(clearJournalHandoff);
+    } else if (new URLSearchParams(window.location.search).get("fromBrief") === "1") {
+      const brief = takeCreateBriefHandoff();
+      if (brief) {
+        const next: CreateOneFlowState = { ...stateRef.current, prompt: brief };
+        stateRef.current = next;
+        setState(next);
+        if (step === "shape") {
+          window.setTimeout(() => onEnterShapeStepRef.current?.(), 0);
+        } else {
+          goStep("shape");
+        }
+      }
     } else if (new URLSearchParams(window.location.search).get("fromAffirmations") === "1") {
       const lines = readAffirmationMeditation();
       if (lines.length) {

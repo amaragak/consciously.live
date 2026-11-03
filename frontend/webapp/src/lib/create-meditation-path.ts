@@ -228,3 +228,25 @@ export function createMeditationHrefWithDraft(
   const join = href.includes("?") ? "&" : "?";
   return `${href}${join}draftSk=${encodeURIComponent(sk)}`;
 }
+
+const CREATE_BRIEF_HANDOFF_KEY = "mm_create_brief_handoff_v1";
+
+/** Open Create on Shape with a one-line brief (native welcome → sign-up). */
+export function createFromBriefHref(brief: string): string {
+  try {
+    sessionStorage.setItem(CREATE_BRIEF_HANDOFF_KEY, brief.trim());
+  } catch {
+    /* */
+  }
+  return `${CREATE_MEDITATE_ROOT}?step=shape&fromBrief=1`;
+}
+
+export function takeCreateBriefHandoff(): string | null {
+  try {
+    const brief = sessionStorage.getItem(CREATE_BRIEF_HANDOFF_KEY)?.trim() || null;
+    sessionStorage.removeItem(CREATE_BRIEF_HANDOFF_KEY);
+    return brief;
+  } catch {
+    return null;
+  }
+}
