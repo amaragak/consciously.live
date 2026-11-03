@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "node:fs";
@@ -32,25 +32,57 @@ function nativeRuntimeAssets(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss(), ...(mode.startsWith("native") ? [nativeRuntimeAssets()] : [])],
-  define: {
-    __NATIVE_BUILD__: JSON.stringify(mode.startsWith("native")),
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+/**
+ * Native live reload (`scripts/native-dev.mjs`): the phone loads the app from
+ * `http://<LAN IP>:5173`, an origin the API's CORS list doesn't (and shouldn't)
+ * allow. Route API calls through this dev server instead, so they're same-origin.
+ */
+const LIVE_RELOAD_API_PREFIX = "/__api";
+
+export default defineConfig(({ mode }) => {
+  const native = mode.startsWith("native");
+  const liveReloadOrigin = process.env.CAP_LIVE_RELOAD_ORIGIN?.trim();
+  const apiTarget = loadEnv(mode, __dirname, "VITE_").VITE_MEDIMADE_API_URL?.trim();
+  const proxyApi = Boolean(native && liveReloadOrigin && apiTarget);
+
+  return {
+    plugins: [react(), tailwindcss(), ...(native ? [nativeRuntimeAssets()] : [])],
+    define: {
+      __NATIVE_BUILD__: JSON.stringify(native),
+      ...(proxyApi
+        ? {
+            "import.meta.env.VITE_MEDIMADE_API_URL": JSON.stringify(
+              `${liveReloadOrigin}${LIVE_RELOAD_API_PREFIX}`,
+            ),
+          }
+        : {}),
     },
-  },
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
-  preview: {
-    port: 5173,
-  },
-  build: {
-    outDir: "dist",
-    sourcemap: true,
-  },
-}));
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+    server: {
+      port: 5173,
+      strictPort: true,
+      ...(proxyApi
+        ? {
+            proxy: {
+              [LIVE_RELOAD_API_PREFIX]: {
+                target: apiTarget,
+                changeOrigin: true,
+                rewrite: (p: string) => p.slice(LIVE_RELOAD_API_PREFIX.length) || "/",
+              },
+            },
+          }
+        : {}),
+    },
+    preview: {
+      port: 5173,
+    },
+    build: {
+      outDir: "dist",
+      sourcemap: true,
+    },
+  };
+});

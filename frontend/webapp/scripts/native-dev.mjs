@@ -53,6 +53,9 @@ function run(cmd, args) {
   return child;
 }
 
+// vite.config.ts proxies API calls through the dev server when this is set.
+process.env.CAP_LIVE_RELOAD_ORIGIN = `http://${host}:${port}`;
+
 run("npx", ["vite", "--mode", "native", "--host", "0.0.0.0", "--port", port]);
 run("npx", [
   "cap",
