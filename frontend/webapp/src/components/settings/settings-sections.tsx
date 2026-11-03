@@ -21,6 +21,7 @@ import {
 } from "@/lib/assistant-chat-storage";
 import {
   checkUsernameAvailable,
+  deleteMedimadeAccount,
   fetchCognitoAuthConfig,
   fetchUsernameProfile,
   listLibraryMeditations,
@@ -32,6 +33,7 @@ import {
 import {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
+  isMedimadeGuestAccount,
   setMedimadeSession,
 } from "@/lib/auth-session";
 import { journalLockIsSet } from "@/lib/journal-prefs";
@@ -157,6 +159,9 @@ function AccountSection({ settings, onPatch }: SectionProps) {
   const email = getMedimadeSessionEmail()?.trim() ?? "";
   const [cognito, setCognito] = useState<CognitoAuthConfig | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState(
     () => getMedimadeSessionDisplayName()?.trim() ?? "",
   );
@@ -546,12 +551,19 @@ function AccountSection({ settings, onPatch }: SectionProps) {
         key="delete"
         settingsKey="account.delete"
         title="Delete account and all data"
-        helper="Permanent. You’ll be asked to confirm before anything is deleted."
+        helper={
+          deleteError ??
+          "Permanent. You’ll be asked to confirm before anything is deleted."
+        }
         control={
           <button
             type="button"
-            disabled={settingsRowDisabled("account.delete")}
+            disabled={settingsRowDisabled("account.delete") || isMedimadeGuestAccount()}
             className="rounded-full border border-danger/40 px-4 py-2 text-sm font-medium text-danger disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
           >
             Delete…
           </button>
@@ -582,6 +594,28 @@ function AccountSection({ settings, onPatch }: SectionProps) {
         onConfirm={() => {
           setSignOutOpen(false);
           window.dispatchEvent(new CustomEvent("settings-sign-out"));
+        }}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete your account?"
+        body="This permanently deletes your account and everything in it: meditations, journal, goals, habits and settings. It can’t be undone."
+        confirmLabel={deleting ? "Deleting…" : "Delete account"}
+        danger
+        busy={deleting}
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          setDeleting(true);
+          deleteMedimadeAccount()
+            .then(() => {
+              setDeleteOpen(false);
+              window.dispatchEvent(new CustomEvent("settings-sign-out"));
+            })
+            .catch((err: unknown) => {
+              setDeleteOpen(false);
+              setDeleteError(err instanceof Error ? err.message : "Could not delete the account");
+            })
+            .finally(() => setDeleting(false));
         }}
       />
     </>

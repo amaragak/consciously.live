@@ -79,7 +79,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "account.signInMethods": "wired",
   "account.passkeys": "wired",
   "account.export": "not_available",
-  "account.delete": "not_available",
+  "account.delete": "wired",
   "ai.providers": "wired",
   "ai.trainingClaim": "not_available",
   "ai.personaliseWithJournal": "not_implemented",
