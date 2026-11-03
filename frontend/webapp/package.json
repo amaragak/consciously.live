@@ -18,7 +18,7 @@
     "native:run:android": "npm run native:sync:internal && cap run android",
     "native:dev:ios": "node scripts/native-dev.mjs ios",
     "native:dev:android": "node scripts/native-dev.mjs android",
-    "native:assets": "capacitor-assets generate --assetPath native-assets --iconBackgroundColor '#1E232E' --iconBackgroundColorDark '#1E232E' --splashBackgroundColor '#1E232E' --splashBackgroundColorDark '#1E232E'"
+    "native:assets": "capacitor-assets generate --ios --android --assetPath native-assets --iconBackgroundColor '#1E232E' --iconBackgroundColorDark '#1E232E' --splashBackgroundColor '#1E232E' --splashBackgroundColorDark '#1E232E'"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",

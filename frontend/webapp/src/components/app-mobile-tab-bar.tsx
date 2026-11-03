@@ -34,6 +34,13 @@ import {
 } from "@/lib/heal-store";
 import { Link, usePathname, useRouter } from "@/lib/spa-nav";
 import { healItemHref } from "@/lib/entity-href";
+import {
+  NATIVE_KEYBOARD_EVENT,
+  isNativeApp,
+  isNativeKeyboardOpen,
+  nativeHapticTap,
+  type NativeKeyboardDetail,
+} from "@/lib/native/native-bridge";
 
 const LONG_PRESS_MS = 400;
 const LONG_PRESS_SLOP_PX = 10;
@@ -43,32 +50,12 @@ const TAB_BAR_BOTTOM =
   "calc(58px + env(safe-area-inset-bottom, 0px))" as const;
 
 function hapticLight(): void {
-  void (async () => {
-    try {
-      const load = new Function(
-        "return import('@capacitor/haptics')",
-      ) as () => Promise<{
-        Haptics?: {
-          impact: (o: { style: string }) => Promise<void>;
-        };
-        ImpactStyle?: { Light: string };
-      }>;
-      const mod = await load();
-      if (mod?.Haptics?.impact) {
-        await mod.Haptics.impact({
-          style: mod.ImpactStyle?.Light ?? "LIGHT",
-        });
-        return;
-      }
-    } catch {
-      /* web / no Capacitor */
-    }
-    try {
-      navigator.vibrate?.(10);
-    } catch {
-      /* ignore */
-    }
-  })();
+  if (nativeHapticTap()) return;
+  try {
+    navigator.vibrate?.(10);
+  } catch {
+    /* ignore */
+  }
 }
 
 function useKeyboardOccludes(): boolean {
@@ -87,41 +74,21 @@ function useKeyboardOccludes(): boolean {
     vv?.addEventListener("scroll", sync);
     window.addEventListener("resize", sync);
 
-    let disposeCap: (() => void) | undefined;
-    void (async () => {
-      try {
-        const load = new Function(
-          "return import('@capacitor/keyboard')",
-        ) as () => Promise<{
-          Keyboard?: {
-            addListener: (
-              e: string,
-              cb: () => void,
-            ) => Promise<{ remove: () => void }>;
-          };
-        }>;
-        const Keyboard = (await load()).Keyboard;
-        if (!Keyboard?.addListener) return;
-        const show = await Keyboard.addListener("keyboardWillShow", () =>
-          setOpen(true),
-        );
-        const hide = await Keyboard.addListener("keyboardWillHide", () =>
-          setOpen(false),
-        );
-        disposeCap = () => {
-          show.remove();
-          hide.remove();
-        };
-      } catch {
-        /* web */
-      }
-    })();
+    // Native resizes the web view with the keyboard, so the viewport check
+    // above never sees it; the shell reports keyboard state instead.
+    const onNativeKeyboard = (e: Event) => {
+      setOpen((e as CustomEvent<NativeKeyboardDetail>).detail.open);
+    };
+    if (isNativeApp()) {
+      setOpen(isNativeKeyboardOpen());
+      window.addEventListener(NATIVE_KEYBOARD_EVENT, onNativeKeyboard);
+    }
 
     return () => {
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
       window.removeEventListener("resize", sync);
-      disposeCap?.();
+      window.removeEventListener(NATIVE_KEYBOARD_EVENT, onNativeKeyboard);
     };
   }, []);
   return open;

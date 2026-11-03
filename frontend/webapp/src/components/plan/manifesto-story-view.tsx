@@ -705,42 +705,10 @@ function FloatingEditorTools({
     vv?.addEventListener("scroll", sync);
     window.addEventListener("resize", sync);
 
-    let disposeCap: (() => void) | undefined;
-    void (async () => {
-      try {
-        // Optional native plugin — not listed in webapp deps; load at runtime only.
-        const load = new Function(
-          "return import('@capacitor/keyboard')",
-        ) as () => Promise<{
-          Keyboard?: {
-            addListener: (
-              e: string,
-              cb: (info: { keyboardHeight: number }) => void,
-            ) => Promise<{ remove: () => void }>;
-          };
-        }>;
-        const Keyboard = (await load()).Keyboard;
-        if (!Keyboard?.addListener) return;
-        const show = await Keyboard.addListener("keyboardWillShow", (info) => {
-          setBottomPx(Math.max(base, (info.keyboardHeight ?? 0) + 8));
-        });
-        const hide = await Keyboard.addListener("keyboardWillHide", () => {
-          setBottomPx(base);
-        });
-        disposeCap = () => {
-          show.remove();
-          hide.remove();
-        };
-      } catch {
-        /* web / no Capacitor */
-      }
-    })();
-
     return () => {
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
       window.removeEventListener("resize", sync);
-      disposeCap?.();
     };
   }, [wide, tabLift]);
 

@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { brand } from "@consciously/common";
 import { safeAuthNext } from "@/lib/app-routes";
 import { getLiveColorScheme, withAuthColorSchemeQuery } from "@/lib/color-scheme";
+import { isNativeApp } from "@/lib/native/native-bridge";
 import { getMarketingOrigin, marketingHref } from "@/lib/origins";
 
 function currentAppReturnPath(pathname: string, search: string): string {
@@ -35,16 +36,21 @@ export function LoggedOutShell() {
     location.search,
   );
   const marketingHost = getMarketingOrigin().replace(/^https?:\/\//, "");
+  // Native can't complete the marketing → app handoff yet; stay in the app.
+  const native = isNativeApp();
 
   useEffect(() => {
+    if (native) return;
     window.location.replace(loginHref);
-  }, [loginHref]);
+  }, [loginHref, native]);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-6 py-16">
+    <main className="native-safe-top mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-6 py-16">
       <h1 className="font-display text-3xl tracking-tight">{brand.name}</h1>
       <p className="text-sm text-muted">
-        Taking you to sign in on {marketingHost}…
+        {native
+          ? "Signing in from the app is coming soon."
+          : `Taking you to sign in on ${marketingHost}…`}
       </p>
       <a
         href={loginHref}

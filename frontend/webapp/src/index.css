@@ -1238,6 +1238,29 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   }
 }
 
+/*
+ * Capacitor shell: the web view runs edge-to-edge under the status bar / notch.
+ * The header grows by the top inset so everything pinned to `--app-header-h`
+ * (drawers, overlays, sticky rails) still lines up under it.
+ */
+:root.cap-native {
+  --app-header-h: calc(3.5rem + env(safe-area-inset-top, 0px));
+  -webkit-tap-highlight-color: transparent;
+}
+@media (max-width: 767px) {
+  :root.cap-native {
+    --app-header-h: calc(3rem + env(safe-area-inset-top, 0px));
+  }
+}
+:root.cap-native .app-top-bar,
+:root.cap-native .site-header,
+:root.cap-native .native-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+:root.cap-native body {
+  -webkit-touch-callout: none;
+}
+
 .app-sidebar-drawer {
   position: fixed;
   left: 0;

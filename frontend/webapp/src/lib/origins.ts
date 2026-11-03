@@ -5,6 +5,7 @@
  */
 
 import { brand } from "@consciously/common";
+import { isNativeApp } from "@/lib/native/native-bridge";
 
 export function getMarketingOrigin(): string {
   const fromEnv = import.meta.env.VITE_MARKETING_ORIGIN?.trim().replace(
@@ -12,8 +13,9 @@ export function getMarketingOrigin(): string {
     "",
   );
   // On localhost SPA, never send "Sign in" links to prod marketing —
-  // that origin has no shared session with local Vite.
-  if (typeof window !== "undefined") {
+  // that origin has no shared session with local Vite. The native shell is
+  // also served from `localhost`, but it always talks to the real site.
+  if (typeof window !== "undefined" && !isNativeApp()) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") {
       if (
@@ -36,7 +38,7 @@ export function marketingHref(path = "/"): string {
 }
 
 export function isLocalDevSplit(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || isNativeApp()) return false;
   const host = window.location.hostname;
   return host === "localhost" || host === "127.0.0.1";
 }

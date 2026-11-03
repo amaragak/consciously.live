@@ -8,6 +8,7 @@ import {
   themeRootCss,
 } from "@consciously/common/theme";
 import { App } from "./App";
+import { isNativeApp } from "./lib/native/native-bridge";
 import "./index.css";
 
 /** Apply shared theme CSS vars before first paint of React. */
@@ -30,6 +31,10 @@ function injectTheme(): void {
 }
 
 injectTheme();
+
+if (isNativeApp()) {
+  void import("./lib/native/native-shell").then((m) => m.initNativeShell());
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
