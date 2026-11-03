@@ -9,10 +9,12 @@ import { Keyboard } from "@capacitor/keyboard";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
+  nativeDarkSurfaceActive,
   nativePlatform,
   setNativeHapticImpl,
   setNativeKeyboardState,
   setNativeOpenExternalImpl,
+  setNativeStatusBarSyncImpl,
 } from "./native-bridge";
 import { nativeAudioLog } from "./native-audio-log";
 
@@ -28,6 +30,7 @@ export async function initNativeShell(): Promise<void> {
     void openInAppBrowser(url);
   });
 
+  setNativeStatusBarSyncImpl(syncStatusBarWithHeader);
   syncStatusBarWithHeader();
   new MutationObserver(syncStatusBarWithHeader).observe(root, {
     attributes: true,
@@ -42,9 +45,18 @@ export async function initNativeShell(): Promise<void> {
     nativeAudioLog("app", isActive ? "foreground" : "background");
   });
 
-  requestAnimationFrame(() => {
-    void SplashScreen.hide({ fadeOutDuration: 200 }).catch(() => {});
-  });
+  // The launch overlay hides the splash once its identical image has painted;
+  // this only covers the overlay failing to load.
+  window.setTimeout(() => hideNativeSplash(), 4000);
+}
+
+let splashHidden = false;
+
+/** Swap the native splash for the web launch overlay (same artwork, no flash). */
+export function hideNativeSplash(): void {
+  if (splashHidden) return;
+  splashHidden = true;
+  void SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 }
 
 /** Light status-bar content on the navy header; dark content on hybrid cream. */
@@ -52,7 +64,10 @@ function syncStatusBarWithHeader(): void {
   const meta = document
     .querySelector('meta[name="theme-color"]')
     ?.getAttribute("content");
-  const style = meta && isLightHex(meta) ? Style.Light : Style.Dark;
+  const style =
+    !nativeDarkSurfaceActive() && meta && isLightHex(meta)
+      ? Style.Light
+      : Style.Dark;
   void StatusBar.setStyle({ style }).catch(() => {});
 }
 

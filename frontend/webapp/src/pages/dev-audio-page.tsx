@@ -17,7 +17,7 @@ import {
   type LibraryActiveTrack,
 } from "@/components/library-player-provider";
 import { getMedimadeApiBase, getMedimadeMediaBaseUrl, listBackgroundAudio } from "@/lib/medimade-api";
-import { isNativeApp, nativePlatform } from "@/lib/native/native-bridge";
+import { isNativeApp, markNativeAppReady, nativePlatform } from "@/lib/native/native-bridge";
 import {
   clearNativeAudioLog,
   formatNativeAudioLogTime,
@@ -402,6 +402,7 @@ function DevAudioBench() {
 }
 
 export default function DevAudioPage() {
+  useEffect(() => markNativeAppReady(), []);
   return (
     <LibraryPlayerProvider>
       <DevAudioBench />

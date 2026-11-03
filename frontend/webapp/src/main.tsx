@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import {
@@ -8,7 +8,8 @@ import {
   themeRootCss,
 } from "@consciously/common/theme";
 import { App } from "./App";
-import { isNativeApp } from "./lib/native/native-bridge";
+import { isNativeApp, nativePlatform } from "./lib/native/native-bridge";
+import { scopeNativeHttp } from "./lib/native/native-http";
 import "./index.css";
 
 /** Apply shared theme CSS vars before first paint of React. */
@@ -32,14 +33,29 @@ function injectTheme(): void {
 
 injectTheme();
 
-if (__NATIVE_BUILD__ && isNativeApp()) {
+const native = __NATIVE_BUILD__ && isNativeApp();
+
+if (native) {
+  const apiBase = import.meta.env.VITE_MEDIMADE_API_URL?.trim();
+  scopeNativeHttp(
+    nativePlatform() === "ios" && apiBase ? [new URL(apiBase).origin] : [],
+  );
   void import("./lib/native/native-shell").then((m) => m.initNativeShell());
 }
+
+const NativeLaunchOverlay = native
+  ? lazy(() => import("./components/native-launch-overlay"))
+  : null;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <App />
     </BrowserRouter>
+    {NativeLaunchOverlay ? (
+      <Suspense fallback={null}>
+        <NativeLaunchOverlay />
+      </Suspense>
+    ) : null}
   </StrictMode>,
 );

@@ -78,6 +78,57 @@ export function nativeSeek(timeSeconds: number): boolean {
   return true;
 }
 
+let appReady = false;
+const appReadyListeners = new Set<() => void>();
+
+/**
+ * The first real screen (app, login, dev page) has rendered; the launch
+ * overlay may fade. Idempotent, and a no-op outside the native app.
+ */
+export function markNativeAppReady(): void {
+  if (!isNativeApp() || appReady) return;
+  appReady = true;
+  for (const fn of appReadyListeners) fn();
+  appReadyListeners.clear();
+}
+
+/** Runs `fn` once the app is ready (immediately if it already is). */
+export function onNativeAppReady(fn: () => void): () => void {
+  if (appReady) {
+    fn();
+    return () => {};
+  }
+  appReadyListeners.add(fn);
+  return () => {
+    appReadyListeners.delete(fn);
+  };
+}
+
+let darkSurfaceHolds = 0;
+let statusBarSyncImpl: (() => void) | null = null;
+
+export function setNativeStatusBarSyncImpl(fn: (() => void) | null): void {
+  statusBarSyncImpl = fn;
+}
+
+/** True while a full-bleed navy screen (launch, login) sits under the status bar. */
+export function nativeDarkSurfaceActive(): boolean {
+  return darkSurfaceHolds > 0;
+}
+
+/** Light status-bar content until the returned release runs. */
+export function holdNativeDarkSurface(): () => void {
+  darkSurfaceHolds += 1;
+  statusBarSyncImpl?.();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    darkSurfaceHolds -= 1;
+    statusBarSyncImpl?.();
+  };
+}
+
 let openExternalImpl: ((url: string) => void) | null = null;
 
 export function setNativeOpenExternalImpl(
