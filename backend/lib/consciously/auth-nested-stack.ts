@@ -9,6 +9,16 @@ import type { Construct } from "constructs";
 import { resolveAuthEmailFrom } from "./api-http";
 import { BREVO_SECRET_NAME } from "./secret-names";
 
+/** Plain-text secret: Google OAuth client secret for the Cognito Google IdP. */
+export const COGNITO_GOOGLE_CLIENT_SECRET_NAME = "consciously/auth/google-client-secret";
+/** Plain-text secret: Sign in with Apple private key (.p8 contents). */
+export const COGNITO_APPLE_PRIVATE_KEY_SECRET_NAME = "consciously/auth/apple-private-key";
+
+function contextOrEnv(scope: Construct, key: string, env: string): string {
+  const fromContext = scope.node.tryGetContext(key) as string | undefined;
+  return (fromContext ?? process.env[env] ?? "").trim();
+}
+
 /**
  * Cognito User Pool + Hosted UI domain only.
  * Auth HTTP routes / exchange Lambdas live in the API nested stack (avoids Auth ↔ API cycles).
@@ -23,6 +33,8 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
   readonly userPoolDomain: cognito.UserPoolDomain;
   readonly issuer: string;
   readonly domainPrefix: string;
+  /** Hosted UI social providers on the web client (`google`, `apple`). */
+  readonly socialProviders: ("google" | "apple")[];
 
   constructor(scope: Construct, id: string, props?: cdk.NestedStackProps) {
     super(scope, id, props);
@@ -103,6 +115,54 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
       },
     });
 
+    // Social IdPs switch on once their public IDs are set (cdk.json context or
+    // env) and the matching secret exists in Secrets Manager.
+    const idps: cognito.IUserPoolIdentityProvider[] = [];
+    const clientIdps = [cognito.UserPoolClientIdentityProvider.COGNITO];
+    this.socialProviders = [];
+
+    const googleClientId = contextOrEnv(this, "cognitoGoogleClientId", "CONSCIOUSLY_GOOGLE_CLIENT_ID");
+    if (googleClientId) {
+      idps.push(
+        new cognito.UserPoolIdentityProviderGoogle(this, "GoogleIdp", {
+          userPool: this.userPool,
+          clientId: googleClientId,
+          clientSecretValue: cdk.SecretValue.secretsManager(COGNITO_GOOGLE_CLIENT_SECRET_NAME),
+          scopes: ["openid", "email", "profile"],
+          attributeMapping: {
+            email: cognito.ProviderAttribute.GOOGLE_EMAIL,
+            emailVerified: cognito.ProviderAttribute.GOOGLE_EMAIL_VERIFIED,
+            fullname: cognito.ProviderAttribute.GOOGLE_NAME,
+          },
+        }),
+      );
+      clientIdps.push(cognito.UserPoolClientIdentityProvider.GOOGLE);
+      this.socialProviders.push("google");
+    }
+
+    const appleServicesId = contextOrEnv(this, "cognitoAppleServicesId", "CONSCIOUSLY_APPLE_SERVICES_ID");
+    const appleTeamId = contextOrEnv(this, "cognitoAppleTeamId", "CONSCIOUSLY_APPLE_TEAM_ID");
+    const appleKeyId = contextOrEnv(this, "cognitoAppleKeyId", "CONSCIOUSLY_APPLE_KEY_ID");
+    if (appleServicesId && appleTeamId && appleKeyId) {
+      idps.push(
+        new cognito.UserPoolIdentityProviderApple(this, "AppleIdp", {
+          userPool: this.userPool,
+          clientId: appleServicesId,
+          teamId: appleTeamId,
+          keyId: appleKeyId,
+          privateKeyValue: cdk.SecretValue.secretsManager(COGNITO_APPLE_PRIVATE_KEY_SECRET_NAME),
+          scopes: ["email", "name"],
+          attributeMapping: {
+            email: cognito.ProviderAttribute.APPLE_EMAIL,
+            emailVerified: cognito.ProviderAttribute.APPLE_EMAIL_VERIFIED,
+            fullname: cognito.ProviderAttribute.APPLE_NAME,
+          },
+        }),
+      );
+      clientIdps.push(cognito.UserPoolClientIdentityProvider.APPLE);
+      this.socialProviders.push("apple");
+    }
+
     this.userPoolClient = this.userPool.addClient("WebClient", {
       userPoolClientName: "consciously-web-v2",
       generateSecret: false,
@@ -126,6 +186,8 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
           "https://app.consciously.live/auth/cognito/callback",
           "http://localhost:3000/auth/cognito/callback",
           "http://localhost:5173/auth/cognito/callback",
+          // Capacitor app (custom URL scheme).
+          "live.consciously.app://auth/cognito/callback",
         ],
         logoutUrls: [
           "https://consciously.live/",
@@ -133,6 +195,7 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
           "https://app.consciously.live/",
           "http://localhost:3000/",
           "http://localhost:5173/",
+          "live.consciously.app://",
         ],
       },
       preventUserExistenceErrors: true,
@@ -140,10 +203,9 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
-      supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.COGNITO,
-      ],
+      supportedIdentityProviders: clientIdps,
     });
+    for (const idp of idps) this.userPoolClient.node.addDependency(idp);
 
     const accountId = cdk.Stack.of(this).account;
     const defaultPrefix = /^\d{12}$/.test(accountId)

@@ -42,6 +42,14 @@ export async function handler(
     region,
   );
   const enabled = Boolean(userPoolId && clientId);
+  const social = new Set(
+    (process.env.COGNITO_SOCIAL_PROVIDERS ?? "")
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean),
+  );
+  const google = enabled && social.has("google");
+  const apple = enabled && social.has("apple");
 
   return {
     statusCode: 200,
@@ -66,8 +74,10 @@ export async function handler(
       methods: {
         password: true,
         passkey: true,
-        /** Social IdPs are added later (Google/Apple) — Hosted UI ready. */
-        social: false,
+        /** Any Hosted UI social provider (Google or Apple). */
+        social: google || apple,
+        google,
+        apple,
       },
     }),
   };

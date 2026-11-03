@@ -92,6 +92,8 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
           "https://app.consciously.live/auth/cognito/callback",
           "http://localhost:3000/auth/cognito/callback",
           "http://localhost:5173/auth/cognito/callback",
+          // Capacitor app (custom URL scheme).
+          "live.consciously.app://auth/cognito/callback",
         ],
         logoutUrls: [
           "https://consciously.live/",
@@ -99,6 +101,7 @@ export class ConsciouslyCognitoAuthNestedStack extends cdk.NestedStack {
           "https://app.consciously.live/",
           "http://localhost:3000/",
           "http://localhost:5173/",
+          "live.consciously.app://",
         ],
       },
       preventUserExistenceErrors: true,

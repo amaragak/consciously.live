@@ -246,6 +246,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
             2,
             cdk.Fn.split("/", userPoolDomain.baseUrl()),
           ),
+          COGNITO_SOCIAL_PROVIDERS: props.auth.socialProviders.join(","),
         },
       },
     );
