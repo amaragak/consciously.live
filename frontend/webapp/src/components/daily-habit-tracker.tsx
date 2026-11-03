@@ -335,14 +335,16 @@ export function DailyHabitTracker({
                 label={row.name}
                 onDark
               />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className={`truncate text-[14.5px] ${checked ? "text-[rgba(243,237,226,0.55)] line-through" : "text-[#F3EDE2]"}`}>
+              {/* Two-line height is reserved so a missing subtitle doesn’t resize the hero; a lone title centres. */}
+              <span className="flex min-h-[36px] min-w-0 flex-1 flex-col justify-center">
+                <span className={`truncate text-[14.5px] leading-[20px] ${checked ? "text-[rgba(243,237,226,0.55)] line-through" : "text-[#F3EDE2]"}`}>
                   {row.name}
                 </span>
-                {/* Always reserve the help line so 3→4 / missing subtitle doesn’t resize the hero. */}
-                <span className="truncate text-[12px] text-[rgba(243,237,226,0.55)]">
-                  {row.help || "\u00a0"}
-                </span>
+                {row.help ? (
+                  <span className="truncate text-[12px] leading-[16px] text-[rgba(243,237,226,0.55)]">
+                    {row.help}
+                  </span>
+                ) : null}
               </span>
               {row.actionAsLink ? (
                 <Link href={row.actionAsLink}>{control}</Link>
