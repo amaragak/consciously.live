@@ -70,7 +70,8 @@ function isAuthSessionPath(url: string): boolean {
       path.endsWith("/auth/magic-link/verify") ||
       path.endsWith("/auth/guest") ||
       path.endsWith("/auth/cognito/config") ||
-      path.endsWith("/auth/cognito/exchange")
+      path.endsWith("/auth/cognito/exchange") ||
+      path.endsWith("/auth/social")
     );
   } catch {
     return false;
@@ -378,6 +379,101 @@ async function verifyMedimadeMagicLinkUncached(
   };
 }
 
+/** POST a sign-in body; parse the shared session response shape. */
+async function postSessionRequest(
+  path: string,
+  body: Record<string, unknown>,
+  fallbackError: string,
+): Promise<MedimadeMagicLinkVerifyResult> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    refreshToken?: string;
+    userId?: string;
+    email?: string;
+    needsProfileName?: unknown;
+    displayName?: unknown;
+    role?: unknown;
+    plan?: unknown;
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
+    throw new Error(data.detail ?? data.error ?? fallbackError);
+  }
+  const displayName =
+    typeof data.displayName === "string" && data.displayName.trim()
+      ? data.displayName.trim()
+      : null;
+  return {
+    token: data.token.trim(),
+    refreshToken:
+      typeof data.refreshToken === "string" && data.refreshToken.trim()
+        ? data.refreshToken.trim()
+        : undefined,
+    userId: typeof data.userId === "string" ? data.userId : "",
+    email: typeof data.email === "string" ? data.email : "",
+    needsProfileName:
+      typeof data.needsProfileName === "boolean" ? data.needsProfileName : !displayName,
+    displayName,
+    ...parseSessionPrivileges(data),
+  };
+}
+
+/** 6-digit code from the sign-in email (same email as the magic link). */
+export function verifyMedimadeMagicCode(
+  email: string,
+  code: string,
+): Promise<MedimadeMagicLinkVerifyResult> {
+  return postSessionRequest(
+    "/auth/magic-link/verify",
+    { email: email.trim(), code: code.replace(/\s+/g, "") },
+    "That code didn’t work",
+  );
+}
+
+/** Apple / Google ID token from the native plugin or Apple JS → session. */
+export function signInWithSocialIdToken(opts: {
+  provider: "apple" | "google";
+  idToken: string;
+  nonce?: string;
+  name?: string | null;
+}): Promise<MedimadeMagicLinkVerifyResult> {
+  return postSessionRequest(
+    "/auth/social",
+    {
+      provider: opts.provider,
+      idToken: opts.idToken,
+      ...(opts.nonce ? { nonce: opts.nonce } : {}),
+      ...(opts.name?.trim() ? { name: opts.name.trim() } : {}),
+    },
+    "Sign-in failed",
+  );
+}
+
+/** Permanently delete the signed-in account and its data. */
+export async function deleteMedimadeAccount(): Promise<void> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/auth/account/delete`, {
+    method: "POST",
+    credentials: "include",
+    headers: medimadeJsonHeaders(),
+    body: "{}",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? "Could not delete the account");
+  }
+}
+
 export type CognitoAuthConfig = {
   enabled: boolean;
   userPoolId: string | null;
@@ -391,6 +487,12 @@ export type CognitoAuthConfig = {
     social: boolean;
     google?: boolean;
     apple?: boolean;
+    appleNative?: boolean;
+  };
+  socialClients?: {
+    appleServicesId: string | null;
+    googleWebClientId: string | null;
+    googleIosClientId: string | null;
   };
 };
 
@@ -430,6 +532,12 @@ export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
       social: data.methods?.social === true,
       google: data.methods?.google === true,
       apple: data.methods?.apple === true,
+      appleNative: data.methods?.appleNative === true,
+    },
+    socialClients: {
+      appleServicesId: data.socialClients?.appleServicesId ?? null,
+      googleWebClientId: data.socialClients?.googleWebClientId ?? null,
+      googleIosClientId: data.socialClients?.googleIosClientId ?? null,
     },
   };
 }
