@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AdminAiCostsPanel } from "./components/admin-ai-costs-panel";
 import { AdminCompositionCoversPanel } from "./components/admin-composition-covers-panel";
@@ -63,6 +64,12 @@ import { PricingSuccessPage } from "./pages/pricing-success-page";
 import { SoundsPage } from "./pages/sounds-page";
 import { LoggedOutShell } from "./shell/logged-out-shell";
 import { CognitoCallbackPage } from "./pages/cognito-callback-page";
+import { NATIVE_DEV_TOOLS_ENABLED } from "./lib/native/native-bridge";
+
+/** Dev / internal builds only — production drops the route and its chunk. */
+const DevAudioPage = NATIVE_DEV_TOOLS_ENABLED
+  ? lazy(() => import("./pages/dev-audio-page"))
+  : null;
 
 /** `/journal/my…` → `/journal/entries|gratitudes|insights…` */
 function LegacyJournalMyRedirect() {
@@ -231,6 +238,16 @@ export function App() {
       </Route>
       <Route path="login" element={<LoggedOutShell />} />
       <Route path="auth/cognito/callback" element={<CognitoCallbackPage />} />
+      {DevAudioPage ? (
+        <Route
+          path="dev/audio"
+          element={
+            <Suspense fallback={null}>
+              <DevAudioPage />
+            </Suspense>
+          }
+        />
+      ) : null}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

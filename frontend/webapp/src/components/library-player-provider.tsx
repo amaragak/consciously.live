@@ -100,6 +100,11 @@ const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(
 
 const PLAY_PROGRESS_SECONDS = 60;
 
+/** `/dev/audio` test tracks: never count as listens. */
+function isDevAudioTrack(track: LibraryActiveTrack): boolean {
+  return track.s3Key.startsWith("dev:");
+}
+
 function meditationIdFromTrack(track: LibraryActiveTrack): string {
   return (track.s3Key || track.title || "unknown").slice(0, 200);
 }
@@ -191,6 +196,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const track = nowPlayingRef.current;
     if (!playingS3Key || !track || track.s3Key !== playingS3Key) return;
+    if (isDevAudioTrack(track)) return;
     if (startedLoggedKeyRef.current === playingS3Key) return;
     startedLoggedKeyRef.current = playingS3Key;
     const meditationId = meditationIdFromTrack(track);
@@ -208,6 +214,7 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   // Accumulate wall-clock listen time while audio is actually playing.
   useEffect(() => {
     if (!playingS3Key || !nowPlayingRef.current) return;
+    if (isDevAudioTrack(nowPlayingRef.current)) return;
     const tick = window.setInterval(() => {
       const track = nowPlayingRef.current;
       if (!track || playingS3KeyRef.current !== track.s3Key) return;

@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { brand } from "@consciously/common";
 import { safeAuthNext } from "@/lib/app-routes";
 import { getLiveColorScheme, withAuthColorSchemeQuery } from "@/lib/color-scheme";
-import { isNativeApp } from "@/lib/native/native-bridge";
+import { isNativeApp, NATIVE_DEV_TOOLS_ENABLED } from "@/lib/native/native-bridge";
 import { getMarketingOrigin, marketingHref } from "@/lib/origins";
 
 function currentAppReturnPath(pathname: string, search: string): string {
@@ -58,6 +58,11 @@ export function LoggedOutShell() {
       >
         Continue →
       </a>
+      {native && NATIVE_DEV_TOOLS_ENABLED ? (
+        <Link to="/dev/audio" className="text-sm text-muted underline-offset-2 hover:underline">
+          Audio test
+        </Link>
+      ) : null}
     </main>
   );
 }
