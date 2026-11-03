@@ -38,6 +38,9 @@ export const CONSCIOUSLY_HTTP_API_CORS_ORIGINS = [
   "http://127.0.0.1:3001",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  // Capacitor native shells (iOS WKWebView / Android WebView).
+  "capacitor://localhost",
+  "https://localhost",
 ] as const;
 
 export function resolveAuthWebappOrigin(scope: Construct): string {
