@@ -93,6 +93,7 @@ export class ConsciouslyStack extends cdk.Stack {
       config: this.config,
       auth: this.auth,
       database: this.database,
+      media: this.media,
     });
 
     // Admin before Meditate so voice-fx can be passed without a cycle.

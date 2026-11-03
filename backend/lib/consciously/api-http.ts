@@ -50,6 +50,34 @@ export function resolveAuthWebappOrigin(scope: Construct): string {
   );
 }
 
+function contextOrEnv(scope: Construct, key: string, env: string): string {
+  const fromContext = scope.node.tryGetContext(key) as string | undefined;
+  return (fromContext ?? process.env[env] ?? "").trim();
+}
+
+/** iOS bundle ID; native Sign in with Apple tokens carry it as the audience. */
+export const CONSCIOUSLY_IOS_BUNDLE_ID = "live.consciously.app";
+
+/**
+ * Direct (non-Cognito) social sign-in and the App Review account. Public IDs
+ * live in cdk.json context or deploy env; unset providers stay off.
+ */
+export function resolveSocialAuthConfig(scope: Construct): {
+  appleServicesId: string;
+  googleWebClientId: string;
+  googleIosClientId: string;
+  reviewAccountEmail: string;
+  reviewAccountCode: string;
+} {
+  return {
+    appleServicesId: contextOrEnv(scope, "appleServicesId", "CONSCIOUSLY_APPLE_SERVICES_ID"),
+    googleWebClientId: contextOrEnv(scope, "googleWebClientId", "CONSCIOUSLY_GOOGLE_WEB_CLIENT_ID"),
+    googleIosClientId: contextOrEnv(scope, "googleIosClientId", "CONSCIOUSLY_GOOGLE_IOS_CLIENT_ID"),
+    reviewAccountEmail: contextOrEnv(scope, "reviewAccountEmail", "CONSCIOUSLY_REVIEW_ACCOUNT_EMAIL").toLowerCase(),
+    reviewAccountCode: contextOrEnv(scope, "reviewAccountCode", "CONSCIOUSLY_REVIEW_ACCOUNT_CODE"),
+  };
+}
+
 export function resolveAuthEmailFrom(scope: Construct): string {
   return (
     (scope.node.tryGetContext("authEmailFrom") as string | undefined)?.trim() ||

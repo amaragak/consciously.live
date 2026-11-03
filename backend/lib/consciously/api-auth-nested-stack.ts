@@ -9,9 +9,12 @@ import type { Construct } from "constructs";
 import type { ConsciouslyAuthNestedStack } from "./auth-nested-stack";
 import type { ConsciouslyConfigNestedStack } from "./config-nested-stack";
 import type { ConsciouslyDatabaseNestedStack } from "./database-nested-stack";
+import type { ConsciouslyMediaNestedStack } from "./media-nested-stack";
 import {
+  CONSCIOUSLY_IOS_BUNDLE_ID,
   resolveAuthEmailFrom,
   resolveAuthWebappOrigin,
+  resolveSocialAuthConfig,
   addNestHttpRoutes,
 } from "./api-http";
 
@@ -22,6 +25,7 @@ export type ConsciouslyApiAuthNestedStackProps = cdk.NestedStackProps & {
   config: ConsciouslyConfigNestedStack;
   auth: ConsciouslyAuthNestedStack;
   database: ConsciouslyDatabaseNestedStack;
+  media: ConsciouslyMediaNestedStack;
 };
 
 /**
@@ -48,6 +52,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
 
     const authWebappOrigin = resolveAuthWebappOrigin(this);
     const authEmailFrom = resolveAuthEmailFrom(this);
+    const social = resolveSocialAuthConfig(this);
 
     const role = new iam.Role(this, "LambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -112,6 +117,91 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
             props.database.meditationAnalytics.tableName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
+          REVIEW_ACCOUNT_EMAIL: social.reviewAccountEmail,
+          REVIEW_ACCOUNT_CODE: social.reviewAccountCode,
+        },
+      },
+    );
+
+    const authSocial = new lambda_nodejs.NodejsFunction(this, "AuthSocialFunction", {
+      entry: path.join(__dirname, "../../lambdas/auth-social.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      role,
+      environment: {
+        USERS_TABLE_NAME: usersTable.tableName,
+        REFRESH_TABLE_NAME: refreshTable.tableName,
+        WAITLIST_TABLE_NAME: props.database.waitlist.tableName,
+        MEDITATION_ANALYTICS_TABLE_NAME:
+          props.database.meditationAnalytics.tableName,
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        AUTH_WEBAPP_ORIGIN: authWebappOrigin,
+        APPLE_AUDIENCES: [CONSCIOUSLY_IOS_BUNDLE_ID, social.appleServicesId]
+          .filter(Boolean)
+          .join(","),
+        GOOGLE_AUDIENCES: [social.googleWebClientId, social.googleIosClientId]
+          .filter(Boolean)
+          .join(","),
+      },
+    });
+
+    const accountDeleteRole = new iam.Role(this, "AccountDeleteRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole",
+        ),
+      ],
+    });
+    const userDataTables = [
+      usersTable,
+      refreshTable,
+      props.database.meditationAnalytics,
+      props.database.meditationListenerMix,
+      props.database.journal,
+      props.database.assistantChat,
+      props.database.ideate,
+      props.database.habits,
+      props.database.journalInsights,
+    ];
+    for (const t of userDataTables) t.grantReadWriteData(accountDeleteRole);
+    props.media.bucket.grantRead(accountDeleteRole);
+    props.media.bucket.grantDelete(accountDeleteRole);
+    authJwtSecret.grantRead(accountDeleteRole);
+    accountDeleteRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:ListUsers", "cognito-idp:AdminDeleteUser"],
+        resources: [userPool.userPoolArn],
+      }),
+    );
+    const authAccountDelete = new lambda_nodejs.NodejsFunction(
+      this,
+      "AuthAccountDeleteFunction",
+      {
+        entry: path.join(__dirname, "../../lambdas/auth-account-delete.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.minutes(2),
+        memorySize: 512,
+        role: accountDeleteRole,
+        environment: {
+          AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          AUTH_WEBAPP_ORIGIN: authWebappOrigin,
+          USERS_TABLE_NAME: usersTable.tableName,
+          REFRESH_TABLE_NAME: refreshTable.tableName,
+          MEDITATION_ANALYTICS_TABLE_NAME:
+            props.database.meditationAnalytics.tableName,
+          MEDITATION_LISTENER_MIX_TABLE_NAME:
+            props.database.meditationListenerMix.tableName,
+          JOURNAL_TABLE_NAME: props.database.journal.tableName,
+          ASSISTANT_CHAT_TABLE_NAME: props.database.assistantChat.tableName,
+          IDEATE_TABLE_NAME: props.database.ideate.tableName,
+          HABITS_TABLE_NAME: props.database.habits.tableName,
+          JOURNAL_INSIGHTS_TABLE_NAME: props.database.journalInsights.tableName,
+          MEDIA_BUCKET_NAME: props.media.bucket.bucketName,
+          COGNITO_USER_POOL_ID: userPool.userPoolId,
         },
       },
     );
@@ -246,7 +336,9 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
             2,
             cdk.Fn.split("/", userPoolDomain.baseUrl()),
           ),
-          COGNITO_SOCIAL_PROVIDERS: props.auth.socialProviders.join(","),
+          APPLE_SERVICES_ID: social.appleServicesId,
+          GOOGLE_WEB_CLIENT_ID: social.googleWebClientId,
+          GOOGLE_IOS_CLIENT_ID: social.googleIosClientId,
         },
       },
     );
@@ -354,6 +446,24 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthMagicVerifyIntegration",
         authMagicVerify,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AuthSocialRoute",
+      path: "/auth/social",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthSocialIntegration",
+        authSocial,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AuthAccountDeleteRoute",
+      path: "/auth/account/delete",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthAccountDeleteIntegration",
+        authAccountDelete,
       ),
     });
     addNestHttpRoutes(this, httpApi, {

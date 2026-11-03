@@ -15,8 +15,8 @@ function hostedUiHost(domain: string, region: string): string {
 
 /**
  * Public Cognito client config for SPA / marketing (no secrets).
- * Cognito-first destination: password / passkey / social via Cognito, then
- * POST /auth/cognito/exchange → Consciously JWT. Magic-link remains during migration.
+ * Password / passkey via Cognito, then POST /auth/cognito/exchange → Consciously JWT.
+ * Apple / Google post provider ID tokens to POST /auth/social. Magic link + code stays.
  */
 export async function handler(
   event: APIGatewayProxyEventV2,
@@ -42,14 +42,11 @@ export async function handler(
     region,
   );
   const enabled = Boolean(userPoolId && clientId);
-  const social = new Set(
-    (process.env.COGNITO_SOCIAL_PROVIDERS ?? "")
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean),
-  );
-  const google = enabled && social.has("google");
-  const apple = enabled && social.has("apple");
+  const appleServicesId = process.env.APPLE_SERVICES_ID?.trim() || "";
+  const googleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID?.trim() || "";
+  const googleIosClientId = process.env.GOOGLE_IOS_CLIENT_ID?.trim() || "";
+  const google = Boolean(googleWebClientId);
+  const apple = Boolean(appleServicesId);
 
   return {
     statusCode: 200,
@@ -74,10 +71,19 @@ export async function handler(
       methods: {
         password: true,
         passkey: true,
-        /** Any Hosted UI social provider (Google or Apple). */
         social: google || apple,
+        /** Google on web and in the app (POST /auth/social). */
         google,
+        /** Sign in with Apple on the web (Apple JS needs a Services ID). */
         apple,
+        /** Native Sign in with Apple on iOS (bundle ID audience; always on). */
+        appleNative: true,
+      },
+      /** Public client IDs for the provider SDKs. */
+      socialClients: {
+        appleServicesId: appleServicesId || null,
+        googleWebClientId: googleWebClientId || null,
+        googleIosClientId: googleIosClientId || null,
       },
     }),
   };
