@@ -47,15 +47,29 @@ const NativeLaunchOverlay = native
   ? lazy(() => import("./components/native-launch-overlay"))
   : null;
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-    {NativeLaunchOverlay ? (
-      <Suspense fallback={null}>
-        <NativeLaunchOverlay />
-      </Suspense>
-    ) : null}
-  </StrictMode>,
-);
+function render(): void {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+      {NativeLaunchOverlay ? (
+        <Suspense fallback={null}>
+          <NativeLaunchOverlay />
+        </Suspense>
+      ) : null}
+    </StrictMode>,
+  );
+}
+
+if (native) {
+  // The shell picks signed in / out on first render, so read the Keychain first.
+  const restored = import("./lib/native/native-secure-session").then((m) =>
+    m.restoreNativeSecureSession(),
+  );
+  void Promise.race([restored, new Promise((r) => setTimeout(r, 1500))])
+    .catch(() => undefined)
+    .then(render);
+} else {
+  render();
+}

@@ -237,14 +237,27 @@ function hydrateAccessJwtFromStorage(): void {
   if (modern) memoryAccessJwt = modern;
 }
 
+type RefreshTokenStore = {
+  read: () => string | null;
+  write: (token: string | null) => void;
+};
+
+/** Native app: Keychain / Keystore replaces localStorage for the refresh token. */
+let refreshTokenStore: RefreshTokenStore | null = null;
+
+export function setRefreshTokenStore(store: RefreshTokenStore | null): void {
+  refreshTokenStore = store;
+}
+
 /** Opaque refresh token for POST /auth/refresh body when cookies are blocked. */
 export function getMedimadeRefreshToken(): string | null {
-  return readStorage(REFRESH_TOKEN_KEY);
+  return refreshTokenStore ? refreshTokenStore.read() : readStorage(REFRESH_TOKEN_KEY);
 }
 
 export function setMedimadeRefreshToken(token: string | null): void {
   const t = token?.trim() || null;
-  writeStorage(REFRESH_TOKEN_KEY, t);
+  if (refreshTokenStore) refreshTokenStore.write(t);
+  else writeStorage(REFRESH_TOKEN_KEY, t);
 }
 
 export function getMedimadeSessionJwt(): string | null {
@@ -338,7 +351,7 @@ export function reconcileMedimadeSessionWithApiBase(apiBase: string): void {
   const hasCreds = Boolean(
     memoryAccessJwt ||
       readStorage(ACCESS_JWT_KEY) ||
-      readStorage(REFRESH_TOKEN_KEY) ||
+      getMedimadeRefreshToken() ||
       readStorage(ACTIVE_KEY) === "1",
   );
   if (prev || hasCreds) {
@@ -357,6 +370,7 @@ export function clearMedimadeSession(): void {
     window.localStorage.removeItem(LEGACY_JWT_KEY);
     window.localStorage.removeItem(ACCESS_JWT_KEY);
     window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+    refreshTokenStore?.write(null);
     window.localStorage.removeItem(EMAIL_KEY);
     window.localStorage.removeItem(DISPLAY_NAME_KEY);
     window.localStorage.removeItem(ACTIVE_KEY);
@@ -405,7 +419,7 @@ function demoteUnusableAccessSession(opts?: {
   writeStorage(ACCESS_JWT_KEY, null);
   writeStorage(LEGACY_JWT_KEY, null);
   writeStorage(ACTIVE_KEY, null);
-  if (opts?.clearRefresh) writeStorage(REFRESH_TOKEN_KEY, null);
+  if (opts?.clearRefresh) setMedimadeRefreshToken(null);
   clearHasSessionHintCookie();
   try {
     window.dispatchEvent(new Event("medimade-session-changed"));
