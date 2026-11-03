@@ -14,7 +14,9 @@ function capacitorGlobal(): CapacitorGlobal | undefined {
   return (window as { Capacitor?: CapacitorGlobal }).Capacitor;
 }
 
+/** Constant-folded: false in the web build, so every native branch is dropped. */
 export function isNativeApp(): boolean {
+  if (!__NATIVE_BUILD__) return false;
   try {
     return capacitorGlobal()?.isNativePlatform?.() === true;
   } catch {
@@ -59,6 +61,20 @@ export function setNativeHapticImpl(fn: (() => void) | null): void {
 export function nativeHapticTap(): boolean {
   if (!hapticImpl) return false;
   hapticImpl();
+  return true;
+}
+
+let seekImpl: ((timeSeconds: number) => void) | null = null;
+
+/** Set by the native strip while it owns playback. */
+export function setNativeSeekImpl(fn: ((timeSeconds: number) => void) | null): void {
+  seekImpl = fn;
+}
+
+/** Seek native playback; false when no native strip is active. */
+export function nativeSeek(timeSeconds: number): boolean {
+  if (!seekImpl) return false;
+  seekImpl(timeSeconds);
   return true;
 }
 

@@ -17,8 +17,22 @@ import {
   type BedVolumeChannel,
   type BackgroundAudioItem,
 } from "@consciously/common";
-import type { MutableRefObject } from "react";
+import { lazy, Suspense, type MutableRefObject } from "react";
 import { getMedimadeMediaBaseUrl } from "@/lib/medimade-api";
+import { isNativeApp } from "@/lib/native/native-bridge";
+
+const NativeLibraryAudioStrip = __NATIVE_BUILD__
+  ? lazy(() => import("./native-library-audio-strip"))
+  : null;
+
+/**
+ * Native shell: the native audio plugin owns playback (background, lock screen).
+ * Create · Sound auditions stay on the web strip — they are foreground-only and
+ * bridge to the create step's own voice transport.
+ */
+export function usesNativePlayback(track: Pick<LibraryActiveTrack, "s3Key">): boolean {
+  return __NATIVE_BUILD__ && isNativeApp() && !track.s3Key.startsWith("create:sound:");
+}
 
 export type { LibraryActiveTrack, LibraryBedVolumeApi, BedVolumeChannel };
 export {
@@ -59,6 +73,19 @@ export function LibraryAudioStrip(
   },
 ) {
   const inline = props.placement === "inline";
+  if (NativeLibraryAudioStrip && props.track && usesNativePlayback(props.track)) {
+    return (
+      <Suspense fallback={null}>
+        <NativeLibraryAudioStrip
+          {...props}
+          track={props.track}
+          mediaBase={getMedimadeMediaBaseUrl()}
+          besideSidebar={!inline}
+          placement={props.placement ?? "fixed"}
+        />
+      </Suspense>
+    );
+  }
   return (
     <SharedLibraryAudioStrip
       {...props}

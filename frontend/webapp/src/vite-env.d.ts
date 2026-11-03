@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** True for `vite --mode native*` (Capacitor shell builds); false for the web build. */
+declare const __NATIVE_BUILD__: boolean;
+
 interface ImportMetaEnv {
   readonly VITE_MEDIMADE_API_URL?: string;
   readonly VITE_MEDIMADE_MEDIA_BASE_URL?: string;

@@ -34,6 +34,9 @@ function nativeRuntimeAssets(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), ...(mode.startsWith("native") ? [nativeRuntimeAssets()] : [])],
+  define: {
+    __NATIVE_BUILD__: JSON.stringify(mode.startsWith("native")),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

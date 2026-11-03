@@ -29,10 +29,12 @@ import {
   startLibraryVoicePlayback,
   stopLibraryVoicePlayback,
   trackFromLibraryItem,
+  usesNativePlayback,
   type LibraryActiveTrack,
   type LibraryBedVolumeApi,
   type BedVolumeChannel,
 } from "@/components/library-audio-strip";
+import { nativeSeek } from "@/lib/native/native-bridge";
 import { unlockHtmlMediaPlayback } from "@/lib/audio-lead-buffer";
 import {
   armReflectMeditationHandoff,
@@ -247,7 +249,9 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     setAutoplay(true);
     // Ambient beds/soundscapes are owned by the strip elements — don't also
     // start the library voice singleton (create step plays voice separately).
-    if (track.ambientOnly) {
+    if (usesNativePlayback(track)) {
+      stopLibraryVoicePlayback();
+    } else if (track.ambientOnly) {
       stopLibraryVoicePlayback();
     } else if (
       track.liveMix &&
@@ -269,6 +273,11 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
     );
     const track = trackFromLibraryItem(item);
     setAutoplay(true);
+    if (usesNativePlayback(track)) {
+      stopLibraryVoicePlayback();
+      setNowPlaying(track);
+      return;
+    }
     // liveMix: strip owns simultaneous voice + beds (lead-in). Unlock only.
     unlockHtmlMediaPlayback();
     unlockLibraryVoicePlayback();
@@ -286,6 +295,10 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
 
   const seekTo = useCallback((timeSeconds: number) => {
     const t = Math.max(0, timeSeconds);
+    if (nativeSeek(t)) {
+      setPlaybackTimeSeconds(t);
+      return;
+    }
     try {
       getLibraryVoicePlayer().seek(t);
     } catch {

@@ -32,7 +32,7 @@ function injectTheme(): void {
 
 injectTheme();
 
-if (isNativeApp()) {
+if (__NATIVE_BUILD__ && isNativeApp()) {
   void import("./lib/native/native-shell").then((m) => m.initNativeShell());
 }
 
