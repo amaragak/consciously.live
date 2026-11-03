@@ -47,6 +47,17 @@ export {
   type BedVolumeChannel,
 } from "./library/library-audio-strip";
 
+export { PlayerStripView, formatAudioClock } from "./library/player-strip-view";
+
+export {
+  BED_OUTRO_FADE_SECONDS,
+  BED_OUTRO_HOLD_SECONDS,
+  BED_VOICE_INTRO_SECONDS,
+  SPEECH_ELEMENT_VOLUME,
+  bedElementVolume,
+  soundscapeListenVolume,
+} from "./audio/bed-volume";
+
 export { CoverArtThumb } from "./library/cover-art-thumb";
 export { TypewriterReveal } from "./library/typewriter-reveal";
 
