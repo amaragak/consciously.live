@@ -6,10 +6,33 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:native": "vite build --mode native",
+    "build:native:internal": "VITE_INTERNAL_BUILD=1 vite build --mode native",
+    "build:native:staging": "VITE_INTERNAL_BUILD=1 vite build --mode native-staging",
+    "native:sync": "npm run build:native && cap sync",
+    "native:sync:internal": "npm run build:native:internal && cap sync",
+    "native:ios": "npm run native:sync && cap open ios",
+    "native:android": "npm run native:sync && cap open android",
+    "native:run:ios": "npm run native:sync:internal && cap run ios",
+    "native:run:android": "npm run native:sync:internal && cap run android",
+    "native:dev:ios": "node scripts/native-dev.mjs ios",
+    "native:dev:android": "node scripts/native-dev.mjs android",
+    "native:assets": "capacitor-assets generate --assetPath native-assets --iconBackgroundColor '#1E232E' --iconBackgroundColorDark '#1E232E' --splashBackgroundColor '#1E232E' --splashBackgroundColorDark '#1E232E'"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@consciously/common": "*",
+    "@mediagrid/capacitor-native-audio": "^3.0.0",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@tabler/icons-react": "^3.46.0",
@@ -36,6 +59,8 @@
     "tldraw": "^5.1.1"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.0",
     "@tailwindcss/vite": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
