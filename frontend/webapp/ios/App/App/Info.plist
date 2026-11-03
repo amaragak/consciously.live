@@ -51,6 +51,10 @@
 	<array>
 		<string>armv7</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Consciously uses the microphone so you can speak instead of typing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Consciously turns what you say into text on your device.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

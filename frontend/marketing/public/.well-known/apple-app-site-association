@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["APPLE_TEAM_ID.live.consciously.app"],
+        "components": [
+          { "/": "/auth/verify*", "comment": "Magic sign-in links open the app" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["APPLE_TEAM_ID.live.consciously.app"]
+  }
+}

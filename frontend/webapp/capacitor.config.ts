@@ -38,6 +38,16 @@ const config: CapacitorConfig = {
       overlaysWebView: true,
       style: "DARK",
     },
+    // Only Apple and Google are bundled; see NATIVE.md for the console setup.
+    SocialLogin: {
+      providers: {
+        apple: true,
+        google: true,
+        facebook: false,
+        twitter: false,
+      },
+      logLevel: 1,
+    },
     Keyboard: {
       resize: "native",
       resizeOnFullScreen: true,

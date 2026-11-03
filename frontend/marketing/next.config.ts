@@ -35,6 +35,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Universal links: Apple needs JSON with no extension and no redirect.
+        source: "/.well-known/apple-app-site-association",
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      },
+      {
         source: "/:path*",
         headers: [
           {

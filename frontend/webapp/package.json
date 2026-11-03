@@ -21,6 +21,7 @@
     "native:assets": "capacitor-assets generate --ios --android --assetPath native-assets --iconBackgroundColor '#1E232E' --iconBackgroundColorDark '#1E232E' --splashBackgroundColor '#1E232E' --splashBackgroundColorDark '#1E232E'"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.1",
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/browser": "^8.0.5",
@@ -32,6 +33,8 @@
     "@capacitor/keyboard": "^8.0.6",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
+    "@capgo/capacitor-social-login": "^8.7.6",
+    "@capgo/capacitor-speech-recognition": "^8.4.6",
     "@consciously/common": "*",
     "@mediagrid/capacitor-native-audio": "^3.0.0",
     "@radix-ui/react-switch": "^1.2.6",
