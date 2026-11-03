@@ -13,9 +13,13 @@
     "dev:webapp": "npm run dev -w @consciously/webapp",
     "build:marketing": "npm run build --prefix frontend/marketing",
     "build:webapp": "npm run build -w @consciously/webapp",
-    "deploy:web": "bash ./frontend/marketing/deploy/deploy-web"
+    "deploy:web": "bash ./frontend/marketing/deploy/deploy-web",
+    "postinstall": "patch-package"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
   }
 }

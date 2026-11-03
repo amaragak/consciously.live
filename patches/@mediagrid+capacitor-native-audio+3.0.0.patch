@@ -1,0 +1,599 @@
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioPlayerPlugin.java b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioPlayerPlugin.java
+index 2e28345..7c714be 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioPlayerPlugin.java
++++ b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioPlayerPlugin.java
+@@ -78,6 +78,11 @@ public class AudioPlayerPlugin extends Plugin {
+                 call.getBoolean("isBackgroundMusic", false),
+                 call.getBoolean("loop", false)
+             );
++            audioSource.followPrimary =
++                !audioSource.useForNotification && call.getBoolean("followPrimary", false);
++            audioSource.followPrimarySeek = call.getBoolean("followPrimarySeek", false);
++            audioSource.outroHoldMs = Math.round(call.getDouble("outroHoldSeconds", 0.0) * 1000);
++            audioSource.outroFadeMs = Math.round(call.getDouble("outroFadeSeconds", 0.0) * 1000);
+ 
+             if (audioSources.count() == 0 && !audioSource.useForNotification) {
+                 throw new RuntimeException(
+@@ -630,6 +635,10 @@ public class AudioPlayerPlugin extends Plugin {
+         audioMediaController = null;
+     }
+ 
++    public AudioSources getAudioSources() {
++        return audioSources;
++    }
++
+     private String audioId(PluginCall call) {
+         return call.getString("audioId");
+     }
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSource.java b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSource.java
+index 3e47545..c4d077b 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSource.java
++++ b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSource.java
+@@ -24,6 +24,14 @@ public class AudioSource extends Binder {
+     public boolean isBackgroundMusic;
+     public boolean loopAudio = false;
+ 
++    /** Background source that plays and pauses with the notification source. */
++    public boolean followPrimary = false;
++    /** Follower that also follows the notification source's seeks. */
++    public boolean followPrimarySeek = false;
++    /** Notification source only: followers hold, then fade, after it ends. */
++    public long outroHoldMs = 0;
++    public long outroFadeMs = 0;
++
+     public String onPlaybackStatusChangeCallbackId;
+     public String onReadyCallbackId;
+     public String onEndCallbackId;
+@@ -154,6 +162,10 @@ public class AudioSource extends Binder {
+         getPlayer().setVolume(volume);
+     }
+ 
++    public float getVolume() {
++        return getPlayer().getVolume();
++    }
++
+     public void setRate(float rate) {
+         getPlayer().setPlaybackSpeed(rate);
+     }
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSources.java b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSources.java
+index 91d6dcf..b0af6b9 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSources.java
++++ b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/AudioSources.java
+@@ -1,6 +1,9 @@
+ package us.mediagrid.capacitorjs.plugins.nativeaudio;
+ 
+ import android.os.Binder;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.SystemClock;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -8,8 +11,14 @@ import us.mediagrid.capacitorjs.plugins.nativeaudio.exceptions.AudioSourceAlread
+ 
+ public class AudioSources extends Binder {
+ 
++    private static final long OUTRO_TICK_MS = 100;
++
+     private HashMap<String, AudioSource> audioSources = new HashMap<>();
+ 
++    private final Handler outroHandler = new Handler(Looper.getMainLooper());
++    private final HashMap<String, Float> outroBaseVolumes = new HashMap<>();
++    private Runnable outroTick = null;
++
+     public AudioSource get(String sourceId) {
+         return audioSources.get(sourceId);
+     }
+@@ -59,6 +68,8 @@ public class AudioSources extends Binder {
+     }
+ 
+     public void destroyAllNonNotificationSources() {
++        cancelOutro();
++
+         List<AudioSource> sourcesToRemove = new ArrayList<>();
+ 
+         for (AudioSource audioSource : audioSources.values()) {
+@@ -75,4 +86,146 @@ public class AudioSources extends Binder {
+             audioSources.remove(sourceToRemove.id);
+         }
+     }
++
++    /** Initialized background sources that move with the notification source. */
++    public List<AudioSource> followers() {
++        List<AudioSource> followers = new ArrayList<>();
++
++        for (AudioSource audioSource : audioSources.values()) {
++            if (
++                audioSource.followPrimary &&
++                !audioSource.useForNotification &&
++                audioSource.isInitialized()
++            ) {
++                followers.add(audioSource);
++            }
++        }
++
++        return followers;
++    }
++
++    public boolean isOutroActive() {
++        return outroTick != null;
++    }
++
++    public void followersPlay() {
++        cancelOutro();
++
++        for (AudioSource follower : followers()) {
++            if (!follower.isPlaying()) {
++                follower.play();
++            }
++        }
++    }
++
++    public void followersPause() {
++        for (AudioSource follower : followers()) {
++            if (follower.isPlaying()) {
++                follower.pause();
++            }
++        }
++    }
++
++    public void followersSeek(long positionMs) {
++        // The primary rewinds itself when it ends; the outro keeps the bed clock.
++        if (isOutroActive()) {
++            return;
++        }
++
++        for (AudioSource follower : followers()) {
++            if (follower.followPrimarySeek) {
++                follower.getPlayer().seekTo(Math.max(0, positionMs));
++            }
++        }
++    }
++
++    /**
++     * After the notification source ends, keep followers going for `holdMs`, then
++     * fade them out over `fadeMs` and pause. Runs natively because the web view
++     * may not be running JavaScript while the app is in the background.
++     */
++    public void startOutro(long holdMs, long fadeMs) {
++        cancelOutro();
++
++        List<AudioSource> followers = followers();
++
++        if (followers.isEmpty()) {
++            return;
++        }
++
++        final long hold = Math.max(0, holdMs);
++        final long fade = Math.max(0, fadeMs);
++
++        if (hold + fade <= 0) {
++            followersPause();
++            return;
++        }
++
++        for (AudioSource follower : followers) {
++            outroBaseVolumes.put(follower.id, follower.getVolume());
++        }
++
++        final long startedAt = SystemClock.elapsedRealtime();
++
++        outroTick = new Runnable() {
++            @Override
++            public void run() {
++                long into = SystemClock.elapsedRealtime() - startedAt;
++
++                if (into >= hold + fade) {
++                    finishOutro();
++                    return;
++                }
++
++                float gain = 1f;
++
++                if (into > hold && fade > 0) {
++                    double t = Math.min(1.0, (double) (into - hold) / fade);
++                    gain = (float) Math.cos((t * Math.PI) / 2);
++                }
++
++                for (AudioSource follower : followers()) {
++                    Float base = outroBaseVolumes.get(follower.id);
++                    follower.setVolume((base == null ? 1f : base) * gain);
++                }
++
++                outroHandler.postDelayed(this, OUTRO_TICK_MS);
++            }
++        };
++
++        outroHandler.post(outroTick);
++    }
++
++    public void cancelOutro() {
++        if (outroTick == null) {
++            return;
++        }
++
++        outroHandler.removeCallbacks(outroTick);
++        outroTick = null;
++
++        restoreFollowerVolumes();
++    }
++
++    private void finishOutro() {
++        if (outroTick != null) {
++            outroHandler.removeCallbacks(outroTick);
++            outroTick = null;
++        }
++
++        followersPause();
++        restoreFollowerVolumes();
++    }
++
++    private void restoreFollowerVolumes() {
++        for (AudioSource follower : followers()) {
++            Float base = outroBaseVolumes.get(follower.id);
++
++            if (base != null) {
++                follower.setVolume(base);
++            }
++        }
++
++        outroBaseVolumes.clear();
++    }
+ }
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/PlayerEventListener.java b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/PlayerEventListener.java
+index 4b80f87..b422a6e 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/PlayerEventListener.java
++++ b/node_modules/@mediagrid/capacitor-native-audio/android/src/main/java/us/mediagrid/capacitorjs/plugins/nativeaudio/PlayerEventListener.java
+@@ -44,6 +44,36 @@ public class PlayerEventListener implements Listener {
+         );
+     }
+ 
++    @Override
++    public void onPlayWhenReadyChanged(boolean playWhenReady, @PlayWhenReadyChangeReason int reason) {
++        if (!audioSource.useForNotification) {
++            return;
++        }
++
++        // Notification controls, audio-focus loss (calls) and app calls all land
++        // here, so background beds follow without the web view being awake.
++        AudioSources sources = plugin.getAudioSources();
++
++        if (playWhenReady) {
++            sources.followersPlay();
++        } else if (!sources.isOutroActive()) {
++            sources.followersPause();
++        }
++    }
++
++    @Override
++    public void onPositionDiscontinuity(
++        PositionInfo oldPosition,
++        PositionInfo newPosition,
++        @DiscontinuityReason int reason
++    ) {
++        if (!audioSource.useForNotification || reason != DISCONTINUITY_REASON_SEEK) {
++            return;
++        }
++
++        plugin.getAudioSources().followersSeek(newPosition.positionMs);
++    }
++
+     @Override
+     public void onPlaybackStateChanged(@State int playbackState) {
+         if (playbackState == STATE_READY) {
+@@ -51,6 +81,12 @@ public class PlayerEventListener implements Listener {
+         }
+ 
+         if (playbackState == STATE_ENDED) {
++            if (audioSource.useForNotification) {
++                plugin
++                    .getAudioSources()
++                    .startOutro(audioSource.outroHoldMs, audioSource.outroFadeMs);
++            }
++
+             audioSource.getPlayer().stop();
+             audioSource.getPlayer().seekToDefaultPosition();
+             audioSource.setIsStopped();
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioPlayerPlugin.swift b/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioPlayerPlugin.swift
+index 106fa30..a81456c 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioPlayerPlugin.swift
++++ b/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioPlayerPlugin.swift
+@@ -86,6 +86,9 @@ public class AudioPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
+                 throw AudioPlayerError.invalidFriendlyName
+             }
+ 
++            let useForNotification = call.getBool("useForNotification", false)
++            let wantsLoop = call.getBool("loop", false)
++
+             let audioSource = AudioSource(
+                 pluginOwner: self,
+                 id: sourceId,
+@@ -98,14 +101,22 @@ public class AudioPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
+                     updateUrl: call.getString("metadataUpdateUrl", ""),
+                     updateInterval: call.getInt("metadataUpdateInterval", -1)
+                 ),
+-                useForNotification: call.getBool("useForNotification", false),
++                useForNotification: useForNotification,
+                 isBackgroundMusic: call.getBool("isBackgroundMusic", false),
+-                loopAudio: call.getBool("loop", false),
++                // The queue-player loop path has no AVPlayer for Now Playing, so
++                // the notification source restarts on end instead.
++                loopAudio: wantsLoop && !useForNotification,
+                 showSeekBackward: call.getBool("showSeekBackward", true),
+                 showSeekForward: call.getBool("showSeekForward", true),
+                 seekBackwardTime: call.getInt("seekBackwardTime", 5),
+                 seekForwardTime: call.getInt("seekForwardTime", 5)
+             )
++            audioSource.repeatOnEnd = wantsLoop && useForNotification
++            audioSource.followPrimary =
++                !useForNotification && call.getBool("followPrimary", false)
++            audioSource.followPrimarySeek = call.getBool("followPrimarySeek", false)
++            audioSource.outroHoldSeconds = call.getDouble("outroHoldSeconds") ?? 0
++            audioSource.outroFadeSeconds = call.getDouble("outroFadeSeconds") ?? 0
+ 
+             if audioSources.count() == 0 && !audioSource.useForNotification {
+                 throw AudioPlayerError.runtimeError(
+@@ -255,9 +266,8 @@ public class AudioPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
+         do {
+             let audioSource = try getAudioSource(methodName: "play", call: call)
+ 
+-            if audioSource.useForNotification {
+-                try audioSession.setActive(true)
+-            }
++            // Beds can start before the voice (lead-in), so any source activates.
++            try audioSession.setActive(true)
+ 
+             audioSource.play()
+ 
+@@ -518,6 +528,87 @@ public class AudioPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
+         }
+     }
+ 
++    private var outroTimer: Timer?
++    private var outroBaseVolumes: [String: Float] = [:]
++
++    /// After the notification source ends, keep followers going, then fade them
++    /// out natively. The web view may be suspended in the background by now.
++    func startOutro(holdSeconds: Double, fadeSeconds: Double) {
++        cancelOutro()
++
++        let followers = audioSources.followers()
++        if followers.isEmpty {
++            return
++        }
++
++        let total = max(0, holdSeconds) + max(0, fadeSeconds)
++        if total <= 0 {
++            followers.forEach { $0.pause() }
++            return
++        }
++
++        var base: [String: Float] = [:]
++        for follower in followers {
++            base[follower.id] = follower.getVolume()
++        }
++        outroBaseVolumes = base
++
++        let startedAt = Date()
++        outroTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
++            [weak self] timer in
++            guard let self else {
++                timer.invalidate()
++                return
++            }
++
++            let into = Date().timeIntervalSince(startedAt)
++            if into >= total {
++                self.finishOutro()
++                return
++            }
++
++            var gain: Float = 1
++            if into > holdSeconds && fadeSeconds > 0 {
++                let t = min(1, (into - holdSeconds) / fadeSeconds)
++                gain = Float(cos(t * Double.pi / 2))
++            }
++
++            for follower in self.audioSources.followers() {
++                let volume = self.outroBaseVolumes[follower.id] ?? 1
++                follower.setVolume(volume: volume * gain)
++            }
++        }
++    }
++
++    func cancelOutro() {
++        guard let timer = outroTimer else {
++            return
++        }
++
++        timer.invalidate()
++        outroTimer = nil
++
++        for follower in audioSources.followers() {
++            if let volume = outroBaseVolumes[follower.id] {
++                follower.setVolume(volume: volume)
++            }
++        }
++        outroBaseVolumes = [:]
++    }
++
++    private func finishOutro() {
++        outroTimer?.invalidate()
++        outroTimer = nil
++
++        for follower in audioSources.followers() {
++            follower.pause()
++            if let volume = outroBaseVolumes[follower.id] {
++                follower.setVolume(volume: volume)
++            }
++        }
++        outroBaseVolumes = [:]
++    }
++
+     @objc func handleAppToBackground() {
+         print("Going to background")
+ 
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSource.swift b/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSource.swift
+index 5a65e69..9481b25 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSource.swift
++++ b/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSource.swift
+@@ -30,6 +30,17 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+     private var audioReadyObservation: NSKeyValueObservation?
+     private var audioOnEndObservation: NSObjectProtocol?
+ 
++    /// Background source that plays and pauses with the notification source.
++    var followPrimary: Bool = false
++    /// Follower that also follows the notification source's seeks.
++    var followPrimarySeek: Bool = false
++    /// Notification source only: followers hold for this long after it ends...
++    var outroHoldSeconds: Double = 0
++    /// ...then fade to silence over this long.
++    var outroFadeSeconds: Double = 0
++    /// Notification source only: restart instead of stopping when it ends.
++    var repeatOnEnd: Bool = false
++
+     public init(
+         pluginOwner: AudioPlayerPlugin,
+         id: String,
+@@ -149,6 +160,8 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+ 
+         if useForNotification {
+             audioMetadata.startUpdater()
++            pluginOwner.cancelOutro()
++            pluginOwner.audioSources.followers().forEach { $0.play() }
+         }
+     }
+ 
+@@ -163,6 +176,30 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+         setNowPlayingPlaybackState(state: .paused)
+         audioMetadata.stopUpdater()
+ 
++        if useForNotification {
++            pluginOwner.audioSources.followers().forEach { $0.pause() }
++        }
++    }
++
++    func getVolume() -> Float {
++        return loopAudio ? playerQueue.volume : player.volume
++    }
++
++    /// Sub-second seek for lock-screen scrubbing; followers keep the same clock.
++    func seekPrecise(seconds: Double) {
++        if loopAudio {
++            return
++        }
++
++        let target = CMTime(seconds: max(0, seconds), preferredTimescale: 1000)
++        player.seek(to: target)
++        setNowPlayingCurrentTime()
++
++        if useForNotification {
++            pluginOwner.audioSources.followers()
++                .filter { $0.followPrimarySeek }
++                .forEach { $0.seekPrecise(seconds: seconds) }
++        }
+     }
+ 
+     func seek(timeInSeconds: Int64, fromUi: Bool = false) {
+@@ -172,6 +209,12 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+ 
+         player.seek(to: getCmTime(seconds: timeInSeconds))
+ 
++        if useForNotification {
++            pluginOwner.audioSources.followers()
++                .filter { $0.followPrimarySeek }
++                .forEach { $0.seek(timeInSeconds: timeInSeconds) }
++        }
++
+         if fromUi {
+             removeRemoteTransportControls()
+             removeNowPlaying()
+@@ -307,6 +350,20 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+ 
+         if type == .ended {
+             print("Audio interruption has ended")
++
++            let optionsValue =
++                userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
++            let options = AVAudioSession.InterruptionOptions(
++                rawValue: optionsValue
++            )
++
++            // Only resume when the system says so (e.g. after a call); otherwise
++            // stay paused until the listener presses play.
++            if !options.contains(.shouldResume) {
++                return
++            }
++
++            try? AVAudioSession.sharedInstance().setActive(true)
+             play()
+ 
+             makePluginCall(
+@@ -364,6 +421,19 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+             [weak self] _ in
+             guard let self else { return }
+ 
++            if self.repeatOnEnd {
++                self.player.seek(to: CMTime.zero)
++                self.player.play()
++                return
++            }
++
++            if self.useForNotification {
++                self.pluginOwner.startOutro(
++                    holdSeconds: self.outroHoldSeconds,
++                    fadeSeconds: self.outroFadeSeconds
++                )
++            }
++
+             self.stop()
+             self.audioMetadata.stopUpdater()
+ 
+@@ -470,8 +540,23 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+             ]
+         }
+ 
++        commandCenter.changePlaybackPositionCommand.addTarget {
++            [unowned self] event -> MPRemoteCommandHandlerStatus in
++            guard
++                let positionEvent = event
++                    as? MPChangePlaybackPositionCommandEvent
++            else {
++                return .commandFailed
++            }
++
++            self.seekPrecise(seconds: positionEvent.positionTime)
++
++            return .success
++        }
++
+         commandCenter.playCommand.isEnabled = true
+         commandCenter.pauseCommand.isEnabled = true
++        commandCenter.changePlaybackPositionCommand.isEnabled = showSeekForward
+         commandCenter.skipBackwardCommand.isEnabled = showSeekBackward
+         commandCenter.skipForwardCommand.isEnabled = showSeekForward
+         commandCenter.seekBackwardCommand.isEnabled = false
+@@ -487,6 +572,7 @@ public class AudioSource: NSObject, AVAudioPlayerDelegate {
+ 
+         commandCenter.playCommand.removeTarget(nil)
+         commandCenter.pauseCommand.removeTarget(nil)
++        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+         commandCenter.skipBackwardCommand.removeTarget(nil)
+         commandCenter.skipForwardCommand.removeTarget(nil)
+     }
+diff --git a/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSources.swift b/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSources.swift
+index 1eb4c26..5b3b2c2 100644
+--- a/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSources.swift
++++ b/node_modules/@mediagrid/capacitor-native-audio/ios/Sources/AudioPlayerPlugin/AudioSources.swift
+@@ -44,4 +44,11 @@ public class AudioSources {
+     public func count() -> Int {
+         return audioSources.count
+     }
++
++    /// Background sources that move with the notification source.
++    public func followers() -> [AudioSource] {
++        return audioSources.values.filter { source in
++            source.followPrimary && !source.useForNotification
++        }
++    }
+ }
