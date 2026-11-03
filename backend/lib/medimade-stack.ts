@@ -602,8 +602,8 @@ export class MedimadeStack extends cdk.Stack {
           "http://127.0.0.1:3001",
           "http://localhost:5173",
           "http://127.0.0.1:5173",
-          // Capacitor native shells (iOS WKWebView / Android WebView).
-          "capacitor://localhost",
+          // Capacitor Android web view. API Gateway rejects non-http(s) origins, so the
+          // iOS shell (capacitor://localhost) calls the API through native HTTP instead.
           "https://localhost",
         ],
         allowCredentials: true,

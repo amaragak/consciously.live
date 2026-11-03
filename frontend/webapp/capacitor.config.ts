@@ -19,6 +19,10 @@ const config: CapacitorConfig = {
     backgroundColor: "#1E232E",
   },
   plugins: {
+    // iOS only uses it for the API origin; see `src/lib/native/native-http.ts`.
+    CapacitorHttp: {
+      enabled: true,
+    },
     SystemBars: {
       insetsHandling: "native",
       initialViewportFitValueHint: "cover",
