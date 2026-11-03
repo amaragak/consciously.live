@@ -117,8 +117,9 @@ The env files load in this order: `.env` → `.env.local` → `.env.native` (→
 doesn't leak into app builds. For staging, create `.env.native-staging.local` containing
 `VITE_MEDIMADE_API_URL` and `VITE_MEDIMADE_MEDIA_BASE_URL`.
 
-The API allows the native origins `capacitor://localhost` (iOS) and `https://localhost`
-(Android) in CORS (`backend/lib/consciously/api-http.ts`, `backend/lib/medimade-stack.ts`).
+Android calls the API from `https://localhost`, which is in the CORS list
+(`backend/lib/consciously/api-http.ts`). API Gateway rejects `capacitor://localhost` as a CORS
+origin, so on iOS the API origin goes through native HTTP instead (`src/lib/native/native-http.ts`).
 
 ## Audio
 
@@ -174,7 +175,7 @@ regenerate it from the repo root with `npx patch-package @mediagrid/capacitor-na
 ### `/dev/audio` test page
 
 This page is in dev servers and internal builds only; production compiles it out. It needs no
-sign-in: in the app, open it from **Audio test** on the signed-out screen.
+sign-in: in the app, open it from **Audio test** under the welcome screen's Sign in button.
 
 - Plays public Listen items from user `consciously` or the listed examples. While none are
   pinned, it uses catalog soundscapes as stand-ins.
@@ -196,10 +197,102 @@ Device checklist:
   lock screen.
 - Android: the media notification shows the title and artwork, and its controls work.
 
+## Sign-in
+
+### What the app does
+
+- **Welcome screen** (`src/pages/native-login-page.tsx`, styles in `native-login.css`). Shown on
+  first launch and after sign-out; a stored session goes straight to the dashboard. The line
+  is kept on the device (so it survives the trip to the mail app). The mic dictates on-device
+  (`@capgo/capacitor-speech-recognition`); server Whisper needs a session.
+- **Sign-up sheet.** Opens from **Create meditation**. Apple, Google, or email. Email sends one message
+  with a 6-digit code and a link. The sheet takes the code, and the link opens the app (universal link)
+  and signs in there. Nothing is generated before the account exists. Afterwards Create opens on
+  Shape with the line as the brief (`?step=shape&fromBrief=1`, `createFromBriefHref`). An existing
+  account signs in and goes to the same place.
+- **Sign-in screen.** "Welcome back." with a back control, then Apple, Google, email + password,
+  and **Email me a sign-in code instead**.
+- **Sessions.** The refresh token lives in Keychain / Keystore (`@aparajita/capacitor-secure-storage`,
+  `src/lib/native/native-secure-session.ts`), not WebView storage. It is read before the first render.
+  On a fresh install it is wiped, because the Keychain outlives an uninstall. Sign-out
+  (and account deletion) clears it and returns to the welcome screen. The web keeps cookies +
+  localStorage as before.
+- **Apple / Google** (`src/lib/native/native-social.ts`, `@capgo/capacitor-social-login`). The
+  provider's ID token goes to `POST /auth/social`. The backend verifies it against Apple's or
+  Google's keys and requires a verified email. It then signs into the account with that email, or
+  creates one. Apple private relay addresses are stable inboxes and are treated like any other email.
+  Apple is iOS-only in the app; Google is iOS + Android.
+- **Account deletion.** Settings › Account › **Delete account and all data** → confirm →
+  `POST /auth/account/delete`. This deletes the user's rows in every per-user table, their S3 media
+  (`meditations/`, `meditation-covers/`, `drafts/`, `journal-transcriptions/`), refresh tokens,
+  username, the Cognito user and the user record. The shared guest account can't be deleted.
+- **Passkeys stay web-only.** There's no maintained Capacitor plugin that does WebAuthn against
+  Cognito's passkey flow, and the web view's `capacitor://localhost` origin can't use them. The
+  `webcredentials:consciously.live` association is in place for a native plugin later.
+- **App Review account.** Set `CONSCIOUSLY_REVIEW_ACCOUNT_EMAIL` and
+  `CONSCIOUSLY_REVIEW_ACCOUNT_CODE` (or CDK context `reviewAccountEmail` / `reviewAccountCode`)
+  when deploying the backend. Review signs in with **Continue with email**, that address, and
+  that fixed 6-digit code; no email is needed. Give both to App Review in App Store Connect.
+
+### Web changes
+
+- The magic-link email now carries a 6-digit code (same 15 minutes, single use; using the code or
+  the link consumes both). Every "Check your inbox" state has a code field.
+- **Continue with Apple** on `consciously.live/login` (Apple JS popup → `/auth/social`). It only
+  shows once `CONSCIOUSLY_APPLE_SERVICES_ID` is deployed.
+- Google on the web still says "isn't available yet" (unchanged). It needs Google Identity Services
+  on the login page next; the backend already accepts web Google ID tokens.
+
+### Console setup (once)
+
+Backend values are read at deploy time from env or CDK context
+(`backend/lib/consciously/api-http.ts`, `resolveSocialAuthConfig`). Redeploy the backend
+after setting them.
+
+**Apple** ([developer.apple.com](https://developer.apple.com/account/resources/identifiers/list)):
+
+1. Identifiers → App ID `live.consciously.app` → enable **Sign in with Apple** and
+   **Associated Domains**. In Xcode, set the Team on the App target (Signing & Capabilities).
+   The entitlements (`ios/App/App/App.entitlements`) already list both. Sign in with Apple
+   doesn't work with a free Personal Team.
+2. Replace `APPLE_TEAM_ID` in `frontend/marketing/public/.well-known/apple-app-site-association`
+   with the 10-character Team ID, and deploy marketing. Check
+   `https://consciously.live/.well-known/apple-app-site-association` returns the JSON with no redirect.
+3. Web: Identifiers → **+** → Services IDs, e.g. `live.consciously.web`. Enable Sign in with
+   Apple, set the primary App ID to `live.consciously.app`, add domain `consciously.live` and
+   return URL `https://consciously.live/login`. Deploy the backend with
+   `CONSCIOUSLY_APPLE_SERVICES_ID=live.consciously.web`.
+4. Private relay: Services → **Sign in with Apple for Email Communication** → add the sending
+   domain / address (the Brevo sender in `AUTH_EMAIL_FROM`), or emails to `@privaterelay.appleid.com`
+   bounce.
+
+Native Apple needs no backend setting: the bundle ID is always an accepted audience.
+
+**Google** ([console.cloud.google.com](https://console.cloud.google.com/apis/credentials)):
+
+1. OAuth consent screen: external, app name Consciously, scopes `email`, `profile`, `openid`.
+2. Create OAuth client **Web application** (used by Android and later the web). Deploy with
+   `CONSCIOUSLY_GOOGLE_WEB_CLIENT_ID=<id>.apps.googleusercontent.com`.
+3. Create OAuth client **iOS**, bundle ID `live.consciously.app`. Deploy with
+   `CONSCIOUSLY_GOOGLE_IOS_CLIENT_ID=<id>.apps.googleusercontent.com`. Then in
+   `ios/App/App/Info.plist`, add the client's **reversed client ID**
+   (`com.googleusercontent.apps.<id>`) as a second URL scheme under `CFBundleURLTypes`.
+4. Create OAuth client **Android**, package `live.consciously.app`, with the SHA-1 of the
+   signing key (debug: `keytool -list -v -keystore ~/.android/debug.keystore -storepass android`;
+   release: Play Console → App signing).
+
+The Google buttons appear once the client IDs are deployed (iOS needs both IDs).
+
+**Android app links:** replace `ANDROID_SIGNING_SHA256_FINGERPRINT` in
+`frontend/marketing/public/.well-known/assetlinks.json` with the SHA-256 of the signing key
+(Play Console → App signing → "App signing key certificate"), and deploy marketing.
+
+**Terms and Privacy:** the sheet links to `https://consciously.live/terms` and `/privacy`, which
+don't exist yet. App Store Connect also needs the privacy policy URL.
+
 ## Known gaps (next prompts)
 
-- **Sign-in:** the app shows "Signing in from the app is coming soon." Marketing → SPA handoff
-  doesn't work inside the native web view yet.
+- **Google on the web** (see above).
 - **Pricing / Stripe checkout:** web checkout returns to `capacitor://localhost` and doesn't work in the
   app. Digital subscriptions in iOS apps also fall under App Store payment rules.
 - During the 20 s post-voice outro, the lock-screen controls are cleared. The beds still fade out
