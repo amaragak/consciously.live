@@ -8,13 +8,14 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { randomBytes } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import { sendEmailBrevo } from "./_shared/consciously-email";
 import {
   corsHeadersForEvent,
   sha256Hex,
 } from "./_shared/consciously-auth-tokens";
 import { optionsAuth } from "./_shared/consciously-auth-http";
+import { magicCodeKey } from "./_shared/magic-code";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -196,6 +197,9 @@ export async function handler(
   const tokenHash = sha256Hex(rawToken);
   const nowSec = Math.floor(Date.now() / 1000);
   const ttl = nowSec + 15 * 60;
+  // Same email, same lifetime: the link and the code each sign in once, and
+  // using either retires the other (see auth-magic-verify).
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
 
   try {
     await ddb.send(
@@ -210,14 +214,29 @@ export async function handler(
         },
       }),
     );
+    await ddb.send(
+      new PutCommand({
+        TableName: table,
+        Item: {
+          token: magicCodeKey(email),
+          kind: "magic-code",
+          email,
+          codeHash: sha256Hex(`${email}:${code}`),
+          linkTokenHash: tokenHash,
+          attempts: 0,
+          ttl,
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not store magic link";
     return json(event, 500, { error: msg });
   }
 
   const link = `${webOrigin}/auth/verify?token=${encodeURIComponent(rawToken)}`;
-  const subject = "Sign in to Consciously";
-  const text = `Open this link to sign in (expires in 15 minutes):\n\n${link}\n\nIf you did not request this, you can ignore this email.`;
+  const subject = `${code} is your Consciously sign-in code`;
+  const text = `Your sign-in code is ${code}\n\nOr open this link to sign in:\n\n${link}\n\nThe code and link expire in 15 minutes and work once. If you did not request this, you can ignore this email.`;
 
   try {
     await sendEmailBrevo({
