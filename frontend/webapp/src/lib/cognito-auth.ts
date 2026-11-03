@@ -16,6 +16,8 @@ type PkceState = {
   verifier: string;
   state: string;
   next: string;
+  /** Redirect used at authorize time; the token exchange must send the same one. */
+  redirectUri?: string;
 };
 
 function randomUrlSafe(bytes = 32): string {
@@ -78,6 +80,7 @@ function readPkce(): PkceState | null {
       verifier: parsed.verifier,
       state: parsed.state,
       next: parsed.next,
+      ...(typeof parsed.redirectUri === "string" ? { redirectUri: parsed.redirectUri } : {}),
     };
   } catch {
     return null;
@@ -95,7 +98,13 @@ function clearPkce(): void {
 /** Start Cognito Hosted UI (password / passkey / optional IdP like Google). */
 export async function beginCognitoHostedLogin(
   nextPath = "/",
-  opts?: { identityProvider?: string },
+  opts?: {
+    identityProvider?: string;
+    /** Native shell: custom-scheme callback instead of `{origin}/auth/cognito/callback`. */
+    redirectUri?: string;
+    /** Native shell: open in the in-app browser instead of navigating the web view. */
+    open?: (url: string) => void | Promise<void>;
+  },
 ): Promise<void> {
   const config = await fetchCognitoAuthConfig();
   if (!config.enabled || !config.clientId || !config.domain) {
@@ -105,22 +114,27 @@ export async function beginCognitoHostedLogin(
   const challenge = await sha256Base64Url(verifier);
   const state = randomUrlSafe(16);
   const next = nextPath.trim() || "/";
+  const redirectUri = opts?.redirectUri?.trim() || callbackUrl();
   sessionStorage.setItem(
     PKCE_STORAGE_KEY,
-    JSON.stringify({ verifier, state, next } satisfies PkceState),
+    JSON.stringify({ verifier, state, next, redirectUri } satisfies PkceState),
   );
 
   const url = new URL(`https://${cognitoHostedUiHost(config)}/oauth2/authorize`);
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
-  url.searchParams.set("redirect_uri", callbackUrl());
+  url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("code_challenge", challenge);
   const idp = opts?.identityProvider?.trim();
   if (idp) {
     url.searchParams.set("identity_provider", idp);
+  }
+  if (opts?.open) {
+    await opts.open(url.toString());
+    return;
   }
   window.location.assign(url.toString());
 }
@@ -155,7 +169,7 @@ export async function completeCognitoHostedLogin(
     grant_type: "authorization_code",
     client_id: config.clientId,
     code: code.trim(),
-    redirect_uri: callbackUrl(),
+    redirect_uri: pkce.redirectUri || callbackUrl(),
     code_verifier: pkce.verifier,
   });
   const tokenRes = await fetch(`https://${cognitoHostedUiHost(config)}/oauth2/token`, {

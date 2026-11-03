@@ -551,6 +551,8 @@ body {
   --color-header-gold: var(--header-gold);
   --color-gold: var(--gold);
   --color-marketing-ink: var(--marketing-ink);
+  --color-marketing-body: var(--marketing-body);
+  --color-marketing-card-border: var(--marketing-card-border);
   --color-marketing-muted: var(--marketing-muted);
   --color-marketing-eyebrow: var(--marketing-eyebrow);
   --color-marketing-band-a: var(--marketing-band-a);

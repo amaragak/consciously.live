@@ -12,6 +12,7 @@ import {
   consumeAuthHandoffFromUrl,
   hasPendingAuthHandoff,
 } from "@/lib/spa-handoff";
+import { markNativeAppReady } from "@/lib/native/native-bridge";
 import { MvpFlagsProvider } from "@/lib/mvp-flags";
 import { LoggedOutShell } from "./logged-out-shell";
 
@@ -25,6 +26,12 @@ export function AppShell() {
   const [authState, setAuthState] = useState<"pending" | "in" | "out">(
     "pending",
   );
+  /** Native sign-in still has a step to show after the session exists. */
+  const [nativeAuthHold, setNativeAuthHold] = useState(false);
+
+  useEffect(() => {
+    if (authState === "in") markNativeAppReady();
+  }, [authState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +67,8 @@ export function AppShell() {
   }, []);
 
   if (authState === "pending") {
+    // Native keeps its launch screen up instead.
+    if (__NATIVE_BUILD__) return null;
     return (
       <div className="mx-auto max-w-md px-6 py-20 text-sm text-muted">
         Loading…
@@ -67,8 +76,8 @@ export function AppShell() {
     );
   }
 
-  if (authState === "out") {
-    return <LoggedOutShell />;
+  if (authState === "out" || (__NATIVE_BUILD__ && nativeAuthHold)) {
+    return <LoggedOutShell onNativeAuthHoldChange={setNativeAuthHold} />;
   }
 
   void location.pathname;

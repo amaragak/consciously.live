@@ -385,7 +385,13 @@ export type CognitoAuthConfig = {
   region: string | null;
   domain: string | null;
   issuer: string | null;
-  methods: { password: boolean; passkey: boolean; social: boolean };
+  methods: {
+    password: boolean;
+    passkey: boolean;
+    social: boolean;
+    google?: boolean;
+    apple?: boolean;
+  };
 };
 
 /** Public Cognito client config (pool / Hosted UI). Magic-link remains available. */
@@ -422,6 +428,8 @@ export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
       password: data.methods?.password !== false,
       passkey: data.methods?.passkey === true,
       social: data.methods?.social === true,
+      google: data.methods?.google === true,
+      apple: data.methods?.apple === true,
     },
   };
 }
