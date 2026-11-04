@@ -6,7 +6,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambda_nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import type { Construct } from "constructs";
-import { resolveAuthEmailFrom } from "./api-http";
+import { grantSesSend, resolveAuthEmailFrom, resolveEmailEnv } from "./api-http";
 import { BREVO_SECRET_NAME } from "./secret-names";
 
 /**
@@ -52,11 +52,13 @@ export class ConsciouslyAuthNestedStack extends cdk.NestedStack {
         environment: {
           AUTH_EMAIL_FROM: resolveAuthEmailFrom(this),
           BREVO_SECRET_NAME: BREVO_SECRET_NAME,
+          ...resolveEmailEnv(this),
           COGNITO_EMAIL_KMS_KEY_ARN: emailKmsKey.keyArn,
         },
       },
     );
     brevoApiKey.grantRead(customEmailSender);
+    grantSesSend(this, customEmailSender);
     emailKmsKey.grantDecrypt(customEmailSender);
 
     const preSignUp = new lambda_nodejs.NodejsFunction(this, "PreSignUpFunction", {

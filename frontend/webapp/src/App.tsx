@@ -7,6 +7,7 @@ import { AdminReadPanel } from "./components/admin-blog-panel";
 import { AdminListenPanel } from "./components/admin-listen-panel";
 import { AdminGuidesPanel } from "./components/admin-guides-panel";
 import { AdminWaitlistPanel } from "./components/admin-waitlist-panel";
+import { AdminEmailPanel } from "./components/admin-email-panel";
 import { AdminDevUiPanel } from "./components/admin-dev-ui-panel";
 import { AdminPrepromptsPanel } from "./components/admin-preprompts-panel";
 import { AdminLibraryCategoriesPanel } from "./components/admin-library-categories-panel";
@@ -220,6 +221,7 @@ export function App() {
           <Route path="listen" element={<AdminListenPanel />} />
           <Route path="guides" element={<AdminGuidesPanel />} />
           <Route path="waitlist" element={<AdminWaitlistPanel />} />
+          <Route path="email" element={<AdminEmailPanel />} />
           <Route path="analytics" element={<AdminAnalyticsPanel />} />
           <Route path="ai-costs" element={<AdminAiCostsPanel />} />
           <Route path="script-lab" element={<AdminScriptLabPanel />} />

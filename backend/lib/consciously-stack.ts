@@ -9,6 +9,7 @@ import { ConsciouslyApiJournalNestedStack } from "./consciously/api-journal-nest
 import { ConsciouslyApiManifestNestedStack } from "./consciously/api-manifest-nested-stack";
 import { ConsciouslyApiMeditateNestedStack } from "./consciously/api-meditate-nested-stack";
 import { CONSCIOUSLY_HTTP_API_CORS_ORIGINS } from "./consciously/api-http";
+import { ConsciouslyEmailNestedStack } from "./consciously/email-nested-stack";
 import { ConsciouslyAuthNestedStack } from "./consciously/auth-nested-stack";
 import { ConsciouslyConfigNestedStack } from "./consciously/config-nested-stack";
 import { ConsciouslyDatabaseNestedStack } from "./consciously/database-nested-stack";
@@ -58,6 +59,7 @@ export class ConsciouslyStack extends cdk.Stack {
 
     this.config = new ConsciouslyConfigNestedStack(this, "Config");
     this.auth = new ConsciouslyAuthNestedStack(this, "Auth");
+    new ConsciouslyEmailNestedStack(this, "Email");
     this.database = new ConsciouslyDatabaseNestedStack(this, "Database");
 
     const layers = createConsciouslyLayers(this);

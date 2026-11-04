@@ -78,6 +78,8 @@ export async function handler(
         apple,
         /** Native Sign in with Apple on iOS (bundle ID audience; always on). */
         appleNative: true,
+        /** 6-digit code in the sign-in email (off: link only). */
+        magicCode: process.env.MAGIC_CODE_IN_EMAIL === "1",
       },
       /** Public client IDs for the provider SDKs. */
       socialClients: {

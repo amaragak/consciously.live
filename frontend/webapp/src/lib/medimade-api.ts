@@ -488,6 +488,8 @@ export type CognitoAuthConfig = {
     google?: boolean;
     apple?: boolean;
     appleNative?: boolean;
+    /** Sign-in email carries a 6-digit code as well as the link. */
+    magicCode?: boolean;
   };
   socialClients?: {
     appleServicesId: string | null;
@@ -533,6 +535,7 @@ export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
       google: data.methods?.google === true,
       apple: data.methods?.apple === true,
       appleNative: data.methods?.appleNative === true,
+      magicCode: data.methods?.magicCode === true,
     },
     socialClients: {
       appleServicesId: data.socialClients?.appleServicesId ?? null,

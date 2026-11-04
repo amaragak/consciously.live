@@ -12,7 +12,11 @@ import type { ConsciouslyDatabaseNestedStack } from "./database-nested-stack";
 import type { ConsciouslyMediaNestedStack } from "./media-nested-stack";
 import {
   CONSCIOUSLY_IOS_BUNDLE_ID,
+  grantSesSend,
+  resolveAdminEmails,
   resolveAuthEmailFrom,
+  resolveEmailEnv,
+  resolveMagicCodeInEmail,
   resolveAuthWebappOrigin,
   resolveSocialAuthConfig,
   addNestHttpRoutes,
@@ -53,6 +57,8 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
     const authWebappOrigin = resolveAuthWebappOrigin(this);
     const authEmailFrom = resolveAuthEmailFrom(this);
     const social = resolveSocialAuthConfig(this);
+    const emailEnv = resolveEmailEnv(this);
+    const magicCodeInEmail = resolveMagicCodeInEmail(this);
 
     const role = new iam.Role(this, "LambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -69,6 +75,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
     props.database.meditationAnalytics.grantReadWriteData(role);
     authJwtSecret.grantRead(role);
     brevoApiKeySecret.grantRead(role);
+    grantSesSend(this, role);
     role.addToPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -92,6 +99,8 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
         environment: {
           MAGIC_LINK_TABLE_NAME: magicLinkTable.tableName,
           AUTH_EMAIL_FROM: authEmailFrom,
+          ...emailEnv,
+          MAGIC_CODE_IN_EMAIL: magicCodeInEmail,
           AUTH_WEBAPP_ORIGIN: authWebappOrigin,
           BREVO_SECRET_NAME: BREVO_SECRET_NAME,
         },
@@ -336,6 +345,7 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
             2,
             cdk.Fn.split("/", userPoolDomain.baseUrl()),
           ),
+          MAGIC_CODE_IN_EMAIL: magicCodeInEmail,
           APPLE_SERVICES_ID: social.appleServicesId,
           GOOGLE_WEB_CLIENT_ID: social.googleWebClientId,
           GOOGLE_IOS_CLIENT_ID: social.googleIosClientId,
@@ -446,6 +456,31 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthMagicVerifyIntegration",
         authMagicVerify,
+      ),
+    });
+    const adminEmailTest = new lambda_nodejs.NodejsFunction(this, "AdminEmailTestFunction", {
+      entry: path.join(__dirname, "../../lambdas/admin-email-test.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      role,
+      environment: {
+        AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+        AUTH_WEBAPP_ORIGIN: authWebappOrigin,
+        ADMIN_EMAILS: resolveAdminEmails(this, authEmailFrom),
+        AUTH_EMAIL_FROM: authEmailFrom,
+        BREVO_SECRET_NAME: BREVO_SECRET_NAME,
+        ...emailEnv,
+      },
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AdminEmailTestRoute",
+      path: "/admin/email-test",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AdminEmailTestIntegration",
+        adminEmailTest,
       ),
     });
     addNestHttpRoutes(this, httpApi, {

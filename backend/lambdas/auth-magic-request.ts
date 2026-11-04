@@ -9,7 +9,7 @@ import {
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { randomBytes, randomInt } from "crypto";
-import { sendEmailBrevo } from "./_shared/consciously-email";
+import { emailProvider, sendTransactionalEmail } from "./_shared/consciously-email";
 import {
   corsHeadersForEvent,
   sha256Hex,
@@ -141,18 +141,18 @@ export async function handler(
   if (method !== "POST") return json(event, 405, { error: "Method not allowed" });
 
   const table = process.env.MAGIC_LINK_TABLE_NAME?.trim();
-  const from = process.env.AUTH_EMAIL_FROM?.trim();
   const configuredOrigin = process.env.AUTH_WEBAPP_ORIGIN?.trim().replace(
     /\/$/,
     "",
   );
-  const brevoSecret = process.env.BREVO_SECRET_NAME?.trim();
-  if (!table || !from || !configuredOrigin || !brevoSecret) {
+  if (!table || !configuredOrigin) {
     return json(event, 500, {
       error:
-        "Auth email is not configured (set MAGIC_LINK_TABLE_NAME, AUTH_EMAIL_FROM, AUTH_WEBAPP_ORIGIN, BREVO_SECRET_NAME on the Lambda)",
+        "Auth email is not configured (set MAGIC_LINK_TABLE_NAME and AUTH_WEBAPP_ORIGIN on the Lambda)",
     });
   }
+  // Off until web sign-in has a code field; the app falls back to the link.
+  const includeCode = process.env.MAGIC_CODE_IN_EMAIL === "1";
 
   let body: { email?: unknown; origin?: unknown };
   try {
@@ -199,7 +199,7 @@ export async function handler(
   const ttl = nowSec + 15 * 60;
   // Same email, same lifetime: the link and the code each sign in once, and
   // using either retires the other (see auth-magic-verify).
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const code = includeCode ? String(randomInt(0, 1_000_000)).padStart(6, "0") : null;
 
   try {
     await ddb.send(
@@ -214,7 +214,7 @@ export async function handler(
         },
       }),
     );
-    await ddb.send(
+    if (code) await ddb.send(
       new PutCommand({
         TableName: table,
         Item: {
@@ -235,22 +235,18 @@ export async function handler(
   }
 
   const link = `${webOrigin}/auth/verify?token=${encodeURIComponent(rawToken)}`;
-  const subject = `${code} is your Consciously sign-in code`;
-  const text = `Your sign-in code is ${code}\n\nOr open this link to sign in:\n\n${link}\n\nThe code and link expire in 15 minutes and work once. If you did not request this, you can ignore this email.`;
+  const subject = code ? `${code} is your Consciously sign-in code` : "Sign in to Consciously";
+  const text = code
+    ? `Your sign-in code is ${code}\n\nOr open this link to sign in:\n\n${link}\n\nThe code and link expire in 15 minutes and work once. If you did not request this, you can ignore this email.`
+    : `Open this link to sign in (expires in 15 minutes):\n\n${link}\n\nIf you did not request this, you can ignore this email.`;
 
   try {
-    await sendEmailBrevo({
-      fromEmail: from,
-      fromName: "Consciously",
-      toEmail: email,
-      subject,
-      text,
-    });
+    await sendTransactionalEmail({ toEmail: email, subject, text });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Brevo send failed";
+    const msg = e instanceof Error ? e.message : "Email send failed";
+    console.error("sign-in email failed", { provider: emailProvider(), error: msg });
     return json(event, 502, {
-      error:
-        "Could not send sign-in email (Brevo). Check BREVO API key secret and that the sender email is allowed in Brevo.",
+      error: "Could not send the sign-in email. Try again in a minute.",
       detail: String(msg).slice(0, 800),
     });
   }

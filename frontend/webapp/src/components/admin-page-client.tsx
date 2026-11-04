@@ -12,6 +12,7 @@ const SECTIONS = [
   { href: "/admin/listen", label: "Listen" },
   { href: "/admin/guides", label: "Guides" },
   { href: "/admin/waitlist", label: "Waitlist" },
+  { href: "/admin/email", label: "Email" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/ai-costs", label: "AI costs" },
   { href: "/admin/script-lab", label: "Script Lab" },

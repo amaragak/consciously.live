@@ -1,9 +1,9 @@
 /**
  * Cognito Custom Email Sender — decrypt the verification code and send via Brevo.
- * Uses the same AUTH_EMAIL_FROM sender as magic-link mail.
+ * Same sender as magic-link mail (see `_shared/consciously-email.ts`).
  */
 import { KmsKeyringNode, buildClient, CommitmentPolicy } from "@aws-crypto/client-node";
-import { sendEmailBrevo } from "./_shared/consciously-email";
+import { sendTransactionalEmail } from "./_shared/consciously-email";
 
 const { decrypt } = buildClient(CommitmentPolicy.REQUIRE_ENCRYPT_ALLOW_DECRYPT);
 
@@ -67,18 +67,9 @@ export async function handler(event: CustomEmailSenderEvent): Promise<void> {
     return;
   }
 
-  const from = process.env.AUTH_EMAIL_FROM?.trim();
-  if (!from) throw new Error("AUTH_EMAIL_FROM is not set");
-
   const code = await decryptCode(encrypted);
   const { subject, text } = copyFor(event.triggerSource ?? "", code);
   const toEmail = to.toLowerCase();
   console.info("custom email sender", event.triggerSource, toEmail);
-  await sendEmailBrevo({
-    fromEmail: from,
-    fromName: "Consciously",
-    toEmail,
-    subject,
-    text,
-  });
+  await sendTransactionalEmail({ toEmail, subject, text });
 }
