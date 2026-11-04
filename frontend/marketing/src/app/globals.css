@@ -223,6 +223,38 @@ body {
   }
 }
 
+/* /terms and /privacy body copy (Read essay column). */
+.legal-prose {
+  font-size: 16.5px;
+  line-height: 1.65;
+  color: var(--hv2-body);
+}
+.legal-prose p,
+.legal-prose ul {
+  margin: 0 0 0.9rem;
+}
+.legal-prose ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.legal-prose li {
+  margin: 0.3rem 0;
+}
+.legal-prose strong {
+  color: var(--hv2-ink);
+  font-weight: 600;
+}
+.legal-prose a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.legal-prose h3 {
+  margin: 1.4rem 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--hv2-ink);
+}
+
 /* Pull quotes on published Read posts */
 .read-prose blockquote {
   position: relative;

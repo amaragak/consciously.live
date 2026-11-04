@@ -65,7 +65,15 @@ export function AppFooter() {
           </div>
 
           <div className="flex flex-col gap-3 border-t border-border pt-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-            <p>© {year} Consciously</p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <p>© {year} Consciously</p>
+              <Link href="/terms" className="transition-colors hover:text-foreground">
+                Terms
+              </Link>
+              <Link href="/privacy" className="transition-colors hover:text-foreground">
+                Privacy
+              </Link>
+            </div>
             <div className="flex flex-col items-start gap-1.5 sm:items-end">
               <a
                 href={INSTAGRAM_URL}

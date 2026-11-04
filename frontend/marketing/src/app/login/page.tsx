@@ -162,7 +162,15 @@ function ThoughtForToday({ className = "" }: { className?: string }) {
 function TermsLine({ className = "" }: { className?: string }) {
   return (
     <p className={`text-center text-xs leading-relaxed text-muted ${className}`.trim()}>
-      By continuing you agree to our Terms and Privacy Policy.
+      By continuing you agree to our{" "}
+      <Link href="/terms" target="_blank" className="underline underline-offset-2 hover:text-foreground">
+        Terms
+      </Link>{" "}
+      and{" "}
+      <Link href="/privacy" target="_blank" className="underline underline-offset-2 hover:text-foreground">
+        Privacy Policy
+      </Link>
+      .
     </p>
   );
 }

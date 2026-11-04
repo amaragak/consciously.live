@@ -142,6 +142,7 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
     pathname === "/read" || pathname.startsWith("/read/");
   const isConnect =
     pathname === "/connect" || pathname.startsWith("/connect/");
+  const isLegal = pathname === "/terms" || pathname === "/privacy";
   const isToolMarketing =
     pathname === "/meditate" ||
     pathname === "/journal" ||
@@ -155,7 +156,7 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
   if (!hideChrome) {
     if (
       homeV2 &&
-      (isHome || isListen || isRead || isConnect || isToolMarketing)
+      (isHome || isListen || isRead || isConnect || isToolMarketing || isLegal)
     ) {
       /* Page shell / overlay already mounts HomeV2NavHeader. */
       siteHeader = null;

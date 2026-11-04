@@ -13,6 +13,8 @@ const MARKETING_HERO_ROUTES = new Set([
   "/pricing",
   "/login",
   "/read",
+  "/terms",
+  "/privacy",
 ]);
 
 export function isMarketingHeroRoute(pathname: string): boolean {
