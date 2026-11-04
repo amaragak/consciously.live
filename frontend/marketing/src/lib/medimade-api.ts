@@ -61,8 +61,7 @@ function isAuthSessionPath(url: string): boolean {
       path.endsWith("/auth/guest") ||
       path.endsWith("/auth/cognito/config") ||
       path.endsWith("/auth/cognito/exchange") ||
-      path.endsWith("/auth/cognito/resend") ||
-      path.endsWith("/auth/social")
+      path.endsWith("/auth/cognito/resend")
     );
   } catch {
     return false;
@@ -381,8 +380,7 @@ export type CognitoAuthConfig = {
   region: string | null;
   domain: string | null;
   issuer: string | null;
-  methods: { password: boolean; passkey: boolean; social: boolean; apple?: boolean };
-  socialClients?: { appleServicesId: string | null };
+  methods: { password: boolean; passkey: boolean; social: boolean };
 };
 
 /** Optimistic default — Cognito is always on in prod; form paints before config returns. */
@@ -449,10 +447,6 @@ export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
         password: data.methods?.password !== false,
         passkey: data.methods?.passkey === true,
         social: data.methods?.social === true,
-        apple: data.methods?.apple === true,
-      },
-      socialClients: {
-        appleServicesId: data.socialClients?.appleServicesId ?? null,
       },
     };
     cognitoAuthConfigCache = next;
@@ -471,54 +465,15 @@ export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
 export async function exchangeCognitoIdToken(
   idToken: string,
 ): Promise<MedimadeMagicLinkVerifyResult> {
-  const t = typeof idToken === "string" ? idToken.trim() : "";
-  if (!t) throw new Error("idToken is required");
-  return postSessionRequest("/auth/cognito/exchange", { idToken: t }, "Exchange failed");
-}
-
-/** 6-digit code from the sign-in email (same email as the magic link). */
-export function verifyMedimadeMagicCode(
-  email: string,
-  code: string,
-): Promise<MedimadeMagicLinkVerifyResult> {
-  return postSessionRequest(
-    "/auth/magic-link/verify",
-    { email: email.trim(), code: code.replace(/\s+/g, "") },
-    "That code didn’t work",
-  );
-}
-
-/** Apple ID token (Apple JS on the web) → session. */
-export function signInWithSocialIdToken(opts: {
-  provider: "apple" | "google";
-  idToken: string;
-  nonce?: string;
-  name?: string | null;
-}): Promise<MedimadeMagicLinkVerifyResult> {
-  return postSessionRequest(
-    "/auth/social",
-    {
-      provider: opts.provider,
-      idToken: opts.idToken,
-      ...(opts.nonce ? { nonce: opts.nonce } : {}),
-      ...(opts.name?.trim() ? { name: opts.name.trim() } : {}),
-    },
-    "Sign-in failed",
-  );
-}
-
-async function postSessionRequest(
-  path: string,
-  body: Record<string, unknown>,
-  fallbackError: string,
-): Promise<MedimadeMagicLinkVerifyResult> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}${path}`, {
+  const t = typeof idToken === "string" ? idToken.trim() : "";
+  if (!t) throw new Error("idToken is required");
+  const res = await medimadeFetch(`${base}/auth/cognito/exchange`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ idToken: t }),
   });
   const data = (await res.json().catch(() => ({}))) as {
     token?: string;
@@ -533,7 +488,7 @@ async function postSessionRequest(
     detail?: string;
   };
   if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
-    throw new Error(data.detail ?? data.error ?? fallbackError);
+    throw new Error(data.detail ?? data.error ?? res.statusText ?? "Exchange failed");
   }
   const displayName =
     typeof data.displayName === "string" && data.displayName.trim()

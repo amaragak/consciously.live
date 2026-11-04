@@ -20,7 +20,6 @@ import {
   preservedSessionLabel,
 } from "@/lib/marketing-preview";
 import { useAuthLoginHref } from "@/lib/auth-login-href";
-import { MagicCodeEntry } from "@/components/magic-code-entry";
 
 type Props = {
   /** Called when the overlay should close without signing in. */
@@ -145,13 +144,10 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
             Sign-in isn’t configured in this environment.
           </p>
         ) : sent ? (
-          <>
-            <p className="mt-6 rounded-xl border border-border bg-background p-4 text-sm text-foreground">
-              Check your email for a sign-in link. After you open it, we’ll bring
-              you back here.
-            </p>
-            <MagicCodeEntry email={email} onSignedIn={() => void resumeSession()} />
-          </>
+          <p className="mt-6 rounded-xl border border-border bg-background p-4 text-sm text-foreground">
+            Check your email for a sign-in link. After you open it, we’ll bring
+            you back here.
+          </p>
         ) : (
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
