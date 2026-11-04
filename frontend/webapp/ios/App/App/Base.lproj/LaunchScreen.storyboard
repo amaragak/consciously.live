@@ -4,7 +4,6 @@
     <dependencies>
         <deployment identifier="iOS"/>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="17105"/>
-        <capability name="System colors in document resources" minToolsVersion="11.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
@@ -12,11 +11,42 @@
         <scene sceneID="EHf-IW-A2E">
             <objects>
                 <viewController id="01J-lp-oVM" sceneMemberID="viewController">
-                    <imageView key="view" userInteractionEnabled="NO" contentMode="scaleAspectFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="Splash" id="snD-IY-ifK">
+                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
-                        <autoresizingMask key="autoresizingMask"/>
-                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
-                    </imageView>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFill" image="Splash" translatesAutoresizingMaskIntoConstraints="NO" id="snD-IY-ifK">
+                                <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                            </imageView>
+                            <!-- Next header sun glow at splash scale, centred on the sun -->
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" image="SunGlow" translatesAutoresizingMaskIntoConstraints="NO" id="Glw-uP-001">
+                                <rect key="frame" x="-200.689" y="155.618" width="569.176" height="355.765"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="569.176" id="Glw-uP-0W1"/>
+                                    <constraint firstAttribute="height" constant="355.765" id="Glw-uP-0H1"/>
+                                </constraints>
+                            </imageView>
+                            <!-- BrandLockup at splash scale: 143.113 x 28 x 1.8 -->
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" image="Lockup" translatesAutoresizingMaskIntoConstraints="NO" id="Lk1-uP-001">
+                                <rect key="frame" x="56.892" y="308.3" width="257.603" height="50.4"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="257.603" id="Lk1-uP-0W1"/>
+                                    <constraint firstAttribute="height" constant="50.4" id="Lk1-uP-0H1"/>
+                                </constraints>
+                            </imageView>
+                        </subviews>
+                        <color key="backgroundColor" red="0.10196078431372549" green="0.094117647058823528" blue="0.12549019607843137" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="snD-IY-ifK" firstAttribute="top" secondItem="Ze5-6b-2t3" secondAttribute="top" id="Bg0-tp-001"/>
+                            <constraint firstItem="snD-IY-ifK" firstAttribute="bottom" secondItem="Ze5-6b-2t3" secondAttribute="bottom" id="Bg0-bt-001"/>
+                            <constraint firstItem="snD-IY-ifK" firstAttribute="leading" secondItem="Ze5-6b-2t3" secondAttribute="leading" id="Bg0-ld-001"/>
+                            <constraint firstItem="snD-IY-ifK" firstAttribute="trailing" secondItem="Ze5-6b-2t3" secondAttribute="trailing" id="Bg0-tr-001"/>
+                            <constraint firstItem="Glw-uP-001" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" constant="-103.602" id="Glw-cx-001"/>
+                            <constraint firstItem="Glw-uP-001" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="Glw-cy-001"/>
+                            <constraint firstItem="Lk1-uP-001" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="Lk1-cx-001"/>
+                            <constraint firstItem="Lk1-uP-001" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="Lk1-cy-001"/>
+                        </constraints>
+                    </view>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
@@ -25,8 +55,7 @@
     </scenes>
     <resources>
         <image name="Splash" width="1366" height="1366"/>
-        <systemColor name="systemBackgroundColor">
-            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
-        </systemColor>
+        <image name="SunGlow" width="569.333" height="355.667"/>
+        <image name="Lockup" width="143.113" height="28"/>
     </resources>
 </document>

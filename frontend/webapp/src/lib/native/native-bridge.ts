@@ -78,24 +78,29 @@ export function nativeSeek(timeSeconds: number): boolean {
   return true;
 }
 
-let appReady = false;
-const appReadyListeners = new Set<() => void>();
+export type NativeAppReadyInfo = {
+  /** Session is usable — overlay cross-fades into the app. */
+  signedIn: boolean;
+};
+
+let appReady: NativeAppReadyInfo | null = null;
+const appReadyListeners = new Set<(info: NativeAppReadyInfo) => void>();
 
 /**
  * The first real screen (app, login, dev page) has rendered; the launch
- * overlay may fade. Idempotent, and a no-op outside the native app.
+ * overlay may leave. Idempotent, and a no-op outside the native app.
  */
-export function markNativeAppReady(): void {
+export function markNativeAppReady(info: NativeAppReadyInfo = { signedIn: false }): void {
   if (!isNativeApp() || appReady) return;
-  appReady = true;
-  for (const fn of appReadyListeners) fn();
+  appReady = info;
+  for (const fn of appReadyListeners) fn(info);
   appReadyListeners.clear();
 }
 
 /** Runs `fn` once the app is ready (immediately if it already is). */
-export function onNativeAppReady(fn: () => void): () => void {
+export function onNativeAppReady(fn: (info: NativeAppReadyInfo) => void): () => void {
   if (appReady) {
-    fn();
+    fn(appReady);
     return () => {};
   }
   appReadyListeners.add(fn);

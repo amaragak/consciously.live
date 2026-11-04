@@ -11,12 +11,12 @@ const config: CapacitorConfig = {
   webDir: "dist",
   ios: {
     contentInset: "never",
-    backgroundColor: "#1E232E",
+    backgroundColor: "#1A1820",
     // Keep the WKWebView from showing the iOS link preview on long press.
     allowsLinkPreview: false,
   },
   android: {
-    backgroundColor: "#1E232E",
+    backgroundColor: "#1A1820",
   },
   plugins: {
     // iOS only uses it for the API origin; see `src/lib/native/native-http.ts`.
@@ -30,7 +30,7 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 1200,
       launchAutoHide: false,
-      backgroundColor: "#1E232E",
+      backgroundColor: "#1A1820",
       showSpinner: false,
       androidScaleType: "CENTER_CROP",
     },

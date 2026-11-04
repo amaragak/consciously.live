@@ -1,30 +1,44 @@
 /**
- * Capacitor-only sign-in. Signed-out users land on the welcome screen (one-line
- * meditation brief). "Create meditation" opens the sign-up sheet (Apple, Google,
- * email code / magic link); nothing is generated until the account exists, then
- * Create opens on Shape with the line. "Sign in" in the footer opens the
- * "Welcome back." screen (Apple, Google, email + password, email code).
+ * Capacitor-only auth screens (consciously-native-auth-screens.zip).
+ * Sign up → email verify → (passkey skipped on native) → first meditation;
+ * Sign in with Apple / Google / email+password. Web auth is unchanged.
  *
- * Not offered here: passkeys. WebAuthn needs an https origin tied to the app
- * through associated domains, and the web view runs at `capacitor://localhost`.
+ * Passkeys are not offered here: WebAuthn needs an https origin; the web view
+ * is `capacitor://localhost`. Re-enable when a native passkey path exists.
+ *
+ * Previous welcome / sheet / sign-in layouts are commented in native-login.css
+ * and in the git history of this file (welcome with hero, magic-link sheet).
  */
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { Keyboard } from "@capacitor/keyboard";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { CognitoAuthForm } from "@/components/cognito-auth-form";
-import { asCognitoAuthTokens } from "@/lib/cognito-direct-auth";
+import { BrandLockup } from "@/components/brand-lockup";
+import {
+  AuthShell,
+  AUTH_EXIT_MS,
+  AUTH_REDUCED_MS,
+  type AuthOpenPhase,
+} from "@/pages/native-auth-shell";
+import {
+  cognitoConfirmForgotPassword,
+  cognitoConfirmSignUp,
+  cognitoForgotPassword,
+  cognitoPasswordSignIn,
+  cognitoResendSignUpCode,
+  cognitoSignUp,
+  isUnconfirmedUserError,
+  isUsernameExistsError,
+} from "@/lib/cognito-direct-auth";
 import { createFromBriefHref } from "@/lib/create-meditation-path";
 import {
   exchangeCognitoIdToken,
   fetchCognitoAuthConfig,
   getMedimadeApiBase,
   getMedimadeSessionEmail,
-  requestMedimadeMagicLink,
   saveMedimadeProfileDisplayName,
   setMedimadeSession,
-  verifyMedimadeMagicCode,
   verifyMedimadeMagicLink,
   type CognitoAuthConfig,
   type MedimadeMagicLinkVerifyResult,
@@ -43,6 +57,9 @@ import {
 import { useNativeDictation } from "@/lib/native/use-native-dictation";
 import "./native-login.css";
 
+/** Flip when native WebAuthn / associated-domains passkeys work. */
+const NATIVE_PASSKEYS_ENABLED = false;
+
 const ASSUMED_COGNITO_AUTH_CONFIG: CognitoAuthConfig = {
   enabled: true,
   userPoolId: null,
@@ -53,22 +70,20 @@ const ASSUMED_COGNITO_AUTH_CONFIG: CognitoAuthConfig = {
   methods: { password: true, passkey: false, social: false },
 };
 
-/** The welcome line survives restarts and the trip out to the mail app. */
 const BRIEF_KEY = "mm_native_welcome_brief_v1";
-/** Set while sign-up is in progress, so a magic link opened later still lands on Create. */
-const PENDING_BRIEF_KEY = "mm_native_pending_brief_v1";
-
 const TERMS_URL = "https://consciously.live/terms";
 const PRIVACY_URL = "https://consciously.live/privacy";
-
-/** Magic-link hosts that open the app (universal / app links). */
 const MAGIC_LINK_HOSTS = new Set(["consciously.live", "www.consciously.live"]);
 
 type NativeAuthLocationState = { nativeAuth?: "signin" } | null;
-type SheetStep = "choose" | "email";
-
-const THOUGHT_FOR_TODAY =
-  "Small steps, taken every day, become the life you imagined.";
+type Screen =
+  | "signup"
+  | "confirm"
+  | "forgot"
+  | "reset"
+  | "name"
+  | "first"
+  | "signin";
 
 function readLocal(key: string): string {
   try {
@@ -80,18 +95,20 @@ function readLocal(key: string): string {
 
 function writeLocal(key: string, value: string | null) {
   try {
-    if (value) localStorage.setItem(key, value);
-    else localStorage.removeItem(key);
+    if (value == null || value === "") localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
-    /* */
+    /* ignore */
   }
 }
 
-function magicTokenFromUrl(url: string): string | null {
+function magicTokenFromUrl(raw: string): string | null {
   try {
-    const u = new URL(url);
-    if (!MAGIC_LINK_HOSTS.has(u.hostname) || !u.pathname.startsWith("/auth/verify")) return null;
-    return u.searchParams.get("token")?.trim() || null;
+    const url = new URL(raw);
+    if (!MAGIC_LINK_HOSTS.has(url.hostname)) return null;
+    if (!url.pathname.startsWith("/auth/verify")) return null;
+    const token = url.searchParams.get("token")?.trim();
+    return token || null;
   } catch {
     return null;
   }
@@ -120,15 +137,6 @@ function AppleMark() {
   );
 }
 
-function MailMark() {
-  return (
-    <svg aria-hidden viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path d="M3 7l9 6 9-6" />
-    </svg>
-  );
-}
-
 function SparklesMark() {
   return (
     <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -147,16 +155,31 @@ function MicMark() {
   );
 }
 
-function SunMark() {
+function AuthBand({
+  headline,
+  subline,
+  onBack,
+}: {
+  headline: React.ReactNode;
+  subline: React.ReactNode;
+  onBack?: () => void;
+}) {
   return (
-    <svg aria-hidden width="26" height="26" viewBox="0 0 30 30">
-      <circle cx="15" cy="15" r="6" fill="#D9B87C" />
-      <g stroke="#D9B87C" strokeWidth="1.6" strokeLinecap="round">
-        <path d="M15 2v4" /><path d="M15 24v4" /><path d="M2 15h4" /><path d="M24 15h4" />
-        <path d="M5.8 5.8l2.8 2.8" /><path d="M21.4 21.4l2.8 2.8" />
-        <path d="M5.8 24.2l2.8-2.8" /><path d="M21.4 8.6l2.8-2.8" />
-      </g>
-    </svg>
+    <aside className="auth-split__brand">
+      {onBack ? (
+        <button type="button" onClick={onBack} className="native-back" aria-label="Back">
+          <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+        </button>
+      ) : null}
+      {/* Invisible placeholder: same BrandLockup size; the visible one lives on AuthShell. */}
+      <BrandLockup placeholder />
+      <div className="auth-split__brand-copy relative z-[1]">
+        <h1 className="auth-split__headline">{headline}</h1>
+        <p className="auth-split__support">{subline}</p>
+      </div>
+    </aside>
   );
 }
 
@@ -183,138 +206,125 @@ function ProviderButton({
   );
 }
 
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  hint,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  hint?: string;
+  placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="native-auth__field">
+      <label htmlFor={id}>{label}</label>
+      <div className="native-auth__password-wrap">
+        <input
+          id={id}
+          name={id}
+          type={show ? "text" : "password"}
+          autoComplete={autoComplete}
+          required
+          value={value}
+          placeholder={placeholder}
+          onChange={(ev) => onChange(ev.target.value)}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          aria-label={show ? "Hide password" : "Show password"}
+          className="native-auth__eye"
+        >
+          {show ? <EyeOff aria-hidden className="size-4" strokeWidth={2} /> : <Eye aria-hidden className="size-4" strokeWidth={2} />}
+        </button>
+      </div>
+      {hint ? <p className="native-auth__hint">{hint}</p> : null}
+    </div>
+  );
+}
+
 function TermsLine() {
   return (
-    <p className="native-sheet__terms">
-      By continuing you agree to the{" "}
+    <p className="native-auth__terms">
+      By continuing you agree to our{" "}
       <button type="button" onClick={() => openInApp(TERMS_URL)}>Terms</button> and{" "}
       <button type="button" onClick={() => openInApp(PRIVACY_URL)}>Privacy Policy</button>.
     </p>
   );
 }
 
-/** Email → 6-digit code (the same email also carries a link that opens the app). */
-function EmailCodeFlow({
+/** Six boxes; iOS can autofill via one-time-code on the first input. */
+function CodeBoxes({
+  value,
+  onChange,
   disabled,
-  onSession,
-  onBusy,
 }: {
-  disabled: boolean;
-  onSession: (session: MedimadeMagicLinkVerifyResult) => void;
-  onBusy?: (busy: boolean) => void;
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
 }) {
-  const [email, setEmail] = useState(() => getMedimadeSessionEmail() ?? "");
-  const [sentTo, setSentTo] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const codeRef = useRef<HTMLInputElement>(null);
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const digits = value.replace(/\D/g, "").slice(0, 6).padEnd(6, " ").split("");
 
-  const setBusyBoth = (b: boolean) => {
-    setBusy(b);
-    onBusy?.(b);
-  };
-
-  async function send(e?: React.FormEvent) {
-    e?.preventDefault();
-    const to = email.trim();
-    if (!to) return;
-    setError(null);
-    setBusyBoth(true);
-    try {
-      await requestMedimadeMagicLink(to);
-      setSentTo(to);
-      setCode("");
-      window.setTimeout(() => codeRef.current?.focus(), 50);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send the email");
-    } finally {
-      setBusyBoth(false);
+  function setAt(index: number, raw: string) {
+    const cleaned = raw.replace(/\D/g, "");
+    if (cleaned.length > 1) {
+      onChange(cleaned.slice(0, 6));
+      refs.current[Math.min(cleaned.length, 5)]?.focus();
+      return;
     }
-  }
-
-  async function verify(value: string) {
-    if (!sentTo || value.length !== 6) return;
-    setError(null);
-    setBusyBoth(true);
-    try {
-      onSession(await verifyMedimadeMagicCode(sentTo, value));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "That code didn’t work");
-      setBusyBoth(false);
-    }
-  }
-
-  if (!sentTo) {
-    return (
-      <form onSubmit={(e) => void send(e)} className="native-code-flow">
-        <label htmlFor="native-code-email" className="native-code-flow__label">Email</label>
-        <input
-          id="native-code-email"
-          type="email"
-          autoComplete="email"
-          autoCapitalize="none"
-          inputMode="email"
-          enterKeyHint="send"
-          required
-          autoFocus
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          className="native-code-flow__input"
-        />
-        <button type="submit" disabled={disabled || busy || !email.trim()} className="native-primary">
-          {busy ? "Sending…" : "Email me a code"}
-        </button>
-        {error ? <p className="native-code-flow__error" role="alert">{error}</p> : null}
-      </form>
-    );
+    const chars = value.replace(/\D/g, "").slice(0, 6).split("");
+    while (chars.length < 6) chars.push("");
+    chars[index] = cleaned.slice(-1);
+    const next = chars.join("").replace(/\s/g, "");
+    onChange(next);
+    if (cleaned && index < 5) refs.current[index + 1]?.focus();
   }
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void verify(code);
-      }}
-      className="native-code-flow"
-    >
-      <p className="native-code-flow__sent">
-        We’ve sent a 6-digit code and a sign-in link to <strong>{sentTo}</strong>. Enter the
-        code, or tap the link on this phone.
-      </p>
-      <label htmlFor="native-code" className="native-code-flow__label">Code</label>
-      <input
-        ref={codeRef}
-        id="native-code"
-        type="text"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        enterKeyHint="go"
-        pattern="[0-9]*"
-        maxLength={6}
-        value={code}
-        onChange={(e) => {
-          const next = e.target.value.replace(/\D/g, "").slice(0, 6);
-          setCode(next);
-          if (next.length === 6) void verify(next);
-        }}
-        placeholder="000000"
-        className="native-code-flow__input native-code-flow__input--code"
-      />
-      <button type="submit" disabled={disabled || busy || code.length !== 6} className="native-primary">
-        {busy ? "Checking…" : "Continue"}
-      </button>
-      {error ? <p className="native-code-flow__error" role="alert">{error}</p> : null}
-      <div className="native-code-flow__links">
-        <button type="button" disabled={busy} onClick={() => void send()}>Send a new code</button>
-        <button type="button" disabled={busy} onClick={() => setSentTo(null)}>Use another email</button>
-      </div>
-    </form>
+    <div className="native-auth__otp" role="group" aria-label="Verification code">
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
+          type="text"
+          inputMode="numeric"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          maxLength={i === 0 ? 6 : 1}
+          disabled={disabled}
+          value={d.trim()}
+          aria-label={`Digit ${i + 1}`}
+          onChange={(e) => setAt(i, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Backspace" && !digits[i].trim() && i > 0) {
+              refs.current[i - 1]?.focus();
+            }
+          }}
+          className="native-auth__otp-box"
+        />
+      ))}
+    </div>
   );
 }
 
-function ProfileNameStep({ onDone }: { onDone: () => void }) {
+function ProfileNameStep({
+  onDone,
+  onBack,
+}: {
+  onDone: () => void;
+  onBack?: () => void;
+}) {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -339,136 +349,115 @@ function ProfileNameStep({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="native-code-flow">
-      <h2 className="native-sheet__title">Your name</h2>
-      <p className="native-sheet__body">
-        Add how you would like to be addressed. This stays on your account.
-      </p>
-      <label htmlFor="native-profile-name" className="native-code-flow__label">Display name</label>
-      <input
-        id="native-profile-name"
-        type="text"
-        autoComplete="name"
-        autoFocus
-        value={name}
-        onChange={(ev) => setName(ev.target.value)}
-        maxLength={80}
-        disabled={saving}
-        placeholder="e.g. Alex"
-        className="native-code-flow__input"
+    <div className="auth-split auth-split--native">
+      <AuthBand
+        onBack={onBack}
+        headline="Your name."
+        subline="How should we address you?"
       />
-      {message ? <p className="native-code-flow__error" role="alert">{message}</p> : null}
-      <button type="submit" disabled={saving || !name.trim()} className="native-primary">
-        {saving ? "Saving…" : "Continue"}
-      </button>
-    </form>
+      <section className="auth-split__panel">
+        <form className="auth-split__panel-inner native-auth__form" onSubmit={(e) => void submit(e)}>
+          <div className="native-auth__field">
+            <label htmlFor="native-profile-name">Display name</label>
+            <input
+              id="native-profile-name"
+              type="text"
+              autoComplete="name"
+              autoFocus
+              value={name}
+              onChange={(ev) => setName(ev.target.value)}
+              maxLength={80}
+              disabled={saving}
+              placeholder="e.g. Alex"
+            />
+          </div>
+          {message ? <p className="native-code-flow__error" role="alert">{message}</p> : null}
+          <button type="submit" disabled={saving || !name.trim()} className="native-mist">
+            {saving ? "Saving…" : "Continue"}
+          </button>
+        </form>
+      </section>
+    </div>
   );
 }
 
-function useKeyboardOpen(): boolean {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const show = Keyboard.addListener("keyboardWillShow", () => setOpen(true));
-    const hide = Keyboard.addListener("keyboardWillHide", () => setOpen(false));
-    return () => {
-      void show.then((h) => h.remove());
-      void hide.then((h) => h.remove());
-    };
-  }, []);
-  return open;
-}
-
-function WelcomeScreen({
-  brief,
-  onBriefChange,
+function FirstMeditationScreen({
   onCreate,
-  onSignIn,
+  onSkip,
+  onBack,
 }: {
-  brief: string;
-  onBriefChange: (brief: string) => void;
-  onCreate: () => void;
-  onSignIn: () => void;
+  onCreate: (brief: string) => void;
+  onSkip: () => void;
+  onBack?: () => void;
 }) {
+  const [brief, setBrief] = useState(() => readLocal(BRIEF_KEY));
   const inputRef = useRef<HTMLInputElement>(null);
-  const keyboardOpen = useKeyboardOpen();
-  const dictation = useNativeDictation(onBriefChange);
+  const dictation = useNativeDictation((next) => {
+    setBrief(next);
+    writeLocal(BRIEF_KEY, next.trim() ? next : null);
+  });
 
   return (
-    <div className={`native-welcome${keyboardOpen ? " native-welcome--keyboard" : ""}`}>
-      <div className="native-welcome__main">
-        <div className="native-welcome__brand">
-          <div className="native-welcome__lockup">
-            <SunMark />
-            <span>consciously</span>
-          </div>
-          <h1 className="native-welcome__headline">
-            Become who you
-            <br />
-            <em>said</em> you’d&nbsp;be.
-          </h1>
-          <p className="native-welcome__support">
-            The app that catalyses personal transformation.
-          </p>
-        </div>
-
+    <div className="auth-split auth-split--native">
+      <AuthBand
+        onBack={onBack}
+        headline="Your first meditation."
+        subline="One line is enough. It’s free, and you can shape it next."
+      />
+      <section className="auth-split__panel">
         <form
-          className="native-welcome__form"
+          className="auth-split__panel-inner native-auth__form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!brief.trim()) {
+            const line = brief.trim();
+            if (!line) {
               inputRef.current?.focus();
               return;
             }
-            inputRef.current?.blur();
-            onCreate();
+            onCreate(line);
           }}
         >
-          <label htmlFor="native-welcome-brief" className="native-welcome__label">
-            What would you like a meditation for?
-          </label>
-          <div className="native-welcome__field">
-            <input
-              ref={inputRef}
-              id="native-welcome-brief"
-              type="text"
-              value={brief}
-              onChange={(e) => onBriefChange(e.target.value)}
-              placeholder="e.g. calm before a pitch"
-              enterKeyHint="go"
-              autoComplete="off"
-              autoCapitalize="sentences"
-              className="native-welcome__input"
-            />
-            <button
-              type="button"
-              aria-label={dictation.listening ? "Stop dictation" : "Dictate"}
-              aria-pressed={dictation.listening}
-              onClick={() => void dictation.toggle()}
-              className={`native-welcome__mic${dictation.listening ? " is-listening" : ""}`}
-            >
-              <MicMark />
-            </button>
+          <div className="native-auth__field">
+            <label htmlFor="native-first-brief">What is it for?</label>
+            <div className="native-auth__brief-row">
+              <input
+                ref={inputRef}
+                id="native-first-brief"
+                type="text"
+                value={brief}
+                onChange={(e) => {
+                  setBrief(e.target.value);
+                  writeLocal(BRIEF_KEY, e.target.value.trim() ? e.target.value : null);
+                }}
+                placeholder="e.g. calm before a pitch"
+                enterKeyHint="go"
+                autoComplete="off"
+                autoCapitalize="sentences"
+              />
+              <button
+                type="button"
+                aria-label={dictation.listening ? "Stop dictation" : "Dictate"}
+                aria-pressed={dictation.listening}
+                onClick={() => void dictation.toggle()}
+                className={`native-auth__mic${dictation.listening ? " is-listening" : ""}`}
+              >
+                <MicMark />
+              </button>
+            </div>
           </div>
-          {dictation.error ? (
-            <p className="native-welcome__hint" role="status">{dictation.error}</p>
-          ) : null}
+          {dictation.error ? <p className="native-auth__hint" role="status">{dictation.error}</p> : null}
           <button type="submit" className="native-mist">
             <SparklesMark />
             Create meditation
           </button>
-          <p className="native-welcome__free">Your first meditation is free.</p>
+          <button type="button" className="native-text-link" onClick={onSkip}>
+            Skip for now
+          </button>
+          {NATIVE_DEV_TOOLS_ENABLED ? (
+            <Link to="/dev/audio" className="native-welcome__dev">Audio test</Link>
+          ) : null}
         </form>
-      </div>
-
-      <footer className="native-welcome__footer">
-        <span>Already have an account?</span>
-        <button type="button" onClick={onSignIn} className="native-welcome__signin">
-          Sign in
-        </button>
-        {NATIVE_DEV_TOOLS_ENABLED ? (
-          <Link to="/dev/audio" className="native-welcome__dev">Audio test</Link>
-        ) : null}
-      </footer>
+      </section>
     </div>
   );
 }
@@ -476,31 +465,49 @@ function WelcomeScreen({
 export default function NativeLoginPage({
   onAuthHoldChange,
 }: {
-  /** Keep this screen up after the session exists (name step, Create handoff). */
   onAuthHoldChange?: (hold: boolean) => void;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const screen =
-    (location.state as NativeAuthLocationState)?.nativeAuth === "signin" ? "signin" : "welcome";
-  const [brief, setBrief] = useState(() => readLocal(BRIEF_KEY));
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetStep, setSheetStep] = useState<SheetStep>("choose");
-  const [signinCode, setSigninCode] = useState(false);
+  const urlSignIn =
+    (location.state as NativeAuthLocationState)?.nativeAuth === "signin";
+
+  const [screen, setScreen] = useState<Screen>(urlSignIn ? "signin" : "signup");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [cognitoConfig, setCognitoConfig] = useState<CognitoAuthConfig>(
     ASSUMED_COGNITO_AUTH_CONFIG,
   );
-  const [error, setError] = useState<string | null>(null);
-  const [needsName, setNeedsName] = useState(false);
+  /** After auth: show first-meditation for new accounts. */
+  const [isNewAccount, setIsNewAccount] = useState(false);
+  const pendingAfterName = useRef<"first" | "done">("done");
+  const [openPhase, setOpenPhase] = useState<AuthOpenPhase>(
+    urlSignIn ? "ready" : "loading",
+  );
+  const [exiting, setExiting] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const base = getMedimadeApiBase();
   const providers = nativeSocialProviders(cognitoConfig);
+  const opening = openPhase !== "ready";
 
   useEffect(() => {
-    markNativeAppReady();
-    return holdNativeDarkSurface();
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
+
+  // Cap/launch cover drops once login is mounted. AuthShell runs the whole morph.
+  useLayoutEffect(() => {
+    markNativeAppReady({ signedIn: false });
+  }, []);
+
+  useEffect(() => holdNativeDarkSurface(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -508,48 +515,33 @@ export default function NativeLoginPage({
       .then((cfg) => {
         if (!cancelled) setCognitoConfig(cfg);
       })
-      .catch(() => {
-        /* Keep assumed config; submit surfaces a real error if the API is unreachable. */
-      });
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, []);
 
   useEffect(() => {
+    setScreen(urlSignIn ? "signin" : "signup");
     setError(null);
-    setSigninCode(false);
-  }, [screen]);
-
-  const updateBrief = useCallback((next: string) => {
-    setBrief(next);
-    writeLocal(BRIEF_KEY, next.trim() ? next : null);
-  }, []);
+    if (urlSignIn) setOpenPhase("ready");
+  }, [urlSignIn]);
 
   const leaveLogin = useCallback(
     (dest?: string) => {
-      onAuthHoldChange?.(false);
-      if (dest) navigate(dest, { replace: true });
-      else if (location.pathname === "/login") navigate("/", { replace: true });
+      setExiting(true);
+      const ms = reduceMotion ? AUTH_REDUCED_MS : AUTH_EXIT_MS;
+      window.setTimeout(() => {
+        onAuthHoldChange?.(false);
+        if (dest) navigate(dest, { replace: true });
+        else if (location.pathname === "/login") navigate("/", { replace: true });
+      }, ms);
     },
-    [location.pathname, navigate, onAuthHoldChange],
+    [location.pathname, navigate, onAuthHoldChange, reduceMotion],
   );
 
-  const afterSignedIn = useCallback(() => {
-    const pending = readLocal(PENDING_BRIEF_KEY).trim();
-    writeLocal(PENDING_BRIEF_KEY, null);
-    if (pending) {
-      writeLocal(BRIEF_KEY, null);
-      leaveLogin(createFromBriefHref(pending));
-    } else {
-      leaveLogin();
-    }
-  }, [leaveLogin]);
-
-  const finishSession = useCallback(
-    (session: MedimadeMagicLinkVerifyResult) => {
-      const pending = Boolean(readLocal(PENDING_BRIEF_KEY).trim());
-      if (session.needsProfileName || pending) onAuthHoldChange?.(true);
+  const goPostAuth = useCallback(
+    (session: MedimadeMagicLinkVerifyResult, opts: { isNew: boolean }) => {
       setMedimadeSession(
         session.token,
         session.email,
@@ -557,16 +549,32 @@ export default function NativeLoginPage({
         session.refreshToken ?? null,
       );
       setBusy(false);
+      setIsNewAccount(opts.isNew);
       if (session.needsProfileName) {
-        setNeedsName(true);
+        onAuthHoldChange?.(true);
+        pendingAfterName.current = opts.isNew ? "first" : "done";
+        setScreen("name");
         return;
       }
-      afterSignedIn();
+      if (opts.isNew) {
+        onAuthHoldChange?.(true);
+        setScreen("first");
+        return;
+      }
+      leaveLogin();
     },
-    [afterSignedIn, onAuthHoldChange],
+    [leaveLogin, onAuthHoldChange],
   );
 
-  // Magic link tapped on this phone: universal link (warm) or launch URL (cold).
+  const finishSession = useCallback(
+    (session: MedimadeMagicLinkVerifyResult, opts: { isNew: boolean }) => {
+      // Passkey step skipped while NATIVE_PASSKEYS_ENABLED is false.
+      void NATIVE_PASSKEYS_ENABLED;
+      goPostAuth(session, opts);
+    },
+    [goPostAuth],
+  );
+
   const handleIncomingUrl = useCallback(
     (url: string | undefined) => {
       const token = url ? magicTokenFromUrl(url) : null;
@@ -574,7 +582,7 @@ export default function NativeLoginPage({
       setBusy(true);
       setError(null);
       verifyMedimadeMagicLink(token)
-        .then(finishSession)
+        .then((session) => finishSession(session, { isNew: false }))
         .catch((err: unknown) => {
           setBusy(false);
           setError(err instanceof Error ? err.message : "That sign-in link has expired");
@@ -597,7 +605,9 @@ export default function NativeLoginPage({
     setError(null);
     setBusy(true);
     try {
-      finishSession(await nativeSocialSignIn(provider, cognitoConfig));
+      const session = await nativeSocialSignIn(provider, cognitoConfig);
+      // New social accounts typically still need a display name.
+      finishSession(session, { isNew: session.needsProfileName });
     } catch (err) {
       setBusy(false);
       if (!isSocialCancel(err)) {
@@ -606,27 +616,163 @@ export default function NativeLoginPage({
     }
   }
 
-  const openSheet = () => {
-    writeLocal(PENDING_BRIEF_KEY, brief.trim());
-    setSheetStep("choose");
+  async function onSignUp(e: React.FormEvent) {
+    e.preventDefault();
+    const address = email.trim().toLowerCase();
+    if (!address || !password) return;
     setError(null);
-    setSheetOpen(true);
-  };
+    setBusy(true);
+    try {
+      const { confirmed } = await cognitoSignUp(cognitoConfig, address, password);
+      if (confirmed) {
+        const tokens = await cognitoPasswordSignIn(cognitoConfig, address, password);
+        const session = await exchangeCognitoIdToken(tokens.idToken!);
+        finishSession(session, { isNew: true });
+        return;
+      }
+      setCode("");
+      setScreen("confirm");
+      setBusy(false);
+    } catch (err) {
+      if (isUsernameExistsError(err)) {
+        try {
+          const tokens = await cognitoPasswordSignIn(cognitoConfig, address, password);
+          const session = await exchangeCognitoIdToken(tokens.idToken!);
+          finishSession(session, { isNew: false });
+          return;
+        } catch (signInErr) {
+          if (isUnconfirmedUserError(signInErr)) {
+            try {
+              await cognitoResendSignUpCode(cognitoConfig, address);
+            } catch {
+              /* still show confirm */
+            }
+            setScreen("confirm");
+            setBusy(false);
+            return;
+          }
+          setError(
+            signInErr instanceof Error
+              ? signInErr.message
+              : "An account with this email already exists. Sign in instead.",
+          );
+          setBusy(false);
+          return;
+        }
+      }
+      setError(err instanceof Error ? err.message : "Could not create the account");
+      setBusy(false);
+    }
+  }
 
-  const closeSheet = () => {
-    if (busy) return;
-    setSheetOpen(false);
-  };
+  async function onConfirm(e: React.FormEvent) {
+    e.preventDefault();
+    const address = email.trim().toLowerCase();
+    if (code.replace(/\D/g, "").length !== 6) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await cognitoConfirmSignUp(cognitoConfig, address, code.replace(/\D/g, ""));
+      const tokens = await cognitoPasswordSignIn(cognitoConfig, address, password);
+      const session = await exchangeCognitoIdToken(tokens.idToken!);
+      finishSession(session, { isNew: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify the code");
+      setBusy(false);
+    }
+  }
+
+  async function onResend() {
+    setError(null);
+    setBusy(true);
+    try {
+      await cognitoResendSignUpCode(cognitoConfig, email.trim().toLowerCase());
+      setBusy(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend the code");
+      setBusy(false);
+    }
+  }
+
+  async function onSignIn(e: React.FormEvent) {
+    e.preventDefault();
+    const address = email.trim().toLowerCase();
+    if (!address || !password) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const tokens = await cognitoPasswordSignIn(cognitoConfig, address, password);
+      const session = await exchangeCognitoIdToken(tokens.idToken!);
+      finishSession(session, { isNew: false });
+    } catch (err) {
+      if (isUnconfirmedUserError(err)) {
+        try {
+          await cognitoResendSignUpCode(cognitoConfig, address);
+        } catch {
+          /* ignore */
+        }
+        setScreen("confirm");
+        setBusy(false);
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Could not sign in");
+      setBusy(false);
+    }
+  }
+
+  async function onForgot(e: React.FormEvent) {
+    e.preventDefault();
+    const address = email.trim().toLowerCase();
+    if (!address) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await cognitoForgotPassword(cognitoConfig, address);
+      setCode("");
+      setPassword("");
+      setScreen("reset");
+      setBusy(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send a reset code");
+      setBusy(false);
+    }
+  }
+
+  async function onReset(e: React.FormEvent) {
+    e.preventDefault();
+    const address = email.trim().toLowerCase();
+    if (code.replace(/\D/g, "").length !== 6 || !password) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await cognitoConfirmForgotPassword(
+        cognitoConfig,
+        address,
+        code.replace(/\D/g, ""),
+        password,
+      );
+      const tokens = await cognitoPasswordSignIn(cognitoConfig, address, password);
+      const session = await exchangeCognitoIdToken(tokens.idToken!);
+      finishSession(session, { isNew: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reset the password");
+      setBusy(false);
+    }
+  }
 
   const openSignIn = () => {
-    writeLocal(PENDING_BRIEF_KEY, null);
+    setError(null);
     navigate(`${location.pathname}${location.search}`, {
       state: { nativeAuth: "signin" } satisfies NativeAuthLocationState,
     });
   };
 
-  const backToWelcome = () => {
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  const openSignUp = () => {
+    setError(null);
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: null,
+    });
   };
 
   const providerButtons = (
@@ -650,152 +796,321 @@ export default function NativeLoginPage({
     <p className="native-code-flow__error" role="alert" aria-live="polite">{error}</p>
   ) : null;
 
-  if (screen === "signin" && !needsName) {
-    return (
+  let body: React.ReactNode;
+
+  if (screen === "name") {
+    body = (
+      <ProfileNameStep
+        onBack={undefined}
+        onDone={() => {
+          if (pendingAfterName.current === "first" || isNewAccount) {
+            setScreen("first");
+          } else {
+            leaveLogin();
+          }
+        }}
+      />
+    );
+  } else if (screen === "first") {
+    body = (
+      <FirstMeditationScreen
+        onCreate={(line) => {
+          writeLocal(BRIEF_KEY, null);
+          leaveLogin(createFromBriefHref(line));
+        }}
+        onSkip={() => {
+          writeLocal(BRIEF_KEY, null);
+          leaveLogin();
+        }}
+      />
+    );
+  } else if (screen === "confirm") {
+    body = (
       <div className="auth-split auth-split--native">
-        <aside className="auth-split__brand" data-mode="signin">
-          <button type="button" onClick={backToWelcome} className="native-back" aria-label="Back">
-            <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 5l-7 7 7 7" />
-            </svg>
-          </button>
-          <div className="auth-split__brand-copy relative z-[1]">
-            <h1 className="auth-split__headline">
-              Welcome <em className="auth-split__accent-word">back</em>.
-            </h1>
-            <p className="auth-split__support">Your practice is right where you left it.</p>
-          </div>
-        </aside>
-
+        <AuthBand
+          onBack={() => {
+            setCode("");
+            setError(null);
+            setScreen(urlSignIn ? "signin" : "signup");
+          }}
+          headline="Check your email."
+          subline={
+            <>
+              We sent a 6-digit code to <strong>{email.trim().toLowerCase()}</strong>.
+            </>
+          }
+        />
         <section className="auth-split__panel">
-          <div className="auth-split__panel-inner">
-            {!base ? (
-              <p className="text-sm text-muted">
-                Set <code className="rounded bg-surface-2 px-1 py-0.5">VITE_MEDIMADE_API_URL</code>{" "}
-                to enable sign-in.
-              </p>
-            ) : (
-              <div className="native-signin">
-                {providers.apple || providers.google ? (
-                  <>
-                    <div className="native-signin__providers">{providerButtons}</div>
-                    <div className="native-divider"><span />or<span /></div>
-                  </>
-                ) : null}
-                {signinCode ? (
-                  <>
-                    <EmailCodeFlow disabled={busy} onSession={finishSession} onBusy={setBusy} />
-                    <button type="button" className="native-text-link" onClick={() => setSigninCode(false)}>
-                      Use a password instead
-                    </button>
-                  </>
-                ) : (
-                  <CognitoAuthForm
-                    config={cognitoConfig}
-                    hideIntro
-                    initialMode="signin"
-                    disabled={busy}
-                    onCreateAccount={backToWelcome}
-                    afterForm={
-                      <button type="button" className="native-text-link" onClick={() => setSigninCode(true)}>
-                        Email me a sign-in code instead
-                      </button>
-                    }
-                    onAuthenticated={async (rawTokens) => {
-                      setBusy(true);
-                      setError(null);
-                      try {
-                        const tokens = asCognitoAuthTokens(rawTokens);
-                        if (!tokens.idToken) {
-                          throw new Error("Sign-in didn’t return a session. Try again.");
-                        }
-                        finishSession(await exchangeCognitoIdToken(tokens.idToken));
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : "Could not finish sign-in");
-                        setBusy(false);
-                      }
-                    }}
-                  />
-                )}
-                {errorLine}
-              </div>
-            )}
-          </div>
-
-          <div className="auth-split__mobile-footer lg:hidden">
-            <div className="auth-split__thought auth-split__thought--mobile">
-              <span className="auth-split__eyebrow">A thought for today</span>
-              <p className="auth-split__quote">“{THOUGHT_FOR_TODAY}”</p>
+          <form className="auth-split__panel-inner native-auth__form" onSubmit={(e) => void onConfirm(e)}>
+            <CodeBoxes value={code} onChange={setCode} disabled={busy} />
+            {errorLine}
+            <button
+              type="submit"
+              disabled={busy || code.replace(/\D/g, "").length !== 6}
+              className="native-mist"
+            >
+              {busy ? "Verifying…" : "Verify"}
+            </button>
+            <p className="native-auth__centre-link">
+              Didn’t get it?{" "}
+              <button type="button" disabled={busy} onClick={() => void onResend()}>
+                Resend
+              </button>
+            </p>
+            <p className="native-auth__centre-link">
+              Wrong address?{" "}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setCode("");
+                  setError(null);
+                  setScreen("signup");
+                  openSignUp();
+                }}
+              >
+                Change email
+              </button>
+            </p>
+          </form>
+        </section>
+        {busy ? <div className="native-busy" role="status" aria-label="Working" /> : null}
+      </div>
+    );
+  } else if (screen === "forgot") {
+    body = (
+      <div className="auth-split auth-split--native">
+        <AuthBand
+          onBack={() => {
+            setError(null);
+            setScreen("signin");
+          }}
+          headline="Forgot password."
+          subline="We’ll email you a reset code."
+        />
+        <section className="auth-split__panel">
+          <form className="auth-split__panel-inner native-auth__form" onSubmit={(e) => void onForgot(e)}>
+            <div className="native-auth__field">
+              <label htmlFor="native-forgot-email">Email</label>
+              <input
+                id="native-forgot-email"
+                type="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                placeholder="you@example.com"
+              />
             </div>
-          </div>
+            {errorLine}
+            <button type="submit" disabled={busy || !email.trim()} className="native-mist">
+              {busy ? "Sending…" : "Send reset code"}
+            </button>
+          </form>
         </section>
       </div>
     );
-  }
-
-  const quoted = readLocal(PENDING_BRIEF_KEY).trim() || brief.trim();
-
-  return (
-    <>
-      <WelcomeScreen
-        brief={brief}
-        onBriefChange={updateBrief}
-        onCreate={openSheet}
-        onSignIn={openSignIn}
-      />
-      {sheetOpen || needsName ? (
-        <div className="native-sheet" role="dialog" aria-modal="true" aria-labelledby="native-sheet-title">
-          <button
-            type="button"
-            className="native-sheet__scrim"
-            aria-label="Close"
-            onClick={needsName ? undefined : closeSheet}
-          />
-          <div className="native-sheet__panel">
-            <span className="native-sheet__grabber" aria-hidden />
-            {needsName ? (
-              <ProfileNameStep onDone={afterSignedIn} />
+  } else if (screen === "reset") {
+    body = (
+      <div className="auth-split auth-split--native">
+        <AuthBand
+          onBack={() => {
+            setError(null);
+            setScreen("forgot");
+          }}
+          headline="Choose a new password."
+          subline={
+            <>
+              Enter the code we sent to <strong>{email.trim().toLowerCase()}</strong>.
+            </>
+          }
+        />
+        <section className="auth-split__panel">
+          <form className="auth-split__panel-inner native-auth__form" onSubmit={(e) => void onReset(e)}>
+            <CodeBoxes value={code} onChange={setCode} disabled={busy} />
+            <PasswordField
+              id="native-reset-password"
+              label="New password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              hint="8+ characters, with upper and lower case and a number."
+            />
+            {errorLine}
+            <button
+              type="submit"
+              disabled={busy || code.replace(/\D/g, "").length !== 6 || !password}
+              className="native-mist"
+            >
+              {busy ? "Saving…" : "Reset password"}
+            </button>
+          </form>
+        </section>
+      </div>
+    );
+  } else if (screen === "signin") {
+    body = (
+      <div className="auth-split auth-split--native">
+        <AuthBand
+          onBack={openSignUp}
+          headline={
+            <>
+              Welcome <em className="auth-split__accent-word">back</em>.
+            </>
+          }
+          subline="Your practice is right where you left it."
+        />
+        <section className="auth-split__panel">
+          <div className="auth-split__panel-inner native-auth__form">
+            {!base ? (
+              <p className="text-sm text-muted">
+                Set <code className="rounded bg-surface-2 px-1 py-0.5">VITE_MEDIMADE_API_URL</code> to
+                enable sign-in.
+              </p>
             ) : (
               <>
-                <div className="native-sheet__intro">
-                  <h2 id="native-sheet-title" className="native-sheet__title">
-                    Create an account to make it
-                  </h2>
-                  <p className="native-sheet__body">
-                    It takes a minute to write and narrate, and it’s saved to your account. Your
-                    first one is free.
-                  </p>
+                <div className="native-signin__providers">{providerButtons}</div>
+                {/* Passkey button omitted while NATIVE_PASSKEYS_ENABLED is false. */}
+                <div className="native-divider">
+                  <span />
+                  or with email
+                  <span />
                 </div>
-                {quoted ? (
-                  <div className="native-sheet__quote">
-                    <span>Your meditation</span>
-                    <p>“{quoted}”</p>
+                <form className="native-auth__form" onSubmit={(e) => void onSignIn(e)}>
+                  <div className="native-auth__field">
+                    <label htmlFor="native-signin-email">Email</label>
+                    <input
+                      id="native-signin-email"
+                      type="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                      placeholder="you@example.com"
+                    />
                   </div>
-                ) : null}
-                {sheetStep === "choose" ? (
-                  <div className="native-sheet__actions">
-                    {providerButtons}
-                    <ProviderButton variant="outline" disabled={busy} onClick={() => setSheetStep("email")}>
-                      <MailMark />
-                      Continue with email
-                    </ProviderButton>
-                  </div>
-                ) : (
-                  <>
-                    <EmailCodeFlow disabled={busy} onSession={finishSession} onBusy={setBusy} />
-                    <button type="button" className="native-text-link" onClick={() => setSheetStep("choose")}>
-                      Other ways to continue
+                  <PasswordField
+                    id="native-signin-password"
+                    label="Password"
+                    value={password}
+                    onChange={setPassword}
+                    autoComplete="current-password"
+                  />
+                  <div className="native-auth__forgot-row">
+                    <button type="button" disabled={busy} onClick={() => setScreen("forgot")}>
+                      Forgot password?
                     </button>
-                  </>
-                )}
-                {errorLine}
-                <TermsLine />
+                  </div>
+                  {errorLine}
+                  <button type="submit" disabled={busy || !email.trim() || !password} className="native-mist">
+                    {busy ? "Signing in…" : "Sign in"}
+                  </button>
+                </form>
+                <p className="native-auth__centre-link">
+                  New here?{" "}
+                  <button type="button" onClick={openSignUp}>
+                    Create an account
+                  </button>
+                </p>
               </>
             )}
           </div>
+        </section>
+        {busy ? <div className="native-busy" role="status" aria-label="Signing in" /> : null}
+      </div>
+    );
+  } else   {
+    body = (
+    <div
+      className={[
+        "auth-split",
+        "auth-split--native",
+        opening ? "auth-split--opening" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <AuthBand
+        headline={
+          <>
+            <span className="native-auth__headline-line">Become who you</span>
+            <span className="native-auth__headline-line">
+              <em className="auth-split__accent-word">said</em> you’d be.
+            </span>
+          </>
+        }
+        subline="The app that catalyses personal transformation."
+      />
+      <section className="auth-split__panel">
+        <div className="auth-split__panel-inner native-auth__form">
+          {!base ? (
+            <p className="text-sm text-muted">
+              Set <code className="rounded bg-surface-2 px-1 py-0.5">VITE_MEDIMADE_API_URL</code> to
+              enable sign-up.
+            </p>
+          ) : (
+            <>
+              <div className="native-signin__providers">{providerButtons}</div>
+              <div className="native-divider">
+                <span />
+                or with email
+                <span />
+              </div>
+              <form className="native-auth__form" onSubmit={(e) => void onSignUp(e)}>
+                <div className="native-auth__field">
+                  <label htmlFor="native-signup-email">Email</label>
+                  <input
+                    id="native-signup-email"
+                    type="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                    placeholder="you@example.com"
+                  />
+                </div>
+                <PasswordField
+                  id="native-signup-password"
+                  label="Password"
+                  value={password}
+                  onChange={setPassword}
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                  hint="8+ characters, with upper and lower case and a number."
+                />
+                {errorLine}
+                <button type="submit" disabled={busy || !email.trim() || !password} className="native-mist">
+                  {busy ? "Creating…" : "Create my account"}
+                </button>
+              </form>
+              <p className="native-auth__centre-link">
+                Already have an account?{" "}
+                <button type="button" onClick={openSignIn}>
+                  Sign in
+                </button>
+              </p>
+              <TermsLine />
+            </>
+          )}
         </div>
-      ) : null}
-      {busy && !sheetOpen ? <div className="native-busy" role="status" aria-label="Signing in" /> : null}
-    </>
+      </section>
+      {busy ? <div className="native-busy" role="status" aria-label="Working" /> : null}
+    </div>
+    );
+  }
+
+  return (
+    <AuthShell
+      phase={openPhase}
+      onPhase={setOpenPhase}
+      exiting={exiting}
+      reduceMotion={reduceMotion}
+    >
+      {body}
+    </AuthShell>
   );
 }

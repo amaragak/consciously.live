@@ -30,7 +30,7 @@ export function AppShell() {
   const [nativeAuthHold, setNativeAuthHold] = useState(false);
 
   useEffect(() => {
-    if (authState === "in") markNativeAppReady();
+    if (authState === "in") markNativeAppReady({ signedIn: true });
   }, [authState]);
 
   useEffect(() => {

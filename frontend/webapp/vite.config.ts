@@ -3,6 +3,13 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  BRAND_GLOW_BOOT_CSS,
+  BRAND_GLOW_HTML,
+  BRAND_LOCKUP_CSS,
+  BRAND_LOCKUP_HTML,
+  BRAND_LOCKUP_SCALE,
+} from "./src/lib/native/brand-lockup-markup";
 
 const NATIVE_RUNTIME_DIR = path.resolve(__dirname, "native-assets/runtime");
 
@@ -33,6 +40,33 @@ function nativeRuntimeAssets(): Plugin {
 }
 
 /**
+ * First paint before any JS modules: navy + sun + wordmark in index.html.
+ * Live reload especially needs this — Cap splash is gone while Vite downloads the graph.
+ */
+function nativeIndexBootSplash(): Plugin {
+  const boot = `
+<style id="brand-lockup-css">${BRAND_LOCKUP_CSS}</style>
+<style id="native-boot-css">
+html,body{background:#1A1820!important;margin:0}
+#native-boot-splash{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;background:#1A1820;pointer-events:none}
+#native-boot-splash::before{content:"";position:absolute;inset:0;opacity:.49;background:url("/patterns/paisley-dark-duotone.webp") center/calc(max(100vw,100vh)*0.73206) calc(max(100vw,100vh)*0.73206) repeat}
+#native-boot-splash .brand-lockup{transform:scale(${BRAND_LOCKUP_SCALE})}
+${BRAND_GLOW_BOOT_CSS}
+</style>
+<div id="native-boot-splash" aria-hidden="true">
+  ${BRAND_GLOW_HTML}
+  ${BRAND_LOCKUP_HTML}
+</div>`;
+  return {
+    name: "consciously-native-index-boot",
+    transformIndexHtml(html) {
+      if (html.includes('id="native-boot-splash"')) return html;
+      return html.replace('<div id="root"></div>', `${boot}\n    <div id="root"></div>`);
+    },
+  };
+}
+
+/**
  * Native live reload (`scripts/native-dev.mjs`): the phone loads the app from
  * `http://<LAN IP>:5173`, an origin the API's CORS list doesn't (and shouldn't)
  * allow. Route API calls through this dev server instead, so they're same-origin.
@@ -46,7 +80,11 @@ export default defineConfig(({ mode }) => {
   const proxyApi = Boolean(native && liveReloadOrigin && apiTarget);
 
   return {
-    plugins: [react(), tailwindcss(), ...(native ? [nativeRuntimeAssets()] : [])],
+    plugins: [
+      react(),
+      tailwindcss(),
+      ...(native ? [nativeRuntimeAssets(), nativeIndexBootSplash()] : []),
+    ],
     define: {
       __NATIVE_BUILD__: JSON.stringify(native),
       ...(proxyApi

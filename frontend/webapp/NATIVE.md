@@ -197,21 +197,27 @@ Device checklist:
   lock screen.
 - Android: the media notification shows the title and artwork, and its controls work.
 
+## Opening sequence
+
+Native splash → HTML boot → app. Signed-out uses `AuthShell` (`native-auth-shell.tsx`): one
+lockup (band size) + shell paisley; screens only render an invisible placeholder. Opening is
+transform-only onto the placeholder (`scale(1.8)` → identity) with the form/copy timeline from
+`consciously-native-opening-fix`. Signed-in: launch overlay cross-fades (250ms). Regenerate
+splash with `npm run native:assets` after changing `native-assets/`. How the lockup, splash
+background and sun glow images are generated: [`native-assets/src/README.md`](native-assets/src/README.md).
+
 ## Sign-in
 
 ### What the app does
 
-- **Welcome screen** (`src/pages/native-login-page.tsx`, styles in `native-login.css`). Shown on
-  first launch and after sign-out; a stored session goes straight to the dashboard. The line
-  is kept on the device (so it survives the trip to the mail app). The mic dictates on-device
-  (`@capgo/capacitor-speech-recognition`); server Whisper needs a session.
-- **Sign-up sheet.** Opens from **Create meditation**. Apple, Google, or email. Email sends one message
-  with a 6-digit code and a link. The sheet takes the code, and the link opens the app (universal link)
-  and signs in there. Nothing is generated before the account exists. Afterwards Create opens on
-  Shape with the line as the brief (`?step=shape&fromBrief=1`, `createFromBriefHref`). An existing
-  account signs in and goes to the same place.
-- **Sign-in screen.** "Welcome back." with a back control, then Apple, Google, email + password,
-  and **Email me a sign-in code instead**.
+- **Sign up / sign in** (`src/pages/native-login-page.tsx`, `native-login.css`). First launch and
+  after sign-out open **Sign up** (paisley navy band + ivory form): Apple, Google, or email +
+  password → Cognito verify code → **Your first meditation** (new accounts) or home. Returning
+  **Sign in**: Apple, Google, email + password (forgot-password included). No name on sign-up;
+  name step only if the session still needs one. Passkey offer is skipped on native until
+  WebAuthn works in the Capacitor web view. First meditation Create opens Shape with the brief
+  (`createFromBriefHref`); Skip goes to home / Get set up.
+
 - **Sessions.** The refresh token lives in Keychain / Keystore (`@aparajita/capacitor-secure-storage`,
   `src/lib/native/native-secure-session.ts`), not WebView storage. It is read before the first render.
   On a fresh install it is wiped, because the Keychain outlives an uninstall. Sign-out
@@ -234,14 +240,12 @@ Device checklist:
   when deploying the backend. Review signs in with **Continue with email**, that address, and
   that fixed 6-digit code; no email is needed. Give both to App Review in App Store Connect.
 
-### Web changes
+### Web
 
-- The magic-link email now carries a 6-digit code (same 15 minutes, single use; using the code or
-  the link consumes both). Every "Check your inbox" state has a code field.
-- **Continue with Apple** on `consciously.live/login` (Apple JS popup → `/auth/social`). It only
-  shows once `CONSCIOUSLY_APPLE_SERVICES_ID` is deployed.
-- Google on the web still says "isn't available yet" (unchanged). It needs Google Identity Services
-  on the login page next; the backend already accepts web Google ID tokens.
+Web sign-in and sign-up are unchanged from before the native work (the web code field and web
+Apple button were reverted). The only web change is that "Terms" and "Privacy Policy" under the
+login form are now links. The backend still accepts web Apple/Google ID tokens on `/auth/social`
+for later.
 
 ### Console setup (once)
 
@@ -258,13 +262,11 @@ after setting them.
 2. Replace `APPLE_TEAM_ID` in `frontend/marketing/public/.well-known/apple-app-site-association`
    with the 10-character Team ID, and deploy marketing. Check
    `https://consciously.live/.well-known/apple-app-site-association` returns the JSON with no redirect.
-3. Web: Identifiers → **+** → Services IDs, e.g. `live.consciously.web`. Enable Sign in with
+3. Later, for web Apple sign-in (not used yet): Identifiers → **+** → Services IDs, e.g. `live.consciously.web`. Enable Sign in with
    Apple, set the primary App ID to `live.consciously.app`, add domain `consciously.live` and
    return URL `https://consciously.live/login`. Deploy the backend with
    `CONSCIOUSLY_APPLE_SERVICES_ID=live.consciously.web`.
-4. Private relay: Services → **Sign in with Apple for Email Communication** → add the sending
-   domain / address (the Brevo sender in `AUTH_EMAIL_FROM`), or emails to `@privaterelay.appleid.com`
-   bounce.
+4. Private relay: see **Your steps** below (Apple relay email).
 
 Native Apple needs no backend setting: the bundle ID is always an accepted audience.
 
@@ -287,8 +289,87 @@ The Google buttons appear once the client IDs are deployed (iOS needs both IDs).
 `frontend/marketing/public/.well-known/assetlinks.json` with the SHA-256 of the signing key
 (Play Console → App signing → "App signing key certificate"), and deploy marketing.
 
-**Terms and Privacy:** the sheet links to `https://consciously.live/terms` and `/privacy`, which
-don't exist yet. App Store Connect also needs the privacy policy URL.
+**Terms and Privacy:** the sheet links to `https://consciously.live/terms` and `/privacy`
+(marketing, `src/app/(legal)/`). They go live with the next marketing deploy.
+
+## Email
+
+All sign-in email goes through `sendTransactionalEmail` (`backend/lambdas/_shared/consciously-email.ts`).
+One deploy setting picks the provider:
+
+- `CONSCIOUSLY_EMAIL_PROVIDER=brevo` (default today): the old Gmail sender via Brevo
+  (`AUTH_EMAIL_FROM`). Kept until SES is confirmed.
+- `CONSCIOUSLY_EMAIL_PROVIDER=ses`: Amazon SES from `Consciously <hello@consciously.live>`
+  (`CONSCIOUSLY_EMAIL_FROM` to change the address), configuration set `consciously-transactional`.
+
+SES (`backend/lib/consciously/email-nested-stack.ts`) has domain identity `consciously.live`, MAIL
+FROM `mail.consciously.live` and the configuration set. Bounces, complaints, rejects and delays go
+via SNS to `email-events.ts`, which logs them to CloudWatch. Hard bounces and complaints are
+suppressed (account level and configuration set), so they are never resent.
+
+The sign-in email is link-only. `CONSCIOUSLY_MAGIC_CODE_IN_EMAIL=1` adds the 6-digit code; leave
+it off until web sign-in has a code field. The App Review account's fixed code works either way.
+
+**Test email:** Admin › **Email** (`/admin/email`, `POST /admin/email-test`). It always requires
+signing in as an admin, and sends through whichever provider is live.
+
+## Your steps
+
+(The prompt said `apps/app/NATIVE.md`; this repo's file is `frontend/webapp/NATIVE.md`.)
+In order:
+
+1. **Cloudflare DNS → consciously.live.** Add these records with Proxy status **DNS only**. Keep the
+   existing Namecheap forwarding MX records (`eforward1`–`5.registrar-servers.com`).
+
+   | Type | Name | Value |
+   |---|---|---|
+   | CNAME | `yheviyi6mtvhvg5leedktxv3ypxnjk44._domainkey` | `yheviyi6mtvhvg5leedktxv3ypxnjk44.dkim.amazonses.com` |
+   | CNAME | `thv5vuk6mp5jkq7wr3lyzj6uipovnfn2._domainkey` | `thv5vuk6mp5jkq7wr3lyzj6uipovnfn2.dkim.amazonses.com` |
+   | CNAME | `moybdmr5nnzdglrxvtjeouqc4dbz5zgi._domainkey` | `moybdmr5nnzdglrxvtjeouqc4dbz5zgi.dkim.amazonses.com` |
+   | MX | `mail` | `feedback-smtp.eu-west-2.amazonses.com`, priority `10` |
+   | TXT | `mail` | `v=spf1 include:amazonses.com ~all` |
+   | TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:hello@consciously.live` |
+
+   **Edit** (don't add a second) the root TXT SPF record from
+   `v=spf1 include:spf.efwd.registrar-servers.com ~all` to
+   `v=spf1 include:spf.efwd.registrar-servers.com include:amazonses.com ~all`.
+   (The DKIM tokens are also in the `ConsciouslyBackend…Email` stack outputs.)
+2. **Wait for verification.** In the SES console (eu-west-2) → Identities → `consciously.live`,
+   wait for DKIM **Successful** and MAIL FROM **Successful**, usually minutes and up to 72 hours.
+   Check from the terminal:
+   `AWS_PROFILE=mm aws sesv2 get-email-identity --email-identity consciously.live --region eu-west-2`.
+3. **Request production access.** SES → Account dashboard → **Request production access**:
+   - Mail type: **Transactional**.
+   - Website URL: `https://consciously.live`.
+   - Use case: "Sign-in links and account emails for consciously.live users who request them. No
+     marketing lists. Bounces and complaints are handled by SES account-level suppression and a
+     configuration set (consciously-transactional) whose events are logged; hard bounces and
+     complainants are never re-sent to."
+   - Until it's approved (200 emails a day, 1 a second), SES only delivers to verified addresses.
+     To test, add your own address under Identities → Create identity → Email address.
+4. **Switch to SES.** Deploy the backend with
+   `CONSCIOUSLY_EMAIL_PROVIDER=ses AWS_PROFILE=mm backend/scripts/deploy-back ConsciouslyBackend`.
+   The setting is read at deploy time, so a later deploy without it goes back to Brevo. To make it
+   stick (including deploys from GitHub Actions), add `"emailProvider": "ses"` to `context` in
+   `backend/cdk.json`.
+5. **Test.** Admin › Email → send to your own address. Then sign in with Apple using
+   **Hide My Email** and send to that `@privaterelay.appleid.com` address. That only arrives once
+   step 6 is done.
+6. **Apple relay email.** In [developer.apple.com](https://developer.apple.com/account/resources/services/configure)
+   → Certificates, Identifiers & Profiles → **Services** → **Sign in with Apple for Email
+   Communication** → Configure:
+   - Domains and subdomains: `consciously.live` and `mail.consciously.live`.
+   - Email addresses: `hello@consciously.live`.
+   - SPF must pass for the sending domain, which needs the step 1 records. Apple's list shows a
+     check mark once it passes. Register the old Gmail sender too only if you stay on Brevo, but
+     Gmail addresses usually fail Apple's SPF check, which is why relay mail needs SES.
+7. **Confirm SES works, then remove Brevo.**    Delete the Brevo branch in
+   `sendTransactionalEmail` (`consciously-email.ts`) and the `BREVO_SECRET_NAME` grants. Not done yet, as you asked.
+8. **Later:** once deliverability looks good in the DMARC reports, tighten `_dmarc` to `p=quarantine`.
+9. **Legal pages.** Fill the bracketed items listed at the end of `docs/legal/data-inventory.md`,
+   have it reviewed, then deploy marketing. Add `https://consciously.live/privacy` as the privacy
+   policy URL in App Store Connect (and Play Console).
+10. The Apple, Google and Android app-link console steps in **Console setup** above are unchanged.
 
 ## Known gaps (next prompts)
 

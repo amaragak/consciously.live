@@ -1,4 +1,4 @@
-import { StrictMode, Suspense, lazy } from "react";
+import { StrictMode, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import {
@@ -35,41 +35,63 @@ injectTheme();
 
 const native = __NATIVE_BUILD__ && isNativeApp();
 
+function render(LaunchOverlay: ComponentType | null): void {
+  // No StrictMode on native: it remounts and kills the launch morph mid-FLIP.
+  const tree = (
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  );
+  createRoot(document.getElementById("root")!).render(
+    native ? (
+      <>
+        {tree}
+        {LaunchOverlay ? <LaunchOverlay /> : null}
+      </>
+    ) : (
+      <StrictMode>{tree}</StrictMode>
+    ),
+  );
+}
+
 if (native) {
   const apiBase = import.meta.env.VITE_MEDIMADE_API_URL?.trim();
-  scopeNativeHttp(
-    nativePlatform() === "ios" && apiBase ? [new URL(apiBase).origin] : [],
-  );
+  // Live-reload serves the app + `/__api` proxy from http://<LAN>:5173. Keep those
+  // on WKWebView fetch (same-origin). CapacitorHttp is only for the real HTTPS API
+  // from capacitor://localhost (CORS). Routing the Vite host through native HTTP
+  // fails cleartext ATS and falsely trips the offline screen.
+  const nativeHttpOrigins =
+    nativePlatform() === "ios" &&
+    apiBase &&
+    apiBase.startsWith("https:") &&
+    !apiBase.includes("/__api")
+      ? [new URL(apiBase).origin]
+      : [];
+  scopeNativeHttp(nativeHttpOrigins);
+
+  document.documentElement.style.backgroundColor = "#1A1820";
+  document.body.style.backgroundColor = "#1A1820";
+
+  // index.html already has the boot frame. Overlay clears it after paint.
   void import("./lib/native/native-shell").then((m) => m.initNativeShell());
-}
 
-const NativeLaunchOverlay = native
-  ? lazy(() => import("./components/native-launch-overlay"))
-  : null;
-
-function render(): void {
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-      {NativeLaunchOverlay ? (
-        <Suspense fallback={null}>
-          <NativeLaunchOverlay />
-        </Suspense>
-      ) : null}
-    </StrictMode>,
-  );
-}
-
-if (native) {
-  // The shell picks signed in / out on first render, so read the Keychain first.
   const restored = import("./lib/native/native-secure-session").then((m) =>
     m.restoreNativeSecureSession(),
   );
-  void Promise.race([restored, new Promise((r) => setTimeout(r, 1500))])
-    .catch(() => undefined)
-    .then(render);
+  const overlay = import("./components/native-launch-overlay");
+
+  void Promise.all([
+    overlay,
+    Promise.race([restored, new Promise((r) => setTimeout(r, 800))]).catch(() => undefined),
+  ]).then(([mod]) => render(mod.default));
 } else {
-  render();
+  // Native vite mode (`native:dev`) injects #native-boot-splash into index.html for
+  // the phone. Opening that same server in a desktop browser is not Capacitor, so
+  // nothing would clear it — strip it here.
+  if (__NATIVE_BUILD__) {
+    void import("./lib/native/native-boot-splash").then((m) => m.clearNativeBootSplash());
+    document.documentElement.style.backgroundColor = "";
+    document.body.style.backgroundColor = "";
+  }
+  render(null);
 }

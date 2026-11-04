@@ -45,17 +45,15 @@ export async function initNativeShell(): Promise<void> {
     nativeAudioLog("app", isActive ? "foreground" : "background");
   });
 
-  // The launch overlay hides the splash once its identical image has painted;
-  // this only covers the overlay failing to load.
-  window.setTimeout(() => hideNativeSplash(), 4000);
+  // Overlay hides the launch splash after it paints. Do NOT SplashScreen.show()
+  // here — that races after the overlay hide and pins the splash on screen.
+  window.setTimeout(() => hideNativeSplash(), 6000);
 }
-
-let splashHidden = false;
 
 /** Swap the native splash for the web launch overlay (same artwork, no flash). */
 export function hideNativeSplash(): void {
-  if (splashHidden) return;
-  splashHidden = true;
+  // Always call hide — a later SplashScreen.show() must not leave us stuck
+  // because we no-op'd after the first successful hide.
   void SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 }
 
