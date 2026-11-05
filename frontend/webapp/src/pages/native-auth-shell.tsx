@@ -151,6 +151,8 @@ export function AuthShell({
   };
 
   useEffect(() => {
+    // Keep overlay mode (app default). Do not flip back to Native on leave —
+    // that shoved signed-in bottom chrome above the keyboard.
     setNativeKeyboardOverlay(true);
     const onKeyboard = (e: Event) => {
       const { open, heightPx } = (e as CustomEvent<NativeKeyboardDetail>).detail;
@@ -159,7 +161,6 @@ export function AuthShell({
     window.addEventListener(NATIVE_KEYBOARD_EVENT, onKeyboard);
     return () => {
       window.removeEventListener(NATIVE_KEYBOARD_EVENT, onKeyboard);
-      setNativeKeyboardOverlay(false);
     };
   }, []);
 

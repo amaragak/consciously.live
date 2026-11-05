@@ -72,7 +72,11 @@ export function setNativeKeyboardOverlayImpl(fn: ((overlay: boolean) => void) | 
   if (keyboardOverlay) fn?.(true);
 }
 
-/** true: keyboard slides over the page without resizing it. false: default (web view resizes). */
+/**
+ * true: keyboard overlays the page (no web-view resize). false: web view
+ * resizes with the keyboard. App default is overlay; prefer leaving it on so
+ * bottom chrome is covered rather than shoved up.
+ */
 export function setNativeKeyboardOverlay(overlay: boolean): void {
   keyboardOverlay = overlay;
   keyboardOverlayImpl?.(overlay);

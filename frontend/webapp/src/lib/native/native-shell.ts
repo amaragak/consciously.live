@@ -93,8 +93,13 @@ function isTextEntry(el: Element | null): el is HTMLElement {
 }
 
 function installKeyboardHandling(): void {
+  // Default matches capacitor.config Keyboard.resize: "none". Auth used to flip
+  // back to Native on unmount, which shoved the tab bar / create footer up.
+  void Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {});
   setNativeKeyboardOverlayImpl((overlay) => {
-    void Keyboard.setResizeMode({ mode: overlay ? KeyboardResize.None : KeyboardResize.Native }).catch(() => {});
+    void Keyboard.setResizeMode({
+      mode: overlay ? KeyboardResize.None : KeyboardResize.Native,
+    }).catch(() => {});
   });
   void Keyboard.addListener("keyboardWillShow", (info) => {
     setNativeKeyboardState({ open: true, heightPx: info.keyboardHeight ?? 0 });
@@ -102,7 +107,7 @@ function installKeyboardHandling(): void {
   void Keyboard.addListener("keyboardWillHide", () => {
     setNativeKeyboardState({ open: false, heightPx: 0 });
   });
-  // The web view has shrunk by now; bring the caret back above the keyboard.
+  // Keep the focused field above the overlay keyboard.
   void Keyboard.addListener("keyboardDidShow", () => {
     const el = document.activeElement;
     if (!isTextEntry(el)) return;

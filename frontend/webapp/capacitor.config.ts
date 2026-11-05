@@ -48,8 +48,11 @@ const config: CapacitorConfig = {
       },
       logLevel: 1,
     },
+    // Overlay: keyboard covers bottom chrome (tab bar, create nav) instead of
+    // shrinking the web view and shoving those bars up. Inputs scroll into view
+    // in native-shell on keyboardDidShow.
     Keyboard: {
-      resize: "native",
+      resize: "none",
       resizeOnFullScreen: true,
     },
   },
