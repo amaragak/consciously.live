@@ -85,6 +85,12 @@ Legend: **wired** · **not_implemented** · **not_available**
 | Distraction blocking | not_available | Needs extension / OS hooks |
 | Goals in picker | not_available | Waiting on Manifest wiring |
 
+### Daily to-dos
+
+| Setting | Status | What’s needed to wire |
+| --- | --- | --- |
+| Which to-dos show under Today | wired | `settings.today`; cached per account in `daily-todos.ts`. Next step on your goal is off by default |
+
 ### General
 
 | Setting | Status | What’s needed to wire |

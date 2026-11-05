@@ -33,6 +33,7 @@ export function shouldUseDocumentScroll(
       path.startsWith("/journal/entries") ||
       path.startsWith("/journal/import") ||
       path.startsWith("/journal/gratitudes") ||
+      path.startsWith("/journal/gratitude") ||
       path.startsWith("/journal/insights")
     ) {
       return false;

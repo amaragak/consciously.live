@@ -45,6 +45,35 @@ const HERO = "/patterns/hero";
 /** Used when a guide has no uploaded cover. */
 export const GUIDE_FALLBACK_IMAGE = `${HERO}/adobestock-2055049378.webp`;
 
+/**
+ * Published guide covers shipped in `public/guide-covers/{area}/{slug}.jpg`
+ * so overview / list cards do not wait on CloudFront (especially Capacitor).
+ * Re-sync when admin replaces a cover.
+ */
+const BUNDLED_GUIDE_COVERS = new Set([
+  "meditate/what-meditation-actually-is",
+  "meditate/where-to-begin",
+  "meditate/when-your-mind-wont-stop-wandering",
+  "meditate/guided-or-silent",
+  "journal/what-journalling-is-for",
+  "journal/picking-a-journalling-routine",
+  "journal/journal-and-the-rest-of-the-app",
+  "manifest/what-manifesting-is",
+  "manifest/setting-an-intention",
+  "manifest/working-with-blockers",
+  "manifest/manifest-in-the-app",
+]);
+
+export function bundledGuideCover(
+  area: GuideArea,
+  slug: string,
+): string | undefined {
+  const key = `${area}/${slug}`;
+  return BUNDLED_GUIDE_COVERS.has(key)
+    ? `/guide-covers/${area}/${slug}.jpg`
+    : undefined;
+}
+
 export function guidesBasePath(area: GuideArea): string {
   if (area === "journal") return "/journal/guides";
   if (area === "manifest") return "/manifest/guides";
@@ -63,7 +92,10 @@ export function toUiGuide(g: PublicGuideListItem | PublicGuide): Guide {
     title: g.title,
     category: g.category,
     readMinutes: g.readMinutes,
-    image: g.coverImageUrl || GUIDE_FALLBACK_IMAGE,
+    image:
+      bundledGuideCover(g.area, g.slug) ||
+      g.coverImageUrl ||
+      GUIDE_FALLBACK_IMAGE,
     order: g.order,
     area: g.area,
     summary: g.summary || undefined,

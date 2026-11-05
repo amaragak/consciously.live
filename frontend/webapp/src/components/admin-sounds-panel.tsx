@@ -1095,7 +1095,7 @@ export function AdminSoundsPanel() {
                 setImportCategory(e.target.value as "" | AdminSoundCategory);
                 setImportSubcategory("");
               }}
-              className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
+              className="rounded-xl border border-border bg-card px-3 py-2 text-base text-foreground"
             >
               <option value="">Auto (classify)</option>
               {SOUND_CATEGORIES.map((c) => (
@@ -1114,7 +1114,7 @@ export function AdminSoundsPanel() {
                 list="import-subcategories"
                 placeholder="e.g. Deep Rest Vol 1"
                 onChange={(e) => setImportSubcategory(e.target.value)}
-                className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
+                className="rounded-xl border border-border bg-card px-3 py-2 text-base text-foreground"
               />
               <datalist id="import-subcategories">
                 {importSubcategoryChoices.map((s) => (
@@ -1129,7 +1129,7 @@ export function AdminSoundsPanel() {
                 value={importSubcategory}
                 disabled={importing}
                 onChange={(e) => setImportSubcategory(e.target.value)}
-                className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
+                className="rounded-xl border border-border bg-card px-3 py-2 text-base text-foreground"
               >
                 <option value="">Auto</option>
                 {subcategoryOptions(importCategory).map((o) => (
@@ -1271,7 +1271,7 @@ export function AdminSoundsPanel() {
           placeholder="Search name, pack path"
         />
         <select
-          className="rounded-xl border border-border bg-card px-3 py-2 text-sm"
+          className="rounded-xl border border-border bg-card px-3 py-2 text-base"
           value={catFilter}
           onChange={(e) => {
             setCatFilter(e.target.value as "all" | AdminSoundCategory);
@@ -1286,7 +1286,7 @@ export function AdminSoundsPanel() {
           ))}
         </select>
         <select
-          className="rounded-xl border border-border bg-card px-3 py-2 text-sm"
+          className="rounded-xl border border-border bg-card px-3 py-2 text-base"
           value={subFilter}
           onChange={(e) => setSubFilter(e.target.value)}
         >
@@ -1298,7 +1298,7 @@ export function AdminSoundsPanel() {
           ))}
         </select>
         <select
-          className="rounded-xl border border-border bg-card px-3 py-2 text-sm"
+          className="rounded-xl border border-border bg-card px-3 py-2 text-base"
           value={useFilter}
           onChange={(e) => setUseFilter(e.target.value as UseFilter)}
         >
@@ -1348,7 +1348,7 @@ export function AdminSoundsPanel() {
           </button>
         ) : null}
         <select
-          className="rounded-xl border border-border bg-card px-3 py-2 text-sm"
+          className="rounded-xl border border-border bg-card px-3 py-2 text-base"
           value={sortBy}
           onChange={(e) =>
             setSortBy(e.target.value as "imported-desc" | "imported-asc" | "name")
@@ -1437,7 +1437,7 @@ export function AdminSoundsPanel() {
                 onChange={(e) =>
                   setEditPopup((p) => (p ? { ...p, name: e.target.value } : p))
                 }
-                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
               />
             </label>
             <label className="mt-3 block">
@@ -1457,7 +1457,7 @@ export function AdminSoundsPanel() {
                     };
                   })
                 }
-                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
               >
                 {SOUND_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -1476,7 +1476,7 @@ export function AdminSoundsPanel() {
                   onChange={(e) =>
                     setEditPopup((p) => (p ? { ...p, subcategory: e.target.value } : p))
                   }
-                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
                 />
                 <datalist id="edit-subcategories">
                   {freeformSubcategories(editPopup.category).map((s) => (
@@ -1498,7 +1498,7 @@ export function AdminSoundsPanel() {
                   onChange={(e) =>
                     setEditPopup((p) => (p ? { ...p, subcategory: e.target.value } : p))
                   }
-                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
                 >
                   <option value="">Subcategory…</option>
                   {subcategoryOptions(editPopup.category).map((o) => (
@@ -2317,7 +2317,7 @@ function SoundRow({
             </button>
           ) : null}
           <select
-            className="rounded-xl border border-border bg-background px-2 py-1.5 text-sm"
+            className="rounded-xl border border-border bg-background px-2 py-1.5 text-base"
             value={item.category}
             disabled={busy !== null}
             onChange={(e) => {
@@ -2340,7 +2340,7 @@ function SoundRow({
           {hasFreeformSubcategories(item.category) ? (
             <>
               <input
-                className="w-44 rounded-xl border border-border bg-background px-2 py-1.5 text-sm"
+                className="w-44 rounded-xl border border-border bg-background px-2 py-1.5 text-base"
                 defaultValue={prettySubcategoryLabel(item.subcategory ?? "")}
                 key={item.subcategory ?? ""}
                 list={`sub-choices-${item.category}`}
@@ -2362,7 +2362,7 @@ function SoundRow({
             </>
           ) : subcategoryOptions(item.category).length > 0 ? (
             <select
-              className="rounded-xl border border-border bg-background px-2 py-1.5 text-sm"
+              className="rounded-xl border border-border bg-background px-2 py-1.5 text-base"
               // Blank must stay blank — coerce-to-first-option made every
               // uncategorised music row look like "Synth Pads".
               value={
@@ -2646,7 +2646,7 @@ function SoundRow({
             value={fadeInSec}
             disabled={!item.ready || busy !== null}
             onChange={(e) => setFadeInSec(Math.max(0, Number(e.target.value) || 0))}
-            className="w-24 rounded-xl border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none ring-accent/30 focus:ring-2"
+            className="w-24 rounded-xl border border-border bg-background px-2 py-1.5 text-base text-foreground outline-none ring-accent/30 focus:ring-2"
           />
         </label>
         <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted">
@@ -2658,7 +2658,7 @@ function SoundRow({
             value={fadeOutSec}
             disabled={!item.ready || busy !== null}
             onChange={(e) => setFadeOutSec(Math.max(0, Number(e.target.value) || 0))}
-            className="w-24 rounded-xl border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none ring-accent/30 focus:ring-2"
+            className="w-24 rounded-xl border border-border bg-background px-2 py-1.5 text-base text-foreground outline-none ring-accent/30 focus:ring-2"
           />
         </label>
         <button

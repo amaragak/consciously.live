@@ -6186,7 +6186,7 @@ export function CreateWorkspace({
                       min={-50}
                       max={50}
                       step={1}
-                      className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                      className="w-16 rounded-md border border-border bg-background px-2 py-1 text-base tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                       value={speechifyRateInput}
                       disabled={audioLoading}
                       onChange={(e) => setSpeechifyRateInput(e.target.value)}
@@ -6729,7 +6729,7 @@ export function CreateWorkspace({
             <textarea
               rows={3}
               placeholder="e.g. Walk on stage feeling grounded; hear the first phrase clearly…"
-              className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+              className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
             />
           </Panel>
           */}

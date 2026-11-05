@@ -136,7 +136,7 @@ function VerifyInner() {
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             maxLength={80}
-            className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground shadow-sm outline-none ring-accent/30 focus:border-accent/50 focus:ring-2"
+            className="w-full rounded-xl border border-border bg-background px-4 py-3 text-base text-foreground shadow-sm outline-none ring-accent/30 focus:border-accent/50 focus:ring-2"
             placeholder="e.g. Alex"
             disabled={phase === "savingName"}
           />

@@ -10,6 +10,8 @@ import { OverviewSubpagesPanel } from "@/components/overview-subpages-panel";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { useGuides } from "@/content/guides";
+import { useOverviewEntrance } from "@/hooks/use-overview-entrance";
+import { useTabScrollRestore } from "@/hooks/use-tab-scroll-restore";
 import {
   ensureMedimadeSession,
   getMedimadeSessionJwt,
@@ -18,25 +20,22 @@ import {
 import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
 import { libraryMeditationDetailHref } from "@/lib/library-meditation-detail";
 import {
+  fetchLibraryMeditationsCached,
+  peekLibraryMeditationsCache,
+} from "@/lib/library-list-cache";
+import {
   libraryMeditationCategoryLabel,
   listBackgroundAudio,
   listFishSpeakers,
-  listLibraryMeditations,
-  getMedimadeMediaBaseUrl,
   listLibraryPrograms,
   type LibraryMeditationItem,
 } from "@/lib/medimade-api";
 import { SOUNDS_CUSTOM_HREF, SOUNDS_HREF } from "@/lib/sounds-tabs";
 import { useRouter } from "@/lib/spa-nav";
 
-const EXPLORE_THUMB_STAMP = "1792456353682";
-
-/** Generated illustration thumbs for the Explore tiles. */
+/** Bundled Explore tile thumbs (`public/explore-thumbs`) — local on web + Capacitor. */
 function exploreThumb(name: string): string {
-  const media = (
-    getMedimadeMediaBaseUrl() ?? "https://d3k8rq6eqba40d.cloudfront.net"
-  ).replace(/\/$/, "");
-  return `${media}/explore-thumbs/${name}-${EXPLORE_THUMB_STAMP}.jpg`;
+  return `/explore-thumbs/${name}.jpg`;
 }
 
 function formatRelativeShort(iso: string | null): string {
@@ -253,13 +252,27 @@ function MeditationOverviewCard({
   );
 }
 
+function visibleCreations(items: LibraryMeditationItem[]): LibraryMeditationItem[] {
+  return items
+    .filter((x) => x.catalogued && x.archived !== true && x.isDraft !== true)
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+}
+
 export function MeditateOverviewPage() {
-  const [meditations, setMeditations] = useState<LibraryMeditationItem[]>([]);
-  const [creationsCount, setCreationsCount] = useState(0);
+  const rootRef = useOverviewEntrance("meditate");
+  useTabScrollRestore();
+  const cached = peekLibraryMeditationsCache();
+  const cachedVisible = cached ? visibleCreations(cached) : null;
+  const [meditations, setMeditations] = useState<LibraryMeditationItem[]>(
+    () => cachedVisible ?? [],
+  );
+  const [creationsCount, setCreationsCount] = useState(
+    () => cachedVisible?.length ?? 0,
+  );
   const [programsCount, setProgramsCount] = useState(0);
   const [soundscapesCount, setSoundscapesCount] = useState(0);
   const [voicesCount, setVoicesCount] = useState(0);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => cachedVisible != null);
   const { guides: meditateGuides, loading: guidesLoading } =
     useGuides("meditate");
   const guides = meditateGuides.slice(0, 4);
@@ -281,19 +294,15 @@ export function MeditateOverviewPage() {
           return;
         }
         const [items, programs, bg, speakers] = await Promise.all([
-          listLibraryMeditations().catch(() => [] as LibraryMeditationItem[]),
+          fetchLibraryMeditationsCached().catch(
+            () => [] as LibraryMeditationItem[],
+          ),
           listLibraryPrograms().catch(() => []),
           listBackgroundAudio().catch(() => null),
           listFishSpeakers().catch(() => []),
         ]);
         if (cancelled) return;
-        const visible = items
-          .filter(
-            (x) => x.catalogued && x.archived !== true && x.isDraft !== true,
-          )
-          .sort((a, b) =>
-            (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
-          );
+        const visible = visibleCreations(items);
         setMeditations(visible);
         setCreationsCount(visible.length);
         setProgramsCount(programs.length);
@@ -313,7 +322,10 @@ export function MeditateOverviewPage() {
   const recent = meditations.slice(0, 4);
 
   return (
-    <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
+    <div
+      ref={rootRef}
+      className="overview-entrance mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4"
+    >
       <div className="flex flex-col gap-5">
         {/*
         Previous OverviewHero (input + quick-start chips + Library/Sounds links)

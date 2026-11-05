@@ -482,7 +482,7 @@ export function PlanLifeAreaThoughtsLog({
                         }
                       }}
                       placeholder="Add a thought…"
-                      className="w-full border-0 bg-transparent py-0.5 pr-10 text-[14px] leading-[1.5] text-[#1E2530] outline-none placeholder:text-[#A39C8C] focus:outline-none focus:ring-0 dark:text-foreground"
+                      className="w-full border-0 bg-transparent py-0.5 pr-10 text-base leading-[1.5] text-[#1E2530] outline-none placeholder:text-[#A39C8C] focus:outline-none focus:ring-0 dark:text-foreground"
                     />
                     <div className="absolute right-0 top-1/2 -translate-y-1/2">
                       <DictationMicButton

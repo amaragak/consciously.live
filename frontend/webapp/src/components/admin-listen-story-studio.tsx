@@ -277,7 +277,7 @@ export function AdminListenStoryStudio({
         rows={8}
         disabled={busy}
         placeholder={`I wake up in…\n\nWrite like Manifesto Story — present tense, already true.`}
-        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
       />
 
       <div className="flex flex-wrap gap-2">
@@ -364,7 +364,7 @@ export function AdminListenStoryStudio({
         rows={2}
         disabled={busy}
         placeholder="e.g. Softening into a life that already feels like home"
-        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
       />
 
       <button

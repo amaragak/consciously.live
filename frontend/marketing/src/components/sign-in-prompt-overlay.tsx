@@ -185,7 +185,7 @@ function SignInPromptInner({ onDismiss, nextPath }: Props) {
                 required
                 value={email}
                 onChange={(ev) => setEmail(ev.target.value)}
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base"
                 placeholder="you@example.com"
               />
             </div>

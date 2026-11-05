@@ -102,9 +102,12 @@ export async function handler(
       if (typeof body.libraryDevFlyout === "boolean") {
         patch.libraryDevFlyout = body.libraryDevFlyout;
       }
+      if (typeof body.homeWaitlist === "boolean") {
+        patch.homeWaitlist = body.homeWaitlist;
+      }
       if (Object.keys(patch).length === 0) {
         return json(400, {
-          error: "Provide createAudioDevControls and/or libraryDevFlyout",
+          error: "Provide createAudioDevControls, libraryDevFlyout and/or homeWaitlist",
         });
       }
       const settings = await saveDevUiSettings(patch);

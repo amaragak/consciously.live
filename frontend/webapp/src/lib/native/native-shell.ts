@@ -5,13 +5,14 @@
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
-import { Keyboard } from "@capacitor/keyboard";
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
   nativeDarkSurfaceActive,
   nativePlatform,
   setNativeHapticImpl,
+  setNativeKeyboardOverlayImpl,
   setNativeKeyboardState,
   setNativeOpenExternalImpl,
   setNativeStatusBarSyncImpl,
@@ -92,6 +93,9 @@ function isTextEntry(el: Element | null): el is HTMLElement {
 }
 
 function installKeyboardHandling(): void {
+  setNativeKeyboardOverlayImpl((overlay) => {
+    void Keyboard.setResizeMode({ mode: overlay ? KeyboardResize.None : KeyboardResize.Native }).catch(() => {});
+  });
   void Keyboard.addListener("keyboardWillShow", (info) => {
     setNativeKeyboardState({ open: true, heightPx: info.keyboardHeight ?? 0 });
   });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AppChrome } from "@/components/app-chrome";
 import { DailyAffirmationsWarmup } from "@/components/plan/daily-affirmations-card";
+import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
 import { LibraryPlayerProvider } from "@/components/library-player-provider";
 import {
   ensureMedimadeSession,
@@ -85,10 +86,12 @@ export function AppShell() {
   return (
     <MvpFlagsProvider>
       <LibraryPlayerProvider>
-        <DailyAffirmationsWarmup />
-        <AppChrome>
-          <Outlet />
-        </AppChrome>
+        <IdeateCloudProvider>
+          <DailyAffirmationsWarmup />
+          <AppChrome>
+            <Outlet />
+          </AppChrome>
+        </IdeateCloudProvider>
       </LibraryPlayerProvider>
     </MvpFlagsProvider>
   );

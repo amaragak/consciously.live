@@ -63,7 +63,7 @@ export function JournalLockGate({ children }: Props) {
             value={pin}
             onChange={(ev) => setPin(ev.target.value)}
             placeholder="PIN"
-            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-accent/50"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-base outline-none focus:border-accent/50"
           />
         </label>
         {error ? <p className="text-sm text-danger">{error}</p> : null}
@@ -154,7 +154,7 @@ export function JournalPinLockCheckbox() {
             onChange={(ev) => setPin(ev.target.value)}
             placeholder="PIN"
             aria-label="PIN"
-            className="w-24 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none"
+            className="w-24 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none"
           />
           <button
             type="submit"

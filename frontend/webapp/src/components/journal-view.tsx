@@ -94,6 +94,7 @@ import {
   type JournalGratitudeLines,
   type JournalStoreV2,
 } from "@/lib/journal-storage";
+import { formatGratitudeCompactHeading } from "@/lib/journal-gratitudes";
 import { looksLikeUuid } from "@/lib/readable-url";
 import {
   clearJournalEntryLiveTitle,
@@ -157,7 +158,7 @@ type JournalSection = JournalMainTab | "insights";
 
 const JOURNAL_SECTION_HREF = {
   journal: "/journal/entries",
-  gratitude: "/journal/gratitude",
+  gratitude: "/journal/gratitudes",
   insights: "/journal/insights",
 } as const;
 
@@ -225,11 +226,15 @@ function gratitudeEntrySlugFromPath(pathname: string): string | null {
     /^\/journal\/gratitude(?:s)?\/([^/]+)\/?$/.exec(pathname) ??
     /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
+  let raw: string;
   try {
-    return decodeURIComponent(m[1]);
+    raw = decodeURIComponent(m[1]);
   } catch {
-    return m[1];
+    raw = m[1];
   }
+  // Reserved: All list lives at `/journal/gratitudes/all`.
+  if (raw.toLowerCase() === "all") return null;
+  return raw;
 }
 
 /** @deprecated Prefer slug helpers — kept for call sites that still compare ids. */
@@ -546,12 +551,12 @@ function activeIdForJournalTab(
   entries: JournalEntry[],
   preferred: string | null,
 ): string | null {
-  const free = entries.filter((e) => !isGratitudeEntry(e));
-  const preferredEntry = preferred
-    ? free.find((e) => e.id === preferred)
-    : undefined;
-  if (preferredEntry) return preferredEntry.id;
-  return mostRecentlyUpdatedId(free);
+  // Keep whatever is open (gratitude or journal) so a hydrate/cloud pull
+  // cannot swap today's blank gratitude for an unrelated journal entry.
+  if (preferred && entries.some((e) => e.id === preferred)) {
+    return preferred;
+  }
+  return mostRecentlyUpdatedId(entries.filter((e) => !isGratitudeEntry(e)));
 }
 
 function JumpToDayPopover({
@@ -577,7 +582,7 @@ function JumpToDayPopover({
         type="date"
         value={jumpDate}
         onChange={(ev) => onPick(ev.target.value)}
-        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
       />
       {jumpDate ? (
         <button
@@ -619,7 +624,7 @@ export function JournalView() {
   /** Mobile journal: editor is its own full-screen route (`/journal/:id`). */
   const mobileJournalEditor =
     section === "journal" && Boolean(routeEntryId);
-  /** Mobile gratitudes: compose is `/journal/gratitudes/:id`. */
+  /** Mobile gratitudes: day editor is `/journal/gratitudes/:slug`. */
   const mobileGratitudeCompose =
     section === "gratitude" && Boolean(routeGratitudeId);
   /** Mobile insights: letter detail is `/journal/insights/:weekKey`. */
@@ -786,8 +791,9 @@ export function JournalView() {
     const rawSignedIn = signedIn
       ? withoutDemoJournalEntries(loadJournalStoreRaw())
       : null;
+    // Keep the open entry even if still blank (e.g. today's new gratitude).
     const loaded = signedIn
-      ? pruneEmptyJournalEntries(rawSignedIn!)
+      ? pruneEmptyJournalEntries(rawSignedIn!, rawSignedIn!.activeEntryId)
       : loadJournalStoreRaw();
     const stripped = withoutReflectionTitlePrefix(loaded.entries);
     const store = stripped.changed
@@ -1447,12 +1453,16 @@ export function JournalView() {
       const href = journalEntryHref(entry);
       if (pathname === href) return;
       // Legacy UUID /entries paths → permanent-style replace to readable URL.
+      // Also replace bare `/journal/gratitudes` so "open today" does not stack history.
       const replace =
         opts?.replace === true ||
         Boolean(journalEntrySlugFromPath(pathname) && looksLikeUuid(journalEntrySlugFromPath(pathname)!)) ||
         Boolean(gratitudeEntrySlugFromPath(pathname) && looksLikeUuid(gratitudeEntrySlugFromPath(pathname)!)) ||
         pathname.startsWith("/journal/entries/") ||
-        pathname.startsWith("/journal/gratitudes/");
+        pathname === "/journal/gratitudes" ||
+        pathname === "/journal/gratitude" ||
+        pathname.startsWith("/journal/gratitudes/") ||
+        pathname.startsWith("/journal/gratitude/");
       navigate(href, { replace });
     },
     [navigate, pathname, persist],
@@ -1984,6 +1994,7 @@ export function JournalView() {
     prevListSectionRef.current = section;
 
     if (section === "gratitude") {
+      // Hub is its own page (`JournalGratitudesHub`). Only honor `?new=1` here.
       if (gratitudeEntryIdFromPath(pathname)) return;
       if (
         typeof window !== "undefined" &&
@@ -1991,14 +2002,12 @@ export function JournalView() {
       ) {
         return;
       }
-      // Bare `/journal/gratitudes` (breadcrumb, tab, sidebar): last ≤24h or new.
-      openTodayGratitudeCompose();
       return;
     }
 
     if (prev === null || prev === section) return;
     activateJournalList();
-  }, [hydrated, section, pathname, openTodayGratitudeCompose, activateJournalList]);
+  }, [hydrated, section, pathname, activateJournalList]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2037,7 +2046,11 @@ export function JournalView() {
   const initialHtmlForEditor = activeEntry?.contentHtml ?? "<p></p>";
   const initialTitleForEditor = activeEntry?.title ?? "";
   const showGratitudeEditor =
-    journalTab === "gratitude" && !insightsOpen && hydrated && Boolean(activeEntry);
+    journalTab === "gratitude" &&
+    !insightsOpen &&
+    hydrated &&
+    Boolean(activeEntry) &&
+    isGratitudeEntry(activeEntry!);
 
   const journalComposeChrome =
     (journalTab === "journal" || journalTab === "gratitude") && !insightsOpen;
@@ -2271,7 +2284,7 @@ export function JournalView() {
                               }}
                               placeholder="Folder name"
                               autoFocus
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent/50"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
                             />
                             <button
                               type="button"
@@ -2303,7 +2316,7 @@ export function JournalView() {
                           type="date"
                           value={jumpDate}
                           onChange={(ev) => applyJumpDate(ev.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
                         />
                         {jumpDate ? (
                           <button
@@ -2401,7 +2414,7 @@ export function JournalView() {
                               }}
                               placeholder="Folder name"
                               autoFocus
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent/50"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
                             />
                             <button
                               type="button"
@@ -2486,7 +2499,7 @@ export function JournalView() {
                         type="date"
                         value={jumpDate}
                         onChange={(ev) => applyJumpDate(ev.target.value)}
-                        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+                        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
                       />
                       {jumpDate ? (
                         <button
@@ -2694,6 +2707,10 @@ export function JournalView() {
                 createdAt={journalEntryDateIso(activeEntry)}
                 lines={gratitudeDraft}
                 onChange={onGratitudeChange}
+                headingVariant="compact"
+                compactHeading={formatGratitudeCompactHeading(
+                  journalEntryDateIso(activeEntry),
+                )}
                 onDelete={
                   mobileGratitudeCompose ? undefined : deleteActive
                 }

@@ -1472,7 +1472,7 @@ export function FocusTimerView() {
           placeholder="Add a goal"
           aria-label="Add a goal"
           id="focus-add-goal"
-          className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted"
+          className="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted"
         />
       </form>
       <button

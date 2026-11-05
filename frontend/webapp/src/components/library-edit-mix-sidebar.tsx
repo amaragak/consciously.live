@@ -911,7 +911,7 @@ export function LibraryEditMixSidebar({
                   value={mixSaveName}
                   onChange={(e) => setMixSaveName(e.target.value)}
                   placeholder="Untitled mix"
-                  className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 text-[14px] outline-none"
+                  className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 text-base outline-none"
                 />
                 <button
                   type="button"

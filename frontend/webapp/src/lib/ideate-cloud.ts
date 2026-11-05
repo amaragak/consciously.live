@@ -8,7 +8,13 @@
  * - Guests use the shared Continue-as-guest JWT account (cloud sync).
  */
 
-import { removeAccountLocalStorage } from "@/lib/account-scoped-storage";
+import {
+  readAccountLocalStorage,
+  removeAccountLocalStorage,
+  writeAccountLocalStorage,
+} from "@/lib/account-scoped-storage";
+
+const IDEATE_DEVICE_CACHE_KEY = "mm_ideate_swr_cache_v1";
 import { getMedimadeSessionJwt, isMedimadeSessionActive } from "@/lib/auth-session";
 import type { IdeateStoreV2 } from "@/lib/plan-ideate-store";
 import { withoutDemoIdeateStore } from "@/lib/ideate-demo-seed";
@@ -150,11 +156,46 @@ export function wipeIdeateDeviceData(_opts?: { clearBackup?: boolean }): void {
       removeAccountLocalStorage("mm_ideate_quotes_v1");
       removeAccountLocalStorage("mm_ideate_manifesto_v1");
       removeAccountLocalStorage("mm_manifesto_story_v1");
+      removeAccountLocalStorage(IDEATE_DEVICE_CACHE_KEY);
     } catch {
       /* */
     }
   }
   notifyIdeateCloud();
+}
+
+/** Persist last-good Ideate bundle for cold-start SWR (signed-in). */
+function persistIdeateDeviceCache(bundle: IdeateCloudBundle): void {
+  if (!isSignedIn()) return;
+  try {
+    writeAccountLocalStorage(
+      IDEATE_DEVICE_CACHE_KEY,
+      JSON.stringify({ savedAt: Date.now(), bundle }),
+    );
+  } catch {
+    /* quota */
+  }
+}
+
+/**
+ * Hydrate signed-in module memory from the last device cache when empty.
+ * Returns true if memory now has content.
+ */
+export function hydrateIdeateFromDeviceCache(): boolean {
+  if (!isSignedIn() || signedInIdeateMemoryHasContent()) {
+    return signedInIdeateMemoryHasContent();
+  }
+  try {
+    const raw = readAccountLocalStorage(IDEATE_DEVICE_CACHE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { bundle?: IdeateCloudBundle };
+    if (!parsed?.bundle || typeof parsed.bundle !== "object") return false;
+    if (!ideateBundleHasContent(parsed.bundle)) return false;
+    applyIdeateCloudBundle(parsed.bundle);
+    return signedInIdeateMemoryHasContent();
+  } catch {
+    return false;
+  }
 }
 
 export function subscribeIdeateCloud(listener: () => void): () => void {
@@ -411,6 +452,7 @@ export function applyIdeateCloudBundle(bundle: IdeateCloudBundle): void {
       preferManifestoStoryStore(loadManifestoStoryStore(), remoteStory),
     );
   });
+  persistIdeateDeviceCache(bundle);
   notifyIdeateCloud();
 }
 

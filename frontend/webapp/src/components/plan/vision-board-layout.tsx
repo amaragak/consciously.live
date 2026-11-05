@@ -274,7 +274,7 @@ export function VisionBoardLayout({
             }}
             rows={4}
             placeholder="e.g. Me sitting on a large pile of money in a sunny room"
-            className={`mt-2 min-h-24 w-full rounded-xl border px-3.5 py-3 text-[15px] leading-normal outline-none ${
+            className={`mt-2 min-h-24 w-full rounded-xl border px-3.5 py-3 text-base leading-normal outline-none ${
               drafted
                 ? "border-accent bg-accent-soft"
                 : "border-border bg-card"
@@ -440,7 +440,7 @@ export function VisionBoardLayout({
                       value={ref.description}
                       onChange={(e) => onExtraDescription(ref.id, e.target.value.slice(0, 280))}
                       placeholder="e.g. My mum"
-                      className="min-w-0 flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm"
+                      className="min-w-0 flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-base"
                     />
                     <button type="button" aria-label="Remove reference" onClick={() => onClearExtra(ref.id)}>
                       <X className="size-4" />

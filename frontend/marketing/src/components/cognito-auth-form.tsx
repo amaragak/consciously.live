@@ -1,9 +1,9 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
-import type { CognitoAuthConfig } from "@/lib/medimade-api";
-import { fetchCognitoAuthConfig } from "@/lib/medimade-api";
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import type { AuthEmailCheck, CognitoAuthConfig } from "@/lib/medimade-api";
+import { checkAuthEmail, fetchCognitoAuthConfig } from "@/lib/medimade-api";
 import {
   CognitoIdpError,
   cognitoConfirmForgotPassword,
@@ -18,7 +18,14 @@ import {
   type CognitoAuthTokens,
 } from "@/lib/cognito-direct-auth";
 
-export type CognitoAuthMode = "signin" | "signup" | "confirm" | "forgot" | "reset";
+/** Email-first: `continue` checks the email, then `signin` (known) or `signup` (new). */
+export type CognitoAuthMode =
+  | "continue"
+  | "signin"
+  | "signup"
+  | "confirm"
+  | "forgot"
+  | "reset";
 
 const RESEND_COOLDOWN_MS = 8000;
 
@@ -78,6 +85,112 @@ function PasswordField({
   );
 }
 
+/** Native app's password field (mobile `layout="native"`). */
+function NativePasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  hint,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  hint?: string;
+  placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="native-auth__field">
+      <label htmlFor={id}>{label}</label>
+      <div className="native-auth__password-wrap">
+        <input
+          id={id}
+          name={id}
+          type={show ? "text" : "password"}
+          autoComplete={autoComplete}
+          required
+          value={value}
+          placeholder={placeholder}
+          onChange={(ev) => onChange(ev.target.value)}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          aria-label={show ? "Hide password" : "Show password"}
+          className="native-auth__eye"
+        >
+          {show ? (
+            <EyeOff aria-hidden className="size-4" strokeWidth={2} />
+          ) : (
+            <Eye aria-hidden className="size-4" strokeWidth={2} />
+          )}
+        </button>
+      </div>
+      {hint ? <p className="native-auth__hint">{hint}</p> : null}
+    </div>
+  );
+}
+
+/** Six boxes, as in the native app; pasting or autofill fills them all. */
+function CodeBoxes({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const digits = value.replace(/\D/g, "").slice(0, 6).padEnd(6, " ").split("");
+
+  function setAt(index: number, raw: string) {
+    const cleaned = raw.replace(/\D/g, "");
+    if (cleaned.length > 1) {
+      onChange(cleaned.slice(0, 6));
+      refs.current[Math.min(cleaned.length, 5)]?.focus();
+      return;
+    }
+    const chars = value.replace(/\D/g, "").slice(0, 6).split("");
+    while (chars.length < 6) chars.push("");
+    chars[index] = cleaned.slice(-1);
+    onChange(chars.join("").replace(/\s/g, ""));
+    if (cleaned && index < 5) refs.current[index + 1]?.focus();
+  }
+
+  return (
+    <div className="native-auth__otp" role="group" aria-label="Verification code">
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
+          type="text"
+          inputMode="numeric"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          maxLength={i === 0 ? 6 : 1}
+          disabled={disabled}
+          value={d.trim()}
+          aria-label={`Digit ${i + 1}`}
+          onChange={(e) => setAt(i, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Backspace" && !digits[i].trim() && i > 0) {
+              refs.current[i - 1]?.focus();
+            }
+          }}
+          className="native-auth__otp-box"
+        />
+      ))}
+    </div>
+  );
+}
+
 export function CognitoAuthForm({
   config,
   disabled,
@@ -89,6 +202,10 @@ export function CognitoAuthForm({
   initialMode = "signin",
   onModeChange,
   onEmailChange,
+  onAccountCheck,
+  providerButton,
+  controlRef,
+  layout = "default",
 }: {
   config: CognitoAuthConfig;
   disabled?: boolean;
@@ -106,11 +223,21 @@ export function CognitoAuthForm({
   initialMode?: CognitoAuthMode;
   onModeChange?: (mode: CognitoAuthMode) => void;
   onEmailChange?: (email: string) => void;
+  /** Result of the `continue` step's email check. */
+  onAccountCheck?: (account: AuthEmailCheck) => void;
+  /** Known email with no password: that provider's button instead of the password field. */
+  providerButton?: (provider: "apple" | "google") => ReactNode;
+  /** Lets the parent switch steps (e.g. a Back link outside the form). */
+  controlRef?: MutableRefObject<((mode: CognitoAuthMode) => void) | null>;
+  /** `native`: mobile layout matching the app; the band above carries each step's heading. */
+  layout?: "default" | "native";
 }) {
   const [mode, setMode] = useState<CognitoAuthMode>(
-    initialMode === "signup" ? "signup" : "signin",
+    initialMode === "continue" || initialMode === "signup" ? initialMode : "signin",
   );
-  const [displayName, setDisplayName] = useState("");
+  const [account, setAccount] = useState<AuthEmailCheck | null>(null);
+  // Setter only used by the commented-out name field.
+  const [displayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -138,6 +265,14 @@ export function CognitoAuthForm({
       setEmail((value) => value.trim().toLowerCase());
     }
   }
+
+  useEffect(() => {
+    if (!controlRef) return;
+    controlRef.current = go;
+    return () => {
+      controlRef.current = null;
+    };
+  });
 
   useEffect(() => {
     if (initialMode !== "signin" && initialMode !== "signup") return;
@@ -221,6 +356,14 @@ export function CognitoAuthForm({
     if (username !== email) setEmail(username);
     setBusy(true);
     try {
+      if (mode === "continue") {
+        const result = await checkAuthEmail(username);
+        setAccount(result);
+        onAccountCheck?.(result);
+        setPassword("");
+        go(result.next === "signin" ? "signin" : "signup");
+        return;
+      }
       const cfg = await resolveConfig();
       if (mode === "signin") {
         try {
@@ -247,11 +390,8 @@ export function CognitoAuthForm({
         }
       }
       if (mode === "signup") {
-        const name = displayName.trim();
-        if (!name) {
-          setError("Please enter your name.");
-          return;
-        }
+        // Name is asked for afterwards on /auth/complete-profile (email-first).
+        const name = displayName.trim() || undefined;
         const { confirmed } = await cognitoSignUp(cfg, username, password, name);
         if (confirmed) {
           await finishSignIn(password, true, cfg);
@@ -337,7 +477,9 @@ export function CognitoAuthForm({
   }
 
   const submitLabel =
-    mode === "signup"
+    mode === "continue"
+      ? "Continue"
+      : mode === "signup"
       ? "Create my account"
       : mode === "confirm"
         ? "Confirm and continue"
@@ -348,7 +490,9 @@ export function CognitoAuthForm({
             : "Sign in";
 
   const busyLabel =
-    mode === "signup"
+    mode === "continue"
+      ? "Checking…"
+      : mode === "signup"
       ? "Creating account…"
       : mode === "confirm"
         ? "Confirming…"
@@ -359,7 +503,9 @@ export function CognitoAuthForm({
             : "Signing in…";
 
   const heading =
-    mode === "signup"
+    mode === "continue"
+      ? "Sign in or create an account"
+      : mode === "signup"
       ? "Create your account"
       : mode === "confirm"
         ? unverifiedExisting
@@ -373,7 +519,7 @@ export function CognitoAuthForm({
 
   const emailLabel = email.trim().toLowerCase();
   const sub =
-    mode === "signup"
+    mode === "continue" || mode === "signup"
       ? "Free to start. It takes less than a minute."
       : mode === "confirm"
         ? unverifiedExisting
@@ -389,11 +535,159 @@ export function CognitoAuthForm({
               : "Choose a new password, then you’re in."
             : "Good to see you again.";
 
-  const showIntro =
-    !hideIntro || (mode !== "signin" && mode !== "signup");
-  const showQuickActions =
-    Boolean(beforeForm || afterForm) && (mode === "signin" || mode === "signup");
+  const primaryStep = mode === "continue" || mode === "signin" || mode === "signup";
+  const showIntro = !hideIntro || !primaryStep;
+  const showQuickActions = Boolean(beforeForm || afterForm) && primaryStep;
+  /** Known email created with Apple / Google and no password. */
+  const socialOnly =
+    mode === "signin" &&
+    account != null &&
+    !account.hasPassword &&
+    account.providers.length > 0;
+  const socialProvider: "apple" | "google" = account?.providers.includes("apple")
+    ? "apple"
+    : "google";
   const errorId = "auth-form-error";
+
+  if (layout === "native") {
+    const nativeLabel =
+      mode === "continue"
+        ? busy ? "Checking…" : "Continue"
+        : mode === "signup"
+          ? busy ? "Creating…" : "Create my account"
+          : mode === "confirm"
+            ? busy ? "Verifying…" : "Verify"
+            : mode === "forgot"
+              ? busy ? "Sending…" : "Send reset code"
+              : mode === "reset"
+                ? busy ? "Saving…" : "Reset password"
+                : busy ? "Signing in…" : "Sign in";
+    const codeReady = code.replace(/\D/g, "").length === 6;
+    const submitBlocked =
+      mode === "continue" || mode === "forgot"
+        ? !email.trim()
+        : mode === "confirm"
+          ? !codeReady
+          : mode === "reset"
+            ? !codeReady || !password
+            : !password;
+
+    return (
+      <div className="native-auth__form">
+        {showQuickActions && beforeForm ? beforeForm : null}
+        <form onSubmit={(e) => void onSubmit(e)} className="native-auth__form">
+          {mode === "signin" || mode === "signup" ? (
+            <div className="native-auth__email-row">
+              <span className="native-auth__email-value">{emailLabel}</span>
+              <input type="email" name="email" autoComplete="username" value={email} readOnly hidden />
+              <button type="button" disabled={locked} onClick={() => go("continue")}>
+                Change
+              </button>
+            </div>
+          ) : null}
+
+          {mode === "continue" || mode === "forgot" ? (
+            <div className="native-auth__field">
+              <label htmlFor="auth-email">Email</label>
+              <input
+                id="auth-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="email"
+                enterKeyHint="go"
+                required
+                value={email}
+                onChange={(ev) => setEmail(ev.target.value.toLowerCase())}
+                onBlur={() => setEmail((value) => value.trim().toLowerCase())}
+                placeholder="you@example.com"
+                aria-describedby={error ? errorId : undefined}
+              />
+            </div>
+          ) : null}
+
+          {mode === "confirm" || mode === "reset" ? (
+            <CodeBoxes value={code} onChange={setCode} disabled={locked} />
+          ) : null}
+
+          {socialOnly ? (
+            <>
+              <p className="native-auth__hint native-auth__provider-note">
+                This account uses Sign in with {socialProvider === "apple" ? "Apple" : "Google"}.
+              </p>
+              {providerButton?.(socialProvider)}
+            </>
+          ) : null}
+
+          {(mode === "signin" && !socialOnly) || mode === "signup" || mode === "reset" ? (
+            <NativePasswordField
+              id="auth-password"
+              label={mode === "reset" ? "New password" : "Password"}
+              value={password}
+              onChange={setPassword}
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              placeholder={mode === "signin" ? undefined : "At least 8 characters"}
+              hint={
+                mode === "signin"
+                  ? undefined
+                  : "8+ characters, with upper and lower case and a number."
+              }
+            />
+          ) : null}
+
+          {mode === "signin" && !socialOnly ? (
+            <div className="native-auth__forgot-row">
+              <button type="button" disabled={locked} onClick={() => go("forgot")}>
+                Forgot password?
+              </button>
+            </div>
+          ) : null}
+
+          {notice && !/^we sent a (reset )?code to /i.test(notice) ? (
+            <p className="native-auth__notice" role="status">
+              {notice}
+            </p>
+          ) : null}
+          {error ? (
+            <p id={errorId} className="native-auth__error" role="alert" aria-live="polite">
+              {error}
+            </p>
+          ) : null}
+
+          {socialOnly ? null : (
+            <button type="submit" disabled={locked || submitBlocked} className="native-mist">
+              {nativeLabel}
+            </button>
+          )}
+
+          {mode === "confirm" || mode === "reset" ? (
+            <p className="native-auth__centre-link">
+              Didn’t get it?{" "}
+              <button
+                type="button"
+                disabled={locked || resendWaitSec > 0}
+                onClick={() => void resendCode()}
+              >
+                {resendWaitSec > 0 ? `Resend in ${resendWaitSec}s` : "Resend"}
+              </button>
+            </p>
+          ) : null}
+          {mode === "confirm" ? (
+            <p className="native-auth__centre-link">
+              Wrong address?{" "}
+              <button type="button" disabled={locked} onClick={() => go("continue")}>
+                Change email
+              </button>
+            </p>
+          ) : null}
+        </form>
+        {showQuickActions && afterForm ? afterForm : null}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -417,6 +711,7 @@ export function CognitoAuthForm({
         className="space-y-3.5"
         noValidate={false}
       >
+        {/* Email-first: name moves to /auth/complete-profile.
         {mode === "signup" ? (
           <div>
             <label
@@ -439,8 +734,26 @@ export function CognitoAuthForm({
             />
           </div>
         ) : null}
+        */}
 
-        {mode !== "confirm" && mode !== "reset" ? (
+        {mode === "signin" || mode === "signup" ? (
+          <div
+            className={`${fieldClass} flex items-center justify-between gap-3`}
+          >
+            <span className="min-w-0 truncate">{email.trim().toLowerCase()}</span>
+            <input type="email" name="email" autoComplete="username" value={email} readOnly hidden />
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => go("continue")}
+              className="-my-2 shrink-0 py-2 text-sm font-semibold text-accent-link underline-offset-2 hover:underline"
+            >
+              Change
+            </button>
+          </div>
+        ) : null}
+
+        {mode === "continue" || mode === "forgot" ? (
           <div>
             <label
               htmlFor="auth-email"
@@ -490,7 +803,16 @@ export function CognitoAuthForm({
           </div>
         ) : null}
 
-        {mode === "signin" || mode === "signup" || mode === "reset" ? (
+        {socialOnly ? (
+          <>
+            <p className="text-center text-sm text-marketing-body">
+              This account uses Sign in with {socialProvider === "apple" ? "Apple" : "Google"}.
+            </p>
+            {providerButton?.(socialProvider)}
+          </>
+        ) : null}
+
+        {(mode === "signin" && !socialOnly) || mode === "signup" || mode === "reset" ? (
           <PasswordField
             id="auth-password"
             label={mode === "reset" ? "New password" : "Password"}
@@ -514,7 +836,7 @@ export function CognitoAuthForm({
           />
         ) : null}
 
-        {mode === "signin" ? (
+        {mode === "signin" && !socialOnly ? (
           <div className="flex justify-end">
             <button
               type="button"
@@ -538,6 +860,7 @@ export function CognitoAuthForm({
           </p>
         ) : null}
 
+        {socialOnly ? null : (
         <button
           type="submit"
           disabled={locked}
@@ -549,9 +872,10 @@ export function CognitoAuthForm({
         >
           {busy ? busyLabel : submitLabel}
         </button>
+        )}
       </form>
 
-      {showQuickActions && afterForm && !beforeForm ? (
+      {showQuickActions && afterForm ? (
         <div className="mt-5 space-y-3">{afterForm}</div>
       ) : null}
 
@@ -566,32 +890,27 @@ export function CognitoAuthForm({
         </button>
       ) : null}
 
+      {/* Email-first: Continue decides sign in vs create, so no cross-links.
       <p className="mt-5 text-center text-[15px] text-marketing-body">
         {mode === "signin" ? (
           <>
             New here?{" "}
-            <button
-              type="button"
-              disabled={locked}
-              onClick={() => go("signup")}
-              className="font-semibold text-accent-link underline-offset-2 hover:underline"
-            >
+            <button type="button" disabled={locked} onClick={() => go("signup")} className="font-semibold text-accent-link underline-offset-2 hover:underline">
               Create an account
             </button>
           </>
         ) : mode === "signup" ? (
           <>
             Already have an account?{" "}
-            <button
-              type="button"
-              disabled={locked}
-              onClick={() => go("signin")}
-              className="font-semibold text-accent-link underline-offset-2 hover:underline"
-            >
+            <button type="button" disabled={locked} onClick={() => go("signin")} className="font-semibold text-accent-link underline-offset-2 hover:underline">
               Sign in
             </button>
           </>
-        ) : (
+        ) : ( ...Back to sign in... )}
+      </p>
+      */}
+      {primaryStep ? null : (
+        <p className="mt-5 text-center text-[15px] text-marketing-body">
           <button
             type="button"
             disabled={locked}
@@ -600,8 +919,8 @@ export function CognitoAuthForm({
           >
             Back to sign in
           </button>
-        )}
-      </p>
+        </p>
+      )}
     </div>
   );
 }

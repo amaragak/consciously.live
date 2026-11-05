@@ -1,6 +1,5 @@
 import { Suspense, useEffect, useMemo } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
 import { PlanGoalWorkspace } from "@/components/plan/plan-goal-workspace";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -94,10 +93,8 @@ function GoalPageFallback() {
 
 export function ManifestGoalPage() {
   return (
-    <IdeateCloudProvider>
-      <Suspense fallback={<GoalPageFallback />}>
-        <ManifestGoalPageInner />
-      </Suspense>
-    </IdeateCloudProvider>
+    <Suspense fallback={<GoalPageFallback />}>
+      <ManifestGoalPageInner />
+    </Suspense>
   );
 }

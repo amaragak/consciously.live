@@ -235,7 +235,7 @@ function BlogTagsInput({
         }}
         aria-label="Add a tag"
         placeholder={tags.length ? "Add another" : "Add a tag"}
-        className="min-w-[8rem] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 disabled:opacity-50"
+        className="min-w-[8rem] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-base text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 disabled:opacity-50"
       />
     </div>
   );
@@ -825,7 +825,7 @@ export function AdminReadPanel() {
             value={indexSummary}
             onChange={(e) => setIndexSummary(e.target.value)}
             rows={4}
-            className="w-full min-w-0 max-w-xl shrink-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full min-w-0 max-w-xl shrink-0 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
             placeholder={DEFAULT_INDEX_SUMMARY}
           />
           <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-2">
@@ -1023,7 +1023,7 @@ export function AdminReadPanel() {
               <input
                 value={draft.title}
                 onChange={(e) => onTitleChange(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                 placeholder="Post title"
               />
             </div>
@@ -1037,7 +1037,7 @@ export function AdminReadPanel() {
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, subheader: e.target.value }))
                 }
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                 placeholder="Shown under the title on the published article"
               />
             </div>
@@ -1054,7 +1054,7 @@ export function AdminReadPanel() {
                     category: normalizeBlogCategory(e.target.value),
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
               >
                 {BLOG_PUBLIC_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -1106,7 +1106,7 @@ export function AdminReadPanel() {
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, series: e.target.value }))
                   }
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                   placeholder="Chasing Mountains"
                 />
               </div>
@@ -1132,7 +1132,7 @@ export function AdminReadPanel() {
                       part: Number.isFinite(n) ? Math.round(n) : null,
                     }));
                   }}
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                   placeholder="1"
                 />
               </div>
@@ -1151,7 +1151,7 @@ export function AdminReadPanel() {
                 }
                 rows={5}
                 disabled={busy}
-                className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm leading-relaxed text-foreground"
+                className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-base leading-relaxed text-foreground"
                 placeholder="Working notes, outline, sources — only visible in admin."
               />
             </div>
@@ -1170,7 +1170,7 @@ export function AdminReadPanel() {
                       .replace(/[^a-z0-9-]+/g, "-"),
                   }));
                 }}
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-base text-foreground"
                 placeholder="url-slug"
               />
               <p className="mt-1 text-[11px] text-muted">
@@ -1238,7 +1238,7 @@ export function AdminReadPanel() {
                         e.target.value === "fish" ? "fish" : "speechify";
                       setDraft((d) => ({ ...d, audioTtsProvider: next }));
                     }}
-                    className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
+                    className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground disabled:opacity-50"
                   >
                     <option value="speechify">Speechify</option>
                     <option value="fish">Fish Audio</option>
@@ -1358,7 +1358,7 @@ export function AdminReadPanel() {
                   onChange={(e) => setCoverPrompt(e.target.value)}
                   rows={3}
                   placeholder="Generate from the essay, or write your own…"
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                 />
               </div>
               <div className="mt-2">
@@ -1373,7 +1373,7 @@ export function AdminReadPanel() {
                   onChange={(e) => setCoverPromptNotes(e.target.value)}
                   rows={2}
                   placeholder="e.g. less water, warmer light, show a figure from behind…"
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                 />
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -1491,7 +1491,7 @@ export function AdminReadPanel() {
                   value={listenInput}
                   onChange={(e) => setListenInput(e.target.value)}
                   placeholder="consciously.live/listen/… or slug"
-                  className="min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  className="min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                 />
                 <button
                   type="button"
@@ -1566,7 +1566,7 @@ export function AdminReadPanel() {
                   }))
                 }
                 placeholder="From Listen"
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
               />
             </div>
 
@@ -1590,7 +1590,7 @@ export function AdminReadPanel() {
                       : d.publishedAt,
                   }));
                 }}
-                className="mt-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="mt-1 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
               />
               <p className="mt-1 text-[11px] text-muted">
                 Read time (calculated):{" "}

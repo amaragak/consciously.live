@@ -714,7 +714,7 @@ export function JournalRichEditor({
                 }
                 chain.setParagraph().run();
               }}
-              className="cursor-pointer rounded-lg border border-border bg-transparent py-1.5 pl-2 pr-6 text-xs font-semibold text-muted outline-none hover:bg-accent-soft/50 hover:text-foreground"
+              className="cursor-pointer rounded-lg border border-border bg-transparent py-1.5 pl-2 pr-6 text-base font-semibold text-muted outline-none hover:bg-accent-soft/50 hover:text-foreground"
             >
               <option value="body">Body</option>
               <option value="header">Header</option>

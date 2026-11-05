@@ -1,7 +1,7 @@
 /**
  * Shared cache + warm decode for Library / Create style category covers.
- * Prefetch when Create opens so the style panel does not re-hit the network
- * each time the picker mounts.
+ * Known product-chrome thumbs ship in `public/category-thumbs/` (web + Capacitor).
+ * API covers only fill categories that are not bundled yet.
  */
 
 import {
@@ -13,11 +13,6 @@ import {
 export const CREATE_STYLE_TILE_IMAGE_WIDTH_PX = 200;
 export const CREATE_STYLE_TILE_IMAGE_HEIGHT_PX = 74;
 
-let cachedList: LibraryCategoryImagePublic[] | null = null;
-let cachedMap: Partial<Record<string, string>> | null = null;
-let inflight: Promise<LibraryCategoryImagePublic[]> | null = null;
-const decodedUrls = new Set<string>();
-
 /** Create Add-context tiles — refetch if a warm cache predates these slots. */
 const CREATE_CONTEXT_COVER_CATEGORIES = [
   "All",
@@ -27,32 +22,73 @@ const CREATE_CONTEXT_COVER_CATEGORIES = [
   "Heal",
 ] as const;
 
-/** Last-resort CDN covers so Create tiles paint even if the list API fails. */
-export function createContextCoverFallbacks(): Partial<Record<string, string>> {
-  const media = (
-    typeof import.meta !== "undefined" &&
-    typeof import.meta.env?.VITE_MEDIMADE_MEDIA_BASE_URL === "string"
-      ? import.meta.env.VITE_MEDIMADE_MEDIA_BASE_URL
-      : "https://d3k8rq6eqba40d.cloudfront.net"
-  ).replace(/\/$/, "");
-  return {
-    All: `${media}/category-covers/all-1792450561037.jpg`,
-    Journal: `${media}/category-covers/journal-1792450561739.jpg`,
-    Program: `${media}/category-covers/program-1792449331845.jpg`,
-    Manifest: `${media}/category-covers/manifest-1792449332438.jpg`,
-    Heal: `${media}/category-covers/heal-1792449332972.jpg`,
-  };
+/**
+ * Bundled category cover filenames under `/category-thumbs/`.
+ * Keep in sync with files in `public/category-thumbs/`.
+ */
+const BUNDLED_CATEGORY_THUMB_SLUGS: Record<string, string> = {
+  All: "all",
+  "Body scan": "body-scan",
+  Visualization: "visualization",
+  "Breath-led": "breath-led",
+  Manifestation: "manifestation",
+  "Affirmation loop": "affirmation-loop",
+  Story: "story",
+  Reflection: "reflection",
+  Sleep: "sleep",
+  "Loving-kindness": "loving-kindness",
+  "Anxiety relief": "anxiety-relief",
+  "Movement meditation": "movement-meditation",
+  "Open awareness": "open-awareness",
+  Journal: "journal",
+  Program: "program",
+  Manifest: "manifest",
+  Heal: "heal",
+};
+
+export function bundledCategoryThumb(category: string): string | undefined {
+  const slug = BUNDLED_CATEGORY_THUMB_SLUGS[category];
+  return slug ? `/category-thumbs/${slug}.jpg` : undefined;
 }
+
+/** Full local map for Create / style pickers (no network). */
+export function bundledCategoryThumbMap(): Partial<Record<string, string>> {
+  const map: Partial<Record<string, string>> = {};
+  for (const [category, slug] of Object.entries(BUNDLED_CATEGORY_THUMB_SLUGS)) {
+    const url = `/category-thumbs/${slug}.jpg`;
+    map[category] = url;
+    if (category === "All") map.all = url;
+  }
+  return map;
+}
+
+/** Last-resort covers so Create tiles paint even if the list API fails. */
+export function createContextCoverFallbacks(): Partial<Record<string, string>> {
+  const map: Partial<Record<string, string>> = {};
+  for (const category of CREATE_CONTEXT_COVER_CATEGORIES) {
+    const url = bundledCategoryThumb(category);
+    if (url) map[category] = url;
+  }
+  return map;
+}
+
+let cachedList: LibraryCategoryImagePublic[] | null = null;
+/** Seeded with bundled thumbs so Create / style pickers never wait on network. */
+let cachedMap: Partial<Record<string, string>> | null =
+  bundledCategoryThumbMap();
+let inflight: Promise<LibraryCategoryImagePublic[]> | null = null;
+const decodedUrls = new Set<string>();
 
 function listToMap(
   images: LibraryCategoryImagePublic[],
 ): Partial<Record<string, string>> {
-  const map: Partial<Record<string, string>> = {};
+  // Local product chrome first — Capacitor must not depend on CloudFront for these.
+  const map: Partial<Record<string, string>> = { ...bundledCategoryThumbMap() };
   for (const img of images) {
-    if (img.category && img.imageUrl) {
-      map[img.category] = img.imageUrl;
-      if (img.category === "All") map.all = img.imageUrl;
-    }
+    if (!img.category || !img.imageUrl) continue;
+    if (bundledCategoryThumb(img.category)) continue;
+    map[img.category] = img.imageUrl;
+    if (img.category === "All") map.all = img.imageUrl;
   }
   return map;
 }
@@ -72,13 +108,16 @@ export function categoryImageUrlForTile(
 ): string {
   const u = url.trim();
   if (!u) return "";
+  // Bundled paths need no transform CDN.
+  if (u.startsWith("/")) return u;
   try {
-    const parsed = new URL(u, typeof window !== "undefined" ? window.location.origin : "https://local");
-    // Cloudinary-style / Cloudflare Image Resizing hooks if ever present.
+    const parsed = new URL(
+      u,
+      typeof window !== "undefined" ? window.location.origin : "https://local",
+    );
     if (parsed.searchParams.has("w") || parsed.searchParams.has("width")) {
       return u;
     }
-    // Only append soft hints when the host looks like a transform CDN.
     const host = parsed.hostname;
     if (
       host.includes("cloudinary") ||
@@ -113,15 +152,16 @@ function warmDecodeUrl(url: string): Promise<void> {
   });
 }
 
-async function warmDecodeAll(images: LibraryCategoryImagePublic[]): Promise<void> {
-  await Promise.all(
-    images.map((img) => warmDecodeUrl(img.imageUrl)).filter(Boolean),
-  );
+async function warmDecodeMap(
+  map: Partial<Record<string, string>>,
+): Promise<void> {
+  const urls = [...new Set(Object.values(map).filter(Boolean))] as string[];
+  await Promise.all(urls.map((url) => warmDecodeUrl(url)));
 }
 
-/** Sync peek of the URL map (empty object if not loaded yet). */
+/** Sync peek of the URL map (bundled defaults if not loaded yet). */
 export function peekLibraryCategoryImageMap(): Partial<Record<string, string>> {
-  return cachedMap ? { ...cachedMap } : {};
+  return cachedMap ? { ...cachedMap } : bundledCategoryThumbMap();
 }
 
 export function libraryCategoryImagesCached(): boolean {
@@ -129,8 +169,8 @@ export function libraryCategoryImagesCached(): boolean {
 }
 
 /**
- * Fetch once (shared), populate cache, and decode tile-sized covers into the
- * browser image cache. Safe to call repeatedly.
+ * Seed from bundled thumbs immediately, then optionally merge any
+ * non-bundled categories from the API. Safe to call repeatedly.
  */
 export async function prefetchLibraryCategoryImages(options?: {
   force?: boolean;
@@ -139,14 +179,34 @@ export async function prefetchLibraryCategoryImages(options?: {
     cachedMap = null;
     cachedList = null;
   }
-  if (cachedMap && !cacheMissingCreateCovers(cachedMap)) {
-    void warmDecodeAll(cachedList ?? []);
+  if (!cachedMap) {
+    cachedMap = bundledCategoryThumbMap();
+    void warmDecodeMap(cachedMap);
+  }
+  if (cachedMap && !cacheMissingCreateCovers(cachedMap) && !options?.force) {
+    // Bundled set is complete — still try API once for future slots, non-blocking.
+    if (!inflight && !cachedList) {
+      inflight = fetchLibraryCategoryImages()
+        .then((list) => {
+          cachedList = list;
+          cachedMap = listToMap(list);
+          return list;
+        })
+        .catch(() => {
+          cachedList = [];
+          return [] as LibraryCategoryImagePublic[];
+        })
+        .finally(() => {
+          inflight = null;
+        });
+      void inflight.then(() => {
+        if (cachedMap) void warmDecodeMap(cachedMap);
+      });
+    }
     return { ...cachedMap };
   }
-  // Stale session cache (e.g. before Manifest slot existed) — refetch.
   if (cachedMap && cacheMissingCreateCovers(cachedMap)) {
-    cachedMap = null;
-    cachedList = null;
+    cachedMap = bundledCategoryThumbMap();
   }
   if (!inflight) {
     inflight = fetchLibraryCategoryImages()
@@ -155,18 +215,23 @@ export async function prefetchLibraryCategoryImages(options?: {
         cachedMap = listToMap(list);
         return list;
       })
+      .catch(() => {
+        cachedList = [];
+        cachedMap = bundledCategoryThumbMap();
+        return [] as LibraryCategoryImagePublic[];
+      })
       .finally(() => {
         inflight = null;
       });
   }
-  const list = await inflight;
-  cachedList = list;
-  cachedMap = listToMap(list);
-  await warmDecodeAll(list);
-  return { ...cachedMap };
+  await inflight;
+  if (cachedMap) await warmDecodeMap(cachedMap);
+  return { ...(cachedMap ?? bundledCategoryThumbMap()) };
 }
 
-/** Create wizard entry: kick off prefetch without blocking paint. */
+/** Create wizard entry: warm local covers without blocking paint. */
 export function prefetchLibraryCategoryImagesForCreate(): void {
-  void prefetchLibraryCategoryImages({ force: true }).catch(() => {});
+  cachedMap = bundledCategoryThumbMap();
+  void warmDecodeMap(cachedMap);
+  void prefetchLibraryCategoryImages().catch(() => {});
 }

@@ -768,13 +768,13 @@ export function JournalImportWorkspace({ open, onClose, onImported }: Props) {
                         date_uncertain: !iso,
                       });
                     }}
-                    className="h-9 shrink-0 rounded-[10px] border border-border bg-white px-3 text-[14px] text-foreground"
+                    className="h-9 shrink-0 rounded-[10px] border border-border bg-white px-3 text-base text-foreground"
                   />
                   <input
                     type="text"
                     value={row.title ?? ""}
                     onChange={(e) => updateRow(active, { title: e.target.value })}
-                    className="h-9 min-w-0 flex-1 rounded-[10px] border border-border bg-white px-3 text-[14px] font-semibold text-foreground"
+                    className="h-9 min-w-0 flex-1 rounded-[10px] border border-border bg-white px-3 text-base font-semibold text-foreground"
                     placeholder="Title"
                   />
                 </div>
@@ -803,7 +803,7 @@ export function JournalImportWorkspace({ open, onClose, onImported }: Props) {
                       value={row.body}
                       onChange={(e) => updateRow(active, { body: e.target.value })}
                       rows={pageImage ? 12 : 16}
-                      className="h-full min-h-[180px] w-full rounded-xl border border-border bg-white px-4 py-3.5 text-[15px] leading-[1.65] text-foreground"
+                      className="h-full min-h-[180px] w-full rounded-xl border border-border bg-white px-4 py-3.5 text-base leading-[1.65] text-foreground"
                     />
                   </div>
                 </div>

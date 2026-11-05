@@ -283,6 +283,11 @@
   .auth-split--native .auth-split__brand {
     padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
   }
+
+  .auth-split--native .native-back {
+    top: calc(3.5rem + env(safe-area-inset-top, 0px) - 8px);
+    left: calc(5rem - 3.25rem);
+  }
 }
 
 /* Brand lockup styles live in brand-lockup-markup.ts (shared with the splash). */
@@ -300,7 +305,15 @@
   flex-direction: column;
   background-color: #1a1820;
   color: #f6f1e7;
-  overflow: hidden;
+  /* The shell scrolls, so the lockup/glow layers move with the band. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.native-auth-shell--loading,
+.native-auth-shell--animating {
+  overflow-y: hidden;
 }
 
 .native-auth-shell__paisley {
@@ -339,8 +352,7 @@
 .native-auth-shell__content {
   position: relative;
   z-index: 1;
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
 }
@@ -366,8 +378,39 @@
   min-height: 100%;
 }
 
+.native-auth-shell .auth-split--native {
+  position: relative;
+  inset: auto;
+  height: auto;
+  flex: 1 0 auto;
+  overflow: visible;
+}
+
+/* Never shrink under the keyboard: cream runs to the bottom, no navy gap. */
+.native-auth-shell .auth-split__panel {
+  flex: 1 0 auto;
+  /* Keyboard overlays the page; this cream space sits under it so the field can scroll into view. */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--auth-kb-h, 0px));
+}
+
 .native-auth-shell .auth-split__brand {
   background-color: transparent;
+  /* The outgoing headline fades out over the band edge while the form eases. */
+  overflow: visible;
+}
+
+/* One headline size / line height on every step; long ones wrap, never shrink. */
+.auth-split--native .auth-split__headline {
+  font-size: clamp(1.7rem, 9.5vw, 2.625rem);
+  line-height: 1.05;
+}
+
+.auth-split--native .auth-split__support {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .native-auth-shell .auth-split__brand::before {
@@ -399,12 +442,6 @@
 .native-auth__headline-line {
   display: block;
   white-space: nowrap;
-  font-size: clamp(1.7rem, 9.5vw, 2.625rem);
-}
-
-.auth-split__headline:has(.native-auth__headline-line) {
-  font-size: inherit;
-  line-height: 1.05;
 }
 
 .native-auth__form {
@@ -477,6 +514,88 @@
   color: #857c70;
 }
 
+.native-auth__email-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0 0.5rem 0 1rem;
+  border-radius: 14px;
+  border: 1px solid rgb(62 52 66 / 0.1);
+  background: rgb(255 255 255 / 0.55);
+}
+
+.native-auth__email-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1rem;
+  color: #2e2733;
+}
+
+.native-auth__email-row button {
+  flex-shrink: 0;
+  padding: 0.5rem;
+  border: 0;
+  background: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--accent-link, #5b6f94);
+  cursor: pointer;
+}
+
+.native-auth__provider-note {
+  font-size: 0.9375rem;
+  text-align: center;
+}
+
+.native-whats-inside {
+  margin-top: 0.5rem;
+  padding-top: 1.125rem;
+  border-top: 1px solid rgb(62 52 66 / 0.1);
+}
+
+.native-whats-inside__label {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-link);
+}
+
+.native-whats-inside__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.native-whats-inside__item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  color: #2e2733;
+}
+
+.native-whats-inside__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  color: var(--accent-button);
+  background: color-mix(in srgb, var(--accent-button) 14%, transparent);
+}
+
 .native-auth__forgot-row {
   display: flex;
   justify-content: flex-end;
@@ -495,13 +614,14 @@
 .native-auth__centre-link {
   margin: 0.25rem 0 0;
   text-align: center;
-  font-size: 0.875rem;
+  font-size: 1.0625rem;
   color: #4a4250;
 }
 
 .native-auth__centre-link button {
   border: 0;
   background: none;
+  padding: 0.5rem 0.125rem;
   font: inherit;
   font-weight: 600;
   color: var(--accent-link, #5b6f94);
@@ -1062,9 +1182,9 @@
 }
 
 .native-provider--apple {
-  border: 1px solid #1c2336;
-  background: #1c2336;
-  color: #f6f1e7;
+  border: 1px solid #000;
+  background: #000;
+  color: #fff;
 }
 
 .native-provider--outline {
@@ -1187,15 +1307,18 @@
   gap: 0.625rem;
 }
 
+/* In the band's left padding, centred on the 28px lockup row, so the lockup never moves. */
 .native-back {
-  position: relative;
+  position: absolute;
   z-index: 2;
+  top: calc(1.25rem + env(safe-area-inset-top, 0px) - 8px);
+  left: calc(0.6875rem - 1.375rem);
   display: flex;
   align-items: center;
   justify-content: center;
   width: 2.75rem;
   height: 2.75rem;
-  margin: -0.5rem 0 0.25rem -0.625rem;
+  margin: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -1203,9 +1326,10 @@
   cursor: pointer;
 }
 
+/* Blocks taps while a request runs; the button label shows progress, so no dimming. */
 .native-busy {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgb(10 14 26 / 0.35);
+  background: transparent;
 }

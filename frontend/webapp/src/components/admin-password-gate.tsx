@@ -49,7 +49,7 @@ export function AdminPasswordGate({ children }: { children: ReactNode }) {
             setPassword(e.target.value);
             setError(false);
           }}
-          className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+          className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent"
         />
         {error ? (
           <p className="mt-2 text-sm text-danger">Wrong password.</p>

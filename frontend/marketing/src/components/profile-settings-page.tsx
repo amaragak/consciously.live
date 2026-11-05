@@ -204,7 +204,7 @@ export function ProfileSettingsPage() {
                 onChange={(e) =>
                   setPrefs((p) => ({ ...p, firstName: e.target.value }))
                 }
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/25 focus:ring-2"
+                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/25 focus:ring-2"
                 autoComplete="given-name"
               />
             </div>
@@ -217,7 +217,7 @@ export function ProfileSettingsPage() {
                 onChange={(e) =>
                   setPrefs((p) => ({ ...p, lastName: e.target.value }))
                 }
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/25 focus:ring-2"
+                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/25 focus:ring-2"
                 autoComplete="family-name"
               />
             </div>
@@ -239,7 +239,7 @@ export function ProfileSettingsPage() {
                       .replace(/[^a-z0-9_]/g, ""),
                   }))
                 }
-                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/25 focus:ring-2"
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/25 focus:ring-2"
                 autoComplete="username"
                 spellCheck={false}
               />

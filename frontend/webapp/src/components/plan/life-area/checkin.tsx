@@ -190,7 +190,7 @@ export function VoiceCheckIn({
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                className="mt-4 min-h-40 w-full rounded-xl border border-border bg-background p-3 text-sm outline-none"
+                className="mt-4 min-h-40 w-full rounded-xl border border-border bg-background p-3 text-base outline-none"
                 placeholder="Type what's on your mind."
               />
             ) : (

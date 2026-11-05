@@ -191,7 +191,7 @@ function InsightsYourLettersSidebar(props: {
             </label>
             <select
               id="insights-week-select"
-              className="w-full cursor-pointer rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent/50"
+              className="w-full cursor-pointer rounded-xl border border-border bg-card px-3 py-2.5 text-base text-foreground outline-none focus:border-accent/50"
               value={selectedWeekKey ?? ""}
               onChange={(e) => {
                 const v = e.target.value;

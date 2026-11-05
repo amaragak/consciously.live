@@ -1,5 +1,12 @@
 import { Link } from "@/lib/spa-nav";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ensureMedimadeSession,
   getMedimadeSessionDisplayName,
@@ -8,10 +15,16 @@ import {
   isMedimadeGuestAccount,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
+import { useOverviewEntrance } from "@/hooks/use-overview-entrance";
+import { useTabScrollRestore } from "@/hooks/use-tab-scroll-restore";
 import {
   pullIdeateStoreFromCloud,
   subscribeIdeateCloud,
 } from "@/lib/ideate-cloud";
+import {
+  fetchLibraryMeditationsCached,
+  peekLibraryMeditationsCache,
+} from "@/lib/library-list-cache";
 import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
 import { formatDuration } from "@/components/library-meditation-card";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
@@ -32,7 +45,6 @@ import {
 } from "@/lib/journal-storage";
 import {
   fetchJournalStoreRemote,
-  listLibraryMeditations,
   type LibraryMeditationItem,
 } from "@/lib/medimade-api";
 import {
@@ -213,8 +225,18 @@ function Waveform({ compact = false }: { compact?: boolean }) {
 }
 
 /** Signed-in home — personal dashboard. */
+function visibleLibraryItems(
+  items: LibraryMeditationItem[],
+): LibraryMeditationItem[] {
+  return items
+    .filter((x) => x.catalogued && x.archived !== true && x.isDraft !== true)
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+}
+
 export function WelcomeDashboard() {
   const { playItem } = useLibraryPlayer();
+  const rootRef = useOverviewEntrance("dashboard");
+  useTabScrollRestore();
   const [greeting, setGreeting] = useState("Good morning");
   const [name, setName] = useState("there");
   const [dreams, setDreams] = useState<PlanDream[]>([]);
@@ -225,8 +247,11 @@ export function WelcomeDashboard() {
   const [values, setValues] = useState<string[]>([]);
   const [visionItems, setVisionItems] = useState<VisionBoardItem[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
-  const [meditations, setMeditations] = useState<LibraryMeditationItem[]>([]);
-  const [libraryReady, setLibraryReady] = useState(false);
+  const cachedLibrary = peekLibraryMeditationsCache();
+  const [meditations, setMeditations] = useState<LibraryMeditationItem[]>(() =>
+    cachedLibrary ? visibleLibraryItems(cachedLibrary) : [],
+  );
+  const [libraryReady, setLibraryReady] = useState(() => cachedLibrary != null);
   const [showJournalPreviews, setShowJournalPreviews] = useState(false);
 
   useEffect(() => {
@@ -323,15 +348,9 @@ export function WelcomeDashboard() {
           .catch(() => {
             /* keep local */
           });
-        const items = await listLibraryMeditations();
+        const items = await fetchLibraryMeditationsCached();
         if (cancelled) return;
-        const visible = items.filter(
-          (x) => x.catalogued && x.archived !== true && x.isDraft !== true,
-        );
-        visible.sort((a, b) =>
-          (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
-        );
-        setMeditations(visible);
+        setMeditations(visibleLibraryItems(items));
         setLibraryReady(true);
       } catch {
         if (cancelled) return;
@@ -501,19 +520,21 @@ export function WelcomeDashboard() {
   }
 
   return (
-    <div className="welcome-dashboard relative mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
+    <div
+      ref={rootRef}
+      className="overview-entrance welcome-dashboard relative mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4"
+    >
       <section
+        data-dash-reveal
         aria-label="Today"
-        className="relative flex flex-col gap-5 overflow-hidden rounded-[22px] px-5 py-6 text-[#F3EDE2] shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:flex-row md:gap-7 md:px-[30px] md:py-7"
+        className="relative flex flex-col gap-3.5 overflow-hidden rounded-[22px] px-5 pb-1.5 pt-4 text-[#F3EDE2] shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:flex-row md:gap-7 md:px-[30px] md:py-7"
         style={{ backgroundColor: "#0F1B2D" }}
       >
         <div className="navy-paisley-plate" aria-hidden />
         <div className="relative flex min-w-0 flex-[1.2] flex-col justify-center gap-3.5">
-          <h1 className="font-display text-[32px] font-normal leading-[1.1] md:text-[40px]">
-            {greeting}, {name}.
-          </h1>
-          {/* Reserved 2-line block so cloud manifesto load doesn’t grow the hero. */}
-          <div className="min-h-[calc(1.45em*2)] font-display text-[17px] italic leading-[1.45] md:min-h-[calc(1.45em*2)] md:text-[19px]">
+          <FitGreeting text={`${greeting}, ${name}.`} />
+          {/* Reserved 2-line block so cloud manifesto load doesn’t grow the hero. Desktop only. */}
+          <div className="hidden min-h-[calc(1.45em*2)] font-display text-[17px] italic leading-[1.45] md:block md:min-h-[calc(1.45em*2)] md:text-[19px]">
             {manifesto ? (
               <p className="line-clamp-2 text-[rgba(243,237,226,0.82)]">
                 “{manifesto}”
@@ -527,7 +548,9 @@ export function WelcomeDashboard() {
               </Link>
             )}
           </div>
+          {todayStats.partialStreak > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
+            {/* “Becoming · …” chip removed (random tracker item; consciously-dashboard-compact-mobile).
             {chip ? (
               <Link
                 href={chip.href}
@@ -538,7 +561,7 @@ export function WelcomeDashboard() {
                 <SelectChevron direction="right" className="text-[#F3EDE2]" />
               </Link>
             ) : null}
-            {todayStats.partialStreak > 0 ? (
+            */}
               <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[rgba(200,164,106,0.45)] bg-[rgba(200,164,106,0.16)] px-3 text-[13px] font-semibold text-[#E6C98A]">
                 <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden>
                   <circle cx="24" cy="24" r="8.2" fill="#C8A46A" />
@@ -555,8 +578,8 @@ export function WelcomeDashboard() {
                 </svg>
                 {todayStats.partialStreak}-day streak
               </span>
-            ) : null}
           </div>
+          ) : null}
         </div>
         <div className="relative hidden w-px self-stretch bg-[rgba(243,237,226,0.15)] md:block" />
         <div className="relative h-px bg-[rgba(243,237,226,0.15)] md:hidden" />
@@ -673,7 +696,7 @@ export function WelcomeDashboard() {
                           entry={entry}
                           className="block truncate text-[14.5px] font-semibold text-foreground"
                         />
-                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
                             {chips.map((chip) => (
                               <span key={chip.kind} className="inline-flex h-[22px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-2 text-[11.5px] font-semibold text-[#8A6424]">
                                 <JournalKindIcon kind={chip.kind} />
@@ -700,30 +723,22 @@ export function WelcomeDashboard() {
           className="md:col-span-2"
           action={<OutlineGo href="/manifest" label="Open Manifest" short="Open" />}
         >
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="flex min-w-0 flex-col gap-2">
               <span className="text-[13px] text-muted">Your vision board</span>
               {visionItems.length === 0 ? (
                 <Link href="/manifest/vision-board" className="text-[14px] font-medium text-accent-link">Start your vision board →</Link>
               ) : (
-                <>
-                  <div className="-mr-5 flex gap-2.5 overflow-x-auto pr-5 md:mr-0 md:grid md:grid-cols-4 md:overflow-visible md:pr-0">
-                    {visionItems.map((item) => (
-                      <Link key={item.id} href="/manifest/vision-board" className="h-[90px] w-[120px] shrink-0 overflow-hidden rounded-xl md:h-[86px] md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
-                        {item.imageUrl ? <img src={item.imageUrl} alt={item.label || ""} className="h-full w-full object-cover" /> : null}
-                      </Link>
-                    ))}
-                  </div>
-                  {visionItems.length > 2 ? (
-                    <p className="flex items-center gap-1 text-[11.5px] text-muted md:hidden">
-                      Swipe for more
-                      <SelectChevron direction="right" />
-                    </p>
-                  ) : null}
-                </>
+                <SwipeRow className="-mr-5 flex gap-2.5 overflow-x-auto pr-5 md:mr-0 md:grid md:grid-cols-4 md:overflow-visible md:pr-0">
+                  {visionItems.map((item) => (
+                    <Link key={item.id} href="/manifest/vision-board" className="h-[90px] w-[120px] shrink-0 overflow-hidden rounded-xl md:h-[86px] md:w-auto" style={{ background: item.color || "var(--accent-soft)" }}>
+                      {item.imageUrl ? <img src={item.imageUrl} alt={item.label || ""} className="h-full w-full object-cover" /> : null}
+                    </Link>
+                  ))}
+                </SwipeRow>
               )}
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex min-w-0 flex-col gap-2">
               <span className="text-[13px] text-muted">Your story</span>
               {storyPlacement ? (
                 <DashboardStoryManifestRow placement={storyPlacement} firstName={storyFirstName} onPlay={playStory} compact />
@@ -747,8 +762,7 @@ export function WelcomeDashboard() {
             {lifeAreas.length === 0 ? (
               <Link href="/manifest?new=1" className="text-[14px] font-medium text-accent-link">Map your life areas →</Link>
             ) : (
-              <>
-                <div className={`-mr-5 flex gap-3 overflow-x-auto pb-1 pr-5 md:mr-0 md:pr-0 ${lifeAreas.length <= 4 ? "md:overflow-visible" : ""}`}>
+              <SwipeRow className={`-mr-5 flex gap-3 overflow-x-auto pb-1 pr-5 md:mr-0 md:pr-0 ${lifeAreas.length <= 4 ? "md:overflow-visible" : ""}`}>
                   {lifeAreas.map((row) => {
                     const pct = row.total > 0 ? Math.round((row.done / row.total) * 100) : 0;
                     return (
@@ -773,14 +787,7 @@ export function WelcomeDashboard() {
                       </Link>
                     );
                   })}
-                </div>
-                {lifeAreas.length > 1 ? (
-                  <p className="flex items-center gap-1 text-[11.5px] text-muted md:hidden">
-                    Swipe for more
-                    <SelectChevron direction="right" />
-                  </p>
-                ) : null}
-              </>
+              </SwipeRow>
             )}
           </div>
           <div className="mt-auto flex flex-wrap gap-2 pt-1">
@@ -846,7 +853,7 @@ export function WelcomeDashboard() {
                   />
                   <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{task.text}</span>
                   {task.lifeAreaTitle ? (
-                    <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-[#F6EEDD] px-[7px] text-[10.5px] font-bold uppercase tracking-[0.8px] text-[#8A6424]">{task.lifeAreaTitle}</span>
+                    <span className="inline-block h-5 max-w-[45%] shrink-0 truncate rounded-md bg-[#F6EEDD] px-[7px] text-[10.5px] font-bold uppercase leading-5 tracking-[0.8px] text-[#8A6424]">{task.lifeAreaTitle}</span>
                   ) : null}
                 </li>
               ))}
@@ -879,7 +886,7 @@ export function WelcomeDashboard() {
               onChange={(event) => setFocusDraft(event.target.value)}
               placeholder="Add a goal"
               aria-label="Add a goal"
-              className="h-[38px] min-w-0 flex-1 rounded-full border border-border bg-card px-4 text-[14px] text-foreground outline-none placeholder:text-muted"
+              className="h-[38px] min-w-0 flex-1 rounded-full border border-border bg-card px-4 text-base text-foreground outline-none placeholder:text-muted"
             />
             <button type="submit" className="inline-flex h-[38px] cursor-pointer items-center gap-2 rounded-full border border-[#AFC2DC] px-5 text-[14px] font-semibold text-on-accent" style={PRIMARY_ACCENT_FILL_STYLE}>
               <PlusMark />
@@ -891,6 +898,101 @@ export function WelcomeDashboard() {
 
       <DashboardAffirmationsCard />
     </div>
+  );
+}
+
+const GREETING_MOBILE_MAX_PX = 32;
+const GREETING_MOBILE_MIN_PX = 22;
+
+/**
+ * Greeting on one line on mobile: shrinks from 32px to a 22px floor to fit the
+ * card, and only wraps if it still overflows there. Desktop keeps its 40px.
+ */
+function FitGreeting({ text }: { text: string }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const mq = window.matchMedia("(max-width: 767.98px)");
+    const fit = () => {
+      if (!mq.matches) {
+        el.style.fontSize = "";
+        el.style.whiteSpace = "";
+        return;
+      }
+      el.style.whiteSpace = "nowrap";
+      el.style.fontSize = `${GREETING_MOBILE_MAX_PX}px`;
+      const available = el.clientWidth;
+      const needed = el.scrollWidth;
+      if (needed <= available) return;
+      const size = Math.floor(((GREETING_MOBILE_MAX_PX * available) / needed) * 2) / 2;
+      if (size >= GREETING_MOBILE_MIN_PX) {
+        el.style.fontSize = `${size}px`;
+        return;
+      }
+      el.style.fontSize = `${GREETING_MOBILE_MIN_PX}px`;
+      el.style.whiteSpace = "normal";
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    mq.addEventListener("change", fit);
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) fit();
+    });
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+      mq.removeEventListener("change", fit);
+    };
+  }, [text]);
+
+  return (
+    <h1
+      ref={ref}
+      className="font-display text-[32px] font-normal leading-[1.1] md:text-[40px]"
+    >
+      {text}
+    </h1>
+  );
+}
+
+/**
+ * Horizontal swipe row (mobile). Clipped at the card's inner edge, no scrollbar;
+ * "Swipe for more" shows only while the row actually overflows.
+ */
+function SwipeRow({ className, children }: { className: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setOverflows(el.scrollWidth > el.clientWidth + 1);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    const mo = new MutationObserver(check);
+    mo.observe(el, { childList: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, []);
+
+  return (
+    <>
+      <div ref={ref} className={`${className} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+        {children}
+      </div>
+      {overflows ? (
+        <p className="flex items-center gap-1 text-[11.5px] text-muted md:hidden">
+          Swipe for more
+          <SelectChevron direction="right" />
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -906,7 +1008,10 @@ function DashCard({
   className?: string;
 }) {
   return (
-    <section className={`flex flex-col gap-3 rounded-[22px] border border-border bg-card p-5 shadow-[0_2px_12px_rgba(15,27,45,0.05)] ${className}`}>
+    <section
+      data-dash-reveal
+      className={`flex min-w-0 flex-col gap-3 overflow-hidden rounded-[22px] border border-border bg-card p-5 shadow-[0_2px_12px_rgba(15,27,45,0.05)] ${className}`}
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-[#8A6424]">{label}</p>
         {action}

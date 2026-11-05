@@ -19,13 +19,14 @@ export type Geo = { left: number; top: number; dx: number; dy: number };
 export function measureLockupGeo(shell: HTMLElement, placeholder: HTMLElement): Geo {
   const s = shell.getBoundingClientRect();
   const slot = placeholder.getBoundingClientRect();
-  const left = slot.left - s.left;
-  const top = slot.top - s.top;
+  // Shell is the scroll container: positions are in its content box.
+  const left = slot.left - s.left + shell.scrollLeft;
+  const top = slot.top - s.top + shell.scrollTop;
   return {
     left,
     top,
-    dx: s.width / 2 - (left + slot.width / 2),
-    dy: s.height / 2 - (top + slot.height / 2),
+    dx: shell.scrollLeft + s.width / 2 - (left + slot.width / 2),
+    dy: shell.scrollTop + s.height / 2 - (top + slot.height / 2),
   };
 }
 

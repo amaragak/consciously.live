@@ -72,12 +72,14 @@ import {
   peekMeditateOverviewCreateHandoff,
 } from "@/lib/meditate-overview-create-handoff";
 import {
+  bundledCategoryThumb,
+  bundledCategoryThumbMap,
   categoryImageUrlForTile,
   createContextCoverFallbacks,
   peekLibraryCategoryImageMap,
-  prefetchLibraryCategoryImages,
   prefetchLibraryCategoryImagesForCreate,
 } from "@/lib/library-category-images-cache";
+import { CoverImage } from "@/components/cover-image";
 import {
   buildProgramMakeOwnApiContent,
   programHandoffFromLibrary,
@@ -102,7 +104,6 @@ import {
 import {
   createMeditationAudioJob,
   coerceVoicePrefs,
-  fetchLibraryCategoryImages,
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
   listLibraryPrograms,
@@ -543,44 +544,14 @@ export function CreateOneFlow({
   );
   const onEnterShapeStepRef = useRef<(() => void) | null>(null);
 
-  const [categoryImageUrls, setCategoryImageUrls] = useState<
-    Partial<Record<string, string>>
-  >(() => ({
-    ...createContextCoverFallbacks(),
+  const [categoryImageUrls] = useState<Partial<Record<string, string>>>(() => ({
+    ...bundledCategoryThumbMap(),
     ...peekLibraryCategoryImageMap(),
   }));
 
-  // Warm style-panel + Add context covers as soon as Create mounts.
+  // Warm bundled style + context covers (local; no CloudFront wait).
   useEffect(() => {
-    let cancelled = false;
     prefetchLibraryCategoryImagesForCreate();
-    void fetchLibraryCategoryImages()
-      .then((list) => {
-        if (cancelled) return;
-        const map: Partial<Record<string, string>> = {
-          ...createContextCoverFallbacks(),
-          ...peekLibraryCategoryImageMap(),
-        };
-        for (const img of list) {
-          if (img.category && img.imageUrl) {
-            map[img.category] = img.imageUrl;
-            if (img.category === "All") map.all = img.imageUrl;
-          }
-        }
-        setCategoryImageUrls(map);
-        void prefetchLibraryCategoryImages({ force: true }).catch(() => {});
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCategoryImageUrls((prev) => ({
-            ...createContextCoverFallbacks(),
-            ...prev,
-          }));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Legacy path → one-flow step
@@ -2171,6 +2142,7 @@ export function CreateOneFlow({
   ) => {
     const coverUrl =
       categoryImageUrls[coverCategory]?.trim() ||
+      bundledCategoryThumb(coverCategory) ||
       createContextCoverFallbacks()[coverCategory]?.trim() ||
       "";
     return (
@@ -2187,13 +2159,10 @@ export function CreateOneFlow({
       >
         <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden bg-gradient-to-br from-accent/25 via-accent-soft/40 to-selected/20 md:aspect-[4/3] md:h-auto md:w-full">
           {coverUrl ? (
-            <img
+            <CoverImage
               src={categoryImageUrlForTile(coverUrl, 480, 360)}
-              alt=""
-              width={480}
-              height={360}
-              decoding="async"
-              className="block h-full w-full object-cover object-[center_40%]"
+              className="absolute inset-0 h-full w-full"
+              imgClassName="absolute inset-0 h-full w-full object-cover object-[center_40%]"
             />
           ) : null}
           {opts.selected ? (

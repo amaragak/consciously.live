@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { GripVertical, MoreHorizontal, Pin } from "lucide-react";
-import { IdeateCloudProvider, useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
+import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { QuoteComposerDialog } from "@/components/plan/manifesto-editors";
 import { ManifestoSubpageHeader } from "@/components/plan/manifesto-section";
 import {
@@ -98,7 +98,7 @@ function WordsPageBody() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search quotes"
           aria-label="Search quotes"
-          className="w-full max-w-md rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+          className="w-full max-w-md rounded-xl border border-border bg-card px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
         />
       ) : null}
 
@@ -225,9 +225,5 @@ function WordsPageBody() {
 }
 
 export function ManifestWordsPage() {
-  return (
-    <IdeateCloudProvider>
-      <WordsPageBody />
-    </IdeateCloudProvider>
-  );
+  return <WordsPageBody />;
 }

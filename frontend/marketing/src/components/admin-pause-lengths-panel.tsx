@@ -78,7 +78,7 @@ export function AdminPauseLengthsPanel(props: {
                 onChange={(e) =>
                   setPauses((p) => (p ? { ...p, [f.id]: Number(e.target.value) } : p))
                 }
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground"
               />
             </label>
           ))}

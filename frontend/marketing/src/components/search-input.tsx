@@ -56,9 +56,7 @@ export function SearchInput({
         onChange={handleChange}
         placeholder={placeholder}
         aria-label={ariaLabel ?? placeholder}
-        className={`app-search-input w-full rounded-xl border border-border py-2.5 pl-9 pr-9 text-sm text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 ${
-          /\bbg-/.test(inputClassName) ? "" : "bg-background"
-        } ${inputClassName}`.trim()}
+        className={`app-search-input w-full rounded-xl border border-border py-2.5 pl-9 pr-9 text-base text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50 ${ /\bbg-/.test(inputClassName) ? "" : "bg-background" } ${inputClassName}`.trim()}
       />
       {value.trim() ? (
         <button

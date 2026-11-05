@@ -403,7 +403,7 @@ export function AssistantChatWorkspace() {
                                     }}
                                     aria-label="Chat name"
                                     placeholder="Chat name"
-                                    className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm font-semibold outline-none ring-accent/30 focus:ring-2"
+                                    className="w-full rounded-md border border-border bg-background px-2 py-1 text-base font-semibold outline-none ring-accent/30 focus:ring-2"
                                   />
                                 </form>
                               ) : (

@@ -163,7 +163,7 @@ export function PlanSubtasksPanel({
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="Add a goal..."
-            className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none ring-accent/25 focus:ring-2"
+            className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-base outline-none ring-accent/25 focus:ring-2"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -184,7 +184,7 @@ export function PlanSubtasksPanel({
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SubtaskSortKey)}
-              className="cursor-pointer border-0 bg-transparent py-1 text-[12px] text-muted outline-none hover:text-foreground"
+              className="cursor-pointer border-0 bg-transparent py-1 text-base text-muted outline-none hover:text-foreground"
               aria-label="Sort goals"
             >
               {SORT_OPTIONS.map((opt) => (

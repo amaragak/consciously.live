@@ -286,6 +286,8 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
     if (
       pathname === "/journal/gratitudes" ||
       pathname.startsWith("/journal/gratitudes/") ||
+      pathname === "/journal/gratitude" ||
+      pathname.startsWith("/journal/gratitude/") ||
       pathname === "/journal/insights" ||
       pathname.startsWith("/journal/insights/")
     ) {
@@ -300,7 +302,9 @@ export function pathMatchesHref(pathname: string, href: string): boolean {
   if (pathOnly === "/journal/gratitudes") {
     return (
       pathname === "/journal/gratitudes" ||
-      pathname.startsWith("/journal/gratitudes/")
+      pathname.startsWith("/journal/gratitudes/") ||
+      pathname === "/journal/gratitude" ||
+      pathname.startsWith("/journal/gratitude/")
     );
   }
   if (pathOnly === "/journal/insights") {
@@ -378,7 +382,9 @@ export function isSubItemActive(
   if (sectionId === "journal" && sub.id === "gratitudes") {
     return (
       pathname === "/journal/gratitudes" ||
-      pathname.startsWith("/journal/gratitudes/")
+      pathname.startsWith("/journal/gratitudes/") ||
+      pathname === "/journal/gratitude" ||
+      pathname.startsWith("/journal/gratitude/")
     );
   }
   if (sectionId === "journal" && sub.id === "insights") {
@@ -781,12 +787,41 @@ export function buildAppBreadcrumbs(
     }
     if (
       pathname === "/journal/gratitudes" ||
-      pathname.startsWith("/journal/gratitudes/")
+      pathname.startsWith("/journal/gratitudes/") ||
+      pathname === "/journal/gratitude" ||
+      pathname.startsWith("/journal/gratitude/")
     ) {
       const isNew = new URLSearchParams(search).get("new") === "1";
+      const isAll =
+        pathname === "/journal/gratitudes/all" ||
+        pathname === "/journal/gratitude/all" ||
+        pathname === "/journal/gratitudes/all/" ||
+        pathname === "/journal/gratitude/all/";
       const gratitudeEntryMatch =
-        /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
-      if (gratitudeEntryMatch?.[1]) {
+        /^\/journal\/gratitudes?\/([^/]+)\/?$/.exec(pathname);
+      const entrySlug = gratitudeEntryMatch?.[1]
+        ? (() => {
+            try {
+              return decodeURIComponent(gratitudeEntryMatch[1]!);
+            } catch {
+              return gratitudeEntryMatch[1]!;
+            }
+          })()
+        : null;
+      if (isAll || (entrySlug && entrySlug.toLowerCase() === "all")) {
+        // All list: Journal | Gratitudes (in-page back chevron handles return).
+        return [
+          { label: "Journal", href: "/journal" },
+          { label: "Gratitudes", href: null },
+        ];
+      }
+      if (isNew && !entrySlug) {
+        return [
+          { label: "Journal", href: "/journal" },
+          { label: "New gratitude", href: null },
+        ];
+      }
+      if (entrySlug) {
         const label = opts?.gratitudeEntryLabel?.trim() || "Gratitude";
         return [
           { label: "Journal", href: "/journal" },
@@ -794,9 +829,10 @@ export function buildAppBreadcrumbs(
           { label, href: null },
         ];
       }
+      // Hub: Journal | Gratitudes
       return [
         { label: "Journal", href: "/journal" },
-        { label: isNew ? "New gratitude" : "Gratitudes", href: null },
+        { label: "Gratitudes", href: null },
       ];
     }
     if (

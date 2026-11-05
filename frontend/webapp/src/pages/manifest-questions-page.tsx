@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
-import { IdeateCloudProvider, useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
+import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import {
   AddQuestionDialog,
   AnswerQuestionDialog,
@@ -211,9 +211,5 @@ function QuestionSection({
 }
 
 export function ManifestQuestionsPage() {
-  return (
-    <IdeateCloudProvider>
-      <QuestionsPageBody />
-    </IdeateCloudProvider>
-  );
+  return <QuestionsPageBody />;
 }

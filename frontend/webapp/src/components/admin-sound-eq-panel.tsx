@@ -543,7 +543,7 @@ export function AdminSoundEqPanel({
                     void startPreview(next);
                   }
                 }}
-                className="h-9 rounded-xl border border-border bg-card px-2 text-sm text-foreground outline-none"
+                className="h-9 rounded-xl border border-border bg-card px-2 text-base text-foreground outline-none"
               >
                 {speakers.length === 0 ? (
                   <option value="">No samples</option>
@@ -635,7 +635,7 @@ export function AdminSoundEqPanel({
                         type: e.target.value as SoundEqBandType,
                       })
                     }
-                    className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+                    className="h-8 rounded-lg border border-border bg-background px-2 text-base"
                   >
                     <option value="peaking">Peaking</option>
                     <option value="lowshelf">Low shelf</option>
@@ -657,7 +657,7 @@ export function AdminSoundEqPanel({
                         frequency: Number(e.target.value) || 20,
                       })
                     }
-                    className="h-8 w-24 rounded-lg border border-border bg-background px-2 text-sm"
+                    className="h-8 w-24 rounded-lg border border-border bg-background px-2 text-base"
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-muted">
@@ -671,7 +671,7 @@ export function AdminSoundEqPanel({
                     onChange={(e) =>
                       updateBand(band.id, { Q: Number(e.target.value) || 0.1 })
                     }
-                    className="h-8 w-20 rounded-lg border border-border bg-background px-2 text-sm"
+                    className="h-8 w-20 rounded-lg border border-border bg-background px-2 text-base"
                   />
                 </label>
                 {band.type !== "lowpass" && band.type !== "highpass" ? (
@@ -688,7 +688,7 @@ export function AdminSoundEqPanel({
                           gain: Number(e.target.value) || 0,
                         })
                       }
-                      className="h-8 w-20 rounded-lg border border-border bg-background px-2 text-sm"
+                      className="h-8 w-20 rounded-lg border border-border bg-background px-2 text-base"
                     />
                   </label>
                 ) : null}

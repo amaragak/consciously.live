@@ -124,7 +124,7 @@ function TagsRow({
         }}
         aria-label="Add a tag"
         placeholder="Add a tag"
-        className="w-36 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50"
+        className="w-36 rounded-full border border-border bg-background px-3 py-1 text-base text-foreground outline-none placeholder:text-muted/70 focus:border-accent/50"
       />
     </div>
   );

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { TrackerTitleField, rowOpensOnKey, useCoarsePointer } from "@/components/plan/life-area/tracker";
 import { MIST, ProgressBar } from "@/components/plan/life-area/kit";
-import { IdeateCloudProvider, useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
+import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { loadIdeateStore, saveIdeateStore } from "@/lib/plan-ideate-store";
 import {
   addTrackerItem,
@@ -63,11 +63,7 @@ const KIND_LABEL: Record<TrackerKind, string> = {
 type Visible = { item: TrackerItem; level: number };
 
 export function ManifestTrackerPage() {
-  return (
-    <IdeateCloudProvider>
-      <TrackerAll />
-    </IdeateCloudProvider>
-  );
+  return <TrackerAll />;
 }
 
 function TrackerAll() {

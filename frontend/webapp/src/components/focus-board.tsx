@@ -786,14 +786,14 @@ export function ManifestPicker({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search your Tracker"
-            className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-card px-3 text-[14px] text-foreground outline-none"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-card px-3 text-base text-foreground outline-none"
           />
           <label className="relative">
             <span className="sr-only">Sort</span>
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as "tracker" | "az" | "due")}
-              className="h-10 cursor-pointer appearance-none rounded-xl border border-border bg-card pl-3 pr-8 text-[13px] font-semibold text-foreground"
+              className="h-10 cursor-pointer appearance-none rounded-xl border border-border bg-card pl-3 pr-8 text-base font-semibold text-foreground"
             >
               <option value="tracker">Tracker order</option>
               <option value="az">A–Z</option>

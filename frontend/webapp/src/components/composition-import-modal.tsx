@@ -128,7 +128,7 @@ export function CompositionImportModal({
               disabled={saving}
               maxLength={200}
               onChange={(e) => setName(e.target.value)}
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+              className="h-10 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
             />
           </label>
 
@@ -140,7 +140,7 @@ export function CompositionImportModal({
               onChange={(e) =>
                 setComposer(e.target.value as CompositionComposer)
               }
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+              className="h-10 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
             >
               {COMPOSITION_COMPOSERS.map((c) => (
                 <option key={c} value={c}>
@@ -157,7 +157,7 @@ export function CompositionImportModal({
                 value={customPackName}
                 disabled={saving}
                 onChange={(e) => setCustomPackName(e.target.value)}
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                className="h-10 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
               >
                 <option value="">No pack</option>
                 {packNames.map((p) => (
@@ -179,7 +179,7 @@ export function CompositionImportModal({
                 value={binauralHz}
                 disabled={saving}
                 onChange={(e) => setBinauralHz(e.target.value)}
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                className="h-10 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
               />
             </label>
           </div>
@@ -224,7 +224,7 @@ export function CompositionImportModal({
               onBlur={() => {
                 if (tagDraft.trim()) addTag(tagDraft);
               }}
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+              className="h-10 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
             />
             {quickTags.length > 0 ? (
               <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto pt-0.5">

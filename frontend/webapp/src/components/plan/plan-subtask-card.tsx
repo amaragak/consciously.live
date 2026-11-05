@@ -632,7 +632,7 @@ export function PlanSubtaskCard({
                   }}
                   rows={1}
                   aria-label="What this involves"
-                  className="w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-[14px] italic leading-relaxed text-muted outline-none ring-0 placeholder:text-muted/50 focus:ring-0"
+                  className="w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-base italic leading-relaxed text-muted outline-none ring-0 placeholder:text-muted/50 focus:ring-0"
                   placeholder="What this involves…"
                 />
                 <button

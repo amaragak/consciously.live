@@ -619,7 +619,7 @@ function GoalDetail({
             if (plan !== goal.dreamText) saveGoal({ dreamText: plan });
           }}
           placeholder="The plan, in a sentence or two."
-          className="mt-2 w-full rounded-xl bg-accent-soft px-4 py-3.5 font-display text-[15px] italic text-foreground outline-none"
+          className="mt-2 w-full rounded-xl bg-accent-soft px-4 py-3.5 font-display text-base italic text-foreground outline-none"
         />
       </div>
       <div className="mt-4 flex items-center justify-between">
@@ -684,7 +684,7 @@ function GoalDetail({
                     onRefresh();
                   }
                 }}
-                className={`min-w-0 flex-1 bg-transparent text-[15px] outline-none ${
+                className={`min-w-0 flex-1 bg-transparent text-base outline-none ${
                   todo.isChecked ? "text-muted line-through" : "text-foreground"
                 }`}
               />
@@ -773,7 +773,7 @@ function GoalDetail({
           value={stepDraft}
           onChange={(e) => setStepDraft(e.target.value)}
           placeholder="+ Add a step…"
-          className="h-11 w-full rounded-xl border border-dashed border-accent/40 bg-transparent px-3 text-sm outline-none"
+          className="h-11 w-full rounded-xl border border-dashed border-accent/40 bg-transparent px-3 text-base outline-none"
         />
       </form>
       <div className="mt-4 flex flex-wrap gap-2.5 border-t border-border pt-4">

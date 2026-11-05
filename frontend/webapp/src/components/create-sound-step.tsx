@@ -2841,7 +2841,7 @@ export const CreateSoundStep = forwardRef<
               min={-50}
               max={50}
               step={1}
-              className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              className="w-16 rounded-md border border-border bg-background px-2 py-1 text-base tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               value={speechifyRateInput}
               disabled={disabled}
               onChange={(e) => setSpeechifyRateInput(e.target.value)}
@@ -3838,7 +3838,7 @@ export const CreateSoundStep = forwardRef<
                     onChange={(e) => setMixSaveName(e.target.value)}
                     disabled={soundControlsDisabled}
                     placeholder="Untitled mix"
-                    className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 text-[14px] outline-none"
+                    className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 text-base outline-none"
                   />
                   <button
                     type="button"

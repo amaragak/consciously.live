@@ -25,6 +25,7 @@ import {
   writeFocusSessionHandoff,
 } from "@/lib/focus-session-handoff";
 import { writeFocusActiveIdeateSubtask } from "@/lib/focus-preflight-link";
+import { useDailyTodoPrefs } from "@/lib/daily-todos";
 import { SectionEyebrow } from "@/components/section-eyebrow";
 import { SelectChevron } from "@/components/select-chevron";
 
@@ -60,6 +61,7 @@ function emptyStatus(): DailyStatus {
     meditation: false,
     lifeArea: false,
     story: false,
+    journal: false,
     streak: 0,
     fullStreak: 0,
     partialStreak: 0,
@@ -94,6 +96,7 @@ function mergeRemoteDailyStatus(
     meditation: remote.meditation || local.meditation,
     lifeArea: remote.lifeArea || local.lifeArea,
     story: local.story,
+    journal: local.journal,
     streak: remote.fullStreak,
     fullStreak: remote.fullStreak,
     partialStreak: remote.partialStreak,
@@ -147,6 +150,7 @@ export function DailyHabitTracker({
   onStats,
 }: Props) {
   const router = useRouter();
+  const todoPrefs = useDailyTodoPrefs();
   const [status, setStatus] = useState<DailyStatus>(emptyStatus);
   const [dateLabel, setDateLabel] = useState("");
   const dateKey = localDateKey();
@@ -191,19 +195,13 @@ export function DailyHabitTracker({
     };
   }, [dateKey]);
 
-  const totalCount = 4;
-  const doneCount =
-    (status.gratitude ? 1 : 0) +
-    (status.meditation ? 1 : 0) +
-    (status.lifeArea ? 1 : 0) +
-    (status.story ? 1 : 0);
 
   const toggle = (pillar: DailyHabitPillar) => {
     const next = !status[pillar];
     setLocalManualCheck(pillar, next, dateKey);
     setStatus(localStatusNow());
-    // Story is local-only — the API only accepts the original three pillars.
-    if (pillar === "story" || !isMedimadeSessionActive()) return;
+    // Story and journal are local-only — the API only accepts the original three pillars.
+    if (pillar === "story" || pillar === "journal" || !isMedimadeSessionActive()) return;
     void putDashboardDailyManualCheck({
       dateKey,
       pillar,
@@ -224,7 +222,7 @@ export function DailyHabitTracker({
   };
 
   const streak = status.partialStreak;
-  const streakLine =
+  const streakLine = () =>
     streak > 0
       ? `${streak}-day streak · ${doneCount} of ${totalCount} done`
       : `${doneCount} of ${totalCount} done`;
@@ -236,10 +234,6 @@ export function DailyHabitTracker({
     ? `${goalStep.stepTitle} · ${goalStep.goalTitle}`
     : "Complete any goal or To Do in Manifest, or add a thought";
 
-  useEffect(() => {
-    onStats?.({ partialStreak: streak, doneCount, totalCount });
-  }, [onStats, streak, doneCount, totalCount]);
-
   function openFocus() {
     if (goalStep?.subtaskId) {
       writeFocusSessionHandoff({ v: 1, subtaskId: goalStep.subtaskId });
@@ -250,9 +244,11 @@ export function DailyHabitTracker({
     router.push("/focus");
   }
 
-  const rows: {
+  const allRows: {
     pillar: DailyHabitPillar;
     name: string;
+    /** One-line title for the compact mobile hero row. */
+    mobileName?: string;
     help: string | null;
     actionLabel: string;
     onAction: () => void;
@@ -307,13 +303,30 @@ export function DailyHabitTracker({
           actionAsLink: "/manifest/story",
         },
     {
+      pillar: "journal",
+      name: "Write a journal entry",
+      help: null,
+      actionLabel: "Write →",
+      onAction: () => {},
+      actionAsLink: "/journal?new=1",
+    },
+    {
       pillar: "lifeArea",
       name: lifeAreaName,
+      mobileName: goalStep ? `Next step: ${goalStep.stepTitle}` : undefined,
       help: lifeAreaHelp,
       actionLabel: "Focus →",
       onAction: openFocus,
     },
   ];
+  // Settings › Daily to-dos. Order follows `allRows`.
+  const rows = allRows.filter((row) => todoPrefs[row.pillar]);
+  const totalCount = rows.length;
+  const doneCount = rows.filter((row) => status[row.pillar]).length;
+
+  useEffect(() => {
+    onStats?.({ partialStreak: streak, doneCount, totalCount });
+  }, [onStats, streak, doneCount, totalCount]);
 
   if (embedded) {
     return (
@@ -327,8 +340,36 @@ export function DailyHabitTracker({
               <SelectChevron direction="right" className="text-[#F3EDE2]" />
             </span>
           );
+          const mobileTitle = (
+            <>
+              <span className={`min-w-0 flex-1 truncate text-[15px] ${checked ? "text-[rgba(243,237,226,0.55)] line-through" : "text-[#F3EDE2]"}`}>
+                {row.mobileName ?? row.name}
+              </span>
+              <SelectChevron direction="right" className="shrink-0 text-[rgba(243,237,226,0.55)]" />
+            </>
+          );
+          const mobileRowClass = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 text-left";
           return (
-            <li key={row.pillar} className="flex items-center gap-3 py-2">
+            <li key={row.pillar}>
+            {/* Mobile: one line, whole row opens the step; the circle still toggles on its own. */}
+            <div className={`flex h-[46px] items-center gap-3 md:hidden ${row === rows[0] ? "" : "border-t border-[rgba(243,237,226,0.12)]"}`}>
+              <HabitCheckbox
+                checked={checked}
+                onToggle={() => toggle(row.pillar)}
+                label={row.name}
+                onDark
+              />
+              {row.actionAsLink ? (
+                <Link href={row.actionAsLink} className={mobileRowClass}>
+                  {mobileTitle}
+                </Link>
+              ) : (
+                <button type="button" onClick={row.onAction} className={mobileRowClass}>
+                  {mobileTitle}
+                </button>
+              )}
+            </div>
+            <div className="hidden items-center gap-3 py-2 md:flex">
               <HabitCheckbox
                 checked={checked}
                 onToggle={() => toggle(row.pillar)}
@@ -353,6 +394,7 @@ export function DailyHabitTracker({
                   {control}
                 </button>
               )}
+            </div>
             </li>
           );
         })}
@@ -370,7 +412,7 @@ export function DailyHabitTracker({
           <SectionEyebrow className="text-[11px] font-semibold tracking-[1.4px]">
             Today · {dateLabel}
           </SectionEyebrow>
-          <p className="shrink-0 text-[12px] text-muted">{streakLine}</p>
+          <p className="shrink-0 text-[12px] text-muted">{streakLine()}</p>
         </div>
         <ul>
           {rows.map((row, i) => {
@@ -444,7 +486,7 @@ export function DailyHabitTracker({
               {doneCount} of {totalCount} done
             </>
           ) : (
-            streakLine
+            streakLine()
           )}
         </p>
       </div>

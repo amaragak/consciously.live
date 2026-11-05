@@ -113,6 +113,10 @@ function TickMark() {
   );
 }
 
+function capitaliseFirst(label: string): string {
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function ProgressHeader({
   snapshot,
   compactChips,
@@ -121,6 +125,8 @@ function ProgressHeader({
   compactChips: boolean;
 }) {
   const pct = Math.round((snapshot.progress / GET_SET_UP_ITEMS.length) * 100);
+  /** Mobile: done chips collapse behind Show / Hide (desktop always shows them). */
+  const [showChips, setShowChips] = useState(false);
   return (
     <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-4">
       <div className="flex items-baseline justify-between gap-3 md:contents">
@@ -144,10 +150,21 @@ function ProgressHeader({
         </span>
         <span className="shrink-0 text-[13px] font-semibold text-foreground">
           {snapshot.progress} of {GET_SET_UP_ITEMS.length}
+          <span className="md:hidden"> done</span>
         </span>
+        {snapshot.chips.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowChips((v) => !v)}
+            aria-expanded={showChips}
+            className="shrink-0 cursor-pointer text-[13px] font-semibold text-accent-link md:hidden"
+          >
+            {showChips ? "Hide" : "Show"}
+          </button>
+        ) : null}
       </span>
       {snapshot.chips.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 md:flex-1">
+        <div className={`${showChips ? "flex" : "hidden"} flex-wrap gap-1.5 md:flex md:flex-1`}>
           {snapshot.chips.map((chip) => (
             <span
               key={chip.id}
@@ -158,7 +175,7 @@ function ProgressHeader({
               }
             >
               {chip.kind === "done" ? <TickMark /> : null}
-              {compactChips
+              {capitaliseFirst(compactChips
                 ? chip.label
                     .replace(/^Your /i, "")
                     .replace(/^Add a photo of yourself$/i, "Photo")
@@ -167,7 +184,7 @@ function ProgressHeader({
                     .replace(/^Daily affirmations$/i, "Affirmations")
                     .replace(/^Bring in your old journal$/i, "Journal")
                     .replace(/^first meditation$/i, "First meditation")
-                : chip.label}
+                : chip.label)}
             </span>
           ))}
         </div>
@@ -296,7 +313,10 @@ export function GetSetUpPanel() {
 
   if (snapshot.hiddenThisVisit) {
     return (
-      <div className={`${PANEL} flex items-center justify-between gap-3 px-5 py-3`}>
+      <div
+        data-dash-reveal
+        className={`${PANEL} flex items-center justify-between gap-3 px-5 py-3`}
+      >
         <p className="min-w-0 truncate text-[14px] text-muted">
           Get set up · {snapshot.progress} of {GET_SET_UP_ITEMS.length} ·{" "}
           {snapshot.remaining.length} left
@@ -324,7 +344,11 @@ export function GetSetUpPanel() {
   const compactChips = snapshot.chips.length >= 3;
 
   return (
-    <section aria-label="Get set up" className={`${PANEL} px-4 py-4 md:px-[22px] md:py-5`}>
+    <section
+      data-dash-reveal
+      aria-label="Get set up"
+      className={`${PANEL} px-4 py-4 md:px-[22px] md:py-5`}
+    >
       <ProgressHeader snapshot={snapshot} compactChips={compactChips} />
       {useRows ? (
         <div className="mt-1 flex flex-col">

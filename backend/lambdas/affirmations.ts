@@ -1,5 +1,6 @@
 /**
- * POST /affirmations/generate — eleven daily lines (Haiku).
+ * POST /affirmations/generate — eleven daily lines (Haiku). With `plan`, one line
+ * per slot of the app's balanced mix; with `context` (older builds), free-form.
  * POST /affirmations/speak — read those lines in a Speechify voice.
  */
 
@@ -49,6 +50,31 @@ OUTPUT (JSON only):
  …11 items
 ]}
 "drew_on" is the short name of the life area, value or Heal item the line most clearly comes from, or null if it isn't clearly from one.`;
+
+/** Balanced daily mix: the app picks the eleven slots, the model writes one line per slot. */
+const MIX_INSTRUCTIONS = `You write a person's daily affirmations, one line per slot.
+
+INPUT (JSON):
+- slots: eleven slots in order. Each has a "kind":
+  - "general": nothing personal. A universal affirmation of worth, gratitude, love, calm, trust, the body or the present moment. Examples of the register: "I am grateful for my life." "I am loved." "I am enough as I am." "I trust myself." Usually under 8 words.
+  - "value": one of their values ("value"). Write a line about living that value. Don't just name it; show it in what they do or how they are.
+  - "area": one of their life areas ("area": name, dream, the moment, current goal). Write about who they are and what they do in that area, not the goal restated. If two slots share an area, the "angle" says which to write: "identity" (who they are becoming) or "practice" (what they do, day to day). Never two versions of the same idea.
+  - "block": something in their way ("block": an obstacle from a life area, or a Heal item with its hard-day and good-day lines). Write the positive stance they're growing into. Don't name the problem, and never describe it harshly.
+- manifesto: their manifesto line, for tone only.
+- recent: lines from the last 14 days, kept lines, and lines they marked "not for me".
+
+RULES FOR EVERY LINE:
+- First person, present tense, one sentence, under 15 words.
+- Plain, concrete and believable today. No hype, nothing that promises outcomes, no invented achievements, numbers, fame or money.
+- No "universe", "abundance", "vibration", "manifesting", no exclamation marks, no emoji.
+- Don't repeat or closely paraphrase anything in recent; steer away from the themes of "not for me" lines.
+- No two lines (including alternatives) open with the same three words. Vary the openings; don't start every line with "I am".
+- Reuse their own words where it helps, for personal slots only.
+
+For each slot also write "alt": a second, different line for the same slot, following the same rules.
+
+OUTPUT (JSON only):
+{"affirmations":[{"slot":1,"text":"…","alt":"…"}, …one per slot]}`;
 
 let cachedClaudeKey: string | undefined;
 
@@ -101,7 +127,10 @@ function extractJsonObject(text: string): unknown {
   return JSON.parse(body.slice(start, end + 1)) as unknown;
 }
 
-async function haikuJson(user: string): Promise<unknown> {
+async function haikuJson(
+  user: string,
+  opts: { system?: string; maxTokens?: number; temperature?: number } = {},
+): Promise<unknown> {
   const apiKey = await getClaudeApiKey();
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
@@ -113,11 +142,11 @@ async function haikuJson(user: string): Promise<unknown> {
     body: JSON.stringify(
       withClaudeThinkingOff({
         model: CLAUDE_HAIKU_45_MODEL_ID,
-        max_tokens: 1400,
-        temperature: 0.4,
+        max_tokens: opts.maxTokens ?? 1400,
+        temperature: opts.temperature ?? 0.4,
         thinking: { type: "disabled" },
         output_config: { effort: "low" },
-        system: INSTRUCTIONS,
+        system: opts.system ?? INSTRUCTIONS,
         messages: [{ role: "user", content: user }],
       }),
     ),
@@ -146,6 +175,20 @@ function parseAffirmations(raw: unknown): { text: string; drew_on: string | null
     if (!text) return [];
     const drew = typeof o.drew_on === "string" ? o.drew_on.trim() : "";
     return [{ text, drew_on: drew || null }];
+  });
+}
+
+function parseMixLines(raw: unknown): { slot: number; text: string; alt: string | null }[] {
+  const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const rows = Array.isArray(root.affirmations) ? root.affirmations : [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const o = row as Record<string, unknown>;
+    const slot = typeof o.slot === "number" ? Math.round(o.slot) : Number(o.slot);
+    const text = typeof o.text === "string" ? o.text.trim() : "";
+    if (!Number.isFinite(slot) || !text) return [];
+    const alt = typeof o.alt === "string" && o.alt.trim() ? o.alt.trim() : null;
+    return [{ slot, text, alt }];
   });
 }
 
@@ -191,6 +234,18 @@ export async function handler(
       });
     }
 
+    if (body.plan && typeof body.plan === "object") {
+      const parsed = await haikuJson(`INPUT:\n${JSON.stringify(body.plan).slice(0, 24000)}`, {
+        system: MIX_INSTRUCTIONS,
+        maxTokens: 2000,
+        temperature: 0.7,
+      });
+      const affirmations = parseMixLines(parsed).slice(0, 11);
+      if (!affirmations.length) return json(502, { error: "No affirmations in the reply" });
+      return json(200, { affirmations });
+    }
+
+    // Older app builds send the whole context and get eleven free-form lines.
     const context = body.context && typeof body.context === "object" ? body.context : {};
     const parsed = await haikuJson(`CONTEXT:\n${JSON.stringify(context).slice(0, 24000)}`);
     const affirmations = parseAffirmations(parsed).slice(0, 11);

@@ -240,7 +240,7 @@ export function HeroPrompt({
             onKeyDown={onCardKeyDown}
             disabled={busy}
             placeholder="Calm before my big pitch, confidence for launch day, deeper sleep…"
-            className="box-border min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] leading-[1.5] text-[#3E3442] outline-none placeholder:text-[#857C70] md:min-h-[52px] md:text-[16.5px]"
+            className="box-border min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-base leading-[1.5] text-[#3E3442] outline-none placeholder:text-[#857C70] md:min-h-[52px] md:text-[16.5px]"
           />
           <button
             type="submit"
@@ -286,7 +286,7 @@ export function HeroPrompt({
           placeholder={placeholder}
           className={
             light
-              ? "box-border h-[52px] w-full min-w-0 rounded-full border border-[rgba(62,52,66,.14)] bg-[rgba(255,255,255,.92)] px-5 text-[15px] text-[#3E3442] shadow-[0_6px_18px_rgba(27,34,56,.06)] outline-none placeholder:text-[#7D7568] md:h-14 md:flex-1 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[18px] md:shadow-none"
+              ? "box-border h-[52px] w-full min-w-0 rounded-full border border-[rgba(62,52,66,.14)] bg-[rgba(255,255,255,.92)] px-5 text-base text-[#3E3442] shadow-[0_6px_18px_rgba(27,34,56,.06)] outline-none placeholder:text-[#7D7568] md:h-14 md:flex-1 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[18px] md:shadow-none"
               : "home-v2-prompt-input box-border h-[50px] w-full min-w-0 rounded-full border border-[#c3d2e8]/45 bg-[var(--hv2-hero-input-bg)] px-4 text-[16px] text-[var(--hv2-hero-input-fg)] shadow-[var(--hv2-hero-elev)] outline-none transition-[border-color,box-shadow] duration-200 ease-out placeholder:text-[var(--hv2-hero-placeholder)] hover:border-[#c3d2e8] md:h-11 md:flex-1 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:text-[19px] md:shadow-none md:hover:border-0"
           }
         />

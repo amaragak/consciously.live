@@ -178,7 +178,7 @@ export function ObstacleHealPicker({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
-            className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-sm outline-none"
+            className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-base outline-none"
           />
         </label>
       ) : null}

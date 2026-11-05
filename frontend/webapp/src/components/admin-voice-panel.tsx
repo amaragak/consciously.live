@@ -220,7 +220,7 @@ export function AdminVoicePanel() {
             <label className="flex items-center gap-2 text-sm">
               <span className="text-muted">Provider</span>
               <select
-                className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                className="rounded-xl border border-border bg-background px-3 py-2 text-base"
                 value={listBrand}
                 onChange={(e) => {
                   setListBrand(
@@ -249,7 +249,7 @@ export function AdminVoicePanel() {
         </div>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <select
-            className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            className="rounded-xl border border-border bg-background px-3 py-2 text-base"
             value={newBrand}
             onChange={(e) =>
               setNewBrand(e.target.value === "speechify" ? "speechify" : "fish")
@@ -260,13 +260,13 @@ export function AdminVoicePanel() {
             <option value="fish">Fish</option>
           </select>
           <input
-            className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-base"
             placeholder="Speaker name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
           <input
-            className="min-w-0 flex-[1.4] rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm"
+            className="min-w-0 flex-[1.4] rounded-xl border border-border bg-background px-3 py-2 font-mono text-base"
             placeholder={
               newBrand === "speechify" ? "Speechify voice id" : "Fish model id"
             }
@@ -275,7 +275,7 @@ export function AdminVoicePanel() {
           />
           {newBrand === "speechify" ? (
             <input
-              className="w-24 rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm"
+              className="w-24 rounded-xl border border-border bg-background px-3 py-2 font-mono text-base"
               type="number"
               min={-50}
               max={50}
@@ -600,7 +600,7 @@ function SpeakerRow({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1 space-y-2">
           <input
-            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-base font-medium"
             value={name}
             disabled={busy !== null}
             onChange={(e) => setName(e.target.value)}
@@ -611,7 +611,7 @@ function SpeakerRow({
             aria-label="Speaker name"
           />
           <input
-            className="w-full break-all rounded-xl border border-border bg-card px-3 py-2 font-mono text-[11px] text-foreground"
+            className="w-full break-all rounded-xl border border-border bg-card px-3 py-2 font-mono text-base text-foreground"
             value={modelId}
             disabled={busy !== null}
             onChange={(e) => setModelId(e.target.value)}
@@ -630,7 +630,7 @@ function SpeakerRow({
           <label className="block text-xs font-medium text-muted">
             Brand
             <select
-              className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+              className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
               value={brand}
               disabled={busy !== null}
               onChange={(e) => {
@@ -650,7 +650,7 @@ function SpeakerRow({
               <label className="block text-xs font-medium text-muted">
                 Rate
                 <input
-                  className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-sm font-normal text-foreground"
+                  className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-base font-normal text-foreground"
                   type="number"
                   min={-50}
                   max={50}
@@ -674,7 +674,7 @@ function SpeakerRow({
               <label className="block text-xs font-medium text-muted">
                 Appearance
                 <textarea
-                  className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+                  className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
                   rows={2}
                   maxLength={600}
                   placeholder="White woman, blonde shoulder-length hair, warm smile, soft makeup…"
@@ -692,7 +692,7 @@ function SpeakerRow({
               <label className="block text-xs font-medium text-muted">
                 Portrait background
                 <input
-                  className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+                  className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
                   maxLength={160}
                   placeholder="dark blue-to-purple gradient"
                   value={portraitBgColor}
@@ -748,7 +748,7 @@ function SpeakerRow({
           <label className="block text-xs font-medium text-muted">
             How this voice sounds
             <textarea
-              className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+              className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
               rows={2}
               maxLength={800}
               placeholder="Warm, unhurried, slight rasp — like a late-night radio host."
@@ -766,7 +766,7 @@ function SpeakerRow({
           <label className="block text-xs font-medium text-muted">
             Good for
             <input
-              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-foreground"
+              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
               maxLength={300}
               placeholder="stories, body scan, sleep"
               value={goodFor}

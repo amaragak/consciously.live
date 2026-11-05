@@ -133,6 +133,16 @@ export async function handler(
 
   try {
     const user = await getOrCreateUserByEmail(email);
+    // Read by /auth/email-check to offer the right provider to password-less accounts.
+    await ddb.send(
+      new UpdateCommand({
+        TableName: process.env.USERS_TABLE_NAME!,
+        Key: { email: user.email },
+        UpdateExpression: "ADD #ap :p",
+        ExpressionAttributeNames: { "#ap": "authProviders" },
+        ExpressionAttributeValues: { ":p": new Set([provider]) },
+      }),
+    );
     // Apple sends the name only on the first sign-in (from the client, not the token).
     const providedName =
       normalizeName(body.name) ?? (provider === "google" ? normalizeName(payload.name) : null);

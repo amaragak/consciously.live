@@ -93,6 +93,14 @@ export type UserSettingsV1 = {
     breakMinutes: number;
     distractionBlocking: boolean;
   };
+  /** Which daily to-dos the dashboard's Today list shows. */
+  today: {
+    gratitude: boolean;
+    meditation: boolean;
+    journal: boolean;
+    story: boolean;
+    lifeArea: boolean;
+  };
   general: {
     theme: ThemePreference;
     language: string;
@@ -162,6 +170,13 @@ export function defaultUserSettings(): UserSettingsV1 {
       defaultSessionMinutes: 25,
       breakMinutes: 5,
       distractionBlocking: false,
+    },
+    today: {
+      gratitude: true,
+      meditation: true,
+      journal: true,
+      story: true,
+      lifeArea: false,
     },
     general: {
       theme: "hybrid",
@@ -270,6 +285,7 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
   const email = isObject(raw.email) ? raw.email : {};
   const meditate = isObject(raw.meditate) ? raw.meditate : {};
   const focus = isObject(raw.focus) ? raw.focus : {};
+  const today = isObject(raw.today) ? raw.today : {};
   const general = isObject(raw.general) ? raw.general : {};
   const daily = isObject(notifications.dailyReminder)
     ? notifications.dailyReminder
@@ -429,6 +445,13 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
         focus.distractionBlocking,
         d.focus.distractionBlocking,
       ),
+    },
+    today: {
+      gratitude: asBool(today.gratitude, d.today.gratitude),
+      meditation: asBool(today.meditation, d.today.meditation),
+      journal: asBool(today.journal, d.today.journal),
+      story: asBool(today.story, d.today.story),
+      lifeArea: asBool(today.lifeArea, d.today.lifeArea),
     },
     general: {
       theme: asEnum(general.theme, THEMES, d.general.theme),

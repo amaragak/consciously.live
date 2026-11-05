@@ -148,7 +148,7 @@ export function PlanDrvSection({
           value={values.dreamText}
           onChange={(e) => onPatch({ dreamText: e.target.value })}
           rows={6}
-          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-relaxed text-foreground outline-none ring-accent/25 focus:ring-2"
+          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-base leading-relaxed text-foreground outline-none ring-accent/25 focus:ring-2"
           placeholder={copy.dreamPlaceholder}
         />
         <button
@@ -184,7 +184,7 @@ export function PlanDrvSection({
           value={values.obstacleText}
           onChange={(e) => onPatch({ obstacleText: e.target.value })}
           rows={5}
-          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-accent/25 focus:ring-2"
+          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-base leading-relaxed outline-none ring-accent/25 focus:ring-2"
           placeholder={copy.obstaclePlaceholder}
         />
         <button
@@ -220,7 +220,7 @@ export function PlanDrvSection({
           value={values.visionText}
           onChange={(e) => onPatch({ visionText: e.target.value })}
           rows={5}
-          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-accent/25 focus:ring-2"
+          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-base leading-relaxed outline-none ring-accent/25 focus:ring-2"
           placeholder={copy.visionPlaceholder}
         />
         <button

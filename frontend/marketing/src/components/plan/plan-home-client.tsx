@@ -1674,7 +1674,7 @@ export function PlanHomeClient() {
                         }
                         placeholder="Attribution (optional)"
                         maxLength={80}
-                        className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-left font-sans text-sm outline-none ring-accent/30 focus:ring-2"
+                        className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-left font-sans text-base outline-none ring-accent/30 focus:ring-2"
                       />
                       <div className="flex gap-2">
                         <button
@@ -1792,7 +1792,7 @@ export function PlanHomeClient() {
                       }
                       maxLength={80}
                       disabled={authorFetchLoading}
-                      className="w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 font-sans text-sm outline-none ring-accent/30 focus:ring-2 disabled:opacity-60"
+                      className="w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 font-sans text-base outline-none ring-accent/30 focus:ring-2 disabled:opacity-60"
                     />
                     <button
                       type="submit"
@@ -1917,7 +1917,7 @@ export function PlanHomeClient() {
                     onChange={(e) => setQuoteAttributionDraft(e.target.value)}
                     placeholder="Attribution (optional)"
                     maxLength={80}
-                    className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 font-sans text-sm outline-none ring-accent/30 focus:ring-2"
+                    className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 font-sans text-base outline-none ring-accent/30 focus:ring-2"
                   />
                   <div className="flex gap-2">
                     <button
@@ -2125,7 +2125,7 @@ export function PlanHomeClient() {
                         value={customDraft}
                         onChange={(e) => setCustomDraft(e.target.value)}
                         placeholder="Your question…"
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
                       />
                       <div className="flex justify-end gap-2">
                         <button
@@ -2245,7 +2245,7 @@ export function PlanHomeClient() {
                 onChange={(e) => setRegretCategoryDraft(e.target.value)}
                 placeholder="Category (optional) — Work, Creative…"
                 maxLength={40}
-                className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 font-sans text-sm outline-none ring-accent/30 focus:ring-2"
+                className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 font-sans text-base outline-none ring-accent/30 focus:ring-2"
               />
               <label className="sr-only" htmlFor="ideate-regret-new">
                 Regret statement
@@ -2330,7 +2330,7 @@ export function PlanHomeClient() {
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g. Music, Health, This app"
                 autoFocus
-                className="mt-1.5 w-full rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                className="mt-1.5 w-full rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base outline-none ring-accent/30 focus:ring-2 dark:border-border"
               />
             </label>
 
@@ -2347,7 +2347,7 @@ export function PlanHomeClient() {
                   onChange={(e) => setNewDream(e.target.value)}
                   placeholder="Say it messy. No one is grading this."
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
                 />
               </label>
 
@@ -2364,7 +2364,7 @@ export function PlanHomeClient() {
                   onChange={(e) => setNewObstacle(e.target.value)}
                   placeholder="Name it without fixing it yet."
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
                 />
               </label>
 
@@ -2381,7 +2381,7 @@ export function PlanHomeClient() {
                   onChange={(e) => setNewVision(e.target.value)}
                   placeholder="A concrete scene where this has already happened — where you are, what you notice, how it feels."
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
                 />
               </label>
             </div>
@@ -2440,7 +2440,7 @@ export function PlanHomeClient() {
               placeholder="Write freely — no need to polish."
               rows={8}
               autoFocus
-              className="mt-5 w-full resize-none rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-accent/25 focus:ring-2"
+              className="mt-5 w-full resize-none rounded-2xl border border-border bg-background px-4 py-3 text-base leading-relaxed outline-none ring-accent/25 focus:ring-2"
             />
             <div className="mt-5 flex items-center justify-between gap-3">
               <button

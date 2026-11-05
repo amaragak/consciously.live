@@ -291,7 +291,7 @@ export function ListenShareSheet({
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[15px] outline-none focus:border-[var(--header-gold,#d9b87c)]"
+                className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-base outline-none focus:border-[var(--header-gold,#d9b87c)]"
               />
             </label>
             <label className="flex flex-col gap-1.5">
@@ -302,7 +302,7 @@ export function ListenShareSheet({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="resize-none rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[15px] outline-none focus:border-[var(--header-gold,#d9b87c)]"
+                className="resize-none rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-base outline-none focus:border-[var(--header-gold,#d9b87c)]"
               />
               <span className="text-[12.5px] text-muted">
                 Written from what you told Consciously. Check it doesn’t say more
@@ -316,7 +316,7 @@ export function ListenShareSheet({
               <input
                 value={shownAs}
                 onChange={(e) => setShownAs(e.target.value)}
-                className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[15px] outline-none focus:border-[var(--header-gold,#d9b87c)]"
+                className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-base outline-none focus:border-[var(--header-gold,#d9b87c)]"
               />
               <span className="text-[12.5px] text-muted">
                 Your first name by default. Leave it blank to share without a
@@ -338,7 +338,7 @@ export function ListenShareSheet({
                   }
                   autoComplete="username"
                   spellCheck={false}
-                  className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[15px] outline-none focus:border-[var(--header-gold,#d9b87c)]"
+                  className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-base outline-none focus:border-[var(--header-gold,#d9b87c)]"
                 />
                 <span className="text-[12.5px] text-muted">{usernameHelper}</span>
               </label>
@@ -476,7 +476,7 @@ export function ListenShareSheet({
               <input
                 readOnly
                 value={shareUrl ?? ""}
-                className="min-w-0 flex-1 truncate rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[13.5px] text-foreground"
+                className="min-w-0 flex-1 truncate rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-base text-foreground"
               />
               <button
                 type="button"

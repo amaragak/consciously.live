@@ -59,7 +59,7 @@ export function AdminEmailPanel() {
           value={to}
           onChange={(e) => setTo(e.target.value)}
           placeholder="someone@privaterelay.appleid.com"
-          className="min-w-[260px] flex-1 rounded-full border border-border bg-transparent px-4 py-2 text-sm"
+          className="min-w-[260px] flex-1 rounded-full border border-border bg-transparent px-4 py-2 text-base"
         />
         <button
           type="submit"

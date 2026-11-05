@@ -37,6 +37,7 @@ import {
   setMedimadeSession,
 } from "@/lib/auth-session";
 import { journalLockIsSet } from "@/lib/journal-prefs";
+import { cacheDailyTodos } from "@/lib/daily-todos";
 import { getSessionPrivileges } from "@/lib/session-privileges";
 import { shouldShowSettingsRow } from "@/lib/settings-status";
 import { COLOR_SCHEME_OPTIONS, setColorScheme } from "@/lib/color-scheme";
@@ -57,6 +58,7 @@ import {
 
 export type SettingsSectionId =
   | "account"
+  | "today"
   | "ai"
   | "privacy"
   | "notifications"
@@ -323,7 +325,7 @@ function AccountSection({ settings, onPatch }: SectionProps) {
               setNameDraft(e.target.value);
             }}
             onBlur={() => void commitName(nameDraft)}
-            className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+            className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
           />
         }
       />,
@@ -367,7 +369,7 @@ function AccountSection({ settings, onPatch }: SectionProps) {
               setUsernameDraft(e.target.value.toLowerCase());
             }}
             onBlur={() => void commitUsername(usernameDraft)}
-            className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-60"
+            className="w-full max-w-[240px] rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-60"
           />
         }
       />,
@@ -1219,7 +1221,7 @@ function PrivacySection({ settings, onPatch }: SectionProps) {
             type="text"
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
-            className="w-[220px] max-w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            className="w-[220px] max-w-full rounded-xl border border-border bg-background px-3 py-2 text-base"
             aria-label="Community name"
           />
         }
@@ -1708,7 +1710,7 @@ function MeditateSection({ settings, onPatch }: SectionProps) {
             value={voiceDraft}
             onChange={(e) => setVoiceDraft(e.target.value)}
             placeholder="Choose when creating"
-            className="w-[220px] max-w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            className="w-[220px] max-w-full rounded-xl border border-border bg-background px-3 py-2 text-base"
             aria-label="Default voice"
           />
         }
@@ -1815,6 +1817,61 @@ function MeditateSection({ settings, onPatch }: SectionProps) {
 
   return (
     <>
+      <SettingsCard>{rows}</SettingsCard>
+    </>
+  );
+}
+
+const DAILY_TODO_ROWS: {
+  key: keyof UserSettingsV1["today"];
+  title: string;
+  helper: string;
+}[] = [
+  { key: "gratitude", title: "Add a gratitude", helper: "One thing you’re grateful for." },
+  { key: "meditation", title: "Do a meditation", helper: "Listen to any meditation." },
+  { key: "story", title: "Your story", helper: "Listen to your story, or write it if you haven’t yet." },
+  { key: "journal", title: "Write a journal entry", helper: "Any entry in your journal." },
+  {
+    key: "lifeArea",
+    title: "Next step on your goal",
+    helper: "Your next goal step, opened in Focus.",
+  },
+];
+
+function TodaySection({ settings, onPatch }: SectionProps) {
+  const enabledCount = DAILY_TODO_ROWS.filter((r) => settings.today[r.key]).length;
+  const rows = DAILY_TODO_ROWS.map((row, i) => {
+    const checked = settings.today[row.key];
+    // Keep at least one to-do on.
+    const locked = checked && enabledCount <= 1;
+    return (
+      <SettingsRow
+        key={row.key}
+        settingsKey="today.items"
+        showMarker={i === 0}
+        title={row.title}
+        helper={row.helper}
+        control={
+          <SettingsSwitch
+            aria-label={row.title}
+            checked={checked}
+            disabled={locked}
+            onCheckedChange={
+              locked
+                ? undefined
+                : (v) => {
+                    cacheDailyTodos({ ...settings.today, [row.key]: v });
+                    onPatch({ today: { [row.key]: v } });
+                  }
+            }
+          />
+        }
+      />
+    );
+  });
+  return (
+    <>
+      <p className="mb-3 text-sm text-muted">Choose what shows under Today on your dashboard.</p>
       <SettingsCard>{rows}</SettingsCard>
     </>
   );
@@ -2179,6 +2236,8 @@ export function SettingsSectionContent({
       return <NotificationsSection {...props} />;
     case "email":
       return <EmailSection {...props} />;
+    case "today":
+      return <TodaySection {...props} />;
     case "meditate":
       return <MeditateSection {...props} />;
     case "focus":
@@ -2199,6 +2258,7 @@ export const SETTINGS_NAV: ReadonlyArray<{
   { id: "privacy", label: "Privacy" },
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
+  { id: "today", label: "Daily to-dos" },
   { id: "meditate", label: "Meditate" },
   { id: "focus", label: "Focus" },
   { id: "general", label: "General" },

@@ -206,7 +206,7 @@ export function JournalReflectPicker({
   const mobileIconChrome =
     "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[9px] border border-foreground/12 bg-foreground/[0.06] text-foreground";
   const mobileSearchChrome =
-    "h-9 rounded-[9px] border border-foreground/12 bg-foreground/[0.06] py-0 pl-9 pr-3 text-sm leading-9 placeholder:text-muted";
+    "h-9 rounded-[9px] border border-foreground/12 bg-foreground/[0.06] py-0 pl-9 pr-3 text-base leading-9 placeholder:text-muted";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-2">
@@ -219,7 +219,7 @@ export function JournalReflectPicker({
           id="journal-reflect-folder"
           value={folderId}
           onChange={(e) => setFolderId(e.target.value)}
-          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
         >
           <option value="">All entries</option>
           {folders.map((f) => (
@@ -236,7 +236,7 @@ export function JournalReflectPicker({
           type="date"
           value={jumpDate}
           onChange={(e) => setJumpDate(e.target.value)}
-          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
         />
         <label className="sr-only" htmlFor="journal-reflect-sort">
           Sort order
@@ -245,7 +245,7 @@ export function JournalReflectPicker({
           id="journal-reflect-sort"
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
         >
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
@@ -324,7 +324,7 @@ export function JournalReflectPicker({
                   setJumpDate(ev.target.value);
                   if (ev.target.value) setMobileDateOpen(false);
                 }}
-                className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+                className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
               />
               {jumpDate ? (
                 <button
@@ -487,7 +487,7 @@ export function JournalReflectPicker({
           onChange={(e) => onGuidanceChange(e.target.value)}
           placeholder="Optional note for the guide…"
           rows={3}
-          className="mt-2 min-h-[70px] w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
+          className="mt-2 min-h-[70px] w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
         />
       </div>
 

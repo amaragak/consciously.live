@@ -378,7 +378,7 @@ function DevAudioBench() {
         <h2 className="text-sm font-semibold">Any URL</h2>
         <div className="flex gap-2">
           <input
-            className="min-w-0 flex-1 rounded-full border border-current/30 bg-transparent px-3 py-1 text-xs"
+            className="min-w-0 flex-1 rounded-full border border-current/30 bg-transparent px-3 py-1 text-base"
             placeholder="https://…/voice.m4a"
             value={customUrl}
             onChange={(e) => setCustomUrl(e.target.value)}

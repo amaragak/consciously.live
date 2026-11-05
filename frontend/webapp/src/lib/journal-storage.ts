@@ -1666,7 +1666,7 @@ export function findJournalEntryByPathSlug(
 export function journalEntryHref(entry: JournalEntry): string {
   if (entry.kind === "gratitude") {
     const slug = entry.urlSlug || gratitudeEntryPathSlug(entry);
-    return `/journal/gratitude/${encodeURIComponent(slug)}`;
+    return `/journal/gratitudes/${encodeURIComponent(slug)}`;
   }
   const slug = entry.urlSlug || journalEntryPathSlug(entry);
   return `/journal/${encodeURIComponent(slug)}`;

@@ -18,8 +18,12 @@ import { loadIdeateStore } from "@/lib/plan-ideate-store";
 const LS_KEY = "mm_daily_affirmations_v1";
 const EVENT = "mm-affirmations-changed";
 const LINE_COUNT = 11;
-const MAX_WORDS = 16;
+/** "Under about 15 words." */
+const MAX_WORDS = 15;
 const PAUSE_AFTER_DAYS = 7;
+
+/** Where a line in the daily mix comes from. General lines have no tag. */
+export type AffirmationKind = "general" | "value" | "area" | "block";
 
 export type AffirmationLine = {
   id: string;
@@ -28,6 +32,8 @@ export type AffirmationLine = {
   kept: boolean;
   removed: boolean;
   keptAt: string | null;
+  /** Missing on lines written before the balanced mix. */
+  kind?: AffirmationKind;
 };
 
 export type SavedAffirmation = {
@@ -42,6 +48,10 @@ export type AffirmationDay = {
   lines: AffirmationLine[];
   regenerated: boolean;
   generatedAt: string;
+  /** 2 = balanced mix (general, values, life areas, blocks). */
+  mix?: 2;
+  /** An older set already had its one rewrite into the balanced mix attempted. */
+  mixTried?: boolean;
 };
 
 export type AffirmationsStore = {
@@ -69,6 +79,7 @@ export type AffirmationContext = {
     dream: string;
     moment: string;
     goal: string | null;
+    obstacle: string | null;
   }[];
   values: string[];
   manifesto: string | null;
@@ -141,6 +152,9 @@ function asLine(raw: unknown): AffirmationLine | null {
     kept: o.kept === true,
     removed: o.removed === true,
     keptAt: typeof o.keptAt === "string" ? o.keptAt : null,
+    ...(o.kind === "general" || o.kind === "value" || o.kind === "area" || o.kind === "block"
+      ? { kind: o.kind }
+      : {}),
   };
 }
 
@@ -173,6 +187,8 @@ export function loadAffirmations(): AffirmationsStore {
               lines,
               regenerated: todayRaw.regenerated === true,
               generatedAt: typeof todayRaw.generatedAt === "string" ? todayRaw.generatedAt : "",
+              ...(todayRaw.mix === 2 ? { mix: 2 as const } : {}),
+              ...(todayRaw.mixTried === true ? { mixTried: true } : {}),
             }
           : null,
       shown: Array.isArray(o.shown)
@@ -262,11 +278,15 @@ export function buildAffirmationContext(useHeal: boolean, store = loadAffirmatio
   const dreams = ideate.dreams
     .map((dream) => {
       const goal = currentGoalForLifeArea(ideate, dream.id);
+      const latestObstacle = [...(dream.obstacleEntries ?? [])]
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .find((entry) => entry.text?.trim());
       return {
         name: dream.title.trim() || "Life area",
         dream: (dream.dreamText || "").trim(),
         moment: (dream.visionText || "").trim(),
         goal: goal?.title.trim() || null,
+        obstacle: (dream.obstacleText || "").trim() || latestObstacle?.text.trim() || null,
       };
     })
     .filter((row) => row.dream || row.moment || row.goal);
@@ -315,17 +335,159 @@ export function hasAffirmationContext(ctx = buildAffirmationContext(true)): bool
   return Boolean(ctx.manifesto || ctx.values.length || ctx.dreams.length);
 }
 
-function allowedSources(ctx: AffirmationContext): Map<string, string> {
-  const names = new Map<string, string>();
-  const add = (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    names.set(trimmed.toLowerCase(), trimmed);
-  };
-  for (const dream of ctx.dreams) add(dream.name);
-  for (const value of ctx.values) add(value);
-  for (const item of ctx.working_through) add(item.name);
-  return names;
+const VALUE_COUNT = 2;
+const AREA_COUNT = 4;
+
+/** One of the day's eleven slots, chosen here; the model writes the line. */
+export type AffirmationSlot = {
+  slot: number;
+  kind: AffirmationKind;
+  /** Chip shown on the line; null for general lines. */
+  tag: string | null;
+  value?: string;
+  area?: { name: string; dream: string; moment: string; goal: string | null };
+  angle?: "identity" | "practice";
+  block?: { source: "life_area" | "heal"; name: string; text: string; good_day?: string | null };
+};
+
+/**
+ * Written here so a day still has eleven lines when the model's lines repeat
+ * recent ones. Openings differ, so any mix of them passes the same-opening rule.
+ */
+const GENERAL_FALLBACKS = [
+  "I am grateful for my life.",
+  "I am loved.",
+  "I am enough as I am.",
+  "I trust myself.",
+  "My body carries me through the day.",
+  "This breath is enough for now.",
+  "Right now, I am safe.",
+  "I can take today one step at a time.",
+  "Rest is part of how I grow.",
+  "My feelings are welcome here.",
+  "Small kindnesses matter to me.",
+  "Today I notice what is good.",
+  "There is room for me here.",
+  "I can begin again at any moment.",
+  "Calm is something I can return to.",
+  "Love comes to me and through me.",
+  "I give myself the patience I give others.",
+  "Gratitude grounds me.",
+  "What I have today is enough.",
+  "Being here is enough.",
+  "Each day I learn something about myself.",
+  "Quiet moments restore me.",
+  "My worth is not up for debate.",
+  "Good things find their way to me.",
+  "Slowing down helps me see clearly.",
+  "Kindness towards myself comes first.",
+  "Breathing slowly, I settle into now.",
+  "People who love me are part of my life.",
+];
+
+/** Days since 1970 for a local date key, for rotation across days. */
+function dayNumber(dateKey: string): number {
+  const ms = Date.parse(`${dateKey}T12:00:00Z`);
+  return Number.isFinite(ms) ? Math.floor(ms / 86_400_000) : 0;
+}
+
+/** Indices for the day's four area lines: at most two per area, rotating so every area shows within a week. */
+function areaPicks(count: number, day: number): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [0, 0];
+  if (count === 2) return [0, 1, 0, 1];
+  if (count === 3) {
+    const s = day % 3;
+    return [s, (s + 1) % 3, (s + 2) % 3, s];
+  }
+  return Array.from({ length: AREA_COUNT }, (_, i) => (day * AREA_COUNT + i) % count);
+}
+
+/** Next kind: the one with most left, never the same kind twice running when avoidable. */
+function interleave(groups: Record<"area" | "value" | "block", AffirmationSlot[]>): AffirmationSlot[] {
+  const queues = { area: [...groups.area], value: [...groups.value], block: [...groups.block] };
+  const out: AffirmationSlot[] = [];
+  let prev: AffirmationKind | null = null;
+  for (;;) {
+    const kinds = (Object.keys(queues) as (keyof typeof queues)[])
+      .filter((k) => queues[k].length)
+      .sort((a, b) => queues[b].length - queues[a].length);
+    if (!kinds.length) break;
+    const kind = kinds.find((k) => k !== prev) ?? kinds[0];
+    out.push(queues[kind].shift()!);
+    prev = kind;
+  }
+  return out;
+}
+
+/**
+ * The day's eleven: 4 general, 2 values, 4 life areas (max 2 per area), 1 block.
+ * Shortfalls become general lines. General first, kinds mixed through the day.
+ */
+export function planAffirmationDay(ctx: AffirmationContext, dateKey: string): AffirmationSlot[] {
+  const day = dayNumber(dateKey);
+  const slot = (s: Omit<AffirmationSlot, "slot">): AffirmationSlot => ({ slot: 0, ...s });
+
+  const areaSeen = new Map<number, number>();
+  const area = areaPicks(ctx.dreams.length, day).map((index) => {
+    const d = ctx.dreams[index];
+    const nth = (areaSeen.get(index) ?? 0) + 1;
+    areaSeen.set(index, nth);
+    return slot({
+      kind: "area",
+      tag: d.name,
+      area: { name: d.name, dream: d.dream, moment: d.moment, goal: d.goal },
+      angle: nth === 1 ? "identity" : "practice",
+    });
+  });
+
+  const values = ctx.values;
+  const valueIdx =
+    values.length >= VALUE_COUNT
+      ? [(day * VALUE_COUNT) % values.length, (day * VALUE_COUNT + 1) % values.length]
+      : values.length === 1
+        ? [0]
+        : [];
+  const value = valueIdx.map((i) => slot({ kind: "value", tag: values[i], value: values[i] }));
+
+  const blocks: NonNullable<AffirmationSlot["block"]>[] = [
+    ...ctx.dreams
+      .filter((d) => d.obstacle)
+      .map((d) => ({ source: "life_area" as const, name: d.name, text: d.obstacle! })),
+    ...ctx.working_through.map((item) => ({
+      source: "heal" as const,
+      name: item.name,
+      text: item.bad_day || item.doubt || item.name,
+      good_day: item.good_day,
+    })),
+  ];
+  const pickedBlock = blocks.length ? blocks[day % blocks.length] : null;
+  const block = pickedBlock
+    ? [
+        slot({
+          kind: "block",
+          tag: pickedBlock.source === "heal" ? "Heal" : pickedBlock.name,
+          block: pickedBlock,
+        }),
+      ]
+    : [];
+
+  const personal = interleave({ area, value, block });
+  const generalCount = LINE_COUNT - personal.length;
+  const generalAt = new Set(
+    Array.from({ length: generalCount }, (_, i) => Math.round((i * LINE_COUNT) / generalCount)),
+  );
+  const out: AffirmationSlot[] = [];
+  for (let i = 0; i < LINE_COUNT; i++) {
+    const next = generalAt.has(i) || !personal.length ? null : personal.shift()!;
+    out.push({ ...(next ?? slot({ kind: "general", tag: null })), slot: i + 1 });
+  }
+  return out;
+}
+
+/** First three words, for the "no two lines open the same way" rule. */
+function opening(text: string): string {
+  return normalizeAffirmation(text).split(" ").slice(0, 3).join(" ");
 }
 
 function daySwapsKept(dateKey: string): boolean {
@@ -334,78 +496,113 @@ function daySwapsKept(dateKey: string): boolean {
   return n % 3 === 0;
 }
 
-export function settleGeneratedLines(
-  raw: { text: string; drew_on: string | null }[],
-  ctx: AffirmationContext,
+/**
+ * One line per slot: the model's line, else its alternative, else a general
+ * fallback. Rejects repeats from the last 14 days and same openings within the day.
+ */
+export function settleMixLines(
+  raw: { slot: number; text: string; alt: string | null }[],
+  slots: AffirmationSlot[],
   store: AffirmationsStore,
   dateKey: string,
 ): AffirmationLine[] {
-  const sources = allowedSources(ctx);
   const recent = [
     ...store.shown.filter((row) => withinDays(row.dateKey, dateKey, 14)).map((row) => row.text),
     ...store.saved.map((row) => row.text),
     ...store.rejected.filter((row) => withinDays(row.dateKey, dateKey, 14)).map((row) => row.text),
   ];
-  const kept: AffirmationLine[] = [];
-  for (const row of raw) {
-    const text = row.text.replace(/\s+/g, " ").trim();
-    if (!text || wordCount(text) > MAX_WORDS) continue;
-    if (recent.some((prev) => nearDuplicate(prev, text))) continue;
-    if (kept.some((prev) => nearDuplicate(prev.text, text))) continue;
-    const sourceKey = row.drew_on?.trim().toLowerCase() || "";
-    const source = sourceKey ? sources.get(sourceKey) ?? null : null;
-    kept.push({
+  const lines: AffirmationLine[] = [];
+  const openings = new Set<string>();
+  const fits = (candidate: string | null | undefined): string | null => {
+    const text = candidate?.replace(/\s+/g, " ").trim() ?? "";
+    if (!text || wordCount(text) > MAX_WORDS) return null;
+    if (openings.has(opening(text))) return null;
+    if (recent.some((prev) => nearDuplicate(prev, text))) return null;
+    if (lines.some((prev) => nearDuplicate(prev.text, text))) return null;
+    return text;
+  };
+  const day = dayNumber(dateKey);
+  const fallbacks = GENERAL_FALLBACKS.map(
+    (_, i) => GENERAL_FALLBACKS[(i + day * 5) % GENERAL_FALLBACKS.length],
+  );
+
+  for (const slot of slots) {
+    const row = raw.find((r) => r.slot === slot.slot);
+    let text = fits(row?.text) ?? fits(row?.alt);
+    let kind = slot.kind;
+    let tag = slot.tag;
+    if (!text) {
+      text = fallbacks.map(fits).find((t): t is string => Boolean(t)) ?? null;
+      kind = "general";
+      tag = null;
+    }
+    if (!text) continue;
+    openings.add(opening(text));
+    lines.push({
       id: `aff_${Math.random().toString(36).slice(2, 10)}`,
       text,
-      source,
+      source: tag,
       kept: false,
       removed: false,
       keptAt: null,
+      kind,
     });
-    if (kept.length === LINE_COUNT) break;
   }
-  if (daySwapsKept(dateKey) && store.saved.length && kept.length) {
+
+  // Now and then a kept line comes back, in a slot of the same kind and tag.
+  if (daySwapsKept(dateKey) && store.saved.length && lines.length) {
     const replacement = store.saved.find(
-      (saved) => !kept.some((line) => nearDuplicate(line.text, saved.text)),
+      (saved) => !lines.some((line) => nearDuplicate(line.text, saved.text)),
     );
-    if (replacement) {
-      let n = 0;
-      for (const ch of dateKey) n += ch.charCodeAt(0);
-      const index = n % kept.length;
-      kept[index] = {
+    const index = replacement
+      ? lines.findIndex((line, i) =>
+          replacement.source ? line.source === replacement.source : i > 0 && line.kind === "general",
+        )
+      : -1;
+    if (replacement && index >= 0) {
+      lines[index] = {
         id: replacement.id,
         text: replacement.text,
         source: replacement.source,
         kept: true,
         removed: false,
         keptAt: replacement.keptAt,
+        kind: lines[index].kind,
       };
     }
   }
-  return kept;
+  return lines;
 }
 
-async function requestLines(ctx: AffirmationContext): Promise<{ text: string; drew_on: string | null }[]> {
+async function requestMixLines(
+  slots: AffirmationSlot[],
+  ctx: AffirmationContext,
+): Promise<{ slot: number; text: string; alt: string | null }[]> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("API is not configured");
+  const plan = {
+    slots: slots.map(({ tag: _tag, ...rest }) => rest),
+    manifesto: ctx.manifesto,
+    recent: ctx.recent,
+  };
   const res = await medimadeFetch(`${base}/affirmations/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...medimadeApiAuthHeaders(),
     },
-    body: JSON.stringify({ context: ctx }),
+    body: JSON.stringify({ plan }),
   });
   const data = (await res.json().catch(() => ({}))) as {
-    affirmations?: { text?: string; drew_on?: string | null }[];
+    affirmations?: { slot?: number; text?: string; alt?: string | null }[];
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || "Couldn't write today's affirmations");
   return (data.affirmations ?? []).flatMap((row) => {
     const text = typeof row.text === "string" ? row.text.trim() : "";
-    if (!text) return [];
-    const drew = typeof row.drew_on === "string" ? row.drew_on.trim() : null;
-    return [{ text, drew_on: drew || null }];
+    if (!text || typeof row.slot !== "number") return [];
+    const alt = typeof row.alt === "string" && row.alt.trim() ? row.alt.trim() : null;
+    return [{ slot: row.slot, text, alt }];
   });
 }
 
@@ -421,14 +618,16 @@ async function writeToday(store: AffirmationsStore, regenerated: boolean): Promi
   const ctx = buildAffirmationContext(store.useHeal, store);
   if (!hasAffirmationContext(ctx)) return store;
   const dateKey = localDateKey();
-  const raw = await requestLines(ctx);
-  const lines = settleGeneratedLines(raw, ctx, store, dateKey);
+  const slots = planAffirmationDay(ctx, dateKey);
+  const raw = await requestMixLines(slots, ctx);
+  const lines = settleMixLines(raw, slots, store, dateKey);
   if (!lines.length) throw new Error("No new lines");
   const day: AffirmationDay = {
     dateKey,
     lines,
     regenerated,
     generatedAt: new Date().toISOString(),
+    mix: 2,
   };
   const next = rememberShown(store, day);
   persist(next);
@@ -458,6 +657,31 @@ function pauseIfStale(store: AffirmationsStore): AffirmationsStore {
   return next;
 }
 
+/**
+ * Today's set from before the balanced mix, untouched by the user (nothing saved
+ * or dismissed today; a kept line swapped in by the app doesn't count).
+ */
+function canRewriteIntoMix(day: AffirmationDay): boolean {
+  if (day.mix === 2 || day.mixTried) return false;
+  return !day.lines.some(
+    (line) => line.removed || (line.kept && (!line.keptAt || line.keptAt >= day.generatedAt)),
+  );
+}
+
+/** One attempt only: marked first, so a failure leaves the old set for the rest of the day. */
+function rewriteTodayIntoMix(store: AffirmationsStore): Promise<AffirmationsStore> {
+  if (inflight) return inflight;
+  const day = store.today!;
+  const marked = { ...store, today: { ...day, mixTried: true } };
+  persist(marked);
+  inflight = writeToday(marked, day.regenerated)
+    .catch(() => loadAffirmations())
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+
 export async function ensureTodayAffirmations(): Promise<AffirmationsStore> {
   let store = loadAffirmations();
   if (!isMedimadeSessionActive()) return store;
@@ -465,7 +689,9 @@ export async function ensureTodayAffirmations(): Promise<AffirmationsStore> {
   store = pauseIfStale(store);
   if (store.paused) return store;
   const today = localDateKey();
-  if (store.today?.dateKey === today && store.today.lines.length) return store;
+  if (store.today?.dateKey === today && store.today.lines.length) {
+    return canRewriteIntoMix(store.today) && contextIsReady() ? rewriteTodayIntoMix(store) : store;
+  }
   if (store.settledOn === today) return store;
   if (!contextIsReady()) return store;
   if (!hasAffirmationContext(buildAffirmationContext(store.useHeal, store))) {

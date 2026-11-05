@@ -222,7 +222,7 @@ export function CheckInDialog({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            className="mt-1.5 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
+            className="mt-1.5 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none"
           />
         </label>
         <button

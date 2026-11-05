@@ -790,7 +790,7 @@ function Board({ dream, onPatch, onRefresh }: Props) {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={`Search everything in ${dream.title}`}
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none"
+                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-base outline-none"
               />
               <div className="mt-2 flex gap-1 overflow-x-auto">
                 {tabs.map((group) => (

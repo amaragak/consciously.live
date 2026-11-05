@@ -1352,7 +1352,7 @@ export function MixerSoundsStudio({
                   value={descriptionDraft}
                   onChange={(e) => setDescriptionDraft(e.target.value)}
                   placeholder="Short description"
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-base text-foreground outline-none placeholder:text-muted"
                 />
                 <label className="sr-only" htmlFor="factory-mix-icon">
                   Icon

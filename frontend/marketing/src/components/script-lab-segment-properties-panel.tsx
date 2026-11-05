@@ -325,7 +325,7 @@ export function ScriptLabSegmentPropertiesPanel(props: {
                           repeatability: e.target.value as ScriptSegmentRepeatability | "",
                         })
                       }
-                      className="mt-0.5 block w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                      className="mt-0.5 block w-full rounded border border-border bg-background px-2 py-1 text-base"
                     >
                       <option value="">— choose —</option>
                       <option value="singular">singular (at most once)</option>
@@ -348,7 +348,7 @@ export function ScriptLabSegmentPropertiesPanel(props: {
                         types: Array.from(e.target.selectedOptions).map((o) => o.value),
                       })
                     }
-                    className="mt-2 min-h-[4rem] w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                    className="mt-2 min-h-[4rem] w-full rounded border border-border bg-background px-2 py-1 text-base"
                     aria-label={`Types for ${tag.name}`}
                   >
                     {MEDITATION_TYPES.map((t) => (
@@ -366,7 +366,7 @@ export function ScriptLabSegmentPropertiesPanel(props: {
                     onChange={(e) => updateDraft(tag.name, { description: e.target.value })}
                     rows={3}
                     placeholder="What this segment covers; overlap guidance vs related tags…"
-                    className="mt-0.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
+                    className="mt-0.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base"
                   />
                 </label>
 

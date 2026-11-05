@@ -305,7 +305,7 @@ function Section({
           onChange={(e) => onLinkValue(e.target.value)}
           placeholder={linkPlaceholder}
           disabled={busy}
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
         />
         <label className="mt-3 block text-[11px] font-medium text-muted">
           Made from line
@@ -316,7 +316,7 @@ function Section({
           rows={2}
           placeholder={promptPlaceholder}
           disabled={busy}
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
         />
         <button
           type="button"
@@ -470,7 +470,7 @@ function SlotCard({
         onChange={(e) => setForWhom(e.target.value)}
         disabled={busy}
         placeholder="e.g. Meditation for Bob"
-        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
       />
       <label className="mt-3 block text-[11px] font-medium text-muted">
         Made from line
@@ -481,7 +481,7 @@ function SlotCard({
         rows={2}
         disabled={busy}
         placeholder="The one line shown under the card on /listen…"
-        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
       />
       <button
         type="button"

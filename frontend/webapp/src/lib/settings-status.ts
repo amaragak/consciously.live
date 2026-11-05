@@ -57,6 +57,7 @@ export type SettingsKey =
   | "focus.sessionDefaults"
   | "focus.distraction"
   | "focus.goalsPicker"
+  | "today.items"
   | "general.theme"
   | "general.language"
   | "general.timeZone"
@@ -113,6 +114,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "focus.sessionDefaults": "wired",
   "focus.distraction": "not_available",
   "focus.goalsPicker": "not_available",
+  "today.items": "wired",
   "general.theme": "wired",
   "general.language": "not_available",
   "general.timeZone": "wired",

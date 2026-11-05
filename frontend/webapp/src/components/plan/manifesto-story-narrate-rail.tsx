@@ -685,7 +685,7 @@ export function ManifestoStoryNarrateRail({
                 }))
               }
               onBlur={() => setEditingTime(false)}
-              className="rounded-md border border-border bg-background px-1.5 py-0.5 text-sm"
+              className="rounded-md border border-border bg-background px-1.5 py-0.5 text-base"
               autoFocus
             />
           ) : (

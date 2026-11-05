@@ -398,7 +398,7 @@ function LetterFeedbackRow({
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => save("down", note)}
             rows={2}
-            className="rounded-xl border border-border bg-card px-3 py-2 text-[15px] text-foreground outline-none focus:border-accent/50"
+            className="rounded-xl border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
           />
         </label>
       ) : null}

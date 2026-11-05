@@ -1277,7 +1277,7 @@ export function IdeateVisionBoardClient() {
                                 rows={3}
                                 autoFocus
                                 placeholder="e.g. warmer light, standing instead of sitting, softer background"
-                                className="w-full resize-y rounded-lg border border-[#E5DFD0] bg-card px-3 py-2 text-sm leading-relaxed outline-none ring-accent/25 focus:ring-2 dark:border-border"
+                                className="w-full resize-y rounded-lg border border-[#E5DFD0] bg-card px-3 py-2 text-base leading-relaxed outline-none ring-accent/25 focus:ring-2 dark:border-border"
                               />
                               <div className="flex items-center justify-between gap-2">
                                 <button
@@ -1409,7 +1409,7 @@ export function IdeateVisionBoardClient() {
                     }
                   }}
                   placeholder="e.g. Me sitting on a large pile of money in a sunny room"
-                  className="min-w-0 flex-1 rounded-[12px] border border-[#E5DFD0] bg-card px-4 py-2.5 text-sm leading-relaxed outline-none ring-accent/25 focus:ring-2 dark:border-border"
+                  className="min-w-0 flex-1 rounded-[12px] border border-[#E5DFD0] bg-card px-4 py-2.5 text-base leading-relaxed outline-none ring-accent/25 focus:ring-2 dark:border-border"
                 />
                 <button
                   type="button"
@@ -1560,7 +1560,7 @@ export function IdeateVisionBoardClient() {
                         }
                         rows={2}
                         placeholder="e.g. My mum"
-                        className="w-full resize-none rounded-lg border border-[#E5DFD0] bg-card px-2 py-1.5 text-xs leading-snug outline-none ring-accent/25 focus:ring-2 dark:border-border"
+                        className="w-full resize-none rounded-lg border border-[#E5DFD0] bg-card px-2 py-1.5 text-base leading-snug outline-none ring-accent/25 focus:ring-2 dark:border-border"
                       />
                     </label>
                   </li>

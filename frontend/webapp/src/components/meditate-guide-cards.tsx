@@ -1,3 +1,4 @@
+import { CoverImage } from "@/components/cover-image";
 import { Link } from "@/lib/spa-nav";
 import {
   guidesBasePath,
@@ -30,13 +31,7 @@ export function MeditateGuideCard({
       href={guideHref(area, guide.slug)}
       className="flex min-w-0 flex-col overflow-hidden rounded-[14px] border border-border bg-card transition-opacity hover:opacity-95"
     >
-      <div className="h-[110px] w-full shrink-0 overflow-hidden bg-accent-soft/40">
-        <img
-          src={guide.image}
-          alt=""
-          className="h-full w-full object-cover"
-        />
-      </div>
+      <CoverImage src={guide.image} className="h-[110px] w-full shrink-0" />
       <div className="flex flex-col gap-1.5 px-3.5 pb-3.5 pt-3">
         <GuideCategory label={guide.category} />
         <span className="line-clamp-2 font-display text-base leading-[1.3] text-foreground">
@@ -65,13 +60,10 @@ export function MeditateGuideListRow({
         bordered ? "border-t border-border" : ""
       }`}
     >
-      <span className="block h-16 w-16 shrink-0 overflow-hidden rounded-[10px] bg-accent-soft/40">
-        <img
-          src={guide.image}
-          alt=""
-          className="h-full w-full object-cover"
-        />
-      </span>
+      <CoverImage
+        src={guide.image}
+        className="h-16 w-16 shrink-0 rounded-[10px]"
+      />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <GuideCategory label={guide.category} />
         <span className="font-display text-[15px] leading-[1.3] text-foreground">

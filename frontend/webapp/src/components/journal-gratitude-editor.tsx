@@ -23,6 +23,10 @@ type Props = {
   children?: ReactNode;
   footerNote?: string;
   onDelete?: () => void;
+  /** Hub / day pages: small uppercase label instead of large “Today” title. */
+  headingVariant?: "page" | "compact";
+  /** Override compact heading text (e.g. “TODAY · THU 5 NOV”). */
+  compactHeading?: string;
 };
 
 export function JournalGratitudeEditor({
@@ -32,28 +36,59 @@ export function JournalGratitudeEditor({
   children,
   footerNote,
   onDelete,
+  headingVariant = "page",
+  compactHeading,
 }: Props) {
   const isToday = localDateKeyFromIso(createdAt) === localDateKey();
   const dateLabel = formatJournalEntryDate(createdAt);
   const slotCount = Math.max(3, lines.length);
   const displayLines = Array.from({ length: slotCount }, (_, i) => lines[i] ?? "");
   const showFooter = Boolean(children || footerNote || onDelete);
+  const compact = headingVariant === "compact";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)] max-sm:flex-none">
-      <div className="relative z-10 shrink-0 border-b border-border px-7 pb-3 pt-3">
-        <h2 className="font-display text-[26px] font-normal tracking-tight text-foreground">
-          {isToday ? "Today" : dateLabel}
-        </h2>
-        <p className="mt-1 text-sm text-muted">
-          {isToday
-            ? slotCount > 3
-              ? "Things you’re grateful for today."
-              : "Three things you’re grateful for today."
-            : slotCount > 3
-              ? `Things you were grateful for on ${dateLabel}.`
-              : `Three things you were grateful for on ${dateLabel}.`}
-        </p>
+    <div
+      className={`flex min-h-0 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)] max-sm:flex-none ${
+        compact ? "shrink-0" : "flex-1"
+      }`}
+    >
+      <div
+        className={`relative z-10 shrink-0 border-b border-border px-5 pb-3 pt-3 sm:px-7 ${
+          compact ? "" : ""
+        }`}
+      >
+        {compact ? (
+          <>
+            <p className="text-[11.5px] font-semibold uppercase tracking-[1.4px] text-[color:#8A6424]">
+              {compactHeading ??
+                (isToday ? "Today" : dateLabel.toUpperCase())}
+            </p>
+            <p className="mt-0.5 text-[14.5px] text-muted">
+              {isToday
+                ? slotCount > 3
+                  ? "Things you’re grateful for today."
+                  : "Three things you’re grateful for today."
+                : slotCount > 3
+                  ? `Things you were grateful for on ${dateLabel}.`
+                  : `Three things you were grateful for on ${dateLabel}.`}
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 className="font-display text-[26px] font-normal tracking-tight text-foreground">
+              {isToday ? "Today" : dateLabel}
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              {isToday
+                ? slotCount > 3
+                  ? "Things you’re grateful for today."
+                  : "Three things you’re grateful for today."
+                : slotCount > 3
+                  ? `Things you were grateful for on ${dateLabel}.`
+                  : `Three things you were grateful for on ${dateLabel}.`}
+            </p>
+          </>
+        )}
       </div>
       <div className="space-y-5 px-7 pt-5 pb-4 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-contain sm:py-6">
         {displayLines.map((value, i) => {

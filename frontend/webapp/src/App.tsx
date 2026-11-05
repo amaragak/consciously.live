@@ -128,8 +128,10 @@ export function App() {
           {/* Legacy UUID paths → readable slugs (handled inside JournalPage). */}
           <Route path="entries/:entrySlug" element={<JournalPage />} />
           <Route path="gratitudes" element={<JournalPage />} />
+          <Route path="gratitudes/all" element={<JournalPage />} />
           <Route path="gratitudes/:entrySlug" element={<JournalPage />} />
           <Route path="gratitude" element={<JournalPage />} />
+          <Route path="gratitude/all" element={<JournalPage />} />
           <Route path="gratitude/:entrySlug" element={<JournalPage />} />
           <Route path="insights/*" element={<JournalPage />} />
           {/* Legacy `/journal/my/*` */}

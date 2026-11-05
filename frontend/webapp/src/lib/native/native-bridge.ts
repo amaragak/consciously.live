@@ -64,6 +64,20 @@ export function nativeHapticTap(): boolean {
   return true;
 }
 
+let keyboardOverlayImpl: ((overlay: boolean) => void) | null = null;
+let keyboardOverlay = false;
+
+export function setNativeKeyboardOverlayImpl(fn: ((overlay: boolean) => void) | null): void {
+  keyboardOverlayImpl = fn;
+  if (keyboardOverlay) fn?.(true);
+}
+
+/** true: keyboard slides over the page without resizing it. false: default (web view resizes). */
+export function setNativeKeyboardOverlay(overlay: boolean): void {
+  keyboardOverlay = overlay;
+  keyboardOverlayImpl?.(overlay);
+}
+
 let seekImpl: ((timeSeconds: number) => void) | null = null;
 
 /** Set by the native strip while it owns playback. */
@@ -106,6 +120,32 @@ export function onNativeAppReady(fn: (info: NativeAppReadyInfo) => void): () => 
   appReadyListeners.add(fn);
   return () => {
     appReadyListeners.delete(fn);
+  };
+}
+
+/**
+ * Boot splash has finished fading (or there was none). Dashboard entrance
+ * waits on this so cards don’t animate under the cover.
+ */
+let splashCleared = false;
+const splashClearedListeners = new Set<() => void>();
+
+export function markNativeSplashCleared(): void {
+  if (splashCleared) return;
+  splashCleared = true;
+  for (const fn of splashClearedListeners) fn();
+  splashClearedListeners.clear();
+}
+
+/** Runs `fn` once the splash is gone (immediately if it already is). */
+export function onNativeSplashCleared(fn: () => void): () => void {
+  if (!isNativeApp() || splashCleared) {
+    fn();
+    return () => {};
+  }
+  splashClearedListeners.add(fn);
+  return () => {
+    splashClearedListeners.delete(fn);
   };
 }
 

@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
 import { ManifestoPrintView } from "@/components/plan/manifesto-print-view";
 import { ManifestoStoryView } from "@/components/plan/manifesto-story-view";
 import { PlanHomeClient } from "@/components/plan/plan-home-client";
@@ -42,29 +41,17 @@ export function ManifestHomePage() {
     return <Navigate to={q ? `/manifest?${q}` : "/manifest"} replace />;
   }
 
-  return (
-    <IdeateCloudProvider>
-      <PlanHomeClient />
-    </IdeateCloudProvider>
-  );
+  return <PlanHomeClient />;
 }
 
 /** Story page. `?tab=draft|narration` selects the toggle. */
 export function ManifestStoryPage() {
   useStoryReminder();
-  return (
-    <IdeateCloudProvider>
-      <ManifestoStoryView />
-    </IdeateCloudProvider>
-  );
+  return <ManifestoStoryView />;
 }
 
 /** Poster page: the print view, on its own route. */
 export function ManifestPosterPage() {
   useStoryReminder();
-  return (
-    <IdeateCloudProvider>
-      <ManifestoPrintView />
-    </IdeateCloudProvider>
-  );
+  return <ManifestoPrintView />;
 }

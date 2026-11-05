@@ -73,6 +73,45 @@ export function AdminDevUiPanel() {
       ) : null}
 
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <h2 className="font-display text-lg font-medium">Homepage</h2>
+        {loading ? (
+          <p className="mt-3 text-sm text-muted">Loading…</p>
+        ) : (
+          <ul className="mt-4 space-y-4">
+            <li className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  Homepage waitlist
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-muted">
+                  On: homepage app links open the pre-release waitlist. Off:
+                  they go straight to sign up / sign in. Applies on production.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.homeWaitlist}
+                disabled={busy}
+                onClick={() =>
+                  void save({ homeWaitlist: !settings.homeWaitlist })
+                }
+                className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
+                  settings.homeWaitlist ? "bg-accent" : "bg-border"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-background shadow transition-transform ${
+                    settings.homeWaitlist ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </li>
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <h2 className="font-display text-lg font-medium">Controls</h2>
         {loading ? (
           <p className="mt-3 text-sm text-muted">Loading…</p>

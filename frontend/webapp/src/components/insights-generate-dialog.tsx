@@ -797,7 +797,7 @@ export function InsightsGenerateDialog({
                         value={customFrom}
                         max={customTo || today}
                         onChange={(e) => setCustomFrom(e.target.value)}
-                        className="h-11 rounded-[10px] border border-border bg-card px-3 text-[15px] text-foreground outline-none"
+                        className="h-11 rounded-[10px] border border-border bg-card px-3 text-base text-foreground outline-none"
                       />
                     </label>
                     <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
@@ -808,7 +808,7 @@ export function InsightsGenerateDialog({
                         max={today}
                         min={customFrom || undefined}
                         onChange={(e) => setCustomTo(e.target.value)}
-                        className="h-11 rounded-[10px] border border-border bg-card px-3 text-[15px] text-foreground outline-none"
+                        className="h-11 rounded-[10px] border border-border bg-card px-3 text-base text-foreground outline-none"
                       />
                     </label>
                   </div>

@@ -22,12 +22,15 @@ export type DevUiSettings = {
   createAudioDevControls: boolean;
   /** Library card cost / bytes flyout. */
   libraryDevFlyout: boolean;
+  /** Marketing homepage: app links open the pre-release waitlist instead of sign-up/sign-in. Not host-gated. */
+  homeWaitlist: boolean;
 };
 
 export function defaultDevUiSettings(): DevUiSettings {
   return {
     createAudioDevControls: false,
     libraryDevFlyout: false,
+    homeWaitlist: false,
   };
 }
 
@@ -45,6 +48,9 @@ function coerceSettings(raw: unknown): DevUiSettings {
   }
   if (typeof o.libraryDevFlyout === "boolean") {
     base.libraryDevFlyout = o.libraryDevFlyout;
+  }
+  if (typeof o.homeWaitlist === "boolean") {
+    base.homeWaitlist = o.homeWaitlist;
   }
   return base;
 }
@@ -81,6 +87,8 @@ export async function saveDevUiSettings(
       typeof patch.libraryDevFlyout === "boolean"
         ? patch.libraryDevFlyout
         : current.libraryDevFlyout,
+    homeWaitlist:
+      typeof patch.homeWaitlist === "boolean" ? patch.homeWaitlist : current.homeWaitlist,
   };
   await ddb.send(
     new PutCommand({

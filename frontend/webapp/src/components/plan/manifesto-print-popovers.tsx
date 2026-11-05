@@ -16,7 +16,7 @@ import type { VisionBoardItem } from "@/lib/ideate-vision-board";
 /* --------------------------------------------------------------- shared UI */
 
 const FIELD_CLASS =
-  "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/30 placeholder:text-muted focus:ring-2";
+  "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/30 placeholder:text-muted focus:ring-2";
 const LABEL_CLASS =
   "mb-1.5 block text-[11px] font-semibold uppercase tracking-[1.4px] text-muted";
 

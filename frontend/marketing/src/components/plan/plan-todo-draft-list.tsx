@@ -136,7 +136,7 @@ export function PlanTodoDraftList({
                         setEditingId(null);
                       }
                     }}
-                    className="w-full border-0 bg-transparent px-1 py-1 text-sm outline-none ring-1 ring-accent/30"
+                    className="w-full border-0 bg-transparent px-1 py-1 text-base outline-none ring-1 ring-accent/30"
                     aria-label="Edit To Do title"
                   />
                 ) : (
@@ -187,7 +187,7 @@ export function PlanTodoDraftList({
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="Add your own To Do"
-          className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/25 focus:ring-2"
+          className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2 text-base outline-none ring-accent/25 focus:ring-2"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();

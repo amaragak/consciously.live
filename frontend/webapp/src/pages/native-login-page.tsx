@@ -1,7 +1,9 @@
 /**
- * Capacitor-only auth screens (consciously-native-auth-screens.zip).
- * Sign up → email verify → (passkey skipped on native) → first meditation;
- * Sign in with Apple / Google / email+password. Web auth is unchanged.
+ * Capacitor-only auth screens (consciously-native-auth-screens.zip,
+ * consciously-native-email-first.zip).
+ * Continue (Apple / Google / email) → email check → Welcome back (password) or
+ * Create your account → email verify → (passkey skipped on native) → first meditation.
+ * The separate Sign up / Sign in screens are commented out below. Web auth is unchanged.
  *
  * Passkeys are not offered here: WebAuthn needs an https origin; the web view
  * is `capacitor://localhost`. Re-enable when a native passkey path exists.
@@ -11,9 +13,10 @@
  */
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { Eye, EyeOff } from "lucide-react";
+import { BookMarked, Eye, EyeOff, LayoutGrid } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { AppNavSectionIcon } from "@/components/app-nav-section-icon";
 import { BrandLockup } from "@/components/brand-lockup";
 import {
   AuthShell,
@@ -33,6 +36,7 @@ import {
 } from "@/lib/cognito-direct-auth";
 import { createFromBriefHref } from "@/lib/create-meditation-path";
 import {
+  checkAuthEmail,
   exchangeCognitoIdToken,
   fetchCognitoAuthConfig,
   getMedimadeApiBase,
@@ -40,6 +44,7 @@ import {
   saveMedimadeProfileDisplayName,
   setMedimadeSession,
   verifyMedimadeMagicLink,
+  type AuthEmailCheck,
   type CognitoAuthConfig,
   type MedimadeMagicLinkVerifyResult,
 } from "@/lib/medimade-api";
@@ -75,15 +80,19 @@ const TERMS_URL = "https://consciously.live/terms";
 const PRIVACY_URL = "https://consciously.live/privacy";
 const MAGIC_LINK_HOSTS = new Set(["consciously.live", "www.consciously.live"]);
 
-type NativeAuthLocationState = { nativeAuth?: "signin" } | null;
+// Superseded by email-first: every entry lands on Continue.
+// type NativeAuthLocationState = { nativeAuth?: "signin" } | null;
 type Screen =
-  | "signup"
+  | "continue"
+  | "known"
+  | "new"
+  // | "signup"
+  // | "signin"
   | "confirm"
   | "forgot"
   | "reset"
   | "name"
-  | "first"
-  | "signin";
+  | "first";
 
 function readLocal(key: string): string {
   try {
@@ -168,7 +177,7 @@ function AuthBand({
     <aside className="auth-split__brand">
       {onBack ? (
         <button type="button" onClick={onBack} className="native-back" aria-label="Back">
-          <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 5l-7 7 7 7" />
           </svg>
         </button>
@@ -248,6 +257,44 @@ function PasswordField({
         </button>
       </div>
       {hint ? <p className="native-auth__hint">{hint}</p> : null}
+    </div>
+  );
+}
+
+const WHATS_INSIDE: { label: string; icon: React.ReactNode }[] = [
+  { label: "Personalised meditations", icon: <AppNavSectionIcon sectionId="meditate" size={16} /> },
+  { label: "Vision board", icon: <LayoutGrid aria-hidden width={16} height={16} strokeWidth={1.75} /> },
+  { label: "Stories of your future self", icon: <BookMarked aria-hidden width={16} height={16} strokeWidth={1.75} /> },
+  { label: "Journal", icon: <AppNavSectionIcon sectionId="journal" size={16} /> },
+  { label: "Heal", icon: <AppNavSectionIcon sectionId="heal" size={16} /> },
+  { label: "Focus", icon: <AppNavSectionIcon sectionId="focus" size={16} /> },
+];
+
+/** Continue only: information, not tappable (consciously-native-whats-inside). */
+function WhatsInside() {
+  return (
+    <section className="native-whats-inside" aria-label="What’s inside">
+      <p className="native-whats-inside__label">What’s inside</p>
+      <ul className="native-whats-inside__grid">
+        {WHATS_INSIDE.map((item) => (
+          <li key={item.label} className="native-whats-inside__item">
+            <span className="native-whats-inside__icon">{item.icon}</span>
+            <span>{item.label}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Read-only email from the Continue step, with Change. */
+function EmailRow({ email, onChange }: { email: string; onChange: () => void }) {
+  return (
+    <div className="native-auth__email-row">
+      <span className="native-auth__email-value">{email}</span>
+      <button type="button" onClick={onChange}>
+        Change
+      </button>
     </div>
   );
 }
@@ -469,10 +516,9 @@ export default function NativeLoginPage({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const urlSignIn =
-    (location.state as NativeAuthLocationState)?.nativeAuth === "signin";
 
-  const [screen, setScreen] = useState<Screen>(urlSignIn ? "signin" : "signup");
+  const [screen, setScreen] = useState<Screen>("continue");
+  const [account, setAccount] = useState<AuthEmailCheck | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -484,9 +530,7 @@ export default function NativeLoginPage({
   /** After auth: show first-meditation for new accounts. */
   const [isNewAccount, setIsNewAccount] = useState(false);
   const pendingAfterName = useRef<"first" | "done">("done");
-  const [openPhase, setOpenPhase] = useState<AuthOpenPhase>(
-    urlSignIn ? "ready" : "loading",
-  );
+  const [openPhase, setOpenPhase] = useState<AuthOpenPhase>("loading");
   const [exiting, setExiting] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -520,12 +564,6 @@ export default function NativeLoginPage({
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    setScreen(urlSignIn ? "signin" : "signup");
-    setError(null);
-    if (urlSignIn) setOpenPhase("ready");
-  }, [urlSignIn]);
 
   const leaveLogin = useCallback(
     (dest?: string) => {
@@ -615,6 +653,32 @@ export default function NativeLoginPage({
       }
     }
   }
+
+  async function onContinue(e: React.FormEvent) {
+    e.preventDefault();
+    const address = email.trim().toLowerCase();
+    if (!address) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const result = await checkAuthEmail(address);
+      setAccount(result);
+      setPassword("");
+      setScreen(result.next === "signin" ? "known" : "new");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn’t check that email. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Back to Continue with the email still filled in. */
+  const changeEmail = () => {
+    setError(null);
+    setCode("");
+    setPassword("");
+    setScreen("continue");
+  };
 
   async function onSignUp(e: React.FormEvent) {
     e.preventDefault();
@@ -760,20 +824,21 @@ export default function NativeLoginPage({
     }
   }
 
-  const openSignIn = () => {
-    setError(null);
-    navigate(`${location.pathname}${location.search}`, {
-      state: { nativeAuth: "signin" } satisfies NativeAuthLocationState,
-    });
-  };
-
-  const openSignUp = () => {
-    setError(null);
-    navigate(`${location.pathname}${location.search}`, {
-      replace: true,
-      state: null,
-    });
-  };
+  // Superseded by email-first (Continue → Welcome back / Create your account).
+  // const openSignIn = () => {
+  //   setError(null);
+  //   navigate(`${location.pathname}${location.search}`, {
+  //     state: { nativeAuth: "signin" } satisfies NativeAuthLocationState,
+  //   });
+  // };
+  //
+  // const openSignUp = () => {
+  //   setError(null);
+  //   navigate(`${location.pathname}${location.search}`, {
+  //     replace: true,
+  //     state: null,
+  //   });
+  // };
 
   const providerButtons = (
     <>
@@ -831,7 +896,7 @@ export default function NativeLoginPage({
           onBack={() => {
             setCode("");
             setError(null);
-            setScreen(urlSignIn ? "signin" : "signup");
+            setScreen(account?.next === "signin" ? "known" : "new");
           }}
           headline="Check your email."
           subline={
@@ -862,12 +927,7 @@ export default function NativeLoginPage({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => {
-                  setCode("");
-                  setError(null);
-                  setScreen("signup");
-                  openSignUp();
-                }}
+                onClick={changeEmail}
               >
                 Change email
               </button>
@@ -883,7 +943,7 @@ export default function NativeLoginPage({
         <AuthBand
           onBack={() => {
             setError(null);
-            setScreen("signin");
+            setScreen("known");
           }}
           headline="Forgot password."
           subline="We’ll email you a reset code."
@@ -950,17 +1010,128 @@ export default function NativeLoginPage({
         </section>
       </div>
     );
-  } else if (screen === "signin") {
+  } else if (screen === "known") {
+    const address = email.trim().toLowerCase();
+    const socialOnly = account != null && !account.hasPassword && account.providers.length > 0;
+    const socialProvider: NativeSocialProvider = account?.providers.includes("apple") ? "apple" : "google";
     body = (
       <div className="auth-split auth-split--native">
         <AuthBand
-          onBack={openSignUp}
+          onBack={changeEmail}
           headline={
             <>
               Welcome <em className="auth-split__accent-word">back</em>.
             </>
           }
-          subline="Your practice is right where you left it."
+          subline="Enter your password to sign in."
+        />
+        <section className="auth-split__panel">
+          <div className="auth-split__panel-inner native-auth__form">
+            <EmailRow email={address} onChange={changeEmail} />
+            {socialOnly ? (
+              <>
+                <p className="native-auth__hint native-auth__provider-note">
+                  This account uses Sign in with {socialProvider === "apple" ? "Apple" : "Google"}.
+                </p>
+                {errorLine}
+                {socialProvider === "apple" ? (
+                  <ProviderButton variant="apple" disabled={busy} onClick={() => void continueWith("apple")}>
+                    <AppleMark />
+                    Sign in with Apple
+                  </ProviderButton>
+                ) : (
+                  <ProviderButton variant="outline" disabled={busy} onClick={() => void continueWith("google")}>
+                    <GoogleMark />
+                    Sign in with Google
+                  </ProviderButton>
+                )}
+              </>
+            ) : (
+              <form className="native-auth__form" onSubmit={(e) => void onSignIn(e)}>
+                <input type="email" name="email" autoComplete="username" value={address} readOnly hidden />
+                <PasswordField
+                  id="native-known-password"
+                  label="Password"
+                  value={password}
+                  onChange={setPassword}
+                  autoComplete="current-password"
+                />
+                <div className="native-auth__forgot-row">
+                  <button type="button" disabled={busy} onClick={() => setScreen("forgot")}>
+                    Forgot password?
+                  </button>
+                </div>
+                {errorLine}
+                <button type="submit" disabled={busy || !password} className="native-mist">
+                  {busy ? "Signing in…" : "Sign in"}
+                </button>
+                {/* Passkey sign-in needs a native WebAuthn path; hidden until NATIVE_PASSKEYS_ENABLED. */}
+                {NATIVE_PASSKEYS_ENABLED && account?.hasPasskey ? (
+                  <div className="native-divider">
+                    <span />
+                    or
+                    <span />
+                  </div>
+                ) : null}
+              </form>
+            )}
+          </div>
+        </section>
+        {busy ? <div className="native-busy" role="status" aria-label="Signing in" /> : null}
+      </div>
+    );
+  } else if (screen === "new") {
+    const address = email.trim().toLowerCase();
+    body = (
+      <div className="auth-split auth-split--native">
+        <AuthBand
+          onBack={changeEmail}
+          headline="Create your account."
+          subline="No account with this email yet. Choose a password and we’ll send you a code."
+        />
+        <section className="auth-split__panel">
+          <form className="auth-split__panel-inner native-auth__form" onSubmit={(e) => void onSignUp(e)}>
+            <EmailRow email={address} onChange={changeEmail} />
+            <input type="email" name="email" autoComplete="username" value={address} readOnly hidden />
+            <PasswordField
+              id="native-new-password"
+              label="Password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              hint="8+ characters, with upper and lower case and a number."
+            />
+            {errorLine}
+            <button type="submit" disabled={busy || !password} className="native-mist">
+              {busy ? "Creating…" : "Create my account"}
+            </button>
+          </form>
+        </section>
+        {busy ? <div className="native-busy" role="status" aria-label="Working" /> : null}
+      </div>
+    );
+  } else {
+    body = (
+      <div
+        className={[
+          "auth-split",
+          "auth-split--native",
+          opening ? "auth-split--opening" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <AuthBand
+          headline={
+            <>
+              <span className="native-auth__headline-line">Become who you</span>
+              <span className="native-auth__headline-line">
+                <em className="auth-split__accent-word">said</em> you’d be.
+              </span>
+            </>
+          }
+          subline="The app that catalyses personal transformation."
         />
         <section className="auth-split__panel">
           <div className="auth-split__panel-inner native-auth__form">
@@ -972,136 +1143,195 @@ export default function NativeLoginPage({
             ) : (
               <>
                 <div className="native-signin__providers">{providerButtons}</div>
-                {/* Passkey button omitted while NATIVE_PASSKEYS_ENABLED is false. */}
                 <div className="native-divider">
                   <span />
                   or with email
                   <span />
                 </div>
-                <form className="native-auth__form" onSubmit={(e) => void onSignIn(e)}>
+                <form className="native-auth__form" onSubmit={(e) => void onContinue(e)}>
                   <div className="native-auth__field">
-                    <label htmlFor="native-signin-email">Email</label>
+                    <label htmlFor="native-continue-email">Email</label>
                     <input
-                      id="native-signin-email"
+                      id="native-continue-email"
                       type="email"
                       autoComplete="email"
                       autoCapitalize="none"
+                      inputMode="email"
+                      enterKeyHint="go"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value.toLowerCase())}
                       placeholder="you@example.com"
                     />
                   </div>
-                  <PasswordField
-                    id="native-signin-password"
-                    label="Password"
-                    value={password}
-                    onChange={setPassword}
-                    autoComplete="current-password"
-                  />
-                  <div className="native-auth__forgot-row">
-                    <button type="button" disabled={busy} onClick={() => setScreen("forgot")}>
-                      Forgot password?
-                    </button>
-                  </div>
                   {errorLine}
-                  <button type="submit" disabled={busy || !email.trim() || !password} className="native-mist">
-                    {busy ? "Signing in…" : "Sign in"}
+                  <button type="submit" disabled={busy || !email.trim()} className="native-mist">
+                    {busy ? "Checking…" : "Continue"}
                   </button>
                 </form>
-                <p className="native-auth__centre-link">
-                  New here?{" "}
-                  <button type="button" onClick={openSignUp}>
-                    Create an account
-                  </button>
-                </p>
+                <TermsLine />
+                <WhatsInside />
               </>
             )}
           </div>
         </section>
-        {busy ? <div className="native-busy" role="status" aria-label="Signing in" /> : null}
+        {busy ? <div className="native-busy" role="status" aria-label="Working" /> : null}
       </div>
     );
-  } else   {
-    body = (
-    <div
-      className={[
-        "auth-split",
-        "auth-split--native",
-        opening ? "auth-split--opening" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <AuthBand
-        headline={
-          <>
-            <span className="native-auth__headline-line">Become who you</span>
-            <span className="native-auth__headline-line">
-              <em className="auth-split__accent-word">said</em> you’d be.
-            </span>
-          </>
-        }
-        subline="The app that catalyses personal transformation."
-      />
-      <section className="auth-split__panel">
-        <div className="auth-split__panel-inner native-auth__form">
-          {!base ? (
-            <p className="text-sm text-muted">
-              Set <code className="rounded bg-surface-2 px-1 py-0.5">VITE_MEDIMADE_API_URL</code> to
-              enable sign-up.
-            </p>
-          ) : (
-            <>
-              <div className="native-signin__providers">{providerButtons}</div>
-              <div className="native-divider">
-                <span />
-                or with email
-                <span />
-              </div>
-              <form className="native-auth__form" onSubmit={(e) => void onSignUp(e)}>
-                <div className="native-auth__field">
-                  <label htmlFor="native-signup-email">Email</label>
-                  <input
-                    id="native-signup-email"
-                    type="email"
-                    autoComplete="email"
-                    autoCapitalize="none"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                    placeholder="you@example.com"
-                  />
-                </div>
-                <PasswordField
-                  id="native-signup-password"
-                  label="Password"
-                  value={password}
-                  onChange={setPassword}
-                  autoComplete="new-password"
-                  placeholder="At least 8 characters"
-                  hint="8+ characters, with upper and lower case and a number."
-                />
-                {errorLine}
-                <button type="submit" disabled={busy || !email.trim() || !password} className="native-mist">
-                  {busy ? "Creating…" : "Create my account"}
-                </button>
-              </form>
-              <p className="native-auth__centre-link">
-                Already have an account?{" "}
-                <button type="button" onClick={openSignIn}>
-                  Sign in
-                </button>
-              </p>
-              <TermsLine />
-            </>
-          )}
-        </div>
-      </section>
-      {busy ? <div className="native-busy" role="status" aria-label="Working" /> : null}
-    </div>
-    );
   }
+
+  // Superseded by email-first: the separate Sign in / Sign up screens.
+  //   body = (
+  //     <div className="auth-split auth-split--native">
+  //       <AuthBand
+  //         onBack={openSignUp}
+  //         headline={
+  //           <>
+  //             Welcome <em className="auth-split__accent-word">back</em>.
+  //           </>
+  //         }
+  //         subline="Your practice is right where you left it."
+  //       />
+  //       <section className="auth-split__panel">
+  //         <div className="auth-split__panel-inner native-auth__form">
+  //           {!base ? (
+  //             <p className="text-sm text-muted">
+  //               Set <code className="rounded bg-surface-2 px-1 py-0.5">VITE_MEDIMADE_API_URL</code> to
+  //               enable sign-in.
+  //             </p>
+  //           ) : (
+  //             <>
+  //               <div className="native-signin__providers">{providerButtons}</div>
+  //               {/* Passkey button omitted while NATIVE_PASSKEYS_ENABLED is false. */}
+  //               <div className="native-divider">
+  //                 <span />
+  //                 or with email
+  //                 <span />
+  //               </div>
+  //               <form className="native-auth__form" onSubmit={(e) => void onSignIn(e)}>
+  //                 <div className="native-auth__field">
+  //                   <label htmlFor="native-signin-email">Email</label>
+  //                   <input
+  //                     id="native-signin-email"
+  //                     type="email"
+  //                     autoComplete="email"
+  //                     autoCapitalize="none"
+  //                     required
+  //                     value={email}
+  //                     onChange={(e) => setEmail(e.target.value.toLowerCase())}
+  //                     placeholder="you@example.com"
+  //                   />
+  //                 </div>
+  //                 <PasswordField
+  //                   id="native-signin-password"
+  //                   label="Password"
+  //                   value={password}
+  //                   onChange={setPassword}
+  //                   autoComplete="current-password"
+  //                 />
+  //                 <div className="native-auth__forgot-row">
+  //                   <button type="button" disabled={busy} onClick={() => setScreen("forgot")}>
+  //                     Forgot password?
+  //                   </button>
+  //                 </div>
+  //                 {errorLine}
+  //                 <button type="submit" disabled={busy || !email.trim() || !password} className="native-mist">
+  //                   {busy ? "Signing in…" : "Sign in"}
+  //                 </button>
+  //               </form>
+  //               <p className="native-auth__centre-link">
+  //                 New here?{" "}
+  //                 <button type="button" onClick={openSignUp}>
+  //                   Create an account
+  //                 </button>
+  //               </p>
+  //             </>
+  //           )}
+  //         </div>
+  //       </section>
+  //       {busy ? <div className="native-busy" role="status" aria-label="Signing in" /> : null}
+  //     </div>
+  //   );
+  // } else   {
+  //   body = (
+  //   <div
+  //     className={[
+  //       "auth-split",
+  //       "auth-split--native",
+  //       opening ? "auth-split--opening" : "",
+  //     ]
+  //       .filter(Boolean)
+  //       .join(" ")}
+  //   >
+  //     <AuthBand
+  //       headline={
+  //         <>
+  //           <span className="native-auth__headline-line">Become who you</span>
+  //           <span className="native-auth__headline-line">
+  //             <em className="auth-split__accent-word">said</em> you’d be.
+  //           </span>
+  //         </>
+  //       }
+  //       subline="The app that catalyses personal transformation."
+  //     />
+  //     <section className="auth-split__panel">
+  //       <div className="auth-split__panel-inner native-auth__form">
+  //         {!base ? (
+  //           <p className="text-sm text-muted">
+  //             Set <code className="rounded bg-surface-2 px-1 py-0.5">VITE_MEDIMADE_API_URL</code> to
+  //             enable sign-up.
+  //           </p>
+  //         ) : (
+  //           <>
+  //             <div className="native-signin__providers">{providerButtons}</div>
+  //             <div className="native-divider">
+  //               <span />
+  //               or with email
+  //               <span />
+  //             </div>
+  //             <form className="native-auth__form" onSubmit={(e) => void onSignUp(e)}>
+  //               <div className="native-auth__field">
+  //                 <label htmlFor="native-signup-email">Email</label>
+  //                 <input
+  //                   id="native-signup-email"
+  //                   type="email"
+  //                   autoComplete="email"
+  //                   autoCapitalize="none"
+  //                   required
+  //                   value={email}
+  //                   onChange={(e) => setEmail(e.target.value.toLowerCase())}
+  //                   placeholder="you@example.com"
+  //                 />
+  //               </div>
+  //               <PasswordField
+  //                 id="native-signup-password"
+  //                 label="Password"
+  //                 value={password}
+  //                 onChange={setPassword}
+  //                 autoComplete="new-password"
+  //                 placeholder="At least 8 characters"
+  //                 hint="8+ characters, with upper and lower case and a number."
+  //               />
+  //               {errorLine}
+  //               <button type="submit" disabled={busy || !email.trim() || !password} className="native-mist">
+  //                 {busy ? "Creating…" : "Create my account"}
+  //               </button>
+  //             </form>
+  //             <p className="native-auth__centre-link">
+  //               Already have an account?{" "}
+  //               <button type="button" onClick={openSignIn}>
+  //                 Sign in
+  //               </button>
+  //             </p>
+  //             <TermsLine />
+  //           </>
+  //         )}
+  //       </div>
+  //     </section>
+  //     {busy ? <div className="native-busy" role="status" aria-label="Working" /> : null}
+  //   </div>
+  //   );
+  // }
 
   return (
     <AuthShell
@@ -1109,6 +1339,7 @@ export default function NativeLoginPage({
       onPhase={setOpenPhase}
       exiting={exiting}
       reduceMotion={reduceMotion}
+      step={screen}
     >
       {body}
     </AuthShell>

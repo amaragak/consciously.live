@@ -1461,7 +1461,7 @@ export function FocusTimerView() {
             }
           }}
           placeholder="Add a task..."
-          className="w-full border-0 border-b border-border bg-transparent pb-2 font-display text-[15px] font-normal italic leading-snug text-foreground outline-none ring-0 placeholder:text-muted/70 focus:ring-0"
+          className="w-full border-0 border-b border-border bg-transparent pb-2 font-display text-base font-normal italic leading-snug text-foreground outline-none ring-0 placeholder:text-muted/70 focus:ring-0"
         />
 
         <div className="relative mt-3 self-start">
@@ -1698,7 +1698,7 @@ export function FocusTimerView() {
                           }
                         }}
                         placeholder="New task"
-                        className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm text-foreground outline-none placeholder:text-muted/70"
+                        className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-base text-foreground outline-none placeholder:text-muted/70"
                       />
                       <button
                         type="button"

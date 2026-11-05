@@ -280,6 +280,37 @@ body {
   animation: raise-cards-in 220ms ease;
 }
 
+/* Overview hubs + dashboard — whole card shells rise after splash clears. */
+@keyframes dash-reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.overview-entrance [data-dash-reveal] {
+  opacity: 0;
+  transform: translateY(32px);
+  transform-origin: center top;
+}
+
+.overview-entrance [data-dash-reveal].is-in {
+  animation: dash-reveal-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-entrance [data-dash-reveal],
+  .overview-entrance [data-dash-reveal].is-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .vision-board-tile-skeleton,
 .mm-skeleton {
   background-color: #e4dfd6;

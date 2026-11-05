@@ -86,7 +86,10 @@ export function DashboardAffirmationsCard() {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-[0_2px_10px_rgba(15,27,45,0.04)]">
+    <div
+      data-dash-reveal
+      className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-[0_2px_10px_rgba(15,27,45,0.04)]"
+    >
       <p className="min-w-0 flex-1 truncate text-[17px] font-medium leading-snug text-foreground">
         {first.text}
       </p>

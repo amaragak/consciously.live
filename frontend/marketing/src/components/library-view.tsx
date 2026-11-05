@@ -2319,7 +2319,7 @@ export default function LibraryView({
       <SearchInput
         className="min-w-0 flex-1"
         inputRef={mobileSearchRef}
-        inputClassName={`${mobileToolbarChrome} py-0 pl-9 pr-3 text-sm leading-[38px] placeholder:text-muted`}
+        inputClassName={`${mobileToolbarChrome} py-0 pl-9 pr-3 text-base leading-[38px] placeholder:text-muted`}
         value={searchQuery}
         onChange={setSearchQuery}
         placeholder="Search"

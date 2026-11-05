@@ -354,7 +354,7 @@ function JumpToDayPopover({
         type="date"
         value={jumpDate}
         onChange={(ev) => onPick(ev.target.value)}
-        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
       />
       {jumpDate ? (
         <button
@@ -1677,7 +1677,7 @@ export function JournalView() {
                               }}
                               placeholder="Folder name"
                               autoFocus
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent/50"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
                             />
                             <button
                               type="button"
@@ -1709,7 +1709,7 @@ export function JournalView() {
                           type="date"
                           value={jumpDate}
                           onChange={(ev) => applyJumpDate(ev.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
                         />
                         {jumpDate ? (
                           <button
@@ -1807,7 +1807,7 @@ export function JournalView() {
                               }}
                               placeholder="Folder name"
                               autoFocus
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent/50"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
                             />
                             <button
                               type="button"
@@ -1893,7 +1893,7 @@ export function JournalView() {
                         type="date"
                         value={jumpDate}
                         onChange={(ev) => applyJumpDate(ev.target.value)}
-                        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent/50"
+                        className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
                       />
                       {jumpDate ? (
                         <button

@@ -870,7 +870,7 @@ export function MixerPresetChannel({
         onChange={(e) => setSaveName(e.target.value)}
         disabled={disabled}
         placeholder="Save as…"
-        className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted disabled:opacity-50"
+        className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-base text-foreground outline-none placeholder:text-muted disabled:opacity-50"
       />
       <button
         type="button"

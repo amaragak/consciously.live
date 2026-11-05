@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft } from "lucide-react";
+import {
+  trackFromFocusMix,
+  type LibraryActiveTrack,
+} from "@/components/library-audio-strip";
+import {
+  useLibraryPlayer,
+} from "@/components/library-player-provider";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { MixerChannel, MixerVoiceChannel } from "@/components/mixer-channel";
 import { DrumsLockedWrap } from "@/components/drums-locked-wrap";
@@ -24,6 +31,7 @@ import {
   SoundsLayerStrip,
 } from "@/components/sounds-mixer-strips";
 import { useMinWidth } from "@/hooks/use-min-width";
+import { isNativeApp } from "@/lib/native/native-bridge";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import { bedElementVolume } from "@/lib/bed-volume";
 import {
@@ -46,6 +54,9 @@ import {
   type BackgroundAudioItem,
   type FishSpeaker,
 } from "@/lib/medimade-api";
+
+/** Native Play-all for Custom Sounds — same strip as Focus mixes. */
+const SOUNDS_AMBIENT_S3_PREFIX = "sounds:ambient:";
 import {
   FACTORY_COLOR_PRESETS,
   emptyFactoryPreset,
@@ -155,6 +166,14 @@ export function MixerSoundsStudio({
   const { pathname: pathnameRaw } = useLocation();
   const pathname = pathnameRaw || SOUNDS_HREF;
   const navigate = useNavigate();
+  const {
+    playTrack,
+    dismiss: dismissLibraryPlayer,
+    nowPlaying,
+    playingS3Key,
+    patchNowPlaying,
+  } = useLibraryPlayer();
+  const nativeAmbient = isNativeApp();
   const soundsRoute = isAdmin ? { kind: "list" as const } : soundsRouteFromPath(pathname);
   const mobileEditorOpen =
     !isAdmin &&
@@ -215,6 +234,9 @@ export function MixerSoundsStudio({
   const [backgroundNoise, setBackgroundNoise] = useState<BackgroundAudioItem[]>(
     () => cachedBeds?.noise ?? [],
   );
+  const [backgroundCompositions, setBackgroundCompositions] = useState<
+    BackgroundAudioItem[]
+  >(() => cachedBeds?.compositions ?? []);
   const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(
     () => cachedBeds?.baseUrl?.trim() || getMedimadeMediaBaseUrl() || null,
   );
@@ -590,6 +612,7 @@ export function MixerSoundsStudio({
         setBackgroundMusic(data.music);
         setBackgroundDrums(data.drums);
         setBackgroundNoise(data.noise);
+        setBackgroundCompositions(data.compositions ?? []);
         const fromApi = data.baseUrl?.trim();
         setMediaBaseUrl(fromApi || envMediaBase || null);
         preloadBackgroundAudioCoverImages(data);
@@ -613,6 +636,7 @@ export function MixerSoundsStudio({
           setBackgroundMusic([]);
           setBackgroundDrums([]);
           setBackgroundNoise([]);
+          setBackgroundCompositions([]);
           setMediaBaseUrl(envMediaBase || null);
           if (!isAdmin && initialFactoryPresets == null) {
             setFactoryPresets([]);
@@ -647,8 +671,34 @@ export function MixerSoundsStudio({
     };
   }, [isAdmin]);
 
+  function stopNativeSoundsAmbient() {
+    if (nowPlaying?.s3Key?.startsWith(SOUNDS_AMBIENT_S3_PREFIX)) {
+      dismissLibraryPlayer();
+    }
+  }
+
+  function soundsAmbientTrack(
+    source: MixerPresetMix,
+    title: string,
+  ): LibraryActiveTrack | null {
+    const playback = mixForPlayback(source);
+    const next = trackFromFocusMix(playback, {
+      mediaBase: mediaBaseUrl,
+      compositions: backgroundCompositions,
+      title,
+    });
+    if (!next) return null;
+    return {
+      ...next,
+      s3Key: next.s3Key.startsWith("focus:ambient:")
+        ? `${SOUNDS_AMBIENT_S3_PREFIX}${next.s3Key.slice("focus:ambient:".length)}`
+        : `${SOUNDS_AMBIENT_S3_PREFIX}mix`,
+    };
+  }
+
   function stopTrack(track: BedTrack) {
     setPlayAllActive(false);
+    stopNativeSoundsAmbient();
     if (track === "nature") pauseGaplessBed(previewNatureRef.current);
     if (track === "music") pauseGaplessBed(previewMusicRef.current);
     if (track === "drums") pauseGaplessBed(previewDrumsRef.current);
@@ -657,6 +707,7 @@ export function MixerSoundsStudio({
   }
 
   function stopAll() {
+    stopNativeSoundsAmbient();
     pauseGaplessBed(previewNatureRef.current);
     pauseGaplessBed(previewMusicRef.current);
     pauseGaplessBed(previewDrumsRef.current);
@@ -848,6 +899,42 @@ export function MixerSoundsStudio({
     playing.noise ||
     speakerPlaying;
 
+  // Keep mixer chrome in sync with the native strip (pause from lock screen, etc.).
+  useEffect(() => {
+    if (!nativeAmbient) return;
+    const active = nowPlaying?.s3Key?.startsWith(SOUNDS_AMBIENT_S3_PREFIX);
+    if (!active) {
+      if (playAllActive) {
+        setPlayAllActive(false);
+        setPlaying({ nature: false, music: false, drums: false, noise: false });
+      }
+      return;
+    }
+    const isPlaying = playingS3Key === nowPlaying.s3Key;
+    setPlayAllActive(isPlaying);
+    if (isPlaying) {
+      setPlaying({
+        nature: Boolean(nowPlaying.natureKey),
+        music: Boolean(nowPlaying.musicKey),
+        drums: Boolean(nowPlaying.drumsKey),
+        noise: Boolean(nowPlaying.noiseKey),
+      });
+    } else {
+      setPlaying({ nature: false, music: false, drums: false, noise: false });
+    }
+  }, [nativeAmbient, nowPlaying, playingS3Key, playAllActive]);
+
+  // Live fader / layer edits while native Play-all is running.
+  useEffect(() => {
+    if (!nativeAmbient) return;
+    if (!nowPlaying?.s3Key?.startsWith(SOUNDS_AMBIENT_S3_PREFIX)) return;
+    if (playingS3Key !== nowPlaying.s3Key) return;
+    const next = soundsAmbientTrack(mix, nameDraft.trim() || "Custom mix");
+    if (!next) return;
+    patchNowPlaying(() => next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only push mix edits, not strip identity churn
+  }, [nativeAmbient, mix, nameDraft, mediaBaseUrl, backgroundCompositions]);
+
   async function togglePlayAll() {
     if (!mediaBaseUrl) return;
     stopFactoryPreview();
@@ -856,6 +943,27 @@ export function MixerSoundsStudio({
       return;
     }
     stopAll();
+
+    // Native: route Play-all through the library strip (background + lock screen).
+    if (nativeAmbient) {
+      const next = soundsAmbientTrack(
+        mix,
+        nameDraft.trim() || "Custom mix",
+      );
+      if (!next) return;
+      const audible: Record<BedTrack, boolean> = {
+        nature: Boolean(mix.natureEnabled && mix.natureKey),
+        music: Boolean(mix.musicEnabled && mix.musicKey),
+        drums: Boolean(mix.drumsEnabled && drumsPreviewKey),
+        noise: Boolean(mix.noiseEnabled && mix.noiseKey),
+      };
+      playTrack(next);
+      setPlayAllActive(true);
+      setSpeakerPlaying(false);
+      setPlaying(audible);
+      return;
+    }
+
     const parts: Promise<void>[] = [];
     // Disabled or None layers are skipped.
     const audible: Record<BedTrack, boolean> = {
@@ -917,6 +1025,7 @@ export function MixerSoundsStudio({
 
   async function toggleRowPreview(track: BedTrack) {
     stopFactoryPreview();
+    stopNativeSoundsAmbient();
     if (track === "nature" && (!mix.natureKey || !mix.natureEnabled)) return;
     if (track === "music" && (!mix.musicKey || !mix.musicEnabled)) return;
     if (
@@ -1825,7 +1934,7 @@ export function MixerSoundsStudio({
                   value={descriptionDraft}
                   onChange={(e) => setDescriptionDraft(e.target.value)}
                   placeholder="Short description"
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-base text-foreground outline-none placeholder:text-muted"
                 />
                 <label className="sr-only" htmlFor="factory-mix-icon">
                   Icon

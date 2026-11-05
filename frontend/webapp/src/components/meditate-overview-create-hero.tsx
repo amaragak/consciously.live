@@ -463,6 +463,7 @@ export function MeditateOverviewCreateHero() {
   return (
     <>
       <section
+        data-dash-reveal
         className="relative flex flex-col overflow-hidden rounded-[22px] p-4 shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:p-5"
         style={{ backgroundColor: "#0F1B2D" }}
       >
@@ -486,7 +487,7 @@ export function MeditateOverviewCreateHero() {
               }}
               placeholder="Calm before my big pitch, confidence for launch day…"
               aria-label="Brief"
-              className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted md:text-[15px]"
+              className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap bg-transparent text-base text-foreground outline-none placeholder:text-muted md:text-base"
             />
             <DictationMicButton
               variant="round"

@@ -12,8 +12,9 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { PRE_RELEASE, PRE_RELEASE_MONTH } from "@/lib/pre-release";
+import { PRE_RELEASE_MONTH } from "@/lib/pre-release";
 import { getMedimadeApiBase } from "@/lib/medimade-api";
+import { useDevUiSettings } from "@/lib/dev-ui-settings";
 
 export type WaitlistSource = string;
 
@@ -385,8 +386,9 @@ function WaitlistDialog({
 export function WaitlistProvider({ children }: { children: ReactNode }) {
   const [request, setRequest] = useState<OpenArgs | null>(null);
   const close = useCallback(() => setRequest(null), []);
+  const { homeWaitlist } = useDevUiSettings();
 
-  if (!PRE_RELEASE) return children;
+  if (!homeWaitlist) return children;
 
   return (
     <WaitlistContext.Provider value={{ open: setRequest }}>

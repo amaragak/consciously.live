@@ -1313,7 +1313,7 @@ export function AdminScriptLabPanel() {
                 value={newTagName}
                 onChange={(e) => setNewTagName(e.target.value)}
                 placeholder="NEW_TAG_NAME"
-                className="w-40 rounded-lg border border-border bg-background px-2 py-1.5 text-xs uppercase"
+                className="w-40 rounded-lg border border-border bg-background px-2 py-1.5 text-base uppercase"
               />
               <button
                 type="button"
@@ -1345,7 +1345,7 @@ export function AdminScriptLabPanel() {
               <select
                 value={bulkSpeakerId}
                 onChange={(e) => setBulkSpeakerId(e.target.value)}
-                className="mt-1 block rounded border border-border bg-background px-2 py-1 text-xs"
+                className="mt-1 block rounded border border-border bg-background px-2 py-1 text-base"
               >
                 {(state?.speakers ?? []).map((s) => (
                   <option key={s.modelId} value={s.modelId}>
@@ -1507,7 +1507,7 @@ export function AdminScriptLabPanel() {
                   ? '[{"tag":{"name":"BODY_RELAX","scope":"general","types":[],"lengthTiered":false,"repeatability":"connective","description":"…"}}]'
                   : '{"segments":[{"tag":"SETTLE_OPENER","scope":"general","types":[],"lengthTiered":true,"variants":[{"text":"…","lengthTier":"short","requiredConstraints":[],"excludedConstraints":[]}]}]}'
               }
-              className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 font-mono text-[11px]"
+              className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 font-mono text-base"
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <label className="cursor-pointer rounded border border-border px-2 py-1 text-xs">
@@ -1576,7 +1576,7 @@ export function AdminScriptLabPanel() {
                 onChange={(e) => setNewConstraintTag(e.target.value)}
                 list="constraint-vocab-list"
                 placeholder="new_constraint_tag"
-                className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-xs"
+                className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-base"
               />
               <datalist id="constraint-vocab-list">
                 {(state?.constraintVocabulary ?? []).map((tag) => (
@@ -1607,7 +1607,7 @@ export function AdminScriptLabPanel() {
                 onChange={(e) =>
                   setCoverageThreshold(Math.max(1, Number(e.target.value) || DEFAULT_COVERAGE_THRESHOLD))
                 }
-                className="mt-1 block w-16 rounded border border-border bg-background px-2 py-1 text-xs"
+                className="mt-1 block w-16 rounded border border-border bg-background px-2 py-1 text-base"
               />
             </label>
             <p className="text-[10px] text-muted">
@@ -1818,7 +1818,7 @@ export function AdminScriptLabPanel() {
                       onChange={(e) => setNewVariantText(e.target.value)}
                       rows={2}
                       placeholder="New variant text…"
-                      className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-base"
                     />
                     {selectedTagMeta.lengthTiered ? (
                       <select
@@ -1826,7 +1826,7 @@ export function AdminScriptLabPanel() {
                         onChange={(e) =>
                           setNewVariantLengthTier(e.target.value as ScriptLengthTier)
                         }
-                        className="self-end rounded border border-border bg-background px-2 py-2 text-xs"
+                        className="self-end rounded border border-border bg-background px-2 py-2 text-base"
                         aria-label="Length tier for new variant"
                       >
                         <option value="short">Short</option>
@@ -2314,7 +2314,7 @@ function ConstraintTagPicker({
             onChange={(e) => setDraft(e.target.value)}
             list={listId}
             placeholder="add…"
-            className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px]"
+            className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-base"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -2385,7 +2385,7 @@ function ConstraintTagPicker({
           onChange={(e) => setDraft(e.target.value)}
           list={listId}
           placeholder="Add constraint…"
-          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-[10px]"
+          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-base"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -2562,13 +2562,13 @@ function VariantEditorRow({
                 if (text.trim() !== variant.text) onSaveText(text.trim());
               }}
               rows={2}
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-base"
             />
             {lengthTiered ? (
               <select
                 value={variant.lengthTier ?? "medium"}
                 onChange={(e) => onSaveLengthTier(e.target.value as ScriptLengthTier)}
-                className="rounded border border-border bg-background px-2 py-1.5 text-xs"
+                className="rounded border border-border bg-background px-2 py-1.5 text-base"
                 aria-label="Length tier"
               >
                 <option value="short">Short</option>

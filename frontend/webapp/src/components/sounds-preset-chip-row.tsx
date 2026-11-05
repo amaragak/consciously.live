@@ -97,7 +97,7 @@ function SoundsMixPanel({
             onChange={(e) => setQuery(e.target.value)}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
-            className="h-[38px] w-full rounded-[10px] border border-border bg-background pl-9 pr-3 text-[13px] text-foreground outline-none placeholder:text-muted focus:border-accent/50"
+            className="h-[38px] w-full rounded-[10px] border border-border bg-background pl-9 pr-3 text-base text-foreground outline-none placeholder:text-muted focus:border-accent/50"
           />
         </div>
       ) : null}

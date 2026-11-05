@@ -1311,7 +1311,7 @@ export function AdminProgramsPanel() {
                         cur ? { ...cur, title: e.target.value } : cur,
                       )
                     }
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                   />
                 </label>
                 <label className="block text-sm sm:col-span-2">
@@ -1324,7 +1324,7 @@ export function AdminProgramsPanel() {
                       )
                     }
                     rows={2}
-                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                   />
                 </label>
                 <div className="block text-sm sm:col-span-2">
@@ -1338,7 +1338,7 @@ export function AdminProgramsPanel() {
                       onChange={(e) =>
                         setCoverImageModel(e.target.value as AdminImageModel)
                       }
-                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
                     >
                       {ADMIN_IMAGE_MODELS.map((m) => (
                         <option key={m.id} value={m.id}>
@@ -1367,7 +1367,7 @@ export function AdminProgramsPanel() {
                         onChange={(e) => setProgramCoverPrompt(e.target.value)}
                         rows={2}
                         placeholder="Optional image prompt — leave blank to auto-build from title & description"
-                        className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                        className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                       />
                       <div className="flex flex-wrap items-center gap-2">
                         <input
@@ -1450,7 +1450,7 @@ export function AdminProgramsPanel() {
                           cur ? withProgramSpeaker(cur, next) : cur,
                         );
                       }}
-                      className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                      className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                     >
                       <option value="">Select speaker…</option>
                       {speakers.map((s) => (
@@ -1510,7 +1510,7 @@ export function AdminProgramsPanel() {
                     rows={7}
                     spellCheck={false}
                     placeholder={IMPORT_JSON_PLACEHOLDER}
-                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-accent/50"
+                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 font-mono text-base outline-none focus:border-accent/50"
                   />
                   <p className="mt-1 text-[11px] text-muted">
                     Paste an array of{" "}
@@ -1700,7 +1700,7 @@ export function AdminProgramsPanel() {
                           onChange={(e) =>
                             updateDay(day.id, { title: e.target.value })
                           }
-                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                         />
                       </label>
                       <label className="block text-sm sm:col-span-2">
@@ -1714,7 +1714,7 @@ export function AdminProgramsPanel() {
                           }
                           rows={4}
                           placeholder="Describe the meditation you want for this lesson…"
-                          className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                          className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                         />
                       </label>
                       <div className="block text-sm sm:col-span-2">
@@ -1745,7 +1745,7 @@ export function AdminProgramsPanel() {
                           }
                           rows={3}
                           placeholder="Listener-facing blurb (~50 words). If left short, Generate audio will create one from the prompt."
-                          className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                          className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                         />
                         <p className="mt-1 text-[11px] text-muted">
                           {day.description.trim().length}/
@@ -1766,7 +1766,7 @@ export function AdminProgramsPanel() {
                                 e.target.value as AdminImageModel,
                               )
                             }
-                            className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+                            className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
                           >
                             {ADMIN_IMAGE_MODELS.map((m) => (
                               <option key={m.id} value={m.id}>
@@ -1800,7 +1800,7 @@ export function AdminProgramsPanel() {
                               }
                               rows={2}
                               placeholder="Optional image prompt — blank uses title, description & lesson prompt"
-                              className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                              className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                             />
                             <div className="flex flex-wrap items-center gap-2">
                               <input
@@ -1916,7 +1916,7 @@ export function AdminProgramsPanel() {
                               ) as MeditationTargetMinutes,
                             })
                           }
-                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                         >
                           {MEDITATION_TARGET_MINUTES.map((m) => (
                             <option key={m} value={m}>

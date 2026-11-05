@@ -31,8 +31,12 @@ import {
   HealOverlay,
   useHealStore,
 } from "@/components/heal/heal-bits";
+import { useOverviewEntrance } from "@/hooks/use-overview-entrance";
+import { useTabScrollRestore } from "@/hooks/use-tab-scroll-restore";
 
 export function HealHome() {
+  const rootRef = useOverviewEntrance("heal");
+  useTabScrollRestore();
   const [store, setStore] = useHealStore();
   const params = useSearchParams();
   const router = useRouter();
@@ -61,44 +65,62 @@ export function HealHome() {
   }, [params, router]);
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-[calc(58px+env(safe-area-inset-bottom,0px)+16px)] pt-6 sm:px-6 sm:pb-10">
+    <div
+      ref={rootRef}
+      className="overview-entrance mx-auto w-full min-w-0 max-w-6xl px-4 pb-[calc(58px+env(safe-area-inset-bottom,0px)+16px)] pt-6 sm:px-6 sm:pb-10"
+    >
       {isEmpty ? (
-        <section className="rounded-2xl border border-border bg-card p-4 md:p-8">
-          <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[30px]">
-            What&apos;s hurting or holding you back?
-          </h2>
-          <p className="mt-2 max-w-xl text-[15px] leading-[1.55] text-foreground">
-            A breakup, a loss, a regret, a thought you can&apos;t shake. Write it how you&apos;d say
-            it, negative included. It&apos;s private.
-          </p>
-          <form
-            className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!name.trim()) return;
-              setDescribe({ name: name.trim(), areaId: null, obstacleId: null, nameLocked: true });
+        <section
+          data-dash-reveal
+          className="relative flex flex-col overflow-hidden rounded-[22px] px-5 py-[22px] shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:px-7 md:py-6"
+          style={{ backgroundColor: "#0F1B2D" }}
+        >
+          <div className="navy-paisley-plate" aria-hidden />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 88% 18%, rgba(217,184,124,0.22) 0, rgba(217,184,124,0) 38%)",
             }}
-          >
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. A recent breakup"
-              className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 font-display text-[17px] italic text-foreground outline-none placeholder:text-muted"
-            />
-            <button type="submit" className={`${HEAL_PRIMARY} h-11 w-full sm:w-auto`}>
-              Start
-            </button>
-          </form>
-          <p className="mt-3 text-[13px] text-muted">
-            Next you&apos;ll describe what happened. Day-to-day thoughts belong in{" "}
-            <Link href="/journal" className="font-semibold text-foreground">
-              Journal
-            </Link>
-            .
-          </p>
+            aria-hidden
+          />
+          <div className="relative flex flex-col gap-3">
+            <h2 className="font-display text-[22px] leading-[1.2] tracking-[-0.01em] text-[#F6F1E7] md:text-[30px]">
+              What&apos;s hurting or holding you back?
+            </h2>
+            <p className="max-w-xl text-[15px] leading-[1.55] text-[rgb(246_241_231_/_0.82)]">
+              A breakup, a loss, a regret, a thought you can&apos;t shake. Write it how you&apos;d say
+              it, negative included. It&apos;s private.
+            </p>
+            <form
+              className="mt-1 flex flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!name.trim()) return;
+                setDescribe({ name: name.trim(), areaId: null, obstacleId: null, nameLocked: true });
+              }}
+            >
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="e.g. A recent breakup"
+                className="h-12 min-w-0 w-full rounded-xl border border-[rgb(246_241_231_/_0.28)] bg-[rgb(246_241_231_/_0.08)] px-3.5 text-base text-[#F6F1E7] outline-none backdrop-blur-[8px] placeholder:text-[rgb(246_241_231_/_0.5)]"
+              />
+              <button type="submit" className={`${HEAL_PRIMARY} h-12 w-full text-[15.5px]`}>
+                Start
+              </button>
+            </form>
+            <p className="text-[13.5px] leading-[1.5] text-[rgb(246_241_231_/_0.65)]">
+              Next you&apos;ll describe what happened. Day-to-day thoughts belong in{" "}
+              <Link href="/journal" className="font-semibold text-[#F6F1E7]">
+                Journal
+              </Link>
+              .
+            </p>
+          </div>
         </section>
       ) : (
-        <section>
+        <section data-dash-reveal>
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">
               What you&apos;re carrying
@@ -119,8 +141,48 @@ export function HealHome() {
         </section>
       )}
 
+      {/* Previous empty-state white card — replaced by paisley navy hero.
+      <section
+        data-dash-reveal
+        className="rounded-2xl border border-border bg-card p-4 md:p-8"
+      >
+        <h2 className="font-display text-[22px] leading-[1.2] text-foreground md:text-[30px]">
+          What&apos;s hurting or holding you back?
+        </h2>
+        <p className="mt-2 max-w-xl text-[15px] leading-[1.55] text-foreground">
+          A breakup, a loss, a regret, a thought you can&apos;t shake. Write it how you&apos;d say
+          it, negative included. It&apos;s private.
+        </p>
+        <form
+          className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!name.trim()) return;
+            setDescribe({ name: name.trim(), areaId: null, obstacleId: null, nameLocked: true });
+          }}
+        >
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. A recent breakup"
+            className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 font-display text-[17px] italic text-foreground outline-none placeholder:text-muted"
+          />
+          <button type="submit" className={`${HEAL_PRIMARY} h-11 w-full sm:w-auto`}>
+            Start
+          </button>
+        </form>
+        <p className="mt-3 text-[13px] text-muted">
+          Next you&apos;ll describe what happened. Day-to-day thoughts belong in{" "}
+          <Link href="/journal" className="font-semibold text-foreground">
+            Journal
+          </Link>
+          .
+        </p>
+      </section>
+      */}
+
       {rested.length > 0 && !isEmpty ? (
-        <section className="mt-[18px] sm:mt-8">
+        <section data-dash-reveal className="mt-[18px] sm:mt-8">
           <h2 className="text-xs font-semibold uppercase tracking-[1.6px] text-heal-accent">Laid to rest</h2>
           <ul className="mt-3 flex flex-col gap-2 opacity-[0.85]">
             {rested.map((item) => (
@@ -147,7 +209,10 @@ export function HealHome() {
         </section>
       ) : null}
 
-      <section className="mt-3 flex items-start gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-[13px] text-muted sm:mt-8">
+      <section
+        data-dash-reveal
+        className="mt-3 flex items-start gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-[13px] text-muted sm:mt-8"
+      >
         <Heart className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p>
           Heal is support, not therapy. If you&apos;re struggling, talk to someone: Samaritans 116 123,

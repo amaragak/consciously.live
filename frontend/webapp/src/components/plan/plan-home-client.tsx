@@ -5,8 +5,17 @@ import { IconEye, IconSparkles, IconWind } from "@tabler/icons-react";
 import { ChevronRight, Plus } from "lucide-react";
 import { DailyAffirmationsCard } from "@/components/plan/daily-affirmations-card";
 import { LifeAreaCard } from "@/components/plan/life-area-card";
+import {
+  ManifestMobileHero,
+  ManifestMobileLifeAreas,
+  ManifestMobileNextStep,
+  ManifestMobileVisionBoard,
+  type ManifestMobileLifeArea,
+} from "@/components/plan/manifest-mobile-overview";
 import { ManifestoFoundations } from "@/components/plan/manifesto-foundations";
 import { ManifestoHeroBento } from "@/components/plan/manifesto-hero-bento";
+import { useMinWidth } from "@/hooks/use-min-width";
+import { useOverviewEntrance } from "@/hooks/use-overview-entrance";
 import {
   LIGHT_ACCENT_BORDER,
   MANIFESTO_EYEBROW_CLASS,
@@ -53,9 +62,13 @@ import {
   type IdeateQuote,
 } from "@/lib/ideate-quotes";
 import {
-  listLibraryMeditations,
   type LibraryMeditationItem,
 } from "@/lib/medimade-api";
+import {
+  fetchLibraryMeditationsCached,
+  peekLibraryMeditationsCache,
+} from "@/lib/library-list-cache";
+import { useTabScrollRestore } from "@/hooks/use-tab-scroll-restore";
 import {
   ensureMedimadeSession,
   getMedimadeSessionDisplayName,
@@ -95,58 +108,38 @@ function lifeAreaSnippet(d: PlanDream): string | null {
   return dreamExcerpt(d) === "—" ? null : dreamExcerpt(d);
 }
 
-function ManifestOverviewSkeleton() {
-  return (
-    <div
-      className="min-h-[calc(100vh-var(--app-header-h))] pb-20"
-      aria-busy="true"
-      aria-live="polite"
-    >
-      <span className="sr-only">Loading Manifest overview</span>
-      <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-8" aria-label="Vision board">
-        <div className="grid gap-1.5 xl:h-[300px] xl:grid-cols-[5fr_7fr]">
-          <div className="h-40 animate-pulse rounded-2xl bg-[var(--deep)] xl:h-full" />
-          <div className="hidden h-[220px] animate-pulse rounded-2xl bg-accent-soft md:block xl:h-full" />
-        </div>
-      </section>
-      <section className="mx-auto max-w-6xl px-4 sm:px-6">
-        <section className="scroll-mt-20 pb-11 pt-10">
-          <div className="mb-5">
-            <ManifestoSectionHeader
-              title="Your life areas"
-              subline="The areas of your life you want to grow."
-            />
-          </div>
-          <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
-            {[0, 1, 2, 3].map((i) => (
-              <li key={i} className="min-w-0">
-                <LifeAreaCard loading creationIndex={i} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      </section>
-    </div>
-  );
-}
-
 export function PlanHomeClient() {
+  const rootRef = useOverviewEntrance("manifest");
+  useTabScrollRestore();
+  const wide = useMinWidth(768);
   const navigate = useNavigate();
   const manifestInsights = useMvpFlags().manifestInsights;
-  const [dreams, setDreams] = useState<PlanDream[]>([]);
-  const [visionItems, setVisionItems] = useState<VisionBoardItem[]>([]);
+  const [dreams, setDreams] = useState<PlanDream[]>(
+    () => loadPlanDreamsStore().dreams,
+  );
+  const [visionItems, setVisionItems] = useState<VisionBoardItem[]>(
+    () => loadIdeateVisionBoardStore().items,
+  );
   const [visionTileUrls, setVisionTileUrls] = useState<Record<string, string>>(
     {},
   );
   const visionBlobUrlsRef = useRef<Record<string, string>>({});
-  const [questions, setQuestions] = useState<IdeateReflectionQuestion[]>([]);
-  const [values, setValues] = useState<IdeateValue[]>([]);
-  const [quotes, setQuotes] = useState<IdeateQuote[]>([]);
+  const [questions, setQuestions] = useState<IdeateReflectionQuestion[]>(
+    () => loadIdeateReflectionQuestionsStore().questions,
+  );
+  const [values, setValues] = useState<IdeateValue[]>(
+    () => loadIdeateValuesStore().values,
+  );
+  const [quotes, setQuotes] = useState<IdeateQuote[]>(
+    () => loadIdeateQuotesStore().quotes,
+  );
   const [addImageBusy, setAddImageBusy] = useState(false);
   const [addImageError, setAddImageError] = useState<string | null>(null);
   const addImageInputRef = useRef<HTMLInputElement>(null);
   const { guides: manifestGuides } = useGuides("manifest");
-  const [manifesto, setManifesto] = useState<string>("");
+  const [manifesto, setManifesto] = useState<string>(
+    () => loadStoredManifesto() ?? "",
+  );
   const [manifestoLoading, setManifestoLoading] = useState(false);
   const [editingManifesto, setEditingManifesto] = useState(false);
   const [manifestoDraft, setManifestoDraft] = useState("");
@@ -155,8 +148,10 @@ export function PlanHomeClient() {
   const [newDream, setNewDream] = useState("");
   const [newObstacle, setNewObstacle] = useState("");
   const [newVision, setNewVision] = useState("");
-  const [hydrated, setHydrated] = useState(false);
-  const [libraryItems, setLibraryItems] = useState<LibraryMeditationItem[]>([]);
+  const [hydrated] = useState(true);
+  const [libraryItems, setLibraryItems] = useState<LibraryMeditationItem[]>(
+    () => peekLibraryMeditationsCache() ?? [],
+  );
   const manifestoReqRef = useRef(0);
 
   const refresh = useCallback(() => {
@@ -165,10 +160,6 @@ export function PlanHomeClient() {
     setQuestions(loadIdeateReflectionQuestionsStore().questions);
     setValues(loadIdeateValuesStore().values);
     setQuotes(loadIdeateQuotesStore().quotes);
-  }, []);
-
-  useEffect(() => {
-    setHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -181,7 +172,7 @@ export function PlanHomeClient() {
       try {
         await ensureMedimadeSession();
         if (cancelled || !getMedimadeSessionJwt()) return;
-        const items = await listLibraryMeditations();
+        const items = await fetchLibraryMeditationsCached();
         if (!cancelled) setLibraryItems(items);
       } catch {
         if (!cancelled) setLibraryItems([]);
@@ -455,13 +446,16 @@ export function PlanHomeClient() {
     [libraryItems],
   );
 
-  if (!hydrated || !cloudReady) {
-    return (
-      <ManifestOverviewSkeleton />
-    );
-  }
-
-
+  // Paint from memory/device cache immediately; cloudReady only gates first-ever empty load.
+  const hasCachedPaint =
+    dreams.length > 0 ||
+    visionItems.length > 0 ||
+    values.length > 0 ||
+    Boolean(manifesto.trim()) ||
+    questions.length > 0 ||
+    quotes.length > 0;
+  const dataReady = hydrated && (cloudReady || hasCachedPaint);
+  const firstLoad = !dataReady;
   const statement = manifesto.trim();
   const storyFirstName =
     firstNameFromAccount(
@@ -474,8 +468,51 @@ export function PlanHomeClient() {
     (g) => !g.status || g.status === "published",
   );
   const guidesForSection = publishedManifestGuides.slice(0, 4);
+
+  const mobileLifeAreas: ManifestMobileLifeArea[] = orderedDreams.map((d) => {
+    const goal = goalSummaryForLifeArea(ideateStore, d.id);
+    return {
+      dream: d,
+      href: lifeAreaHref(d.id),
+      snippet: lifeAreaSnippet(d),
+      activity: lifeAreaActivityMeta(lastActivityMs(ideateStore, d)),
+      goal: goal
+        ? {
+            title: goal.subtask.title,
+            done: goal.done,
+            total: goal.total,
+            next: goal.nextStep
+              ? {
+                  title: goal.nextStep.title,
+                  href: lifeAreaStepHref(d.id, goal.subtask.id),
+                }
+              : null,
+          }
+        : null,
+      setGoalHref: newGoalHref(d.id),
+      onFocus: goal
+        ? () => navigate(startLifeAreaFocus(goal.subtask.id))
+        : undefined,
+      onMeditate: goal
+        ? () => {
+            const href = startLifeAreaMeditation(d.id, goal.subtask.title);
+            if (href) navigate(href);
+          }
+        : undefined,
+      creationIndex: lifeAreaCreationIndex.get(d.id) ?? 0,
+    };
+  });
+
   return (
-    <div className="min-h-[calc(100vh-var(--app-header-h))] pb-20">
+    <div
+      ref={rootRef}
+      className="overview-entrance min-h-[calc(100vh-var(--app-header-h))] pb-20"
+      aria-busy={firstLoad}
+      aria-live="polite"
+    >
+      {firstLoad ? (
+        <span className="sr-only">Loading Manifest overview</span>
+      ) : null}
       <input
         ref={addImageInputRef}
         type="file"
@@ -486,13 +523,49 @@ export function PlanHomeClient() {
         onChange={(e) => void onAddImageFile(e.target.files?.[0] ?? null)}
       />
 
-      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-8">
+      {/* —— Mobile: compact hero → vision → next step → life areas —— */}
+      {!wide ? (
+      <div
+        data-dash-reveal
+        className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pt-4"
+      >
+        <ManifestMobileHero
+          statement={firstLoad ? "" : statement}
+          loading={firstLoad || (manifestoLoading && !statement)}
+          editing={!firstLoad && editingManifesto}
+          draft={manifestoDraft}
+          onDraft={setManifestoDraft}
+          onBeginEdit={beginEditManifesto}
+          onBeginWrite={beginWriteManifesto}
+          onCancelEdit={cancelEditManifesto}
+          onSaveEdit={saveEditManifesto}
+        />
+        <ManifestMobileVisionBoard
+          items={firstLoad ? [] : visionItems}
+          urls={firstLoad ? {} : visionTileUrls}
+          loading={firstLoad}
+        />
+        {!firstLoad ? <ManifestMobileNextStep /> : (
+          <div className="mm-skeleton h-[88px] rounded-2xl" aria-hidden />
+        )}
+        <ManifestMobileLifeAreas
+          areas={firstLoad ? [] : mobileLifeAreas}
+          loading={firstLoad}
+          onAdd={() => setModalOpen(true)}
+        />
+      </div>
+      ) : (
+      <>
+      <div
+        data-dash-reveal
+        className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-8"
+      >
       <ManifestoHeroBento
-        items={visionItems}
-        urls={visionTileUrls}
-        statement={statement}
-        loading={manifestoLoading && !statement}
-        editing={editingManifesto}
+        items={firstLoad ? [] : visionItems}
+        urls={firstLoad ? {} : visionTileUrls}
+        statement={firstLoad ? "" : statement}
+        loading={firstLoad || (manifestoLoading && !statement)}
+        editing={!firstLoad && editingManifesto}
         draft={manifestoDraft}
         onDraft={setManifestoDraft}
         onBeginEdit={beginEditManifesto}
@@ -516,21 +589,12 @@ export function PlanHomeClient() {
       />
       </div>
 
-      <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
-        <div className="md:hidden">
-          <ManifestoFocusCard compact />
-        </div>
-        {storyPlacement ? (
-          <div className="mt-3.5 md:hidden">
-            <StoryPlacementCard
-              placement={storyPlacement}
-              firstName={storyFirstName}
-              variant="manifest"
-              compact
-            />
-          </div>
-        ) : null}
-        <div className="hidden items-stretch gap-3.5 md:flex">
+      {!firstLoad ? (
+      <section
+        data-dash-reveal
+        className="mx-auto max-w-6xl px-4 pt-6 sm:px-6"
+      >
+        <div className="flex items-stretch gap-3.5">
           {storyPlacement ? (
             <div className="flex min-w-0 flex-1">
               <StoryPlacementCard
@@ -546,10 +610,11 @@ export function PlanHomeClient() {
           </div>
         </div>
       </section>
+      ) : null}
 
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
-        {resistanceThreads[0] ? (
-          <div className="pt-10">
+        {!firstLoad && resistanceThreads[0] ? (
+          <div data-dash-reveal className="pt-10">
             <PlanResistanceThreadBanner theme={resistanceThreads[0]} />
           </div>
         ) : null}
@@ -557,6 +622,7 @@ export function PlanHomeClient() {
         {/* —— Life areas —— */}
         <section
           id="life-areas"
+          data-dash-reveal
           className="flex scroll-mt-20 flex-col gap-5 pb-1 pt-10"
           aria-labelledby="ideate-life-areas-heading"
         >
@@ -565,13 +631,21 @@ export function PlanHomeClient() {
             title="Your life areas"
             subline="The areas of your life you want to grow."
             right={
-              <ManifestoHeaderAction onClick={() => setModalOpen(true)}>
-                Add life area
-              </ManifestoHeaderAction>
+              !firstLoad ? (
+                <ManifestoHeaderAction onClick={() => setModalOpen(true)}>
+                  Add life area
+                </ManifestoHeaderAction>
+              ) : undefined
             }
           />
           <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
-            {orderedDreams.map((d) => {
+            {firstLoad
+              ? [0, 1, 2, 3].map((i) => (
+                  <li key={i} className="min-w-0">
+                    <LifeAreaCard loading creationIndex={i} />
+                  </li>
+                ))
+              : orderedDreams.map((d) => {
               const goal = goalSummaryForLifeArea(ideateStore, d.id);
               return (
                 <li key={d.id} className="flex min-w-0 flex-col [&>*]:flex-1">
@@ -618,7 +692,7 @@ export function PlanHomeClient() {
               );
             })}
 
-            {orderedDreams.length === 0 ? (
+            {!firstLoad && orderedDreams.length === 0 ? (
               <li className="min-w-0">
                 <button
                   type="button"
@@ -636,10 +710,13 @@ export function PlanHomeClient() {
           </ul>
         </section>
       </section>
+      </>
+      )}
 
       {/* —— This month —— */}
-      {hasMonthStats(monthStats) ? (
+      {!firstLoad && hasMonthStats(monthStats) ? (
         <section
+          data-dash-reveal
           aria-label="This month"
           className="mx-auto mt-4 max-w-6xl px-4 sm:px-6"
         >
@@ -696,20 +773,25 @@ export function PlanHomeClient() {
         </section>
       ) : null}
 
-      <DailyAffirmationsCard />
+      {!firstLoad ? <DailyAffirmationsCard /> : null}
 
-      <ManifestoFoundations
-        values={values}
-        quotes={quotes}
-        questions={questions}
-        onValues={persistValues}
-        onQuotes={persistQuotes}
-        onQuestions={persistQuestions}
-      />
+      {!firstLoad ? (
+      <div data-dash-reveal>
+        <ManifestoFoundations
+          values={values}
+          quotes={quotes}
+          questions={questions}
+          onValues={persistValues}
+          onQuotes={persistQuotes}
+          onQuestions={persistQuestions}
+        />
+      </div>
+      ) : null}
 
       {/* —— Guides —— */}
-      {guidesForSection.length > 0 ? (
+      {!firstLoad && guidesForSection.length > 0 ? (
         <section
+          data-dash-reveal
           className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-10 sm:px-6"
           aria-labelledby="manifesto-guides-heading"
         >
@@ -760,7 +842,7 @@ export function PlanHomeClient() {
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g. Music, Health, This app"
                 autoFocus
-                className="mt-1.5 w-full rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                className="mt-1.5 w-full rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base outline-none ring-accent/30 focus:ring-2 dark:border-border"
               />
             </label>
 
@@ -777,7 +859,7 @@ export function PlanHomeClient() {
                   onChange={(e) => setNewDream(e.target.value)}
                   placeholder="Say it messy. No one is grading this."
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
                 />
               </label>
 
@@ -794,7 +876,7 @@ export function PlanHomeClient() {
                   onChange={(e) => setNewObstacle(e.target.value)}
                   placeholder="Name it without fixing it yet."
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
                 />
               </label>
 
@@ -811,7 +893,7 @@ export function PlanHomeClient() {
                   onChange={(e) => setNewVision(e.target.value)}
                   placeholder="A concrete scene where this has already happened — where you are, what you notice, how it feels."
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-sm leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
+                  className="mt-2 w-full resize-none rounded-xl border border-[#E5DFD0] bg-card px-3 py-2.5 text-base leading-relaxed outline-none ring-accent/30 focus:ring-2 dark:border-border"
                 />
               </label>
             </div>

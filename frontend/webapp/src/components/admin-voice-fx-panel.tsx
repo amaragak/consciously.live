@@ -235,7 +235,7 @@ export function AdminVoiceFxPanel() {
                   step={f.step}
                   value={num(draft[f.id], f.min)}
                   onChange={(e) => setField(f.id, Number(e.target.value))}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground"
                 />
                 {f.hint ? (
                   <span className="mt-1 block font-normal text-[11px] opacity-80">
@@ -268,7 +268,7 @@ export function AdminVoiceFxPanel() {
                     step={f.step}
                     value={num(draft[f.id], f.min)}
                     onChange={(e) => setField(f.id, Number(e.target.value))}
-                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground"
                   />
                 </label>
               ))}

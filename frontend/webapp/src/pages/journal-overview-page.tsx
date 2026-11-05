@@ -15,6 +15,8 @@ import {
 import { OverviewSubpagesPanel } from "@/components/overview-subpages-panel";
 import { useGuides } from "@/content/guides";
 import { JournalEntryListTitle } from "@/components/journal-prompt-question";
+import { useOverviewEntrance } from "@/hooks/use-overview-entrance";
+import { useTabScrollRestore } from "@/hooks/use-tab-scroll-restore";
 import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
@@ -345,6 +347,7 @@ function JournalTodayHero({
 
   return (
     <section
+      data-dash-reveal
       className="relative overflow-hidden rounded-[22px] px-5 pb-5 pt-4 shadow-[0_12px_34px_rgba(15,27,45,0.18)] md:px-5 md:pb-5 md:pt-4"
       style={{ backgroundColor: "#0F1B2D" }}
     >
@@ -513,30 +516,47 @@ function InsightsCard({
   );
 }
 
+function journalOverviewSnapshot(): {
+  entries: JournalEntry[];
+  gratitudeCount: number;
+} {
+  const store = readJournalStoreSnapshot({
+    signedIn: isMedimadeSessionActive(),
+  });
+  const cleaned = withoutDemoJournalEntries(store);
+  const freeform = cleaned.entries
+    .filter((e) => !isGratitudeEntry(e))
+    .sort((a, b) =>
+      (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt),
+    );
+  return {
+    entries: freeform,
+    gratitudeCount: cleaned.entries.filter(
+      (e) =>
+        isGratitudeEntry(e) &&
+        (e.gratitude ?? []).some((s) => s.trim().length > 0),
+    ).length,
+  };
+}
+
 export function JournalOverviewPage() {
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [ready, setReady] = useState(false);
+  const rootRef = useOverviewEntrance("journal");
+  useTabScrollRestore();
+  const initial = journalOverviewSnapshot();
+  const [entries, setEntries] = useState<JournalEntry[]>(() => initial.entries);
+  const [ready] = useState(true);
   const { guides: journalGuides, loading: guidesLoading } = useGuides("journal");
   const guides = journalGuides.slice(0, 4);
 
-  const [gratitudeCount, setGratitudeCount] = useState(0);
+  const [gratitudeCount, setGratitudeCount] = useState(
+    () => initial.gratitudeCount,
+  );
 
   useEffect(() => {
     const applyLocal = () => {
-      const store = readJournalStoreSnapshot({
-        signedIn: isMedimadeSessionActive(),
-      });
-      const cleaned = withoutDemoJournalEntries(store);
-      const freeform = cleaned.entries
-        .filter((e) => !isGratitudeEntry(e))
-        .sort((a, b) =>
-          (b.updatedAt || b.createdAt).localeCompare(
-            a.updatedAt || a.createdAt,
-          ),
-        );
-      setEntries(freeform);
-      setGratitudeCount(cleaned.entries.filter((e) => isGratitudeEntry(e)).length);
-      setReady(true);
+      const next = journalOverviewSnapshot();
+      setEntries(next.entries);
+      setGratitudeCount(next.gratitudeCount);
     };
     applyLocal();
     const onStore = () => applyLocal();
@@ -560,7 +580,10 @@ export function JournalOverviewPage() {
   const recent = entries.slice(0, 3);
 
   return (
-    <div className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4">
+    <div
+      ref={rootRef}
+      className="overview-entrance mx-auto w-full max-w-6xl min-w-0 px-4 pb-24 pt-3 sm:px-6 sm:pb-10 sm:pt-4 md:pb-10 max-md:px-4"
+    >
       <div className="flex flex-col gap-5">
         {/*
         Previous OverviewHero (input + prompts + sub-page links) — replaced by today hero.

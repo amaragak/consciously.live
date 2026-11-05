@@ -355,7 +355,7 @@ export function QuoteComposerDialog({
               maxLength={80}
               disabled={loading}
               aria-label={mode === "work" ? "Work title" : "Famous person"}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 font-sans text-sm outline-none ring-accent/30 focus:ring-2 disabled:opacity-60"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 font-sans text-base outline-none ring-accent/30 focus:ring-2 disabled:opacity-60"
             />
             <button
               type="submit"
@@ -499,7 +499,7 @@ export function QuoteComposerDialog({
             onChange={(e) => setAttribution(e.target.value)}
             placeholder="Attribution (optional)"
             maxLength={80}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 font-sans text-sm outline-none ring-accent/30 focus:ring-2"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 font-sans text-base outline-none ring-accent/30 focus:ring-2"
           />
           <div className="flex gap-2">
             {editing ? (
@@ -602,7 +602,7 @@ export function AddQuestionDialog({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Your question…"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/30 focus:ring-2"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-base outline-none ring-accent/30 focus:ring-2"
             />
             <div className="flex justify-end gap-2">
               <button
@@ -669,7 +669,7 @@ export function AnswerQuestionDialog({
         placeholder="Write freely — no need to polish."
         rows={8}
         autoFocus
-        className="w-full resize-none rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-accent/25 focus:ring-2"
+        className="w-full resize-none rounded-2xl border border-border bg-background px-4 py-3 text-base leading-relaxed outline-none ring-accent/25 focus:ring-2"
       />
       <div className="mt-5 flex items-center justify-between gap-3">
         <button

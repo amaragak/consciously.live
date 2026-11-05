@@ -287,7 +287,7 @@ function CommentTree({
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
                     placeholder={`Reply to ${c.author}…`}
-                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground outline-none ring-accent/25 focus:ring-2"
+                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base leading-relaxed text-foreground outline-none ring-accent/25 focus:ring-2"
                     autoFocus
                   />
                   <div className="flex flex-wrap items-center gap-2">
@@ -545,7 +545,7 @@ export function ConnectForum() {
             value={threadReplyDraft}
             onChange={(e) => setThreadReplyDraft(e.target.value)}
             placeholder="Add a top-level reply…"
-            className="mt-1.5 w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/25 focus:ring-2"
+            className="mt-1.5 w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/25 focus:ring-2"
           />
           <button
             type="button"
@@ -620,14 +620,14 @@ export function ConnectForum() {
             value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
             placeholder="Title"
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/25 focus:ring-2"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/25 focus:ring-2"
           />
           <textarea
             value={draftBody}
             onChange={(e) => setDraftBody(e.target.value)}
             placeholder="Share the question or the chapter you’re in…"
             rows={5}
-            className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground outline-none ring-accent/25 focus:ring-2"
+            className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base leading-relaxed text-foreground outline-none ring-accent/25 focus:ring-2"
           />
           <div className="flex flex-wrap items-center gap-2">
             <button

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { CoverImage } from "@/components/cover-image";
 import { GuideBody, extractGuideHeadings } from "@/components/guide-body";
 import { ManifestPracticeButton } from "@/components/manifest-practice-button";
 import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
@@ -428,13 +429,10 @@ function GuideReader({
             ref={articleRef}
             className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]"
           >
-            <div className="h-[280px] w-full overflow-hidden bg-accent-soft max-md:h-[180px]">
-              <img
-                src={guide.image}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            </div>
+            <CoverImage
+              src={guide.image}
+              className="h-[280px] w-full max-md:h-[180px]"
+            />
             <div className="flex max-w-[760px] flex-col gap-[18px] px-11 pb-9 pt-8 max-md:gap-3.5 max-md:px-[18px] max-md:pb-6 max-md:pt-5">
               {guide.category ? (
                 <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link max-md:text-[10px]">

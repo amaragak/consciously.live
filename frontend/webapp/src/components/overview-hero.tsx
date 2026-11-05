@@ -78,7 +78,7 @@ export function OverviewHero({
             onChange={(event) => setDraft(event.target.value)}
             placeholder={placeholder}
             aria-label={placeholder}
-            className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted md:text-base"
+            className="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted md:text-base"
           />
           <DictationMicButton
             variant="round"
@@ -188,6 +188,7 @@ export function OverviewSection({
 }) {
   return (
     <section
+      data-dash-reveal
       className={`flex flex-col gap-2.5 rounded-[22px] border border-border bg-card px-4 pb-5 pt-5 shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:gap-4 md:px-[22px] md:pb-[22px] ${className}`}
     >
       <div className="flex items-center justify-between gap-4">

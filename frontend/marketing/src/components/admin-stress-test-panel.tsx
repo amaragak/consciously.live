@@ -50,7 +50,7 @@ import {
 } from "@/lib/stress-test-storage";
 
 const inputClassName =
-  "mt-1 block w-full border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-600 dark:bg-neutral-800";
+  "mt-1 block w-full border border-neutral-300 bg-white px-2 py-1 text-base dark:border-neutral-600 dark:bg-neutral-800";
 
 function statusDot(status: StressTestRunStatus): string {
   switch (status) {
@@ -522,7 +522,7 @@ export function AdminStressTestPanel() {
         <div className="flex flex-wrap items-center gap-2">
           {savedRuns.length > 0 ? (
             <select
-              className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+              className="rounded border border-border bg-background px-2 py-1.5 text-base"
               value={selectedSavedId}
               onChange={(e) => loadSaved(e.target.value)}
             >

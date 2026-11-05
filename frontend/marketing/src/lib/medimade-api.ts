@@ -381,6 +381,11 @@ export type CognitoAuthConfig = {
   domain: string | null;
   issuer: string | null;
   methods: { password: boolean; passkey: boolean; social: boolean };
+  /** Same Apple Services ID / Google OAuth client as the native app. */
+  socialClients?: {
+    appleServicesId: string | null;
+    googleWebClientId: string | null;
+  };
 };
 
 /** Optimistic default — Cognito is always on in prod; form paints before config returns. */
@@ -448,6 +453,16 @@ export async function fetchCognitoAuthConfig(): Promise<CognitoAuthConfig> {
         passkey: data.methods?.passkey === true,
         social: data.methods?.social === true,
       },
+      socialClients: {
+        appleServicesId:
+          typeof data.socialClients?.appleServicesId === "string"
+            ? data.socialClients.appleServicesId
+            : null,
+        googleWebClientId:
+          typeof data.socialClients?.googleWebClientId === "string"
+            ? data.socialClients.googleWebClientId
+            : null,
+      },
     };
     cognitoAuthConfigCache = next;
     return next;
@@ -475,6 +490,36 @@ export async function exchangeCognitoIdToken(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ idToken: t }),
   });
+  return sessionFromExchangeResponse(res, "Exchange failed");
+}
+
+/** Apple / Google ID token (Apple JS, Google Identity Services) → session. */
+export async function signInWithSocialIdToken(opts: {
+  provider: "apple" | "google";
+  idToken: string;
+  nonce?: string;
+  name?: string | null;
+}): Promise<MedimadeMagicLinkVerifyResult> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/auth/social`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: opts.provider,
+      idToken: opts.idToken,
+      ...(opts.nonce ? { nonce: opts.nonce } : {}),
+      ...(opts.name?.trim() ? { name: opts.name.trim() } : {}),
+    }),
+  });
+  return sessionFromExchangeResponse(res, "Sign-in failed");
+}
+
+async function sessionFromExchangeResponse(
+  res: Response,
+  fallbackError: string,
+): Promise<MedimadeMagicLinkVerifyResult> {
   const data = (await res.json().catch(() => ({}))) as {
     token?: string;
     refreshToken?: string;
@@ -488,7 +533,7 @@ export async function exchangeCognitoIdToken(
     detail?: string;
   };
   if (!res.ok || typeof data.token !== "string" || !data.token.trim()) {
-    throw new Error(data.detail ?? data.error ?? res.statusText ?? "Exchange failed");
+    throw new Error(data.detail ?? data.error ?? (res.statusText || fallbackError));
   }
   const displayName =
     typeof data.displayName === "string" && data.displayName.trim()
@@ -3073,12 +3118,15 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
 export type DevUiSettings = {
   createAudioDevControls: boolean;
   libraryDevFlyout: boolean;
+  /** Marketing homepage waitlist (pre-release). Off = normal sign-up / sign-in. */
+  homeWaitlist: boolean;
 };
 
 export function defaultDevUiSettings(): DevUiSettings {
   return {
     createAudioDevControls: false,
     libraryDevFlyout: false,
+    homeWaitlist: false,
   };
 }
 
@@ -3097,6 +3145,7 @@ export async function fetchDevUiSettings(): Promise<DevUiSettings> {
     return {
       createAudioDevControls: data.settings?.createAudioDevControls === true,
       libraryDevFlyout: data.settings?.libraryDevFlyout === true,
+      homeWaitlist: data.settings?.homeWaitlist === true,
     };
   } catch {
     return defaultDevUiSettings();
@@ -3168,6 +3217,7 @@ export async function patchDevUiSettings(
   return {
     createAudioDevControls: data.settings?.createAudioDevControls === true,
     libraryDevFlyout: data.settings?.libraryDevFlyout === true,
+    homeWaitlist: data.settings?.homeWaitlist === true,
   };
 }
 
@@ -5267,4 +5317,48 @@ export async function patchMeditationDevRefresh(
     throw new Error(msg);
   }
   return data;
+}
+
+export type AuthEmailCheck = {
+  next: "signin" | "signup";
+  hasPassword: boolean;
+  providers: ("apple" | "google")[];
+  hasPasskey: boolean;
+};
+
+const DEVICE_ID_KEY = "mm_device_id";
+
+/** Stable per-install id; lets /auth/email-check rate-limit per device. */
+function authDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_KEY);
+    if (existing && /^[A-Za-z0-9-]{8,64}$/.test(existing)) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_KEY, id);
+    return id;
+  } catch {
+    return "";
+  }
+}
+
+/** Email-first sign-in: does an account exist, and how can it sign in? */
+export async function checkAuthEmail(email: string): Promise<AuthEmailCheck> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("NEXT_PUBLIC_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/auth/email-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase(), deviceId: authDeviceId() }),
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<AuthEmailCheck> & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? "Couldn’t check that email. Try again.");
+  const providers = Array.isArray(data.providers)
+    ? data.providers.filter((p): p is "apple" | "google" => p === "apple" || p === "google")
+    : [];
+  return {
+    next: data.next === "signin" ? "signin" : "signup",
+    hasPassword: data.hasPassword === true,
+    providers,
+    hasPasskey: data.hasPasskey === true,
+  };
 }

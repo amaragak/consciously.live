@@ -430,7 +430,7 @@ export function ReadRichEditor({
                     value={customHref}
                     onChange={(e) => setCustomHref(e.target.value)}
                     placeholder="/path or https://…"
-                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-base text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
                     aria-label="Custom link URL"
                   />
                   <button

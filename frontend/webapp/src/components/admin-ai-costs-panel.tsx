@@ -198,7 +198,7 @@ export function AdminAiCostsPanel() {
                           }))
                         }
                         placeholder="e.g. 42.50"
-                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent/50"
+                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-base text-foreground outline-none focus:border-accent/50"
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-muted">
@@ -213,7 +213,7 @@ export function AdminAiCostsPanel() {
                           }))
                         }
                         placeholder="Plan / top-up date"
-                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent/50"
+                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-base text-foreground outline-none focus:border-accent/50"
                       />
                     </label>
                     <button

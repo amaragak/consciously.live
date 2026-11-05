@@ -1073,7 +1073,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
                       setAddingAction(false);
                     }}
                   >
-                    <input value={actionText} onChange={(event) => setActionText(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm" />
+                    <input value={actionText} onChange={(event) => setActionText(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border px-2 text-base" />
                     <button type="submit" className={HEAL_OUTLINE}>Add</button>
                   </form>
                 ) : (
@@ -1237,7 +1237,7 @@ export function HealItemView({ itemId }: { itemId: string }) {
               setAddingOwn(false);
             }}
           >
-            <input value={ownQuestion} onChange={(event) => setOwnQuestion(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm" />
+            <input value={ownQuestion} onChange={(event) => setOwnQuestion(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-base" />
             <button type="submit" className={HEAL_OUTLINE}>Add</button>
           </form>
         ) : null}

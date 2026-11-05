@@ -618,7 +618,7 @@ function ThoughtsCapture({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={`What's on your mind about ${dream.title.trim() || "this"}?`}
-          className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+          className="w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted"
         />
       </form>
       {latest ? (

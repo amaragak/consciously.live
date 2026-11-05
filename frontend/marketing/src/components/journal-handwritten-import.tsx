@@ -273,7 +273,7 @@ export function JournalHandwrittenReviewStep({
                         }}
                         rows={8}
                         placeholder="Type what you see if the reading came out empty."
-                        className="w-full resize-y rounded-lg border border-border bg-card px-2 py-1.5 text-sm outline-none"
+                        className="w-full resize-y rounded-lg border border-border bg-card px-2 py-1.5 text-base outline-none"
                       />
                     </div>
                   </div>

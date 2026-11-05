@@ -1,7 +1,12 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { BrandLockup, BRAND_LOCKUP_SCALE } from "@/components/brand-lockup";
 import { createBrandLockup, takeBootLockup, takeOrCreateGlow } from "@/lib/native/brand-lockup-markup";
 import { clearNativeBootSplash } from "@/lib/native/native-boot-splash";
+import {
+  NATIVE_KEYBOARD_EVENT,
+  setNativeKeyboardOverlay,
+  type NativeKeyboardDetail,
+} from "@/lib/native/native-bridge";
 import {
   measureLockupGeo,
   placeCentred,
@@ -15,6 +20,13 @@ export const AUTH_EXIT_MS = 250;
 export const AUTH_REDUCED_MS = 200;
 
 export type AuthOpenPhase = "loading" | "animating" | "ready";
+
+/** Band height change between steps (consciously-native-band-consistent-v3). */
+const BAND_EASE = "cubic-bezier(.2, .8, .2, 1)";
+const BAND_MS = 250;
+const COPY_FADE_MS = 150;
+
+type BandSnapshot = { step: string; height: number; copy: HTMLElement | null };
 
 export { BrandLockup };
 
@@ -44,12 +56,15 @@ export function AuthShell({
   children,
   exiting,
   reduceMotion,
+  step,
 }: {
   phase: AuthOpenPhase;
   onPhase: (p: AuthOpenPhase) => void;
   children: ReactNode;
   exiting?: boolean;
   reduceMotion?: boolean;
+  /** Current auth step; a change animates the band height and cross-fades its copy. */
+  step?: string;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -64,6 +79,59 @@ export function AuthShell({
   onPhaseRef.current = onPhase;
   const reduceRef = useRef(reduceMotion);
   reduceRef.current = reduceMotion;
+
+  const bandRef = useRef<BandSnapshot | null>(null);
+
+  // After every render: if the step changed, ease the form from the old band
+  // height to the new one and cross-fade the headline; then snapshot this band.
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    const band = shell?.querySelector<HTMLElement>(".auth-split__brand");
+    if (!shell || !band || step == null) return;
+    const panel = shell.querySelector<HTMLElement>(".auth-split__panel");
+    const copy = band.querySelector<HTMLElement>(".auth-split__brand-copy");
+    const height = band.getBoundingClientRect().height;
+    const prev = bandRef.current;
+
+    if (prev && prev.step !== step && phaseRef.current === "ready" && !reduceRef.current) {
+      const delta = prev.height - height;
+      if (panel && Math.abs(delta) > 0.5) {
+        panel.animate(
+          [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0px)" }],
+          { duration: BAND_MS, easing: BAND_EASE },
+        );
+      }
+      if (prev.copy && copy) {
+        const ghost = prev.copy;
+        ghost.style.zIndex = "auto";
+        band.appendChild(ghost);
+        ghost
+          .animate([{ opacity: 1 }, { opacity: 0 }], { duration: COPY_FADE_MS, fill: "forwards" })
+          .finished.catch(() => undefined)
+          .finally(() => ghost.remove());
+        copy.animate(
+          [{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1 }],
+          { duration: COPY_FADE_MS * 2, easing: "ease-out" },
+        );
+      }
+    }
+
+    let ghost: HTMLElement | null = null;
+    if (copy) {
+      ghost = copy.cloneNode(true) as HTMLElement;
+      ghost.classList.remove("relative");
+      ghost.setAttribute("aria-hidden", "true");
+      Object.assign(ghost.style, {
+        position: "absolute",
+        top: `${copy.offsetTop}px`,
+        left: `${copy.offsetLeft}px`,
+        width: `${copy.offsetWidth}px`,
+        margin: "0",
+        pointerEvents: "none",
+      });
+    }
+    bandRef.current = { step, height, copy: ghost };
+  });
 
   /** Move the splash node into the host (or build one from the same markup). */
   const adoptLockup = (): HTMLElement | null => {
@@ -81,6 +149,19 @@ export function AuthShell({
     }
     return el;
   };
+
+  useEffect(() => {
+    setNativeKeyboardOverlay(true);
+    const onKeyboard = (e: Event) => {
+      const { open, heightPx } = (e as CustomEvent<NativeKeyboardDetail>).detail;
+      shellRef.current?.style.setProperty("--auth-kb-h", `${open ? heightPx : 0}px`);
+    };
+    window.addEventListener(NATIVE_KEYBOARD_EVENT, onKeyboard);
+    return () => {
+      window.removeEventListener(NATIVE_KEYBOARD_EVENT, onKeyboard);
+      setNativeKeyboardOverlay(false);
+    };
+  }, []);
 
   // Run once. Do not put `phase` in deps — updating to animating must not cancel.
   useEffect(() => {

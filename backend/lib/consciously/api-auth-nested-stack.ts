@@ -371,6 +371,22 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       },
     );
 
+    const authEmailCheck = new lambda_nodejs.NodejsFunction(this, "AuthEmailCheckFunction", {
+      entry: path.join(__dirname, "../../lambdas/auth-email-check.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      role,
+      environment: {
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        COGNITO_REGION: cdk.Stack.of(this).region,
+        USERS_TABLE_NAME: usersTable.tableName,
+        MAGIC_LINK_TABLE_NAME: magicLinkTable.tableName,
+      },
+    });
+
     const authCognitoExchange = new lambda_nodejs.NodejsFunction(
       this,
       "AuthCognitoExchangeFunction",
@@ -593,6 +609,15 @@ export class ConsciouslyApiAuthNestedStack extends cdk.NestedStack {
       integration: new integrations.HttpLambdaIntegration(
         "AuthCognitoResendIntegration",
         authCognitoResend,
+      ),
+    });
+    addNestHttpRoutes(this, httpApi, {
+      id: "AuthEmailCheckRoute",
+      path: "/auth/email-check",
+      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      integration: new integrations.HttpLambdaIntegration(
+        "AuthEmailCheckIntegration",
+        authEmailCheck,
       ),
     });
 

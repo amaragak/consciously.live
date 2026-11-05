@@ -1877,7 +1877,7 @@ export function AdminCompositionCoversPanel() {
                   return next;
                 });
               }}
-              className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+              className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
             >
               {ADMIN_IMAGE_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -1916,7 +1916,7 @@ export function AdminCompositionCoversPanel() {
                 }
               }}
               placeholder="New pack name…"
-              className="h-9 w-44 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent/50 disabled:opacity-50"
+              className="h-9 w-44 rounded-xl border border-border bg-background px-3 text-base outline-none focus:border-accent/50 disabled:opacity-50"
             />
             <button
               type="button"
@@ -1985,7 +1985,7 @@ export function AdminCompositionCoversPanel() {
                 }
               }}
               placeholder="New type name…"
-              className="h-9 w-44 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent/50 disabled:opacity-50"
+              className="h-9 w-44 rounded-xl border border-border bg-background px-3 text-base outline-none focus:border-accent/50 disabled:opacity-50"
             />
             <button
               type="button"
@@ -2033,7 +2033,7 @@ export function AdminCompositionCoversPanel() {
                           (e.target as HTMLInputElement).blur();
                         }
                       }}
-                      className="h-8 min-w-[8rem] flex-1 rounded-lg border border-border bg-card px-2.5 text-sm font-semibold text-foreground outline-none focus:border-accent/50 disabled:opacity-50 sm:max-w-xs"
+                      className="h-8 min-w-[8rem] flex-1 rounded-lg border border-border bg-card px-2.5 text-base font-semibold text-foreground outline-none focus:border-accent/50 disabled:opacity-50 sm:max-w-xs"
                       aria-label="Tag type name"
                     />
                     <button
@@ -2086,7 +2086,7 @@ export function AdminCompositionCoversPanel() {
                         }
                       }}
                       placeholder="Add tag to type…"
-                      className="h-7 min-w-[9rem] flex-1 rounded-lg border border-border bg-card px-2 text-sm outline-none focus:border-accent/50 disabled:opacity-50"
+                      className="h-7 min-w-[9rem] flex-1 rounded-lg border border-border bg-card px-2 text-base outline-none focus:border-accent/50 disabled:opacity-50"
                     />
                   </div>
                   {assignable.length > 0 ? (
@@ -2125,7 +2125,7 @@ export function AdminCompositionCoversPanel() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter by title…"
-          className="h-10 min-w-[14rem] flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent/50"
+          className="h-10 min-w-[14rem] flex-1 rounded-xl border border-border bg-background px-3 text-base outline-none focus:border-accent/50"
         />
         <div
           className="inline-flex overflow-hidden rounded-xl border border-border"
@@ -2661,7 +2661,7 @@ export function AdminCompositionCoversPanel() {
                               (e.target as HTMLInputElement).blur();
                             }
                           }}
-                          className="h-9 rounded-xl border border-border bg-background px-3 font-display text-sm font-medium text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                          className="h-9 rounded-xl border border-border bg-background px-3 font-display text-base font-medium text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         />
                       </label>
                       <label className="flex w-28 flex-col gap-1 text-xs text-muted">
@@ -2687,7 +2687,7 @@ export function AdminCompositionCoversPanel() {
                               (e.target as HTMLInputElement).blur();
                             }
                           }}
-                          className="h-9 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                          className="h-9 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         />
                       </label>
                       <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs text-muted">
@@ -2702,7 +2702,7 @@ export function AdminCompositionCoversPanel() {
                               customPackName: e.target.value || null,
                             })
                           }
-                          className="h-9 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                          className="h-9 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         >
                           <option value="">
                             {packNames.length === 0
@@ -2732,7 +2732,7 @@ export function AdminCompositionCoversPanel() {
                               composer: e.target.value as CompositionComposer,
                             })
                           }
-                          className="h-9 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                          className="h-9 rounded-xl border border-border bg-background px-3 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         >
                           {COMPOSITION_COMPOSERS.map((name) => (
                             <option key={name} value={name}>
@@ -2786,7 +2786,7 @@ export function AdminCompositionCoversPanel() {
                               ? "Tag limit reached"
                               : "Add tag…"
                           }
-                          className="h-8 min-w-[8rem] flex-1 rounded-xl border border-border bg-background px-2.5 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                          className="h-8 min-w-[8rem] flex-1 rounded-xl border border-border bg-background px-2.5 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         />
                       </div>
                       {tagSuggestions.length > 0 ? (
@@ -2882,7 +2882,7 @@ export function AdminCompositionCoversPanel() {
                             model: e.target.value as AdminImageModel,
                           })
                         }
-                        className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                        className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                       >
                         {ADMIN_IMAGE_MODELS.map((m) => (
                           <option key={m.id} value={m.id}>
@@ -3014,7 +3014,7 @@ export function AdminCompositionCoversPanel() {
                           })
                         }
                         placeholder="Optional — e.g. misty coastal cliffs at dusk…"
-                        className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                        className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                       />
                       <span className="text-[10px] text-muted">
                         {covered
@@ -3035,7 +3035,7 @@ export function AdminCompositionCoversPanel() {
                             })
                           }
                           placeholder="e.g. warmer light, add a figure, less green…"
-                          className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                          className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                         />
                         <span className="text-[10px] text-muted">
                           If set, Regen rewrites from prior prompts + this note

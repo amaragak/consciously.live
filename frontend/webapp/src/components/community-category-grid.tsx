@@ -12,6 +12,7 @@ import {
   meditationTypePillSurfaceFromDom,
   type MeditationTypePillSurface,
 } from "@/lib/meditation-type-pill";
+import { CoverImage } from "@/components/cover-image";
 import {
   categoryImageUrlForTile,
   libraryCategoryImagesCached,
@@ -365,13 +366,9 @@ function CreateFlowStyleTile({
     >
       <span className="relative block h-[74px] w-full overflow-hidden bg-accent-soft/40">
         {imageUrl ? (
-          <img
+          <CoverImage
             src={categoryImageUrlForTile(imageUrl)}
-            alt=""
-            width={200}
-            height={74}
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full"
           />
         ) : (
           <span

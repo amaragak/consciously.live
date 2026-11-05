@@ -261,7 +261,7 @@ export function PlanLooseNotesScratchpad({ value, onChange }: ScratchpadProps) {
         onChange={(e) => handleChange(e.target.value)}
         rows={5}
         placeholder="Fragments, reminders, things that don’t belong above…"
-        className="mt-4 w-full resize-y rounded-[12px] border border-[#E5DFD0] bg-card px-5 py-[18px] text-sm leading-relaxed text-[#1E2530] outline-none ring-accent/25 focus:ring-2 dark:border-border dark:text-foreground"
+        className="mt-4 w-full resize-y rounded-[12px] border border-[#E5DFD0] bg-card px-5 py-[18px] text-base leading-relaxed text-[#1E2530] outline-none ring-accent/25 focus:ring-2 dark:border-border dark:text-foreground"
       />
     </section>
   );

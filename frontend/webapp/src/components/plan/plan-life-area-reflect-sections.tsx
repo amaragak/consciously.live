@@ -329,7 +329,7 @@ export function PlanLifeAreaVisionSections({
                       .slice(0, 4),
                   );
                 }}
-                className="h-8 w-36 rounded-full border border-border bg-card px-3 text-xs text-foreground outline-none"
+                className="h-8 w-36 rounded-full border border-border bg-card px-3 text-base text-foreground outline-none"
               />
             ))}
             {obstacleLabels.length < 4 ? (
@@ -541,7 +541,7 @@ export function PlanLifeAreaThoughtsLog({
                         }
                       }}
                       placeholder="Add a thought…"
-                      className="w-full border-0 bg-transparent py-0.5 pr-10 text-[14px] leading-[1.5] text-[#1E2530] outline-none placeholder:text-[#A39C8C] focus:outline-none focus:ring-0 dark:text-foreground"
+                      className="w-full border-0 bg-transparent py-0.5 pr-10 text-base leading-[1.5] text-[#1E2530] outline-none placeholder:text-[#A39C8C] focus:outline-none focus:ring-0 dark:text-foreground"
                     />
                     <div className="absolute right-0 top-1/2 -translate-y-1/2">
                       <DictationMicButton

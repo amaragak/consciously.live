@@ -223,7 +223,7 @@ export function SoundsPresetMenuPanel({
           aria-activedescendant={
             activeKey ? `sounds-preset-opt-${activeKey}` : undefined
           }
-          className="h-9 w-full rounded-[10px] border border-border bg-background pl-9 pr-3 text-[13px] text-foreground outline-none placeholder:text-muted focus:border-accent/50"
+          className="h-9 w-full rounded-[10px] border border-border bg-background pl-9 pr-3 text-base text-foreground outline-none placeholder:text-muted focus:border-accent/50"
         />
       </div>
       <div

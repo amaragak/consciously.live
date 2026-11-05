@@ -1,3 +1,4 @@
+import { CoverImage } from "@/components/cover-image";
 import { SelectChevron } from "@/components/select-chevron";
 import { Link } from "@/lib/spa-nav";
 
@@ -31,7 +32,10 @@ export function OverviewSubpagesPanel({
 }) {
   if (layout === "sideBySide") {
     return (
-      <section className="rounded-[22px] border border-border bg-card px-3 py-3 shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:px-4 md:py-4">
+      <section
+        data-dash-reveal
+        className="rounded-[22px] border border-border bg-card px-3 py-3 shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:px-4 md:py-4"
+      >
         {/* Desktop: one row of equal cards under two group labels */}
         <div className="hidden md:block">
           <div
@@ -91,7 +95,10 @@ export function OverviewSubpagesPanel({
   // Single row (Journal): three equal cards; mobile fits side by side, no chevron.
   const tiles = groups.flatMap((g) => g.tiles);
   return (
-    <section className="rounded-[22px] border border-border bg-card px-3 py-3 shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:px-4 md:py-4">
+    <section
+      data-dash-reveal
+      className="rounded-[22px] border border-border bg-card px-3 py-3 shadow-[0_2px_14px_rgba(15,27,45,0.05)] md:px-4 md:py-4"
+    >
       <div className="grid grid-cols-3 gap-2 md:gap-2.5">
         {tiles.map((tile) => (
           <OverviewSubpageCard
@@ -131,19 +138,10 @@ function OverviewSubpageCard({
       href={tile.href}
       className={`flex flex-col overflow-hidden rounded-[14px] border border-border bg-card ${widthClass}`}
     >
-      <span
-        className={`relative block w-full shrink-0 overflow-hidden bg-accent-soft/40 ${imageH}`}
-      >
-        {loading ? (
-          <span className="mm-skeleton absolute inset-0 block" />
-        ) : (
-          <img
-            src={tile.imageSrc}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
-      </span>
+      <CoverImage
+        src={tile.imageSrc}
+        className={`w-full shrink-0 ${imageH}`}
+      />
       <span className="flex items-center gap-1.5 px-2.5 py-2.5 md:px-3">
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5 whitespace-nowrap">
           <span className="truncate text-[13.5px] font-semibold text-foreground md:text-[14px]">

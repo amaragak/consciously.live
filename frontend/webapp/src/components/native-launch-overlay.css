@@ -1,5 +1,5 @@
-/* Signed-out: bg plate only — AuthShell portals the one lockup above (z 10002). */
-/* Signed-in: shows a lockup and cross-fades away. */
+/* Underlay only — the HTML boot splash (#native-boot-splash, z 10001) holds
+   the brand. Signed-in exit fades that boot node so the app shows through. */
 
 .native-launch {
   --nl-navy: #1a1820;
@@ -19,22 +19,4 @@
   background-size: calc(max(100vw, 100vh) * 0.73206) calc(max(100vw, 100vh) * 0.73206);
   background-repeat: repeat;
   background-position: center;
-}
-
-/* Signed-in exit only. Same BrandLockup at splash scale, centred. */
-.native-launch__lockup-center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(1.8);
-  transform-origin: center center;
-}
-
-.native-launch__lockup-center .brand-lockup {
-  color: #f6f1e7;
-}
-
-.native-launch--fade {
-  opacity: 0;
-  transition: opacity 0.25s ease;
 }

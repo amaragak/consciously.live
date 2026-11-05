@@ -57,13 +57,16 @@ export function ManifestoFocusCard({ compact = false }: { compact?: boolean }) {
               <Timer className="size-3.5" strokeWidth={2} aria-hidden />
               Start 25 min
             </button>
-            <Link
-              href="/focus"
-              className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-accent-link"
-            >
-              Open Focus
-              <SelectChevron direction="right" className="text-accent-link" />
-            </Link>
+            {/* Mobile Manifest uses ManifestMobileNextStep (no Open Focus). */}
+            {!compact ? (
+              <Link
+                href="/focus"
+                className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-accent-link"
+              >
+                Open Focus
+                <SelectChevron direction="right" className="text-accent-link" />
+              </Link>
+            ) : null}
           </div>
         </>
       ) : (

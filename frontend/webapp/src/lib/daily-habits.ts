@@ -25,7 +25,9 @@ export type DailyHabitPillar =
   | "meditation"
   | "lifeArea"
   /** Local-only: Listen to your story (shown when a narration exists). */
-  | "story";
+  | "story"
+  /** Local-only: Write a journal entry (any non-gratitude entry today). */
+  | "journal";
 
 export type DailyStatus = {
   gratitude: boolean;
@@ -33,6 +35,8 @@ export type DailyStatus = {
   lifeArea: boolean;
   /** Present when tracked locally; not part of the server three-pillar streak. */
   story: boolean;
+  /** Local-only, like story; not part of the server three-pillar streak. */
+  journal: boolean;
   /** Full streak — all three dailies. Alias of fullStreak for older callers. */
   streak: number;
   fullStreak: number;
@@ -259,6 +263,19 @@ export function gratitudeDoneForDate(
   );
 }
 
+/** A journal entry (not a gratitude) with real content, created that day. */
+export function journalEntryDoneForDate(
+  entries: JournalEntry[],
+  dateKey: string,
+): boolean {
+  return entries.some(
+    (e) =>
+      !isGratitudeEntry(e) &&
+      localDateKeyFromIso(e.createdAt) === dateKey &&
+      journalEntryHasMeaningfulContent(e),
+  );
+}
+
 function dreamThoughtsToday(dream: PlanDream, dateKey: string): boolean {
   const lists = [dream.dreamEntries, dream.obstacleEntries, dream.visionEntries];
   for (const list of lists) {
@@ -445,6 +462,7 @@ export function computeLocalDailyStatus(
       Boolean(manual.meditation) || hasLocalMeditationProgress(dateKey),
     lifeArea: Boolean(manual.lifeArea) || lifeAreaDoneForDate(ideate, dateKey),
     story: Boolean(manual.story) || hasLocalStoryListen(dateKey),
+    journal: Boolean(manual.journal) || journalEntryDoneForDate(entries, dateKey),
     streak: fullStreak,
     fullStreak,
     partialStreak,

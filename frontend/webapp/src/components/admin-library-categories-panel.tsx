@@ -218,7 +218,7 @@ export function AdminLibraryCategoriesPanel() {
             onChange={(e) =>
               setImageModel(e.target.value as AdminImageModel)
             }
-            className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+            className="rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
           >
             {ADMIN_IMAGE_MODELS.map((m) => (
               <option key={m.id} value={m.id}>
@@ -318,7 +318,7 @@ export function AdminLibraryCategoriesPanel() {
                           }
                           rows={2}
                           placeholder="Sent as-is to the selected image model…"
-                          className="mt-1 w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted disabled:opacity-50"
+                          className="mt-1 w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted disabled:opacity-50"
                         />
                       </label>
                       <button

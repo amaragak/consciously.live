@@ -502,7 +502,7 @@ export function JournalImportDialog({ open, existing, onClose, onCommit }: Props
                                 [i]: e.target.value as CsvColumnRole,
                               }))
                             }
-                            className="w-full rounded-lg border border-border bg-card px-1 py-1 text-xs"
+                            className="w-full rounded-lg border border-border bg-card px-1 py-1 text-base"
                           >
                             {ROLES.map((r) => (
                               <option key={r.id} value={r.id}>
@@ -545,7 +545,7 @@ export function JournalImportDialog({ open, existing, onClose, onCommit }: Props
                   type="date"
                   value={bulkDate}
                   onChange={(e) => setBulkDate(e.target.value)}
-                  className="mt-1.5 block w-full max-w-xs rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/50"
+                  className="mt-1.5 block w-full max-w-xs rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus:border-accent/50"
                 />
               </label>
             </div>
@@ -622,7 +622,7 @@ export function JournalImportDialog({ open, existing, onClose, onCommit }: Props
                             );
                           }}
                           placeholder="Untitled entry"
-                          className="w-full border-0 bg-transparent text-sm font-semibold outline-none"
+                          className="w-full border-0 bg-transparent text-base font-semibold outline-none"
                         />
                         <textarea
                           value={r.body}
@@ -635,7 +635,7 @@ export function JournalImportDialog({ open, existing, onClose, onCommit }: Props
                             );
                           }}
                           rows={3}
-                          className="mt-1 w-full resize-y rounded-lg border border-border bg-card px-2 py-1.5 text-sm outline-none"
+                          className="mt-1 w-full resize-y rounded-lg border border-border bg-card px-2 py-1.5 text-base outline-none"
                         />
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
                           <label className="flex items-center gap-1.5">

@@ -74,6 +74,31 @@ export function AdminDevUiPanel() {
       ) : null}
 
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <h2 className="font-display text-lg font-medium">Homepage</h2>
+        {loading ? (
+          <p className="mt-3 text-sm text-muted">Loading…</p>
+        ) : (
+          <ul className="mt-4 space-y-4">
+            <li className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">Homepage waitlist</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted">
+                  On: homepage app links open the pre-release waitlist. Off: they go
+                  straight to sign up / sign in. Applies on production.
+                </p>
+              </div>
+              <SettingsSwitch
+                aria-label="Homepage waitlist"
+                checked={settings.homeWaitlist}
+                disabled={busy}
+                onCheckedChange={(next) => void save({ homeWaitlist: next })}
+              />
+            </li>
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <h2 className="font-display text-lg font-medium">Controls</h2>
         {loading ? (
           <p className="mt-3 text-sm text-muted">Loading…</p>

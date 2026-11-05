@@ -2,13 +2,15 @@
 /**
  * Live reload on a device / simulator: Vite on the LAN + `cap run --live-reload`.
  *
+ *   npm run native:dev:ios                           (iPhone 17 simulator)
+ *   npm run native:dev:ios [-- --sim "iPhone 17 Pro"] (another simulator by name)
  *   npm run native:dev:ios [-- --target <device-id>]
  *   npm run native:dev:android [-- --target <device-id>]
  *
  * The phone must be on the same Wi-Fi as this machine. Override the address
  * with CAP_DEV_HOST=192.168.x.y when the auto-picked interface is wrong.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import os from "node:os";
 
 const platform = process.argv[2];
@@ -17,6 +19,31 @@ if (platform !== "ios" && platform !== "android") {
   process.exit(1);
 }
 const extra = process.argv.slice(3);
+
+/** Booted simulator with this name first, else the newest available runtime. */
+function simulatorId(name) {
+  const { devices } = JSON.parse(
+    execFileSync("xcrun", ["simctl", "list", "devices", "available", "-j"], { encoding: "utf8" }),
+  );
+  const matches = Object.entries(devices)
+    .sort(([a], [b]) => b.localeCompare(a, undefined, { numeric: true }))
+    .flatMap(([, list]) => list.filter((d) => d.name === name));
+  const pick = matches.find((d) => d.state === "Booted") ?? matches[0];
+  if (!pick) {
+    console.error(`No available simulator named "${name}".`);
+    process.exit(1);
+  }
+  return pick.udid;
+}
+
+const DEFAULT_IOS_SIM = "iPhone 17";
+const simFlag = extra.indexOf("--sim");
+if (simFlag !== -1) {
+  const [, name] = extra.splice(simFlag, 2);
+  extra.push("--target", simulatorId(name));
+} else if (platform === "ios" && !extra.includes("--target")) {
+  extra.push("--target", simulatorId(DEFAULT_IOS_SIM));
+}
 const port = process.env.CAP_DEV_PORT || "5173";
 
 function lanAddress() {

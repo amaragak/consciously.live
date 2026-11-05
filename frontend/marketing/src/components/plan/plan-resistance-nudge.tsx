@@ -103,7 +103,7 @@ export function PlanResistanceNudge({
         onChange={(e) => setText(e.target.value)}
         rows={2}
         placeholder="What’s in the way?"
-        className="mt-2 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-accent/25 focus:ring-2"
+        className="mt-2 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-base outline-none ring-accent/25 focus:ring-2"
       />
       <div className="mt-2 flex flex-wrap gap-1.5">
         {RESISTANCE_CHIP_OPTIONS.map((chip) => (

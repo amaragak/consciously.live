@@ -171,7 +171,7 @@ export function TrackerTitleField({
         aria-label="Item title"
         className={
           editing
-            ? "h-[30px] min-w-0 max-w-full flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none placeholder:italic placeholder:text-muted"
+            ? "h-[30px] min-w-0 max-w-full flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-base outline-none placeholder:italic placeholder:text-muted"
             : `h-7 min-w-0 max-w-full cursor-text truncate border border-transparent bg-transparent px-0 text-sm outline-none ${bold ? "font-semibold" : ""}`
         }
         onFocus={onBegin}
@@ -309,14 +309,14 @@ function ThoughtTrackerAdd({
           }
         }}
         aria-label="Item title"
-        className="mt-2 h-[30px] w-full rounded-lg border-[1.5px] border-accent bg-card px-2 text-sm outline-none"
+        className="mt-2 h-[30px] w-full rounded-lg border-[1.5px] border-accent bg-card px-2 text-base outline-none"
       />
       <label className="mt-2 flex items-center gap-2 text-[13px] text-foreground">
         Parent
         <select
           value={parentId}
           onChange={(event) => setParentId(event.target.value)}
-          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-base"
         >
           <option value="">Top level</option>
           {choices.map((choice) => (
@@ -1398,7 +1398,7 @@ function ItemMenu({
       <MenuButton icon={Calendar} label="Due date" chevron onClick={() => setSub(sub === "due" ? null : "due")} />
       {sub === "due" ? (
         <div className="mb-1 ml-6 flex flex-col gap-1 px-2">
-          <input type="date" className="h-8 rounded-lg border border-border bg-card px-2 text-sm" defaultValue={item.due ?? ""} onChange={(event) => { onPatch(item.id, { due: event.target.value || null }); onClose(); }} />
+          <input type="date" className="h-8 rounded-lg border border-border bg-card px-2 text-base" defaultValue={item.due ?? ""} onChange={(event) => { onPatch(item.id, { due: event.target.value || null }); onClose(); }} />
           <button type="button" className="h-8 text-left text-sm text-muted" onClick={() => { onPatch(item.id, { due: null }); onClose(); }}>Clear</button>
         </div>
       ) : null}
@@ -1407,7 +1407,7 @@ function ItemMenu({
           autoFocus
           defaultValue={item.waitingOn ?? ""}
           placeholder="Name"
-          className="mx-2 mb-1 h-8 w-[calc(100%-16px)] rounded-lg border border-border bg-card px-2 text-sm"
+          className="mx-2 mb-1 h-8 w-[calc(100%-16px)] rounded-lg border border-border bg-card px-2 text-base"
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               onPatch(item.id, { status: "waiting", waitingOn: event.currentTarget.value.trim() || null });
@@ -1423,7 +1423,7 @@ function ItemMenu({
       <MenuButton icon={FolderInput} label="Move to…" chevron onClick={() => setSub(sub === "move" ? null : "move")} />
       {sub === "move" || sub === "area" ? (
         <div className="mb-1 ml-6">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search items" className="mb-1 h-8 w-full rounded-lg border border-border bg-card px-2 text-sm" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search items" className="mb-1 h-8 w-full rounded-lg border border-border bg-card px-2 text-base" />
           <div className="max-h-40 overflow-y-auto">
             {destinations.map((row) => (
               <button key={row.item.id} type="button" className={MENU_ROW} style={{ paddingLeft: 8 + row.depth * 12 }} onClick={() => { onMoveUnder(item.id, row.item.id); onClose(); }}>
@@ -1539,7 +1539,7 @@ function FieldPicker({
       ) : null}
       {field === "due" ? (
         <div className="flex flex-col gap-1 p-1">
-          <input type="date" className="h-8 rounded-lg border border-border bg-card px-2 text-sm" defaultValue={item.due ?? ""} onChange={(event) => { onPatch({ due: event.target.value || null }); onClose(); }} />
+          <input type="date" className="h-8 rounded-lg border border-border bg-card px-2 text-base" defaultValue={item.due ?? ""} onChange={(event) => { onPatch({ due: event.target.value || null }); onClose(); }} />
           <button type="button" className="h-8 px-2 text-left text-sm text-muted" onClick={() => { onPatch({ due: null }); onClose(); }}>Clear</button>
         </div>
       ) : null}

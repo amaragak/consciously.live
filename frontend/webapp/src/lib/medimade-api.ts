@@ -458,6 +458,50 @@ export function signInWithSocialIdToken(opts: {
   );
 }
 
+export type AuthEmailCheck = {
+  next: "signin" | "signup";
+  hasPassword: boolean;
+  providers: ("apple" | "google")[];
+  hasPasskey: boolean;
+};
+
+const DEVICE_ID_KEY = "mm_device_id";
+
+/** Stable per-install id; lets /auth/email-check rate-limit per device. */
+function authDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_KEY);
+    if (existing && /^[A-Za-z0-9-]{8,64}$/.test(existing)) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_KEY, id);
+    return id;
+  } catch {
+    return "";
+  }
+}
+
+/** Email-first sign-in: does an account exist, and how can it sign in? */
+export async function checkAuthEmail(email: string): Promise<AuthEmailCheck> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/auth/email-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase(), deviceId: authDeviceId() }),
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<AuthEmailCheck> & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? "Couldn’t check that email. Try again.");
+  const providers = Array.isArray(data.providers)
+    ? data.providers.filter((p): p is "apple" | "google" => p === "apple" || p === "google")
+    : [];
+  return {
+    next: data.next === "signin" ? "signin" : "signup",
+    hasPassword: data.hasPassword === true,
+    providers,
+    hasPasskey: data.hasPasskey === true,
+  };
+}
+
 /** Permanently delete the signed-in account and its data. */
 export async function deleteMedimadeAccount(): Promise<void> {
   const base = getMedimadeApiBase();
@@ -5851,12 +5895,15 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
 export type DevUiSettings = {
   createAudioDevControls: boolean;
   libraryDevFlyout: boolean;
+  /** Marketing homepage waitlist (pre-release). Off = normal sign-up / sign-in. */
+  homeWaitlist: boolean;
 };
 
 export function defaultDevUiSettings(): DevUiSettings {
   return {
     createAudioDevControls: false,
     libraryDevFlyout: false,
+    homeWaitlist: false,
   };
 }
 
@@ -5875,6 +5922,7 @@ export async function fetchDevUiSettings(): Promise<DevUiSettings> {
     return {
       createAudioDevControls: data.settings?.createAudioDevControls === true,
       libraryDevFlyout: data.settings?.libraryDevFlyout === true,
+      homeWaitlist: data.settings?.homeWaitlist === true,
     };
   } catch {
     return defaultDevUiSettings();
@@ -5943,6 +5991,7 @@ export async function patchDevUiSettings(
   return {
     createAudioDevControls: data.settings?.createAudioDevControls === true,
     libraryDevFlyout: data.settings?.libraryDevFlyout === true,
+    homeWaitlist: data.settings?.homeWaitlist === true,
   };
 }
 

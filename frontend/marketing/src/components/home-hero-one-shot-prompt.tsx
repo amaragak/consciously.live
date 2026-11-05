@@ -340,7 +340,7 @@ export function HomeHeroOneShotPrompt({ className = "" }: { className?: string }
             onChange={(e) => setPrompt(e.target.value)}
             disabled={busy}
             placeholder="e.g. I can’t sleep — racing thoughts about work tomorrow"
-            className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-left text-sm text-marketing-ink outline-none placeholder:text-marketing-placeholder disabled:opacity-60 sm:text-base"
+            className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-left text-base text-marketing-ink outline-none placeholder:text-marketing-placeholder disabled:opacity-60 sm:text-base"
             autoComplete="off"
           />
           <HomeHeroSpeakerPicker

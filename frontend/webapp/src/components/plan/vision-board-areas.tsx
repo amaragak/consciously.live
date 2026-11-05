@@ -1209,7 +1209,7 @@ function CaptionDialog({
         <input
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          className="mt-4 h-11 w-full rounded-xl border border-border px-3 text-[15px]"
+          className="mt-4 h-11 w-full rounded-xl border border-border px-3 text-base"
         />
         <button
           type="button"

@@ -46,6 +46,7 @@ import {
   readCreateSession,
 } from "@/lib/create-session-storage";
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
+import { formatGratitudeRowDate } from "@/lib/journal-gratitudes";
 import {
   formatJournalEntryDate,
   journalEntryListTitle,
@@ -224,6 +225,7 @@ function journalEntryTitleFromPath(pathname: string): string | null {
     pathname === "/journal/entries" ||
     pathname === "/journal/entries/" ||
     pathname.startsWith("/journal/gratitudes") ||
+    pathname.startsWith("/journal/gratitude") ||
     pathname.startsWith("/journal/insights")
   ) {
     return null;
@@ -250,24 +252,41 @@ function journalEntryTitleFromPath(pathname: string): string | null {
   }
 }
 
+function gratitudeLabelFromDateKey(dateKey: string): string {
+  if (!dateKey) return "Today";
+  if (dateKey === localDateKey()) return "Today";
+  return formatGratitudeRowDate(dateKey);
+}
+
 function gratitudeEntryLabelFromPath(pathname: string): string | null {
-  const m = /^\/journal\/gratitudes\/([^/]+)\/?$/.exec(pathname);
+  const m = /^\/journal\/gratitudes?\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
-  let id: string;
+  let key: string;
   try {
-    id = decodeURIComponent(m[1]);
+    key = decodeURIComponent(m[1]);
   } catch {
-    id = m[1];
+    key = m[1];
   }
+  const slugDate = /^(\d{4}-\d{2}-\d{2})/.exec(key)?.[1] ?? "";
   try {
-    const entry = loadJournalStoreRaw().entries.find((e) => e.id === id);
-    if (!entry) return "Gratitude";
-    if (localDateKeyFromIso(entry.entryDate || entry.createdAt) === localDateKey()) {
-      return "Today";
+    const entries = loadJournalStoreRaw().entries;
+    const entry =
+      entries.find((e) => e.id === key) ??
+      entries.find((e) => e.urlSlug?.toLowerCase() === key.toLowerCase()) ??
+      entries.find((e) =>
+        (e.urlSlugHistory ?? []).some(
+          (h) => h.toLowerCase() === key.toLowerCase(),
+        ),
+      );
+    if (!entry) {
+      // Prefer slug date over "Gratitude" — that fallback truncated to "Gra..".
+      return gratitudeLabelFromDateKey(slugDate);
     }
-    return formatJournalEntryDate(entry.entryDate || entry.createdAt);
+    return gratitudeLabelFromDateKey(
+      localDateKeyFromIso(entry.entryDate || entry.createdAt),
+    );
   } catch {
-    return "Gratitude";
+    return gratitudeLabelFromDateKey(slugDate);
   }
 }
 

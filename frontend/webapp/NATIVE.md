@@ -170,6 +170,7 @@ regenerate it from the repo root with `npx patch-package @mediagrid/capacitor-na
 - `src/lib/native/offline-audio.ts`: downloads (`@capacitor/file-transfer`) into app data. If a
   downloaded copy exists, playback uses it.
 - Create · Sound auditions stay on web audio. They're foreground-only and tied to the create step.
+- Sounds · Custom **Play all** uses the same native strip on device (silent carrier + looping beds). Per-layer audition taps stay on web audio (foreground-only mixer tweaking).
 - The voice FX dial is web-only. Native plays the baked voice.
 
 ### `/dev/audio` test page
@@ -210,10 +211,13 @@ background and sun glow images are generated: [`native-assets/src/README.md`](na
 
 ### What the app does
 
-- **Sign up / sign in** (`src/pages/native-login-page.tsx`, `native-login.css`). First launch and
-  after sign-out open **Sign up** (paisley navy band + ivory form): Apple, Google, or email +
-  password → Cognito verify code → **Your first meditation** (new accounts) or home. Returning
-  **Sign in**: Apple, Google, email + password (forgot-password included). No name on sign-up;
+- **Email-first sign-in** (`src/pages/native-login-page.tsx`, `native-login.css`). First launch,
+  sign-out and expired sessions open **Continue** (paisley navy band + ivory form): Apple, Google,
+  or email → Continue. `POST /auth/email-check` (rate-limited per IP and device, same timing either
+  way) sends a known email to **Welcome back** (password, forgot password; Apple/Google button
+  instead if the account has no password) and a new one to **Create your account** (password) →
+  Cognito verify code → **Your first meditation** or home. **Change** goes back with the email kept.
+  The old separate Sign up / Sign in screens are commented out in the page. No name on sign-up;
   name step only if the session still needs one. Passkey offer is skipped on native until
   WebAuthn works in the Capacitor web view. First meditation Create opens Shape with the brief
   (`createFromBriefHref`); Skip goes to home / Get set up.
@@ -242,10 +246,13 @@ background and sun glow images are generated: [`native-assets/src/README.md`](na
 
 ### Web
 
-Web sign-in and sign-up are unchanged from before the native work (the web code field and web
-Apple button were reverted). The only web change is that "Terms" and "Privacy Policy" under the
-login form are now links. The backend still accepts web Apple/Google ID tokens on `/auth/social`
-for later.
+`/login` (and `/login?mode=signup`) uses the same email-first steps in the form column only:
+Continue (Apple, Google, email) → Sign in (sign-in layout) or Create your account → code →
+passkey offer → `/auth/complete-profile` if needed. Apple uses Sign in with Apple JS
+(`marketing/src/lib/apple-web-sign-in.ts`) and Google uses Google Identity Services
+(`google-web-sign-in.ts`), both posting ID tokens to `/auth/social` with the same Services ID /
+OAuth client as the app. Accounts link by verified email, so an Apple or Google sign-in with the
+same email lands on the existing account.
 
 ### Console setup (once)
 
@@ -262,7 +269,7 @@ after setting them.
 2. Replace `APPLE_TEAM_ID` in `frontend/marketing/public/.well-known/apple-app-site-association`
    with the 10-character Team ID, and deploy marketing. Check
    `https://consciously.live/.well-known/apple-app-site-association` returns the JSON with no redirect.
-3. Later, for web Apple sign-in (not used yet): Identifiers → **+** → Services IDs, e.g. `live.consciously.web`. Enable Sign in with
+3. For web Apple sign-in: Identifiers → **+** → Services IDs, e.g. `live.consciously.web`. Enable Sign in with
    Apple, set the primary App ID to `live.consciously.app`, add domain `consciously.live` and
    return URL `https://consciously.live/login`. Deploy the backend with
    `CONSCIOUSLY_APPLE_SERVICES_ID=live.consciously.web`.
@@ -370,10 +377,25 @@ In order:
    have it reviewed, then deploy marketing. Add `https://consciously.live/privacy` as the privacy
    policy URL in App Store Connect (and Play Console).
 10. The Apple, Google and Android app-link console steps in **Console setup** above are unchanged.
+11. **Apple and Google on the web** (email-first web pack):
+    - Apple: [Identifiers](https://developer.apple.com/account/resources/identifiers/list/serviceId)
+      → **+** → **Services IDs** → Continue. Description `Consciously Web`, identifier
+      `live.consciously.web` → Register.
+    - Open it, tick **Sign in with Apple** → **Configure**: Primary App ID `live.consciously.app`;
+      Domains `consciously.live`, `www.consciously.live`; Return URLs
+      `https://consciously.live/login`, `https://www.consciously.live/login` → Next → Done →
+      Continue → **Save**. (Same primary App ID as the app, so one Apple ID is one account.)
+    - For local testing Apple needs https; add your tunnel domain and its `/login` there too.
+    - Google: [Credentials](https://console.cloud.google.com/apis/credentials) → the **Web
+      application** client used by the app → **Authorised JavaScript origins**: add
+      `https://consciously.live`, `https://www.consciously.live` and `http://localhost:3000` → Save.
+    - Deploy the backend with `CONSCIOUSLY_APPLE_SERVICES_ID=live.consciously.web` and
+      `CONSCIOUSLY_GOOGLE_WEB_CLIENT_ID=<id>.apps.googleusercontent.com` (or `appleServicesId` /
+      `googleWebClientId` in `backend/cdk.json` context so it sticks). The web buttons read both
+      from `/auth/cognito/config`.
 
 ## Known gaps (next prompts)
 
-- **Google on the web** (see above).
 - **Pricing / Stripe checkout:** web checkout returns to `capacitor://localhost` and doesn't work in the
   app. Digital subscriptions in iOS apps also fall under App Store payment rules.
 - During the 20 s post-voice outro, the lock-screen controls are cleared. The beds still fade out

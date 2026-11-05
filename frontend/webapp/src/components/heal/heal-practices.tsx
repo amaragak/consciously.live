@@ -176,7 +176,7 @@ function FriendPractice({
               onChange={(e) => setText(e.target.value)}
               placeholder="Write what you'd say…"
               rows={5}
-              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none"
             />
             {item.aiEnabled ? (
               <div className="mt-2 flex justify-end">
@@ -485,7 +485,7 @@ function ValuesPractice({
           onChange={(e) => setAction(e.target.value)}
           placeholder="What would you want this to lead to?"
           rows={3}
-          className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+          className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none"
         />
         {item.aiEnabled ? (
           <div className="mt-2 flex justify-end">
@@ -577,7 +577,7 @@ function NoticePractice({
               value={thought}
               onChange={(e) => setThought(e.target.value)}
               rows={4}
-              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none"
             />
             <button
               type="button"
@@ -611,7 +611,7 @@ function NoticePractice({
               value={next}
               onChange={(e) => setNext(e.target.value)}
               rows={4}
-              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+              className="mt-4 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none"
             />
             <button
               type="button"
@@ -662,7 +662,7 @@ function IfThenPractice({
             value={when}
             onChange={(e) => setWhen(e.target.value)}
             placeholder="someone asks me for something at work"
-            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal outline-none"
+            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base font-normal outline-none"
           />
         </label>
         <label className="mt-3 block text-sm font-semibold text-foreground">
@@ -671,7 +671,7 @@ function IfThenPractice({
             value={will}
             onChange={(e) => setWill(e.target.value)}
             placeholder="say I'll check and get back to them"
-            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal outline-none"
+            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base font-normal outline-none"
           />
         </label>
         <button
@@ -724,7 +724,7 @@ function EvidencePractice({
               value={thought}
               onChange={(event) => setThought(event.target.value)}
               rows={4}
-              className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+              className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none"
             />
             <button type="button" className={`${HEAL_PRIMARY} mt-4`} onClick={() => setStep(1)}>
               Next
@@ -739,7 +739,7 @@ function EvidencePractice({
               value={tested}
               onChange={(event) => setTested(event.target.value)}
               rows={4}
-              className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+              className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none"
             />
             <button
               type="button"

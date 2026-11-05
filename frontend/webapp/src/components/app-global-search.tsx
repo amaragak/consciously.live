@@ -781,7 +781,7 @@ export function AppGlobalSearch({
               : undefined
           }
           tabIndex={open ? 0 : -1}
-          className="app-search-input h-9 w-full min-w-0 rounded-full border border-[rgb(246_241_231_/_0.18)] bg-white/[0.08] py-0 pl-3.5 pr-9 text-sm text-nav-foreground outline-none placeholder:text-nav-muted focus:border-[rgb(246_241_231_/_0.35)] focus:bg-white/[0.12] hybrid:border-border hybrid:bg-background hybrid:text-foreground hybrid:placeholder:text-muted hybrid:focus:border-accent/40"
+          className="app-search-input h-9 w-full min-w-0 rounded-full border border-[rgb(246_241_231_/_0.18)] bg-white/[0.08] py-0 pl-3.5 pr-9 text-base text-nav-foreground outline-none placeholder:text-nav-muted focus:border-[rgb(246_241_231_/_0.35)] focus:bg-white/[0.12] hybrid:border-border hybrid:bg-background hybrid:text-foreground hybrid:placeholder:text-muted hybrid:focus:border-accent/40"
         />
         {open && q ? (
           <button

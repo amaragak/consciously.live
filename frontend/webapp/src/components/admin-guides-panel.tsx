@@ -56,7 +56,7 @@ function guideAreaFromValue(v: string): GuideArea {
 }
 
 const INPUT_CLASS =
-  "mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
+  "mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground";
 const OUTLINE_BTN_CLASS =
   "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface disabled:opacity-50";
 
@@ -809,7 +809,7 @@ export function AdminGuidesPanel() {
                 setBulkPasteStatus(null);
               }}
               rows={12}
-              className={`${INPUT_CLASS} resize-y font-mono text-[12px] leading-relaxed`}
+              className={`${INPUT_CLASS} resize-y font-mono text-base leading-relaxed`}
               placeholder={"=== GUIDE ===\n…\n=== END ===\n\n=== GUIDE ===\n…\n=== END ==="}
               spellCheck={false}
             />
@@ -1050,7 +1050,7 @@ export function AdminGuidesPanel() {
                       setPasteFillNote(null);
                     }}
                     rows={10}
-                    className={`${INPUT_CLASS} mt-0 resize-y font-mono text-[12px] leading-relaxed`}
+                    className={`${INPUT_CLASS} mt-0 resize-y font-mono text-base leading-relaxed`}
                     placeholder="=== GUIDE === … === END ==="
                     spellCheck={false}
                   />
@@ -1272,7 +1272,7 @@ export function AdminGuidesPanel() {
                     disabled={coverBusy || busy || coverBulkBusy}
                     onChange={(e) => setCoverDirection(e.target.value)}
                     placeholder="Optional direction"
-                    className="h-8 min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
+                    className="h-8 min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-2.5 text-base text-foreground outline-none focus:border-accent/50 disabled:opacity-50"
                   />
                   {draft.coverImageUrl ? (
                     <button

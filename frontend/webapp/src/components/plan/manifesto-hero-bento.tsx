@@ -236,6 +236,7 @@ function BentoSlots({
   total,
   onAdd,
   busy,
+  loading,
   onSwap,
   onToggleFavourite,
   className,
@@ -244,6 +245,7 @@ function BentoSlots({
   total: number;
   onAdd: () => void;
   busy: boolean;
+  loading?: boolean;
   onSwap: (id: string) => void;
   onToggleFavourite: (id: string) => void;
   className: string;
@@ -265,6 +267,15 @@ function BentoSlots({
               className={span}
               onSwap={i > 0 ? () => onSwap(image.id) : undefined}
               onToggleFavourite={i === 0 ? onToggleFavourite : undefined}
+            />
+          );
+        }
+        if (loading) {
+          return (
+            <div
+              key={`skel-${i}`}
+              className={`mm-skeleton rounded-none ${span}`}
+              aria-hidden
             />
           );
         }
@@ -295,12 +306,14 @@ function MobileRow({
   total,
   onAdd,
   busy,
+  loading,
   onSwap,
 }: {
   shown: HeroImage[];
   total: number;
   onAdd: () => void;
   busy: boolean;
+  loading?: boolean;
   onSwap: (id: string) => void;
 }) {
   const extra = Math.max(0, total - 3);
@@ -318,6 +331,15 @@ function MobileRow({
               scrim={scrim}
               className="aspect-square"
               onSwap={i > 0 ? () => onSwap(image.id) : undefined}
+            />
+          );
+        }
+        if (loading) {
+          return (
+            <div
+              key={`skel-${i}`}
+              className="mm-skeleton aspect-square rounded-none"
+              aria-hidden
             />
           );
         }
@@ -496,11 +518,15 @@ export function ManifestoHeroBento({
               </span>
               {statement.trim().replace(/^[“"]\s*/, "")}
             </p>
+          ) : loading ? (
+            <div className="flex flex-col gap-2.5" aria-hidden>
+              <span className="mm-skeleton block h-6 w-[92%] rounded-sm bg-white/15" />
+              <span className="mm-skeleton block h-6 w-[78%] rounded-sm bg-white/15" />
+              <span className="mm-skeleton block h-6 w-[64%] rounded-sm bg-white/15" />
+            </div>
           ) : (
             <p className="font-display text-[20px] font-normal italic leading-[1.38] text-white/60 md:text-[24px]">
-              {loading
-                ? "Distilling…"
-                : "Write the one sentence you want to live by."}
+              Write the one sentence you want to live by.
             </p>
           )}
           {!editing && hasStatement ? (
@@ -546,6 +572,7 @@ export function ManifestoHeroBento({
           total={ordered.length}
           onAdd={onAddImage}
           busy={addBusy}
+          loading={loading && ordered.length === 0}
           onSwap={swapWith}
           onToggleFavourite={onToggleFavourite}
           className="hidden h-[220px] grid-cols-[2fr_1fr_1fr] grid-rows-2 gap-1.5 overflow-hidden rounded-2xl md:grid xl:h-full"
@@ -555,6 +582,7 @@ export function ManifestoHeroBento({
           total={ordered.length}
           onAdd={onAddImage}
           busy={addBusy}
+          loading={loading && ordered.length === 0}
           onSwap={swapWith}
         />
       </div>

@@ -2953,7 +2953,7 @@ export default function LibraryView({
       <SearchInput
         className="w-full"
         inputRef={mobileSearchRef}
-        inputClassName="h-11 rounded-xl border border-border bg-card py-0 pl-10 pr-3.5 text-[14px] leading-[44px] shadow-none placeholder:text-muted"
+        inputClassName="h-11 rounded-xl border border-border bg-card py-0 pl-10 pr-3.5 text-base leading-[44px] shadow-none placeholder:text-muted"
         value={searchQuery}
         onChange={setSearchQuery}
         placeholder="Search title, description, type"

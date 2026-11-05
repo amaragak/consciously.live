@@ -171,7 +171,7 @@ export function ManifestGoalPicker({
           id="manifest-goal-sort"
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50"
+          className="cursor-pointer rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent/50"
         >
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
@@ -407,7 +407,7 @@ export function ManifestGoalPicker({
           onChange={(e) => onGuidanceChange(e.target.value)}
           placeholder="Optional note for the guide…"
           rows={3}
-          className="mt-2 min-h-[70px] w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
+          className="mt-2 min-h-[70px] w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none ring-accent/30 placeholder:text-muted/70 focus:ring-2"
         />
       </div>
     </div>
