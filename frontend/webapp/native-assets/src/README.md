@@ -30,7 +30,7 @@ From `frontend/webapp`:
 | --- | --- | --- |
 | Wordmark path + width | `/tmp/cl-img/bin/python native-assets/src/outline_wordmark.py` | `WORD_PATH`, `BRAND_LOCKUP_W` in `brand-lockup-markup.ts` |
 | iOS lockup SVG | `node native-assets/src/export-lockup-svg.mjs` | `ios/App/App/Assets.xcassets/Lockup.imageset/lockup.svg` |
-| Splash bg + glow + Capacitor sets | `native-assets/src/render-images.sh` | `native-assets/splash*.png`, `runtime/launch.webp`, `SunGlow.imageset/sun-glow@3x.png`, iOS/Android splash res |
+| Splash bg + glow + app icon + Capacitor sets | `native-assets/src/render-images.sh` | `native-assets/splash*.png`, `icon-*.png`, `runtime/launch.webp`, `SunGlow.imageset/sun-glow@3x.png`, iOS/Android icon + splash res |
 
 `outline_wordmark.py --check` exits non-zero if the TS is out of date. The steps are idempotent:
 re-running them on an unchanged tree reproduces the committed files exactly.
@@ -63,6 +63,16 @@ caches launch screens).
 - 384×240 transparent canvas with the 288×144 glow box centred (48px margin so the blur isn't
   clipped).
 - Rendered at device scale `4.447` so 1 image px = 1 @3x px: 384 × 28/34 × 1.8 = 569.176pt.
+
+## App icon (`icon.html`, `icon-bg.html`, `icon-fg.html`)
+
+- Same `#1A1820` and flat lockup sun `#D9B87C` (no gradient).
+- Paisley is zoomed in vs splash (`2000px` tile on 1024, opacity `.62`) so motifs still read at
+  home-screen size — splash tile density turns to noise at ~60pt.
+- Glow uses the splash colour family, bright enough to read past the ray tips (still not the wide
+  launch-screen glow).
+- `icon-only.png` = full composite (iOS). `icon-background.png` / `icon-foreground.png` = Android
+  adaptive layers.
 
 ## iOS launch screen (`ios/App/App/Base.lproj/LaunchScreen.storyboard`)
 

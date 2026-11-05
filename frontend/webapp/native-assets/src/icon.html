@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      /*
+        App icon: splash navy + flat sun. Paisley is heavily zoomed vs splash so a
+        few large motifs still read at ~60pt. Glow is a warm halo past the rays
+        (cool splash glow vanishes at home-screen size on navy).
+      */
+      html,
+      body {
+        margin: 0;
+        width: 1024px;
+        height: 1024px;
+        overflow: hidden;
+        background: #1a1820;
+      }
+      body {
+        position: relative;
+      }
+      body::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.7;
+        background: url("../../public/patterns/paisley-dark-duotone.webp")
+          center / 3800px 3800px repeat;
+      }
+      .glow {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        /* Soft disc past the ray tips — must read at ~60pt. */
+        width: 1020px;
+        height: 1020px;
+        margin: -510px 0 0 -510px;
+        border-radius: 50%;
+        filter: blur(36px);
+        background: radial-gradient(
+          circle,
+          rgb(217 184 124 / 0.55) 0%,
+          rgb(217 184 124 / 0.28) 32%,
+          rgb(120 128 145 / 0.22) 55%,
+          rgb(62 66 75 / 0) 72%
+        );
+      }
+      .sun {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 880px;
+        height: 880px;
+        margin: -440px 0 0 -440px;
+      }
+      .sun svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+    <!-- Flat #D9B87C sun from brand-lockup-markup (48×48 viewBox, no gradient). -->
+    <div class="sun" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="8.2" fill="#D9B87C" />
+        <g
+          stroke="#D9B87C"
+          stroke-width="2.15"
+          stroke-linecap="round"
+          fill="none"
+        >
+          <line x1="36.5" y1="24" x2="45" y2="24" />
+          <line x1="32.84" y1="32.84" x2="38.85" y2="38.85" />
+          <line x1="24" y1="36.5" x2="24" y2="45" />
+          <line x1="15.16" y1="32.84" x2="9.15" y2="38.85" />
+          <line x1="11.5" y1="24" x2="3" y2="24" />
+          <line x1="15.16" y1="15.16" x2="9.15" y2="9.15" />
+          <line x1="24" y1="11.5" x2="24" y2="3" />
+          <line x1="32.84" y1="15.16" x2="38.85" y2="9.15" />
+          <line x1="35.59" y1="28.68" x2="39.3" y2="30.18" />
+          <line x1="28.88" y1="35.51" x2="30.45" y2="39.19" />
+          <line x1="19.32" y1="35.59" x2="17.82" y2="39.3" />
+          <line x1="12.49" y1="28.88" x2="8.81" y2="30.45" />
+          <line x1="12.41" y1="19.32" x2="8.7" y2="17.82" />
+          <line x1="19.12" y1="12.49" x2="17.55" y2="8.81" />
+          <line x1="28.68" y1="12.41" x2="30.18" y2="8.7" />
+          <line x1="35.51" y1="19.12" x2="39.19" y2="17.55" />
+        </g>
+      </svg>
+    </div>
+  </body>
+</html>
