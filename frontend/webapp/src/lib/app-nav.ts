@@ -838,19 +838,32 @@ export function buildAppBreadcrumbs(
       pathname === "/journal/insights" ||
       pathname.startsWith("/journal/insights/")
     ) {
+      // Theme page / all themes: "Journal › Insights"; Journal crumb returns to Insights.
+      if (
+        pathname.startsWith("/journal/insights/theme/") ||
+        pathname === "/journal/insights/themes" ||
+        pathname === "/journal/insights/themes/"
+      ) {
+        return [
+          { label: "Journal", href: "/journal/insights" },
+          { label: "Insights", href: null },
+        ];
+      }
+      /* Legacy letter routes (`/journal/insights/:weekKey`) — replaced by history Insights.
       const letterMatch = /^\/journal\/insights\/([^/]+)\/?$/.exec(pathname);
       if (letterMatch?.[1]) {
         let label = letterMatch[1];
         try {
           label = decodeURIComponent(letterMatch[1]);
         } catch {
-          /* keep raw */
+          // keep raw
         }
         return [
           { label: "Journal", href: "/journal/insights" },
           { label, href: null },
         ];
       }
+      */
       // Hub: header is just "Journal"; mobile tabs switch the page.
       return [{ label: "Journal", href: "/journal" }];
     }
@@ -887,7 +900,7 @@ export function buildAppBreadcrumbs(
       (pathname.startsWith("/journal/entries/") ||
         !journalReserved.has(entrySlug.toLowerCase()))
     ) {
-      // Mobile entry chrome: "New entry" or short date ("Thu 5 Nov") — not the title.
+      // Mobile entry chrome: "New entry" or short date ("Thu 5 Nov" / "Thu 5 Nov, 11:40pm").
       const title = opts?.journalEntryTitle?.trim() || "Entry";
       return [
         { label: "Journal", href: "/journal" },

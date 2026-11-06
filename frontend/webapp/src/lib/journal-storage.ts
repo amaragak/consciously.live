@@ -164,30 +164,54 @@ export function formatJournalEntryDate(iso: string): string {
   }
 }
 
-/** Mobile entry breadcrumb: "Thu 5 Nov". */
-export function formatJournalEntryCrumbDate(iso: string): string {
+/** Clock time for multi-entry days: "8:12am", "11:40pm". */
+export function formatJournalEntryTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const mins = d.getMinutes();
+    let h = d.getHours();
+    const suffix = h < 12 ? "am" : "pm";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${h}:${String(mins).padStart(2, "0")}${suffix}`;
+  } catch {
+    return "";
+  }
+}
+
+/** Mobile entry breadcrumb: "Thu 5 Nov" or "Thu 5 Nov, 11:40pm". */
+export function formatJournalEntryCrumbDate(
+  iso: string,
+  opts?: { includeTime?: boolean },
+): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "Entry";
     const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
     const day = d.getDate();
     const month = d.toLocaleDateString("en-US", { month: "short" });
-    return `${weekday} ${day} ${month}`;
+    const base = `${weekday} ${day} ${month}`;
+    if (!opts?.includeTime) return base;
+    const time = formatJournalEntryTime(iso);
+    return time ? `${base}, ${time}` : base;
   } catch {
     return "Entry";
   }
 }
 
-/** Mobile entry card heading: "Thursday 5 November". */
+/** Mobile entry card heading: "Friday 6 November · 11:40pm". */
 export function formatJournalEntryCardDate(iso: string): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString("en-GB", {
+    const datePart = d.toLocaleDateString("en-GB", {
       weekday: "long",
       day: "numeric",
       month: "long",
     });
+    const time = formatJournalEntryTime(iso);
+    return time ? `${datePart} · ${time}` : datePart;
   } catch {
     return "—";
   }
@@ -1662,6 +1686,117 @@ export function groupJournalEntriesByWeek(
     });
   }
   return groups;
+}
+
+function sortByUpdatedAtDesc(a: JournalEntry, b: JournalEntry): number {
+  return (
+    new Date(b.updatedAt || b.createdAt).getTime() -
+    new Date(a.updatedAt || a.createdAt).getTime()
+  );
+}
+
+/** Group freeform entries by last edit: today / yesterday / earlier this week / earlier. */
+export function groupJournalEntriesByLastEdited(
+  entries: JournalEntry[],
+  now = new Date(),
+): JournalSidebarGroup[] {
+  const sorted = [...entries].sort(sortByUpdatedAtDesc);
+  const todayKey = localDateKey(now);
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  const yesterdayKey = localDateKey(y);
+  const weekStart = startOfWeekMonday(now).getTime();
+
+  const editedToday: JournalEntry[] = [];
+  const editedYesterday: JournalEntry[] = [];
+  const earlierThisWeek: JournalEntry[] = [];
+  const earlier: JournalEntry[] = [];
+
+  for (const e of sorted) {
+    const iso = e.updatedAt || e.createdAt;
+    const key = localDateKeyFromIso(iso);
+    const t = new Date(iso).getTime();
+    if (key === todayKey) editedToday.push(e);
+    else if (key === yesterdayKey) editedYesterday.push(e);
+    else if (t >= weekStart) earlierThisWeek.push(e);
+    else earlier.push(e);
+  }
+
+  const groups: JournalSidebarGroup[] = [];
+  if (editedToday.length) {
+    groups.push({
+      id: "edited-today",
+      label: "Edited today",
+      entries: editedToday,
+    });
+  }
+  if (editedYesterday.length) {
+    groups.push({
+      id: "edited-yesterday",
+      label: "Edited yesterday",
+      entries: editedYesterday,
+    });
+  }
+  if (earlierThisWeek.length) {
+    groups.push({
+      id: "edited-earlier-week",
+      label: "Earlier this week",
+      entries: earlierThisWeek,
+    });
+  }
+  if (earlier.length) {
+    groups.push({ id: "edited-earlier", label: "Earlier", entries: earlier });
+  }
+  return groups;
+}
+
+/** True when last edit fell on a later calendar day than the entry date. */
+export function journalEntryWasEditedLaterDay(entry: JournalEntry): boolean {
+  const entryKey = localDateKeyFromIso(journalEntryDateIso(entry));
+  const editKey = localDateKeyFromIso(entry.updatedAt || entry.createdAt);
+  return editKey > entryKey;
+}
+
+/** Short date for list “Edited …” notes: "Thu 5 Nov". */
+export function formatJournalEditedShortDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-US", { month: "short" });
+    return `${weekday} ${day} ${month}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * List row note when an entry was edited on a later day than its entry date.
+ * Last-edited sort uses "Edited today, 9:14pm" for edits today.
+ */
+export function formatJournalListEditedNote(
+  entry: JournalEntry,
+  sort: "entryDate" | "lastEdited",
+  now = new Date(),
+): string | null {
+  if (!journalEntryWasEditedLaterDay(entry)) return null;
+  const iso = entry.updatedAt || entry.createdAt;
+  if (sort === "lastEdited" && localDateKeyFromIso(iso) === localDateKey(now)) {
+    const time = formatJournalEntryTime(iso);
+    return time ? `Edited today, ${time}` : "Edited today";
+  }
+  const short = formatJournalEditedShortDate(iso);
+  return short ? `Edited ${short}` : null;
+}
+
+/** In-entry status when last edit is a later calendar day: "Edited Thu 5 Nov, 9:14pm". */
+export function formatJournalEditedStatus(iso: string): string {
+  const short = formatJournalEditedShortDate(iso);
+  const time = formatJournalEntryTime(iso);
+  if (short && time) return `Edited ${short}, ${time}`;
+  if (short) return `Edited ${short}`;
+  return "Edited";
 }
 
 function takenJournalSlugs(

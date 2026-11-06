@@ -230,5 +230,6 @@ export function journalPromptBlockHtml(prompt: {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
   const name = prompt.name?.trim() ?? "";
-  return `<p></p><div data-journal-prompt="1" data-prompt-id="${esc(prompt.id)}" data-template="${esc(prompt.template)}" data-name="${esc(name)}" data-collapsed="0"><p></p></div><p></p>`;
+  // Bold bronze prompt line + empty answer paragraph under it.
+  return `<div data-journal-prompt="1" data-prompt-id="${esc(prompt.id)}" data-template="${esc(prompt.template)}" data-name="${esc(name)}" data-collapsed="0"><p></p></div><p></p>`;
 }

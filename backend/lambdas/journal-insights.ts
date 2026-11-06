@@ -735,6 +735,194 @@ async function saveInsights(params: {
   }
 }
 
+type EntryAnalysisResult = {
+  entryId: string;
+  contentHash: string;
+  analyzedAt: string;
+  tone: number;
+  themes: Array<{ theme: string; sentences: string[]; tone: number }>;
+  notableSentences: string[];
+  lifeAreaHint: string | null;
+};
+
+function clampTone(n: unknown): number {
+  const x = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(-1, Math.min(1, x));
+}
+
+async function analyzeOneEntry(params: {
+  apiKey: string;
+  entryId: string;
+  contentHash: string;
+  title: string;
+  contentHtml: string;
+  mood?: string;
+  entryDate?: string;
+  knownThemes: string[];
+}): Promise<EntryAnalysisResult> {
+  const entryId = params.entryId.trim();
+  if (!entryId) throw new Error("Missing entryId");
+  const plain = stripHtmlToText(params.contentHtml).slice(0, 8000);
+  if (plain.length < 8) {
+    return {
+      entryId,
+      contentHash: params.contentHash || "empty",
+      analyzedAt: new Date().toISOString(),
+      tone: 0,
+      themes: [],
+      notableSentences: [],
+      lifeAreaHint: null,
+    };
+  }
+  const system = [
+    "You analyse one journal entry for a meditation app.",
+    "Return ONLY JSON (no markdown fences) with this shape:",
+    '{"tone":0,"themes":[{"theme":"The album","sentences":["…"],"tone":0.2}],"notableSentences":["…"],"lifeAreaHint":null}',
+    "tone is -1 (negative) to 1 (positive) for the whole entry.",
+    "themes: concrete topics the user actually wrote about (people, projects, places, habits). Reuse knownThemes names when the same topic appears; merge near-duplicates. Never invent topics.",
+    "For each theme, include the sentence(s) from the entry that mention it, and a tone for those sentences.",
+    "notableSentences: 1–2 of the most telling lines copied from the entry (exact or lightly trimmed).",
+    "lifeAreaHint: optional short life-area label if obvious (e.g. Music, Work), else null.",
+    "Use only what is in the entry. No diagnosis.",
+  ].join("\n");
+  const user = [
+    "KNOWN_THEMES (prefer these names when matching):",
+    JSON.stringify(params.knownThemes.slice(0, 80)),
+    "",
+    "ENTRY_META:",
+    JSON.stringify({
+      title: params.title,
+      mood: params.mood ?? null,
+      entryDate: params.entryDate ?? null,
+    }),
+    "",
+    "ENTRY_TEXT:",
+    plain,
+  ].join("\n");
+  const { jsonText } = await callClaudeForInsights({
+    apiKey: params.apiKey,
+    system,
+    user,
+  });
+  const extracted = extractJsonObjectFromText(jsonText) || jsonText;
+  let parsed: {
+    tone?: unknown;
+    themes?: unknown;
+    notableSentences?: unknown;
+    lifeAreaHint?: unknown;
+  };
+  try {
+    parsed = JSON.parse(extracted) as typeof parsed;
+  } catch {
+    throw new Error("Claude returned invalid entry analysis JSON");
+  }
+  const themesRaw = Array.isArray(parsed.themes) ? parsed.themes : [];
+  const themes = themesRaw
+    .map((t) => {
+      const o = t as {
+        theme?: unknown;
+        sentences?: unknown;
+        tone?: unknown;
+      };
+      const theme = typeof o.theme === "string" ? o.theme.trim() : "";
+      if (!theme) return null;
+      const sentences = Array.isArray(o.sentences)
+        ? o.sentences
+            .filter((s): s is string => typeof s === "string")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 4)
+        : [];
+      return { theme, sentences, tone: clampTone(o.tone) };
+    })
+    .filter((t): t is { theme: string; sentences: string[]; tone: number } =>
+      Boolean(t),
+    )
+    .slice(0, 8);
+  const notable = Array.isArray(parsed.notableSentences)
+    ? parsed.notableSentences
+        .filter((s): s is string => typeof s === "string")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 2)
+    : [];
+  return {
+    entryId,
+    contentHash: params.contentHash || "unknown",
+    analyzedAt: new Date().toISOString(),
+    tone: clampTone(parsed.tone),
+    themes,
+    notableSentences: notable,
+    lifeAreaHint:
+      typeof parsed.lifeAreaHint === "string" && parsed.lifeAreaHint.trim()
+        ? parsed.lifeAreaHint.trim()
+        : null,
+  };
+}
+
+async function summarizeThemeWithClaude(params: {
+  apiKey: string;
+  theme: string;
+  mentions: unknown[];
+}): Promise<{ summary: string; lifeAreaHint: string | null }> {
+  const theme = params.theme.trim();
+  if (!theme) throw new Error("Missing theme");
+  const mentions = params.mentions
+    .map((m) => {
+      const o = m as {
+        date?: unknown;
+        sentence?: unknown;
+        mood?: unknown;
+        tone?: unknown;
+      };
+      return {
+        date: typeof o.date === "string" ? o.date : "",
+        sentence: typeof o.sentence === "string" ? o.sentence : "",
+        mood: typeof o.mood === "string" ? o.mood : undefined,
+        tone: typeof o.tone === "number" ? o.tone : undefined,
+      };
+    })
+    .filter((m) => m.sentence)
+    .slice(0, 40);
+  const system = [
+    "You write a two-sentence plain summary of how a journal theme shows up over time.",
+    "Return ONLY JSON: {\"summary\":\"…\",\"lifeAreaHint\":null}",
+    "summary: two short sentences in second person, no serif/poetic voice — factual from the mentions.",
+    "Never invent quotes or feelings not supported by the mentions.",
+    "lifeAreaHint: optional life-area label if clear, else null.",
+  ].join("\n");
+  const user = [
+    `THEME: ${theme}`,
+    "MENTIONS:",
+    JSON.stringify(mentions, null, 2),
+  ].join("\n");
+  const { jsonText } = await callClaudeForInsights({
+    apiKey: params.apiKey,
+    system,
+    user,
+  });
+  const extracted = extractJsonObjectFromText(jsonText) || jsonText;
+  try {
+    const parsed = JSON.parse(extracted) as {
+      summary?: unknown;
+      lifeAreaHint?: unknown;
+    };
+    const summary =
+      typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+    if (!summary) throw new Error("empty");
+    return {
+      summary,
+      lifeAreaHint:
+        typeof parsed.lifeAreaHint === "string" && parsed.lifeAreaHint.trim()
+          ? parsed.lifeAreaHint.trim()
+          : null,
+    };
+  } catch {
+    throw new Error("Claude returned invalid theme summary JSON");
+  }
+}
+
 function snippet(s: string, n: number): string {
   const t = s ?? "";
   if (t.length <= n) return t;
@@ -795,16 +983,67 @@ export async function handler(
     return json(405, { error: "Method not allowed" });
   }
 
-  let mode: "update" | "regenerate" = "update";
+  let bodyObj: Record<string, unknown> = {};
   try {
     const bodyRaw = event.isBase64Encoded
       ? Buffer.from(event.body ?? "", "base64").toString("utf-8")
       : (event.body ?? "");
-    const parsed = JSON.parse(bodyRaw || "{}") as { mode?: unknown };
-    if (parsed.mode === "regenerate") mode = "regenerate";
+    bodyObj = JSON.parse(bodyRaw || "{}") as Record<string, unknown>;
   } catch {
-    /* ignore */
+    bodyObj = {};
   }
+
+  // History Insights v2: per-entry analysis + theme summary (Haiku).
+  if (bodyObj.action === "analyzeEntry") {
+    try {
+      const analysis = await analyzeOneEntry({
+        apiKey: await getClaudeApiKey(),
+        entryId: String(bodyObj.entryId || ""),
+        contentHash: String(bodyObj.contentHash || ""),
+        title: String(bodyObj.title || ""),
+        contentHtml: String(bodyObj.contentHtml || ""),
+        mood: typeof bodyObj.mood === "string" ? bodyObj.mood : undefined,
+        entryDate:
+          typeof bodyObj.entryDate === "string" ? bodyObj.entryDate : undefined,
+        knownThemes: Array.isArray(bodyObj.knownThemes)
+          ? bodyObj.knownThemes.filter((t): t is string => typeof t === "string")
+          : [],
+      });
+      await ddb.send(
+        new PutCommand({
+          TableName: insightsTable,
+          Item: {
+            pk: ownerId,
+            sk: `ENTRY#${analysis.entryId}`,
+            ...analysis,
+          },
+        }),
+      );
+      return json(200, { analysis });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Entry analysis failed";
+      return json(500, { error: msg });
+    }
+  }
+
+  if (bodyObj.action === "summarizeTheme") {
+    try {
+      const theme = String(bodyObj.theme || "").trim();
+      const mentions = Array.isArray(bodyObj.mentions) ? bodyObj.mentions : [];
+      const result = await summarizeThemeWithClaude({
+        apiKey: await getClaudeApiKey(),
+        theme,
+        mentions,
+      });
+      return json(200, result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Theme summary failed";
+      return json(500, { error: msg });
+    }
+  }
+
+  let mode: "update" | "regenerate" = "update";
+  if (bodyObj.mode === "regenerate") mode = "regenerate";
 
   try {
     const loaded = await loadInsights(insightsTable, ownerId);

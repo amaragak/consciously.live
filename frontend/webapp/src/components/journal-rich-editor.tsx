@@ -45,17 +45,18 @@ import {
   plainTextToTipTapHtml,
   replaceTranscriptAfterClip,
   scrubOrphanVoiceHtml,
-  silentWavDataUrl,
   stripOrphanJournalVoicePlaceholders,
   updateJournalVoiceClipSrc,
 } from "@/components/journal-voice-clip-extension";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import {
   polishTranscript,
-  startOnDeviceSpeech,
   writeTranscriptionEngineDiag,
-  type OnDeviceSpeechHandle,
 } from "@/lib/journal-on-device-speech";
+import {
+  startVoiceNoteSession,
+  type VoiceNoteSession,
+} from "@/lib/voice-note";
 import {
   transcribeJournalAudio,
   uploadJournalVoice,
@@ -71,26 +72,6 @@ import {
   type JournalPromptSources,
 } from "@/components/journal-prompts-panel";
 import { journalPromptMarksFromHtml } from "@/lib/journal-storage";
-
-/** Browser SpeechRecognition (not in all TS DOM libs). */
-type BrowserSpeechRecognition = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((ev: BrowserSpeechRecognitionEvent) => void) | null;
-  onerror: ((ev: Event) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-};
-type BrowserSpeechRecognitionEvent = {
-  resultIndex: number;
-  results: ArrayLike<{
-    isFinal: boolean;
-    0?: { transcript?: string };
-  }>;
-};
 
 const editorClass =
   "min-h-[8rem] w-full px-7 py-6 text-base leading-[1.85] text-foreground focus:outline-none " +
@@ -148,6 +129,8 @@ type Props = {
   mobileCardLayout?: boolean;
   /** Passage to highlight when opened from Insights (`?highlight=`). */
   highlightQuote?: string | null;
+  /** Opened from a theme page: navy "From your theme …" bar with Back. */
+  fromTheme?: { name: string; onBack: () => void } | null;
   /** Muted autosave line by the date ("Saving…", "Saved", …). */
   syncStatusLabel?: string | null;
   /** Optional secondary footer above the bottom bar (e.g. tags). */
@@ -182,6 +165,7 @@ export function JournalRichEditor({
   hideCreatedDate = false,
   mobileCardLayout = false,
   highlightQuote = null,
+  fromTheme = null,
   syncStatusLabel = null,
   children,
 }: Props) {
@@ -207,33 +191,27 @@ export function JournalRichEditor({
   const [bodyFocused, setBodyFocused] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const entryScrollRef = useRef<HTMLDivElement | null>(null);
-  /** Locked from keyboard-closed viewport so opening the keyboard never shrinks the card. */
-  const cardMinHeightLockedRef = useRef<number | null>(null);
-  const [cardMinHeightPx, setCardMinHeightPx] = useState<number | undefined>();
+  const entryCardRef = useRef<HTMLDivElement | null>(null);
+  /** True once --journal-entry-app-h is written for this mount (reset only on orientation). */
+  const appHeightRecordedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderMimeRef = useRef<string>("");
   const mediaChunksRef = useRef<BlobPart[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const editorRef = useRef<Editor | null>(null);
   const voiceDraftPosRef = useRef<number | null>(null);
   const voiceTimerRef = useRef<number | null>(null);
   const voiceLevelRafRef = useRef<number | null>(null);
-  const speechRecRef = useRef<BrowserSpeechRecognition | null>(null);
-  const liveTranscriptRef = useRef("");
-  const onDeviceSpeechRef = useRef<OnDeviceSpeechHandle | null>(null);
-  const usedOnDeviceRef = useRef(false);
   const silenceSecRef = useRef(0);
   const voiceSecondsRef = useRef(0);
   const finishRecordingRef = useRef<() => void>(() => {});
-  const serverFallbackRef = useRef(false);
   const [serverFallbackMode, setServerFallbackMode] = useState(false);
   const [silenceNote, setSilenceNote] = useState<string | null>(null);
-  /** Capgo-only native session (no MediaRecorder — dual mic crashes iOS). */
-  const nativeCapgoOnlyRef = useRef(false);
   const voicePeaksAccRef = useRef<number[]>([]);
-  /** In-memory speech buffers — never written into the TipTap doc until Done. */
-  const committedSpeechRef = useRef("");
-  const currentSegmentRef = useRef("");
+  /** v7 VoiceNote single-capture session (native + web). */
+  const voiceNoteSessionRef = useRef<VoiceNoteSession | null>(null);
+  /** Live partial preview — React overlay only, never TipTap content. */
   const [livePreviewText, setLivePreviewText] = useState<string | null>(null);
 
   const stopVoiceMetering = useCallback(() => {
@@ -249,31 +227,8 @@ export function JournalRichEditor({
     setVoiceBars(Array.from({ length: 48 }, () => 0.12));
   }, []);
 
-  const stopSpeechRecognition = useCallback(() => {
-    const rec = speechRecRef.current;
-    speechRecRef.current = null;
-    if (rec) {
-      try {
-        rec.onresult = null;
-        rec.onerror = null;
-        rec.onend = null;
-        rec.stop();
-      } catch {
-        try {
-          rec.abort();
-        } catch {
-          /* */
-        }
-      }
-    }
-    const od = onDeviceSpeechRef.current;
-    onDeviceSpeechRef.current = null;
-    if (od) void od.stop();
-  }, []);
-
   const stopMediaRecorderAndCollectBlob = useCallback(async (): Promise<Blob | null> => {
     stopVoiceMetering();
-    stopSpeechRecognition();
     const rec = mediaRecorderRef.current;
     mediaRecorderRef.current = null;
     if (rec && rec.state !== "inactive") {
@@ -298,49 +253,24 @@ export function JournalRichEditor({
     if (!parts.length) return null;
     const chunkType = (parts[0] as Blob).type;
     return new Blob(parts, { type: chunkType || preferred });
-  }, [stopSpeechRecognition, stopVoiceMetering]);
+  }, [stopVoiceMetering]);
 
-  const refreshLivePreview = useCallback(() => {
-    const full = [committedSpeechRef.current, currentSegmentRef.current]
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    liveTranscriptRef.current = full;
-    setLivePreviewText(full || null);
-  }, []);
-
-  const commitSpeechSegment = useCallback(() => {
-    const cur = currentSegmentRef.current.trim();
-    if (!cur) return;
-    committedSpeechRef.current = [committedSpeechRef.current, cur]
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    currentSegmentRef.current = "";
-    refreshLivePreview();
-  }, [refreshLivePreview]);
-
-  /** Replace-only live hypothesis for the current segment (never append into the doc). */
-  const pushLiveDraft = useCallback(
-    (text: string) => {
-      currentSegmentRef.current = text.trim();
-      refreshLivePreview();
-    },
-    [refreshLivePreview],
-  );
-
-  const clearLivePreview = useCallback(() => {
-    committedSpeechRef.current = "";
-    currentSegmentRef.current = "";
-    liveTranscriptRef.current = "";
-    setLivePreviewText(null);
+  const clearVoiceDraftLeftovers = useCallback(() => {
     const ed = editorRef.current;
-    if (ed) clearLiveVoiceDraft(ed, voiceDraftPosRef);
+    if (!ed) return;
+    clearLiveVoiceDraft(ed, voiceDraftPosRef);
+    stripOrphanJournalVoicePlaceholders(ed);
   }, []);
 
-  const pushCapgoLevel = useCallback((level: number) => {
+  /*
+   * LEGACY (pre-v7): MediaRecorder + AnalyserNode metering.
+   * Commented out — VoiceNote owns the mic (single capture). Keep for rollback.
+   *
+  const startVoiceMetering = useCallback((stream: MediaStream) => { … }, …);
+  const startMediaRecorderPath = useCallback(async () => { … }, …);
+   */
+
+  const pushVoiceNoteLevel = useCallback((level: number) => {
     const n = Math.max(0, Math.min(1, level));
     setVoiceLevel(n);
     voicePeaksAccRef.current.push(n);
@@ -361,229 +291,54 @@ export function JournalRichEditor({
     });
   }, []);
 
-  const startSpeechRecognition = useCallback(
-    (opts?: { withLevels?: boolean }) => {
-      stopSpeechRecognition();
-      usedOnDeviceRef.current = false;
-      serverFallbackRef.current = false;
-      setServerFallbackMode(false);
-      void startOnDeviceSpeech({
-        onPartial: (partial) => {
-          pushLiveDraft(partial);
-        },
-        onSegmentEnd: () => {
-          commitSpeechSegment();
-        },
-        onLevel: opts?.withLevels ? pushCapgoLevel : undefined,
-      }).then((handle) => {
-        if (!handle) {
-          serverFallbackRef.current = true;
-          setServerFallbackMode(true);
-          return;
-        }
-        onDeviceSpeechRef.current = handle;
-        usedOnDeviceRef.current = handle.usedOnDevice;
-        serverFallbackRef.current = !handle.usedOnDevice;
-        setServerFallbackMode(!handle.usedOnDevice);
-      });
-    },
-    [commitSpeechSegment, pushCapgoLevel, pushLiveDraft, stopSpeechRecognition],
-  );
-
-  const startVoiceMetering = useCallback(
-    (stream: MediaStream) => {
-      stopVoiceMetering();
-      setVoiceSeconds(0);
-      silenceSecRef.current = 0;
-      voiceSecondsRef.current = 0;
-      voiceTimerRef.current = window.setInterval(() => {
-        setVoiceSeconds((s) => {
-          const next = s + 1;
-          voiceSecondsRef.current = next;
-          // Server fallback: hard stop at 15 minutes.
-          if (serverFallbackRef.current && next >= 15 * 60) {
-            finishRecordingRef.current();
-          }
-          return next;
-        });
-      }, 1000);
-      try {
-        const Ctx =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext })
-            .webkitAudioContext;
-        if (!Ctx) return;
-        const ctx = new Ctx();
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        const tick = () => {
-          analyser.getByteFrequencyData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i] ?? 0;
-          const avg = sum / (data.length * 255);
-          const level = Math.min(1, avg * 2.2);
-          setVoiceLevel(level);
-          if (level < 0.08) silenceSecRef.current += 1 / 60;
-          else silenceSecRef.current = 0;
-          if (silenceSecRef.current >= 60) {
-            silenceSecRef.current = 0;
-            setSilenceNote("Stopped after a minute of silence");
-            finishRecordingRef.current();
-          }
-          setVoiceBars((prev) => {
-            const next = prev.slice(1);
-            next.push(0.12 + level * 0.88);
-            return next;
-          });
-          voiceLevelRafRef.current = window.requestAnimationFrame(tick);
-        };
-        voiceLevelRafRef.current = window.requestAnimationFrame(tick);
-        void ctx;
-      } catch {
-        /* waveform optional */
-      }
-    },
-    [stopVoiceMetering],
-  );
-
-  const startMediaRecorderPath = useCallback(async () => {
-    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setVoiceError("Recording is not supported in this browser.");
-      return false;
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaStreamRef.current = stream;
-    mediaChunksRef.current = [];
-    setVoicePaused(false);
-    const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/mp4",
-      "audio/ogg;codecs=opus",
-    ];
-    const mime =
-      candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
-    const rec = mime
-      ? new MediaRecorder(stream, { mimeType: mime })
-      : new MediaRecorder(stream);
-    mediaRecorderMimeRef.current = mime || rec.mimeType || "";
-    mediaRecorderRef.current = rec;
-    rec.ondataavailable = (ev) => {
-      if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
-    };
-    for (const track of stream.getAudioTracks()) {
-      track.onmute = () => {
-        setVoicePaused(true);
-        try {
-          if (mediaRecorderRef.current?.state === "recording") {
-            mediaRecorderRef.current.pause();
-          }
-        } catch {
-          /* */
-        }
-      };
-      track.onunmute = () => {
-        setVoicePaused(false);
-        try {
-          if (mediaRecorderRef.current?.state === "paused") {
-            mediaRecorderRef.current.resume();
-          }
-        } catch {
-          /* */
-        }
-      };
-    }
-    rec.start(200);
-    startVoiceMetering(stream);
-    return true;
-  }, [startVoiceMetering]);
-
   const startVoiceRecording = useCallback(async () => {
     setVoiceError(null);
     if (!transcribeApiBase || voiceBusy) return;
-    clearLivePreview();
+    clearVoiceDraftLeftovers();
+    setLivePreviewText(null);
     voiceDraftPosRef.current = null;
     voicePeaksAccRef.current = [];
     silenceSecRef.current = 0;
     voiceSecondsRef.current = 0;
-    nativeCapgoOnlyRef.current = false;
+    setServerFallbackMode(false);
     setVoicePaused(false);
     setVoiceSeconds(0);
     setVoiceBars(Array.from({ length: 48 }, () => 0.12));
 
-    // Native: Capgo alone for on-device live text (MediaRecorder + Capgo crashes iOS).
-    if (isNativeApp()) {
-      stopSpeechRecognition();
-      usedOnDeviceRef.current = false;
-      serverFallbackRef.current = false;
-      setServerFallbackMode(false);
-      const handle = await startOnDeviceSpeech({
-        onPartial: (partial) => {
-          pushLiveDraft(partial);
-        },
-        onSegmentEnd: () => {
-          commitSpeechSegment();
-        },
-        onLevel: pushCapgoLevel,
-      });
-      if (handle?.usedOnDevice) {
-        onDeviceSpeechRef.current = handle;
-        usedOnDeviceRef.current = true;
-        nativeCapgoOnlyRef.current = true;
-        // Keep audioLevel-driven bars; only start the clock (don't wipe levels).
-        if (voiceTimerRef.current != null) {
-          window.clearInterval(voiceTimerRef.current);
-        }
-        voiceTimerRef.current = window.setInterval(() => {
-          setVoiceSeconds((s) => {
-            const next = s + 1;
-            voiceSecondsRef.current = next;
-            return next;
-          });
-        }, 1000);
-        setVoiceRecording(true);
-        return;
-      }
-      // Capgo unavailable → MediaRecorder + server Whisper.
-      serverFallbackRef.current = true;
-      setServerFallbackMode(true);
-      writeTranscriptionEngineDiag(
-        "server",
-        "Falling back to MediaRecorder + server transcribe",
-      );
-      try {
-        const ok = await startMediaRecorderPath();
-        if (!ok) return;
-        setVoiceRecording(true);
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Could not access microphone";
-        setVoiceError(msg);
-      }
-      return;
-    }
-
-    // Web: MediaRecorder for the clip + browser speech when available.
+    // v7: one VoiceNote capture feeds file + on-device speech + levels.
     try {
-      const ok = await startMediaRecorderPath();
-      if (!ok) return;
+      if (voiceNoteSessionRef.current) {
+        await voiceNoteSessionRef.current.cancel();
+        voiceNoteSessionRef.current = null;
+      }
+      const session = await startVoiceNoteSession({
+        onPartial: (text) => {
+          setLivePreviewText(text.trim() || null);
+        },
+        onLevel: pushVoiceNoteLevel,
+      });
+      voiceNoteSessionRef.current = session;
+      stopVoiceMetering();
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceSeconds((s) => {
+          const next = s + 1;
+          voiceSecondsRef.current = next;
+          return next;
+        });
+      }, 1000);
       setVoiceRecording(true);
-      startSpeechRecognition();
+      writeTranscriptionEngineDiag(
+        "on-device",
+        "VoiceNote single-capture (v7)",
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not access microphone";
       setVoiceError(msg);
     }
   }, [
-    clearLivePreview,
-    commitSpeechSegment,
-    pushCapgoLevel,
-    pushLiveDraft,
-    startMediaRecorderPath,
-    startSpeechRecognition,
-    stopSpeechRecognition,
+    clearVoiceDraftLeftovers,
+    pushVoiceNoteLevel,
+    stopVoiceMetering,
     transcribeApiBase,
     voiceBusy,
   ]);
@@ -616,10 +371,15 @@ export function JournalRichEditor({
     };
   }, [mobileCardLayout]);
 
-  // Card min-height from keyboard-closed screen only — never shrinks when the
-  // keyboard opens (native resize would otherwise collapse flex-1 children).
+  // Lock card min-height to a one-shot keyboard-closed app height (CSS vars).
+  // Never re-read innerHeight / visualViewport on keyboard show/hide — only
+  // record again on orientation change.
   useEffect(() => {
     if (!mobileCardLayout) return;
+
+    const root = document.documentElement;
+    const APP_H = "--journal-entry-app-h";
+    const CARD_INSET = "--journal-entry-card-inset";
 
     const keyboardOccludes = () => {
       if (isNativeApp() && isNativeKeyboardOpen()) return true;
@@ -628,30 +388,47 @@ export function JournalRichEditor({
       return Math.max(0, window.innerHeight - vv.height - vv.offsetTop) > 80;
     };
 
-    const measureClosed = () => {
+    const record = (force = false) => {
+      if (!force && appHeightRecordedRef.current) return;
       if (keyboardOccludes()) return;
-      const scroller = entryScrollRef.current;
-      if (!scroller) return;
-      const top = scroller.getBoundingClientRect().top;
-      const next = Math.round(window.innerHeight - top);
-      if (next <= 0) return;
-      const locked = cardMinHeightLockedRef.current;
-      // Allow settling upward while closed; never shrink once locked.
-      if (locked != null && next <= locked) return;
-      cardMinHeightLockedRef.current = next;
-      setCardMinHeightPx(next);
+      const card = entryCardRef.current ?? entryScrollRef.current;
+      if (!card) return;
+      // Capture while keyboard is closed — do not use these live later.
+      const appH = Math.round(window.innerHeight);
+      const inset = Math.round(card.getBoundingClientRect().top);
+      if (appH <= 0) return;
+      root.style.setProperty(APP_H, `${appH}px`);
+      root.style.setProperty(CARD_INSET, `${Math.max(0, inset)}px`);
+      appHeightRecordedRef.current = true;
     };
 
-    measureClosed();
-    const t = window.setTimeout(measureClosed, 120);
-    window.addEventListener("resize", measureClosed);
-    window.visualViewport?.addEventListener("resize", measureClosed);
-    window.addEventListener(NATIVE_KEYBOARD_EVENT, measureClosed);
+    record();
+    // Layout can settle a beat after mount; still only while closed + once.
+    const t1 = window.setTimeout(() => record(), 50);
+    const t2 = window.setTimeout(() => record(), 200);
+
+    // If the keyboard was open on entry, wait until it closes, then record once.
+    const onNative = (e: Event) => {
+      const detail = (e as CustomEvent<NativeKeyboardDetail>).detail;
+      if (!detail.open) record();
+    };
+    window.addEventListener(NATIVE_KEYBOARD_EVENT, onNative);
+
+    const onOrientation = () => {
+      appHeightRecordedRef.current = false;
+      // Wait for the rotated layout; keyboard is typically closed after rotate.
+      window.setTimeout(() => record(true), 350);
+    };
+    window.addEventListener("orientationchange", onOrientation);
+
     return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("resize", measureClosed);
-      window.visualViewport?.removeEventListener("resize", measureClosed);
-      window.removeEventListener(NATIVE_KEYBOARD_EVENT, measureClosed);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.removeEventListener(NATIVE_KEYBOARD_EVENT, onNative);
+      window.removeEventListener("orientationchange", onOrientation);
+      root.style.removeProperty(APP_H);
+      root.style.removeProperty(CARD_INSET);
+      appHeightRecordedRef.current = false;
     };
   }, [mobileCardLayout]);
 
@@ -702,68 +479,62 @@ export function JournalRichEditor({
     setVoiceBusy(true);
     setVoiceRecording(false);
     setVoicePaused(false);
-    // Fold the last open segment into the committed buffer before reading.
-    commitSpeechSegment();
-    const liveRaw = liveTranscriptRef.current;
-    const live = polishTranscript(liveRaw);
-    const usedOnDevice = usedOnDeviceRef.current;
-    const capgoOnly = nativeCapgoOnlyRef.current;
-    const durationSec = Math.max(1, voiceSecondsRef.current);
     const note = silenceNote;
-    const peakSamples = voicePeaksAccRef.current.slice();
     setSilenceNote(null);
-    // Remove preview entirely before inserting anything into the document.
-    clearLivePreview();
-    try {
-      let blob: Blob | null = null;
-      if (capgoOnly) {
-        stopVoiceMetering();
-        const od = onDeviceSpeechRef.current;
-        onDeviceSpeechRef.current = null;
-        if (od) await od.stop();
-        const silent = silentWavDataUrl(durationSec);
-        const res = await fetch(silent);
-        blob = await res.blob();
-        mediaRecorderMimeRef.current = "audio/wav";
-      } else {
-        blob = await stopMediaRecorderAndCollectBlob();
-      }
-      if (!blob || blob.size < 32) {
-        const silent = silentWavDataUrl(durationSec);
-        const res = await fetch(silent);
-        blob = await res.blob();
-        mediaRecorderMimeRef.current = "audio/wav";
-      }
-      const mimeType =
-        (blob.type || mediaRecorderMimeRef.current || "audio/webm").split(
-          ";",
-        )[0] || "audio/webm";
-      let peaks = "";
-      if (peakSamples.length) {
-        const step = Math.max(1, Math.floor(peakSamples.length / 36));
-        peaks = peakSamples
-          .filter((_, i) => i % step === 0)
-          .slice(0, 36)
-          .map((p) => p.toFixed(3))
-          .join(",");
-      }
-      if (!peaks) peaks = (await peaksFromAudioBlob(blob)) || "";
+    // Preview is never document content — clear overlay + any orphan drafts.
+    setLivePreviewText(null);
+    clearVoiceDraftLeftovers();
+    stopVoiceMetering();
 
-      // Local blob URL first so the clip row plays immediately; never embed
-      // data:audio in contentHtml (DynamoDB size limit → save retry loop).
-      const localUrl = URL.createObjectURL(blob);
-      const transcriptForInsert = usedOnDevice
-        ? live || NO_SPEECH_LABEL
-        : "Transcribing…";
+    const session = voiceNoteSessionRef.current;
+    voiceNoteSessionRef.current = null;
+    try {
+      if (!session) {
+        setVoiceError("No audio captured.");
+        return;
+      }
+      const stopped = await session.stop();
+      if (!stopped.blob || stopped.blob.size < 256) {
+        setVoiceError("Recording too short.");
+        return;
+      }
+      const mimeType = (stopped.mimeType || "audio/mp4").split(";")[0] || "audio/mp4";
+      const durationSec = Math.max(1, Math.round(stopped.durationMs / 1000));
+      const peaks =
+        stopped.waveform.length > 0
+          ? stopped.waveform
+              .slice(0, 60)
+              .map((p) => Number(p).toFixed(3))
+              .join(",")
+          : (await peaksFromAudioBlob(stopped.blob)) || "";
+
+      const polished = polishTranscript(stopped.transcript || "");
+      const needsServerFallback =
+        !polished && Boolean(stopped.reason); // on-device unavailable, not silence
+      const transcriptForInsert = polished
+        ? polished
+        : needsServerFallback
+          ? "Transcribing…"
+          : NO_SPEECH_LABEL;
+
       const { clipId } = insertJournalVoiceClipAtCursor(ed, {
-        src: localUrl,
+        src: stopped.localUrl,
         mimeType,
         peaks: peaks || null,
         transcriptPlain: transcriptForInsert,
         transcriptHtml: plainTextToTipTapHtml(transcriptForInsert),
       });
 
-      const dataUrl = await blobToDataUrl(blob);
+      if (note) {
+        ed.chain()
+          .focus()
+          .insertContent(
+            `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
+          )
+          .run();
+      }
+
+      const dataUrl = await blobToDataUrl(stopped.blob);
       void (async () => {
         try {
           const uploaded = await uploadJournalVoice({
@@ -772,30 +543,17 @@ export function JournalRichEditor({
           });
           const edNow = editorRef.current;
           if (edNow) updateJournalVoiceClipSrc(edNow, clipId, uploaded.url);
-          try {
-            URL.revokeObjectURL(localUrl);
-          } catch {
-            /* */
-          }
         } catch (e) {
-          const msg =
-            e instanceof Error ? e.message : "Voice upload failed";
           console.error("[journal-voice] upload failed", e);
-          writeTranscriptionEngineDiag("server", `Voice upload failed: ${msg}`);
-          // Leave blob: src so local play still works; sync stays small.
         }
       })();
 
-      if (usedOnDevice) {
-        if (note) {
-          ed.chain()
-            .focus()
-            .insertContent(
-              `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
-            )
-            .run();
-        }
-      } else {
+      if (needsServerFallback) {
+        setServerFallbackMode(true);
+        writeTranscriptionEngineDiag(
+          "server",
+          stopped.reason || "VoiceNote on-device unavailable",
+        );
         try {
           const { text, deferred, resetsAt } = await transcribeJournalAudio({
             audioBase64: dataUrlToBase64(dataUrl),
@@ -803,40 +561,45 @@ export function JournalRichEditor({
             durationSec,
             feature: "journal-transcribe",
           });
-          const clipPos = findJournalVoiceClipPosById(ed, clipId);
+          let replacement: string;
+          if (deferred) {
+            const when = resetsAt
+              ? new Date(resetsAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })
+              : "next month";
+            replacement = `Transcribes on ${when}`;
+          } else {
+            replacement = polishTranscript(text || "") || NO_SPEECH_LABEL;
+          }
+          const edNow = editorRef.current ?? ed;
+          const clipPos = findJournalVoiceClipPosById(edNow, clipId);
           if (clipPos != null) {
-            let replacement: string;
-            if (deferred) {
-              const when = resetsAt
-                ? new Date(resetsAt).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })
-                : "next month";
-              replacement = `Transcribes on ${when}`;
-            } else {
-              replacement = polishTranscript(text || "") || NO_SPEECH_LABEL;
-            }
-            replaceTranscriptAfterClip(ed, clipPos, replacement);
-            if (note) {
-              ed.chain()
-                .focus()
-                .insertContent(
-                  `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
-                )
-                .run();
-            }
+            replaceTranscriptAfterClip(edNow, clipPos, replacement);
           }
         } catch (e) {
-          const clipPos = findJournalVoiceClipPosById(ed, clipId);
+          const edNow = editorRef.current ?? ed;
+          const clipPos = findJournalVoiceClipPosById(edNow, clipId);
           if (clipPos != null) {
-            replaceTranscriptAfterClip(ed, clipPos, NO_SPEECH_LABEL);
+            replaceTranscriptAfterClip(edNow, clipPos, NO_SPEECH_LABEL);
           }
           setVoiceError(
             e instanceof Error ? e.message : "Could not transcribe recording",
           );
+        } finally {
+          setServerFallbackMode(false);
         }
+      } else {
+        writeTranscriptionEngineDiag(
+          polished ? "on-device" : "none",
+          polished
+            ? "VoiceNote on-device transcript"
+            : "VoiceNote silence / empty transcript",
+        );
       }
+      clearVoiceDraftLeftovers();
+      setLivePreviewText(null);
     } catch (e) {
       console.error("[journal-voice] finish failed", e);
       setVoiceError(e instanceof Error ? e.message : "Could not save recording");
@@ -844,37 +607,35 @@ export function JournalRichEditor({
       setVoiceBusy(false);
       setVoiceSeconds(0);
       voiceSecondsRef.current = 0;
-      usedOnDeviceRef.current = false;
-      serverFallbackRef.current = false;
-      nativeCapgoOnlyRef.current = false;
       voicePeaksAccRef.current = [];
-      setServerFallbackMode(false);
     }
-  }, [
-    clearLivePreview,
-    commitSpeechSegment,
-    silenceNote,
-    stopMediaRecorderAndCollectBlob,
-    stopVoiceMetering,
-    voiceBusy,
-  ]);
+  }, [clearVoiceDraftLeftovers, silenceNote, stopVoiceMetering, voiceBusy]);
 
   finishRecordingRef.current = () => {
     void finishRecordingIntoEditor();
   };
 
   const cancelVoiceRecording = useCallback(async () => {
-    clearLivePreview();
+    setLivePreviewText(null);
+    clearVoiceDraftLeftovers();
     setVoiceRecording(false);
     setVoicePaused(false);
     setVoiceSeconds(0);
-    nativeCapgoOnlyRef.current = false;
     voicePeaksAccRef.current = [];
+    stopVoiceMetering();
+    const session = voiceNoteSessionRef.current;
+    voiceNoteSessionRef.current = null;
+    if (session) {
+      try {
+        await session.cancel();
+      } catch {
+        /* */
+      }
+    }
+    // Legacy MediaRecorder cleanup if anything left behind.
     await stopMediaRecorderAndCollectBlob();
     setVoiceError(null);
-  }, [clearLivePreview, stopMediaRecorderAndCollectBlob]);
-
-  const editorRef = useRef<Editor | null>(null);
+  }, [clearVoiceDraftLeftovers, stopMediaRecorderAndCollectBlob, stopVoiceMetering]);
 
   const editor = useEditor({
     extensions: [
@@ -1307,10 +1068,30 @@ export function JournalRichEditor({
     </button>
   ) : null;
 
+  const fromThemeBar = fromTheme ? (
+    <div
+      role="status"
+      className="flex items-center justify-between gap-3 rounded-full bg-[color:var(--player-surface-start)] px-4 py-2 text-[13px] text-white shadow-sm md:rounded-none md:px-7 md:py-2.5"
+    >
+      <span className="min-w-0 truncate">
+        From your theme{" "}
+        <span className="font-semibold">{fromTheme.name}</span>
+      </span>
+      <button
+        type="button"
+        onClick={fromTheme.onBack}
+        className="shrink-0 cursor-pointer rounded-full border border-white/30 px-3 py-0.5 text-[12px] font-semibold text-white transition-colors hover:bg-white/10"
+      >
+        Back
+      </button>
+    </div>
+  ) : null;
+
   const writingBarPortal =
     mobileCardLayout && typeof document !== "undefined" ? (
       <>
-        {voiceRecording || serverFallbackMode ? (
+        {/* v7: allowance only while actually on server Whisper fallback. */}
+        {serverFallbackMode ? (
           <div className="pointer-events-none fixed inset-x-0 z-[119] px-3 md:hidden">
             <div
               className="pointer-events-auto mx-auto max-w-lg rounded-2xl border border-border bg-card/95 px-3 py-2 shadow-sm backdrop-blur-sm"
@@ -1321,12 +1102,13 @@ export function JournalRichEditor({
                 right: 12,
               }}
             >
-              <JournalVoiceAllowanceBar forceShow={serverFallbackMode} compact />
+              <JournalVoiceAllowanceBar forceShow compact />
             </div>
           </div>
         ) : null}
         <JournalMobileWritingBar
           nativeResize
+          aboveBar={fromThemeBar}
           onKeyboardOpenChange={setKeyboardOpen}
         >
           {voiceRecording ? (
@@ -1355,17 +1137,15 @@ export function JournalRichEditor({
               >
                 <IconDotsHorizontal />
               </ToolbarBtn>
-              {!keyboardOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setPromptsOpen((open) => !open)}
-                  aria-pressed={promptsOpen}
-                  style={PRIMARY_ACCENT_FILL_STYLE}
-                  className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
-                >
-                  Prompts
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => setPromptsOpen((open) => !open)}
+                aria-pressed={promptsOpen}
+                style={PRIMARY_ACCENT_FILL_STYLE}
+                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
+              >
+                Prompts
+              </button>
             </>
           )}
         </JournalMobileWritingBar>
@@ -1397,10 +1177,11 @@ export function JournalRichEditor({
       {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter.
           Mobile: height follows content (never viewport-tied / never shrinks with keyboard). */}
       <div
+        ref={mobileCardLayout ? entryCardRef : undefined}
         data-journal-entry-card="1"
         className={`relative flex min-h-0 w-full min-w-0 flex-col ${
           mobileCardLayout
-            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:h-auto max-sm:flex-none max-sm:overflow-visible max-sm:bg-transparent sm:flex-1 sm:overflow-hidden sm:bg-[color:var(--journal-warm-bg)]"
+            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:h-auto max-sm:min-h-[calc(var(--journal-entry-app-h)-var(--journal-entry-card-inset,0px))] max-sm:flex-none max-sm:overflow-visible max-sm:bg-transparent sm:flex-1 sm:overflow-hidden sm:bg-[color:var(--journal-warm-bg)]"
             : "flex-1 journal-entry-paper overflow-hidden bg-[color:var(--journal-warm-bg)]"
         }`}
         style={
@@ -1408,13 +1189,15 @@ export function JournalRichEditor({
             ? {
                 // Room to scroll the last line above the writing bar.
                 paddingBottom: writingBarClearancePx,
-                ...(cardMinHeightPx != null
-                  ? { minHeight: cardMinHeightPx }
-                  : null),
               }
             : undefined
         }
       >
+        {fromThemeBar ? (
+          <div className={mobileCardLayout ? "max-md:hidden" : ""}>
+            {fromThemeBar}
+          </div>
+        ) : null}
         <div
           className={`flex shrink-0 flex-col ${
             mobileCardLayout
@@ -2066,11 +1849,13 @@ export function JournalRichEditor({
                 : undefined
             }
           />
-          {/* Live speech preview — React overlay only (not TipTap content / not saved). */}
-          {livePreviewText ? (
+          {/* Live VoiceNote partial — overlay only (never TipTap / never saved). */}
+          {voiceRecording && livePreviewText ? (
             <p
               className={`pointer-events-none select-none px-7 pb-3 text-base leading-[1.85] ${
-                mobileCardLayout ? "max-sm:px-4 max-sm:text-[16px] max-sm:leading-[1.7]" : ""
+                mobileCardLayout
+                  ? "max-sm:px-4 max-sm:text-[16px] max-sm:leading-[1.7]"
+                  : ""
               }`}
               aria-live="polite"
             >
@@ -2124,34 +1909,33 @@ export function JournalRichEditor({
         </div>
       ) : null}
       {promptsOpen ? (
-        <div className="absolute inset-y-3 right-3 z-30 w-[min(380px,calc(100%-1.5rem))]">
-          <JournalPromptsPanel
-            sources={
-              promptSources ?? {
-                areas: [],
-                values: [],
-                healItems: [],
-                linkedRefIds: [],
-                meditations: [],
-              }
+        <JournalPromptsPanel
+          sources={
+            promptSources ?? {
+              areas: [],
+              values: [],
+              healItems: [],
+              linkedRefIds: [],
+              meditations: [],
             }
-            usedIds={new Set(usedPromptIds)}
-            onClose={() => setPromptsOpen(false)}
-            onPick={(prompt) => {
-              const ed = editorRef.current ?? editor;
-              if (!ed) return;
-              if (usedPromptIds.includes(prompt.id)) {
-                ed.commands.focusJournalPrompt(prompt.id);
-                return;
-              }
+          }
+          usedIds={new Set(usedPromptIds)}
+          onClose={() => setPromptsOpen(false)}
+          onPick={(prompt) => {
+            const ed = editorRef.current ?? editor;
+            if (!ed) return;
+            if (usedPromptIds.includes(prompt.id)) {
+              ed.commands.focusJournalPrompt(prompt.id);
+            } else {
               ed.commands.insertJournalPrompt({
                 promptId: prompt.id,
                 template: prompt.template,
                 name: prompt.name,
               });
-            }}
-          />
-        </div>
+            }
+            setPromptsOpen(false);
+          }}
+        />
       ) : null}
       {writingBarPortal}
       </div>

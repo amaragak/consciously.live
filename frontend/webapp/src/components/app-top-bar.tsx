@@ -55,6 +55,8 @@ import { formatGratitudeRowDate } from "@/lib/journal-gratitudes";
 import {
   findJournalEntryByPathSlug,
   formatJournalEntryCrumbDate,
+  isGratitudeEntry,
+  journalEntryDateIso,
   journalEntryHasMeaningfulContent,
   loadJournalStoreRaw,
   localDateKey,
@@ -287,14 +289,20 @@ function journalEntryTitleFromPath(pathname: string): string | null {
     return null;
   }
   try {
-    const entry = findJournalEntryByPathSlug(
-      loadJournalStoreRaw().entries,
-      id,
-      "journal",
-    );
+    const entries = loadJournalStoreRaw().entries;
+    const entry = findJournalEntryByPathSlug(entries, id, "journal");
     if (!entry) return "New entry";
     if (!journalEntryHasMeaningfulContent(entry)) return "New entry";
-    return formatJournalEntryCrumbDate(entry.entryDate || entry.createdAt);
+    const iso = journalEntryDateIso(entry);
+    const dayKey = localDateKeyFromIso(iso);
+    const sameDayCount = entries.filter(
+      (e) =>
+        !isGratitudeEntry(e) &&
+        localDateKeyFromIso(journalEntryDateIso(e)) === dayKey,
+    ).length;
+    return formatJournalEntryCrumbDate(iso, {
+      includeTime: sameDayCount > 1,
+    });
   } catch {
     return "Entry";
   }
@@ -555,6 +563,16 @@ export function AppTopBar({
   }, [location.trail.length, location.verb, pathname]);
 
   const trail = location.trail;
+  /** Open freeform journal entry — back arrow returns to Entries (or history). */
+  const onJournalEntry = Boolean(journalEntryTitleFromPath(pathname));
+  const goJournalEntriesBack = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx === "number" && idx > 0) {
+      router.back();
+      return;
+    }
+    router.push("/journal/entries");
+  };
   /**
    * Compact (&lt; lg): mirror desktop’s post-divider crumbs.
    * Below `md` (no italic verb, no hub tabs): Meditate › My Creations.
@@ -632,6 +650,16 @@ export function AppTopBar({
         }}
       >
         <div className="pointer-events-auto flex max-w-full items-center">
+          {onJournalEntry ? (
+            <button
+              type="button"
+              aria-label="Back to Entries"
+              onClick={goJournalEntriesBack}
+              className="mr-1 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-nav-foreground transition-colors hover:bg-white/10"
+            >
+              <ChevronLeft className="size-5" strokeWidth={1.85} aria-hidden />
+            </button>
+          ) : null}
           <div ref={phraseDesktopRef} className="shrink-0">
             <BrandPhrase
               verb={location.verb}
@@ -668,8 +696,15 @@ export function AppTopBar({
             aria-label="Home"
             className="app-header-home-btn md:hidden"
           >
-            <span className="navy-paisley-plate" aria-hidden />
-            <LogoMark size={30} className="app-header-brand-sun block" />
+            <img
+              src="/brand/icon-only.png"
+              alt=""
+              width={40}
+              height={40}
+              draggable={false}
+              className="app-header-home-icon"
+              aria-hidden
+            />
           </Link>
           {onNotifications ? (
             <button
@@ -680,6 +715,15 @@ export function AppTopBar({
                 else router.push("/");
               }}
               className="mr-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent-soft md:hidden"
+            >
+              <ChevronLeft className="size-5" strokeWidth={1.85} aria-hidden />
+            </button>
+          ) : onJournalEntry ? (
+            <button
+              type="button"
+              aria-label="Back to Entries"
+              onClick={goJournalEntriesBack}
+              className="mr-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent-soft"
             >
               <ChevronLeft className="size-5" strokeWidth={1.85} aria-hidden />
             </button>

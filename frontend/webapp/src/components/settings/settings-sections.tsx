@@ -41,6 +41,7 @@ import {
 } from "@/lib/auth-session";
 import { getJournalSyncDiagnostics } from "@/lib/journal-sync";
 import { readTranscriptionEngineDiag } from "@/lib/journal-on-device-speech";
+import { VoiceNoteDiagnosticsPanel } from "@/components/settings/voice-note-diagnostics";
 import {
   onboardingHref,
   runOnboardingAgain,
@@ -932,7 +933,7 @@ function AiSection({ settings, onPatch }: SectionProps) {
         key="insights"
         settingsKey="ai.insightsFromJournal"
         title="Insights from my journal"
-        helper="Weekly letters, patterns and themes. Nothing is generated until you ask for it."
+        helper="Mood over time, themes, and standout lines from entries you write. Analysed when you save; nothing leaves the device until this is on."
         control={
           <SettingsSwitch
             aria-label="Insights from my journal"
@@ -2273,6 +2274,15 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
             <p className="break-all">{voiceLine}</p>
           </div>
         }
+      />,
+    );
+    helpRows.push(
+      <SettingsRow
+        key="diagnostics-voice-test"
+        settingsKey="general.diagnostics"
+        title="Voice test"
+        helper="Stage 1: Start / Stop / Cancel. Partial text, level bar, then play the file. No network transcription."
+        control={<VoiceNoteDiagnosticsPanel />}
       />,
     );
     helpRows.push(

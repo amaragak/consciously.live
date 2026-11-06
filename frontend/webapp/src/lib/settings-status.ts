@@ -86,7 +86,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "ai.providers": "wired",
   "ai.trainingClaim": "not_available",
   "ai.personaliseWithJournal": "not_implemented",
-  "ai.insightsFromJournal": "not_implemented",
+  "ai.insightsFromJournal": "wired",
   "ai.chatActionMode": "not_implemented",
   "ai.deleteAiData": "not_implemented",
   "ai.clearChat": "wired",

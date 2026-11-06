@@ -34,7 +34,23 @@ import { JournalSettingsDialog } from "@/components/journal-settings-dialog";
 import { JournalImportWorkspace } from "@/components/journal-import-workspace";
 import { SearchInput } from "@/components/search-input";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
-import { Calendar, Folder, Play } from "lucide-react";
+import {
+  ArrowDownUp,
+  Calendar,
+  Check,
+  ChevronDown,
+  Folder,
+  Pencil,
+  Play,
+  X,
+} from "lucide-react";
+import {
+  JOURNAL_ENTRIES_SORT_CHANGED,
+  readJournalEntriesSort,
+  setJournalEntriesSort,
+  syncJournalEntriesSortFromSettings,
+  type JournalEntriesSort,
+} from "@/lib/journal-entries-sort-pref";
 import { healScreenRisk } from "@/lib/heal-ai";
 import { journalMeditationForEntry } from "@/lib/heal-meditation-links";
 import { JournalEntryLinks } from "@/components/journal-entry-links";
@@ -70,8 +86,12 @@ import {
   ensureJournalEntryUrlSlug,
   findJournalEntryByPathSlug,
   findRecentGratitudeWithinHours,
+  formatJournalEditedStatus,
   formatJournalEntryDate,
+  formatJournalEntryTime,
+  formatJournalListEditedNote,
   gratitudeLinesToHtml,
+  groupJournalEntriesByLastEdited,
   groupJournalEntriesByWeek,
   groupJournalEntriesForSidebar,
   deriveEntryTitle,
@@ -82,6 +102,7 @@ import {
   journalEntryHref,
   journalEntryListTitle,
   journalEntryPlainForHandoff,
+  journalEntryWasEditedLaterDay,
   armJournalMeditationHandoffJson,
   JOURNAL_MEDITATION_PAYLOAD_KEY,
   loadJournalStoreRaw,
@@ -119,6 +140,8 @@ import { newJournalLink } from "@/lib/journal-links";
 import { journalEntriesLinkedToLifeArea } from "@/lib/plan-life-area-links";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
 import { lifeAreaHref } from "@/lib/entity-href";
+import { scheduleJournalEntryAnalysis } from "@/lib/journal-entry-analysis-scheduler";
+import { themeSlug } from "@/lib/journal-history-insights";
 
 const JOURNAL_SIDEBAR_COLLAPSED_KEY = "mm_journal_sidebar_collapsed";
 
@@ -433,17 +456,27 @@ function formatJournalListDate(iso: string): string {
   }
 }
 
-/** Mobile list: weekday + day number for the date column. */
-function journalListDateParts(iso: string): { weekday: string; day: string } {
+/** Mobile list: weekday + day number (+ month when not this month). */
+function journalListDateParts(iso: string): {
+  weekday: string;
+  day: string;
+  month: string | null;
+} {
   try {
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return { weekday: "", day: "" };
+    if (Number.isNaN(d.getTime())) return { weekday: "", day: "", month: null };
+    const now = new Date();
+    const showMonth =
+      d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear();
     return {
       weekday: d.toLocaleDateString("en-US", { weekday: "short" }),
       day: String(d.getDate()),
+      month: showMonth
+        ? d.toLocaleDateString("en-US", { month: "short" })
+        : null,
     };
   } catch {
-    return { weekday: "", day: "" };
+    return { weekday: "", day: "", month: null };
   }
 }
 
@@ -764,8 +797,11 @@ export function JournalView() {
   const [namingFolder, setNamingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [sidebarMenu, setSidebarMenu] = useState<
-    null | "folder" | "date" | "filters"
+    null | "folder" | "date" | "filters" | "sort"
   >(null);
+  const [entriesSort, setEntriesSort] = useState<JournalEntriesSort>(() =>
+    readJournalEntriesSort(),
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [draftHasText, setDraftHasText] = useState(false);
@@ -782,10 +818,16 @@ export function JournalView() {
   /** Mobile gratitudes: day editor is `/journal/gratitudes/:slug`. */
   const mobileGratitudeCompose =
     section === "gratitude" && Boolean(routeGratitudeId);
-  /** Mobile insights: letter detail is `/journal/insights/:weekKey`. */
+  /**
+   * Mobile insights sub-pages: theme (`/journal/insights/theme/:slug`) and all
+   * themes (`/journal/insights/themes`). Legacy letter detail
+   * (`/journal/insights/:weekKey`) is no longer routed.
+   */
   const mobileInsightsLetter =
     section === "insights" &&
-    Boolean(/^\/journal\/insights\/[^/]+\/?$/.test(pathname));
+    Boolean(
+      /^\/journal\/insights\/(theme\/[^/]+|themes)\/?$/.test(pathname),
+    );
   const mobileComposeChrome =
     mobileJournalEditor || mobileGratitudeCompose || mobileInsightsLetter;
   const mvp = useMvpFlags();
@@ -816,6 +858,7 @@ export function JournalView() {
     null,
   );
   const listNavRef = useRef<HTMLElement | null>(null);
+  const listScrollTopRef = useRef(0);
   const prevSectionRef = useRef<JournalSection | null>(null);
   /** After first journal sync attempt (or skip if no API URL). */
   const [remoteJournalChecked, setRemoteJournalChecked] = useState(false);
@@ -825,6 +868,7 @@ export function JournalView() {
   const entriesRef = useRef<JournalEntry[]>([]);
   const foldersRef = useRef<JournalFolder[]>([]);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
   const dateMenuRef = useRef<HTMLDivElement | null>(null);
   const filtersMenuRef = useRef<HTMLDivElement | null>(null);
   const activeIdRef = useRef<string | null>(null);
@@ -890,6 +934,7 @@ export function JournalView() {
       const t = e.target as Node;
       if (
         folderMenuRef.current?.contains(t) ||
+        sortMenuRef.current?.contains(t) ||
         dateMenuRef.current?.contains(t) ||
         filtersMenuRef.current?.contains(t)
       ) {
@@ -915,6 +960,43 @@ export function JournalView() {
   useEffect(() => {
     setSidebarCollapsed(loadJournalSidebarCollapsed());
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("@/lib/settings-api").then(async ({ fetchUserSettings }) => {
+      try {
+        const { settings } = await fetchUserSettings();
+        if (cancelled) return;
+        syncJournalEntriesSortFromSettings(settings);
+        setEntriesSort(readJournalEntriesSort());
+      } catch {
+        /* local default */
+      }
+    });
+    function onChanged(e: Event) {
+      const detail = (e as CustomEvent<{ sort?: JournalEntriesSort }>).detail;
+      if (detail?.sort === "entryDate" || detail?.sort === "lastEdited") {
+        setEntriesSort(detail.sort);
+      }
+    }
+    window.addEventListener(JOURNAL_ENTRIES_SORT_CHANGED, onChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(JOURNAL_ENTRIES_SORT_CHANGED, onChanged);
+    };
+  }, []);
+
+  /** Restore Entries list scroll after closing an entry on mobile. */
+  useEffect(() => {
+    if (mobileJournalEditor || mobileGratitudeCompose) return;
+    const el = listNavRef.current;
+    if (!el) return;
+    const top = listScrollTopRef.current;
+    if (top <= 0) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = top;
+    });
+  }, [mobileJournalEditor, mobileGratitudeCompose, pathname]);
 
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((c) => {
@@ -1149,6 +1231,7 @@ export function JournalView() {
     if (saved && journalEntryHasMeaningfulContent(saved)) {
       enqueueJournalUpsert(id);
       scheduleJournalOutboxFlush();
+      scheduleJournalEntryAnalysis(saved);
     }
   }, [persist]);
 
@@ -1195,6 +1278,7 @@ export function JournalView() {
       if (saved && journalEntryHasMeaningfulContent(saved)) {
         enqueueJournalUpsert(id);
         scheduleJournalOutboxFlush();
+        scheduleJournalEntryAnalysis(saved);
       }
     }, 450);
   }, [persist]);
@@ -1371,10 +1455,13 @@ export function JournalView() {
 
   const sidebarGroups = useMemo(() => {
     if (journalTab === "journal") {
+      if (entriesSort === "lastEdited") {
+        return groupJournalEntriesByLastEdited(filteredTabEntries);
+      }
       return groupJournalEntriesByWeek(filteredTabEntries);
     }
     return groupJournalEntriesForSidebar(filteredTabEntries);
-  }, [filteredTabEntries, journalTab]);
+  }, [filteredTabEntries, journalTab, entriesSort]);
 
   const planDreams = useMemo(() => {
     if (typeof window === "undefined" || !hydrated) return [] as PlanDream[];
@@ -1456,6 +1543,13 @@ export function JournalView() {
       if (saved && journalEntryHasMeaningfulContent(saved)) {
         enqueueJournalUpsert(id);
         scheduleJournalOutboxFlush();
+        if (
+          "contentHtml" in partial ||
+          "title" in partial ||
+          "mood" in partial
+        ) {
+          scheduleJournalEntryAnalysis(saved);
+        }
       }
     },
     [persist],
@@ -1564,6 +1658,9 @@ export function JournalView() {
 
   const selectEntry = useCallback(
     (nextId: string) => {
+      if (listNavRef.current) {
+        listScrollTopRef.current = listNavRef.current.scrollTop;
+      }
       applyEntrySelection(nextId);
       const entry = entriesRef.current.find((e) => e.id === nextId);
       if (!entry) return;
@@ -1579,6 +1676,19 @@ export function JournalView() {
     },
     [applyEntrySelection, journalTab, navigateToEntry],
   );
+
+  const applyEntriesSort = useCallback((sort: JournalEntriesSort) => {
+    setEntriesSort(sort);
+    setJournalEntriesSort(sort);
+    setSidebarMenu(null);
+  }, []);
+
+  const selectedFolderName = useMemo(() => {
+    if (!selectedFolderId) return "All entries";
+    return (
+      folders.find((f) => f.id === selectedFolderId)?.name?.trim() || "Folder"
+    );
+  }, [folders, selectedFolderId]);
 
   /** Deep-link / browser back: sync active entry from readable (or legacy) path. */
   useEffect(() => {
@@ -1681,6 +1791,7 @@ export function JournalView() {
       setJumpDate(value);
       if (value) setSidebarMenu(null);
       if (!value) return;
+      // Multiple freeform entries can share a day — open the newest for that date.
       const match = tabEntries.find((e) => {
         if (localDateKeyFromIso(journalEntryDateIso(e)) !== value) return false;
         if (
@@ -2198,16 +2309,16 @@ export function JournalView() {
     {/* Match Chat: sidebar + writing stay inside max-w-6xl; pattern gutter takes the right strip. */}
     <div
       className={`flex min-h-0 w-full min-w-0 flex-1 bg-transparent ${
-        mobileJournalEditor
+        mobileJournalEditor || mobileGratitudeCompose
           ? "max-sm:overflow-visible sm:overflow-hidden"
-          : "overflow-hidden"
+          : "max-sm:overflow-visible overflow-hidden"
       }`}
     >
     <div
       className={`flex h-full min-h-0 w-full min-w-0 flex-col ${
-        mobileJournalEditor
+        mobileJournalEditor || mobileGratitudeCompose
           ? "max-sm:overflow-visible sm:overflow-hidden"
-          : "overflow-hidden"
+          : "max-sm:overflow-visible overflow-hidden"
       } ${
         !mobileJournalEditor &&
         !mobileGratitudeCompose &&
@@ -2277,7 +2388,9 @@ export function JournalView() {
         className={`flex min-h-0 flex-1 ${
           mobileJournalEditor
             ? "max-sm:overflow-visible sm:overflow-hidden"
-            : "overflow-hidden"
+            : journalTab === "journal" || journalTab === "gratitude"
+              ? "max-sm:overflow-visible overflow-hidden"
+              : "overflow-hidden"
         } ${
           journalTab === "journal" || journalTab === "gratitude"
             ? "flex-col gap-0 md:flex-row"
@@ -2307,10 +2420,10 @@ export function JournalView() {
         <aside
           className={`flex shrink-0 flex-col ${
             journalTab === "journal" || journalTab === "gratitude"
-              ? `relative z-10 min-h-0 gap-3 overflow-hidden border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 max-sm:border-transparent max-sm:bg-transparent md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
+              ? `relative z-10 min-h-0 gap-3 overflow-hidden max-sm:overflow-visible border-b-[0.5px] border-sidebar-border bg-surface-rail px-3 pb-3 pt-3 max-sm:border-transparent max-sm:bg-transparent md:w-[180px] md:shrink-0 md:self-stretch md:border-b-0 md:border-r-[0.5px] lg:w-[220px] xl:w-[260px] ${
                   mobileComposeChrome
                     ? "max-sm:hidden"
-                    : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-y-auto max-sm:pb-5 max-sm:shadow-none"
+                    : "max-sm:h-fit max-sm:max-h-full max-sm:shrink-0 max-sm:overflow-visible max-sm:pb-5 max-sm:shadow-none"
                 }`
               : `gap-3 overflow-visible border-b border-border pb-4 lg:max-h-none lg:w-64 lg:border-b-0 lg:pb-0 max-h-[22rem] ${
                   mobileComposeChrome ? "max-sm:hidden" : ""
@@ -2318,7 +2431,7 @@ export function JournalView() {
           }`}
         >
           {journalTab === "journal" ? (
-            <div className="relative z-20 flex flex-col gap-2">
+            <div className="relative z-30 flex flex-col gap-2 overflow-visible">
               <div className="hidden items-center gap-2 sm:flex">
                 <button
                   type="button"
@@ -2327,272 +2440,270 @@ export function JournalView() {
                   className="hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground md:flex"
                 >
                   <JournalSidebarChevron dir="left" />
-            </button>
-            <PrimaryCreateButton
-              onClick={() => createEntry()}
-              className="min-w-0 flex-1"
-            >
-              New entry
-            </PrimaryCreateButton>
-          </div>
-              <div className="flex flex-wrap items-center gap-2 max-sm:flex-nowrap max-sm:rounded-[18px] max-sm:border max-sm:border-border max-sm:bg-card max-sm:p-2.5">
-                <SearchInput
+                </button>
+                <PrimaryCreateButton
+                  onClick={() => createEntry()}
                   className="min-w-0 flex-1"
-                  inputClassName="py-2 max-sm:h-[46px] max-sm:bg-[color:var(--surface)] max-sm:py-0"
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder="Search"
-                />
-                {/* Mobile: folder + date between search and New */}
-                <div ref={filtersMenuRef} className="relative shrink-0 sm:hidden">
-                  <button
-                    type="button"
-                    aria-label="Folder and date filters"
-                    aria-haspopup="menu"
-                    aria-expanded={sidebarMenu === "filters"}
-                    onClick={() => {
-                      setSidebarMenu((m) =>
-                        m === "filters" ? null : "filters",
-                      );
-                      setNamingFolder(false);
-                    }}
-                    className={`flex h-[46px] w-[46px] cursor-pointer items-center justify-center rounded-xl border transition-colors ${
-                      selectedFolderId || jumpDate
-                        ? "border-accent/40 bg-accent-soft/40 text-foreground"
-                        : "border-border bg-[color:var(--surface)] text-muted hover:border-accent/40 hover:text-foreground"
-                    }`}
+                >
+                  New entry
+                </PrimaryCreateButton>
+              </div>
+              <div className="flex flex-col gap-2 overflow-visible max-sm:rounded-[18px] max-sm:border max-sm:border-border max-sm:bg-card max-sm:p-2.5">
+                <div className="flex items-center gap-2">
+                  <SearchInput
+                    className="min-w-0 flex-1"
+                    inputClassName="py-2 max-sm:h-[46px] max-sm:bg-[color:var(--surface)] max-sm:py-0"
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search entries"
+                  />
+                  <PrimaryCreateButton
+                    onClick={() => createEntry()}
+                    aria-label="New entry"
+                    className="h-[46px] shrink-0 py-0 sm:hidden"
                   >
-                    <Folder aria-hidden className="size-4" strokeWidth={2} />
-                  </button>
-                  {sidebarMenu === "filters" ? (
-                    <div
-                      role="menu"
-                      className="absolute right-0 z-50 mt-1 w-56 rounded-xl border border-border bg-card py-1 shadow-lg"
+                    New
+                  </PrimaryCreateButton>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div ref={folderMenuRef} className="relative min-w-0 shrink">
+                    <button
+                      type="button"
+                      aria-label="Filter by folder"
+                      aria-haspopup="menu"
+                      aria-expanded={sidebarMenu === "folder"}
+                      onClick={() => {
+                        setSidebarMenu((m) =>
+                          m === "folder" ? null : "folder",
+                        );
+                        setNamingFolder(false);
+                      }}
+                      className={`flex h-[40px] max-w-full cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[14px] font-semibold transition-colors sm:h-9 ${
+                        selectedFolderId
+                          ? "border-transparent bg-nav text-nav-foreground"
+                          : "border-border bg-card text-foreground hover:border-accent/40 max-sm:bg-background"
+                      }`}
                     >
-                      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                        Folder
-                      </p>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => onFolderSelect(FOLDER_ALL)}
-                        className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
-                          !selectedFolderId
-                            ? "font-semibold text-foreground"
-                            : "text-muted"
-                        }`}
+                      <Folder
+                        aria-hidden
+                        className="size-4 shrink-0"
+                        strokeWidth={1.8}
+                      />
+                      <span className="min-w-0 truncate">
+                        {selectedFolderName}
+                      </span>
+                      {selectedFolderId ? (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-label="Clear folder filter"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onFolderSelect(FOLDER_ALL);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onFolderSelect(FOLDER_ALL);
+                            }
+                          }}
+                          className="ml-0.5 flex size-[22px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/15"
+                        >
+                          <X
+                            aria-hidden
+                            className="size-3.5"
+                            strokeWidth={2.2}
+                          />
+                        </span>
+                      ) : (
+                        <ChevronDown
+                          aria-hidden
+                          className="size-4 shrink-0 opacity-60"
+                          strokeWidth={2}
+                        />
+                      )}
+                    </button>
+                    {sidebarMenu === "folder" ? (
+                      <div
+                        role="menu"
+                        className="absolute left-0 z-50 mt-1 w-56 rounded-xl border border-border bg-card py-1 shadow-lg"
                       >
-                        All entries
-                      </button>
-                      {folders.map((f) => (
                         <button
-                          key={f.id}
                           type="button"
                           role="menuitem"
-                          onClick={() => onFolderSelect(f.id)}
+                          onClick={() => onFolderSelect(FOLDER_ALL)}
                           className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
-                            selectedFolderId === f.id
+                            !selectedFolderId
                               ? "font-semibold text-foreground"
                               : "text-muted"
                           }`}
                         >
-                          {f.name}
+                          All entries
                         </button>
-                      ))}
-                      <div className="border-t border-border px-2 py-1.5">
-                        {namingFolder ? (
-                          <div className="flex gap-1.5">
-                            <input
-                              type="text"
-                              value={newFolderName}
-                              onChange={(e) => setNewFolderName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  addNamedFolder();
+                        {folders.map((f) => (
+                          <button
+                            key={f.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => onFolderSelect(f.id)}
+                            className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
+                              selectedFolderId === f.id
+                                ? "font-semibold text-foreground"
+                                : "text-muted"
+                            }`}
+                          >
+                            {f.name}
+                          </button>
+                        ))}
+                        <div className="border-t border-border px-2 py-1.5">
+                          {namingFolder ? (
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                value={newFolderName}
+                                onChange={(e) =>
+                                  setNewFolderName(e.target.value)
                                 }
-                              }}
-                              placeholder="Folder name"
-                              autoFocus
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
-                            />
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    addNamedFolder();
+                                  }
+                                }}
+                                placeholder="Folder name"
+                                autoFocus
+                                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
+                              />
+                              <button
+                                type="button"
+                                onClick={addNamedFolder}
+                                disabled={!newFolderName.trim()}
+                                className="cursor-pointer rounded-lg accent-fill-gradient px-2 py-1 text-xs font-semibold text-on-accent disabled:opacity-50"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          ) : (
                             <button
                               type="button"
-                              onClick={addNamedFolder}
-                              disabled={!newFolderName.trim()}
-                              className="cursor-pointer rounded-lg accent-fill-gradient px-2 py-1 text-xs font-semibold text-on-accent disabled:opacity-50"
+                              onClick={() => {
+                                setNamingFolder(true);
+                                setNewFolderName("");
+                              }}
+                              className="block w-full cursor-pointer rounded-lg px-2 py-1.5 text-left text-sm text-muted hover:bg-accent-soft/30 hover:text-foreground"
                             >
-                              Add
+                              + New folder
                             </button>
-        </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNamingFolder(true);
-                              setNewFolderName("");
-                            }}
-                            className="block w-full cursor-pointer rounded-lg px-2 py-1.5 text-left text-sm text-muted hover:bg-accent-soft/30 hover:text-foreground"
-                          >
-                            + New folder
-                          </button>
-                        )}
+                          )}
+                        </div>
+                        <div className="border-t border-border px-3 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                            Jump to day
+                          </p>
+                          <input
+                            type="date"
+                            value={jumpDate}
+                            onChange={(ev) => applyJumpDate(ev.target.value)}
+                            className="mt-1.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
+                          />
+                          {jumpDate ? (
+                            <button
+                              type="button"
+                              className="mt-1.5 cursor-pointer text-xs font-medium text-accent-link underline-offset-2 hover:underline"
+                              onClick={clearJumpDate}
+                            >
+                              Clear date
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="border-t border-border px-3 py-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                          Jump to day
+                    ) : null}
+                  </div>
+                  <div ref={sortMenuRef} className="relative shrink-0">
+                    <button
+                      type="button"
+                      aria-label="Sort entries"
+                      aria-haspopup="menu"
+                      aria-expanded={sidebarMenu === "sort"}
+                      onClick={() =>
+                        setSidebarMenu((m) => (m === "sort" ? null : "sort"))
+                      }
+                      className="flex h-[40px] cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 text-[14px] font-semibold text-foreground transition-colors hover:border-accent/40 max-sm:bg-background sm:h-9"
+                    >
+                      <ArrowDownUp
+                        aria-hidden
+                        className="size-4 shrink-0"
+                        strokeWidth={1.8}
+                      />
+                      <span className="whitespace-nowrap">
+                        {entriesSort === "lastEdited"
+                          ? "Last edited"
+                          : "Entry date"}
+                      </span>
+                      <ChevronDown
+                        aria-hidden
+                        className="size-4 shrink-0 opacity-60"
+                        strokeWidth={2}
+                      />
+                    </button>
+                    {sidebarMenu === "sort" ? (
+                      <div
+                        role="menu"
+                        className="absolute left-0 z-50 mt-1 w-[14rem] rounded-xl border border-border bg-card py-1 shadow-lg"
+                      >
+                        <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                          Sort by
                         </p>
-                        <input
-                          type="date"
-                          value={jumpDate}
-                          onChange={(ev) => applyJumpDate(ev.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-base outline-none focus:border-accent/50"
-                        />
-                        {jumpDate ? (
+                        {(
+                          [
+                            ["entryDate", "Entry date"],
+                            ["lastEdited", "Last edited"],
+                          ] as const
+                        ).map(([id, label]) => (
                           <button
+                            key={id}
                             type="button"
-                            className="mt-1.5 cursor-pointer text-xs font-medium text-accent-link underline-offset-2 hover:underline"
-                            onClick={clearJumpDate}
+                            role="menuitemradio"
+                            aria-checked={entriesSort === id}
+                            onClick={() => applyEntriesSort(id)}
+                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-[15px] text-foreground hover:bg-accent-soft/30"
                           >
-                            Clear date
+                            <span className="min-w-0 flex-1">{label}</span>
+                            {entriesSort === id ? (
+                              <Check
+                                aria-hidden
+                                className="size-4 shrink-0 text-[#8A6424]"
+                                strokeWidth={2.4}
+                              />
+                            ) : null}
                           </button>
-                        ) : null}
-      </div>
-                    </div>
-                  ) : null}
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <span className="ml-auto shrink-0">
+                    <JournalChromeMoreMenu
+                      onImport={openImportModal}
+                      onSettings={() => setSettingsOpen(true)}
+                      onRefresh={() => {
+                        void syncJournal({
+                          reason: "pull-to-refresh",
+                          forcePull: true,
+                        });
+                      }}
+                      buttonClassName="h-[40px] w-[40px] bg-[color:var(--surface)] sm:h-9 sm:w-9 sm:bg-background"
+                    />
+                  </span>
                 </div>
-                <span className="sm:hidden">
-                  <JournalChromeMoreMenu
-                    onImport={openImportModal}
-                    onSettings={() => setSettingsOpen(true)}
-                    onRefresh={() => {
-                      void syncJournal({
-                        reason: "pull-to-refresh",
-                        forcePull: true,
-                      });
-                    }}
-                    buttonClassName="h-[46px] w-[46px] bg-[color:var(--surface)]"
-                  />
-                </span>
-          <PrimaryCreateButton
-            onClick={() => createEntry()}
-            aria-label="New entry"
-            className="h-[46px] shrink-0 py-0 sm:hidden"
-          >
-            New
-          </PrimaryCreateButton>
               </div>
               <div className="max-sm:px-1 max-sm:pt-2">
                 <JournalVoiceAllowanceBar compact />
               </div>
-              <div className="flex items-center gap-1.5">
-                {lastImportChipEl}
-                {/* sm+: folder + options */}
-                <div className="ml-auto hidden items-center gap-1.5 sm:flex">
-                <div ref={folderMenuRef} className="relative shrink-0">
-                  <button
-                    type="button"
-                    aria-label="Filter by folder"
-                    aria-haspopup="menu"
-                    aria-expanded={sidebarMenu === "folder"}
-                    onClick={() => {
-                      setSidebarMenu((m) => (m === "folder" ? null : "folder"));
-                      setNamingFolder(false);
-                    }}
-                    className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border transition-colors ${
-                      selectedFolderId
-                        ? "border-accent/40 bg-accent-soft/40 text-foreground"
-                        : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground"
-                    }`}
-                  >
-                    <Folder aria-hidden className="size-4" strokeWidth={2} />
-                  </button>
-                  {sidebarMenu === "folder" ? (
-                    <div
-                      role="menu"
-                      className="absolute left-0 z-50 mt-1 w-52 rounded-xl border border-border bg-card py-1 shadow-lg"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => onFolderSelect(FOLDER_ALL)}
-                        className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
-                          !selectedFolderId
-                            ? "font-semibold text-foreground"
-                            : "text-muted"
-                        }`}
-                      >
-                        All entries
-                      </button>
-                      {folders.map((f) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => onFolderSelect(f.id)}
-                          className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-accent-soft/30 ${
-                            selectedFolderId === f.id
-                              ? "font-semibold text-foreground"
-                              : "text-muted"
-                          }`}
-                        >
-                          {f.name}
-                        </button>
-                      ))}
-                      <div className="border-t border-border px-2 py-1.5">
-                        {namingFolder ? (
-                          <div className="flex gap-1.5">
-                            <input
-                              type="text"
-                              value={newFolderName}
-                              onChange={(e) => setNewFolderName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  addNamedFolder();
-                                }
-                              }}
-                              placeholder="Folder name"
-                              autoFocus
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 text-base outline-none focus:border-accent/50"
-                            />
-                            <button
-                              type="button"
-                              onClick={addNamedFolder}
-                              disabled={!newFolderName.trim()}
-                              className="cursor-pointer rounded-lg accent-fill-gradient px-2 py-1 text-xs font-semibold text-on-accent disabled:opacity-50"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNamingFolder(true);
-                              setNewFolderName("");
-                            }}
-                            className="block w-full cursor-pointer rounded-lg px-2 py-1.5 text-left text-sm text-muted hover:bg-accent-soft/30 hover:text-foreground"
-                          >
-                            + New folder
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                <JournalChromeMoreMenu
-                  onImport={openImportModal}
-                  onSettings={() => setSettingsOpen(true)}
-                  onRefresh={() => {
-                    void syncJournal({
-                      reason: "pull-to-refresh",
-                      forcePull: true,
-                    });
-                  }}
-                />
-                </div>
-              </div>
+              {lastImportChipEl ? (
+                <div className="flex items-center gap-1.5">{lastImportChipEl}</div>
+              ) : null}
             </div>
           ) : (
             <div className="relative z-20 flex flex-col gap-2">
@@ -2716,7 +2827,7 @@ export function JournalView() {
           )}
           <nav
             ref={listNavRef}
-            className={`relative z-[1] min-h-0 space-y-5 pr-1 [scrollbar-gutter:stable] ${
+            className={`relative z-0 min-h-0 space-y-5 pr-1 [scrollbar-gutter:stable] ${
               journalTab === "journal" || journalTab === "gratitude"
                 ? "max-sm:grow-0 max-sm:overflow-visible flex-1 overflow-y-auto"
                 : "flex-1 overflow-y-auto"
@@ -2794,6 +2905,18 @@ export function JournalView() {
                       {group.entries.map((e, index) => {
                         const iso = journalEntryDateIso(e);
                         const parts = journalListDateParts(iso);
+                        const dayKey = localDateKeyFromIso(iso);
+                        const prev = index > 0 ? group.entries[index - 1] : null;
+                        const prevDayKey = prev
+                          ? localDateKeyFromIso(journalEntryDateIso(prev))
+                          : null;
+                        const isFirstOfDay = dayKey !== prevDayKey;
+                        const sameDayCount = group.entries.filter(
+                          (other) =>
+                            localDateKeyFromIso(journalEntryDateIso(other)) ===
+                            dayKey,
+                        ).length;
+                        const timeLabel = formatJournalEntryTime(iso);
                         const empty = entryListIsEmpty(e);
                         const body = entryBodyPlain(e);
                         return (
@@ -2812,12 +2935,29 @@ export function JournalView() {
                                 dateTime={iso}
                                 className="flex w-11 shrink-0 flex-col items-center gap-0"
                               >
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8A6424]">
-                                  {parts.weekday}
-                                </span>
-                                <span className="font-display text-[26px] leading-none text-foreground">
-                                  {parts.day}
-                                </span>
+                                {isFirstOfDay ? (
+                                  <>
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8A6424]">
+                                      {parts.weekday}
+                                    </span>
+                                    <span className="font-display text-[26px] leading-none text-foreground">
+                                      {parts.day}
+                                    </span>
+                                    {parts.month ? (
+                                      <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">
+                                        {parts.month}
+                                      </span>
+                                    ) : sameDayCount === 1 && timeLabel ? (
+                                      <span className="mt-0.5 text-[10px] leading-none text-muted">
+                                        {timeLabel}
+                                      </span>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <span className="pt-1 text-center text-[11px] leading-snug text-muted">
+                                    {timeLabel}
+                                  </span>
+                                )}
                               </time>
                               <span className="flex min-w-0 flex-1 flex-col gap-1">
                                 {empty ? (
@@ -2835,16 +2975,30 @@ export function JournalView() {
                                         {body}
                                       </span>
                                     ) : null}
-                                    {/* Old duplicate date line kept off mobile:
-                                        {formatJournalListDate(iso)} · {entryPreview(e)} */}
                                     <MobileJournalListChips entry={e} />
-                                    {journalEntryNeedsSyncNote(e.id) ? (
-                                      <span className="text-[12px] text-muted">
-                                        Not synced yet
-                                      </span>
-                                    ) : null}
                                   </>
                                 )}
+                                {(() => {
+                                  const editedNote = formatJournalListEditedNote(
+                                    e,
+                                    entriesSort,
+                                  );
+                                  return editedNote ? (
+                                    <span className="flex items-center gap-1 pt-0.5 text-[12.5px] text-muted">
+                                      <Pencil
+                                        aria-hidden
+                                        className="size-3 shrink-0"
+                                        strokeWidth={1.8}
+                                      />
+                                      {editedNote}
+                                    </span>
+                                  ) : null;
+                                })()}
+                                {!empty && journalEntryNeedsSyncNote(e.id) ? (
+                                  <span className="text-[12px] text-muted">
+                                    Not synced yet
+                                  </span>
+                                ) : null}
                               </span>
                             </button>
                           </li>
@@ -2859,9 +3013,20 @@ export function JournalView() {
                         : "space-y-1.5"
                     }
                   >
-                    {group.entries.map((e) => {
+                    {group.entries.map((e, index) => {
                       const isActive = e.id === activeEntryId;
                       if (journalTab === "journal") {
+                      const iso = journalEntryDateIso(e);
+                      const dayKey = localDateKeyFromIso(iso);
+                      const prev = index > 0 ? group.entries[index - 1] : null;
+                      const prevDayKey = prev
+                        ? localDateKeyFromIso(journalEntryDateIso(prev))
+                        : null;
+                      const isFirstOfDay = dayKey !== prevDayKey;
+                      const timeLabel = formatJournalEntryTime(iso);
+                      const dateLabel = isFirstOfDay
+                        ? formatJournalListDate(iso)
+                        : timeLabel;
                       return (
                         <li key={e.id}>
                           <button
@@ -2877,19 +3042,36 @@ export function JournalView() {
                               entry={e}
                               className="line-clamp-2 text-sm font-semibold"
                             />
-                              {/* Duplicate date line on desktop kept for now:
-                                  formatJournalListDate · entryPreview */}
                               <span className="truncate text-[12.5px] text-foreground/80">
-                                <time
-                                  dateTime={journalEntryDateIso(e)}
-                                  className="text-muted"
-                                >
-                                  {formatJournalListDate(journalEntryDateIso(e))}
+                                <time dateTime={iso} className="text-muted">
+                                  {dateLabel}
                                 </time>
+                                {isFirstOfDay && timeLabel ? (
+                                  <>
+                                    <span className="text-muted"> · </span>
+                                    <span className="text-muted">{timeLabel}</span>
+                                  </>
+                                ) : null}
                                 <span className="text-muted"> · </span>
                                 {entryPreview(e)}
                               </span>
                               <JournalListChips entry={e} />
+                              {(() => {
+                                const editedNote = formatJournalListEditedNote(
+                                  e,
+                                  entriesSort,
+                                );
+                                return editedNote ? (
+                                  <span className="flex items-center gap-1 text-[11px] text-muted">
+                                    <Pencil
+                                      aria-hidden
+                                      className="size-3 shrink-0"
+                                      strokeWidth={1.8}
+                                    />
+                                    {editedNote}
+                                  </span>
+                                ) : null;
+                              })()}
                             </button>
                           </li>
                         );
@@ -3003,7 +3185,24 @@ export function JournalView() {
                 createdAt={activeEntry.createdAt}
                 updatedAt={activeEntry.updatedAt}
                 onEntryDateChange={(iso) => patchActive({ entryDate: iso })}
-                syncStatusLabel={journalCloudSaveLabel(cloudSaveStatus)}
+                syncStatusLabel={(() => {
+                  if (
+                    cloudSaveStatus === "saving" ||
+                    cloudSaveStatus === "offline" ||
+                    cloudSaveStatus === "error"
+                  ) {
+                    return journalCloudSaveLabel(cloudSaveStatus);
+                  }
+                  if (
+                    activeEntry &&
+                    journalEntryWasEditedLaterDay(activeEntry)
+                  ) {
+                    return formatJournalEditedStatus(
+                      activeEntry.updatedAt || activeEntry.createdAt,
+                    );
+                  }
+                  return journalCloudSaveLabel(cloudSaveStatus);
+                })()}
                 highlightQuote={(() => {
                   try {
                     const q = new URLSearchParams(window.location.search).get(
@@ -3013,6 +3212,26 @@ export function JournalView() {
                   } catch {
                     return null;
                   }
+                })()}
+                fromTheme={(() => {
+                  const name = new URLSearchParams(locationSearch)
+                    .get("fromTheme")
+                    ?.trim();
+                  if (!name) return null;
+                  return {
+                    name,
+                    onBack: () => {
+                      flushSaveSync();
+                      const idx = (
+                        window.history.state as { idx?: number } | null
+                      )?.idx;
+                      if (typeof idx === "number" && idx > 0) navigate(-1);
+                      else
+                        navigate(
+                          `/journal/insights/theme/${encodeURIComponent(themeSlug(name))}`,
+                        );
+                    },
+                  };
                 })()}
                 transcribeApiBase={getMedimadeApiBase()}
                 hideCreatedDate

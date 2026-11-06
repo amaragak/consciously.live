@@ -2021,6 +2021,133 @@ export async function runJournalInsightsRemote(opts?: {
   return insights as JournalInsights;
 }
 
+/** Per-entry analysis for history Insights (`POST /journal/insights` · `analyzeEntry`). */
+export type JournalEntryAnalysisRemote = {
+  entryId: string;
+  contentHash: string;
+  analyzedAt: string;
+  /** -1 (negative) … 1 (positive). */
+  tone: number;
+  themes: Array<{ theme: string; sentences: string[]; tone: number }>;
+  notableSentences: string[];
+  lifeAreaHint?: string | null;
+};
+
+async function postJournalInsightsAction(
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    throw new Error("VITE_MEDIMADE_API_URL is not set");
+  }
+  const res = await medimadeFetch(`${base}/journal/insights`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/** Analyse one journal entry (small model). Called once per content hash. */
+export async function analyzeJournalEntryRemote(opts: {
+  entryId: string;
+  contentHash: string;
+  title: string;
+  contentHtml: string;
+  mood?: string;
+  entryDate?: string;
+  knownThemes?: string[];
+}): Promise<JournalEntryAnalysisRemote> {
+  const data = await postJournalInsightsAction({
+    action: "analyzeEntry",
+    entryId: opts.entryId,
+    contentHash: opts.contentHash,
+    title: opts.title,
+    contentHtml: opts.contentHtml,
+    ...(opts.mood ? { mood: opts.mood } : {}),
+    ...(opts.entryDate ? { entryDate: opts.entryDate } : {}),
+    ...(opts.knownThemes?.length ? { knownThemes: opts.knownThemes } : {}),
+  });
+  const a = data.analysis;
+  if (!a || typeof a !== "object") {
+    throw new Error("Analysis response missing analysis object");
+  }
+  const raw = a as Partial<JournalEntryAnalysisRemote>;
+  const tone =
+    typeof raw.tone === "number" && Number.isFinite(raw.tone)
+      ? Math.max(-1, Math.min(1, raw.tone))
+      : 0;
+  const themes = Array.isArray(raw.themes)
+    ? raw.themes
+        .filter((t) => t && typeof t.theme === "string" && t.theme.trim())
+        .map((t) => ({
+          theme: t.theme.trim(),
+          sentences: Array.isArray(t.sentences)
+            ? t.sentences.filter((s): s is string => typeof s === "string" && !!s.trim())
+            : [],
+          tone:
+            typeof t.tone === "number" && Number.isFinite(t.tone)
+              ? Math.max(-1, Math.min(1, t.tone))
+              : tone,
+        }))
+    : [];
+  return {
+    entryId: typeof raw.entryId === "string" && raw.entryId ? raw.entryId : opts.entryId,
+    contentHash:
+      typeof raw.contentHash === "string" && raw.contentHash
+        ? raw.contentHash
+        : opts.contentHash,
+    analyzedAt:
+      typeof raw.analyzedAt === "string" && raw.analyzedAt
+        ? raw.analyzedAt
+        : new Date().toISOString(),
+    tone,
+    themes,
+    notableSentences: Array.isArray(raw.notableSentences)
+      ? raw.notableSentences.filter(
+          (s): s is string => typeof s === "string" && !!s.trim(),
+        )
+      : [],
+    lifeAreaHint:
+      typeof raw.lifeAreaHint === "string" ? raw.lifeAreaHint : null,
+  };
+}
+
+/** Two-line plain summary for one theme, from its real mentions. */
+export async function summarizeJournalThemeRemote(opts: {
+  theme: string;
+  mentions: Array<{
+    date: string;
+    sentence: string;
+    mood?: string;
+    tone?: number;
+  }>;
+}): Promise<{ summary: string; lifeAreaHint?: string | null }> {
+  const data = await postJournalInsightsAction({
+    action: "summarizeTheme",
+    theme: opts.theme,
+    mentions: opts.mentions,
+  });
+  return {
+    summary: typeof data.summary === "string" ? data.summary.trim() : "",
+    lifeAreaHint:
+      typeof data.lifeAreaHint === "string" ? data.lifeAreaHint : null,
+  };
+}
+
 export type PdfImportDatedEntry = {
   title: string;
   body: string;

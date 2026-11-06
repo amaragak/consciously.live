@@ -456,6 +456,16 @@ export function scrubOrphanVoiceHtml(html: string): string {
         el.remove();
       }
     });
+    // Orphan live-preview italics left behind when recognition stole the mic.
+    wrap.querySelectorAll("p > em.journal-voice-live").forEach((em) => {
+      const p = em.parentElement;
+      if (!p || p.getAttribute("data-voice-transcript") === "1") return;
+      const prev = p.previousElementSibling;
+      if (prev?.getAttribute("data-journal-voice-clip") === "1") return;
+      if (p.children.length === 1 && (p.textContent || "").trim()) {
+        p.remove();
+      }
+    });
     return wrap.innerHTML;
   } catch {
     return html;

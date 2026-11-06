@@ -27,8 +27,10 @@ type Props = {
    * the bottom of the resized web view — do not also lift by keyboard height.
    */
   nativeResize?: boolean;
-  /** Notify parent when the software keyboard is open (for Done / Prompts). */
+  /** Notify parent when the software keyboard is open (caret scroll, etc.). */
   onKeyboardOpenChange?: (open: boolean) => void;
+  /** Optional strip docked just above the pill (e.g. "From your theme … · Back"). */
+  aboveBar?: ReactNode;
 };
 
 function readViewportKeyboardOpen(): boolean {
@@ -42,12 +44,13 @@ function readViewportKeyboardOpen(): boolean {
 
 /**
  * Floating writing tools pill — same slot as the tab bar. Stays visible above
- * the keyboard. While the keyboard is open, shows a clear Done control.
+ * the keyboard. While the keyboard is open, adds a Done control beside Prompts.
  */
 export function JournalMobileWritingBar({
   children,
   nativeResize = false,
   onKeyboardOpenChange,
+  aboveBar,
 }: Props) {
   const [bottomPx, setBottomPx] = useState(readMobileTabPillBottomOffsetPx());
   const [keyboardOpen, setKeyboardOpen] = useState(readViewportKeyboardOpen);
@@ -158,6 +161,18 @@ export function JournalMobileWritingBar({
             "linear-gradient(to top, color-mix(in srgb, var(--background) 42%, transparent), transparent 70%)",
         }}
       />
+      {aboveBar ? (
+        <div
+          className="fixed z-[120] md:hidden"
+          style={{
+            left: APP_MOBILE_TAB_PILL_INSET_PX,
+            right: APP_MOBILE_TAB_PILL_INSET_PX,
+            bottom: bottomPx + APP_MOBILE_TAB_BAR_H_PX + 8,
+          }}
+        >
+          {aboveBar}
+        </div>
+      ) : null}
       <div
         className="fixed z-[120] border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)] md:hidden"
         style={{
@@ -177,7 +192,7 @@ export function JournalMobileWritingBar({
               type="button"
               aria-label="Done"
               title="Done"
-              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border px-3 text-[13px] font-semibold text-foreground transition-colors hover:border-accent/40"
+              className="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border px-3 text-[13px] font-semibold text-foreground transition-colors hover:border-accent/40"
               onMouseDown={(e) => {
                 // Keep caret/selection in the editor; don't steal focus first.
                 e.preventDefault();

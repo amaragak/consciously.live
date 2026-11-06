@@ -1,0 +1,28 @@
+{
+  "name": "@consciously/voice-note",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Single-mic journal VoiceNote: one AVAudioEngine/AudioRecord tap → file + on-device speech + levels",
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources",
+    "Package.swift",
+    "ConsciouslyVoiceNote.podspec"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

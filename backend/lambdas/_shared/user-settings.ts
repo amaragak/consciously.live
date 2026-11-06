@@ -96,6 +96,8 @@ export type UserSettingsV1 = {
   journal: {
     /** When false, clip rows + bronze rules hide; transcripts read as plain text. */
     showVoiceClips: boolean;
+    /** Entries list sort: by when written (default) or last edit. */
+    entriesSort: "entryDate" | "lastEdited";
   };
   /** Which daily to-dos the dashboard's Today list shows. */
   today: {
@@ -177,6 +179,7 @@ export function defaultUserSettings(): UserSettingsV1 {
     },
     journal: {
       showVoiceClips: true,
+      entriesSort: "entryDate",
     },
     today: {
       gratitude: true,
@@ -252,6 +255,10 @@ const MED_TYPES = new Set<MeditateType>([
   "breathing",
   "body-scan",
   "sleep",
+]);
+const JOURNAL_ENTRIES_SORT = new Set<"entryDate" | "lastEdited">([
+  "entryDate",
+  "lastEdited",
 ]);
 const ACCOUNT_PRONOUNS = new Set<AccountPronouns>([
   "she_her",
@@ -458,6 +465,11 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
       showVoiceClips: asBool(
         journal.showVoiceClips,
         d.journal.showVoiceClips,
+      ),
+      entriesSort: asEnum(
+        journal.entriesSort,
+        JOURNAL_ENTRIES_SORT,
+        d.journal.entriesSort,
       ),
     },
     today: {

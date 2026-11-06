@@ -20,6 +20,8 @@ dependencies {
     implementation project(':capacitor-status-bar')
     implementation project(':capgo-capacitor-social-login')
     implementation project(':capgo-capacitor-speech-recognition')
+    implementation project(':consciously-journal-voice-capture')
+    implementation project(':consciously-voice-note')
     implementation project(':mediagrid-capacitor-native-audio')
 
 }

@@ -36,6 +36,8 @@ import {
   gratitudeLinesToHtml,
   gratitudeTitleForDate,
   isGratitudeEntry,
+  journalEntryDateIso,
+  journalEntryHref,
   loadJournalStore,
   localDateKey,
   localDateKeyFromIso,
@@ -47,7 +49,6 @@ import {
   withoutDemoJournalEntries,
   type JournalEntry,
   type JournalGratitudeLines,
-  journalEntryHref,
 } from "@/lib/journal-storage";
 import {
   putJournalStoreRemote,
@@ -275,45 +276,60 @@ function JournalTodayHero({
     ? todayEntry!.title?.trim() || "Untitled"
     : null;
   const firstLine = started ? entryFirstLine(todayEntry!) : "";
-  const href = started
-    ? journalEntryHref(todayEntry!)
-    : "/journal/entries?new=1";
-  const cta = started ? "Continue writing" : "New entry";
 
-  const mistCta = (
-    <Link
-      href={href}
-      className="inline-flex h-9 w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#AFC2DC] bg-accent-button px-4 text-[13.5px] font-semibold text-on-accent"
+  const penIcon = (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
     >
-      {started ? (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M4 20h4L19 9l-4-4L4 16z" />
-        </svg>
-      ) : (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          aria-hidden
-        >
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      )}
-      {cta}
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+    </svg>
+  );
+  const plusIcon = (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+
+  const primaryCtaClass =
+    "inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#AFC2DC] bg-accent-button px-3 text-[13.5px] font-semibold text-on-accent sm:px-4";
+  const outlineCtaClass =
+    "inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#AFC2DC] bg-transparent px-3 text-[13.5px] font-semibold text-[#F3EDE2] sm:px-4";
+
+  const ctaRow = started ? (
+    <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+      <Link href={journalEntryHref(todayEntry!)} className={primaryCtaClass}>
+        {penIcon}
+        Continue writing
+      </Link>
+      <Link href="/journal/entries?new=1" className={outlineCtaClass}>
+        {plusIcon}
+        New entry
+      </Link>
+    </div>
+  ) : (
+    <Link
+      href="/journal/entries?new=1"
+      className={`${primaryCtaClass} w-full`}
+    >
+      {plusIcon}
+      New entry
     </Link>
   );
 
@@ -341,7 +357,7 @@ function JournalTodayHero({
           Nothing written yet today.
         </p>
       )}
-      <div>{mistCta}</div>
+      <div className="w-full min-w-0">{ctaRow}</div>
     </div>
   );
 
@@ -570,10 +586,12 @@ export function JournalOverviewPage() {
   */
 
   const todayKey = localDateKey();
+  // Most recently updated freeform from today (entries already sorted by updatedAt).
+  // + New always creates another entry — never reopen/append via this hero alone.
   const todayEntry = useMemo(
     () =>
       entries.find(
-        (e) => localDateKeyFromIso(e.createdAt) === todayKey,
+        (e) => localDateKeyFromIso(journalEntryDateIso(e)) === todayKey,
       ) ?? null,
     [entries, todayKey],
   );

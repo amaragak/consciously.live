@@ -241,10 +241,15 @@ export function DailyAffirmationsCard() {
         <StatusRow
           wide={wide}
           label="Daily affirmations"
-          body="Eleven short lines each day, written from your dreams, values and what you're working through."
+          body={
+            wide
+              ? "Eleven short lines each day, written from your dreams, values and what you're working through."
+              : "Eleven lines each day from your dreams and values"
+          }
           action="Turn on"
           busy={phase === "writing"}
           onAction={() => void turnOn()}
+          mist={!wide}
         />
         {note ? <p className="mt-2 text-[13px] text-muted">{note}</p> : null}
       </section>
@@ -439,33 +444,57 @@ export function DailyAffirmationsCard() {
         ) : (
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-accent-link">
-                Today&apos;s affirmations
-              </p>
-              <p className="mt-1 truncate text-[17px] font-medium leading-snug text-foreground">
+              {wide ? (
+                <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-accent-link">
+                  Today&apos;s affirmations
+                </p>
+              ) : (
+                <p className="text-[15px] font-semibold text-foreground">
+                  Daily affirmations
+                </p>
+              )}
+              <p
+                className={`truncate font-medium leading-snug text-foreground ${
+                  wide ? "mt-1 text-[17px]" : "mt-0.5 text-[14px] text-muted"
+                }`}
+              >
                 {first && !first.removed
                   ? first.text
                   : "Cleared for today. New ones tomorrow."}
               </p>
             </div>
-            <IconButton
-              label="Listen"
-              disabled={listening}
-              onClick={() =>
-                void listen(
-                  lines.filter((line) => !line.removed).map((line) => line.text),
-                  "Today's affirmations",
-                  `affirmations:${today}`,
-                )
-              }
-            />
+            {wide ? (
+              <IconButton
+                label="Listen"
+                disabled={listening}
+                onClick={() =>
+                  void listen(
+                    lines
+                      .filter((line) => !line.removed)
+                      .map((line) => line.text),
+                    "Today's affirmations",
+                    `affirmations:${today}`,
+                  )
+                }
+              />
+            ) : null}
             <button
               type="button"
               onClick={() => setAffirmationsExpanded(true)}
-              className="inline-flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-[13px] font-semibold text-muted"
+              className={
+                wide
+                  ? "inline-flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-[13px] font-semibold text-muted"
+                  : "accent-fill-gradient inline-flex h-9 shrink-0 cursor-pointer items-center rounded-full px-3.5 text-[13px] font-semibold text-on-accent"
+              }
             >
-              Show all {lines.length}
-              <SelectChevron />
+              {wide ? (
+                <>
+                  Show all {lines.length}
+                  <SelectChevron />
+                </>
+              ) : (
+                "Open"
+              )}
             </button>
           </div>
         )}
@@ -507,6 +536,7 @@ function StatusRow({
   action,
   busy,
   onAction,
+  mist = false,
 }: {
   wide: boolean;
   label: string;
@@ -514,26 +544,43 @@ function StatusRow({
   action: string;
   busy: boolean;
   onAction: () => void;
+  /** Mobile compact: Mist fill on the action. */
+  mist?: boolean;
 }) {
   return (
     <div
       className={`rounded-2xl border border-border bg-card shadow-[0_2px_10px_rgba(15,27,45,0.04)] ${
         wide
           ? "flex items-center gap-[18px] py-[14px] pl-[22px] pr-[18px]"
-          : "flex flex-col gap-2.5 px-4 py-[14px]"
+          : "flex items-center gap-3 px-4 py-3.5"
       }`}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-accent-link">
-        {label}
-      </p>
-      <p className={`min-w-0 text-[14px] text-muted ${wide ? "flex-1" : "leading-[1.5]"}`}>
-        {body}
-      </p>
+      {wide ? (
+        <p className="text-[11px] font-semibold uppercase tracking-[1.6px] text-accent-link">
+          {label}
+        </p>
+      ) : null}
+      <div className={`min-w-0 ${wide ? "flex-1" : "flex-1"}`}>
+        {!wide ? (
+          <p className="text-[15px] font-semibold text-foreground">{label}</p>
+        ) : null}
+        <p
+          className={`text-[14px] text-muted ${
+            wide ? "leading-[1.5]" : "mt-0.5 leading-snug"
+          }`}
+        >
+          {body}
+        </p>
+      </div>
       <button
         type="button"
         disabled={busy}
         onClick={onAction}
-        className="inline-flex h-9 shrink-0 cursor-pointer items-center rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground disabled:opacity-50"
+        className={
+          mist
+            ? "accent-fill-gradient inline-flex h-9 shrink-0 cursor-pointer items-center rounded-full px-3.5 text-[13px] font-semibold text-on-accent disabled:opacity-50"
+            : "inline-flex h-9 shrink-0 cursor-pointer items-center rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground disabled:opacity-50"
+        }
       >
         {busy ? "Writing…" : action}
       </button>

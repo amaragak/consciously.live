@@ -23,6 +23,8 @@ let package = Package(
         .package(name: "CapacitorStatusBar", path: "../../../../../node_modules/@capacitor/status-bar"),
         .package(name: "CapgoCapacitorSocialLogin", path: "../../../../../node_modules/@capgo/capacitor-social-login"),
         .package(name: "CapgoCapacitorSpeechRecognition", path: "../../../../../node_modules/@capgo/capacitor-speech-recognition"),
+        .package(name: "ConsciouslyJournalVoiceCapture", path: "../../../plugins/journal-voice-capture"),
+        .package(name: "ConsciouslyVoiceNote", path: "../../../plugins/voice-note"),
         .package(name: "MediagridCapacitorNativeAudio", path: "../../../../../node_modules/@mediagrid/capacitor-native-audio")
     ],
     targets: [
@@ -42,6 +44,8 @@ let package = Package(
                 .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar"),
                 .product(name: "CapgoCapacitorSocialLogin", package: "CapgoCapacitorSocialLogin"),
                 .product(name: "CapgoCapacitorSpeechRecognition", package: "CapgoCapacitorSpeechRecognition"),
+                .product(name: "ConsciouslyJournalVoiceCapture", package: "ConsciouslyJournalVoiceCapture"),
+                .product(name: "ConsciouslyVoiceNote", package: "ConsciouslyVoiceNote"),
                 .product(name: "MediagridCapacitorNativeAudio", package: "MediagridCapacitorNativeAudio")
             ]
         )

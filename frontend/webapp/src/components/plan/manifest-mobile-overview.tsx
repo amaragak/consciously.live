@@ -451,10 +451,7 @@ export function ManifestMobileLifeAreas({
       {loading ? (
         <div className="-mx-4 flex gap-3 overflow-hidden px-4" aria-hidden>
           {[0, 1].map((i) => (
-            <div
-              key={i}
-              className="w-[min(78vw,280px)] shrink-0"
-            >
+            <div key={i} className="w-[70vw] max-w-[280px] shrink-0">
               <LifeAreaCard loading creationIndex={i} />
             </div>
           ))}
@@ -472,7 +469,7 @@ export function ManifestMobileLifeAreas({
           {areas.map((a) => (
             <div
               key={a.dream.id}
-              className="flex w-[min(78vw,280px)] shrink-0 flex-col [&>*]:flex-1"
+              className="flex w-[70vw] max-w-[280px] shrink-0 flex-col [&>*]:flex-1"
             >
               <LifeAreaCard
                 href={a.href}
@@ -484,6 +481,7 @@ export function ManifestMobileLifeAreas({
                 onFocus={a.onFocus}
                 onMeditate={a.onMeditate}
                 creationIndex={a.creationIndex}
+                compact
               />
             </div>
           ))}

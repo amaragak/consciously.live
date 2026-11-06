@@ -1,0 +1,28 @@
+{
+  "name": "@consciously/journal-voice-capture",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Single-engine journal voice capture: one mic tap → on-device speech + m4a file",
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources",
+    "Package.swift",
+    "ConsciouslyJournalVoiceCapture.podspec"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

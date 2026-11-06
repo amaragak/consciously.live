@@ -8,11 +8,13 @@ import { LifeAreaCard } from "@/components/plan/life-area-card";
 import {
   ManifestMobileHero,
   ManifestMobileLifeAreas,
-  ManifestMobileNextStep,
+  // ManifestMobileNextStep — overview no longer shows Next step (life area keeps it).
   ManifestMobileVisionBoard,
   type ManifestMobileLifeArea,
 } from "@/components/plan/manifest-mobile-overview";
+import { ManifestMobileFoundations } from "@/components/plan/manifest-mobile-foundations";
 import { ManifestoFoundations } from "@/components/plan/manifesto-foundations";
+import { SelectChevron } from "@/components/select-chevron";
 import { ManifestoHeroBento } from "@/components/plan/manifesto-hero-bento";
 import { useMinWidth } from "@/hooks/use-min-width";
 import { useOverviewEntrance } from "@/hooks/use-overview-entrance";
@@ -545,9 +547,11 @@ export function PlanHomeClient() {
           urls={firstLoad ? {} : visionTileUrls}
           loading={firstLoad}
         />
+        {/* Next step lives on the life area page now.
         {!firstLoad ? <ManifestMobileNextStep /> : (
           <div className="mm-skeleton h-[88px] rounded-2xl" aria-hidden />
         )}
+        */}
         <ManifestMobileLifeAreas
           areas={firstLoad ? [] : mobileLifeAreas}
           loading={firstLoad}
@@ -776,35 +780,65 @@ export function PlanHomeClient() {
       {!firstLoad ? <DailyAffirmationsCard /> : null}
 
       {!firstLoad ? (
-      <div data-dash-reveal>
-        <ManifestoFoundations
-          values={values}
-          quotes={quotes}
-          questions={questions}
-          onValues={persistValues}
-          onQuotes={persistQuotes}
-          onQuestions={persistQuestions}
-        />
-      </div>
+        wide ? (
+          <div data-dash-reveal>
+            <ManifestoFoundations
+              values={values}
+              quotes={quotes}
+              questions={questions}
+              onValues={persistValues}
+              onQuotes={persistQuotes}
+              onQuestions={persistQuestions}
+            />
+          </div>
+        ) : (
+          <div data-dash-reveal className="mt-4">
+            <ManifestMobileFoundations
+              values={values}
+              quotes={quotes}
+              questions={questions}
+              onValues={persistValues}
+              onQuestions={persistQuestions}
+            />
+          </div>
+        )
       ) : null}
 
       {/* —— Guides —— */}
       {!firstLoad && guidesForSection.length > 0 ? (
         <section
           data-dash-reveal
-          className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-10 sm:px-6"
+          className="mx-auto flex max-w-6xl flex-col gap-2.5 px-4 pb-12 pt-6 sm:gap-5 sm:px-6 sm:pt-10"
           aria-labelledby="manifesto-guides-heading"
         >
-          <ManifestoSectionHeader
-            id="manifesto-guides-heading"
-            title="Guides"
-            subline="Short reads on vision, goals and following through."
-            right={
-              <ManifestoHeaderLink to="/manifest/guides">
-                All guides
-              </ManifestoHeaderLink>
-            }
-          />
+          {/* Desktop: large serif title + subline. Mobile: small caps + All pill. */}
+          <div className="hidden md:block">
+            <ManifestoSectionHeader
+              id="manifesto-guides-heading"
+              title="Guides"
+              subline="Short reads on vision, goals and following through."
+              right={
+                <ManifestoHeaderLink to="/manifest/guides">
+                  All guides
+                </ManifestoHeaderLink>
+              }
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 md:hidden">
+            <h2
+              id="manifesto-guides-heading"
+              className="text-[11px] font-semibold uppercase tracking-[1.6px] text-[#8A6424]"
+            >
+              Guides
+            </h2>
+            <Link
+              to="/manifest/guides"
+              className="inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full border border-border bg-card pl-3.5 pr-2 text-[13px] font-semibold text-foreground"
+            >
+              All
+              <SelectChevron direction="right" />
+            </Link>
+          </div>
           <MeditateGuidesGrid guides={guidesForSection} area="manifest" />
         </section>
       ) : null}

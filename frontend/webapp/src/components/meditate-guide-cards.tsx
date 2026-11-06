@@ -1,4 +1,5 @@
 import { CoverImage } from "@/components/cover-image";
+import { SelectChevron } from "@/components/select-chevron";
 import { Link } from "@/lib/spa-nav";
 import {
   guidesBasePath,
@@ -73,6 +74,7 @@ export function MeditateGuideListRow({
           {guide.readMinutes} min read
         </span>
       </span>
+      <SelectChevron direction="right" />
     </Link>
   );
 }

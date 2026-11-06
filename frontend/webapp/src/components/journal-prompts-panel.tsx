@@ -1,7 +1,7 @@
 import * as Switch from "@radix-ui/react-switch";
-import { Check } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { SelectChevron } from "@/components/select-chevron";
+import { createPortal } from "react-dom";
 import { JournalPromptQuestion } from "@/components/journal-prompt-question";
 import {
   JOURNAL_PROMPT_TOPICS,
@@ -43,10 +43,10 @@ function readIncludes(): { areas: boolean; values: boolean; heal: boolean } {
 }
 
 function filterChipClass(active: boolean): string {
-  return `inline-flex h-[30px] max-w-full cursor-pointer items-center gap-1 truncate rounded-full border px-3 text-[13px] transition-colors ${
+  return `inline-flex h-8 max-w-full cursor-pointer items-center gap-1 truncate rounded-full border px-3 text-[13.5px] font-semibold transition-colors ${
     active
-      ? "border-[#C8A46A] bg-[#C8A46A] font-semibold text-[#0F1B2D]"
-      : "border-[#E6D3AE] bg-card font-medium text-foreground hover:border-accent/50"
+      ? "border-nav bg-nav text-nav-foreground"
+      : "border-border bg-card text-foreground hover:border-accent/50"
   }`;
 }
 
@@ -64,9 +64,9 @@ function ToggleSwitch({
       checked={checked}
       onCheckedChange={(v) => onChange(Boolean(v))}
       aria-label={label}
-      className="relative h-[22px] w-10 shrink-0 cursor-pointer rounded-full border border-[#AFC2DC] bg-[#E7E1D6] transition-colors data-[state=checked]:bg-[#C9D7EA]"
+      className="relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full border border-[#AFC2DC] bg-[#E7E1D6] transition-colors data-[state=checked]:bg-[#C9D7EA]"
     >
-      <Switch.Thumb className="block h-4 w-4 translate-x-0.5 rounded-full bg-white shadow-sm transition-transform data-[state=checked]:translate-x-[18px]" />
+      <Switch.Thumb className="block size-5 translate-x-0.5 rounded-full bg-white shadow-sm transition-transform data-[state=checked]:translate-x-[18px]" />
     </Switch.Root>
   );
 }
@@ -84,16 +84,29 @@ function PromptRow({
     <button
       type="button"
       onClick={() => onPick(prompt)}
-      className="flex w-full cursor-pointer items-start gap-2.5 border-t border-[#E6D3AE] py-[11px] text-left"
+      className="flex w-full min-h-[50px] cursor-pointer items-center gap-3 border-t border-border py-3 text-left"
     >
       <span
-        className={`min-w-0 flex-1 text-[14.5px] leading-snug ${
-          used ? "text-muted line-through" : "text-foreground"
+        className={`min-w-0 flex-1 text-[15.5px] leading-snug ${
+          used ? "text-muted" : "text-foreground"
         }`}
       >
         <JournalPromptQuestion template={prompt.template} name={prompt.name} />
       </span>
-      <SelectChevron direction="right" className="mt-0.5 text-accent-link" />
+      {used ? (
+        <span className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-[#8A6424]">
+          <Check className="size-3.5" strokeWidth={2.4} aria-hidden />
+          Added
+        </span>
+      ) : (
+        /* Chevron kept off — + shows add. */
+        <span
+          className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-full border border-border bg-card text-[#8A6424]"
+          aria-hidden
+        >
+          <Plus className="size-4" strokeWidth={2} />
+        </span>
+      )}
     </button>
   );
 }
@@ -179,18 +192,16 @@ export function JournalPromptsPanel({
 
   const group = (
     title: string,
-    sub: string,
     on: boolean,
     setOn: (v: boolean) => void,
     chips: { id: string; label: string; kind: "area" | "value" | "heal" }[],
   ) => {
     if (chips.length === 0) return null;
     return (
-      <div className="flex flex-col gap-2.5 border-t border-[#E6D3AE] pt-3">
+      <div className="flex flex-col gap-2 border-t border-border pt-3">
         <div className="flex items-center gap-2.5">
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15px] text-foreground">{title}</span>
-            <span className="block text-[12px] text-muted">{sub}</span>
+          <span className="min-w-0 flex-1 text-[14.5px] font-semibold text-foreground">
+            {title}
           </span>
           <ToggleSwitch checked={on} onChange={setOn} label={title} />
         </div>
@@ -229,7 +240,7 @@ export function JournalPromptsPanel({
     if (prompts.length === 0) return null;
     return (
       <div>
-        <div className="pt-1.5 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+        <div className="pt-1.5 text-[11px] font-semibold uppercase tracking-[1.4px] text-[#8A6424]">
           {label}
         </div>
         {prompts.map((prompt) => (
@@ -244,23 +255,8 @@ export function JournalPromptsPanel({
     );
   };
 
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-[18px] border border-border bg-card px-[18px] py-4 shadow-[0_2px_12px_rgba(15,27,45,0.05)]">
-      <div className="flex items-center">
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-          Prompts
-        </span>
-        <button
-          type="button"
-          aria-label="Close prompts"
-          onClick={onClose}
-          className="flex cursor-pointer text-muted hover:text-foreground"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
-      </div>
+  const body = (
+    <>
       <div className="flex flex-wrap gap-1.5">
         {JOURNAL_PROMPT_TOPICS.map((topic) => {
           const active =
@@ -281,34 +277,83 @@ export function JournalPromptsPanel({
         })}
       </div>
       {group(
-        "Include my life areas",
-        "Tap one to see only its prompts",
+        "From my life areas",
         includes.areas,
         (on) => setInclude("areas", on),
         sources.areas
           .filter((area) => area.title.trim())
-          .map((area) => ({ id: area.id, label: area.title.trim(), kind: "area" as const })),
+          .map((area) => ({
+            id: area.id,
+            label: area.title.trim(),
+            kind: "area" as const,
+          })),
       )}
       {group(
-        "Include my values",
-        "Tap one to see only its prompts",
+        "From my values",
         includes.values,
         (on) => setInclude("values", on),
         sources.values
           .filter((value) => value.text.trim())
-          .map((value) => ({ id: value.id, label: value.text.trim(), kind: "value" as const })),
+          .map((value) => ({
+            id: value.id,
+            label: value.text.trim(),
+            kind: "value" as const,
+          })),
       )}
       {group(
-        "Include my Heal items",
-        "Tap one to see only its prompts",
+        "From my Heal items",
         includes.heal,
         (on) => setInclude("heal", on),
         sources.healItems
           .filter((item) => item.title.trim())
-          .map((item) => ({ id: item.id, label: item.title.trim(), kind: "heal" as const })),
+          .map((item) => ({
+            id: item.id,
+            label: item.title.trim(),
+            kind: "heal" as const,
+          })),
       )}
       {section("From this entry", fromEntry)}
       {section("Prompts", rest)}
-    </div>
+    </>
+  );
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[130]">
+      <button
+        type="button"
+        aria-label="Close prompts"
+        className="absolute inset-0 cursor-pointer bg-[rgb(15_27_45_/_0.4)] sm:bg-[rgb(15_27_45_/_0.18)]"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Prompts"
+        className="absolute inset-x-0 bottom-0 top-[120px] flex flex-col overflow-hidden rounded-t-[24px] border border-b-0 border-border bg-card px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2.5 shadow-xl sm:inset-y-3 sm:right-3 sm:left-auto sm:top-3 sm:w-[min(380px,calc(100%-1.5rem))] sm:rounded-[18px] sm:border sm:pb-4 sm:pt-4 sm:shadow-[0_2px_12px_rgba(15,27,45,0.05)]"
+      >
+        <div className="flex justify-center pb-2 sm:hidden" aria-hidden>
+          <span className="h-[5px] w-10 rounded-full bg-border" />
+        </div>
+        <div className="flex items-center">
+          <span className="flex-1 text-[11.5px] font-semibold uppercase tracking-[1.4px] text-[#8A6424]">
+            Prompts
+          </span>
+          <button
+            type="button"
+            aria-label="Close prompts"
+            onClick={onClose}
+            className="flex cursor-pointer text-muted hover:text-foreground"
+          >
+            <X className="size-[18px]" strokeWidth={1.8} aria-hidden />
+          </button>
+        </div>
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain">
+          {body}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

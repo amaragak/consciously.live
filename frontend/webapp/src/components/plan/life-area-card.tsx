@@ -44,6 +44,11 @@ type LifeAreaCardProps =
       onFocus?: () => void;
       onMeditate?: () => void;
       creationIndex: number;
+      /**
+       * Mobile overview swipe cards: tighter copy, no date / Next line,
+       * plain empty goal (no dashed box).
+       */
+      compact?: boolean;
     };
 
 /**
@@ -75,6 +80,7 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
     setGoalHref,
     onFocus,
     onMeditate,
+    compact = false,
   } = props;
   const name = title.trim() || "Untitled";
   const pct =
@@ -85,10 +91,20 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
   return (
     <div className={`${CARD_CLASS} ${CARD_INTERACTIVE_CLASS}`}>
       <div className="navy-paisley-plate" aria-hidden />
-      <div className={CARD_BODY_CLASS}>
+      <div
+        className={
+          compact
+            ? "relative z-[1] flex min-w-0 flex-1 flex-col gap-3 p-4"
+            : CARD_BODY_CLASS
+        }
+      >
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2.5">
-          <h3 className="min-w-0 font-display text-[26px] font-normal leading-[1.15]">
+          <h3
+            className={`min-w-0 font-display font-normal leading-[1.15] ${
+              compact ? "text-[22px]" : "text-[26px]"
+            }`}
+          >
             <Link
               to={href}
               className="rounded-sm after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60 focus-visible:after:outline-2"
@@ -96,7 +112,7 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
               {name}
             </Link>
           </h3>
-          {activity ? (
+          {!compact && activity ? (
             <span
               className={`shrink-0 whitespace-nowrap text-xs ${
                 activity.quiet
@@ -109,9 +125,9 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
           ) : null}
         </div>
         <p
-          className={`line-clamp-3 text-sm leading-[1.5] text-white/75 ${
-            snippet ? "" : "italic"
-          }`}
+          className={`text-sm leading-[1.5] text-white/75 ${
+            compact ? "line-clamp-2" : "line-clamp-3"
+          } ${snippet ? "" : "italic"}`}
         >
           {snippet ?? "Nothing written yet"}
         </p>
@@ -119,7 +135,11 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
 
       {goal ? (
         <>
-          <div className="flex flex-col gap-[7px] rounded-xl bg-white/10 px-3.5 py-3">
+          <div
+            className={`flex flex-col gap-[7px] ${
+              compact ? "gap-1.5" : "rounded-xl bg-white/10 px-3.5 py-3"
+            }`}
+          >
             <span className={PANEL_LABEL_CLASS}>Current goal</span>
             <span className="text-sm font-semibold leading-[1.35]">
               {goal.title.trim() || "Untitled goal"}
@@ -144,7 +164,7 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
                 </span>
               </span>
             ) : null}
-            {goal.next ? (
+            {!compact && goal.next ? (
               <Link
                 to={goal.next.href}
                 className="relative z-10 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[13px] font-semibold text-accent-link hover:underline"
@@ -180,6 +200,17 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
             </button>
           </div>
         </>
+      ) : compact ? (
+        <div className="mt-auto flex flex-col items-start gap-2">
+          <span className="text-[14px] text-white/70">No goal yet</span>
+          <Link
+            to={setGoalHref}
+            className={`${PILL_CLASS} h-8 bg-white/14 px-[13px] text-[13px]`}
+          >
+            <Plus aria-hidden className="size-[13px]" strokeWidth={2} />
+            Set one
+          </Link>
+        </div>
       ) : (
         <div className="flex flex-1 flex-col items-start gap-2 rounded-xl border-[1.5px] border-dashed border-white/25 bg-white/[0.08] px-3.5 py-3">
           <span className={PANEL_LABEL_CLASS}>Current goal</span>

@@ -35,5 +35,11 @@ project(':capgo-capacitor-social-login').projectDir = new File('../../../node_mo
 include ':capgo-capacitor-speech-recognition'
 project(':capgo-capacitor-speech-recognition').projectDir = new File('../../../node_modules/@capgo/capacitor-speech-recognition/android')
 
+include ':consciously-journal-voice-capture'
+project(':consciously-journal-voice-capture').projectDir = new File('../plugins/journal-voice-capture/android')
+
+include ':consciously-voice-note'
+project(':consciously-voice-note').projectDir = new File('../plugins/voice-note/android')
+
 include ':mediagrid-capacitor-native-audio'
 project(':mediagrid-capacitor-native-audio').projectDir = new File('../../../node_modules/@mediagrid/capacitor-native-audio/android')

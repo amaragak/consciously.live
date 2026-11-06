@@ -211,7 +211,8 @@
     color: var(--foreground);
     -webkit-text-fill-color: var(--foreground);
   }
-  /* ~40px circle; sun nearly fills it; same navy + paisley as dashboard hero. */
+  /* ~40px circle: the app icon (icon-only.png) scaled down as a whole — not a
+     tiled paisley crop (that read too dark / flat). */
   .app-header-home-btn {
     position: relative;
     display: inline-flex;
@@ -224,17 +225,18 @@
     /* ~14px from button edge to first breadcrumb. */
     margin-right: 14px;
     border-radius: 9999px;
-    background-color: #0f1b2d;
+    background-color: transparent;
     background-image: none;
   }
-  .app-header-home-btn .navy-paisley-plate {
-    /* Same tile scale as dashboard hero (`.navy-paisley-plate` 640px) —
-       a crop of the pattern, not a shrunk tile that reads as flat navy. */
-    background-size: 640px 640px;
-  }
-  .app-header-home-btn .app-header-brand-sun {
-    position: relative;
-    z-index: 1;
+  .app-header-home-btn .app-header-home-icon {
+    display: block;
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+    object-position: center;
+    border-radius: inherit;
+    pointer-events: none;
+    user-select: none;
   }
   /* Avatar matches the sun button (2.5rem). */
   .app-top-bar .app-mobile-account-trigger {

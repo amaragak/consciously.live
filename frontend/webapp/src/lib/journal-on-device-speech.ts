@@ -1,20 +1,36 @@
 /**
- * Live transcription for journal / onboarding voice notes.
+ * Journal voice transcription helpers.
  *
- * Native: Capgo SpeechRecognition alone (no MediaRecorder — dual mic ownership
- * hard-crashes iOS). audioLevel drives the waveform. Clips get audio from a
- * separate MediaRecorder path only when Capgo cannot start.
- * Web: browser SpeechRecognition when available; else server on Done.
+ * Recording uses the browser/WKWebView MediaRecorder (working clip path).
+ * Live on-device recognition during recording is paused — it competed for the
+ * mic and broke clip audio. After Done, we transcribe the saved file on-device
+ * (iOS SFSpeechURLRecognitionRequest / Android file recogniser) with server
+ * Whisper as fallback.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { isNativeApp } from "@/lib/native/native-bridge";
+
+export type NativeVoiceCaptureResult = {
+  blob: Blob;
+  mimeType: string;
+  durationSec: number;
+  peaks: number[];
+  transcript: string;
+};
 
 export type OnDeviceSpeechHandle = {
   /** Best live / final transcript so far. */
   getText: () => string;
-  stop: () => Promise<void>;
+  /**
+   * Stop recognition (and recording when capturesAudio). When capturesAudio,
+   * resolves with the written clip + transcript.
+   */
+  stop: () => Promise<NativeVoiceCaptureResult | void>;
   /** True when this session used a local recognizer (not cloud). */
   usedOnDevice: boolean;
+  /** True when stop() returns a real audio file (not a silent placeholder). */
+  capturesAudio: boolean;
 };
 
 export type TranscriptionEngineDiag = {
@@ -102,7 +118,7 @@ export type StartOnDeviceSpeechOpts = {
    * When the engine restarts after silence, a new segment begins from "".
    */
   onPartial: (text: string) => void;
-  /** Native Capgo mic level 0..1 for the recording waveform. */
+  /** Mic level 0..1 for the recording waveform. */
   onLevel?: (level: number) => void;
   /**
    * Fired when a recognition segment ends (silence / restart / stop) so the
@@ -111,152 +127,106 @@ export type StartOnDeviceSpeechOpts = {
   onSegmentEnd?: () => void;
 };
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const dataUrl = typeof r.result === "string" ? r.result : "";
+      const i = dataUrl.indexOf(",");
+      resolve(i >= 0 ? dataUrl.slice(i + 1) : dataUrl);
+    };
+    r.onerror = () => reject(r.error ?? new Error("Could not read audio"));
+    r.readAsDataURL(blob);
+  });
+}
+
 /**
- * Capgo alone owns the mic on native. Do not also start MediaRecorder while
- * this handle is live — that dual-client path hard-crashes iOS.
+ * Transcribe a saved recording on-device. Returns null when native / on-device
+ * file recognition is unavailable so the caller can use server Whisper.
  */
-async function startNativeOnDevice(
-  opts: StartOnDeviceSpeechOpts,
+export async function transcribeAudioBlobOnDevice(
+  blob: Blob,
+  mimeType: string,
+): Promise<string | null> {
+  if (!isNativeApp() || !blob || blob.size < 32) return null;
+  try {
+    const { JournalVoiceCapture } = await import(
+      "@consciously/journal-voice-capture"
+    );
+    const avail = await JournalVoiceCapture.available({ language: language() });
+    if (!avail.available || !avail.onDevice) {
+      writeTranscriptionEngineDiag(
+        "server",
+        "On-device file transcription unavailable",
+      );
+      return null;
+    }
+    const base64 = await blobToBase64(blob);
+    const result = await JournalVoiceCapture.transcribeFile({
+      base64,
+      mimeType: mimeType || blob.type || "audio/mp4",
+      language: language(),
+    });
+    const text = (result.transcript || "").trim();
+    writeTranscriptionEngineDiag(
+      "on-device",
+      `File transcription (${Capacitor.getPlatform()}, ${language()})`,
+    );
+    return text || null;
+  } catch (e) {
+    writeTranscriptionEngineDiag(
+      "server",
+      e instanceof Error ? e.message : "On-device file transcription failed",
+    );
+    return null;
+  }
+}
+
+/*
+ * Live on-device recognition during recording is commented out for now.
+ * It owned the mic (Capgo / AVAudioEngine) so MediaRecorder got no audio and
+ * clips were missing; the live italic preview was also left in the editor.
+ *
+ * Prefer: MediaRecorder while recording → transcribeAudioBlobOnDevice on Done.
+ *
+ * Kept below for a future single-engine restore; do not call from the journal
+ * editor until clip + live text are proven together again.
+ */
+
+async function startNativeVoiceCapture(
+  _opts: StartOnDeviceSpeechOpts,
 ): Promise<OnDeviceSpeechHandle | null> {
+  // Live JournalVoiceCapture during record — disabled (mic contention).
+  return null;
+  /*
+  if (!isNativeApp()) return null;
+  try {
+    const { JournalVoiceCapture } = await import(
+      "@consciously/journal-voice-capture"
+    );
+    ...
+  } catch {
+    return null;
+  }
+  */
+}
+
+async function startCapgoTextOnly(
+  _opts: StartOnDeviceSpeechOpts,
+): Promise<OnDeviceSpeechHandle | null> {
+  // Capgo live recognition during record — disabled (owned mic, no clip bytes).
+  return null;
+  /*
   if (!isNativeApp()) return null;
   try {
     const { SpeechRecognition } = await import(
       "@capgo/capacitor-speech-recognition"
     );
-    const { available } = await SpeechRecognition.available();
-    if (!available) {
-      writeTranscriptionEngineDiag("server", "Speech recognition unavailable");
-      return null;
-    }
-
-    let perm = await SpeechRecognition.checkPermissions();
-    if (perm.speechRecognition !== "granted") {
-      perm = await SpeechRecognition.requestPermissions();
-    }
-    if (perm.speechRecognition !== "granted") {
-      writeTranscriptionEngineDiag(
-        "server",
-        "Speech Recognition permission denied",
-      );
-      return null;
-    }
-
-    const lang = language();
-    // Prefer legacy SFSpeechRecognizer + requiresOnDeviceRecognition — more
-    // reliable for continuous partials than SpeechAnalyzer on some iOS 26 builds.
-    const preferLegacy = true;
-    let useOnDevice = false;
-    try {
-      const check = await SpeechRecognition.isOnDeviceRecognitionAvailable({
-        language: lang,
-        preferLegacyRecognizer: preferLegacy,
-      });
-      useOnDevice = check?.available === true;
-    } catch {
-      useOnDevice = false;
-    }
-    if (!useOnDevice) {
-      writeTranscriptionEngineDiag(
-        "server",
-        `On-device unavailable for ${lang}`,
-      );
-      return null;
-    }
-
-    let text = "";
-    const handles: Array<{ remove: () => Promise<void> }> = [];
-    const endSegment = () => {
-      opts.onSegmentEnd?.();
-      text = "";
-    };
-    const partial = await SpeechRecognition.addListener(
-      "partialResults",
-      (e) => {
-        if ((e as { isRestarting?: boolean }).isRestarting) {
-          // Segment boundary only — don't re-apply the prior hypothesis.
-          endSegment();
-          return;
-        }
-        // Prefer current-session matches over accumulatedText so we REPLACE
-        // the live hypothesis instead of stacking Capgo restart chunks.
-        const next =
-          e.matches?.[0]?.trim() ||
-          (e as { accumulatedText?: string }).accumulatedText?.trim() ||
-          "";
-        text = next;
-        opts.onPartial(text);
-      },
-    );
-    handles.push(partial);
-
-    const listening = await SpeechRecognition.addListener(
-      "listeningState",
-      (e) => {
-        const state = e.state || e.status;
-        if (state === "stopped" || state === "stoppingListening") {
-          endSegment();
-        }
-      },
-    );
-    handles.push(listening);
-
-    if (opts.onLevel) {
-      const level = await SpeechRecognition.addListener("audioLevel", (e) => {
-        const n = typeof e.level === "number" ? e.level : 0;
-        opts.onLevel?.(Math.max(0, Math.min(1, n)));
-      });
-      handles.push(level);
-    }
-
-    const err = await SpeechRecognition.addListener("error", (e) => {
-      writeTranscriptionEngineDiag(
-        "server",
-        `Capgo error: ${e.code || e.message || "unknown"}`,
-      );
-    });
-    handles.push(err);
-
-    await SpeechRecognition.start({
-      language: lang,
-      partialResults: true,
-      popup: false,
-      useOnDeviceRecognition: true,
-      preferLegacyRecognizer: preferLegacy,
-      addPunctuation: true,
-      allowForSilence: 2000,
-      muteRecognizerBeep: true,
-    } as Parameters<typeof SpeechRecognition.start>[0]);
-
-    writeTranscriptionEngineDiag(
-      "on-device",
-      `Capgo SFSpeechRecognizer on-device (${lang})`,
-    );
-
-    return {
-      usedOnDevice: true,
-      getText: () => text,
-      stop: async () => {
-        try {
-          await SpeechRecognition.stop();
-        } catch {
-          /* */
-        }
-        for (const h of handles) {
-          try {
-            await h.remove();
-          } catch {
-            /* */
-          }
-        }
-      },
-    };
-  } catch (e) {
-    writeTranscriptionEngineDiag(
-      "server",
-      e instanceof Error ? e.message : "Capgo failed to start",
-    );
+    ...
+  } catch {
     return null;
   }
+  */
 }
 
 function startBrowserSpeech(
@@ -286,9 +256,6 @@ function startBrowserSpeech(
         if (r?.isFinal) finalAcc = `${finalAcc} ${piece}`.trim();
         else interim += piece;
       }
-      // Expose only the current interim hypothesis to the caller as "partial";
-      // finals live in finalAcc and are joined by the editor's committed buffer
-      // via onSegmentEnd when a phrase finalises.
       latest = `${finalAcc} ${interim}`.trim();
       onPartial(interim.trim() ? `${finalAcc} ${interim}`.trim() : finalAcc);
     };
@@ -302,6 +269,7 @@ function startBrowserSpeech(
     writeTranscriptionEngineDiag("on-device", "Browser SpeechRecognition");
     return {
       usedOnDevice: true,
+      capturesAudio: false,
       getText: () => latest,
       stop: async () => {
         try {
@@ -328,9 +296,9 @@ function startBrowserSpeech(
 }
 
 /**
- * Start the best available local speech engine. Returns null → use server
- * fallback (no live text). On native, Capgo owns the mic — do not also
- * MediaRecorder until this handle has been stopped.
+ * @deprecated Live recognition during recording is disabled on native.
+ * Web may still use browser SpeechRecognition; journal editor currently
+ * skips this entirely (timer + waveform only while recording).
  */
 export async function startOnDeviceSpeech(
   onPartialOrOpts: ((text: string) => void) | StartOnDeviceSpeechOpts,
@@ -339,8 +307,11 @@ export async function startOnDeviceSpeech(
     typeof onPartialOrOpts === "function"
       ? { onPartial: onPartialOrOpts }
       : onPartialOrOpts;
-  const native = await startNativeOnDevice(opts);
-  if (native) return native;
+  // Native live path intentionally disabled — see comment block above.
+  const capture = await startNativeVoiceCapture(opts);
+  if (capture) return capture;
+  const capgo = await startCapgoTextOnly(opts);
+  if (capgo) return capgo;
   if (isNativeApp()) {
     return null;
   }
@@ -351,24 +322,19 @@ export async function startOnDeviceSpeech(
 export async function willUseServerVoiceFallback(): Promise<boolean> {
   if (isNativeApp()) {
     try {
-      const { SpeechRecognition } = await import(
-        "@capgo/capacitor-speech-recognition"
+      const { JournalVoiceCapture } = await import(
+        "@consciously/journal-voice-capture"
       );
-      const { available } = await SpeechRecognition.available();
-      if (!available) return true;
-      const lang = language();
-      const check = await SpeechRecognition.isOnDeviceRecognitionAvailable({
-        language: lang,
-        preferLegacyRecognizer: true,
+      const avail = await JournalVoiceCapture.available({
+        language: language(),
       });
-      return check?.available !== true;
+      // File transcription after Done uses the same on-device availability.
+      if (avail.available && avail.onDevice) return false;
     } catch {
-      return true;
+      /* */
     }
+    return true;
   }
-  const w = window as unknown as {
-    SpeechRecognition?: unknown;
-    webkitSpeechRecognition?: unknown;
-  };
-  return !(w.SpeechRecognition || w.webkitSpeechRecognition);
+  // Web always uses server Whisper after Done (no live browser speech for now).
+  return true;
 }
