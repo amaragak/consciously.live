@@ -50,7 +50,9 @@ import { maybeCountManifestoStoryListen } from "@/lib/manifesto-story-listen";
 import {
   APP_MOBILE_TAB_BAR_CHANGED,
   APP_MOBILE_TAB_BAR_GAP_PX,
+  APP_MOBILE_TAB_BAR_H_PX,
   getAppMobileTabBarState,
+  shouldHideMobileTabBar,
 } from "@/lib/app-mobile-tab-bar";
 import { usePathname, useRouter } from "@/lib/spa-nav";
 
@@ -385,14 +387,58 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sync = () => {
       const s = getAppMobileTabBarState();
-      setTabBarLiftPx(s.visible ? s.offsetPx + APP_MOBILE_TAB_BAR_GAP_PX : 0);
+      // Sit just above the floating pill (pill height + its bottom offset + gap).
+      setTabBarLiftPx(
+        s.visible
+          ? s.bottomOffsetPx + APP_MOBILE_TAB_BAR_H_PX + APP_MOBILE_TAB_BAR_GAP_PX
+          : 0,
+      );
     };
     sync();
     window.addEventListener(APP_MOBILE_TAB_BAR_CHANGED, sync);
     return () => window.removeEventListener(APP_MOBILE_TAB_BAR_CHANGED, sync);
   }, []);
 
-  const strip = (
+  const onCreateRoute = shouldHideMobileTabBar(pathname);
+
+  // Create flow: hide the floating mini-player; pause whatever was playing.
+  useEffect(() => {
+    if (!onCreateRoute) return;
+    if (playingS3KeyRef.current) {
+      setPlaybackToggleNonce((n) => n + 1);
+      setAutoplay(false);
+      setPlayingS3Key(null);
+    }
+  }, [onCreateRoute]);
+
+  // Grow page padding while the floating mini-player is up (not create-docked).
+  useEffect(() => {
+    const root = document.documentElement;
+    const showMini =
+      Boolean(nowPlaying) &&
+      !stripDockHost &&
+      !onCreateRoute &&
+      !createBridgeActive;
+    const h = showMini
+      ? Math.max(playerStripHeightPx, 56) + APP_MOBILE_TAB_BAR_GAP_PX
+      : 0;
+    root.style.setProperty("--app-mobile-mini-player-h", `${h}px`);
+    return () => {
+      root.style.setProperty("--app-mobile-mini-player-h", "0px");
+    };
+  }, [
+    nowPlaying,
+    stripDockHost,
+    playerStripHeightPx,
+    createBridgeActive,
+    onCreateRoute,
+  ]);
+
+  const showFixedStrip =
+    Boolean(nowPlaying) && !onCreateRoute && !createBridgeActive;
+  const showStrip = Boolean(stripDockHost) || showFixedStrip;
+
+  const strip = showStrip ? (
     <LibraryAudioStrip
       key={nowPlaying?.s3Key ?? "none"}
       track={nowPlaying}
@@ -428,12 +474,20 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
         });
       }}
     />
-  );
+  ) : null;
 
   return (
     <LibraryPlayerContext.Provider value={value}>
       {children}
-      {stripDockHost ? createPortal(strip, stripDockHost) : strip}
+      {strip
+        ? stripDockHost
+          ? createPortal(strip, stripDockHost)
+          : // Same as the tab pill: body portal so shell overflow/stacking
+            // can't bury the floating mini-player under page cards.
+            typeof document !== "undefined"
+            ? createPortal(strip, document.body)
+            : strip
+        : null}
     </LibraryPlayerContext.Provider>
   );
 }

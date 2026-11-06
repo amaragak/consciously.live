@@ -29,6 +29,8 @@ import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { MeditationLengthSelect } from "@/components/meditation-length-select";
 import { CreateProgramSessionControl } from "@/components/create-program-session-control";
+import { useMinWidth } from "@/hooks/use-min-width";
+import { applyMobilePickerTap } from "@/lib/mobile-picker-tap";
 import {
   attachProgramExclusive,
   attachStyleExclusive,
@@ -475,6 +477,26 @@ export function CreateOneFlow({
   const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
   const [draftHealId, setDraftHealId] = useState<string | null>(null);
   const [healStore] = useHealStore();
+  const mdUp = useMinWidth(768);
+  const mobileTapTimerRef = useRef<number | null>(null);
+  const draftStyleRef = useRef(draftStyle);
+  const draftProgramIdRef = useRef(draftProgramId);
+  const draftJournalIdRef = useRef(draftJournalId);
+  const draftLifeAreaIdRef = useRef(draftLifeAreaId);
+  const draftGoalIdRef = useRef(draftGoalId);
+  const draftHealIdRef = useRef(draftHealId);
+  draftStyleRef.current = draftStyle;
+  draftProgramIdRef.current = draftProgramId;
+  draftJournalIdRef.current = draftJournalId;
+  draftLifeAreaIdRef.current = draftLifeAreaId;
+  draftGoalIdRef.current = draftGoalId;
+  draftHealIdRef.current = draftHealId;
+  useEffect(() => {
+    if (picker != null) return;
+    if (mobileTapTimerRef.current == null) return;
+    window.clearTimeout(mobileTapTimerRef.current);
+    mobileTapTimerRef.current = null;
+  }, [picker]);
 
   const [programs, setPrograms] = useState<LibraryProgram[]>([]);
   const [programsReady, setProgramsReady] = useState(false);
@@ -1466,15 +1488,16 @@ export function CreateOneFlow({
     let contextDetail: string | null = null;
     let contextImageUrl: string | null = null;
     if (picker === "style") {
-      if (!isStyleLabel(draftStyle)) return;
+      const style = draftStyleRef.current;
+      if (!isStyleLabel(style)) return;
       setState((prev) =>
-        attachStyleExclusive({ ...prev, program: null }, { id: draftStyle }),
+        attachStyleExclusive({ ...prev, program: null }, { id: style }),
       );
       contextKind = "style";
-      contextLabel = draftStyle;
-      contextNote = `Style "${draftStyle}" was just attached. Acknowledge the style by name. Treat it as their answer only if your last question was about what they need, want, or what kind of practice. Otherwise keep that last question open and ask one question that still gathers it, using the new style if relevant.`;
+      contextLabel = style;
+      contextNote = `Style "${style}" was just attached. Acknowledge the style by name. Treat it as their answer only if your last question was about what they need, want, or what kind of practice. Otherwise keep that last question open and ask one question that still gathers it, using the new style if relevant.`;
     } else if (picker === "program") {
-      const p = programs.find((x) => x.id === draftProgramId);
+      const p = programs.find((x) => x.id === draftProgramIdRef.current);
       if (!p) return;
       const sessionIds = p.days.map((d) => d.id);
       const titles: Record<string, string> = {};
@@ -1499,7 +1522,7 @@ export function CreateOneFlow({
       contextImageUrl = att.coverImageUrl ?? null;
       contextNote = `Program "${att.title}" was just attached mid-chat. Keep every prior assistant/user turn visible in history. Do not restart. Acknowledge the program and how you will use it in the meditation. Scan Ask-items against prior brief/chat/journal/goal — skip clearly answered ones (confirm how you'll use them). Ask the first unanswered Ask-item only; if none remain, confirm-only + [[READY]].`;
     } else if (picker === "journal") {
-      const e = journalEntries.find((x) => x.id === draftJournalId);
+      const e = journalEntries.find((x) => x.id === draftJournalIdRef.current);
       if (!e) return;
       const att: CreateFlowJournalAttachment = {
         id: e.id,
@@ -1516,10 +1539,11 @@ export function CreateOneFlow({
       contextDetail = null;
       contextNote = `Journal "${att.title}" was just attached (full body in context). Acknowledge it by name and say how you will use it in the meditation. Treat it as answering your last question only if the entry clearly covers it — then mark that item done. If required items remain, ask one question for the next gap (drawing on the journal where relevant). If everything required is covered, confirm-only and invite extras as statements, then [[READY]].`;
     } else if (picker === "goal") {
-      const area = lifeAreas.find((g) => g.id === draftLifeAreaId);
+      const area = lifeAreas.find((g) => g.id === draftLifeAreaIdRef.current);
       if (!area) return;
-      const selectedGoal = draftGoalId
-        ? area.goals.find((g) => g.id === draftGoalId) ?? null
+      const goalId = draftGoalIdRef.current;
+      const selectedGoal = goalId
+        ? area.goals.find((g) => g.id === goalId) ?? null
         : null;
       const att: CreateFlowGoalAttachment = {
         lifeAreaId: area.id,
@@ -1535,7 +1559,9 @@ export function CreateOneFlow({
         ? `Life area "${att.lifeAreaTitle}" (goal: "${att.goalTitle}") was just attached. Acknowledge this goal by name and say how you will use it in the meditation. It does NOT complete your last question unless it clearly covers that question — if it does, mark that item done. If a required Ask-item/AIM is still unanswered, ask ONE question that still serves it and ties it to this goal. If everything required is covered, confirm-only + [[READY]].`
         : `Life area "${att.lifeAreaTitle}" was just attached. Acknowledge this life area by name and say how you will use it in the meditation. It does NOT complete your last question unless it clearly covers that question — if it does, mark that item done. If a required Ask-item/AIM is still unanswered, ask ONE question that still serves it and ties it to this life area. If everything required is covered, confirm-only + [[READY]].`;
     } else if (picker === "heal") {
-      const item = healStore.items.find((row) => row.id === draftHealId && row.status !== "at_peace");
+      const item = healStore.items.find(
+        (row) => row.id === draftHealIdRef.current && row.status !== "at_peace",
+      );
       if (!item) return;
       const att: CreateFlowHealAttachment = healCreateAttachment(item, healStore);
       const alreadyTalking = state.chat.some((turn) => turn.role === "assistant");
@@ -2251,20 +2277,42 @@ export function CreateOneFlow({
     }
   };
 
-  /** Header portal (md+). Phone copy sits in-page — header middle is hidden with wordmark. */
-  const stepper = (
-    <>
-      <AppPrimaryTabsDesktop>
-        <CreateOneFlowStepper
-          compact
-          step={step}
-          onStepClick={onStepperStepClick}
-        />
-      </AppPrimaryTabsDesktop>
-      <div className="md:hidden">
-        <CreateOneFlowStepper step={step} onStepClick={onStepperStepClick} />
-      </div>
-    </>
+  const [stepBarScrolled, setStepBarScrolled] = useState(false);
+  const createScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setStepBarScrolled(false);
+    createScrollRef.current?.scrollTo?.(0, 0);
+  }, [step]);
+
+  /** Header portal (md+). */
+  const desktopStepper = (
+    <AppPrimaryTabsDesktop>
+      <CreateOneFlowStepper
+        compact
+        step={step}
+        onStepClick={onStepperStepClick}
+      />
+    </AppPrimaryTabsDesktop>
+  );
+
+  /**
+   * Mobile full-bleed step bar (create-start-mobile): card surface, hairline,
+   * sticky under the header with a soft shadow once scrolled.
+   */
+  const mobileStepBar = (sticky: boolean) => (
+    <div
+      className={[
+        "z-20 border-b border-border bg-card px-4 py-2.5 md:hidden",
+        sticky ? "sticky top-0" : "shrink-0",
+        sticky && stepBarScrolled
+          ? "shadow-[0_4px_10px_rgb(15_27_45_/_0.06)]"
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <CreateOneFlowStepper step={step} onStepClick={onStepperStepClick} />
+    </div>
   );
 
   const renderShapeAddChips = (
@@ -2289,6 +2337,59 @@ export function CreateOneFlow({
   const shapeAddChips = renderShapeAddChips(shapeAddOptions);
   const shapeFormatAddChips = renderShapeAddChips(shapeFormatAddOptions);
   const shapeContextAddChips = renderShapeAddChips(shapeContextAddOptions);
+
+  const shapeHasFormat = Boolean(state.style || state.program);
+  const shapeHasContext =
+    state.journals.length > 0 || Boolean(state.goal) || Boolean(state.heal);
+  const briefSummaryLine = [
+    state.prompt.trim() || "No brief yet",
+    `${state.lengthMinutes} min`,
+  ].join(" · ");
+
+  /** Shape landing card (consciously-meditate-quick-create) — all widths. */
+  const yourBriefCard = (
+    <div className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+          Your brief
+        </span>
+        <button
+          type="button"
+          onClick={() => goStep("start")}
+          className="cursor-pointer text-[13px] font-semibold text-accent-link underline-offset-2 hover:underline"
+        >
+          Edit
+        </button>
+      </div>
+      <p className="font-sans text-[15px] leading-[1.4] text-foreground md:text-[16px]">
+        {briefSummaryLine}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {tokens(true, { kindLabels: true })}
+        {!shapeHasFormat ? (
+          <button
+            type="button"
+            onClick={() => openPicker("style")}
+            className="inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1 rounded-[10px] border border-dashed border-accent/40 px-2.5 text-[13px] text-accent-link"
+          >
+            <IconPlus className="h-3.5 w-3.5" /> Format
+          </button>
+        ) : null}
+        {!shapeHasContext ? (
+          <button
+            type="button"
+            onClick={() => openPicker("journal")}
+            className="inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1 rounded-[10px] border border-dashed border-accent/40 px-2.5 text-[13px] text-accent-link"
+          >
+            <IconPlus className="h-3.5 w-3.5" /> Context
+          </button>
+        ) : (
+          shapeContextAddChips
+        )}
+        {shapeHasFormat ? shapeFormatAddChips : null}
+      </div>
+    </div>
+  );
 
   const shapeBriefBody = (clamp: "none" | "one" | "two") => {
     const textClass =
@@ -2645,9 +2746,17 @@ export function CreateOneFlow({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {step !== "shape" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          ref={createScrollRef}
+          className="min-h-0 flex-1 overflow-y-auto"
+          onScroll={() => {
+            const el = createScrollRef.current;
+            setStepBarScrolled(Boolean(el && el.scrollTop > 2));
+          }}
+        >
+          {desktopStepper}
+          {mobileStepBar(true)}
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-3.5 px-4 pb-4 pt-3.5 md:gap-[22px] md:px-6 md:pb-5 md:pt-7">
-            {stepper}
           {step === "start" ? (
             <div className="flex w-full flex-col gap-4">
               <h1 className="sr-only">Create</h1>
@@ -2703,44 +2812,48 @@ export function CreateOneFlow({
                     onChange={(e) =>
                       setState((p) => ({ ...p, prompt: e.target.value }))
                     }
-                    placeholder="What's this one for? e.g. can't switch off after work…"
+                    placeholder="e.g. Can't switch off after work"
                     rows={3}
-                    className="min-h-[72px] w-full resize-none border-0 bg-transparent font-display text-[17px] leading-[1.45] text-foreground outline-none placeholder:text-muted md:min-h-[84px] md:text-xl"
+                    className="min-h-[56px] w-full resize-none border-0 bg-transparent font-sans text-base leading-[1.45] text-foreground outline-none placeholder:truncate placeholder:font-sans placeholder:text-base placeholder:text-muted md:min-h-[84px] md:font-display md:text-xl md:placeholder:font-display md:placeholder:text-xl"
                   />
                 </div>
-                <div className="flex items-end justify-between gap-2 border-t border-border pt-1">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5">
+                <div className="flex flex-col gap-2 border-t border-border pt-2 md:flex-row md:items-end md:justify-between md:gap-2 md:pt-1">
+                  <div className="min-w-0 md:flex md:min-w-0 md:flex-1 md:flex-wrap md:items-end md:gap-1.5">
                     {hasAttachedContext ? (
                       tokens(true, { kindLabels: true })
                     ) : (
-                      <p className="py-[7px] text-[14px] text-muted md:text-[15px]">
+                      <p className="truncate whitespace-nowrap text-[13px] text-muted md:py-[7px] md:text-[15px]">
                         Add context below, or just send
                       </p>
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center justify-between gap-2 md:justify-end">
                     {/* Random removed from Start brief bar (overview Format/Context pack).
                     {renderSurpriseMe()}
                     */}
                     <div className="mr-1">{renderLengthChip()}</div>
-                    <DictationMicButton
-                      variant="composer"
-                      onTranscript={(t) =>
-                        setState((p) => ({
-                          ...p,
-                          prompt: p.prompt.trim() ? `${p.prompt.trim()} ${t}` : t,
-                        }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      aria-label="Talk it through"
-                      onClick={() => enterShape(true)}
-                      style={PRIMARY_ACCENT_FILL_STYLE}
-                      className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 md:h-10 md:w-10"
-                    >
-                      <IconArrowRight className="h-5 w-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <DictationMicButton
+                        variant="composer"
+                        onTranscript={(t) =>
+                          setState((p) => ({
+                            ...p,
+                            prompt: p.prompt.trim()
+                              ? `${p.prompt.trim()} ${t}`
+                              : t,
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label="Talk it through"
+                        onClick={() => enterShape(true)}
+                        style={PRIMARY_ACCENT_FILL_STYLE}
+                        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90"
+                      >
+                        <IconArrowRight className="h-5 w-5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3057,8 +3170,11 @@ export function CreateOneFlow({
         </div>
       </div>
       ) : (
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-3 md:gap-0 md:px-6 md:pt-6">
-          {stepper}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {desktopStepper}
+          {mobileStepBar(false)}
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-3 md:gap-3 md:px-6 md:pt-6">
+          {yourBriefCard}
           <div className="flex min-h-0 w-full flex-1 flex-col pb-4 xl:flex-row xl:items-stretch xl:gap-5 xl:pb-4">
             <div className="flex min-h-0 min-w-0 w-full max-w-[760px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_18px_rgb(0_0_0_/_0.08)] md:rounded-[18px]">
               <div className="flex shrink-0 flex-col border-b border-border">
@@ -3076,17 +3192,6 @@ export function CreateOneFlow({
                   </button>
                 </div>
                 <div className="flex flex-col gap-2.5 px-3.5 pb-3 md:px-5 md:pb-4 xl:hidden">
-                  <div className="flex items-center gap-2.5">
-                    {shapeBriefBody("two")}
-                    <button
-                      type="button"
-                      aria-label="Edit brief"
-                      onClick={beginBriefEdit}
-                      className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
-                    >
-                      <IconPencil className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
                   {state.program ? (
                     <div className="flex items-center gap-3 rounded-xl bg-background px-3 py-2.5">
                       <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-accent-soft">
@@ -3248,26 +3353,6 @@ export function CreateOneFlow({
               className="hidden w-[300px] shrink-0 flex-col gap-3 overflow-y-auto xl:flex"
             >
               <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                    You&apos;re making
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Edit brief"
-                    onClick={beginBriefEdit}
-                    className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
-                  >
-                    <IconPencil className="h-[13px] w-[13px]" />
-                  </button>
-                </div>
-                {shapeBriefBody("none")}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {renderLengthChip()}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
                 {state.program ? (
                   <>
                     <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
@@ -3387,11 +3472,64 @@ export function CreateOneFlow({
               </div>
             </aside>
           </div>
+          </div>
         </div>
       )}
 
-      <CreateFlowFooterBar className="!pt-0 !pb-0">
-        <div className="grid h-auto w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-1 py-2 md:h-[68px] md:gap-2.5 md:px-1 md:py-0">
+      <CreateFlowFooterBar mobileFloating className="!pt-0 !pb-0">
+        {/* Mobile floating pill: Back + Next / Create meditation */}
+        <div className="flex h-full w-full items-center gap-1 md:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (step === "start") {
+                navigate("/meditate");
+                return;
+              }
+              goStep(step === "sound" ? "shape" : "start");
+            }}
+            className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-0.5 rounded-full px-2.5 text-[15px] font-semibold text-foreground"
+          >
+            <IconArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+          {step === "start" ? (
+            <button
+              type="button"
+              onClick={() => enterShape(true)}
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border-transparent px-3 text-[15px] font-semibold accent-fill-gradient text-on-accent"
+            >
+              Next
+            </button>
+          ) : null}
+          {step === "shape" ? (
+            <button
+              type="button"
+              onClick={() => goStep("sound")}
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border-transparent px-3 text-[15px] font-semibold accent-fill-gradient text-on-accent"
+            >
+              Next
+            </button>
+          ) : null}
+          {step === "sound" ? (
+            <button
+              type="button"
+              disabled={audioBusy}
+              onClick={() => void generateMeditation()}
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border-transparent px-3 text-[15px] font-semibold accent-fill-gradient text-on-accent disabled:pointer-events-none disabled:opacity-40"
+            >
+              {soundCreateCount > 1
+                ? `Create ${soundCreateCount}`
+                : "Create meditation"}
+            </button>
+          ) : null}
+        </div>
+
+        {/* Desktop length-nav chrome (unchanged). */}
+        <div className="hidden h-auto w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-1 py-2 md:grid md:h-[68px] md:gap-2.5 md:px-1 md:py-0">
           <div className="flex justify-start">
             {step !== "start" ? (
               <CreateFlowNavPill
@@ -3402,7 +3540,6 @@ export function CreateOneFlow({
               </CreateFlowNavPill>
             ) : null}
           </div>
-          {/* Empty centre column keeps Back / actions positions (LengthBrief). */}
           <div className="flex items-center justify-center gap-2.5" aria-hidden />
           <div className="flex justify-end gap-2.5">
             {step === "start" ? (
@@ -3415,18 +3552,14 @@ export function CreateOneFlow({
                   style={PRIMARY_ACCENT_FILL_STYLE}
                   className="!border-transparent accent-fill-gradient !text-on-accent hover:!opacity-90"
                 >
-                  <span className="md:hidden">Talk →</span>
-                  <span className="hidden md:inline">Talk it through →</span>
+                  Talk it through →
                 </CreateFlowNavPill>
               </>
             ) : null}
             {step === "shape" ? (
               <>
                 {state.program ? (
-                  <CreateFlowNavPill
-                    onClick={() => goStep("sound")}
-                    className="hidden md:inline-flex"
-                  >
+                  <CreateFlowNavPill onClick={() => goStep("sound")}>
                     {state.program.mode === "one"
                       ? "Create now"
                       : `Create ${state.program.sessionIds.length || 1} now`}
@@ -3446,9 +3579,11 @@ export function CreateOneFlow({
                 <CreateFlowNavPill
                   disabled={audioBusy}
                   onClick={() => soundStepRef.current?.togglePreviewMix()}
-                  className="hidden !h-11 !py-0 !pl-1.5 !pr-4 md:inline-flex"
+                  className="!h-11 !py-0 !pl-1.5 !pr-4"
                   aria-label={
-                    soundPreviewPlaying ? soundPreviewStopLabel : soundPreviewLabel
+                    soundPreviewPlaying
+                      ? soundPreviewStopLabel
+                      : soundPreviewLabel
                   }
                 >
                   <span
@@ -3469,41 +3604,13 @@ export function CreateOneFlow({
                   </span>
                   {soundPreviewLabel}
                 </CreateFlowNavPill>
-                <button
-                  type="button"
-                  disabled={audioBusy}
-                  aria-label={
-                    soundPreviewPlaying ? soundPreviewStopLabel : soundPreviewLabel
-                  }
-                  onClick={() => soundStepRef.current?.togglePreviewMix()}
-                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-foreground shadow-sm md:hidden"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-[18px] w-[18px]"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M3 14v-4a2 2 0 0 1 2-2h1l3-3v14l-3-3H5a2 2 0 0 1-2-2z" />
-                    <path d="M16 8a5 5 0 0 1 0 8" />
-                    <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
-                  </svg>
-                </button>
                 <CreateFlowNavPill
                   disabled={audioBusy}
                   onClick={() => void generateMeditation()}
                   style={PRIMARY_ACCENT_FILL_STYLE}
                   className="!border-transparent accent-fill-gradient !text-on-accent hover:!opacity-90"
                 >
-                  <span className="md:hidden">
-                    {soundCreateCount > 1
-                      ? `✦ Create ${soundCreateCount}`
-                      : "✦ Create"}
-                  </span>
-                  <span className="hidden md:inline">{soundCreateLabel}</span>
+                  {soundCreateLabel}
                 </CreateFlowNavPill>
               </>
             ) : null}
@@ -3521,12 +3628,24 @@ export function CreateOneFlow({
         }
         confirmLabel={state.style ? "Save" : "Add to meditation"}
         confirmDisabled={!draftStyle}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
         <CommunityCategoryGrid
           selected={draftStyle}
-          onSelect={(v) => setDraftStyle(v)}
+          onSelect={(v) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftStyle === v,
+              applyDraft: () => {
+                draftStyleRef.current = v;
+                setDraftStyle(v);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
           includeAll={false}
           variant="picker"
         />
@@ -3542,6 +3661,7 @@ export function CreateOneFlow({
         }
         confirmLabel={state.program ? "Save" : "Add to meditation"}
         confirmDisabled={!draftProgramId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -3549,7 +3669,18 @@ export function CreateOneFlow({
           programs={programs}
           listReady={programsReady}
           selectedId={draftProgramId}
-          onSelect={setDraftProgramId}
+          onSelect={(id) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftProgramId === id,
+              applyDraft: () => {
+                draftProgramIdRef.current = id;
+                setDraftProgramId(id);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
         />
       </CreateOneFlowPickerShell>
 
@@ -3559,6 +3690,7 @@ export function CreateOneFlow({
         title="Pick a journal entry"
         confirmLabel="Add to meditation"
         confirmDisabled={!draftJournalId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -3567,7 +3699,18 @@ export function CreateOneFlow({
           folders={journalFolders}
           listReady={journalReady}
           selectedId={draftJournalId}
-          onSelect={(id) => setDraftJournalId(id)}
+          onSelect={(id) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftJournalId === id,
+              applyDraft: () => {
+                draftJournalIdRef.current = id;
+                setDraftJournalId(id);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
           guidance=""
           onGuidanceChange={() => {}}
         />
@@ -3579,6 +3722,7 @@ export function CreateOneFlow({
         title="Pick a life area"
         confirmLabel={state.goal ? "Save" : "Add to meditation"}
         confirmDisabled={!draftLifeAreaId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -3587,13 +3731,39 @@ export function CreateOneFlow({
           listReady={goalsReady}
           selectedLifeAreaId={draftLifeAreaId}
           selectedGoalId={draftGoalId}
-          onSelectLifeArea={(id) => {
-            setDraftLifeAreaId(id);
-            setDraftGoalId(null);
-          }}
+          onSelectLifeArea={(id) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftLifeAreaId === id && draftGoalId == null,
+              applyDraft: () => {
+                draftLifeAreaIdRef.current = id;
+                draftGoalIdRef.current = null;
+                setDraftLifeAreaId(id);
+                setDraftGoalId(null);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
           onSelectGoal={(lifeAreaId, goalId) => {
-            setDraftLifeAreaId(lifeAreaId);
-            setDraftGoalId((prev) => (prev === goalId ? null : goalId));
+            if (mdUp) {
+              setDraftLifeAreaId(lifeAreaId);
+              setDraftGoalId((prev) => (prev === goalId ? null : goalId));
+              return;
+            }
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected:
+                draftLifeAreaId === lifeAreaId && draftGoalId === goalId,
+              applyDraft: () => {
+                draftLifeAreaIdRef.current = lifeAreaId;
+                draftGoalIdRef.current = goalId;
+                setDraftLifeAreaId(lifeAreaId);
+                setDraftGoalId(goalId);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            });
           }}
           guidance=""
           onGuidanceChange={() => {}}
@@ -3606,6 +3776,7 @@ export function CreateOneFlow({
         title="Pick something from Heal"
         confirmLabel="Add to meditation"
         confirmDisabled={!draftHealId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -3631,7 +3802,18 @@ export function CreateOneFlow({
                   <li key={row.id}>
                     <button
                       type="button"
-                      onClick={() => setDraftHealId(row.id)}
+                      onClick={() =>
+                        applyMobilePickerTap({
+                          mdUp,
+                          alreadySelected: selected,
+                          applyDraft: () => {
+                            draftHealIdRef.current = row.id;
+                            setDraftHealId(row.id);
+                          },
+                          confirm: confirmPicker,
+                          timerRef: mobileTapTimerRef,
+                        })
+                      }
                       className={`flex w-full cursor-pointer items-center gap-3 border-b border-border px-1 py-3 text-left ${
                         selected ? "bg-accent-soft/40" : ""
                       }`}

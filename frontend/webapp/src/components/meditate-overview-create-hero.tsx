@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { IconArrowRight, IconPlus } from "@tabler/icons-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { IconArrowRight, IconPlus, IconSparkles } from "@tabler/icons-react";
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { CreateOneFlowPickerShell } from "@/components/create-one-flow-picker-shell";
 import { CreateProgramPicker } from "@/components/create-program-picker";
@@ -9,7 +9,9 @@ import { JournalReflectPicker } from "@/components/journal-reflect-picker";
 import { ManifestGoalPicker } from "@/components/manifest-goal-picker";
 import { MeditationLengthSelect } from "@/components/meditation-length-select";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
+import { useMinWidth } from "@/hooks/use-min-width";
 import { getMedimadeSessionJwt } from "@/lib/auth-session";
+import { applyMobilePickerTap } from "@/lib/mobile-picker-tap";
 import {
   attachProgramExclusive,
   attachStyleExclusive,
@@ -115,6 +117,26 @@ export function MeditateOverviewCreateHero() {
   const [draftLifeAreaId, setDraftLifeAreaId] = useState<string | null>(null);
   const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
   const [draftHealId, setDraftHealId] = useState<string | null>(null);
+  const mdUp = useMinWidth(768);
+  const mobileTapTimerRef = useRef<number | null>(null);
+  const draftStyleRef = useRef(draftStyle);
+  const draftProgramIdRef = useRef(draftProgramId);
+  const draftJournalIdRef = useRef(draftJournalId);
+  const draftLifeAreaIdRef = useRef(draftLifeAreaId);
+  const draftGoalIdRef = useRef(draftGoalId);
+  const draftHealIdRef = useRef(draftHealId);
+  draftStyleRef.current = draftStyle;
+  draftProgramIdRef.current = draftProgramId;
+  draftJournalIdRef.current = draftJournalId;
+  draftLifeAreaIdRef.current = draftLifeAreaId;
+  draftGoalIdRef.current = draftGoalId;
+  draftHealIdRef.current = draftHealId;
+  useEffect(() => {
+    if (picker != null) return;
+    if (mobileTapTimerRef.current == null) return;
+    window.clearTimeout(mobileTapTimerRef.current);
+    mobileTapTimerRef.current = null;
+  }, [picker]);
 
   const [programs, setPrograms] = useState<LibraryProgram[]>([]);
   const [programsReady, setProgramsReady] = useState(false);
@@ -225,12 +247,13 @@ export function MeditateOverviewCreateHero() {
 
   function confirmPicker() {
     if (picker === "style") {
-      if (!isStyleLabel(draftStyle)) return;
+      const style = draftStyleRef.current;
+      if (!isStyleLabel(style)) return;
       setState((prev) =>
-        attachStyleExclusive({ ...prev, program: null }, { id: draftStyle }),
+        attachStyleExclusive({ ...prev, program: null }, { id: style }),
       );
     } else if (picker === "program") {
-      const p = programs.find((x) => x.id === draftProgramId);
+      const p = programs.find((x) => x.id === draftProgramIdRef.current);
       if (!p) return;
       const sessionIds = p.days.map((d) => d.id);
       const titles: Record<string, string> = {};
@@ -251,7 +274,7 @@ export function MeditateOverviewCreateHero() {
       };
       setState((prev) => attachProgramExclusive(prev, att));
     } else if (picker === "journal") {
-      const e = journalEntries.find((x) => x.id === draftJournalId);
+      const e = journalEntries.find((x) => x.id === draftJournalIdRef.current);
       if (!e) return;
       const att: CreateFlowJournalAttachment = {
         id: e.id,
@@ -264,10 +287,11 @@ export function MeditateOverviewCreateHero() {
         return { ...prev, journals: [...prev.journals, att] };
       });
     } else if (picker === "goal") {
-      const area = lifeAreas.find((g) => g.id === draftLifeAreaId);
+      const area = lifeAreas.find((g) => g.id === draftLifeAreaIdRef.current);
       if (!area) return;
-      const selectedGoal = draftGoalId
-        ? area.goals.find((g) => g.id === draftGoalId) ?? null
+      const goalId = draftGoalIdRef.current;
+      const selectedGoal = goalId
+        ? area.goals.find((g) => g.id === goalId) ?? null
         : null;
       const att: CreateFlowGoalAttachment = {
         lifeAreaId: area.id,
@@ -278,7 +302,8 @@ export function MeditateOverviewCreateHero() {
       setState((prev) => ({ ...prev, goal: att }));
     } else if (picker === "heal") {
       const item = healStore.items.find(
-        (row) => row.id === draftHealId && row.status !== "at_peace",
+        (row) =>
+          row.id === draftHealIdRef.current && row.status !== "at_peace",
       );
       if (!item) return;
       const att: CreateFlowHealAttachment = healCreateAttachment(
@@ -458,7 +483,19 @@ export function MeditateOverviewCreateHero() {
   const groupLabelClass =
     "shrink-0 whitespace-nowrap text-[12px] text-[rgb(243_237_226_/_0.6)]";
   const mobileBtnClass =
-    "inline-flex h-9 max-w-[46%] cursor-pointer items-center gap-1.5 rounded-[10px] border border-[rgb(243_237_226_/_0.22)] bg-[rgb(243_237_226_/_0.08)] px-3 text-[13px] font-semibold text-[#F3EDE2]";
+    "inline-flex h-9 min-w-0 shrink cursor-pointer items-center gap-1 rounded-[10px] border border-[rgb(243_237_226_/_0.22)] bg-[rgb(243_237_226_/_0.08)] px-2 text-[12.5px] font-semibold text-[#F3EDE2] sm:gap-1.5 sm:px-3 sm:text-[13px]";
+  const canCreate = Boolean(state.prompt.trim());
+  const mobileBriefRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (mdUp) return;
+    const el = mobileBriefRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const min = 56;
+    const max = 104;
+    el.style.height = `${Math.min(max, Math.max(min, el.scrollHeight))}px`;
+  }, [state.prompt, mdUp]);
 
   return (
     <>
@@ -473,7 +510,8 @@ export function MeditateOverviewCreateHero() {
             What do you need right now?
           </h1>
 
-          <div className="flex items-center gap-1.5 rounded-full bg-white py-0.5 pl-4 pr-1 shadow-[0_6px_18px_rgba(0,0,0,0.18)] md:gap-2 md:pl-5 md:pr-1">
+          {/* Desktop: single-line pill + send arrow (unchanged). */}
+          <div className="hidden items-center gap-2 rounded-full bg-white py-0.5 pl-5 pr-1 shadow-[0_6px_18px_rgba(0,0,0,0.18)] md:flex">
             <input
               value={state.prompt}
               onChange={(e) =>
@@ -487,7 +525,7 @@ export function MeditateOverviewCreateHero() {
               }}
               placeholder="Calm before my big pitch, confidence for launch day…"
               aria-label="Brief"
-              className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap bg-transparent text-base text-foreground outline-none placeholder:text-muted md:text-base"
+              className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap bg-transparent text-base text-foreground outline-none placeholder:text-muted"
             />
             <DictationMicButton
               variant="round"
@@ -500,15 +538,44 @@ export function MeditateOverviewCreateHero() {
                 }))
               }
             />
+            {/* Old round send arrow — kept for desktop; mobile uses Create meditation. */}
             <button
               type="button"
               aria-label="Talk it through"
               onClick={onArrow}
               style={PRIMARY_ACCENT_FILL_STYLE}
-              className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent md:size-9"
+              className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent"
             >
-              <IconArrowRight className="h-4 w-4 md:h-[18px] md:w-[18px]" />
+              <IconArrowRight className="h-[18px] w-[18px]" />
             </button>
+          </div>
+
+          {/* Mobile: multi-line field + mic inset (consciously-meditate-quick-create). */}
+          <div className="relative md:hidden">
+            <textarea
+              ref={mobileBriefRef}
+              value={state.prompt}
+              onChange={(e) =>
+                setState((p) => ({ ...p, prompt: e.target.value }))
+              }
+              placeholder="e.g. Calm before a big pitch"
+              aria-label="Brief"
+              rows={2}
+              className="w-full resize-none overflow-y-auto rounded-[14px] border border-[rgb(243_237_226_/_0.22)] bg-[rgb(243_237_226_/_0.08)] px-3.5 py-3 pr-12 font-sans text-base leading-[1.4] text-[#F3EDE2] outline-none placeholder:text-[rgb(243_237_226_/_0.55)]"
+            />
+            <div className="absolute bottom-2 right-2">
+              <DictationMicButton
+                variant="navy"
+                onTranscript={(text) =>
+                  setState((p) => ({
+                    ...p,
+                    prompt: p.prompt.trim()
+                      ? `${p.prompt.trim()} ${text.trim()}`
+                      : text.trim(),
+                  }))
+                }
+              />
+            </div>
           </div>
 
           {/* Desktop: Format + Context flush left under the brief; Length on the right */}
@@ -561,35 +628,35 @@ export function MeditateOverviewCreateHero() {
             </div>
           </div>
 
-          {/* Mobile: + Format · + Context · Length */}
-          <div className="flex items-center justify-between gap-2 md:hidden">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPicker("format-menu")}
-                className={mobileBtnClass}
-              >
-                {hasFormat ? (
-                  <span className="min-w-0 truncate">{formatLabel}</span>
-                ) : (
-                  <>
-                    <IconPlus className="h-3.5 w-3.5 shrink-0" />
-                    Format
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPicker("context-menu")}
-                className={mobileBtnClass}
-              >
-                <IconPlus className="h-3.5 w-3.5 shrink-0" />
+          {/* Mobile: + Format · + Context · Length — one row at 320px */}
+          <div className="flex items-center gap-1.5 sm:gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setPicker("format-menu")}
+              className={mobileBtnClass}
+            >
+              {hasFormat ? (
+                <span className="min-w-0 truncate">{formatLabel}</span>
+              ) : (
+                <>
+                  <IconPlus className="h-3.5 w-3.5 shrink-0" />
+                  Format
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPicker("context-menu")}
+              className={mobileBtnClass}
+            >
+              <IconPlus className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">
                 {contextAttached > 0
                   ? `Context · ${contextAttached}`
                   : "Context"}
-              </button>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
+              </span>
+            </button>
+            <div className="ml-auto flex shrink-0 items-center">
               {/* {randomBtn} */}
               {lengthChip}
             </div>
@@ -600,6 +667,17 @@ export function MeditateOverviewCreateHero() {
               {contextTokens}
             </div>
           ) : null}
+
+          <button
+            type="button"
+            disabled={!canCreate}
+            onClick={onArrow}
+            style={PRIMARY_ACCENT_FILL_STYLE}
+            className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full text-[15px] font-semibold accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 md:hidden"
+          >
+            <IconSparkles className="h-4 w-4 shrink-0" aria-hidden />
+            Create meditation
+          </button>
         </div>
       </section>
 
@@ -682,12 +760,24 @@ export function MeditateOverviewCreateHero() {
         footSummary={draftStyle ? `${draftStyle} selected` : "None selected"}
         confirmLabel={state.style ? "Save" : "Add to meditation"}
         confirmDisabled={!draftStyle}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
         <CommunityCategoryGrid
           selected={draftStyle}
-          onSelect={(v) => setDraftStyle(v)}
+          onSelect={(v) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftStyle === v,
+              applyDraft: () => {
+                draftStyleRef.current = v;
+                setDraftStyle(v);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
           includeAll={false}
           variant="picker"
         />
@@ -705,6 +795,7 @@ export function MeditateOverviewCreateHero() {
         }
         confirmLabel={state.program ? "Save" : "Add to meditation"}
         confirmDisabled={!draftProgramId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -712,7 +803,18 @@ export function MeditateOverviewCreateHero() {
           programs={programs}
           listReady={programsReady}
           selectedId={draftProgramId}
-          onSelect={setDraftProgramId}
+          onSelect={(id) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftProgramId === id,
+              applyDraft: () => {
+                draftProgramIdRef.current = id;
+                setDraftProgramId(id);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
         />
       </CreateOneFlowPickerShell>
 
@@ -723,6 +825,7 @@ export function MeditateOverviewCreateHero() {
         title="Pick a journal entry"
         confirmLabel="Add to meditation"
         confirmDisabled={!draftJournalId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -731,7 +834,18 @@ export function MeditateOverviewCreateHero() {
           folders={journalFolders}
           listReady={journalReady}
           selectedId={draftJournalId}
-          onSelect={(id) => setDraftJournalId(id)}
+          onSelect={(id) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftJournalId === id,
+              applyDraft: () => {
+                draftJournalIdRef.current = id;
+                setDraftJournalId(id);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
           guidance=""
           onGuidanceChange={() => {}}
         />
@@ -744,6 +858,7 @@ export function MeditateOverviewCreateHero() {
         title="Pick a life area"
         confirmLabel={state.goal ? "Save" : "Add to meditation"}
         confirmDisabled={!draftLifeAreaId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -752,13 +867,39 @@ export function MeditateOverviewCreateHero() {
           listReady={goalsReady}
           selectedLifeAreaId={draftLifeAreaId}
           selectedGoalId={draftGoalId}
-          onSelectLifeArea={(id) => {
-            setDraftLifeAreaId(id);
-            setDraftGoalId(null);
-          }}
+          onSelectLifeArea={(id) =>
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected: draftLifeAreaId === id && draftGoalId == null,
+              applyDraft: () => {
+                draftLifeAreaIdRef.current = id;
+                draftGoalIdRef.current = null;
+                setDraftLifeAreaId(id);
+                setDraftGoalId(null);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            })
+          }
           onSelectGoal={(lifeAreaId, goalId) => {
-            setDraftLifeAreaId(lifeAreaId);
-            setDraftGoalId((prev) => (prev === goalId ? null : goalId));
+            if (mdUp) {
+              setDraftLifeAreaId(lifeAreaId);
+              setDraftGoalId((prev) => (prev === goalId ? null : goalId));
+              return;
+            }
+            applyMobilePickerTap({
+              mdUp,
+              alreadySelected:
+                draftLifeAreaId === lifeAreaId && draftGoalId === goalId,
+              applyDraft: () => {
+                draftLifeAreaIdRef.current = lifeAreaId;
+                draftGoalIdRef.current = goalId;
+                setDraftLifeAreaId(lifeAreaId);
+                setDraftGoalId(goalId);
+              },
+              confirm: confirmPicker,
+              timerRef: mobileTapTimerRef,
+            });
           }}
           guidance=""
           onGuidanceChange={() => {}}
@@ -772,6 +913,7 @@ export function MeditateOverviewCreateHero() {
         title="Pick something from Heal"
         confirmLabel="Add to meditation"
         confirmDisabled={!draftHealId}
+        mobileConfirm="tap"
         onClose={() => setPicker(null)}
         onConfirm={confirmPicker}
       >
@@ -797,7 +939,18 @@ export function MeditateOverviewCreateHero() {
                   <li key={row.id}>
                     <button
                       type="button"
-                      onClick={() => setDraftHealId(row.id)}
+                      onClick={() =>
+                        applyMobilePickerTap({
+                          mdUp,
+                          alreadySelected: selected,
+                          applyDraft: () => {
+                            draftHealIdRef.current = row.id;
+                            setDraftHealId(row.id);
+                          },
+                          confirm: confirmPicker,
+                          timerRef: mobileTapTimerRef,
+                        })
+                      }
                       className={`flex w-full cursor-pointer items-center gap-3 border-b border-border px-1 py-3 text-left ${
                         selected ? "bg-accent-soft/40" : ""
                       }`}

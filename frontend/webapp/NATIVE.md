@@ -109,8 +109,14 @@ CAP_DEV_HOST=192.168.1.23 npm run native:dev:ios   # if the auto-picked LAN IP i
 | `npm run build:native` | Production native bundle (no `/dev/audio`) |
 | `npm run build:native:internal` | Internal test bundle (`VITE_INTERNAL_BUILD=1` keeps `/dev/audio`) |
 | `npm run build:native:staging` | Internal bundle using `.env.native-staging.local` (staging API) |
-| `npm run native:sync` / `native:sync:internal` | Build + `cap sync` (copy web assets, update plugins) |
+| `npm run native:sync:ios` | **Xcode-ready:** native build + `cap sync ios` (replaces `npm run build && npx cap sync ios`) |
+| `npm run native:ios` | Same as above, then opens Xcode |
+| `npm run native:sync` / `native:sync:internal` | Native build + sync both platforms |
+| `npm run native:sync:internal:ios` | Internal native build + iOS sync |
 | `npm run native:assets` | Regenerate icons + splash from `native-assets/*.png` |
+
+`npm run build` is web-only. Cap needs `build:native` or launch sticks (`SplashScreen.hide` never runs).
+`capacitor:sync:before` refuses to sync a web `dist/`.
 
 The env files load in this order: `.env` → `.env.local` → `.env.native` (→ `.env.native.local`).
 `.env.native` resets `VITE_MARKETING_ORIGIN` so that the localhost value written by `scripts/dev-web`

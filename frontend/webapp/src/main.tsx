@@ -33,7 +33,22 @@ function injectTheme(): void {
 
 injectTheme();
 
-const native = __NATIVE_BUILD__ && isNativeApp();
+const onCapacitor = isNativeApp();
+const native = __NATIVE_BUILD__ && onCapacitor;
+
+/**
+ * Web `vite build` synced into Cap leaves launchAutoHide:false with nobody
+ * calling SplashScreen.hide() — phone stuck on a blank/frozen launch. Bail out
+ * of the native splash immediately and surface the mistake.
+ */
+if (onCapacitor && !__NATIVE_BUILD__) {
+  console.error(
+    "[consciously] Cap shell is running a web dist. Rebuild with `npm run native:sync:ios`.",
+  );
+  void import("@capacitor/splash-screen").then(({ SplashScreen }) =>
+    SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {}),
+  );
+}
 
 function render(LaunchOverlay: ComponentType | null): void {
   // No StrictMode on native: it remounts and kills the launch morph mid-FLIP.

@@ -172,7 +172,7 @@ export function TrackerTitleField({
         className={
           editing
             ? "h-[30px] min-w-0 max-w-full flex-1 rounded-lg border-[1.5px] border-accent bg-card px-2 text-base outline-none placeholder:italic placeholder:text-muted"
-            : `h-7 min-w-0 max-w-full cursor-text truncate border border-transparent bg-transparent px-0 text-sm outline-none ${bold ? "font-semibold" : ""}`
+            : `h-7 min-w-0 max-w-full cursor-text truncate border border-transparent bg-transparent px-0 text-base outline-none ${bold ? "font-semibold" : ""}`
         }
         onFocus={onBegin}
         onBlur={(event) => onFinish(event.target.value)}

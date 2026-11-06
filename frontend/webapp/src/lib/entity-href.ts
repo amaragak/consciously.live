@@ -6,10 +6,20 @@
 import {
   contentTitleSlug,
   looksLikeUuid,
+  slugifyLabel,
   uniquifySlug,
 } from "@/lib/readable-url";
 import { loadHealStore, type HealItem } from "@/lib/heal-store";
 import { loadPlanDreamsStore, type PlanDream } from "@/lib/plan-dreams";
+
+/** Path segment for hrefs: persisted slug, else title slug, else stable id. */
+function pathSlugFor(
+  item: { id: string; title: string; urlSlug?: string },
+): string {
+  if (item.urlSlug?.trim()) return item.urlSlug.trim();
+  const fromTitle = slugifyLabel(item.title?.trim() || "");
+  return fromTitle || item.id;
+}
 
 function takenSlugs(
   items: Array<{ id: string; urlSlug?: string; urlSlugHistory?: string[] }>,
@@ -50,7 +60,12 @@ export function ensureEntityUrlSlug<
 }
 
 export function findEntityByPathSlug<
-  T extends { id: string; urlSlug?: string; urlSlugHistory?: string[] },
+  T extends {
+    id: string;
+    title?: string;
+    urlSlug?: string;
+    urlSlugHistory?: string[];
+  },
 >(items: T[], raw: string): T | null {
   const key = decodeURIComponent(raw).trim().toLowerCase();
   if (!key) return null;
@@ -62,21 +77,24 @@ export function findEntityByPathSlug<
     items.find((x) =>
       (x.urlSlugHistory ?? []).some((h) => h.toLowerCase() === key),
     ) ??
+    // Legacy rows may lack urlSlug; hrefs still use the title slug.
+    items.find((x) => {
+      const fromTitle = slugifyLabel((x.title ?? "").trim());
+      return Boolean(fromTitle) && fromTitle.toLowerCase() === key;
+    }) ??
     null
   );
 }
 
 export function healItemHref(item: Pick<HealItem, "id" | "title" | "urlSlug">): string {
-  const slug = item.urlSlug || contentTitleSlug(item.title) || item.id;
-  return `/heal/${encodeURIComponent(slug)}`;
+  return `/heal/${encodeURIComponent(pathSlugFor(item))}`;
 }
 
 export function lifeAreaHref(
   dream: Pick<PlanDream, "id" | "title" | "urlSlug">,
   rest = "",
 ): string {
-  const slug = dream.urlSlug || contentTitleSlug(dream.title) || dream.id;
-  const base = `/manifest/${encodeURIComponent(slug)}`;
+  const base = `/manifest/${encodeURIComponent(pathSlugFor(dream))}`;
   if (!rest) return base;
   return `${base}/${rest.replace(/^\//, "")}`;
 }

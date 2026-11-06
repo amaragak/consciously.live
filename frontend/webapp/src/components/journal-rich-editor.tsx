@@ -33,7 +33,7 @@ import {
 import { journalPromptMarksFromHtml } from "@/lib/journal-storage";
 
 const editorClass =
-  "min-h-[8rem] w-full px-7 py-6 text-[15px] leading-[1.85] text-foreground focus:outline-none " +
+  "min-h-[8rem] w-full px-7 py-6 text-base leading-[1.85] text-foreground focus:outline-none " +
   "[&_.ProseMirror]:min-h-[8rem] [&_p]:my-2 [&_p.is-editor-empty:first-child::before]:text-muted/60 " +
   "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-medium [&_h2]:tracking-tight " +
   "[&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:font-display [&_h3]:text-base [&_h3]:font-medium " +

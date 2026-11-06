@@ -2671,6 +2671,7 @@ export const CreateSoundStep = forwardRef<
 
   function commitVoicePanel() {
     if (stagedVoiceId) adoptVoice(stagedVoiceId, false);
+    stopLocalPreviewAudio();
     setChangeKind(null);
     window.setTimeout(() => changeVoiceBtnRef.current?.focus(), 0);
   }
@@ -2686,6 +2687,7 @@ export const CreateSoundStep = forwardRef<
     rememberRecentSound(
       soundPanelTab === "mixer" ? "mixer" : stagedSoundId,
     );
+    stopLocalPreviewAudio();
     setChangeKind(null);
     window.setTimeout(() => changeSoundBtnRef.current?.focus(), 0);
   }
@@ -2693,12 +2695,14 @@ export const CreateSoundStep = forwardRef<
   function commitSilenceFromPanel() {
     adoptSound(SILENCE_SOUND_ID, false);
     rememberRecentSound(SILENCE_SOUND_ID);
+    stopLocalPreviewAudio();
     setChangeKind(null);
     window.setTimeout(() => changeSoundBtnRef.current?.focus(), 0);
   }
 
   function closeChangePanel() {
     const kind = changeKind;
+    stopLocalPreviewAudio();
     setChangeKind(null);
     window.setTimeout(() => {
       if (kind === "voice") changeVoiceBtnRef.current?.focus();
@@ -3476,12 +3480,17 @@ export const CreateSoundStep = forwardRef<
         title="Choose a voice"
         panelWidth="voice"
         host={pickerHost}
+        mobileConfirm="pinned"
         footSummary={
           speakers.find((s) => s.modelId === stagedVoiceId)?.name
             ? `${speakers.find((s) => s.modelId === stagedVoiceId)!.name} selected`
             : undefined
         }
-        confirmLabel="Use this voice"
+        confirmLabel={(() => {
+          const name = speakers.find((s) => s.modelId === stagedVoiceId)?.name;
+          if (!name) return "Use this voice";
+          return stagedVoiceId === speakerModelId ? `Keep ${name}` : `Use ${name}`;
+        })()}
         confirmDisabled={!stagedVoiceId}
         onClose={closeChangePanel}
         onConfirm={commitVoicePanel}
@@ -3620,6 +3629,7 @@ export const CreateSoundStep = forwardRef<
         title="Choose a soundscape"
         panelWidth="sound"
         host={pickerHost}
+        mobileConfirm="pinned"
         footSummary={
           soundPanelTab === "mixer"
             ? `${mixerPanelName} · ${mixLayerBits.length} layers`
@@ -3627,9 +3637,20 @@ export const CreateSoundStep = forwardRef<
                 ? `${compositions.find((c) => c.key === stagedSoundId)!.name} selected`
                 : undefined
         }
-        confirmLabel={
-          soundPanelTab === "mixer" ? "Use this mix" : "Use this sound"
-        }
+        confirmLabel={(() => {
+          if (soundPanelTab === "mixer") {
+            return soundMode === "mixer"
+              ? `Keep ${mixerPanelName}`
+              : `Use ${mixerPanelName}`;
+          }
+          const name = compositions.find((c) => c.key === stagedSoundId)?.name;
+          if (!name) return "Use this sound";
+          const keep =
+            !choseSilence &&
+            soundMode === "soundscape" &&
+            stagedSoundId === compositionKey;
+          return keep ? `Keep ${name}` : `Use ${name}`;
+        })()}
         secondaryLabel={
           soundPanelTab === "library" ? "Use silence" : undefined
         }

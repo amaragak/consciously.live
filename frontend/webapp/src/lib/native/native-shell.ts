@@ -38,6 +38,10 @@ export async function initNativeShell(): Promise<void> {
     attributeFilter: ["class", "data-color-scheme"],
   });
 
+  // Cap shell: lock scale so iOS never focus-zooms into inputs (and can't leave
+  // the web view stuck zoomed with no way to pinch back out). Browser builds
+  // keep the looser index.html viewport for pinch-zoom accessibility.
+  lockNativeViewport();
   installKeyboardHandling();
   installExternalLinkHandling();
   installBackButton();
@@ -92,6 +96,34 @@ function isTextEntry(el: Element | null): el is HTMLElement {
   return false;
 }
 
+const NATIVE_VIEWPORT =
+  "width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover";
+
+function viewportMeta(): HTMLMetaElement | null {
+  return document.querySelector('meta[name="viewport"]');
+}
+
+function lockNativeViewport(): void {
+  viewportMeta()?.setAttribute("content", NATIVE_VIEWPORT);
+}
+
+/**
+ * If WebKit still focus-zoomed despite maximum-scale, rewrite the viewport meta
+ * so scale snaps back to 1 when the keyboard dismisses.
+ */
+function resetNativeViewportZoom(): void {
+  const meta = viewportMeta();
+  if (!meta) return;
+  // Must differ from the locked string so WebKit re-parses and drops a stuck scale.
+  meta.setAttribute(
+    "content",
+    "width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover",
+  );
+  requestAnimationFrame(() => {
+    meta.setAttribute("content", NATIVE_VIEWPORT);
+  });
+}
+
 function installKeyboardHandling(): void {
   // Default matches capacitor.config Keyboard.resize: "none". Auth used to flip
   // back to Native on unmount, which shoved the tab bar / create footer up.
@@ -107,12 +139,24 @@ function installKeyboardHandling(): void {
   void Keyboard.addListener("keyboardWillHide", () => {
     setNativeKeyboardState({ open: false, heightPx: 0 });
   });
+  void Keyboard.addListener("keyboardDidHide", () => {
+    resetNativeViewportZoom();
+  });
   // Keep the focused field above the overlay keyboard.
   void Keyboard.addListener("keyboardDidShow", () => {
     const el = document.activeElement;
     if (!isTextEntry(el)) return;
     el.scrollIntoView({ block: "center", behavior: "smooth" });
   });
+  // Backup when keyboard events are late/missing (blur without DidHide).
+  document.addEventListener(
+    "focusout",
+    (event) => {
+      if (!isTextEntry(event.target as Element | null)) return;
+      window.setTimeout(resetNativeViewportZoom, 80);
+    },
+    true,
+  );
 }
 
 function externalHttpUrl(raw: string | URL | null | undefined): URL | null {

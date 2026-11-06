@@ -28,7 +28,7 @@ import {
 } from "@/lib/tiptap-markdown-clipboard";
 
 const editorClass =
-  "min-h-[16rem] w-full px-3 py-3 text-[15px] leading-relaxed text-foreground focus:outline-none " +
+  "min-h-[16rem] w-full px-3 py-3 text-base leading-relaxed text-foreground focus:outline-none " +
   "[&_.ProseMirror]:min-h-[16rem] [&_p]:my-2 [&_p.is-editor-empty:first-child::before]:text-muted/60 " +
   "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-medium [&_h2]:tracking-tight " +
   "[&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:font-display [&_h3]:text-lg [&_h3]:font-medium " +

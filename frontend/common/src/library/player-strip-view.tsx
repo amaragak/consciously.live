@@ -91,6 +91,27 @@ export function PlayerStripView({
   const inline = placement === "inline";
   const rootRef = useRef<HTMLDivElement>(null);
 
+  /** Phone floating mini-player (above the tab pill). Desktop keeps the fuller strip. */
+  const [phoneFloat, setPhoneFloat] = useState(false);
+  /** Tap the mini strip to expand into the full player (skip ± lives here). */
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (inline) {
+      setPhoneFloat(false);
+      setExpanded(false);
+      return;
+    }
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => {
+      setPhoneFloat(mq.matches);
+      if (!mq.matches) setExpanded(false);
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [inline]);
+  const floatingMini = phoneFloat && !expanded;
+
   /** Desktop app chrome: size the strip to the main column, not the viewport. */
   const [contentColumnLayout, setContentColumnLayout] = useState(false);
   useEffect(() => {
@@ -146,6 +167,13 @@ export function PlayerStripView({
   const coverUrl =
     typeof track.coverImageUrl === "string" ? track.coverImageUrl.trim() : "";
   const stripSubtitle = playerStripSubtitle(track);
+  const timeLeftSec = Math.max(0, max - current);
+  const voiceMeta = track.speakerName?.trim() || null;
+  const miniMeta = voiceMeta
+    ? `${voiceMeta} · ${formatAudioClock(timeLeftSec)} left`
+    : canSeek
+      ? `${formatAudioClock(timeLeftSec)} left`
+      : stripSubtitle;
   /** Match PlayerStrip mockup ivory — hard colors so Tailwind/theme remaps can't kill contrast. */
   const ivory = "#F3EDE2";
   const ivory60 = "rgba(243,237,226,0.6)";
@@ -153,19 +181,27 @@ export function PlayerStripView({
   const ivory18 = "rgba(243,237,226,0.18)";
   const ivory10 = "rgba(243,237,226,0.10)";
   const stripBorder = "rgba(243,237,226,0.22)";
+  const paisleyFloat = phoneFloat;
   const stripStyle = {
-    height: track.speakerName ? 88 : 76,
+    height: floatingMini ? 58 : track.speakerName ? 88 : 76,
     boxSizing: "border-box",
     color: ivory,
-    backgroundImage:
-      "linear-gradient(90deg, var(--player-surface-start, #2a3c5a) 0%, var(--deep, #0f1b2d) 100%)",
+    backgroundColor: paisleyFloat ? "var(--deep, #0f1b2d)" : undefined,
+    backgroundImage: paisleyFloat
+      ? "url(/patterns/paisley-dark-duotone.webp), linear-gradient(90deg, var(--player-surface-start, #2a3c5a) 0%, var(--deep, #0f1b2d) 100%)"
+      : "linear-gradient(90deg, var(--player-surface-start, #2a3c5a) 0%, var(--deep, #0f1b2d) 100%)",
+    backgroundSize: paisleyFloat ? "220px 220px, auto" : undefined,
+    backgroundBlendMode: paisleyFloat ? "soft-light, normal" : undefined,
     border: `1px solid ${stripBorder}`,
     boxShadow:
-      "0 10px 30px color-mix(in srgb, var(--deep, #0f1b2d) 25%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.14)",
-    padding: "10px 24px 10px 10px",
+      "0 10px 28px -12px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.12)",
+    padding: floatingMini ? "8px 12px 8px 8px" : "10px 24px 10px 10px",
     display: "flex",
     alignItems: "center",
-    gap: 16,
+    gap: floatingMini ? 10 : 16,
+    position: "relative",
+    overflow: "hidden",
+    cursor: floatingMini ? "pointer" : undefined,
   } as CSSProperties;
   const outlineBtnStyle = {
     width: 36,
@@ -209,6 +245,17 @@ export function PlayerStripView({
     : 50;
   const scrubTrackBg = `linear-gradient(to right, var(--accent, #c8a46a) 0%, var(--accent, #c8a46a) ${scrubPct}%, ${ivory18} ${scrubPct}%, ${ivory18} 100%)`;
 
+  const artSize = floatingMini ? 42 : 56;
+  const miniPlayStyle = {
+    ...playBtnStyle,
+    width: 36,
+    height: 36,
+    backgroundColor: ivory,
+    backgroundImage: "none",
+    border: "none",
+    color: "var(--deep, #0f1b2d)",
+  } as CSSProperties;
+
   return (
     <div
       ref={rootRef}
@@ -219,23 +266,31 @@ export function PlayerStripView({
         // Sidebar inset must match AppChrome spacer (`lg:block`), not `md`.
         inline
           ? "pointer-events-none relative z-50 mx-auto w-full max-w-6xl px-4 pb-3 pt-2 md:px-6"
-          : `pointer-events-none fixed z-50 left-0 w-full max-w-6xl px-4 pt-3 md:px-6 ${
-              besideSidebar ? "lg:left-[var(--app-sidebar-w,200px)]" : ""
-            }`
+          : phoneFloat
+            ? "pointer-events-none fixed z-[121] left-0 right-0"
+            : `pointer-events-none fixed z-50 left-0 w-full max-w-6xl px-4 pt-3 md:px-6 ${
+                besideSidebar ? "lg:left-[var(--app-sidebar-w,200px)]" : ""
+              }`
       }
       style={
         inline
           ? undefined
-          : {
-              bottom: Math.max(0, bottomOffsetPx),
-              ...(contentColumnLayout
-                ? {
-                    width: `min(72rem, calc(100% - var(--app-sidebar-w, 200px) - ${Math.max(0, focusTasksInsetPx)}px))`,
-                    maxWidth: "none",
-                  }
-                : {}),
-              paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
-            }
+          : phoneFloat
+            ? {
+                bottom: Math.max(0, bottomOffsetPx),
+                paddingLeft: 14,
+                paddingRight: 14,
+              }
+            : {
+                bottom: Math.max(0, bottomOffsetPx),
+                ...(contentColumnLayout
+                  ? {
+                      width: `min(72rem, calc(100% - var(--app-sidebar-w, 200px) - ${Math.max(0, focusTasksInsetPx)}px))`,
+                      maxWidth: "none",
+                    }
+                  : {}),
+                paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+              }
       }
     >
       {hiddenMedia}
@@ -245,12 +300,21 @@ export function PlayerStripView({
         style={stripStyle}
         role="region"
         aria-label="Now playing"
+        onClick={
+          floatingMini
+            ? (e) => {
+                const t = e.target as HTMLElement | null;
+                if (t?.closest("button")) return;
+                setExpanded(true);
+              }
+            : undefined
+        }
       >
         {coverUrl ? (
           <div
             style={{
-              width: 56,
-              height: 56,
+              width: artSize,
+              height: artSize,
               borderRadius: 9999,
               flexShrink: 0,
               overflow: "hidden",
@@ -261,15 +325,15 @@ export function PlayerStripView({
             <CoverArtThumb
               src={coverUrl}
               alt=""
-              edgePx={54}
+              edgePx={artSize - 2}
               className="!rounded-full"
             />
           </div>
         ) : (
           <div
             style={{
-              width: 56,
-              height: 56,
+              width: artSize,
+              height: artSize,
               borderRadius: 9999,
               flexShrink: 0,
               background: ivory10,
@@ -286,6 +350,111 @@ export function PlayerStripView({
           </div>
         )}
 
+        {floatingMini ? (
+          <>
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
+            >
+              <p
+                className="font-display"
+                style={{
+                  margin: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: 15,
+                  lineHeight: 1.2,
+                  color: ivory,
+                }}
+              >
+                {track.title}
+              </p>
+              {miniMeta ? (
+                <p
+                  style={{
+                    margin: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    fontSize: 12,
+                    lineHeight: 1.2,
+                    color: ivory60,
+                  }}
+                >
+                  {miniMeta}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => onTogglePlay()}
+              style={miniPlayStyle}
+              aria-label={playing ? "Pause" : "Play"}
+            >
+              {playing ? (
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden>
+                  <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden>
+                  <path d="M8 5v14l11-7L8 5z" />
+                </svg>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                flexShrink: 0,
+                border: "none",
+                background: "transparent",
+                color: ivory60,
+                cursor: "pointer",
+                display: "flex",
+                padding: 4,
+              }}
+              aria-label="Close player"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+            {canSeek ? (
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: 14,
+                  right: 14,
+                  bottom: 0,
+                  height: 2,
+                  borderRadius: 999,
+                  background: ivory18,
+                  overflow: "hidden",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    height: "100%",
+                    width: `${scrubPct}%`,
+                    background: "var(--accent, #c8a46a)",
+                  }}
+                />
+              </span>
+            ) : null}
+          </>
+        ) : null}
+
+        {!floatingMini ? (
+          <>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {canSeek ? (
             <button
@@ -542,6 +711,8 @@ export function PlayerStripView({
             <path d="M6 6l12 12" />
           </svg>
         </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

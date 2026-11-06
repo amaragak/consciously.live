@@ -958,7 +958,7 @@ function CardNode({ id, data, selected }: NodeProps<FlowNode>) {
   const api = useContext(BoardContext);
   const editing = api?.editingId === id;
   const tilt = ((id.charCodeAt(id.length - 1) % 21) - 10) / 10;
-  const size = data.size === "s" ? "text-[15px]" : data.size === "l" ? "text-[28px]" : "text-[20px]";
+  const size = data.size === "s" ? "text-base" : data.size === "l" ? "text-[28px]" : "text-[20px]";
   const image = data.imageId ? loadIdeateVisionBoardStore().items.find((item) => item.id === data.imageId) : null;
 
   const boardOnly = data.kind === "sticky" || data.kind === "text";

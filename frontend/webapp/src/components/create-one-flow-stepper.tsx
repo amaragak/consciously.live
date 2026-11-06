@@ -22,15 +22,61 @@ export function CreateOneFlowStepper({
   compact?: boolean;
 }) {
   const current = stepIndex(step);
+
+  /**
+   * Mobile page step bar (consciously-mobile-floating-nav): three equal
+   * segments — navy line for done, gold for current, muted for later.
+   */
+  if (!compact) {
+    return (
+      <nav aria-label="Steps" className="flex w-full gap-2">
+        {STEPS.map((s, i) => {
+          const done = i < current;
+          const active = i === current;
+          const clickable = Boolean(onStepClick) && i <= current;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              disabled={!clickable}
+              onClick={() => onStepClick?.(s.id)}
+              aria-label={s.label}
+              aria-current={active ? "step" : undefined}
+              className={`flex min-w-0 flex-1 flex-col gap-1.5 ${
+                clickable ? "cursor-pointer" : "cursor-default"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`h-[3px] w-full rounded-full ${
+                  active
+                    ? "bg-accent"
+                    : done
+                      ? "bg-[var(--deep,#0f1b2d)]"
+                      : "bg-foreground/20"
+                }`}
+              />
+              <span
+                className={`text-[13px] ${
+                  active
+                    ? "font-semibold text-foreground"
+                    : "font-normal text-muted"
+                }`}
+              >
+                {s.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
+
   return (
-    <div
-      className={`flex ${compact ? "w-max max-w-full justify-center" : "w-full justify-start"}`}
-    >
+    <div className="flex w-max max-w-full justify-center">
       <nav
         aria-label="Steps"
-        className={`flex min-w-0 items-center ${
-          compact ? "gap-1.5 sm:gap-2" : "w-full gap-2 md:w-auto md:gap-4"
-        }`}
+        className="flex min-w-0 items-center gap-1.5 sm:gap-2"
       >
         {STEPS.map((s, i) => {
           const done = i < current;
@@ -41,45 +87,29 @@ export function CreateOneFlowStepper({
           return (
             <div
               key={s.id}
-              className={`flex min-w-0 items-center ${
-                compact
-                  ? "shrink-0 gap-1.5 sm:gap-2"
-                  : hasLine
-                    ? "flex-1 gap-2 md:flex-none md:gap-4"
-                    : "shrink-0 gap-2 md:gap-4"
-              }`}
+              className="flex shrink-0 items-center gap-1.5 sm:gap-2"
             >
               <button
                 type="button"
                 disabled={!clickable}
                 onClick={() => onStepClick?.(s.id)}
                 aria-label={s.label}
-                className={`flex items-center ${
-                  compact ? "gap-1 sm:gap-1.5" : "gap-2 md:gap-2.5"
-                } ${clickable ? "cursor-pointer" : "cursor-default"}`}
+                className={`flex items-center gap-1 sm:gap-1.5 ${
+                  clickable ? "cursor-pointer" : "cursor-default"
+                }`}
                 aria-current={active ? "step" : undefined}
               >
                 <span
-                  className={`shrink-0 items-center justify-center rounded-full border font-semibold ${
-                    compact
-                      ? `hidden h-6 w-6 text-[11px] sm:flex ${
-                          lit
-                            ? "header-gold-sunlit-fill border-transparent text-on-accent"
-                            : "border-[rgb(246_241_231_/_0.35)] bg-transparent text-nav-muted"
-                        }`
-                      : `flex h-8 w-8 text-[13px] md:h-9 md:w-9 md:text-sm ${
-                          lit
-                            ? "header-gold-sunlit-fill border-transparent text-on-accent"
-                            : "border-border bg-transparent text-muted"
-                        }`
+                  className={`hidden h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold sm:flex ${
+                    lit
+                      ? "header-gold-sunlit-fill border-transparent text-on-accent"
+                      : "border-[rgb(246_241_231_/_0.35)] bg-transparent text-nav-muted"
                   }`}
                 >
                   {done ? (
                     <svg
                       viewBox="0 0 16 16"
-                      className={
-                        compact ? "h-3 w-3" : "h-3.5 w-3.5 md:h-4 md:w-4"
-                      }
+                      className="h-3 w-3"
                       fill="none"
                       aria-hidden
                     >
@@ -95,54 +125,34 @@ export function CreateOneFlowStepper({
                     s.n
                   )}
                 </span>
-                {compact ? (
-                  <>
-                    {/* Mobile: labels only — gold when active/done. */}
-                    <span
-                      className={`text-[13px] sm:hidden ${
-                        lit
-                          ? "header-gold-sunlit font-bold"
-                          : "font-normal text-nav-muted"
-                      }`}
-                    >
-                      {s.label}
-                    </span>
-                    {/* sm+: circles + ivory labels when active/done. */}
-                    <span
-                      className={`hidden text-[13px] sm:inline ${
-                        lit
-                          ? "font-bold text-nav-foreground"
-                          : "font-normal text-nav-muted"
-                      }`}
-                    >
-                      {s.label}
-                    </span>
-                  </>
-                ) : (
-                  <span
-                    className={
-                      lit
-                        ? "text-[15px] font-semibold text-foreground md:text-base"
-                        : "text-[15px] font-normal text-muted md:text-base"
-                    }
-                  >
-                    {s.label}
-                  </span>
-                )}
+                {/* Mobile compact: labels only — gold when active/done. */}
+                <span
+                  className={`text-[13px] sm:hidden ${
+                    lit
+                      ? "header-gold-sunlit font-bold"
+                      : "font-normal text-nav-muted"
+                  }`}
+                >
+                  {s.label}
+                </span>
+                {/* sm+: circles + ivory labels when active/done. */}
+                <span
+                  className={`hidden text-[13px] sm:inline ${
+                    lit
+                      ? "font-bold text-nav-foreground"
+                      : "font-normal text-nav-muted"
+                  }`}
+                >
+                  {s.label}
+                </span>
               </button>
               {hasLine ? (
                 <span
                   aria-hidden
-                  className={`rounded-full ${
-                    compact
-                      ? "h-px w-3 shrink-0 sm:w-5"
-                      : "h-0.5 min-w-2 flex-1"
-                  } ${
+                  className={`h-px w-3 shrink-0 rounded-full sm:w-5 ${
                     done
                       ? "header-gold-sunlit-fill"
-                      : compact
-                        ? "bg-[rgb(246_241_231_/_0.28)]"
-                        : "bg-foreground/35"
+                      : "bg-[rgb(246_241_231_/_0.28)]"
                   }`}
                 />
               ) : null}

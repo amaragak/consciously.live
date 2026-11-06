@@ -46,8 +46,12 @@ function IconStop({ className }: { className?: string }) {
 type Props = {
   disabled?: boolean;
   onTranscript: (text: string) => void;
-  /** `composer` matches the chat send button; `inset` sits on a textarea; `round` is the overview hero mic. */
-  variant?: "composer" | "inset" | "round";
+  /**
+   * `composer` matches the chat send button; `inset` sits on a textarea;
+   * `round` is the overview desktop hero mic; `navy` is outlined on the
+   * paisley hero field (mobile quick create).
+   */
+  variant?: "composer" | "inset" | "round" | "navy";
 };
 
 export function DictationMicButton({
@@ -62,7 +66,11 @@ export function DictationMicButton({
   if (!apiReady) return null;
 
   const size =
-    variant === "round" ? "size-[42px]" : variant === "inset" ? "h-9 w-9" : "h-11 w-11";
+    variant === "round"
+      ? "size-[42px]"
+      : variant === "inset" || variant === "navy"
+        ? "h-9 w-9"
+        : "h-11 w-11";
 
   const onMicClick = async () => {
     if (disabled || busy) return;
@@ -108,12 +116,14 @@ export function DictationMicButton({
               ? "Stop and transcribe"
               : "Dictate"
         }
-        className={`${size} flex cursor-pointer items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent-soft/40 disabled:cursor-not-allowed disabled:opacity-60 ${
-          variant === "round" && !recording ? "bg-white" : "bg-transparent"
-        } ${
+        className={`${size} flex cursor-pointer items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
           recording
             ? "animate-pulse border-transparent accent-fill-gradient text-on-accent hover:opacity-90"
-            : ""
+            : variant === "navy"
+              ? "border-[rgb(243_237_226_/_0.35)] bg-transparent text-[#F3EDE2] hover:bg-[rgb(243_237_226_/_0.1)]"
+              : variant === "round"
+                ? "border-border bg-white text-foreground hover:bg-accent-soft/40"
+                : "border-border bg-transparent text-foreground hover:bg-accent-soft/40"
         }`}
       >
         {busy ? (

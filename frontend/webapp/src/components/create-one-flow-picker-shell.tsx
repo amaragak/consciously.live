@@ -28,6 +28,13 @@ type Props = {
   host?: "parent" | "viewport";
   /** Optional block between the scroll body and the confirm footer (e.g. Volume). */
   preFooter?: ReactNode;
+  /**
+   * Mobile confirm UX (md+ unchanged):
+   * - `default` — same footer row as desktop
+   * - `tap` — no Mist footer on phone; parent confirms on card tap
+   * - `pinned` — full-width Mist bar pinned to the sheet bottom on phone
+   */
+  mobileConfirm?: "default" | "tap" | "pinned";
 };
 
 const CLOSE_MS = 300;
@@ -51,6 +58,7 @@ export function CreateOneFlowPickerShell({
   bodyClassName,
   host = "parent",
   preFooter,
+  mobileConfirm = "default",
 }: Props) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(open);
@@ -96,12 +104,97 @@ export function CreateOneFlowPickerShell({
         ? "w-full max-w-[640px]"
         : "w-full max-w-[520px]";
 
-  // Above chat FAB (z-60). Viewport host portals to body so page stacking
+  // Above chat FAB (z-60) and mobile tab bar (z-120/130) so the sheet covers
+  // the tab bar while open. Viewport host portals to body so page stacking
   // contexts can't leave the FAB on top of the panel.
   const rootClass =
     host === "viewport"
-      ? "fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[100] lg:left-[var(--app-sidebar-w,200px)]"
-      : "fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[100] md:absolute md:inset-0 md:z-[60]";
+      ? "fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[140] lg:left-[var(--app-sidebar-w,200px)]"
+      : "fixed inset-x-0 bottom-0 top-[var(--app-header-h)] z-[140] md:absolute md:inset-0 md:z-[60]";
+
+  const desktopFooter = (
+    <div className="hidden shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2.5 md:flex md:px-6 md:py-3.5">
+      <p className="min-w-0 truncate text-[13px] text-foreground">
+        {footSummary ?? "\u00a0"}
+      </p>
+      <div className="flex flex-row items-center gap-2">
+        {secondaryLabel && onSecondary ? (
+          <button
+            type="button"
+            disabled={secondaryDisabled}
+            onClick={onSecondary}
+            className="h-[42px] min-w-[8rem] cursor-pointer rounded-full border border-border bg-card px-5 text-[14px] font-semibold text-foreground transition-opacity hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {secondaryLabel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={confirmDisabled}
+          onClick={onConfirm}
+          style={PRIMARY_ACCENT_FILL_STYLE}
+          className="h-[42px] min-w-[10rem] cursor-pointer rounded-full accent-fill-gradient px-5 text-[14px] font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
+
+  // Mobile: tap confirms — Mist footer commented out for phone (desktop keeps it).
+  // {mobileConfirm === "tap" ? <div className="md:hidden">…</div> : null}
+
+  const defaultMobileFooter = (
+    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom,0px))] md:hidden">
+      <div className="flex w-full flex-col-reverse gap-2">
+        {secondaryLabel && onSecondary ? (
+          <button
+            type="button"
+            disabled={secondaryDisabled}
+            onClick={onSecondary}
+            className="h-11 w-full cursor-pointer rounded-full border border-border bg-card px-5 text-base font-semibold text-foreground transition-opacity hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {secondaryLabel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={confirmDisabled}
+          onClick={onConfirm}
+          style={PRIMARY_ACCENT_FILL_STYLE}
+          className="h-11 w-full cursor-pointer rounded-full accent-fill-gradient px-5 text-base font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
+
+  const pinnedMobileFooter = (
+    <div className="shrink-0 border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:hidden">
+      <div className="flex flex-col gap-2">
+        {secondaryLabel && onSecondary ? (
+          <button
+            type="button"
+            disabled={secondaryDisabled}
+            onClick={onSecondary}
+            className="h-11 w-full cursor-pointer rounded-full border border-border bg-card px-5 text-base font-semibold text-foreground transition-opacity hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {secondaryLabel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={confirmDisabled}
+          onClick={onConfirm}
+          style={PRIMARY_ACCENT_FILL_STYLE}
+          className="h-11 w-full cursor-pointer rounded-full accent-fill-gradient px-5 text-base font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
 
   const tree = (
     <div className={rootClass}>
@@ -164,32 +257,12 @@ export function CreateOneFlowPickerShell({
             {preFooter}
           </div>
         ) : null}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2.5 md:px-6 md:py-3.5">
-          <p className="hidden min-w-0 truncate text-[13px] text-foreground md:block">
-            {footSummary ?? "\u00a0"}
-          </p>
-          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center">
-            {secondaryLabel && onSecondary ? (
-              <button
-                type="button"
-                disabled={secondaryDisabled}
-                onClick={onSecondary}
-                className="h-11 w-full cursor-pointer rounded-full border border-border bg-card px-5 text-[14px] font-semibold text-foreground transition-opacity hover:bg-background disabled:cursor-not-allowed disabled:opacity-40 md:h-[42px] md:w-auto md:min-w-[8rem]"
-              >
-                {secondaryLabel}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={confirmDisabled}
-              onClick={onConfirm}
-              style={PRIMARY_ACCENT_FILL_STYLE}
-              className="h-11 w-full cursor-pointer rounded-full accent-fill-gradient px-5 text-[14px] font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 md:h-[42px] md:w-auto md:min-w-[10rem]"
-            >
-              {confirmLabel}
-            </button>
-          </div>
-        </div>
+        {mobileConfirm === "tap" ? null : mobileConfirm === "pinned" ? (
+          pinnedMobileFooter
+        ) : (
+          defaultMobileFooter
+        )}
+        {desktopFooter}
       </div>
     </div>
   );

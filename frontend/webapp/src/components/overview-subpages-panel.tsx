@@ -19,7 +19,8 @@ export type OverviewSubpageGroup = {
  * Image-led sub-page cards for Journal / Meditate overviews.
  * - Desktop Meditate (`sideBySide`): Library + Sounds labelled columns, six equal cards in one row.
  * - Desktop Journal (default): equal cards in one row.
- * - Mobile: each group scrolls sideways (Meditate); Journal fits three across without chevrons.
+ * - Mobile Meditate: three equal square tiles per labelled row (no scroll, no counts/chevrons).
+ * - Mobile Journal: three across without chevrons.
  */
 export function OverviewSubpagesPanel({
   groups,
@@ -66,7 +67,7 @@ export function OverviewSubpagesPanel({
           </div>
         </div>
 
-        {/* Mobile: labelled rows that scroll sideways */}
+        {/* Mobile: three equal square tiles per labelled section (no horizontal scroll). */}
         <div className="flex flex-col gap-3.5 md:hidden">
           {groups.map((group) => (
             <div key={group.label ?? group.tiles[0]?.href} className="flex flex-col gap-1.5">
@@ -75,6 +76,8 @@ export function OverviewSubpagesPanel({
                   {group.label}
                 </p>
               ) : null}
+              {/*
+              Previous horizontal swipe row — replaced by three-across grid.
               <div className="-mx-0.5 flex gap-2 overflow-x-auto px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {group.tiles.map((tile) => (
                   <OverviewSubpageCard
@@ -82,6 +85,17 @@ export function OverviewSubpagesPanel({
                     tile={tile}
                     loading={loading}
                     size="mobileScroll"
+                  />
+                ))}
+              </div>
+              */}
+              <div className="grid grid-cols-3 items-start gap-2">
+                {group.tiles.map((tile) => (
+                  <OverviewSubpageCard
+                    key={tile.href}
+                    tile={tile}
+                    loading={loading}
+                    size="mobileGrid"
                   />
                 ))}
               </div>
@@ -120,49 +134,74 @@ function OverviewSubpageCard({
 }: {
   tile: OverviewSubpageTile;
   loading: boolean;
-  size: "desktop" | "mobileScroll" | "journal";
+  size: "desktop" | "mobileScroll" | "mobileGrid" | "journal";
 }) {
   const count =
     loading || tile.count == null || tile.count <= 0 ? null : tile.count;
+  const isMobileGrid = size === "mobileGrid";
   const imageH =
     size === "desktop"
       ? "h-[104px]"
       : size === "mobileScroll"
         ? "h-[78px]"
-        : "h-[70px] md:h-[104px]";
+        : size === "mobileGrid"
+          ? "aspect-square h-auto"
+          : "h-[70px] md:h-[104px]";
   const widthClass =
     size === "mobileScroll" ? "w-[132px] shrink-0" : "min-w-0 w-full";
 
   return (
     <Link
       href={tile.href}
-      className={`flex flex-col overflow-hidden rounded-[14px] border border-border bg-card ${widthClass}`}
+      className={
+        isMobileGrid
+          ? `flex flex-col gap-1.5 ${widthClass}`
+          : `flex flex-col overflow-hidden rounded-[14px] border border-border bg-card ${widthClass}`
+      }
     >
       <CoverImage
         src={tile.imageSrc}
-        className={`w-full shrink-0 ${imageH}`}
+        className={
+          isMobileGrid
+            ? `w-full shrink-0 overflow-hidden rounded-[14px] ${imageH}`
+            : `w-full shrink-0 ${imageH}`
+        }
       />
-      <span className="flex items-center gap-1.5 px-2.5 py-2.5 md:px-3">
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5 whitespace-nowrap">
-          <span className="truncate text-[13.5px] font-semibold text-foreground md:text-[14px]">
-            {tile.label}
-          </span>
+      {isMobileGrid ? (
+        <span className="px-0.5 text-[13px] font-semibold leading-[1.25] text-foreground">
+          {tile.label}
+          {/* Counts commented out on mobile grid — kept for desktop / swipe sizes.
           {loading ? (
-            <span className="mm-skeleton inline-block h-3 w-5 rounded" />
+            <span className="mm-skeleton ml-1.5 inline-block h-3 w-5 rounded" />
           ) : count != null ? (
-            <span className="text-[12.5px] text-muted">{count}</span>
+            <span className="ml-1.5 text-[12.5px] font-normal text-muted">{count}</span>
           ) : null}
+          */}
         </span>
-        {/* Journal mobile: drop chevron at narrow width. */}
-        <SelectChevron
-          direction="right"
-          className={
-            size === "journal"
-              ? "hidden shrink-0 text-muted md:block"
-              : "shrink-0 text-muted"
-          }
-        />
-      </span>
+      ) : (
+        <span className="flex items-center gap-1.5 px-2.5 py-2.5 md:px-3">
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5 whitespace-nowrap">
+            <span className="truncate text-[13.5px] font-semibold text-foreground md:text-[14px]">
+              {tile.label}
+            </span>
+            {loading ? (
+              <span className="mm-skeleton inline-block h-3 w-5 rounded" />
+            ) : count != null ? (
+              <span className="text-[12.5px] text-muted">{count}</span>
+            ) : null}
+          </span>
+          {/* Journal mobile: drop chevron at narrow width.
+              Mobile Meditate grid: chevron omitted (see mobileGrid branch above). */}
+          <SelectChevron
+            direction="right"
+            className={
+              size === "journal"
+                ? "hidden shrink-0 text-muted md:block"
+                : "shrink-0 text-muted"
+            }
+          />
+        </span>
+      )}
     </Link>
   );
 }

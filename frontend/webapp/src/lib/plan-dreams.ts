@@ -528,6 +528,18 @@ function normalizeDreams(raw: unknown[]): PlanDream[] {
     out.push({
       id: d.id,
       title: d.title,
+      ...(typeof d.urlSlug === "string" && d.urlSlug.trim()
+        ? { urlSlug: d.urlSlug.trim() }
+        : {}),
+      ...(Array.isArray(d.urlSlugHistory)
+        ? {
+            urlSlugHistory: d.urlSlugHistory
+              .filter((x): x is string => typeof x === "string")
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .slice(0, 24),
+          }
+        : {}),
       state,
       createdAt,
       updatedAt: typeof d.updatedAt === "string" ? d.updatedAt : createdAt,

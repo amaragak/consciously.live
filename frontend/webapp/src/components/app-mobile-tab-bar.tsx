@@ -1,6 +1,17 @@
 "use client";
 
-import { ChevronRight, X } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  Focus,
+  Heart,
+  Library,
+  ScrollText,
+  Sparkles,
+  Timer,
+  Volume2,
+  Waves,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -8,13 +19,17 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { AppNavSectionIcon } from "@/components/app-nav-section-icon";
+import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { useMinWidth } from "@/hooks/use-min-width";
 import {
   APP_MOBILE_TAB_BAR_H_PX,
-  readSafeAreaBottomPx,
+  APP_MOBILE_TAB_PILL_INSET_PX,
+  mobileTabContentClearancePx,
+  readMobileTabPillBottomOffsetPx,
   setAppMobileTabBarState,
   shouldHideMobileTabBar,
 } from "@/lib/app-mobile-tab-bar";
@@ -44,10 +59,10 @@ import {
 
 const LONG_PRESS_MS = 400;
 const LONG_PRESS_SLOP_PX = 10;
-/** Sheet slide + scrim fade — keep in sync. */
-const SHEET_MOTION_MS = 220;
-const TAB_BAR_BOTTOM =
-  "calc(58px + env(safe-area-inset-bottom, 0px))" as const;
+/** Card scale/fade — keep in sync with close timer. */
+const MENU_MOTION_MS = 200;
+/** Gap between section menu card bottom and the floating pill. */
+const MENU_PILL_GAP_PX = 8;
 
 function hapticLight(): void {
   if (nativeHapticTap()) return;
@@ -74,8 +89,6 @@ function useKeyboardOccludes(): boolean {
     vv?.addEventListener("scroll", sync);
     window.addEventListener("resize", sync);
 
-    // Native resizes the web view with the keyboard, so the viewport check
-    // above never sees it; the shell reports keyboard state instead.
     const onNativeKeyboard = (e: Event) => {
       setOpen((e as CustomEvent<NativeKeyboardDetail>).detail.open);
     };
@@ -94,8 +107,47 @@ function useKeyboardOccludes(): boolean {
   return open;
 }
 
-function SectionSheet({
+function subIcon(id: string, size = 16): ReactNode {
+  const props = {
+    "aria-hidden": true as const,
+    width: size,
+    height: size,
+    strokeWidth: 1.85,
+    className: "shrink-0",
+  };
+  if (id === "create") return <Sparkles {...props} />;
+  if (id === "library" || id.startsWith("library-")) return <Library {...props} />;
+  if (id === "sounds" || id === "sounds-soundscapes") return <Waves {...props} />;
+  if (id === "sounds-voices" || id === "sounds-custom") return <Volume2 {...props} />;
+  if (id === "entries" || id === "gratitudes" || id === "insights")
+    return <BookOpen {...props} />;
+  if (id === "manifesto") return <ScrollText {...props} />;
+  if (id === "story") return <BookOpen {...props} />;
+  if (id === "vision-board") return <Sparkles {...props} />;
+  if (id === "tracker") return <Focus {...props} />;
+  if (id === "timer") return <Timer {...props} />;
+  if (id === "history") return <Focus {...props} />;
+  if (id.startsWith("heal")) return <Heart {...props} />;
+  return <Sparkles {...props} />;
+}
+
+/**
+ * Old full-width bottom sheet (consciously-mobile-floating-nav v1) — kept for
+ * reference; replaced by the notched card that grows out of the pill (v2).
+ *
+ * <div className="fixed inset-0 z-[125]">
+ *   <button className="absolute inset-x-0 top-0 …" style={{ bottom: TAB_BAR_BOTTOM }} />
+ *   <div className="absolute inset-x-0 rounded-t-[22px] …" style={{ bottom: TAB_BAR_BOTTOM,
+ *        transform: open ? "translateY(0)" : "translateY(105%)" }}>
+ *     <div>drag handle</div><div>label + X</div><nav>flat rows…</nav>
+ *   </div>
+ * </div>
+ */
+
+function SectionMenu({
   section,
+  tabIndex,
+  tabCount,
   pathname,
   search,
   hash,
@@ -104,32 +156,60 @@ function SectionSheet({
   onNavigate,
 }: {
   section: AppNavSection;
+  /** 0-based index among the five visible tabs (for notch placement). */
+  tabIndex: number;
+  tabCount: number;
   pathname: string;
   search: string;
   hash: string;
-  /** When false, plays the exit motion (parent unmounts after SHEET_MOTION_MS). */
   open: boolean;
   onClose: () => void;
   onNavigate: () => void;
 }) {
   const children = section.children ?? [];
+  const bottomOffsetPx = readMobileTabPillBottomOffsetPx();
+  const cardBottom =
+    bottomOffsetPx + APP_MOBILE_TAB_BAR_H_PX + MENU_PILL_GAP_PX;
+  const notchPct = ((tabIndex + 0.5) / Math.max(1, tabCount)) * 100;
   const ease = "cubic-bezier(0.32, 0.72, 0, 1)";
-  const motionTransition = `opacity ${SHEET_MOTION_MS}ms ${ease}, transform ${SHEET_MOTION_MS}ms ${ease}`;
+  const motion = `opacity ${MENU_MOTION_MS}ms ${ease}, transform ${MENU_MOTION_MS}ms ${ease}`;
+
+  const dragStartY = useRef<number | null>(null);
+
+  const onCardPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    dragStartY.current = e.clientY;
+  };
+  const onCardPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = dragStartY.current;
+    dragStartY.current = null;
+    if (start == null) return;
+    if (e.clientY - start > 48) onClose();
+  };
+
+  const isMeditate = section.id === "meditate";
+  const createItem = isMeditate
+    ? children.find((c) => c.id === "create")
+    : null;
+  const groupItems = isMeditate
+    ? children.filter((c) => c.id !== "create")
+    : [];
+  const flatItems = isMeditate ? [] : children;
+
   return (
     <div
       className="fixed inset-0 z-[125] md:hidden"
       role="presentation"
       style={{ pointerEvents: open ? "auto" : "none" }}
     >
-      {/* Scrim stops above the tab bar so the bar never dims. */}
+      {/* Dim covers the page; pill stays above (z-130). */}
       <button
         type="button"
         aria-label="Close"
-        className="absolute inset-x-0 top-0 bg-overlay/22 motion-reduce:!transition-none"
+        className="absolute inset-0 bg-overlay/22 motion-reduce:!transition-none"
         style={{
-          bottom: TAB_BAR_BOTTOM,
           opacity: open ? 1 : 0,
-          transition: motionTransition,
+          transition: motion,
         }}
         onClick={onClose}
       />
@@ -137,133 +217,174 @@ function SectionSheet({
         role="dialog"
         aria-modal="true"
         aria-label={section.label}
-        className="absolute inset-x-0 flex max-h-[min(70dvh,520px)] flex-col overflow-hidden rounded-t-[22px] border border-b-0 border-border bg-card shadow-[0_-8px_28px_rgb(15_27_45_/_0.12)] motion-reduce:!transition-none"
+        className="absolute flex max-h-[min(62dvh,440px)] flex-col overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_14px_36px_-10px_rgb(15_27_45_/_0.28)] motion-reduce:!transition-none"
         style={{
-          bottom: TAB_BAR_BOTTOM,
-          // Keep sheet opaque while sliding — only the scrim fades.
-          opacity: 1,
-          transform: open ? "translateY(0)" : "translateY(105%)",
-          transition: motionTransition,
+          left: APP_MOBILE_TAB_PILL_INSET_PX,
+          right: APP_MOBILE_TAB_PILL_INSET_PX,
+          bottom: cardBottom,
+          opacity: open ? 1 : 0,
+          transform: open ? "scale(1)" : "scale(0.92) translateY(12px)",
+          transformOrigin: `${notchPct}% 100%`,
+          transition: motion,
         }}
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={onCardPointerDown}
+        onPointerUp={onCardPointerUp}
+        onPointerCancel={() => {
+          dragStartY.current = null;
+        }}
       >
-        <div className="flex justify-center pt-2.5" aria-hidden>
-          <span className="h-1 w-10 rounded-full bg-border" />
-        </div>
-        <div className="flex items-center gap-2 px-[18px] pb-2 pt-2">
+        {/* Notch pointing at the tab. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-[-7px] h-3.5 w-3.5 rotate-45 border-b border-r border-border bg-card"
+          style={{
+            left: `calc(${notchPct}% - 7px)`,
+          }}
+        />
+
+        <div className="shrink-0 px-4 pb-1.5 pt-3.5">
           <span className="font-ui text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
             {section.label}
           </span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onClose();
-            }}
-            aria-label="Close"
-            className="ml-auto inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:text-foreground"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
         </div>
+
         <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
-          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
-            {children.map((sub) => (
-              <SheetRow
-                key={sub.id}
-                item={sub}
-                pathname={pathname}
-                search={search}
-                hash={hash}
-                sectionId={section.id}
-                depth={0}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </ul>
+          {createItem ? (
+            <Link
+              href={createItem.href}
+              onClick={onNavigate}
+              className="mb-2 flex min-h-[50px] w-full items-center gap-2.5 rounded-[14px] px-3.5 text-[15px] font-semibold text-on-accent accent-fill-gradient"
+              style={PRIMARY_ACCENT_FILL_STYLE}
+            >
+              <Sparkles className="h-4 w-4 shrink-0" aria-hidden strokeWidth={2} />
+              <span className="min-w-0 flex-1">Create meditation</span>
+            </Link>
+          ) : null}
+
+          {isMeditate ? (
+            <ul className="m-0 flex list-none flex-col gap-0 p-0">
+              {groupItems.map((group, i) => {
+                const active = isSubItemActive(
+                  pathname,
+                  hash,
+                  search,
+                  group,
+                  section.id,
+                );
+                const chips = group.children ?? [];
+                return (
+                  <li key={group.id}>
+                    {i > 0 ? (
+                      <div
+                        className="mx-1 my-1.5 h-px bg-border/70"
+                        aria-hidden
+                      />
+                    ) : null}
+                    <Link
+                      href={group.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex min-h-[50px] w-full items-center gap-2.5 rounded-[14px] px-2.5 text-left transition-colors ${
+                        active
+                          ? "bg-accent-soft font-semibold text-foreground"
+                          : "text-foreground"
+                      }`}
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-link">
+                        {subIcon(group.id)}
+                      </span>
+                      <span className="min-w-0 flex-1 text-[15px] leading-snug">
+                        {group.label}
+                      </span>
+                      <ChevronRight
+                        className="h-[14px] w-[14px] shrink-0 text-muted"
+                        aria-hidden
+                      />
+                    </Link>
+                    {chips.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 px-2.5 pb-2 pt-1">
+                        {chips.map((chip) => {
+                          const chipActive = isSubItemActive(
+                            pathname,
+                            hash,
+                            search,
+                            chip,
+                            section.id,
+                          );
+                          return (
+                            <Link
+                              key={chip.id}
+                              href={chip.href}
+                              onClick={onNavigate}
+                              aria-current={chipActive ? "page" : undefined}
+                              className={`inline-flex h-8 items-center rounded-full border px-2.5 text-[12.5px] font-medium transition-colors ${
+                                chipActive
+                                  ? "border-accent/50 bg-accent-soft font-semibold text-foreground"
+                                  : "border-border bg-card text-foreground"
+                              }`}
+                            >
+                              {chip.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+              {flatItems.map((item) => {
+                const active = isSubItemActive(
+                  pathname,
+                  hash,
+                  search,
+                  item,
+                  section.id,
+                );
+                return (
+                  <li key={item.id}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex min-h-[50px] w-full items-center gap-2.5 rounded-[14px] px-2.5 text-left transition-colors ${
+                        active
+                          ? "bg-accent-soft font-semibold text-foreground"
+                          : "text-foreground"
+                      }`}
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-link">
+                        {subIcon(item.id)}
+                      </span>
+                      <span className="min-w-0 flex-1 text-[15px] leading-snug">
+                        {item.label}
+                      </span>
+                      <ChevronRight
+                        className="h-[14px] w-[14px] shrink-0 text-muted"
+                        aria-hidden
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </nav>
       </div>
     </div>
   );
 }
 
-function SheetRow({
-  item,
-  pathname,
-  search,
-  hash,
-  sectionId,
-  depth,
-  onNavigate,
-}: {
-  item: AppNavSubItem;
-  pathname: string;
-  search: string;
-  hash: string;
-  sectionId: string;
-  depth: number;
-  onNavigate: () => void;
-}) {
-  const active = isSubItemActive(pathname, hash, search, item, sectionId);
-  const nested = item.children ?? [];
-  const parent = nested.length > 0;
-  return (
-    <li>
-      <Link
-        href={item.href}
-        onClick={onNavigate}
-        aria-current={active ? "page" : undefined}
-        className={`flex min-h-12 w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors ${
-          active ? "bg-accent-soft font-semibold text-foreground" : "text-foreground"
-        } ${depth > 0 ? "pl-[30px]" : ""}`}
-      >
-        {depth > 0 ? (
-          <span
-            className={`size-1.5 shrink-0 rounded-full ${
-              active ? "bg-accent-link" : "bg-muted/60"
-            }`}
-            aria-hidden
-          />
-        ) : null}
-        <span className="min-w-0 flex-1">
-          <span
-            className={`block ${
-              parent
-                ? "font-display text-[17px] leading-tight"
-                : "text-[15px] leading-snug"
-            }`}
-          >
-            {item.label}
-          </span>
-        </span>
-        {parent ? (
-          <ChevronRight className="h-[14px] w-[14px] shrink-0 text-muted" aria-hidden />
-        ) : null}
-      </Link>
-      {nested.length > 0 ? (
-        <ul className="m-0 list-none p-0">
-          {nested.map((child) => (
-            <SheetRow
-              key={child.id}
-              item={child}
-              pathname={pathname}
-              search={search}
-              hash={hash}
-              sectionId={sectionId}
-              depth={depth + 1}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
 export function AppMobileTabBar() {
   const mvp = useMvpFlags();
   const navMain = useMemo(() => applyMvpNav(APP_NAV_MAIN, mvp), [mvp]);
+  const tabSections = useMemo(
+    () => navMain.filter((section) => section.id !== "chat"),
+    [navMain],
+  );
   const mdUp = useMinWidth(768);
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -321,16 +442,25 @@ export function AppMobileTabBar() {
 
   useEffect(() => {
     if (!visible) {
-      setAppMobileTabBarState({ visible: false, offsetPx: 0 });
+      // Create routes own the floating step pill — don't zero their offset.
+      if (!immersive) {
+        setAppMobileTabBarState({
+          visible: false,
+          offsetPx: 0,
+          bottomOffsetPx: 0,
+        });
+      }
       return;
     }
-    const safe = readSafeAreaBottomPx();
+    const bottomOffsetPx = readMobileTabPillBottomOffsetPx();
     setAppMobileTabBarState({
       visible: true,
-      offsetPx: APP_MOBILE_TAB_BAR_H_PX + safe,
+      offsetPx: mobileTabContentClearancePx(),
+      bottomOffsetPx,
     });
-    return () => setAppMobileTabBarState({ visible: false, offsetPx: 0 });
-  }, [visible]);
+    return () =>
+      setAppMobileTabBarState({ visible: false, offsetPx: 0, bottomOffsetPx: 0 });
+  }, [visible, immersive]);
 
   useEffect(() => {
     clearSheetCloseTimer();
@@ -355,7 +485,6 @@ export function AppMobileTabBar() {
   }, [sheetSectionId, clearSheetCloseTimer, clearSheetOpenRaf]);
 
   const closeSheet = useCallback(() => {
-    // Already exiting or closed — don't restart / skip the fade.
     if (sheetSectionId == null) return;
     clearSheetOpenRaf();
     setSheetOpen(false);
@@ -363,12 +492,20 @@ export function AppMobileTabBar() {
     sheetCloseTimerRef.current = window.setTimeout(() => {
       setSheetSectionId(null);
       sheetCloseTimerRef.current = null;
-    }, SHEET_MOTION_MS);
-  }, [
-    sheetSectionId,
-    clearSheetCloseTimer,
-    clearSheetOpenRaf,
-  ]);
+    }, MENU_MOTION_MS);
+  }, [sheetSectionId, clearSheetCloseTimer, clearSheetOpenRaf]);
+
+  const openSheet = useCallback(
+    (sectionId: string) => {
+      hapticLight();
+      if (sheetSectionId === sectionId && sheetOpen) {
+        closeSheet();
+        return;
+      }
+      setSheetSectionId(sectionId);
+    },
+    [sheetSectionId, sheetOpen, closeSheet],
+  );
 
   const goSection = useCallback(
     (section: AppNavSection) => {
@@ -378,15 +515,42 @@ export function AppMobileTabBar() {
         pathname === `${landing}/` ||
         (section.id === "focus" &&
           (pathname === "/focus" || pathname === "/focus/"));
+      const hasChildren = (section.children?.length ?? 0) > 0;
+
+      // Menu already open for this tab → close.
+      if (sheetSectionId === section.id && sheetOpen) {
+        closeSheet();
+        return;
+      }
+
       if (activeId === section.id && onLanding) {
+        if (hasChildren) {
+          openSheet(section.id);
+          return;
+        }
         window.scrollTo({ top: 0, behavior: "smooth" });
         const main = document.querySelector("main");
         main?.scrollTo?.({ top: 0, behavior: "smooth" });
         return;
       }
+
+      if (activeId === section.id && !onLanding) {
+        // Child page → overview (tap again later opens the menu).
+        router.push(landing);
+        return;
+      }
+
       router.push(landing);
     },
-    [activeId, router, pathname],
+    [
+      activeId,
+      router,
+      pathname,
+      sheetSectionId,
+      sheetOpen,
+      closeSheet,
+      openSheet,
+    ],
   );
 
   if (mdUp) return null;
@@ -399,44 +563,76 @@ export function AppMobileTabBar() {
     return { ...found, children: healChildren };
   })();
 
+  const sheetTabIndex = Math.max(
+    0,
+    tabSections.findIndex((s) => s.id === sheetSectionId),
+  );
+
+  const bottomOffsetPx = readMobileTabPillBottomOffsetPx();
+
+  /*
+   * Old full-width docked bar (kept for reference):
+   * <nav className="fixed inset-x-0 bottom-0 border-t border-border bg-card …"
+   *   style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+   *   <div className="grid grid-cols-5" style={{ height: APP_MOBILE_TAB_BAR_H_PX }}>…
+   * </nav>
+   */
   const bar = (
-    <nav
-      aria-label="Primary"
-      className={`app-mobile-tab-bar fixed inset-x-0 bottom-0 border-t border-border bg-card md:hidden ${
-        sheetSectionId != null ? "z-[130]" : "z-[120]"
-      } ${visible ? "" : "pointer-events-none translate-y-full opacity-0"}`}
-      style={{
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        transition: "transform 180ms ease, opacity 180ms ease",
-      }}
-    >
+    <>
+      {/* Short fade so scrolling content softens under the pill. */}
       <div
-        className="grid grid-cols-5"
-        style={{ height: APP_MOBILE_TAB_BAR_H_PX }}
+        aria-hidden
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-[119] md:hidden ${
+          visible ? "opacity-100" : "opacity-0"
+        }`}
+        style={{
+          height: mobileTabContentClearancePx() + 12,
+          background:
+            "linear-gradient(to top, var(--background) 28%, transparent)",
+          transition: "opacity 180ms ease",
+        }}
+      />
+      <nav
+        aria-label="Primary"
+        className={`app-mobile-tab-bar fixed z-[120] border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)] md:hidden ${
+          sheetSectionId != null ? "z-[130]" : ""
+        } ${visible ? "" : "pointer-events-none translate-y-full opacity-0"}`}
+        style={{
+          left: APP_MOBILE_TAB_PILL_INSET_PX,
+          right: APP_MOBILE_TAB_PILL_INSET_PX,
+          bottom: bottomOffsetPx,
+          height: APP_MOBILE_TAB_BAR_H_PX,
+          borderRadius: 9999,
+          transition: "transform 180ms ease, opacity 180ms ease",
+        }}
       >
-        {navMain.filter((section) => section.id !== "chat").map((section) => {
-          const active = activeId === section.id;
-          const hasChildren = (section.children?.length ?? 0) > 0;
-          return (
-            <TabButton
-              key={section.id}
-              section={section}
-              active={active}
-              hasChildren={hasChildren}
-              onTap={() => goSection(section)}
-              onLongPress={() => {
-                if (!hasChildren) {
-                  goSection(section);
-                  return;
-                }
-                hapticLight();
-                setSheetSectionId(section.id);
-              }}
-            />
-          );
-        })}
-      </div>
-    </nav>
+        <div
+          className="grid h-full grid-cols-5 px-1"
+          style={{ height: APP_MOBILE_TAB_BAR_H_PX }}
+        >
+          {tabSections.map((section) => {
+            const active = activeId === section.id;
+            const hasChildren = (section.children?.length ?? 0) > 0;
+            return (
+              <TabButton
+                key={section.id}
+                section={section}
+                active={active}
+                hasChildren={hasChildren}
+                onTap={() => goSection(section)}
+                onLongPress={() => {
+                  if (!hasChildren) {
+                    goSection(section);
+                    return;
+                  }
+                  openSheet(section.id);
+                }}
+              />
+            );
+          })}
+        </div>
+      </nav>
+    </>
   );
 
   return (
@@ -446,8 +642,10 @@ export function AppMobileTabBar() {
         : bar}
       {sheetSection && typeof document !== "undefined"
         ? createPortal(
-            <SectionSheet
+            <SectionMenu
               section={sheetSection}
+              tabIndex={sheetTabIndex}
+              tabCount={tabSections.length}
               pathname={pathname}
               search={search}
               hash={hash}
