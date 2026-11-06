@@ -27,17 +27,26 @@ import {
   dataUrlToBase64,
   formatAudioClock,
   insertJournalVoiceClipAtCursor,
+  NO_SPEECH_LABEL,
   peaksFromAudioBlob,
   plainTextToTipTapHtml,
+  replaceTranscriptAfterClip,
+  silentWavDataUrl,
   upsertLiveVoiceDraft,
+  findJournalVoiceClipPosById,
 } from "@/components/journal-voice-clip-extension";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import {
   polishTranscript,
   startOnDeviceSpeech,
+  writeTranscriptionEngineDiag,
   type OnDeviceSpeechHandle,
 } from "@/lib/journal-on-device-speech";
-import { transcribeJournalAudio } from "@/lib/medimade-api";
+import { isNativeApp } from "@/lib/native/native-bridge";
+import {
+  transcribeJournalAudio,
+  uploadJournalVoice,
+} from "@/lib/medimade-api";
 import {
   JournalImage,
   compressImageFileToJpegDataUrl,
@@ -201,6 +210,9 @@ export function JournalRichEditor({
   const serverFallbackRef = useRef(false);
   const [serverFallbackMode, setServerFallbackMode] = useState(false);
   const [silenceNote, setSilenceNote] = useState<string | null>(null);
+  /** Capgo-only native session (no MediaRecorder — dual mic crashes iOS). */
+  const nativeCapgoOnlyRef = useRef(false);
+  const voicePeaksAccRef = useRef<number[]>([]);
 
   const stopVoiceMetering = useCallback(() => {
     if (voiceTimerRef.current != null) {
@@ -273,25 +285,52 @@ export function JournalRichEditor({
     upsertLiveVoiceDraft(ed, text, voiceDraftPosRef);
   }, []);
 
-  const startSpeechRecognition = useCallback(() => {
-    stopSpeechRecognition();
-    usedOnDeviceRef.current = false;
-    serverFallbackRef.current = false;
-    setServerFallbackMode(false);
-    void startOnDeviceSpeech((partial) => {
-      pushLiveDraft(partial);
-    }).then((handle) => {
-      if (!handle) {
-        serverFallbackRef.current = true;
-        setServerFallbackMode(true);
-        return;
-      }
-      onDeviceSpeechRef.current = handle;
-      usedOnDeviceRef.current = handle.usedOnDevice;
-      serverFallbackRef.current = !handle.usedOnDevice;
-      setServerFallbackMode(!handle.usedOnDevice);
+  const pushCapgoLevel = useCallback((level: number) => {
+    const n = Math.max(0, Math.min(1, level));
+    setVoiceLevel(n);
+    voicePeaksAccRef.current.push(n);
+    if (voicePeaksAccRef.current.length > 240) {
+      voicePeaksAccRef.current = voicePeaksAccRef.current.slice(-240);
+    }
+    if (n < 0.08) silenceSecRef.current += 1 / 15;
+    else silenceSecRef.current = 0;
+    if (silenceSecRef.current >= 60) {
+      silenceSecRef.current = 0;
+      setSilenceNote("Stopped after a minute of silence");
+      finishRecordingRef.current();
+    }
+    setVoiceBars((prev) => {
+      const next = prev.slice(1);
+      next.push(0.12 + n * 0.88);
+      return next;
     });
-  }, [pushLiveDraft, stopSpeechRecognition]);
+  }, []);
+
+  const startSpeechRecognition = useCallback(
+    (opts?: { withLevels?: boolean }) => {
+      stopSpeechRecognition();
+      usedOnDeviceRef.current = false;
+      serverFallbackRef.current = false;
+      setServerFallbackMode(false);
+      void startOnDeviceSpeech({
+        onPartial: (partial) => {
+          pushLiveDraft(partial);
+        },
+        onLevel: opts?.withLevels ? pushCapgoLevel : undefined,
+      }).then((handle) => {
+        if (!handle) {
+          serverFallbackRef.current = true;
+          setServerFallbackMode(true);
+          return;
+        }
+        onDeviceSpeechRef.current = handle;
+        usedOnDeviceRef.current = handle.usedOnDevice;
+        serverFallbackRef.current = !handle.usedOnDevice;
+        setServerFallbackMode(!handle.usedOnDevice);
+      });
+    },
+    [pushCapgoLevel, pushLiveDraft, stopSpeechRecognition],
+  );
 
   const startVoiceMetering = useCallback(
     (stream: MediaStream) => {
@@ -352,71 +391,133 @@ export function JournalRichEditor({
     [stopVoiceMetering],
   );
 
+  const startMediaRecorderPath = useCallback(async () => {
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("Recording is not supported in this browser.");
+      return false;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStreamRef.current = stream;
+    mediaChunksRef.current = [];
+    setVoicePaused(false);
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+    const mime =
+      candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+    const rec = mime
+      ? new MediaRecorder(stream, { mimeType: mime })
+      : new MediaRecorder(stream);
+    mediaRecorderMimeRef.current = mime || rec.mimeType || "";
+    mediaRecorderRef.current = rec;
+    rec.ondataavailable = (ev) => {
+      if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
+    };
+    for (const track of stream.getAudioTracks()) {
+      track.onmute = () => {
+        setVoicePaused(true);
+        try {
+          if (mediaRecorderRef.current?.state === "recording") {
+            mediaRecorderRef.current.pause();
+          }
+        } catch {
+          /* */
+        }
+      };
+      track.onunmute = () => {
+        setVoicePaused(false);
+        try {
+          if (mediaRecorderRef.current?.state === "paused") {
+            mediaRecorderRef.current.resume();
+          }
+        } catch {
+          /* */
+        }
+      };
+    }
+    rec.start(200);
+    startVoiceMetering(stream);
+    return true;
+  }, [startVoiceMetering]);
+
   const startVoiceRecording = useCallback(async () => {
     setVoiceError(null);
     if (!transcribeApiBase || voiceBusy) return;
-    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setVoiceError("Recording is not supported in this browser.");
+    liveTranscriptRef.current = "";
+    voiceDraftPosRef.current = null;
+    voicePeaksAccRef.current = [];
+    silenceSecRef.current = 0;
+    voiceSecondsRef.current = 0;
+    nativeCapgoOnlyRef.current = false;
+    setVoicePaused(false);
+    setVoiceSeconds(0);
+
+    // Native: Capgo alone for on-device live text (MediaRecorder + Capgo crashes iOS).
+    if (isNativeApp()) {
+      stopSpeechRecognition();
+      usedOnDeviceRef.current = false;
+      serverFallbackRef.current = false;
+      setServerFallbackMode(false);
+      const handle = await startOnDeviceSpeech({
+        onPartial: (partial) => {
+          pushLiveDraft(partial);
+        },
+        onLevel: pushCapgoLevel,
+      });
+      if (handle?.usedOnDevice) {
+        onDeviceSpeechRef.current = handle;
+        usedOnDeviceRef.current = true;
+        nativeCapgoOnlyRef.current = true;
+        stopVoiceMetering();
+        voiceTimerRef.current = window.setInterval(() => {
+          setVoiceSeconds((s) => {
+            const next = s + 1;
+            voiceSecondsRef.current = next;
+            return next;
+          });
+        }, 1000);
+        setVoiceRecording(true);
+        return;
+      }
+      // Capgo unavailable → MediaRecorder + server Whisper.
+      serverFallbackRef.current = true;
+      setServerFallbackMode(true);
+      writeTranscriptionEngineDiag(
+        "server",
+        "Falling back to MediaRecorder + server transcribe",
+      );
+      try {
+        const ok = await startMediaRecorderPath();
+        if (!ok) return;
+        setVoiceRecording(true);
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not access microphone";
+        setVoiceError(msg);
+      }
       return;
     }
+
+    // Web: MediaRecorder for the clip + browser speech when available.
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
-      mediaChunksRef.current = [];
-      liveTranscriptRef.current = "";
-      voiceDraftPosRef.current = null;
-      setVoicePaused(false);
-      // Prefer WebM on Chromium; Safari needs audio/mp4 (m4a) for Whisper.
-      const candidates = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-        "audio/mp4",
-        "audio/ogg;codecs=opus",
-      ];
-      const mime =
-        candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
-      const rec = mime
-        ? new MediaRecorder(stream, { mimeType: mime })
-        : new MediaRecorder(stream);
-      mediaRecorderMimeRef.current = mime || rec.mimeType || "";
-      mediaRecorderRef.current = rec;
-      rec.ondataavailable = (ev) => {
-        if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
-      };
-      for (const track of stream.getAudioTracks()) {
-        track.onmute = () => {
-          setVoicePaused(true);
-          try {
-            if (mediaRecorderRef.current?.state === "recording") {
-              mediaRecorderRef.current.pause();
-            }
-          } catch {
-            /* */
-          }
-        };
-        track.onunmute = () => {
-          setVoicePaused(false);
-          try {
-            if (mediaRecorderRef.current?.state === "paused") {
-              mediaRecorderRef.current.resume();
-            }
-          } catch {
-            /* */
-          }
-        };
-      }
-      rec.start(200);
-      startVoiceMetering(stream);
+      const ok = await startMediaRecorderPath();
+      if (!ok) return;
       setVoiceRecording(true);
-      // Web-only live speech (native Capgo is skipped while MediaRecorder runs).
       startSpeechRecognition();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not access microphone";
       setVoiceError(msg);
     }
   }, [
+    pushCapgoLevel,
+    pushLiveDraft,
+    startMediaRecorderPath,
     startSpeechRecognition,
-    startVoiceMetering,
+    stopSpeechRecognition,
+    stopVoiceMetering,
     transcribeApiBase,
     voiceBusy,
   ]);
@@ -463,37 +564,89 @@ export function JournalRichEditor({
     const liveRaw =
       onDeviceSpeechRef.current?.getText() || liveTranscriptRef.current;
     const live = polishTranscript(liveRaw);
-    const usedOnDevice = usedOnDeviceRef.current && Boolean(live);
-    const durationSec = voiceSecondsRef.current;
+    // Capgo session counts as on-device even with no words (keep clip + label).
+    const usedOnDevice = usedOnDeviceRef.current;
+    const capgoOnly = nativeCapgoOnlyRef.current;
+    const durationSec = Math.max(1, voiceSecondsRef.current);
     const note = silenceNote;
+    const peakSamples = voicePeaksAccRef.current.slice();
     setSilenceNote(null);
     clearLiveVoiceDraft(ed, voiceDraftPosRef);
     liveTranscriptRef.current = "";
     try {
-      const blob = await stopMediaRecorderAndCollectBlob();
-      if (!blob) {
-        setVoiceError("No audio captured.");
-        return;
+      let blob: Blob | null = null;
+      if (capgoOnly) {
+        // Capgo owned the mic — no MediaRecorder bytes. Keep a playable (silent)
+        // clip so ambient/empty sessions are never deleted; real audio needs a
+        // shared AVAudioEngine tap (future). Peaks come from Capgo audioLevel.
+        stopVoiceMetering();
+        const od = onDeviceSpeechRef.current;
+        onDeviceSpeechRef.current = null;
+        if (od) await od.stop();
+        const silent = silentWavDataUrl(durationSec);
+        const res = await fetch(silent);
+        blob = await res.blob();
+        mediaRecorderMimeRef.current = "audio/wav";
+      } else {
+        blob = await stopMediaRecorderAndCollectBlob();
       }
-      if (blob.size < 256) {
-        setVoiceError("Recording too short.");
-        return;
+      // Never drop a finished take for being “empty” / short — Cancel is the
+      // only discard path. Tiny blobs still become a clip with No speech.
+      if (!blob || blob.size < 32) {
+        const silent = silentWavDataUrl(durationSec);
+        const res = await fetch(silent);
+        blob = await res.blob();
+        mediaRecorderMimeRef.current = "audio/wav";
       }
       const dataUrl = await blobToDataUrl(blob);
       const mimeType =
         (blob.type || mediaRecorderMimeRef.current || "audio/webm").split(
           ";",
         )[0] || "audio/webm";
-      const peaks = await peaksFromAudioBlob(blob);
-      if (usedOnDevice) {
-        const html = plainTextToTipTapHtml(live);
-        insertJournalVoiceClipAtCursor(ed, {
-          src: dataUrl,
+      let peaks = "";
+      if (peakSamples.length) {
+        const step = Math.max(1, Math.floor(peakSamples.length / 36));
+        peaks = peakSamples
+          .filter((_, i) => i % step === 0)
+          .slice(0, 36)
+          .map((p) => p.toFixed(3))
+          .join(",");
+      }
+      if (!peaks) peaks = (await peaksFromAudioBlob(blob)) || "";
+
+      // Upload binary to S3 first — embedding data:audio in contentHtml exceeds
+      // DynamoDB entry limits and left sync on "Couldn't save · retrying".
+      let src = dataUrl;
+      try {
+        const uploaded = await uploadJournalVoice({
+          audioBase64: dataUrlToBase64(dataUrl),
           mimeType,
-          peaks: peaks || null,
-          transcriptPlain: live,
-          transcriptHtml: html,
         });
+        src = uploaded.url;
+      } catch (e) {
+        writeTranscriptionEngineDiag(
+          "server",
+          e instanceof Error
+            ? `Voice upload failed: ${e.message}`
+            : "Voice upload failed",
+        );
+        // Keep local data URL so the clip isn't lost offline; sync may still fail
+        // until upload succeeds on retry.
+        src = dataUrl;
+      }
+
+      const transcriptForInsert = usedOnDevice
+        ? live || NO_SPEECH_LABEL
+        : "Transcribing…";
+      const { clipId } = insertJournalVoiceClipAtCursor(ed, {
+        src,
+        mimeType,
+        peaks: peaks || null,
+        transcriptPlain: transcriptForInsert,
+        transcriptHtml: plainTextToTipTapHtml(transcriptForInsert),
+      });
+
+      if (usedOnDevice) {
         if (note) {
           ed.chain()
             .focus()
@@ -503,14 +656,6 @@ export function JournalRichEditor({
             .run();
         }
       } else {
-        // Server fallback: place clip, show status, then Whisper.
-        insertJournalVoiceClipAtCursor(ed, {
-          src: dataUrl,
-          mimeType,
-          peaks: peaks || null,
-          transcriptPlain: "Transcribing…",
-          transcriptHtml: plainTextToTipTapHtml("Transcribing…"),
-        });
         try {
           const { text, deferred, resetsAt } = await transcribeJournalAudio({
             audioBase64: dataUrlToBase64(dataUrl),
@@ -518,63 +663,35 @@ export function JournalRichEditor({
             durationSec,
             feature: "journal-transcribe",
           });
-          // Replace the placeholder transcript paragraph(s) after the last clip.
-          let clipPos: number | null = null;
-          ed.state.doc.descendants((node, pos) => {
-            if (node.type.name === "journalVoiceClip") clipPos = pos;
-          });
+          const clipPos = findJournalVoiceClipPosById(ed, clipId);
           if (clipPos != null) {
-            const clipNode = ed.state.doc.nodeAt(clipPos);
-            if (clipNode) {
-              let scan = clipPos + clipNode.nodeSize;
-              const tr = ed.state.tr;
-              while (scan < tr.doc.content.size) {
-                const $pos = tr.doc.resolve(scan);
-                const n = $pos.nodeAfter;
-                if (!n) break;
-                if (n.type.name === "paragraph" && n.attrs?.voiceTranscript) {
-                  tr.delete(scan, scan + n.nodeSize);
-                  continue;
-                }
-                break;
-              }
-              ed.view.dispatch(tr);
-              let replacement: string;
-              if (deferred) {
-                const when = resetsAt
-                  ? new Date(resetsAt).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "next month";
-                replacement = `Transcribes on ${when}`;
-              } else {
-                replacement = polishTranscript(text || "");
-              }
-              if (replacement) {
-                const html = plainTextToTipTapHtml(replacement);
-                if (html) {
-                  const show = true;
-                  const wrapped = html.replace(
-                    /<p(\s|>)/g,
-                    show ? '<p data-voice-transcript="1"$1' : "<p$1",
-                  );
-                  const insertAt =
-                    clipPos + (ed.state.doc.nodeAt(clipPos)?.nodeSize ?? 0);
-                  ed.chain().focus().insertContentAt(insertAt, wrapped).run();
-                }
-              }
-              if (note) {
-                ed.chain()
-                  .focus()
-                  .insertContent(
-                    `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
-                  )
-                  .run();
-              }
+            let replacement: string;
+            if (deferred) {
+              const when = resetsAt
+                ? new Date(resetsAt).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "next month";
+              replacement = `Transcribes on ${when}`;
+            } else {
+              replacement = polishTranscript(text || "") || NO_SPEECH_LABEL;
+            }
+            replaceTranscriptAfterClip(ed, clipPos, replacement);
+            if (note) {
+              ed.chain()
+                .focus()
+                .insertContent(
+                  `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
+                )
+                .run();
             }
           }
         } catch (e) {
+          const clipPos = findJournalVoiceClipPosById(ed, clipId);
+          if (clipPos != null) {
+            replaceTranscriptAfterClip(ed, clipPos, NO_SPEECH_LABEL);
+          }
           setVoiceError(
             e instanceof Error ? e.message : "Could not transcribe recording",
           );
@@ -588,22 +705,25 @@ export function JournalRichEditor({
       voiceSecondsRef.current = 0;
       usedOnDeviceRef.current = false;
       serverFallbackRef.current = false;
+      nativeCapgoOnlyRef.current = false;
+      voicePeaksAccRef.current = [];
       setServerFallbackMode(false);
     }
-  }, [silenceNote, stopMediaRecorderAndCollectBlob, voiceBusy]);
+  }, [silenceNote, stopMediaRecorderAndCollectBlob, stopVoiceMetering, voiceBusy]);
 
   finishRecordingRef.current = () => {
     void finishRecordingIntoEditor();
   };
 
   const cancelVoiceRecording = useCallback(async () => {
-
     const ed = editorRef.current;
     if (ed) clearLiveVoiceDraft(ed, voiceDraftPosRef);
     liveTranscriptRef.current = "";
     setVoiceRecording(false);
     setVoicePaused(false);
     setVoiceSeconds(0);
+    nativeCapgoOnlyRef.current = false;
+    voicePeaksAccRef.current = [];
     await stopMediaRecorderAndCollectBlob();
     setVoiceError(null);
   }, [stopMediaRecorderAndCollectBlob]);
@@ -1056,7 +1176,8 @@ export function JournalRichEditor({
                 type="button"
                 onClick={() => setPromptsOpen((open) => !open)}
                 aria-pressed={promptsOpen}
-                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
+                style={PRIMARY_ACCENT_FILL_STYLE}
+                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
               >
                 Prompts
               </button>
@@ -1072,14 +1193,14 @@ export function JournalRichEditor({
       <div
         className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden ${
           mobileCardLayout
-            ? "max-sm:bg-transparent sm:bg-[color:var(--journal-warm-bg)]"
-            : "bg-[color:var(--journal-warm-bg)]"
+            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:bg-transparent sm:bg-[color:var(--journal-warm-bg)]"
+            : "journal-entry-paper bg-[color:var(--journal-warm-bg)]"
         }`}
       >
         <div
           className={`flex shrink-0 flex-col ${
             mobileCardLayout
-              ? `max-sm:mx-3 max-sm:mt-1 max-sm:rounded-t-[18px] max-sm:border max-sm:border-b-0 max-sm:border-border max-sm:bg-card sm:border-b sm:border-border`
+              ? `journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mt-1 max-sm:rounded-t-[18px] max-sm:border max-sm:border-b-0 max-sm:border-border max-sm:bg-card sm:border-b sm:border-border`
               : "border-b border-border"
           }`}
         >
@@ -1410,7 +1531,8 @@ export function JournalRichEditor({
               type="button"
               onClick={() => setPromptsOpen((open) => !open)}
               aria-pressed={promptsOpen}
-              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground hover:border-accent/40"
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
                 <circle cx="12" cy="12" r="9" />
@@ -1462,7 +1584,8 @@ export function JournalRichEditor({
                 type="button"
                 onClick={() => setPromptsOpen((open) => !open)}
                 aria-pressed={promptsOpen}
-                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
+                style={PRIMARY_ACCENT_FILL_STYLE}
+                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
               >
                 Prompts
               </button>
@@ -1645,7 +1768,7 @@ export function JournalRichEditor({
       <div
         className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${
           mobileCardLayout
-            ? "max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card"
+            ? "journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card"
             : ""
         }`}
         onMouseDown={(e) => {

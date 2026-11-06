@@ -1,9 +1,9 @@
 /**
- * Live transcription for journal / onboarding voice notes that also record
- * with MediaRecorder.
+ * Live transcription for journal / onboarding voice notes.
  *
- * Native: Capgo is intentionally not started alongside MediaRecorder (dual
- * mic ownership hard-crashes iOS). Server Whisper/gpt-transcribe runs on Done.
+ * Native: Capgo SpeechRecognition alone (no MediaRecorder — dual mic ownership
+ * hard-crashes iOS). audioLevel drives the waveform. Clips get audio from a
+ * separate MediaRecorder path only when Capgo cannot start.
  * Web: browser SpeechRecognition when available; else server on Done.
  */
 
@@ -16,6 +16,47 @@ export type OnDeviceSpeechHandle = {
   /** True when this session used a local recognizer (not cloud). */
   usedOnDevice: boolean;
 };
+
+export type TranscriptionEngineDiag = {
+  engine: "on-device" | "server" | "none";
+  reason: string;
+  at: string;
+};
+
+const DIAG_KEY = "mm_journal_transcription_engine";
+
+export function readTranscriptionEngineDiag(): TranscriptionEngineDiag | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(DIAG_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as TranscriptionEngineDiag;
+  } catch {
+    return null;
+  }
+}
+
+export function writeTranscriptionEngineDiag(
+  engine: TranscriptionEngineDiag["engine"],
+  reason: string,
+): void {
+  if (typeof window === "undefined") return;
+  const next: TranscriptionEngineDiag = {
+    engine,
+    reason,
+    at: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(DIAG_KEY, JSON.stringify(next));
+  } catch {
+    /* */
+  }
+  try {
+    console.info("[journal-voice]", engine, reason);
+  } catch {
+    /* */
+  }
+}
 
 type BrowserSpeechRecognition = {
   continuous: boolean;
@@ -47,7 +88,6 @@ function language(): string {
 export function polishTranscript(raw: string): string {
   let s = raw.replace(/\s+/g, " ").trim();
   if (!s) return "";
-  // Capitalise sentence starts.
   s = s.replace(/(^|[.!?]\s+)([a-z])/g, (_, a: string, b: string) =>
     `${a}${b.toUpperCase()}`,
   );
@@ -56,18 +96,137 @@ export function polishTranscript(raw: string): string {
   return s;
 }
 
+export type StartOnDeviceSpeechOpts = {
+  onPartial: (text: string) => void;
+  /** Native Capgo mic level 0..1 for the recording waveform. */
+  onLevel?: (level: number) => void;
+};
+
 /**
- * Capgo speech while MediaRecorder also owns the mic has hard-crashed iOS
- * (AVAudioSession). Journal clips need the recorded file, so on native we
- * skip live Capgo here and use server transcription after Done. Dictation
- * that does not also MediaRecorder (see use-native-dictation) can still use
- * Capgo alone.
+ * Capgo alone owns the mic on native. Do not also start MediaRecorder while
+ * this handle is live — that dual-client path hard-crashes iOS.
  */
 async function startNativeOnDevice(
-  _onPartial: (text: string) => void,
+  opts: StartOnDeviceSpeechOpts,
 ): Promise<OnDeviceSpeechHandle | null> {
   if (!isNativeApp()) return null;
-  return null;
+  try {
+    const { SpeechRecognition } = await import(
+      "@capgo/capacitor-speech-recognition"
+    );
+    const { available } = await SpeechRecognition.available();
+    if (!available) {
+      writeTranscriptionEngineDiag("server", "Speech recognition unavailable");
+      return null;
+    }
+
+    let perm = await SpeechRecognition.checkPermissions();
+    if (perm.speechRecognition !== "granted") {
+      perm = await SpeechRecognition.requestPermissions();
+    }
+    if (perm.speechRecognition !== "granted") {
+      writeTranscriptionEngineDiag(
+        "server",
+        "Speech Recognition permission denied",
+      );
+      return null;
+    }
+
+    const lang = language();
+    // Prefer legacy SFSpeechRecognizer + requiresOnDeviceRecognition — more
+    // reliable for continuous partials than SpeechAnalyzer on some iOS 26 builds.
+    const preferLegacy = true;
+    let useOnDevice = false;
+    try {
+      const check = await SpeechRecognition.isOnDeviceRecognitionAvailable({
+        language: lang,
+        preferLegacyRecognizer: preferLegacy,
+      });
+      useOnDevice = check?.available === true;
+    } catch {
+      useOnDevice = false;
+    }
+    if (!useOnDevice) {
+      writeTranscriptionEngineDiag(
+        "server",
+        `On-device unavailable for ${lang}`,
+      );
+      return null;
+    }
+
+    let text = "";
+    const handles: Array<{ remove: () => Promise<void> }> = [];
+    const partial = await SpeechRecognition.addListener(
+      "partialResults",
+      (e) => {
+        const next =
+          (e as { accumulatedText?: string }).accumulatedText?.trim() ||
+          e.matches?.[0]?.trim() ||
+          "";
+        if (!next) return;
+        text = next;
+        opts.onPartial(text);
+      },
+    );
+    handles.push(partial);
+
+    if (opts.onLevel) {
+      const level = await SpeechRecognition.addListener("audioLevel", (e) => {
+        const n = typeof e.level === "number" ? e.level : 0;
+        opts.onLevel?.(Math.max(0, Math.min(1, n)));
+      });
+      handles.push(level);
+    }
+
+    const err = await SpeechRecognition.addListener("error", (e) => {
+      writeTranscriptionEngineDiag(
+        "server",
+        `Capgo error: ${e.code || e.message || "unknown"}`,
+      );
+    });
+    handles.push(err);
+
+    await SpeechRecognition.start({
+      language: lang,
+      partialResults: true,
+      popup: false,
+      useOnDeviceRecognition: true,
+      preferLegacyRecognizer: preferLegacy,
+      addPunctuation: true,
+      allowForSilence: 2000,
+      muteRecognizerBeep: true,
+    } as Parameters<typeof SpeechRecognition.start>[0]);
+
+    writeTranscriptionEngineDiag(
+      "on-device",
+      `Capgo SFSpeechRecognizer on-device (${lang})`,
+    );
+
+    return {
+      usedOnDevice: true,
+      getText: () => text,
+      stop: async () => {
+        try {
+          await SpeechRecognition.stop();
+        } catch {
+          /* */
+        }
+        for (const h of handles) {
+          try {
+            await h.remove();
+          } catch {
+            /* */
+          }
+        }
+      },
+    };
+  } catch (e) {
+    writeTranscriptionEngineDiag(
+      "server",
+      e instanceof Error ? e.message : "Capgo failed to start",
+    );
+    return null;
+  }
 }
 
 function startBrowserSpeech(
@@ -78,7 +237,10 @@ function startBrowserSpeech(
     webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
   };
   const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-  if (!SR) return null;
+  if (!SR) {
+    writeTranscriptionEngineDiag("server", "Browser SpeechRecognition missing");
+    return null;
+  }
   try {
     const rec = new SR();
     rec.continuous = true;
@@ -104,8 +266,8 @@ function startBrowserSpeech(
       /* keep last text */
     };
     rec.start();
+    writeTranscriptionEngineDiag("on-device", "Browser SpeechRecognition");
     return {
-      // Browser engines are local enough for “on-device first” on Chrome/Safari.
       usedOnDevice: true,
       getText: () => latest,
       stop: async () => {
@@ -123,33 +285,53 @@ function startBrowserSpeech(
         }
       },
     };
-  } catch {
+  } catch (e) {
+    writeTranscriptionEngineDiag(
+      "server",
+      e instanceof Error ? e.message : "Browser speech failed",
+    );
     return null;
   }
 }
 
 /**
  * Start the best available local speech engine. Returns null → use server
- * fallback (no live text).
+ * fallback (no live text). On native, Capgo owns the mic — do not also
+ * MediaRecorder until this handle has been stopped.
  */
 export async function startOnDeviceSpeech(
-  onPartial: (text: string) => void,
+  onPartialOrOpts: ((text: string) => void) | StartOnDeviceSpeechOpts,
 ): Promise<OnDeviceSpeechHandle | null> {
-  const native = await startNativeOnDevice(onPartial);
+  const opts: StartOnDeviceSpeechOpts =
+    typeof onPartialOrOpts === "function"
+      ? { onPartial: onPartialOrOpts }
+      : onPartialOrOpts;
+  const native = await startNativeOnDevice(opts);
   if (native) return native;
   if (isNativeApp()) {
-    // Native without on-device model → server fallback (no live text).
     return null;
   }
-  return startBrowserSpeech(onPartial);
+  return startBrowserSpeech(opts.onPartial);
 }
 
 /** True when this client expects to hit the OpenAI fallback (show allowance). */
 export async function willUseServerVoiceFallback(): Promise<boolean> {
   if (isNativeApp()) {
-    // Journal native path records via MediaRecorder and transcribes on server
-    // (Capgo + recorder dual-mic is unsafe). Always show allowance on native.
-    return true;
+    try {
+      const { SpeechRecognition } = await import(
+        "@capgo/capacitor-speech-recognition"
+      );
+      const { available } = await SpeechRecognition.available();
+      if (!available) return true;
+      const lang = language();
+      const check = await SpeechRecognition.isOnDeviceRecognitionAvailable({
+        language: lang,
+        preferLegacyRecognizer: true,
+      });
+      return check?.available !== true;
+    } catch {
+      return true;
+    }
   }
   const w = window as unknown as {
     SpeechRecognition?: unknown;

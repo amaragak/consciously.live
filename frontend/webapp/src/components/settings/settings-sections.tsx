@@ -40,6 +40,7 @@ import {
   setMedimadeSession,
 } from "@/lib/auth-session";
 import { getJournalSyncDiagnostics } from "@/lib/journal-sync";
+import { readTranscriptionEngineDiag } from "@/lib/journal-on-device-speech";
 import {
   onboardingHref,
   runOnboardingAgain,
@@ -2243,6 +2244,7 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
     shouldShowSettingsRow("general.diagnostics")
   ) {
     const diag = getJournalSyncDiagnostics();
+    const voiceDiag = readTranscriptionEngineDiag();
     const email = getMedimadeSessionEmail()?.trim() || "—";
     const userId = getMedimadeSessionUserId()?.trim() || "—";
     const apiBase = getMedimadeApiBase() || "—";
@@ -2250,12 +2252,17 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
       ? new Date(diag.lastSyncAt).toLocaleString()
       : "—";
     const lastErr = diag.lastSyncError?.trim() || "—";
+    const voiceLine = voiceDiag
+      ? `Transcription engine: ${voiceDiag.engine}${
+          voiceDiag.reason ? ` (${voiceDiag.reason})` : ""
+        }`
+      : "Transcription engine: —";
     helpRows.push(
       <SettingsRow
         key="diagnostics"
         settingsKey="general.diagnostics"
         title="Diagnostics"
-        helper="Dev / native only. Email, user id, API, last journal sync."
+        helper="Dev / native only. Email, user id, API, last journal sync, transcription engine."
         control={
           <div className="max-w-[min(100%,18rem)] space-y-1 text-right font-mono text-[11px] leading-snug text-muted">
             <p className="break-all">{email}</p>
@@ -2263,6 +2270,7 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
             <p className="break-all">{apiBase}</p>
             <p>Sync {lastSync}</p>
             <p className="break-all">Err {lastErr}</p>
+            <p className="break-all">{voiceLine}</p>
           </div>
         }
       />,

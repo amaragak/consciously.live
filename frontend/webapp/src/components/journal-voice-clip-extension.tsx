@@ -25,7 +25,118 @@ export type JournalVoiceClipAttrs = {
   transcriptHtml?: string | null;
   /** Optional precomputed peak heights 0–1 for the slim waveform. */
   peaks?: string | null;
+  /** Stable id so async transcript updates hit this clip only. */
+  clipId?: string | null;
 };
+
+export const NO_SPEECH_LABEL = "No speech detected";
+
+/** Tiny silent WAV (durationSec) when Capgo owns the mic and MediaRecorder cannot run. */
+export function silentWavDataUrl(durationSec: number): string {
+  const sampleRate = 8000;
+  const samples = Math.max(1, Math.floor(Math.max(0.05, durationSec) * sampleRate));
+  const dataSize = samples * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
+export function findJournalVoiceClipPosById(
+  editor: Editor,
+  clipId: string,
+): number | null {
+  let found: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "journalVoiceClip" && node.attrs.clipId === clipId) {
+      found = pos;
+      return false;
+    }
+    return undefined;
+  });
+  return found;
+}
+
+/** Replace grouped transcript paragraphs immediately after a clip. */
+export function replaceTranscriptAfterClip(
+  editor: Editor,
+  clipPos: number,
+  transcriptPlain: string,
+): void {
+  const clipNode = editor.state.doc.nodeAt(clipPos);
+  if (!clipNode || clipNode.type.name !== "journalVoiceClip") return;
+  let scan = clipPos + clipNode.nodeSize;
+  const tr = editor.state.tr;
+  while (scan < tr.doc.content.size) {
+    const $pos = tr.doc.resolve(scan);
+    const n = $pos.nodeAfter;
+    if (!n) break;
+    if (n.type.name === "paragraph" && n.attrs?.voiceTranscript) {
+      tr.delete(scan, scan + n.nodeSize);
+      continue;
+    }
+    break;
+  }
+  editor.view.dispatch(tr);
+  const plain = transcriptPlain.trim() || NO_SPEECH_LABEL;
+  const isEmpty = plain === NO_SPEECH_LABEL;
+  const showClips = readShowVoiceClips();
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = isEmpty
+    ? `<p data-voice-transcript="1"><em class="journal-voice-live journal-voice-no-speech">${escape(plain)}</em></p>`
+    : (() => {
+        const body = plainTextToTipTapHtml(plain);
+        if (!body) return "";
+        return body.replace(
+          /<p(\s|>)/g,
+          showClips ? '<p data-voice-transcript="1"$1' : "<p$1",
+        );
+      })();
+  if (!html) return;
+  const insertAt = clipPos + (editor.state.doc.nodeAt(clipPos)?.nodeSize ?? 0);
+  editor.chain().focus().insertContentAt(insertAt, html).run();
+  const htmlForAttr = isEmpty
+    ? `<p><em>${escape(plain)}</em></p>`
+    : plainTextToTipTapHtml(plain);
+  editor
+    .chain()
+    .command(({ tr: t, dispatch }) => {
+      const pos = findJournalVoiceClipPosById(
+        editor,
+        String(clipNode.attrs.clipId || ""),
+      );
+      const at = pos ?? clipPos;
+      const node = t.doc.nodeAt(at);
+      if (!node || node.type.name !== "journalVoiceClip") return false;
+      if (dispatch) {
+        t.setNodeMarkup(at, undefined, {
+          ...node.attrs,
+          transcriptHtml: htmlForAttr,
+        });
+      }
+      return true;
+    })
+    .run();
+}
 
 function encodeTranscriptForAttr(html: string): string {
   return encodeURIComponent(html);
@@ -131,7 +242,12 @@ function parsePeaks(raw: string | null | undefined): number[] {
 export function insertJournalVoiceClipAtCursor(
   editor: Editor,
   attrs: JournalVoiceClipAttrs & { transcriptPlain?: string },
-): void {
+): { clipId: string; clipPos: number } {
+  const clipId =
+    (attrs.clipId && String(attrs.clipId).trim()) ||
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const { $from } = editor.state.selection;
   const atBlockStart = $from.parentOffset === 0;
   const chain = editor.chain().focus();
@@ -139,7 +255,14 @@ export function insertJournalVoiceClipAtCursor(
     chain.splitBlock();
   }
   const showClips = readShowVoiceClips();
-  const transcript = (attrs.transcriptPlain ?? "").trim();
+  const rawTranscript = (attrs.transcriptPlain ?? "").trim();
+  const transcript = rawTranscript || NO_SPEECH_LABEL;
+  const isEmpty = transcript === NO_SPEECH_LABEL;
+  const transcriptHtml =
+    attrs.transcriptHtml ??
+    (isEmpty
+      ? `<p><em>${NO_SPEECH_LABEL}</em></p>`
+      : plainTextToTipTapHtml(transcript));
   chain
     .insertContent({
       type: "journalVoiceClip",
@@ -147,24 +270,35 @@ export function insertJournalVoiceClipAtCursor(
         src: attrs.src,
         mimeType: attrs.mimeType,
         peaks: attrs.peaks ?? null,
-        transcriptHtml: attrs.transcriptHtml ?? null,
+        transcriptHtml,
+        clipId,
       },
     })
     .run();
 
-  if (transcript) {
+  let clipPos = 0;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "journalVoiceClip" && node.attrs.clipId === clipId) {
+      clipPos = pos;
+      return false;
+    }
+    return undefined;
+  });
+
+  if (isEmpty) {
+    const html = `<p data-voice-transcript="1"><em class="journal-voice-live journal-voice-no-speech">${NO_SPEECH_LABEL}</em></p>`;
+    editor.chain().focus().insertContent(html).run();
+  } else {
     const html = plainTextToTipTapHtml(transcript);
     if (html) {
-      // Grouped transcript paragraphs (bronze rule when clips are shown).
       const wrapped = html.replace(
         /<p(\s|>)/g,
-        showClips
-          ? '<p data-voice-transcript="1"$1'
-          : "<p$1",
+        showClips ? '<p data-voice-transcript="1"$1' : "<p$1",
       );
       editor.chain().focus().insertContent(wrapped).run();
     }
   }
+  return { clipId, clipPos };
 }
 
 /** Insert/replace live interim muted italic text at the caret (during recording). */
@@ -486,16 +620,8 @@ function JournalVoiceClipView(props: NodeViewProps) {
           mimeType,
         });
         if (cancelled) return;
-        const html = plainTextToTipTapHtml(text);
-        if (!html) return;
-        updateAttributes({ transcriptHtml: html });
-        const insertAt = pos + node.nodeSize;
-        const showClips = readShowVoiceClips();
-        const wrapped = html.replace(
-          /<p(\s|>)/g,
-          showClips ? '<p data-voice-transcript="1"$1' : "<p$1",
-        );
-        editor.chain().focus().insertContentAt(insertAt, wrapped).run();
+        const plain = (text || "").trim() || NO_SPEECH_LABEL;
+        replaceTranscriptAfterClip(editor, pos, plain);
       } catch {
         /* */
       } finally {
@@ -728,6 +854,7 @@ export const JournalVoiceClip = Node.create({
       mimeType: { default: "audio/webm" },
       transcriptHtml: { default: null },
       peaks: { default: null },
+      clipId: { default: null },
     };
   },
 
@@ -748,7 +875,8 @@ export const JournalVoiceClip = Node.create({
           const rawTranscript = element.getAttribute("data-transcript");
           const transcriptHtml = decodeTranscriptFromAttr(rawTranscript);
           const peaks = element.getAttribute("data-peaks");
-          return { src, mimeType: mime, transcriptHtml, peaks };
+          const clipId = element.getAttribute("data-clip-id");
+          return { src, mimeType: mime, transcriptHtml, peaks, clipId };
         },
       },
     ];
@@ -759,6 +887,7 @@ export const JournalVoiceClip = Node.create({
     const mimeType = (node.attrs.mimeType as string) || "audio/webm";
     const transcriptHtml = (node.attrs.transcriptHtml as string | null) ?? null;
     const peaks = (node.attrs.peaks as string | null) ?? null;
+    const clipId = (node.attrs.clipId as string | null) ?? null;
     const transcriptAttr =
       transcriptHtml && transcriptHtml.trim()
         ? encodeTranscriptForAttr(transcriptHtml)
@@ -779,6 +908,7 @@ export const JournalVoiceClip = Node.create({
           "data-journal-voice-clip": "1",
           "data-src": src,
           "data-mime": mimeType,
+          ...(clipId ? { "data-clip-id": clipId } : {}),
           ...(transcriptAttr ? { "data-transcript": transcriptAttr } : {}),
           ...(peaks ? { "data-peaks": peaks } : {}),
           class: "journal-voice-clip my-2",

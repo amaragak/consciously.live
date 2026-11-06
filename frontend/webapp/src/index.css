@@ -1622,6 +1622,29 @@ html[data-hide-voice-clips="1"] .journal-voice-transcript {
   border-left: none;
 }
 
+/* Journal entry writing card — subtle tiled paper grain (consciously-journal-paper). */
+.journal-entry-paper {
+  background-image: url("/journal/paper-texture.png");
+  background-size: 300px 300px;
+  background-repeat: repeat;
+  background-position: 0 0;
+}
+:root.dark .journal-entry-paper {
+  background-image: none;
+}
+/* Split mobile card: texture on max-sm card chrome only. */
+@media (min-width: 640px) {
+  .journal-entry-paper-until-sm {
+    background-image: none;
+  }
+}
+/* Desktop/sm+ writing pane when mobile card layout is on. */
+@media (max-width: 639.98px) {
+  .journal-entry-paper-from-sm {
+    background-image: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-typing-dot {
     animation: none;
