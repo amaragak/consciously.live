@@ -9,7 +9,6 @@ import { createPortal } from "react-dom";
 import {
   APP_MOBILE_TAB_BAR_H_PX,
   APP_MOBILE_TAB_PILL_INSET_PX,
-  mobileTabContentClearancePx,
   readMobileTabPillBottomOffsetPx,
   setAppMobileTabBarState,
 } from "@/lib/app-mobile-tab-bar";
@@ -58,12 +57,14 @@ export function JournalMobileWritingBar({
   }, [keyboardOpen, onKeyboardOpenChange]);
 
   useEffect(() => {
+    // offsetPx: 0 — do not reserve solid main padding behind the pill; the
+    // entry card scrolls underneath with only a soft fade (see veil below).
     const dockBottom = () => {
       const bottomOffsetPx = readMobileTabPillBottomOffsetPx();
       setBottomPx(bottomOffsetPx);
       setAppMobileTabBarState({
         visible: true,
-        offsetPx: mobileTabContentClearancePx(),
+        offsetPx: 0,
         bottomOffsetPx,
       });
     };
@@ -90,7 +91,7 @@ export function JournalMobileWritingBar({
         setBottomPx(bottom);
         setAppMobileTabBarState({
           visible: true,
-          offsetPx: APP_MOBILE_TAB_BAR_H_PX + bottom + 8,
+          offsetPx: 0,
           bottomOffsetPx: bottom,
         });
         return;
@@ -120,7 +121,7 @@ export function JournalMobileWritingBar({
         setBottomPx(Math.max(8, h + 8));
         setAppMobileTabBarState({
           visible: true,
-          offsetPx: APP_MOBILE_TAB_BAR_H_PX + Math.max(8, h + 8) + 8,
+          offsetPx: 0,
           bottomOffsetPx: Math.max(8, h + 8),
         });
       } else {
@@ -144,41 +145,54 @@ export function JournalMobileWritingBar({
     };
   }, [nativeResize]);
 
-  const pill = (
-    <div
-      className="fixed z-[120] border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)] md:hidden"
-      style={{
-        left: APP_MOBILE_TAB_PILL_INSET_PX,
-        right: APP_MOBILE_TAB_PILL_INSET_PX,
-        bottom: bottomPx,
-        height: APP_MOBILE_TAB_BAR_H_PX,
-        borderRadius: 9999,
-      }}
-      role="toolbar"
-      aria-label="Writing tools"
-    >
-      <div className="flex h-full w-full items-center gap-1 px-2">
-        {children}
-        {keyboardOpen ? (
-          <button
-            type="button"
-            aria-label="Done"
-            title="Done"
-            className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border px-3 text-[13px] font-semibold text-foreground transition-colors hover:border-accent/40"
-            onMouseDown={(e) => {
-              // Keep caret/selection in the editor; don't steal focus first.
-              e.preventDefault();
-            }}
-            onClick={() => hideSoftwareKeyboard()}
-          >
-            Done
-          </button>
-        ) : null}
+  const chrome = (
+    <>
+      {/* Soft fade only — entry text stays visible under / around the pill. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 z-[119] md:hidden"
+        style={{
+          bottom: bottomPx,
+          height: APP_MOBILE_TAB_BAR_H_PX + 24,
+          background:
+            "linear-gradient(to top, color-mix(in srgb, var(--background) 42%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="fixed z-[120] border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)] md:hidden"
+        style={{
+          left: APP_MOBILE_TAB_PILL_INSET_PX,
+          right: APP_MOBILE_TAB_PILL_INSET_PX,
+          bottom: bottomPx,
+          height: APP_MOBILE_TAB_BAR_H_PX,
+          borderRadius: 9999,
+        }}
+        role="toolbar"
+        aria-label="Writing tools"
+      >
+        <div className="flex h-full w-full items-center gap-1 px-2">
+          {children}
+          {keyboardOpen ? (
+            <button
+              type="button"
+              aria-label="Done"
+              title="Done"
+              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border px-3 text-[13px] font-semibold text-foreground transition-colors hover:border-accent/40"
+              onMouseDown={(e) => {
+                // Keep caret/selection in the editor; don't steal focus first.
+                e.preventDefault();
+              }}
+              onClick={() => hideSoftwareKeyboard()}
+            >
+              Done
+            </button>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </>
   );
 
   return typeof document !== "undefined"
-    ? createPortal(pill, document.body)
-    : pill;
+    ? createPortal(chrome, document.body)
+    : chrome;
 }

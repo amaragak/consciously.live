@@ -207,6 +207,9 @@ export function JournalRichEditor({
   const [bodyFocused, setBodyFocused] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const entryScrollRef = useRef<HTMLDivElement | null>(null);
+  /** Locked from keyboard-closed viewport so opening the keyboard never shrinks the card. */
+  const cardMinHeightLockedRef = useRef<number | null>(null);
+  const [cardMinHeightPx, setCardMinHeightPx] = useState<number | undefined>();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderMimeRef = useRef<string>("");
   const mediaChunksRef = useRef<BlobPart[]>([]);
@@ -610,6 +613,45 @@ export function JournalRichEditor({
     setNativeKeyboardOverlay(false);
     return () => {
       setNativeKeyboardOverlay(true);
+    };
+  }, [mobileCardLayout]);
+
+  // Card min-height from keyboard-closed screen only — never shrinks when the
+  // keyboard opens (native resize would otherwise collapse flex-1 children).
+  useEffect(() => {
+    if (!mobileCardLayout) return;
+
+    const keyboardOccludes = () => {
+      if (isNativeApp() && isNativeKeyboardOpen()) return true;
+      const vv = window.visualViewport;
+      if (!vv) return false;
+      return Math.max(0, window.innerHeight - vv.height - vv.offsetTop) > 80;
+    };
+
+    const measureClosed = () => {
+      if (keyboardOccludes()) return;
+      const scroller = entryScrollRef.current;
+      if (!scroller) return;
+      const top = scroller.getBoundingClientRect().top;
+      const next = Math.round(window.innerHeight - top);
+      if (next <= 0) return;
+      const locked = cardMinHeightLockedRef.current;
+      // Allow settling upward while closed; never shrink once locked.
+      if (locked != null && next <= locked) return;
+      cardMinHeightLockedRef.current = next;
+      setCardMinHeightPx(next);
+    };
+
+    measureClosed();
+    const t = window.setTimeout(measureClosed, 120);
+    window.addEventListener("resize", measureClosed);
+    window.visualViewport?.addEventListener("resize", measureClosed);
+    window.addEventListener(NATIVE_KEYBOARD_EVENT, measureClosed);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("resize", measureClosed);
+      window.visualViewport?.removeEventListener("resize", measureClosed);
+      window.removeEventListener(NATIVE_KEYBOARD_EVENT, measureClosed);
     };
   }, [mobileCardLayout]);
 
@@ -1352,19 +1394,23 @@ export function JournalRichEditor({
         hideSoftwareKeyboard();
       }}
     >
-      {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter. */}
+      {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter.
+          Mobile: height follows content (never viewport-tied / never shrinks with keyboard). */}
       <div
         data-journal-entry-card="1"
-        className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col ${
+        className={`relative flex min-h-0 w-full min-w-0 flex-col ${
           mobileCardLayout
-            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:overflow-visible max-sm:bg-transparent sm:overflow-hidden sm:bg-[color:var(--journal-warm-bg)]"
-            : "journal-entry-paper overflow-hidden bg-[color:var(--journal-warm-bg)]"
+            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:h-auto max-sm:flex-none max-sm:overflow-visible max-sm:bg-transparent sm:flex-1 sm:overflow-hidden sm:bg-[color:var(--journal-warm-bg)]"
+            : "flex-1 journal-entry-paper overflow-hidden bg-[color:var(--journal-warm-bg)]"
         }`}
         style={
           mobileCardLayout
             ? {
                 // Room to scroll the last line above the writing bar.
                 paddingBottom: writingBarClearancePx,
+                ...(cardMinHeightPx != null
+                  ? { minHeight: cardMinHeightPx }
+                  : null),
               }
             : undefined
         }
@@ -1965,10 +2011,10 @@ export function JournalRichEditor({
         />
       </div>
       <div
-        className={`min-h-0 flex-1 ${
+        className={`min-h-0 ${
           mobileCardLayout
-            ? "journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:overflow-visible max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card sm:overflow-y-auto sm:overscroll-contain"
-            : "overflow-y-auto overscroll-contain"
+            ? "journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:flex-1 max-sm:overflow-visible max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card sm:flex-1 sm:overflow-y-auto sm:overscroll-contain"
+            : "flex-1 overflow-y-auto overscroll-contain"
         }`}
         onMouseDown={(e) => {
           if (!mobileCardLayout || !editor) return;
