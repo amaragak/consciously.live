@@ -407,8 +407,9 @@ export function JournalRichEditor({
       }
       rec.start(200);
       startVoiceMetering(stream);
-      startSpeechRecognition();
       setVoiceRecording(true);
+      // Web-only live speech (native Capgo is skipped while MediaRecorder runs).
+      startSpeechRecognition();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not access microphone";
       setVoiceError(msg);

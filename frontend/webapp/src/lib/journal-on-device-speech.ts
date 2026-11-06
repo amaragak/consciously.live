@@ -1,8 +1,10 @@
 /**
- * On-device-first live transcription for journal / onboarding voice notes.
- * Native: Capgo SpeechRecognition with useOnDeviceRecognition when available.
- * Web: browser SpeechRecognition. Returns whether live text is trustworthy
- * enough to skip the OpenAI server fallback.
+ * Live transcription for journal / onboarding voice notes that also record
+ * with MediaRecorder.
+ *
+ * Native: Capgo is intentionally not started alongside MediaRecorder (dual
+ * mic ownership hard-crashes iOS). Server Whisper/gpt-transcribe runs on Done.
+ * Web: browser SpeechRecognition when available; else server on Done.
  */
 
 import { isNativeApp } from "@/lib/native/native-bridge";
@@ -54,80 +56,18 @@ export function polishTranscript(raw: string): string {
   return s;
 }
 
+/**
+ * Capgo speech while MediaRecorder also owns the mic has hard-crashed iOS
+ * (AVAudioSession). Journal clips need the recorded file, so on native we
+ * skip live Capgo here and use server transcription after Done. Dictation
+ * that does not also MediaRecorder (see use-native-dictation) can still use
+ * Capgo alone.
+ */
 async function startNativeOnDevice(
-  onPartial: (text: string) => void,
+  _onPartial: (text: string) => void,
 ): Promise<OnDeviceSpeechHandle | null> {
   if (!isNativeApp()) return null;
-  try {
-    const { SpeechRecognition } = await import(
-      "@capgo/capacitor-speech-recognition"
-    );
-    const { available } = await SpeechRecognition.available();
-    if (!available) return null;
-
-    let perm = await SpeechRecognition.checkPermissions();
-    if (perm.speechRecognition !== "granted") {
-      perm = await SpeechRecognition.requestPermissions();
-    }
-    if (perm.speechRecognition !== "granted") return null;
-
-    const lang = language();
-    let useOnDevice = false;
-    try {
-      const check = (await SpeechRecognition.isOnDeviceRecognitionAvailable({
-        language: lang,
-      })) as { available?: boolean };
-      useOnDevice = check?.available === true;
-    } catch {
-      useOnDevice = false;
-    }
-    if (!useOnDevice) return null;
-
-    let text = "";
-    const partial = await SpeechRecognition.addListener(
-      "partialResults",
-      (e) => {
-        const next =
-          (e as { accumulatedText?: string }).accumulatedText?.trim() ||
-          e.matches?.[0]?.trim() ||
-          "";
-        if (!next) return;
-        text = next;
-        onPartial(text);
-      },
-    );
-
-    await SpeechRecognition.start({
-      language: lang,
-      partialResults: true,
-      popup: false,
-      useOnDeviceRecognition: true,
-      addPunctuation: true,
-      // Restart across short silences (Android + iOS Capgo continuous path).
-      continuousPTT: true,
-      allowForSilence: 2000,
-      muteRecognizerBeep: true,
-    } as Parameters<typeof SpeechRecognition.start>[0]);
-
-    return {
-      usedOnDevice: true,
-      getText: () => text,
-      stop: async () => {
-        try {
-          await SpeechRecognition.stop();
-        } catch {
-          /* */
-        }
-        try {
-          await partial.remove();
-        } catch {
-          /* */
-        }
-      },
-    };
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function startBrowserSpeech(
@@ -206,25 +146,14 @@ export async function startOnDeviceSpeech(
 
 /** True when this client expects to hit the OpenAI fallback (show allowance). */
 export async function willUseServerVoiceFallback(): Promise<boolean> {
-  if (!isNativeApp()) {
-    const w = window as unknown as {
-      SpeechRecognition?: unknown;
-      webkitSpeechRecognition?: unknown;
-    };
-    return !(w.SpeechRecognition || w.webkitSpeechRecognition);
-  }
-  try {
-    const { SpeechRecognition } = await import(
-      "@capgo/capacitor-speech-recognition"
-    );
-    const { available } = await SpeechRecognition.available();
-    if (!available) return true;
-    const lang = language();
-    const check = (await SpeechRecognition.isOnDeviceRecognitionAvailable({
-      language: lang,
-    })) as { available?: boolean };
-    return check?.available !== true;
-  } catch {
+  if (isNativeApp()) {
+    // Journal native path records via MediaRecorder and transcribes on server
+    // (Capgo + recorder dual-mic is unsafe). Always show allowance on native.
     return true;
   }
+  const w = window as unknown as {
+    SpeechRecognition?: unknown;
+    webkitSpeechRecognition?: unknown;
+  };
+  return !(w.SpeechRecognition || w.webkitSpeechRecognition);
 }
